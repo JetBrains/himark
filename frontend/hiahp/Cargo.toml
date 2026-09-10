@@ -19,7 +19,7 @@ rpds = "1"
 rebase = { path = "../rebase" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
-base64 = "0.22"
+base64 = "0.23"
 ahp = "0.7"
 ahp-types = "0.7"
 serde = { version = "1", features = ["derive"] }
