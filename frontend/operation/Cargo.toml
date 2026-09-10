@@ -1,0 +1,10 @@
+[package]
+name = "operation"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rope = { path = "../rope" }
+
+[lib]
+path = "src/lib.rs"

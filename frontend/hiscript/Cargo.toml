@@ -1,0 +1,22 @@
+[package]
+name = "hiscript"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = ["plugin"]
+plugin = ["dep:himark", "dep:operation", "dep:imba"]
+
+[dependencies]
+rquickjs = { version = "0.9", features = ["bindgen"] }
+himark = { path = "../himark", optional = true }
+imba = { path = "../imba", optional = true }
+operation = { path = "../operation", optional = true }
+
+[dev-dependencies]
+himark = { path = "../himark", features = ["test-support"] }
+serde_json = "1"
+
+[[bin]]
+name = "hiscript-spike"
+path = "src/spike.rs"

@@ -1,0 +1,17 @@
+[package]
+name = "himermaid"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+himark = { path = "../../himark" }
+imba = { path = "../../imba" }
+operation = { path = "../../operation" }
+text = { path = "../../text" }
+merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+
+[dev-dependencies]
+operation = { path = "../../operation" }
+himark = { path = "../../himark", features = ["test-support"] }
+himarkdown = { path = "../himarkdown" }

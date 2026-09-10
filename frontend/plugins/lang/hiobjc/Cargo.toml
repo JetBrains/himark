@@ -1,0 +1,15 @@
+[package]
+name = "hiobjc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../../../editor" }
+hisitter = { path = "../../../hisitter" }
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tree-sitter-objc = "3.0.2"
+tree-sitter-c = "0.24.2"
+
+[dev-dependencies]
+imba = { path = "../../../imba" }

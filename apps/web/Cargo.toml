@@ -1,0 +1,68 @@
+[package]
+name = "web"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+demo = { path = "../../frontend/plugins/demo" }
+search = { path = "../../frontend/plugins/search" }
+palette = { path = "../../frontend/plugins/palette" }
+peeker = { path = "../../frontend/plugins/peeker" }
+hidiff = { path = "../../frontend/plugins/hidiff" }
+hirust = { path = "../../frontend/plugins/lang/hirust" }
+hipython = { path = "../../frontend/plugins/lang/hipython" }
+hijavascript = { path = "../../frontend/plugins/lang/hijavascript" }
+hitypescript = { path = "../../frontend/plugins/lang/hitypescript" }
+higo = { path = "../../frontend/plugins/lang/higo" }
+hijava = { path = "../../frontend/plugins/lang/hijava" }
+hic = { path = "../../frontend/plugins/lang/hic" }
+hicpp = { path = "../../frontend/plugins/lang/hicpp" }
+hicsharp = { path = "../../frontend/plugins/lang/hicsharp" }
+hiruby = { path = "../../frontend/plugins/lang/hiruby" }
+hiphp = { path = "../../frontend/plugins/lang/hiphp" }
+hibash = { path = "../../frontend/plugins/lang/hibash" }
+hilua = { path = "../../frontend/plugins/lang/hilua" }
+hiswift = { path = "../../frontend/plugins/lang/hiswift" }
+hikotlin = { path = "../../frontend/plugins/lang/hikotlin" }
+hiscala = { path = "../../frontend/plugins/lang/hiscala" }
+hihaskell = { path = "../../frontend/plugins/lang/hihaskell" }
+hielixir = { path = "../../frontend/plugins/lang/hielixir" }
+hiocaml = { path = "../../frontend/plugins/lang/hiocaml" }
+hizig = { path = "../../frontend/plugins/lang/hizig" }
+hisql = { path = "../../frontend/plugins/lang/hisql" }
+hijson = { path = "../../frontend/plugins/lang/hijson" }
+hicss = { path = "../../frontend/plugins/lang/hicss" }
+hihtml = { path = "../../frontend/plugins/lang/hihtml" }
+hiyaml = { path = "../../frontend/plugins/lang/hiyaml" }
+hitoml = { path = "../../frontend/plugins/lang/hitoml" }
+hicmake = { path = "../../frontend/plugins/lang/hicmake" }
+hid = { path = "../../frontend/plugins/lang/hid" }
+hidart = { path = "../../frontend/plugins/lang/hidart" }
+hielm = { path = "../../frontend/plugins/lang/hielm" }
+hierlang = { path = "../../frontend/plugins/lang/hierlang" }
+hifortran = { path = "../../frontend/plugins/lang/hifortran" }
+hifsharp = { path = "../../frontend/plugins/lang/hifsharp" }
+higleam = { path = "../../frontend/plugins/lang/higleam" }
+higlsl = { path = "../../frontend/plugins/lang/higlsl" }
+higraphql = { path = "../../frontend/plugins/lang/higraphql" }
+higroovy = { path = "../../frontend/plugins/lang/higroovy" }
+hihcl = { path = "../../frontend/plugins/lang/hihcl" }
+hijulia = { path = "../../frontend/plugins/lang/hijulia" }
+himake = { path = "../../frontend/plugins/lang/himake" }
+hinix = { path = "../../frontend/plugins/lang/hinix" }
+hiobjc = { path = "../../frontend/plugins/lang/hiobjc" }
+hiodin = { path = "../../frontend/plugins/lang/hiodin" }
+hiperl = { path = "../../frontend/plugins/lang/hiperl" }
+hipowershell = { path = "../../frontend/plugins/lang/hipowershell" }
+hir = { path = "../../frontend/plugins/lang/hir" }
+hisolidity = { path = "../../frontend/plugins/lang/hisolidity" }
+hixml = { path = "../../frontend/plugins/lang/hixml" }
+himarkdown = { path = "../../frontend/plugins/himarkdown" }
+imba = { path = "../../frontend/imba" }
+hiahp = { path = "../../frontend/hiahp" }
+ahp = "0.7"
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+himark = { path = "../../frontend/himark" }
+
+[target.'cfg(target_os = "emscripten")'.dependencies]
+skia-safe = { version = "0.99.0", features = ["freetype-woff2", "gl", "textlayout"] }

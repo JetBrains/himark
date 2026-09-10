@@ -1,0 +1,22 @@
+[package]
+name = "hisitter"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../editor" }
+operation = { path = "../operation" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+streaming-iterator = "0.1"
+text = { path = "../text" }
+tree-sitter = "0.26.8"
+
+[target.'cfg(target_os = "emscripten")'.dependencies]
+tree-sitter-language = "0.1"
+
+[dev-dependencies]
+imba = { path = "../imba" }
+tree-sitter-rust = "0.24.2"
+
+[build-dependencies]
+cc = "1"

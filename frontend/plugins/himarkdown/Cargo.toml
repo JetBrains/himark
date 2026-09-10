@@ -1,0 +1,14 @@
+[package]
+name = "himarkdown"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+himark = { path = "../../himark", features = ["test-support"] }
+imba = { path = "../../imba" }
+mdparser = { path = "../../mdparser" }
+operation = { path = "../../operation" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+text = { path = "../../text" }
+hisitter = { path = "../../hisitter" }
+tree-sitter = "0.26.8"

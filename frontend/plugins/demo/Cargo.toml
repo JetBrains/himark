@@ -1,0 +1,20 @@
+[package]
+name = "demo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../../editor" }
+himark = { path = "../../himark" }
+hirust = { path = "../lang/hirust" }
+himarkdown = { path = "../himarkdown" }
+imba = { path = "../../imba" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+text = { path = "../../text" }
+operation = { path = "../../operation" }
+
+[dev-dependencies]
+himark = { path = "../../himark", features = ["test-support"] }
+peeker = { path = "../peeker" }
+
+search = { path = "../search" }

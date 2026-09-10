@@ -1,0 +1,19 @@
+[package]
+name = "hirust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../../../editor" }
+hisitter = { path = "../../../hisitter" }
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tree-sitter-rust = "0.24.2"
+
+[dev-dependencies]
+himark = { path = "../../../himark", features = ["test-support"] }
+himarkdown = { path = "../../himarkdown" }
+imba = { path = "../../../imba" }
+operation = { path = "../../../operation" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+text = { path = "../../../text" }

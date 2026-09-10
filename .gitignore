@@ -1,0 +1,7 @@
+target
+.DS_Store
+vendor/skia-bindings-0.99.0/depot_tools/
+vendor/skia-bindings-0.99.0/skia/
+Untitled.trace
+# design notes kept private for now
+docs/

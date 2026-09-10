@@ -1,0 +1,112 @@
+use crate::ui::UiCtx;
+use crate::{
+    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, Thunk, View,
+};
+
+pub type DynCommand = Box<dyn std::any::Any + Send + Sync>;
+
+pub trait DynView {
+    fn perform_dyn(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: DynCommand,
+        fx: &mut crate::effect::Effects<'_, DynCommand>,
+    );
+    fn layout_dyn<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> crate::ThunkBox<'a, DynCommand>;
+
+    fn destroy_dyn(&mut self, store: &mut Store, fx: &mut crate::effect::Effects<'_, DynCommand>);
+}
+
+impl<V> DynView for V
+where
+    V: View,
+    V::Command: Send + Sync + 'static,
+{
+    fn perform_dyn(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: DynCommand,
+        fx: &mut crate::effect::Effects<'_, DynCommand>,
+    ) {
+        match command.downcast::<V::Command>() {
+            Ok(command) => fx.scope(
+                |command: V::Command| Box::new(command) as DynCommand,
+                |fx| self.perform(store, ui, *command, fx),
+            ),
+            Err(_) => {
+                debug_assert!(false, "command routed to a view with another command type");
+            }
+        }
+    }
+
+    fn layout_dyn<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> crate::ThunkBox<'a, DynCommand> {
+        crate::ThunkBox::new(
+            arena,
+            self.layout(arena, store, ui, constraints)
+                .map(|command| Box::new(command) as DynCommand),
+        )
+    }
+
+    fn destroy_dyn(&mut self, store: &mut Store, fx: &mut crate::effect::Effects<'_, DynCommand>) {
+        fx.scope(
+            |command: V::Command| Box::new(command) as DynCommand,
+            |fx| self.destroy(store, fx),
+        )
+    }
+}
+
+pub trait CloneDynView: DynView + Send + Sync {
+    fn clone_dyn(&self) -> Box<dyn CloneDynView>;
+}
+
+impl<V> CloneDynView for V
+where
+    V: View + Clone + Send + Sync + 'static,
+    V::Command: Send + Sync + 'static,
+{
+    fn clone_dyn(&self) -> Box<dyn CloneDynView> {
+        Box::new(self.clone())
+    }
+}
+
+impl View for Box<dyn DynView> {
+    type Command = DynCommand;
+
+    fn destroy(&mut self, store: &mut Store, fx: &mut crate::effect::Effects<'_, DynCommand>) {
+        self.as_mut().destroy_dyn(store, fx)
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: DynCommand,
+        fx: &mut crate::effect::Effects<'_, DynCommand>,
+    ) {
+        self.as_mut().perform_dyn(store, ui, command, fx)
+    }
+
+    fn layout<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        constraints: Constraints,
+    ) -> impl Thunk<'a, Self::Command> + 'a {
+        self.as_ref().layout_dyn(arena, store, ui, constraints)
+    }
+}

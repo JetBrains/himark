@@ -1,0 +1,51 @@
+name: himark
+options:
+  bundleIdPrefix: dev.himark
+  # XcodeGen defaults to the newest project format, which Xcode 15 cannot
+  # open. Keep the generated project readable by every Xcode 15 release.
+  projectFormat: xcode15_0
+  deploymentTarget:
+    macOS: "14.0"
+    iOS: "16.0"
+  createIntermediateGroups: true
+
+targets:
+  himark-macOS:
+    type: application
+    platform: macOS
+    sources: [Sources/Shared, Sources/macOS]
+    configFiles: { Release: Generated-macOS.xcconfig, Debug: Generated-macOS.xcconfig }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.himark.mac
+        INFOPLIST_FILE: Info-macOS.plist
+        # The Rust staticlib is HOST-ARCH only (cargo builds one
+        # target), so a universal Release link finds no symbols for
+        # the other slice — build the active arch everywhere.
+        ONLY_ACTIVE_ARCH: YES
+        SWIFT_VERSION: "5.9"
+        SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+        CLANG_CXX_LIBRARY: "libc++"
+    frameworks: [AppKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
+    # A GENERATED shared scheme: without one, every regeneration mints
+    # new target UUIDs and Xcode's per-user auto-created schemes die —
+    # the target "disappears" from the scheme picker.
+    scheme: {}
+
+  himark-iOS:
+    type: application
+    platform: iOS
+    sources: [Sources/Shared, Sources/iOS]
+    configFiles: { Release: Generated-iOS.xcconfig, Debug: Generated-iOS.xcconfig }
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.himark.ios
+        INFOPLIST_FILE: Info-iOS.plist
+        SWIFT_VERSION: "5.9"
+        SWIFT_OBJC_BRIDGING_HEADER: himark-Bridging-Header.h
+        CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+        CLANG_CXX_LIBRARY: "libc++"
+        TARGETED_DEVICE_FAMILY: "1,2"
+    frameworks: [UIKit.framework, Metal.framework, MetalKit.framework, QuartzCore.framework]
+    scheme: {}

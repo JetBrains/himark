@@ -1,0 +1,12 @@
+[package]
+name = "imba"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rope = { path = "../rope" }
+intervals = { path = "../intervals" }
+bumpalo = { version = "3.16.0", features = ["collections", "boxed"] }
+rpds = "1"
+skia-safe = "0.99.0"
+resvg = "0.48"

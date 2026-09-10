@@ -1,0 +1,36 @@
+[package]
+name = "hiahp"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+himark = { path = "../himark" }
+himarkdown = { path = "../plugins/himarkdown" }
+hidiff = { path = "../plugins/hidiff" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+host-discovery = { path = "../../protocol/host-discovery" }
+imba = { path = "../imba" }
+operation = { path = "../operation" }
+rpds = "1"
+rebase = { path = "../rebase" }
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+base64 = "0.22"
+ahp = "0.7"
+ahp-types = "0.7"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+humantime = "2"
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[dev-dependencies]
+agent-host = { path = "../../backend/agent-host" }
+tempfile = "3"

@@ -1,0 +1,13 @@
+[package]
+name = "hicode"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+himark = { path = "../../himark" }
+imba = { path = "../../imba" }
+text = { path = "../../text" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+
+[dev-dependencies]
+himark = { path = "../../himark", features = ["test-support"] }

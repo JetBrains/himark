@@ -1,0 +1,91 @@
+[workspace]
+members = [
+    "frontend/rope",
+    "frontend/sumtree",
+    "frontend/operation",
+    "frontend/rebase",
+    "frontend/text",
+    "frontend/intervals",
+    "frontend/tokenize",
+    "frontend/mdparser",
+    "frontend/imba",
+    "frontend/hiahp",
+    "frontend/editor",
+    "frontend/hisitter",
+    "frontend/hiscript",
+    "frontend/documents",
+    "frontend/himark",
+    "frontend/plugins/himarkdown",
+    "frontend/plugins/demo",
+    "frontend/plugins/search",
+    "frontend/plugins/himermaid",
+    "frontend/plugins/palette",
+    "frontend/plugins/peeker",
+    "frontend/plugins/hidiff",
+    "frontend/plugins/hicode",
+    "frontend/plugins/lang/*",
+    "frontend/frontend-host",
+    "frontend/desktop",
+    "frontend/himark-winit",
+    "backend/agent-host",
+    "backend/find",
+    "backend/git",
+    "protocol/ahp-ext-types",
+    "protocol/host-discovery",
+    "apps/linux",
+    "apps/windows",
+    "apps/web",
+    "apps/web/tools/grammar-pack",
+]
+default-members = [
+    "frontend/rope",
+    "frontend/operation",
+    "frontend/rebase",
+    "frontend/text",
+    "frontend/intervals",
+    "frontend/tokenize",
+    "frontend/mdparser",
+    "frontend/imba",
+    "frontend/editor",
+    "frontend/hisitter",
+    "frontend/documents",
+    "frontend/himark",
+    "frontend/plugins/himarkdown",
+    "frontend/plugins/demo",
+    "frontend/plugins/search",
+    "frontend/plugins/himermaid",
+    "frontend/plugins/palette",
+    "frontend/plugins/peeker",
+    "frontend/plugins/hidiff",
+    "frontend/plugins/hicode",
+    "frontend/plugins/lang/*",
+    "frontend/frontend-host",
+    "frontend/desktop",
+    "frontend/himark-winit",
+    "backend/agent-host",
+    "backend/find",
+    "backend/git",
+    "protocol/ahp-ext-types",
+    "protocol/host-discovery",
+    "apps/web",
+]
+resolver = "2"
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev.package.documents]
+opt-level = 2
+
+[profile.dev.package.himark]
+opt-level = 2
+
+[profile.dev.package.editor]
+opt-level = 2
+
+[profile.dev.package.himarkdown]
+opt-level = 2
+
+[patch.crates-io]
+skia-bindings = { path = "vendor/skia-bindings-0.99.0" }
+tree-sitter = { path = "vendor/tree-sitter-0.26.8" }

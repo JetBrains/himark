@@ -1,0 +1,13 @@
+[package]
+name = "documents"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../editor" }
+imba = { path = "../imba" }
+operation = { path = "../operation" }
+rebase = { path = "../rebase" }
+rpds = "1"
+text = { path = "../text" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }

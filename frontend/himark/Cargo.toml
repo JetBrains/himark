@@ -1,0 +1,28 @@
+[package]
+name = "himark"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alacritty_terminal = { version = "0.26.0", default-features = false }
+ahp-types = "0.7"
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+host-discovery = { path = "../../protocol/host-discovery" }
+humantime = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+rpds = "1"
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+imba = { path = "../imba" }
+operation = { path = "../operation" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+text = { path = "../text" }
+
+[features]
+test-support = ["editor/test-support"]
+
+[dev-dependencies]
+editor = { path = "../editor", features = ["test-support"] }
+himarkdown = { path = "../plugins/himarkdown" }

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>himark</title>
+    <!-- Skia consumes the font through fetch(), so preload it with the same
+         request destination while the Wasm module downloads and compiles. -->
+    <link
+      rel="preload"
+      href="./JetBrainsMono-Regular.woff2"
+      as="fetch"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="preload" href="./web.js" as="script" />
+    <!-- Emscripten fetches web.wasm with `credentials: "same-origin"`.
+         `crossorigin` gives this preload the matching CORS and credentials
+         modes, so that fetch consumes it instead of downloading twice. -->
+    <link
+      rel="preload"
+      href="./web.wasm"
+      as="fetch"
+      type="application/wasm"
+      crossorigin
+    />
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        /* The window background — no white flash before first paint. */
+        background: #16161e;
+      }
+
+      /* The page IS the himark window: one full-viewport canvas, the
+         app drawing its own chrome (toolbar, panes, drawers) exactly
+         like the desktop shells. No DOM UI. */
+      #canvas {
+        display: block;
+        position: fixed;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        outline: none;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- The daemon injects HIMARK_AHP_URL when it serves this page. A
+         separately hosted build can instead select a host with
+         `?agent_host=<http-or-websocket-url>`; the explicit parameter
+         wins when both are present. -->
+    <script>
+      window.HIMARK_SERVED_BY_AGENT_HOST = Boolean(window.HIMARK_AHP_URL);
+      const configuredAgentHost = new URLSearchParams(window.location.search).get(
+        "agent_host",
+      );
+      if (configuredAgentHost) window.HIMARK_AHP_URL = configuredAgentHost;
+
+      // Cross-origin isolation: the daemon serves real COOP/COEP
+      // headers. Separately hosted builds still need the service-worker
+      // shim even when their agent host was supplied above.
+      if (!window.HIMARK_SERVED_BY_AGENT_HOST) {
+        const shim = document.createElement("script");
+        shim.src = "coi-serviceworker.js";
+        document.head.appendChild(shim);
+      }
+    </script>
+    <canvas id="canvas" tabindex="0"></canvas>
+    <script>
+      // Everything but Module stays out of global scope: emscripten's
+      // web.js declares its own top-level names (`run` among them).
+      var Module;
+      (() => {
+        const canvas = document.getElementById("canvas");
+        canvas.focus();
+        // The command bridge the app polls once per frame — kept as a
+        // dev door (push from the console); no DOM UI feeds it.
+        const queue = [];
+        Module = {
+          canvas,
+          himarkPoll: () => (queue.length ? queue.shift() : ""),
+        };
+      })();
+    </script>
+    <script>
+      // The pthread build may execute only after isolation is active. A
+      // separately hosted secure page gets one bootstrap pass in which its
+      // service worker registers and reloads it; every other isolation miss is
+      // terminal. In particular, a bare LAN HTTP origin cannot register that
+      // worker and must not fall through into web.js/SharedArrayBuffer.
+      const waitingForIsolationBootstrap =
+        !window.HIMARK_SERVED_BY_AGENT_HOST &&
+        window.isSecureContext &&
+        "serviceWorker" in navigator;
+      if (!window.crossOriginIsolated && waitingForIsolationBootstrap) {
+        document.body.innerHTML =
+          "<div style='color:#c9d2e4;background:#16161e;font:16px sans-serif;" +
+          "padding:3em;height:100vh;box-sizing:border-box'>" +
+          "<h2>This origin can't run himark</h2>" +
+          "<p>Cross-origin isolation is unavailable here: browsers only honor " +
+          "the isolation headers over <b>https</b> or <b>localhost</b>.</p>" +
+          "<p>Open this page as <b>http://localhost:&lt;port&gt;/?tkn=…</b> on the " +
+          "host machine, or tunnel it: <code>ssh -L &lt;port&gt;:localhost:&lt;port&gt; " +
+          "&lt;host&gt;</code> and use the localhost URL.</p></div>";
+      } else {
+        const engine = document.createElement("script");
+        engine.async = true;
+        engine.src = "./web.js";
+        document.body.appendChild(engine);
+      }
+    </script>
+  </body>
+</html>

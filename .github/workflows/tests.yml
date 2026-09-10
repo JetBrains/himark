@@ -1,0 +1,260 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    name: Clippy (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_GHA_ENABLED: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-14
+            cargo_args: --workspace --exclude linux
+          - name: linux
+            os: ubuntu-24.04
+            cargo_args: --workspace --exclude macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          components: clippy
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-targets: false
+          shared-key: ${{ matrix.name }}
+
+      - name: Run Clippy
+        run: cargo clippy ${{ matrix.cargo_args }} --locked --all-targets
+
+      - name: Show sccache stats
+        if: always()
+        run: |
+          if [ -n "${SCCACHE_PATH:-}" ]; then
+            "${SCCACHE_PATH}" --show-stats
+          fi
+
+  test:
+    name: Test (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_CACHE_SIZE: 2G
+      SCCACHE_GHA_ENABLED: "true"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            os: macos-14
+            cargo_args: --workspace --exclude linux
+          - name: linux
+            os: ubuntu-24.04
+            cargo_args: --workspace --exclude macos
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            clang \
+            libfontconfig1-dev \
+            libfreetype6-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            pkg-config
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          cache-targets: false
+          shared-key: ${{ matrix.name }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@0c80bcf54d007ab0e714c95f3bcc43c387707535
+
+      - name: Run tests
+        run: cargo nextest run ${{ matrix.cargo_args }} --locked --all-targets --profile ci
+
+      - name: Run doc tests
+        run: cargo test ${{ matrix.cargo_args }} --locked --doc
+
+      - name: Show sccache stats
+        if: always()
+        run: |
+          if [ -n "${SCCACHE_PATH:-}" ]; then
+            "${SCCACHE_PATH}" --show-stats
+          fi
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: junit-${{ matrix.name }}
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: warn
+
+  web-check:
+    name: Check Web (Emscripten)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libclang-dev ninja-build pkg-config
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+        with:
+          toolchain: nightly
+          components: rust-src
+          targets: wasm32-unknown-emscripten
+
+      - name: Checkout Emscripten SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: emscripten-core/emsdk
+          ref: e3a0604c3d130d6ab2c40e14a1861accd939a255 # 6.0.7
+          path: target/emsdk
+          persist-credentials: false
+
+      - name: Install Emscripten
+        run: |
+          target/emsdk/emsdk install 6.0.7
+          target/emsdk/emsdk activate 6.0.7
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+        with:
+          shared-key: web-emscripten-6.0.7
+
+      # Native workspace checks only compile apps/web's stub main.
+      - name: Check threaded web application
+        run: |
+          source target/emsdk/emsdk_env.sh
+          bash apps/web/tools/build-web.sh --check
+
+  publish-test-reports:
+    name: Publish Test Reports
+    runs-on: ubuntu-24.04
+    needs: test
+    if: always()
+    permissions:
+      contents: read
+      checks: write
+    steps:
+      - name: Download JUnit reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        continue-on-error: true
+        with:
+          pattern: junit-*
+          path: test-reports
+          merge-multiple: false
+
+      - name: Publish test report
+        if: always() && hashFiles('test-reports/**/*.xml') != ''
+        uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d
+        with:
+          check_name: Test reports
+          report_paths: test-reports/**/*.xml
+          require_tests: false
+
+  security-audit:
+    name: Security Audit
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
+
+      - name: Cache Cargo artifacts
+        uses: Swatinem/rust-cache@f0d9c3887740aee45f6153b24b3a6b815192ec16
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@5626e41434f03ab3022d9685405c0645c879f441
+
+      - name: Audit dependencies
+        run: cargo audit --deny warnings

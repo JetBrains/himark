@@ -1,0 +1,100 @@
+[package]
+name = "frontend-host"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "himark_api"
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+demo = { path = "../plugins/demo" }
+himark = { path = "../himark" }
+hiahp = { path = "../hiahp" }
+himarkdown = { path = "../plugins/himarkdown" }
+hisitter = { path = "../hisitter" }
+hiscript = { path = "../hiscript" }
+search = { path = "../plugins/search" }
+palette = { path = "../plugins/palette" }
+peeker = { path = "../plugins/peeker" }
+hidiff = { path = "../plugins/hidiff" }
+host-discovery = { path = "../../protocol/host-discovery" }
+tracing = "0.1"
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+operation = { path = "../operation" }
+desktop = { path = "../desktop" }
+rebase = { path = "../rebase" }
+documents = { path = "../documents" }
+serde_json = "1"
+hicode = { path = "../plugins/hicode" }
+ahp = "0.7"
+ahp-types = "0.7"
+humantime = "2"
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }
+hirust = { path = "../plugins/lang/hirust" }
+hipython = { path = "../plugins/lang/hipython" }
+hijavascript = { path = "../plugins/lang/hijavascript" }
+hitypescript = { path = "../plugins/lang/hitypescript" }
+higo = { path = "../plugins/lang/higo" }
+hijava = { path = "../plugins/lang/hijava" }
+hic = { path = "../plugins/lang/hic" }
+hicpp = { path = "../plugins/lang/hicpp" }
+hicsharp = { path = "../plugins/lang/hicsharp" }
+hiruby = { path = "../plugins/lang/hiruby" }
+hiphp = { path = "../plugins/lang/hiphp" }
+hibash = { path = "../plugins/lang/hibash" }
+hilua = { path = "../plugins/lang/hilua" }
+hiswift = { path = "../plugins/lang/hiswift" }
+hikotlin = { path = "../plugins/lang/hikotlin" }
+hiscala = { path = "../plugins/lang/hiscala" }
+hihaskell = { path = "../plugins/lang/hihaskell" }
+hielixir = { path = "../plugins/lang/hielixir" }
+hiocaml = { path = "../plugins/lang/hiocaml" }
+hizig = { path = "../plugins/lang/hizig" }
+hisql = { path = "../plugins/lang/hisql" }
+hijson = { path = "../plugins/lang/hijson" }
+hicss = { path = "../plugins/lang/hicss" }
+hihtml = { path = "../plugins/lang/hihtml" }
+hiyaml = { path = "../plugins/lang/hiyaml" }
+hitoml = { path = "../plugins/lang/hitoml" }
+hicmake = { path = "../plugins/lang/hicmake" }
+hid = { path = "../plugins/lang/hid" }
+hidart = { path = "../plugins/lang/hidart" }
+hielm = { path = "../plugins/lang/hielm" }
+hierlang = { path = "../plugins/lang/hierlang" }
+hifortran = { path = "../plugins/lang/hifortran" }
+hifsharp = { path = "../plugins/lang/hifsharp" }
+higleam = { path = "../plugins/lang/higleam" }
+higlsl = { path = "../plugins/lang/higlsl" }
+higraphql = { path = "../plugins/lang/higraphql" }
+higroovy = { path = "../plugins/lang/higroovy" }
+hihcl = { path = "../plugins/lang/hihcl" }
+hijulia = { path = "../plugins/lang/hijulia" }
+himake = { path = "../plugins/lang/himake" }
+hinix = { path = "../plugins/lang/hinix" }
+hiobjc = { path = "../plugins/lang/hiobjc" }
+hiodin = { path = "../plugins/lang/hiodin" }
+hiperl = { path = "../plugins/lang/hiperl" }
+hipowershell = { path = "../plugins/lang/hipowershell" }
+hir = { path = "../plugins/lang/hir" }
+hisolidity = { path = "../plugins/lang/hisolidity" }
+hixml = { path = "../plugins/lang/hixml" }
+himermaid = { path = "../plugins/himermaid" }
+imba = { path = "../imba" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+skia-safe = { version = "0.99.0", features = ["metal", "textlayout"] }
+
+[dev-dependencies]
+agent-host = { path = "../../backend/agent-host" }
+tempfile = "3"
+operation = { path = "../operation" }
+desktop = { path = "../desktop" }
+rebase = { path = "../rebase" }
+documents = { path = "../documents" }
+himark = { path = "../himark", features = ["test-support"] }
+
+[build-dependencies]
+cbindgen = "0.29.4"

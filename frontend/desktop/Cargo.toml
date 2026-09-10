@@ -1,0 +1,15 @@
+[package]
+name = "desktop"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+himark = { path = "../himark" }
+host-discovery = { path = "../../protocol/host-discovery" }
+ahp = "0.7"
+ahp-ws = "0.7"
+hiahp = { path = "../hiahp" }
+serde_json = "1"
+tracing = "0.1"
+tokio = { version = "1", features = ["net", "io-util", "sync"] }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }

@@ -1,0 +1,15 @@
+[package]
+name = "hitypescript"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+editor = { path = "../../../editor" }
+hisitter = { path = "../../../hisitter" }
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tree-sitter-typescript = "0.23.2"
+tree-sitter-javascript = "0.25.0"
+
+[dev-dependencies]
+imba = { path = "../../../imba" }
