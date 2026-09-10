@@ -8,7 +8,7 @@ himark = { path = "../../himark" }
 imba = { path = "../../imba" }
 operation = { path = "../../operation" }
 text = { path = "../../text" }
-merman = { version = "=0.8.0-alpha.5", default-features = false, features = ["svg"] }
+merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["svg"] }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 
 [dev-dependencies]
