@@ -226,6 +226,49 @@ its own menu bar inside the window. Use `Ctrl+N` for a new document,
 `Ctrl+D` to split, `Ctrl+F` to find, `Ctrl+Shift+F` to search in files,
 `Ctrl+W` to close, and `Ctrl+M` / `Ctrl+Shift+M` to open the demo documents.
 
+## UI component gallery
+
+The gallery is a standalone desktop run target using the same `winit` shell
+technology and production UI components as himark. It does not start an agent
+host or open an editor workspace.
+
+```sh
+cargo run -p himark-winit --bin gallery
+cargo run -p himark-winit --bin gallery -- --all-states
+```
+
+Use the mode buttons or **Tab** to switch between **Interactive** and **Full
+list of states**. Interactive mode lets you click buttons and row actions,
+toggle the checkbox, and expand the tree. The full list shows the supported
+states together as read-only specimens: typography roles, surface variants,
+enabled/disabled primary and ghost buttons, checked/unchecked checkboxes,
+list-row styles and trails, and expanded/collapsed/leaf tree items. Buttons
+currently have no distinct hover or pressed appearance; disabled buttons use
+the same colors because the shared primitive leaves dimming to its caller.
+Scroll with the mouse wheel or Page Up/Down; Home/End jump to the ends.
+
+The headless screenshot tests render the **entire gallery** in both modes and
+compare it with checked-in PNG baselines, using the embedded Noto Sans font.
+Linux is the reference platform for pixel comparisons; those two tests are
+ignored by default on other platforms because Skia's font rasterizer differs.
+The interaction test runs on every platform.
+
+```sh
+cargo test -p himark --lib gallery::tests
+
+# Export images as well as checking them (HIMARK_SHOT is a directory):
+HIMARK_SHOT=/tmp/himark-gallery cargo test -p himark --lib gallery::tests
+
+# Regenerate baselines on Linux after an intentional visual change, then review the PNGs:
+HIMARK_UPDATE_GALLERY=1 cargo test -p himark --lib gallery::tests::screenshot
+```
+
+Baselines live in `frontend/himark/tests/gallery`. On a mismatch the test fails
+and writes actual/diff PNGs to `target/gallery-screenshots` (or `HIMARK_SHOT`).
+The gallery's shared rendering and specimens live in
+`frontend/himark/src/gallery.rs`; extend that catalogue when adding a shared
+component or state.
+
 ## Windows
 
 Windows uses the same `winit` shell.

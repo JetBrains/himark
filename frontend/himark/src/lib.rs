@@ -14,6 +14,7 @@ mod find;
 mod focus;
 pub mod fonts;
 mod forest;
+pub mod gallery;
 pub mod hichanges;
 pub mod hicomments;
 pub mod hifiles;

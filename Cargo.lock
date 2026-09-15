@@ -2030,6 +2030,8 @@ version = "0.1.0"
 dependencies = [
  "desktop",
  "frontend-host",
+ "himark",
+ "imba",
  "skia-safe",
  "softbuffer",
  "winit",

@@ -7,6 +7,8 @@ license = "Apache-2.0"
 [dependencies]
 desktop = { path = "../desktop" }
 frontend-host = { path = "../frontend-host" }
+himark = { path = "../himark" }
+imba = { path = "../imba" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 softbuffer = "0.4.8"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-csd-adwaita-crossfont", "wayland-dlopen", "x11"] }
