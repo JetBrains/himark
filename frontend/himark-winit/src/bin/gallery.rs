@@ -4,7 +4,7 @@
 //! A desktop run target for the UI library, with no editor or agent host.
 use std::{error::Error, num::NonZeroU32, sync::Arc};
 
-use himark::gallery::{Gallery, GalleryMode};
+use higallery::{Gallery, GalleryMode};
 use imba::event::{Event, MouseButton};
 use skia_safe::{surfaces, AlphaType, ColorType, ImageInfo, Point, Size};
 use winit::{
@@ -17,18 +17,44 @@ use winit::{
 };
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut mode = GalleryMode::Interactive;
-    for arg in std::env::args().skip(1) {
-        match arg.as_str() {
-            "--interactive" => mode = GalleryMode::Interactive,
-            "--all-states" => mode = GalleryMode::AllStates,
-            "--help" | "-h" => {
-                println!("Himark UI gallery\n\nUsage: gallery [--interactive | --all-states]\n\nSwitch modes with the buttons or Tab. Scroll with the wheel or Page Up/Down.\nHome/End jump to the beginning/end; Escape closes the gallery.");
+    let mut mode = None;
+    let mut screenshots = None;
+    let mut args = std::env::args_os().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.to_str() {
+            Some("--interactive") => mode = Some(GalleryMode::Interactive),
+            Some("--all-states") => mode = Some(GalleryMode::AllStates),
+            Some("--screenshots") => {
+                let directory = args
+                    .next()
+                    .ok_or("--screenshots requires an output directory")?;
+                if directory.to_string_lossy().starts_with("--") {
+                    return Err("--screenshots requires an output directory".into());
+                }
+                screenshots = Some(std::path::PathBuf::from(directory));
+            }
+            Some("--help" | "-h") => {
+                println!("Himark UI gallery\n\nUsage: gallery [--interactive | --all-states] [--screenshots DIRECTORY]\n\n--screenshots renders PNGs and exits without starting the app or opening a window.\nIt exports both modes unless --interactive or --all-states selects one.\n\nIn a desktop window, use the mode buttons or Tab. Scroll with the wheel or Page Up/Down.\nHome/End jump to the beginning/end; Escape closes the gallery.\nIn himark, choose Open UI Gallery in the command palette.");
                 return Ok(());
             }
-            _ => return Err(format!("unknown gallery option: {arg}; use --help").into()),
+            _ => {
+                return Err(format!(
+                    "unknown gallery option: {}; use --help",
+                    arg.to_string_lossy()
+                )
+                .into())
+            }
         }
     }
+    if let Some(directory) = screenshots {
+        let modes = mode
+            .map(|mode| vec![mode])
+            .unwrap_or_else(|| vec![GalleryMode::Interactive, GalleryMode::AllStates]);
+        higallery::write_screenshots(&directory, &modes)?;
+        println!("Wrote gallery screenshots to {}", directory.display());
+        return Ok(());
+    }
+    let mode = mode.unwrap_or_default();
     let event_loop = EventLoop::new()?;
     event_loop.set_control_flow(ControlFlow::Wait);
     let context = softbuffer::Context::new(event_loop.owned_display_handle())?;

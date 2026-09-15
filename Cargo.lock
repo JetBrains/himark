@@ -1297,6 +1297,7 @@ dependencies = [
  "hierlang",
  "hifortran",
  "hifsharp",
+ "higallery",
  "higleam",
  "higlsl",
  "higo",
@@ -1836,6 +1837,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "higallery"
+version = "0.1.0"
+dependencies = [
+ "himark",
+ "imba",
+ "skia-safe",
+]
+
+[[package]]
 name = "higit"
 version = "0.1.0"
 dependencies = [
@@ -2030,7 +2040,7 @@ version = "0.1.0"
 dependencies = [
  "desktop",
  "frontend-host",
- "himark",
+ "higallery",
  "imba",
  "skia-safe",
  "softbuffer",
@@ -6125,6 +6135,7 @@ dependencies = [
  "hierlang",
  "hifortran",
  "hifsharp",
+ "higallery",
  "higleam",
  "higlsl",
  "higo",

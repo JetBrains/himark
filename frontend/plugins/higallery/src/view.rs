@@ -6,14 +6,11 @@
 use imba::{
     arena::Arena,
     checkbox::{checkbox, CheckboxStyle},
-    constraints::Constraints,
-    event::{Event, EventResult},
     thunk_ext::ThunkExt,
-    Column, Layout, LayoutExt, Row, Store, Thunk, UiCtx, View, Widget,
+    Column, Layout, LayoutExt, Row, Store, UiCtx, View,
 };
-use skia_safe::{Canvas, Rect, Size};
 
-use crate::{ui::*, TreeItemView, TreeLabel, TreeTint};
+use himark::{ui::*, TreeItemView, TreeLabel, TreeTint};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GalleryMode {
@@ -23,40 +20,25 @@ pub enum GalleryMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Command {
+pub enum GalleryCommand {
     Mode(GalleryMode),
     Press,
     Check,
     Expand,
 }
 
-pub struct Gallery {
-    store: Store,
-    ui: UiCtx,
+#[derive(Clone)]
+pub struct GalleryView {
     mode: GalleryMode,
-    presses: usize,
-    checked: bool,
-    expanded: bool,
+    pub(crate) presses: usize,
+    pub(crate) checked: bool,
+    pub(crate) expanded: bool,
     trees: [TreeItemView<TreeLabel>; 4],
 }
 
-impl Gallery {
+impl GalleryView {
     pub fn new(mode: GalleryMode) -> Self {
-        let mut store = Store::new();
-        store.put(editor::env::Themes(editor::theme::Theme::embedded()));
-        let ui = UiCtx::cold();
-        // Pin the font in both the desktop gallery and screenshots: the host's
-        // installed fonts must not change the catalogue's metrics or pixels.
-        ui.set(editor::env::UiFonts(editor::embedded_fonts::collection()));
-        ui.set(crate::fonts::ChromeTypeface(
-            editor::embedded_fonts::typeface(),
-        ));
-        ui.set(crate::fonts::ChromeTextTypeface(
-            editor::embedded_fonts::typeface(),
-        ));
         Self {
-            store,
-            ui,
             mode,
             presses: 0,
             checked: false,
@@ -96,10 +78,13 @@ impl Gallery {
         self.mode = mode;
     }
 
-    fn content<'a>(&'a self, arena: &'a Arena) -> impl Layout<'a, Command> + 'a {
-        let store = &self.store;
-        let ui = &self.ui;
-        let themes = editor::env::Themes::of(store);
+    pub(crate) fn content<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl Layout<'a, GalleryCommand> + imba::LayoutValue + 'a {
+        let themes = himark::env::Themes::of(store);
         let theme = themes.ui();
         let static_states = self.mode == GalleryMode::AllStates;
         let title = heading(store, ui).sized(32.0);
@@ -124,7 +109,7 @@ impl Gallery {
                             ButtonRole::Ghost
                         },
                         "INTERACTIVE",
-                        || Command::Mode(GalleryMode::Interactive),
+                        || GalleryCommand::Mode(GalleryMode::Interactive),
                     ))
                     .child(button(
                         arena,
@@ -136,7 +121,7 @@ impl Gallery {
                             ButtonRole::Ghost
                         },
                         "FULL LIST OF STATES",
-                        || Command::Mode(GalleryMode::AllStates),
+                        || GalleryCommand::Mode(GalleryMode::AllStates),
                     )),
             )
             .child(text(
@@ -199,14 +184,14 @@ impl Gallery {
                 ui,
                 role,
                 format!("{name} / ENABLED"),
-                || Command::Press,
+                || GalleryCommand::Press,
             ));
             if static_states {
                 // Button::enabled controls input only; the production primitive
                 // deliberately leaves disabled colors to its caller.
                 row = row.child(
                     button(arena, store, ui, role, format!("{name} / DISABLED"), || {
-                        Command::Press
+                        GalleryCommand::Press
                     })
                     .enabled(false),
                 );
@@ -241,7 +226,7 @@ impl Gallery {
                     .gap(space::M)
                     .align_items(imba::CrossAlign::Center)
                     .child(imba::fixed(
-                        checkbox(checked, check_style).map(|_| Command::Check),
+                        checkbox(checked, check_style).map(|_| GalleryCommand::Check),
                     ))
                     .child(text(
                         &label(store, ui),
@@ -268,7 +253,7 @@ impl Gallery {
                 ListRow::new(arena, style)
                     .label(name)
                     .trail("Metadata")
-                    .action("OPEN", || Command::Press),
+                    .action("OPEN", || GalleryCommand::Press),
             );
         }
         if static_states {
@@ -295,13 +280,13 @@ impl Gallery {
             trees = trees.child(
                 self.trees[usize::from(expanded)]
                     .display(arena, store, ui)
-                    .map_layout(|_| Command::Expand),
+                    .map_layout(|_| GalleryCommand::Expand),
             );
             if expanded {
                 trees = trees.child(
                     self.trees[2]
                         .display(arena, store, ui)
-                        .map_layout(|_| Command::Press),
+                        .map_layout(|_| GalleryCommand::Press),
                 );
             }
         }
@@ -309,82 +294,42 @@ impl Gallery {
             trees = trees.child(
                 self.trees[3]
                     .display(arena, store, ui)
-                    .map_layout(|_| Command::Press),
+                    .map_layout(|_| GalleryCommand::Press),
             );
         }
         page.child(trees).pad(space::XL)
     }
 
-    fn constraints(width: f32) -> Constraints {
-        Constraints {
-            min: Size::default(),
-            max: Size::new(width, f32::MAX),
-        }
-    }
-
-    pub fn content_height(&self, width: f32) -> f32 {
-        let arena = Arena::default();
-        let height = self
-            .content(&arena)
-            .layout(&arena, Self::constraints(width))
-            .size()
-            .height;
-        height
-    }
-
-    pub fn draw(&self, canvas: &Canvas, size: Size, scroll: f32) {
-        canvas.clear(
-            editor::env::Themes::of(&self.store)
-                .ui()
-                .window
-                .background
-                .0,
-        );
-        let arena = Arena::default();
-        let viewport = Rect::from_xywh(0.0, scroll, size.width, size.height);
-        let widget = self
-            .content(&arena)
-            .layout(&arena, Self::constraints(size.width))
-            .realize(&arena, viewport);
-        canvas.save();
-        canvas.clip_rect(Rect::from_size(size), None, false);
-        canvas.translate((0.0, -scroll));
-        widget.handle_event(
-            &arena,
-            &Event::Paint {
-                canvas,
-                focused: true,
-            },
-            viewport,
-        );
-        canvas.restore();
-    }
-
-    pub fn handle_event(&mut self, event: &Event<'_>, size: Size, scroll: f32) {
-        let result = {
-            let arena = Arena::default();
-            let viewport = Rect::from_xywh(0.0, scroll, size.width, size.height);
-            let widget = self
-                .content(&arena)
-                .layout(&arena, Self::constraints(size.width))
-                .realize(&arena, viewport);
-            widget.handle_event(&arena, &event.translated(0.0, scroll), viewport)
-        };
-        let mut perform = |command| match command {
-            Command::Mode(mode) => self.set_mode(mode),
+    pub(crate) fn apply(&mut self, command: GalleryCommand) {
+        match command {
+            GalleryCommand::Mode(mode) => self.set_mode(mode),
             _ if self.mode == GalleryMode::AllStates => {}
-            Command::Press => self.presses += 1,
-            Command::Check => self.checked = !self.checked,
-            Command::Expand => self.expanded = !self.expanded,
-        };
-        match result {
-            EventResult::Command(command) => perform(command),
-            EventResult::Commands(commands) => commands.into_iter().for_each(perform),
-            _ => {}
+            GalleryCommand::Press => self.presses += 1,
+            GalleryCommand::Check => self.checked = !self.checked,
+            GalleryCommand::Expand => self.expanded = !self.expanded,
         }
     }
 }
 
-#[cfg(test)]
-#[path = "gallery_tests.rs"]
-mod tests;
+impl View for GalleryView {
+    type Command = GalleryCommand;
+
+    fn perform(
+        &mut self,
+        _store: &mut Store,
+        _ui: &UiCtx,
+        command: Self::Command,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        self.apply(command);
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+        self.content(arena, store, ui)
+    }
+}

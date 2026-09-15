@@ -3,10 +3,17 @@
 
 use super::*;
 use imba::event::MouseButton;
+use imba::{
+    arena::Arena,
+    event::{Event, EventResult},
+    Layout, Thunk, Widget,
+};
 use skia_safe::{
     surfaces, AlphaType, ColorType, Data, EncodedImageFormat, Image, ImageInfo, Point,
 };
+use skia_safe::{Rect, Size};
 use std::path::{Path, PathBuf};
+use GalleryCommand as Command;
 
 const WIDTH: f32 = 1100.0;
 
@@ -16,9 +23,7 @@ fn render(gallery: &Gallery) -> Image {
         height > 900.0 && height < 3000.0,
         "unexpected gallery height: {height}"
     );
-    let mut surface = surfaces::raster_n32_premul((WIDTH as i32, height as i32)).unwrap();
-    gallery.draw(surface.canvas(), Size::new(WIDTH, height), 0.0);
-    surface.image_snapshot()
+    gallery.screenshot().expect("gallery screenshot")
 }
 
 fn write_png(image: &Image, path: &Path) {
@@ -53,7 +58,7 @@ fn screenshot(name: &str, gallery: &Gallery) {
     let output = std::env::var_os("HIMARK_SHOT")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/gallery-screenshots")
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target/gallery-screenshots")
         });
     if std::env::var_os("HIMARK_SHOT").is_some() {
         write_png(&actual, &output.join(format!("{name}.png")));
@@ -63,7 +68,7 @@ fn screenshot(name: &str, gallery: &Gallery) {
         return;
     }
     let bytes = std::fs::read(&baseline).unwrap_or_else(|error| panic!(
-        "gallery baseline {}: {error}; generate with HIMARK_UPDATE_GALLERY=1 cargo test -p himark gallery::tests::screenshot", baseline.display()
+        "gallery baseline {}: {error}; generate with HIMARK_UPDATE_GALLERY=1 cargo test -p higallery tests::screenshot", baseline.display()
     ));
     let expected = Image::from_encoded(Data::new_copy(&bytes)).expect("valid baseline PNG");
     // Keep the actual image on any failure, including changed layout dimensions.
@@ -182,8 +187,8 @@ fn interactive_controls_and_static_catalogue() {
             scroll,
         );
     }
-    assert_eq!(gallery.presses, 1);
-    assert!(gallery.checked && gallery.expanded);
+    assert_eq!(gallery.view.presses, 1);
+    assert!(gallery.view.checked && gallery.view.expanded);
     let mode_button = control(&gallery, Command::Mode(GalleryMode::AllStates));
     gallery.handle_event(&mouse_down(mode_button), Size::new(WIDTH, 860.0), 0.0);
     assert_eq!(gallery.mode(), GalleryMode::AllStates);
@@ -192,8 +197,8 @@ fn interactive_controls_and_static_catalogue() {
         let point = control(&gallery, command);
         gallery.handle_event(&mouse_down(point), Size::new(WIDTH, 3000.0), 0.0);
     }
-    assert_eq!(gallery.presses, 1);
-    assert!(gallery.checked && gallery.expanded);
+    assert_eq!(gallery.view.presses, 1);
+    assert!(gallery.view.checked && gallery.view.expanded);
     assert_eq!(
         before,
         rgba(&render(&gallery)),
@@ -202,4 +207,55 @@ fn interactive_controls_and_static_catalogue() {
     let mode_button = control(&gallery, Command::Mode(GalleryMode::Interactive));
     gallery.handle_event(&mouse_down(mode_button), Size::new(WIDTH, 860.0), 0.0);
     assert_eq!(gallery.mode(), GalleryMode::Interactive);
+}
+
+#[test]
+fn registered_action_opens_a_scrollable_gallery_panel() {
+    use himark::{AppExt, DynamicCommand};
+    let mut app = himark::Application::new(himark::AppFonts::embedded());
+    let window = app.add_window();
+    app.register_command(std::sync::Arc::new(OpenGallery));
+    assert_eq!(OpenGallery.name(), "Open UI Gallery");
+    assert!(app.perform_registered(window, OpenGallery.id()));
+
+    let mut surface = surfaces::raster_n32_premul((1100, 700)).unwrap();
+    himark::Window::draw(window, &mut app, surface.canvas());
+    let gallery_scroll = |app: &himark::Application, mode: GalleryMode| {
+        let mut found = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(gallery) = panel.as_any().downcast_ref::<GalleryPanel>() {
+                assert_eq!(panel.title(app.store()), "UI Gallery");
+                assert_eq!(gallery.scroll.content().mode(), mode);
+                found = Some(gallery.scroll.scroll_y());
+            }
+        });
+        found.expect("the registered command opened the plugin")
+    };
+    assert_eq!(gallery_scroll(&app, GalleryMode::Interactive), 0.0);
+    let chrome = himark::Theme::embedded();
+    let top = chrome.ui().toolbar.height
+        + himark::workbench_geometry(
+            1100.0,
+            700.0 - chrome.ui().toolbar.height,
+            &chrome.ui().window,
+        )
+        .top;
+    let mode_button = control(
+        &Gallery::new(GalleryMode::Interactive),
+        Command::Mode(GalleryMode::AllStates),
+    );
+    himark::test_driver::click(&mut app, mode_button.x, top + mode_button.y, 1100.0, 700.0);
+    assert_eq!(gallery_scroll(&app, GalleryMode::AllStates), 0.0);
+    himark::test_driver::scroll(&mut app, 300.0);
+    himark::Window::draw(window, &mut app, surface.canvas());
+    assert!(
+        gallery_scroll(&app, GalleryMode::AllStates) > 0.0,
+        "workbench scrolling reaches the gallery"
+    );
+    if let Some(output) = std::env::var_os("HIMARK_SHOT") {
+        write_png(
+            &surface.image_snapshot(),
+            &PathBuf::from(output).join("workbench.png"),
+        );
+    }
 }

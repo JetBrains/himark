@@ -279,6 +279,7 @@ mod app {
             state.register_command(std::sync::Arc::new(hidiff::OpenDiff));
             state.register_row_minter(hidiff::row_minter());
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
+            state.register_command(std::sync::Arc::new(higallery::OpenGallery));
 
             state.register_overlay_surface(peeker::overlay_surface());
             state.register_overlay_surface(palette::overlay_surface());

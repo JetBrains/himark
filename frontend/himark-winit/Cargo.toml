@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 desktop = { path = "../desktop" }
 frontend-host = { path = "../frontend-host" }
-himark = { path = "../himark" }
+higallery = { path = "../plugins/higallery" }
 imba = { path = "../imba" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 softbuffer = "0.4.8"

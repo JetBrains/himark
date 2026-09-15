@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 demo = { path = "../../frontend/plugins/demo" }
+higallery = { path = "../../frontend/plugins/higallery" }
 search = { path = "../../frontend/plugins/search" }
 palette = { path = "../../frontend/plugins/palette" }
 peeker = { path = "../../frontend/plugins/peeker" }

@@ -228,46 +228,58 @@ its own menu bar inside the window. Use `Ctrl+N` for a new document,
 
 ## UI component gallery
 
-The gallery is a standalone desktop run target using the same `winit` shell
-technology and production UI components as himark. It does not start an agent
-host or open an editor workspace.
+The `higallery` plugin provides **Open UI Gallery** in the command palette
+(`Ctrl+Shift+P`, or `Cmd+Shift+P` on macOS). The action opens a scrollable
+workbench panel using the running app's fonts and theme. It is registered in
+the native and web hosts.
+
+The standalone desktop target uses the same view without an editor workspace
+or agent host:
 
 ```sh
 cargo run -p himark-winit --bin gallery
 cargo run -p himark-winit --bin gallery -- --all-states
+
+# Render complete PNGs and exit; no app, display server, or window is started:
+cargo run -p himark-winit --bin gallery -- --screenshots /tmp/himark-gallery
+# Export only the full list of states:
+cargo run -p himark-winit --bin gallery -- --screenshots /tmp/himark-gallery --all-states
 ```
 
-Use the mode buttons or **Tab** to switch between **Interactive** and **Full
-list of states**. Interactive mode lets you click buttons and row actions,
-toggle the checkbox, and expand the tree. The full list shows the supported
-states together as read-only specimens: typography roles, surface variants,
+`--screenshots DIRECTORY` writes `interactive.png` and `all-states.png` by
+default. Add `--interactive` or `--all-states` to select a single mode.
+
+Use the mode buttons to switch between **Interactive** and **Full list of
+states**. Interactive mode lets you click buttons and row actions, toggle the
+checkbox, and expand the tree. The full list shows the supported states
+together as read-only specimens: typography roles, surface variants,
 enabled/disabled primary and ghost buttons, checked/unchecked checkboxes,
 list-row styles and trails, and expanded/collapsed/leaf tree items. Buttons
 currently have no distinct hover or pressed appearance; disabled buttons use
 the same colors because the shared primitive leaves dimming to its caller.
-Scroll with the mouse wheel or Page Up/Down; Home/End jump to the ends.
+The standalone window also supports Tab to switch modes, Page Up/Down to
+scroll, and Home/End to jump to the ends.
 
 The headless screenshot tests render the **entire gallery** in both modes and
 compare it with checked-in PNG baselines, using the embedded Noto Sans font.
 Linux is the reference platform for pixel comparisons; those two tests are
 ignored by default on other platforms because Skia's font rasterizer differs.
-The interaction test runs on every platform.
+The interaction and workbench action tests run on every platform.
 
 ```sh
-cargo test -p himark --lib gallery::tests
+cargo test -p higallery --lib
 
 # Export images as well as checking them (HIMARK_SHOT is a directory):
-HIMARK_SHOT=/tmp/himark-gallery cargo test -p himark --lib gallery::tests
+HIMARK_SHOT=/tmp/himark-gallery cargo test -p higallery --lib
 
 # Regenerate baselines on Linux after an intentional visual change, then review the PNGs:
-HIMARK_UPDATE_GALLERY=1 cargo test -p himark --lib gallery::tests::screenshot
+HIMARK_UPDATE_GALLERY=1 cargo test -p higallery --lib tests::screenshot
 ```
 
-Baselines live in `frontend/himark/tests/gallery`. On a mismatch the test fails
-and writes actual/diff PNGs to `target/gallery-screenshots` (or `HIMARK_SHOT`).
-The gallery's shared rendering and specimens live in
-`frontend/himark/src/gallery.rs`; extend that catalogue when adding a shared
-component or state.
+The view, workbench action, independent renderer, and screenshot baselines
+live in `frontend/plugins/higallery`. Extend `src/view.rs` when adding a shared
+component or state. On a mismatch the test fails and writes actual/diff PNGs
+to `target/gallery-screenshots` (or `HIMARK_SHOT`) for CI to upload.
 
 ## Windows
 
