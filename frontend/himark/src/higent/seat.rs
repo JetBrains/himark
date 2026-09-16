@@ -204,6 +204,15 @@ pub trait AhpServer: Send + Sync + 'static {
 
     fn dispatch_document(&self, channel: &Uri, action: himark_ahp_ext_types::DocumentApplied);
 
+    /// documents@1 storeDocument: the host dumps the mirror — its own
+    /// text, the source of truth — to the resource.
+    fn store_document(&self, channel: Uri, uri: ResourceUri) -> SeatFuture<Result<(), String>> {
+        let _ = (channel, uri);
+        Box::pin(std::future::ready(Err(
+            "documents@1 storeDocument not served".to_owned(),
+        )))
+    }
+
     fn unsubscribe_document(&self, channel: &Uri);
 
     fn lsp(

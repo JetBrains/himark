@@ -1135,6 +1135,25 @@ impl AhpServer for WireHost {
         });
     }
 
+    fn store_document(
+        &self,
+        channel: Uri,
+        uri: himark::higent::seat::ResourceUri,
+    ) -> SeatFuture<Result<(), String>> {
+        let uri = uri.into_string();
+        Box::pin(self.run_ask(move |active| async move {
+            let _: serde_json::Value = active
+                .client
+                .request(
+                    "storeDocument",
+                    himark_ahp_ext_types::StoreDocumentParams { channel, uri },
+                )
+                .await
+                .map_err(|error| format!("storeDocument: {error}"))?;
+            Ok(())
+        }))
+    }
+
     fn unsubscribe_document(&self, channel: &Uri) {
         let channel = channel.clone();
         let _ = self.run_ask(move |active| async move {

@@ -11,11 +11,15 @@ pub struct Applied<I, A> {
     pub action: A,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum Local<A> {
     Edit(A),
 
     Took { seen_local: u64 },
+
+    /// Fires once every local edit enqueued before it is committed —
+    /// the moment the shared state is known to hold them all.
+    Flush(tokio::sync::oneshot::Sender<()>),
 }
 
 #[derive(Clone, Debug)]
@@ -40,6 +44,8 @@ pub async fn run<I, A>(
     let mut dirty = false;
 
     let mut outstanding: Option<u64> = None;
+
+    let mut flushes: Vec<tokio::sync::oneshot::Sender<()>> = Vec::new();
     loop {
         tokio::select! {
             biased;
@@ -63,6 +69,7 @@ pub async fn run<I, A>(
                             outstanding = None;
                         }
                     }
+                    Some(Local::Flush(done)) => flushes.push(done),
                 }
             }
 
@@ -93,6 +100,12 @@ pub async fn run<I, A>(
             }
             dirty = false;
             outstanding = Some(seen_local);
+        }
+
+        if !flushes.is_empty() && log.is_settled() {
+            for done in flushes.drain(..) {
+                let _ = done.send(());
+            }
         }
     }
 }

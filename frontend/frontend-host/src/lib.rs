@@ -527,6 +527,7 @@ impl HimarkEngine {
         app.register_handler::<himark::StoreDocumentEffect>(fsroute::RouteStore {
             directory: Arc::clone(&seats),
             uris: Arc::clone(&resource_uris),
+            channels: Arc::clone(&document_channels),
         });
         app.register_handler::<himark::ListDirectoryEffect>(fsroute::RouteList {
             directory: Arc::clone(&seats),

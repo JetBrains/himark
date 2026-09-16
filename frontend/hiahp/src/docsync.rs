@@ -12,7 +12,7 @@ use himark::{AppCommand, ResourceLocation};
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::store::Store;
 use rebase::{Local, Offer, RebaseLog};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot, watch};
 
 use documents::sync::{SyncEdit, SyncState};
 use editor::EditIdentity;
@@ -137,6 +137,35 @@ impl SyncSeats {
     }
 }
 
+/// The save lane of a live document channel: the flush marker rides
+/// the same queue as the edits, so the host's dump lands only after
+/// every edit enqueued before the save is committed.
+#[derive(Clone)]
+pub struct StoreHandle {
+    edits: mpsc::UnboundedSender<Local<SyncEdit>>,
+    server: Arc<dyn AhpServer>,
+    channel: himark_ahp_ext_types::Uri,
+}
+
+impl StoreHandle {
+    pub async fn store(self, uri: himark::higent::seat::ResourceUri) -> bool {
+        let (done, landed) = oneshot::channel();
+        if self.edits.send(Local::Flush(done)).is_err() {
+            return false;
+        }
+        if landed.await.is_err() {
+            return false;
+        }
+        match self.server.store_document(self.channel, uri).await {
+            Ok(()) => true,
+            Err(error) => {
+                tracing::warn!(%error, "docsync: the host could not store the document");
+                false
+            }
+        }
+    }
+}
+
 pub struct DocumentChannels {
     post: Arc<dyn Fn(AppCommand) + Send + Sync>,
     uris: Arc<dyn himark::higent::ResourceUriMap>,
@@ -144,6 +173,10 @@ pub struct DocumentChannels {
 
     salt: u128,
     minted: AtomicU64,
+
+    stores: std::sync::Mutex<
+        std::collections::HashMap<ResourceLocation, watch::Sender<Option<StoreHandle>>>,
+    >,
 }
 
 impl DocumentChannels {
@@ -168,7 +201,48 @@ impl DocumentChannels {
             runtime,
             salt,
             minted: AtomicU64::new(1),
+            stores: std::sync::Mutex::new(std::collections::HashMap::new()),
         })
+    }
+
+    fn store_connecting(&self, location: &ResourceLocation) {
+        let (route, _) = watch::channel(None);
+        self.stores
+            .lock()
+            .expect("store routes")
+            .insert(location.clone(), route);
+    }
+
+    fn store_ready(&self, location: &ResourceLocation, handle: StoreHandle) {
+        if let Some(route) = self.stores.lock().expect("store routes").get(location) {
+            // send_replace: a plain send is DROPPED while no save is
+            // subscribed, and the handle must outwait its receivers.
+            route.send_replace(Some(handle));
+        }
+    }
+
+    pub(crate) fn forget_store(&self, location: &ResourceLocation) {
+        self.stores.lock().expect("store routes").remove(location);
+    }
+
+    /// `None`: no document channel — the resource itself is the
+    /// truth, store it directly. `Some`: the host mirrors this
+    /// document and the save must flow through the channel. Waits
+    /// out the connecting window so a save cannot slip UNDER a
+    /// channel being adopted.
+    pub async fn store_handle(&self, location: &ResourceLocation) -> Option<StoreHandle> {
+        let mut route = {
+            let stores = self.stores.lock().expect("store routes");
+            stores.get(location)?.subscribe()
+        };
+        loop {
+            if let Some(handle) = route.borrow().clone() {
+                return Some(handle);
+            }
+            if route.changed().await.is_err() {
+                return None;
+            }
+        }
     }
 
     fn mint(&self) -> Uid {
@@ -222,6 +296,7 @@ async fn channel_life(
         Err(error) => {
             tracing::warn!(%error, "docsync: could not reach the channel");
             channels.post(GiveUp {
+                channels: Arc::clone(&channels),
                 location: location.clone(),
             });
             return;
@@ -230,6 +305,9 @@ async fn channel_life(
 
     let (seeded, mut seed) = mpsc::channel::<Seeded>(1);
     channels.post(AdoptSnapshot {
+        channels: Arc::clone(&channels),
+        server: Arc::clone(&server),
+        document: opened.document.clone(),
         location: location.clone(),
         snapshot: snapshot.text.clone(),
         version: snapshot.version,
@@ -334,6 +412,7 @@ impl himark::DynamicCommand for EnsureSync {
         if SyncSeats::known(store, &self.location) {
             return;
         }
+        self.channels.store_connecting(&self.location);
 
         let since = himark::OpenDocuments::by_location(store, &self.location)
             .and_then(|id| himark::OpenDocuments::document_ref(store, id))
@@ -357,6 +436,9 @@ impl himark::DynamicCommand for EnsureSync {
 }
 
 struct AdoptSnapshot {
+    channels: Arc<DocumentChannels>,
+    server: Arc<dyn AhpServer>,
+    document: himark_ahp_ext_types::Uri,
     location: ResourceLocation,
     snapshot: String,
     version: Uid,
@@ -382,11 +464,13 @@ impl himark::DynamicCommand for AdoptSnapshot {
         };
         let Some(document_id) = himark::OpenDocuments::by_location(store, &self.location) else {
             SyncSeats::detach(store, &self.location);
+            self.channels.forget_store(&self.location);
             return;
         };
         let Some(document) = himark::OpenDocuments::document_ref(store, document_id).cloned()
         else {
             SyncSeats::detach(store, &self.location);
+            self.channels.forget_store(&self.location);
             return;
         };
         let log = document.log();
@@ -418,12 +502,20 @@ impl himark::DynamicCommand for AdoptSnapshot {
             store,
             self.location.clone(),
             SeatState::Live(Seat {
-                edits,
+                edits: edits.clone(),
                 abort,
                 attached_at: since,
                 taken: 0,
                 applied: None,
             }),
+        );
+        self.channels.store_ready(
+            &self.location,
+            StoreHandle {
+                edits,
+                server: Arc::clone(&self.server),
+                channel: self.document.clone(),
+            },
         );
         // The host is the source of truth from here: it watches the
         // file and broadcasts reloads as its own edits; this client
@@ -461,6 +553,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
 }
 
 struct GiveUp {
+    channels: Arc<DocumentChannels>,
     location: ResourceLocation,
 }
 
@@ -481,6 +574,7 @@ impl himark::DynamicCommand for GiveUp {
         if SyncSeats::connecting(store, &self.location).is_some() {
             SyncSeats::detach(store, &self.location);
         }
+        self.channels.forget_store(&self.location);
         // Mode two: no document channel — this client subscribes to
         // the resource itself and reloads on its own.
         if let Some(document) = himark::OpenDocuments::by_location(store, &self.location) {
@@ -603,6 +697,7 @@ impl himark::DocumentHook for DocsyncHook {
     fn closing(&self, store: &mut Store, document: himark::DocumentId) {
         if let Some(location) = himark::OpenDocuments::location(store, document) {
             SyncSeats::detach(store, &location);
+            self.channels.forget_store(&location);
         }
         let mut throwaway: imba::effect::Batch<imba::DynCommand> = imba::effect::Batch::new();
         himark::OpenDocuments::set_host_synced(store, document, false, &mut throwaway.effects());

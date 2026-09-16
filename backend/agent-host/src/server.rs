@@ -1034,6 +1034,7 @@ impl Host {
             },
             "reconnect" => self.reconnect(connection, outbox, id, params),
             "openDocument" => self.open_document(id, params),
+            "storeDocument" => self.store_document(id, params),
             method if method.starts_with("lsp/") => {
                 self.handle_lsp(connection, id, method, params).await
             }
@@ -2912,6 +2913,57 @@ impl Host {
             Some(snapshot) => rpc::success(id, serde_json::json!({ "snapshot": snapshot })),
             None => rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {channel}")),
         }
+    }
+
+    /// documents@1 storeDocument: dump a mirrored document to a
+    /// resource. A client saves THROUGH the host so the write lands
+    /// ordered behind its committed edits; `disk_texts` moves with
+    /// the write so the mirror watcher does not read the host's own
+    /// write back as a foreign edit.
+    fn store_document(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
+        let params =
+            match serde_json::from_value::<himark_ahp_ext_types::StoreDocumentParams>(params) {
+                Ok(params) => params,
+                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+            };
+        let Some(path) = crate::uris::file_path(&params.uri) else {
+            return rpc::failure(id, INVALID_PARAMS, format!("unservable uri {}", params.uri));
+        };
+        let found = {
+            let state = self.snapshot();
+            let found = state.sessions.values().find_map(|session| {
+                let document = session.documents.get(&params.channel)?;
+                Some((
+                    himark_ahp_ext_types::text::materialize(document.text()),
+                    document.version(),
+                ))
+            });
+            found
+        };
+        let Some((text, version)) = found else {
+            return rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {}", params.channel));
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Err(error) = std::fs::write(&path, &text) {
+            return rpc::failure(id, INTERNAL, format!("{}: {error}", path.display()));
+        }
+        self.update(|state| {
+            let mirrored = state.sessions.iter().find_map(|(uri, session)| {
+                (session.mirrors.get(&params.uri) == Some(&params.channel))
+                    .then(|| (uri.clone(), session.clone()))
+            });
+            let Some((owner, mut session)) = mirrored else {
+                return;
+            };
+            session
+                .disk_texts
+                .insert_mut(params.channel.clone(), text.clone());
+            state.sessions.insert_mut(owner, session);
+        });
+        self.changes_touched(&path);
+        rpc::success(id, himark_ahp_ext_types::StoreDocumentResult { version })
     }
 
     fn document_dispatch(&self, channel: &Uri, value: Value) {

@@ -117,10 +117,20 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
 pub struct RouteStore {
     pub directory: Arc<SeatDirectory>,
     pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub channels: Arc<crate::docsync::DocumentChannels>,
 }
 
 impl EffectHandler<StoreDocumentEffect> for RouteStore {
     async fn handle(&self, effect: StoreDocumentEffect) -> bool {
+        // Mode one: the host mirrors this document — the mirror is
+        // the source of truth, so the save flows through the channel,
+        // ordered behind this client's edits, and the host dumps its
+        // own text. Writing the resource raw here would look like a
+        // foreign edit to the mirror's watcher.
+        if let Some(handle) = self.channels.store_handle(&effect.location).await {
+            return handle.store(self.uris.uri_of(&effect.location)).await;
+        }
+        // Mode two: no document channel — the resource is the truth.
         let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
             return false;
         };

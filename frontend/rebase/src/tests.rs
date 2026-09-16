@@ -585,3 +585,70 @@ async fn two_looped_clients_converge_through_channels() {
         "both edits survived: {settled}"
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn a_flush_fires_only_once_every_prior_edit_is_committed() {
+    let source = "hello";
+    let (local, local_rx) = mpsc::unbounded_channel();
+    let (remote, remote_rx) = mpsc::channel(64);
+    let (wire, mut wire_rx) = mpsc::channel(64);
+    let (offers, _offers_rx) = mpsc::channel(64);
+    tokio::spawn(run(
+        RebaseLog::new(Doc::new(source), 0),
+        local_rx,
+        remote_rx,
+        wire,
+        offers,
+        {
+            let mut seen = 0u64;
+            move || {
+                seen += 1;
+                1000 + seen
+            }
+        },
+    ));
+    let mut server = Server {
+        doc: Doc::new(source),
+        version: 0,
+        broadcast: Vec::new(),
+    };
+    let mut ui = Ui {
+        shown: text::Text::from_string_exact(source),
+        at: EditLog::default(),
+        sent: 0,
+        minted: 0,
+        id: 1,
+    };
+
+    local.send(Local::Edit(ui.edit(5, "", "!"))).expect("sent");
+    let (done, mut landed) = tokio::sync::oneshot::channel();
+    local.send(Local::Flush(done)).expect("sent");
+
+    let dispatch = loop {
+        tokio::task::yield_now().await;
+        if let Ok(dispatch) = wire_rx.try_recv() {
+            break dispatch;
+        }
+    };
+    for _ in 0..50 {
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        matches!(
+            landed.try_recv(),
+            Err(tokio::sync::oneshot::error::TryRecvError::Empty)
+        ),
+        "the edit is on the wire but not committed — no flush yet"
+    );
+
+    assert!(server.offer(&dispatch));
+    for action in server.broadcast.drain(..) {
+        let id = action.id;
+        remote.send(Applied { id, action }).await.expect("heard");
+    }
+    landed.await.expect("the ack landed the flush");
+
+    let (done, landed) = tokio::sync::oneshot::channel();
+    local.send(Local::Flush(done)).expect("sent");
+    landed.await.expect("an idle flush fires at once");
+}

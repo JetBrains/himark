@@ -97,6 +97,19 @@ pub struct DocumentState {
     pub version: Uid,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDocumentParams {
+    pub channel: Uri,
+    pub uri: Uri,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StoreDocumentResult {
+    pub version: Uid,
+}
+
 #[derive(Clone, PartialEq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocumentApplied {
