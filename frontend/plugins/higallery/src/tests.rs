@@ -20,7 +20,7 @@ const WIDTH: f32 = 1100.0;
 fn render(gallery: &Gallery) -> Image {
     let height = gallery.content_height(WIDTH).ceil();
     assert!(
-        height > 900.0 && height < 3000.0,
+        height > 500.0 && height < 3000.0,
         "unexpected gallery height: {height}"
     );
     gallery.screenshot().expect("gallery screenshot")
@@ -165,8 +165,11 @@ fn control(gallery: &Gallery, target: Command) -> Point {
     for y in (0..height as usize).step_by(8) {
         for x in (0..WIDTH as usize).step_by(8) {
             let point = Point::new(x as f32, y as f32);
-            if matches!(widget.handle_event(&arena, &mouse_down(point), viewport), EventResult::Command(command) if command == target)
-            {
+            if match widget.handle_event(&arena, &mouse_down(point), viewport) {
+                EventResult::Command(command) => command == target,
+                EventResult::Commands(commands) => commands.contains(&target),
+                _ => false,
+            } {
                 return point;
             }
         }
@@ -258,4 +261,254 @@ fn registered_action_opens_a_scrollable_gallery_panel() {
             &PathBuf::from(output).join("workbench.png"),
         );
     }
+}
+
+// The web counterpart uses the original Air SCSS and font assets, with the same
+// specimen content and positions. Export to HIMARK_SHOT for cross-render review.
+#[test]
+fn air_reference_specimens() {
+    use himark::ui::*;
+    use imba::checkbox::CheckboxValue;
+    use imba::{constraints::Constraints, LayoutExt};
+    let output = std::env::var_os("HIMARK_SHOT").map(PathBuf::from);
+    for light in [false, true] {
+        let mut store = imba::Store::new();
+        store.put(himark::env::Themes(if light {
+            himark::Theme::light()
+        } else {
+            himark::Theme::embedded()
+        }));
+        let ui = imba::UiCtx::cold();
+        let mut surface = surfaces::raster_n32_premul((700, 740)).unwrap();
+        let canvas = surface.canvas();
+        canvas.clear(air_tokens::color(&store, "background"));
+        let arena = Arena::default();
+        let mut specimens: Vec<(f32, f32, imba::LayoutBox<'_, ()>)> = Vec::new();
+        for (index, (style, sample)) in [
+            (heading(&store, &ui), "Heading — a section title"),
+            (label(&store, &ui), "Label — the quick brown fox"),
+            (caption(&store, &ui), "Caption — secondary information"),
+            (caps(&store, &ui), "CAPS — TRACKED SECTION LABEL"),
+            (key_hint(&store, &ui), "Key hint — Ctrl+Shift+P"),
+            (code(&store, &ui), "Code — fn main() {}"),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            specimens.push((
+                20.0,
+                20.0 + index as f32 * 32.0,
+                imba::LayoutBox::new(&arena, text(&style, sample)),
+            ));
+        }
+        let states = [
+            ControlState::Default,
+            ControlState::Hovered,
+            ControlState::Pressed,
+            ControlState::Focused,
+            ControlState::Disabled,
+        ];
+        for (row, (name, role)) in [
+            ("Primary", ButtonRole::Primary),
+            ("Secondary", ButtonRole::Secondary),
+            ("Ghost", ButtonRole::Ghost),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (col, state) in states.into_iter().enumerate() {
+                specimens.push((
+                    20.0 + col as f32 * 130.0,
+                    240.0 + row as f32 * 60.0,
+                    imba::LayoutBox::new(
+                        &arena,
+                        button(&arena, &store, &ui, role, name, || ()).state(state),
+                    ),
+                ));
+            }
+        }
+        for (row, value) in [
+            CheckboxValue::Unchecked,
+            CheckboxValue::Checked,
+            CheckboxValue::Indeterminate,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            for (col, state) in states.into_iter().enumerate() {
+                specimens.push((
+                    20.0 + col as f32 * 130.0,
+                    440.0 + row as f32 * 44.0,
+                    imba::LayoutBox::new(
+                        &arena,
+                        imba::fixed(air_checkbox(&store, value, state)).map_layout(|_| ()),
+                    ),
+                ));
+            }
+        }
+        let mut style = RowStyle::standard(&store, &ui);
+        style.trail = key_hint(&store, &ui);
+        specimens.push((
+            20.0,
+            600.0,
+            imba::LayoutBox::new(
+                &arena,
+                ListRow::new(&arena, style)
+                    .label("Standard")
+                    .trail("Metadata")
+                    .width(600.0),
+            ),
+        ));
+        for (col, (name, surface)) in [
+            (
+                "Fill",
+                Surface::fill(air_tokens::color(&store, "card-background-default-default")),
+            ),
+            (
+                "Bordered",
+                Surface::bordered(
+                    air_tokens::color(&store, "card-background-default-default"),
+                    air_tokens::color(&store, "border"),
+                ),
+            ),
+            (
+                "Outline",
+                Surface::outline(air_tokens::color(&store, "border")),
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            specimens.push((
+                20.0 + col as f32 * 210.0,
+                660.0,
+                imba::LayoutBox::new(
+                    &arena,
+                    text(&label(&store, &ui), name)
+                        .pad(12.0)
+                        .width(190.0)
+                        .backdrop(surface.painter()),
+                ),
+            ));
+        }
+        let expected = if light {
+            include_str!("../tests/air-ui/light-metrics.csv")
+        } else {
+            include_str!("../tests/air-ui/dark-metrics.csv")
+        };
+        let expected: Vec<Vec<f32>> = expected
+            .lines()
+            .map(|line| line.split(',').map(|n| n.parse().unwrap()).collect())
+            .collect();
+        assert_eq!(expected.len(), specimens.len());
+        let mut metrics = String::new();
+        for ((x, y, specimen), expected) in specimens.into_iter().zip(expected) {
+            let thunk = specimen.layout(
+                &arena,
+                Constraints {
+                    min: Size::default(),
+                    max: Size::new(660.0, 740.0),
+                },
+            );
+            assert!(
+                (thunk.size().width - expected[2]).abs() <= 1.0 / 32.0,
+                "Air web width at ({x}, {y}): {:?} vs {expected:?}",
+                thunk.size()
+            );
+            assert_eq!(
+                thunk.size().height,
+                expected[3],
+                "Air web height at ({x}, {y})"
+            );
+            if expected.len() == 5 {
+                assert_eq!(
+                    thunk.first_baseline(),
+                    Some(expected[4]),
+                    "Air web baseline at ({x}, {y})"
+                );
+            }
+            metrics.push_str(&format!(
+                "{x},{y},{},{}\n",
+                thunk.size().width,
+                thunk.size().height
+            ));
+            let rect = Rect::from_size(thunk.size());
+            let widget = thunk.realize(&arena, rect);
+            canvas.save();
+            canvas.translate((x, y));
+            widget.handle_event(
+                &arena,
+                &Event::Paint {
+                    canvas,
+                    focused: true,
+                },
+                rect,
+            );
+            canvas.restore();
+        }
+        if let Some(output) = &output {
+            write_png(
+                &surface.image_snapshot(),
+                &output.join(format!(
+                    "air-native-{}.png",
+                    if light { "light" } else { "dark" }
+                )),
+            );
+            std::fs::write(
+                output.join(format!(
+                    "air-native-{}-metrics.csv",
+                    if light { "light" } else { "dark" }
+                )),
+                metrics,
+            )
+            .unwrap();
+        }
+    }
+}
+
+#[test]
+fn button_hover_press_release_and_leave_survive_view_rebuilds() {
+    use himark::ui::ControlState;
+    let mut gallery = Gallery::new(GalleryMode::Interactive);
+    let point = control(&gallery, Command::Press);
+    let size = Size::new(WIDTH, 1400.0);
+    gallery.handle_event(&Event::MouseMove { point }, size, 0.0);
+    assert_eq!(gallery.view.button_states[0], ControlState::Hovered);
+    gallery.handle_event(&mouse_down(point), size, 0.0);
+    assert_eq!(gallery.view.button_states[0], ControlState::Pressed);
+    gallery.handle_event(&Event::MouseUp { point }, size, 0.0);
+    assert_eq!(gallery.view.button_states[0], ControlState::Hovered);
+    gallery.handle_event(
+        &Event::MouseMove {
+            point: Point::new(0.0, 0.0),
+        },
+        size,
+        0.0,
+    );
+    assert_eq!(gallery.view.button_states[0], ControlState::Default);
+    assert_eq!(gallery.view.presses, 1);
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "reference images use Linux Skia rasterization"
+)]
+fn screenshot_light_interactive() {
+    screenshot(
+        "light-interactive",
+        &Gallery::with_theme(GalleryMode::Interactive, himark::Theme::light()),
+    );
+}
+
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "reference images use Linux Skia rasterization"
+)]
+fn screenshot_light_all_states() {
+    screenshot(
+        "light-all-states",
+        &Gallery::with_theme(GalleryMode::AllStates, himark::Theme::light()),
+    );
 }

@@ -4,10 +4,8 @@
 //! Backend-free catalogue of the shared UI primitives, used by the desktop
 //! gallery binary and its headless visual regression tests.
 use imba::{
-    arena::Arena,
-    checkbox::{checkbox, CheckboxStyle},
-    thunk_ext::ThunkExt,
-    Column, Layout, LayoutExt, Row, Store, UiCtx, View,
+    arena::Arena, checkbox::CheckboxValue, thunk_ext::ThunkExt, Column, Layout, LayoutExt, Row,
+    Store, UiCtx, View,
 };
 
 use himark::{ui::*, TreeItemView, TreeLabel, TreeTint};
@@ -22,6 +20,7 @@ pub enum GalleryMode {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GalleryCommand {
     Mode(GalleryMode),
+    ButtonState(usize, ControlState),
     Press,
     Check,
     Expand,
@@ -34,6 +33,7 @@ pub struct GalleryView {
     pub(crate) checked: bool,
     pub(crate) expanded: bool,
     trees: [TreeItemView<TreeLabel>; 4],
+    pub(crate) button_states: [ControlState; 3],
 }
 
 impl GalleryView {
@@ -41,6 +41,7 @@ impl GalleryView {
         Self {
             mode,
             presses: 0,
+            button_states: [ControlState::Default; 3],
             checked: false,
             expanded: false,
             trees: [
@@ -87,15 +88,12 @@ impl GalleryView {
         let themes = himark::env::Themes::of(store);
         let theme = themes.ui();
         let static_states = self.mode == GalleryMode::AllStates;
-        let title = heading(store, ui).sized(32.0);
-        let note = caption(store, ui).sized(16.0);
+        let title = heading(store, ui);
+        let note = caption(store, ui);
         let mut page = Column::new(arena)
             .gap(space::XL)
             .child(text(&title, "Himark UI gallery"))
-            .child(text(
-                &note,
-                "Shared components · imba + himark design system",
-            ))
+            .child(text(&note, "Air UI · shared components"))
             .child(
                 Row::new(arena)
                     .gap(space::M)
@@ -108,7 +106,7 @@ impl GalleryView {
                         } else {
                             ButtonRole::Ghost
                         },
-                        "INTERACTIVE",
+                        "Interactive",
                         || GalleryCommand::Mode(GalleryMode::Interactive),
                     ))
                     .child(button(
@@ -120,7 +118,7 @@ impl GalleryView {
                         } else {
                             ButtonRole::Ghost
                         },
-                        "FULL LIST OF STATES",
+                        "Full list of states",
                         || GalleryCommand::Mode(GalleryMode::AllStates),
                     )),
             )
@@ -143,6 +141,7 @@ impl GalleryView {
             (caption(store, ui), "Caption — secondary information"),
             (caps(store, ui), "CAPS — TRACKED SECTION LABEL"),
             (key_hint(store, ui), "Key hint — Ctrl+Shift+P"),
+            (code(store, ui), "Code — fn main() {}"),
         ] {
             typography = typography.child(text(&style, sample));
         }
@@ -160,7 +159,7 @@ impl GalleryView {
             surfaces = surfaces.weighted(
                 1.0,
                 text(&label(store, ui), name)
-                    .pad(space::XL)
+                    .pad(space::M)
                     .backdrop(surface.painter()),
             );
         }
@@ -171,75 +170,109 @@ impl GalleryView {
                 .child(surfaces),
         );
 
+        let states = [
+            ("Default", ControlState::Default),
+            ("Hovered", ControlState::Hovered),
+            ("Pressed", ControlState::Pressed),
+            ("Focused", ControlState::Focused),
+            ("Disabled", ControlState::Disabled),
+        ];
         let mut buttons = Column::new(arena)
             .gap(space::M)
             .child(section("03 / BUTTONS"));
-        for (name, role) in [
-            ("PRIMARY", ButtonRole::Primary),
-            ("GHOST", ButtonRole::Ghost),
-        ] {
-            let mut row = Row::new(arena).gap(space::L).child(button(
-                arena,
-                store,
-                ui,
-                role,
-                format!("{name} / ENABLED"),
-                || GalleryCommand::Press,
-            ));
+        for (index, (name, role)) in [
+            ("Primary", ButtonRole::Primary),
+            ("Secondary", ButtonRole::Secondary),
+            ("Ghost", ButtonRole::Ghost),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let mut row = Row::new(arena).gap(space::L);
             if static_states {
-                // Button::enabled controls input only; the production primitive
-                // deliberately leaves disabled colors to its caller.
+                for (state_name, state) in states {
+                    row = row.child(
+                        Column::new(arena)
+                            .gap(space::S)
+                            .child(text(&note, state_name))
+                            .child(
+                                button(arena, store, ui, role, name, || GalleryCommand::Press)
+                                    .state(state),
+                            ),
+                    );
+                }
+            } else {
                 row = row.child(
-                    button(arena, store, ui, role, format!("{name} / DISABLED"), || {
-                        GalleryCommand::Press
-                    })
-                    .enabled(false),
+                    button(arena, store, ui, role, name, || GalleryCommand::Press)
+                        .state(self.button_states[index])
+                        .on_state_change(move |state| GalleryCommand::ButtonState(index, state)),
                 );
             }
             buttons = buttons.child(row);
         }
-        buttons = buttons.child(text(&note, if static_states {
-            "Enabled / disabled. Buttons currently have no separate hover or pressed appearance.".to_owned()
-        } else {
-            format!("Button and row actions: {}", self.presses)
-        }));
+        buttons = buttons.child(text(
+            &note,
+            if static_states {
+                "Primary, secondary and ghost buttons in every visual state.".to_owned()
+            } else {
+                format!("Button and row actions: {}", self.presses)
+            },
+        ));
         page = page.child(buttons);
 
-        let chrome = &theme.checkbox;
-        let check_style = CheckboxStyle {
-            size: chrome.size,
-            radius: chrome.radius,
-            stroke: chrome.stroke,
-            border: chrome.border.0,
-            fill: chrome.fill.0,
-            check: chrome.check.0,
-        };
-        let mut checks = Row::new(arena).gap(space::XL);
-        let states: &[bool] = if static_states {
-            &[false, true]
+        let mut checks = Column::new(arena)
+            .gap(space::M)
+            .child(section("04 / CHECKBOX"));
+        let values: &[CheckboxValue] = if static_states {
+            &[
+                CheckboxValue::Unchecked,
+                CheckboxValue::Checked,
+                CheckboxValue::Indeterminate,
+            ]
+        } else if self.checked {
+            &[CheckboxValue::Checked]
         } else {
-            std::slice::from_ref(&self.checked)
+            &[CheckboxValue::Unchecked]
         };
-        for &checked in states {
-            checks = checks.child(
-                Row::new(arena)
-                    .gap(space::M)
+        for &value in values {
+            let mut row = Row::new(arena).gap(space::XL);
+            let check_states: &[(&str, ControlState)] =
+                if static_states { &states } else { &states[..1] };
+            for &(state_name, state) in check_states {
+                let name = match value {
+                    CheckboxValue::Unchecked => "Unchecked",
+                    CheckboxValue::Checked => "Checked",
+                    CheckboxValue::Indeterminate => "Indeterminate",
+                };
+                let label = label(store, ui).colored(air_tokens::color(
+                    store,
+                    if state == ControlState::Disabled {
+                        "text-disabled"
+                    } else {
+                        "text-primary"
+                    },
+                ));
+                let control = Row::new(arena)
+                    .gap(6.0)
                     .align_items(imba::CrossAlign::Center)
                     .child(imba::fixed(
-                        checkbox(checked, check_style).map(|_| GalleryCommand::Check),
+                        air_checkbox(store, value, state).map(|_| GalleryCommand::Check),
                     ))
-                    .child(text(
-                        &label(store, ui),
-                        if checked { "Checked" } else { "Unchecked" },
-                    )),
-            );
+                    .child(text(&label, name).on_click(|| GalleryCommand::Check));
+                row = if static_states {
+                    row.child(
+                        Column::new(arena)
+                            .gap(space::S)
+                            .child(text(&note, state_name))
+                            .child(control),
+                    )
+                } else {
+                    row.child(control)
+                };
+            }
+            checks = checks.child(row);
         }
-        page = page.child(
-            Column::new(arena)
-                .gap(space::M)
-                .child(section("04 / CHECKBOX"))
-                .child(checks),
-        );
+        page = page.child(checks);
 
         let mut rows = Column::new(arena)
             .gap(space::XS)
@@ -253,7 +286,7 @@ impl GalleryView {
                 ListRow::new(arena, style)
                     .label(name)
                     .trail("Metadata")
-                    .action("OPEN", || GalleryCommand::Press),
+                    .action("Open", || GalleryCommand::Press),
             );
         }
         if static_states {
@@ -265,6 +298,27 @@ impl GalleryView {
                         .trail("Rust")
                         .trail("Ctrl+P"),
                 );
+        }
+        if static_states {
+            for (name, state) in [
+                ("Hovered", ControlState::Hovered),
+                ("Focused", ControlState::Focused),
+                ("Disabled", ControlState::Disabled),
+            ] {
+                rows = rows.child(
+                    ListRow::new(arena, RowStyle::standard(store, ui))
+                        .state(store, state)
+                        .label(name)
+                        .trail("Metadata")
+                        .action("Open", || GalleryCommand::Press),
+                );
+            }
+            rows = rows.child(
+                ListRow::new(arena, RowStyle::standard(store, ui))
+                    .selected(store)
+                    .label("Selected")
+                    .trail("Metadata"),
+            );
         }
         page = page.child(rows);
 
@@ -305,6 +359,7 @@ impl GalleryView {
             GalleryCommand::Mode(mode) => self.set_mode(mode),
             _ if self.mode == GalleryMode::AllStates => {}
             GalleryCommand::Press => self.presses += 1,
+            GalleryCommand::ButtonState(index, state) => self.button_states[index] = state,
             GalleryCommand::Check => self.checked = !self.checked,
             GalleryCommand::Expand => self.expanded = !self.expanded,
         }

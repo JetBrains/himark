@@ -177,7 +177,11 @@ impl ApplicationHandler for Host {
             WindowEvent::CursorMoved { position, .. } => {
                 let point = position.to_logical::<f32>(window.scale_factor());
                 self.cursor = Point::new(point.x, point.y);
-                return;
+                self.gallery.handle_event(
+                    &Event::MouseMove { point: self.cursor },
+                    self.size(),
+                    self.scroll,
+                );
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
@@ -198,6 +202,27 @@ impl ApplicationHandler for Host {
                 if mode != self.gallery.mode() {
                     self.scroll = 0.0;
                 }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button: winit::event::MouseButton::Left,
+                ..
+            } => {
+                self.gallery.handle_event(
+                    &Event::MouseUp { point: self.cursor },
+                    self.size(),
+                    self.scroll,
+                );
+            }
+            WindowEvent::CursorLeft { .. } => {
+                self.gallery.handle_event(
+                    &Event::HitTest {
+                        point: self.cursor,
+                        miss: true,
+                    },
+                    self.size(),
+                    self.scroll,
+                );
             }
             WindowEvent::MouseWheel { delta, .. } => {
                 self.scroll -= match delta {

@@ -223,6 +223,10 @@ impl<'a, Command: 'a> Widget<'a, Command> for WidgetBox<'a, Command> {
         self.0.blocks_pointer(point)
     }
 
+    fn paint_outset(&self) -> f32 {
+        self.0.paint_outset()
+    }
+
     fn focus_data<'w>(&'w mut self) -> focus::FocusData<'w, Command>
     where
         'a: 'w,
@@ -259,6 +263,10 @@ impl<'a, Command: 'a, W: Widget<'a, Command>> Widget<'a, Command> for Eager<W> {
         self.0.blocks_pointer(point)
     }
 
+    fn paint_outset(&self) -> f32 {
+        self.0.paint_outset()
+    }
+
     fn focus_data<'w>(&'w mut self) -> focus::FocusData<'w, Command>
     where
         'a: 'w,
@@ -279,6 +287,11 @@ impl<'a, Command: 'a, W: Widget<'a, Command> + 'a> Thunk<'a, Command> for Eager<
 
 pub trait Widget<'a, Command> {
     fn size(&self) -> Size;
+
+    /// Visual overflow (focus rings/shadows), independent of layout and hit bounds.
+    fn paint_outset(&self) -> f32 {
+        0.0
+    }
 
     fn handle_event(
         &self,
@@ -307,3 +320,5 @@ pub trait Widget<'a, Command> {
 
 #[cfg(test)]
 mod tests;
+
+pub use layout::{ButtonVisual, ControlState};

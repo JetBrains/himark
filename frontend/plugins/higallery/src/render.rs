@@ -14,7 +14,8 @@ use std::{error::Error, path::Path};
 pub const SCREENSHOT_WIDTH: f32 = 1100.0;
 
 /// A standalone adapter: no Application, workbench, host services, or window.
-/// Only this adapter pins fonts; the plugin view uses the running app's theme.
+/// Air typography embeds its fonts in the shared roles; this adapter also
+/// supplies a deterministic fallback for the remaining app chrome.
 pub struct Gallery {
     pub(crate) store: Store,
     pub(crate) ui: UiCtx,
@@ -23,8 +24,12 @@ pub struct Gallery {
 
 impl Gallery {
     pub fn new(mode: GalleryMode) -> Self {
+        Self::with_theme(mode, himark::theme::Theme::embedded())
+    }
+
+    pub fn with_theme(mode: GalleryMode, theme: himark::theme::Theme) -> Self {
         let mut store = Store::new();
-        store.put(himark::env::Themes(himark::theme::Theme::embedded()));
+        store.put(himark::env::Themes(theme));
         let ui = UiCtx::cold();
         ui.set(himark::env::UiFonts(himark::embedded_fonts::collection()));
         ui.set(himark::fonts::ChromeTypeface(
@@ -105,6 +110,13 @@ impl Gallery {
     }
 
     pub fn handle_event(&mut self, event: &Event<'_>, size: Size, scroll: f32) {
+        let event = match event {
+            Event::MouseMove { point } => Event::HitTest {
+                point: *point,
+                miss: false,
+            },
+            other => *other,
+        };
         let result = {
             let arena = Arena::default();
             let viewport = Rect::from_xywh(0.0, scroll, size.width, size.height);

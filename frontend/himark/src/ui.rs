@@ -20,26 +20,20 @@ pub mod space {
 }
 
 /// Corner radii: cards, wells, chips.
-pub const RADIUS: f32 = 10.0;
-pub const RADIUS_S: f32 = 6.0;
-pub const RADIUS_XS: f32 = 4.0;
+pub const RADIUS: f32 = 8.0;
+pub const RADIUS_S: f32 = 4.0;
+pub const RADIUS_XS: f32 = 3.0;
 
-/// Type scale.
-const LABEL_SIZE: f32 = 24.0;
-const CAPTION_SIZE: f32 = 22.0;
-const HEADING_SIZE: f32 = 24.0;
-const CAPS_SIZE: f32 = 15.0;
-const CAPS_TRACKING: f32 = 1.5;
-const KEY_HINT_SIZE: f32 = 15.0;
+mod air_fonts;
+pub mod air_tokens;
 
-/// A typography role resolved against the theme: font, color,
-/// tracking. Placement is never part of the style — text sits on the
-/// baseline its own metrics give it.
+/// An Air typography role: font, CSS line height, color and letter spacing.
 #[derive(Clone)]
 pub struct TextStyle {
     pub font: skia_safe::Font,
     pub color: Color,
     pub tracking: f32,
+    pub line_height: Option<f32>,
 }
 
 impl TextStyle {
@@ -49,60 +43,76 @@ impl TextStyle {
     }
 
     pub fn sized(mut self, size: f32) -> Self {
+        let scale = size / self.font.size();
+        self.line_height = self.line_height.map(|height| height * scale);
+        self.tracking *= scale;
         self.font.set_size(size);
         self
     }
 }
 
-/// Default row/body text.
-pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
+fn role(
+    store: &Store,
+    size: f32,
+    height: f32,
+    weight: u16,
+    tracking: f32,
+    secondary: bool,
+) -> TextStyle {
+    let weight = weight + if air_tokens::light(store) { 20 } else { 0 };
     TextStyle {
-        font: crate::fonts::ui_text_font(ui, LABEL_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.text.0,
+        font: air_fonts::font(size, weight, false),
+        color: if secondary {
+            crate::env::Themes::of(store).ui().peeker.dim_text.0
+        } else {
+            crate::env::Themes::of(store).ui().peeker.text.0
+        },
+        tracking,
+        line_height: Some(height),
+    }
+}
+
+/// Air Text/default: Inter 13/16, optical weight 480 (500 in light).
+pub fn label(store: &Store, _ui: &UiCtx) -> TextStyle {
+    role(store, 13.0, 16.0, 480, 0.052, false)
+}
+
+/// Air Text/medium: Inter 12/16.
+pub fn caption(store: &Store, _ui: &UiCtx) -> TextStyle {
+    role(store, 12.0, 16.0, 500, 0.06, true)
+}
+
+/// Air Heading/h2-semibold: Inter 19/24.
+pub fn heading(store: &Store, _ui: &UiCtx) -> TextStyle {
+    role(store, 19.0, 24.0, 600, 0.0, false)
+}
+
+/// Air Heading/h5-semibold: uppercase Inter 10/14, 0.1em tracking.
+pub fn caps(store: &Store, _ui: &UiCtx) -> TextStyle {
+    role(store, 10.0, 14.0, 700, 1.0, true)
+}
+
+/// Air Text/small: Inter 10/14.
+pub fn key_hint(store: &Store, _ui: &UiCtx) -> TextStyle {
+    role(store, 10.0, 14.0, 500, 0.06, true)
+}
+
+/// Air Text/code: JetBrains Mono 13/22.
+pub fn code(store: &Store, ui: &UiCtx) -> TextStyle {
+    TextStyle {
+        font: air_fonts::font(13.0, if air_tokens::light(store) { 420 } else { 400 }, true),
+        line_height: Some(22.0),
         tracking: 0.0,
+        ..label(store, ui)
     }
 }
 
-/// Secondary, dimmed.
-pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_text_font(ui, CAPTION_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: 0.0,
-    }
-}
-
-/// Emphasized row/title text.
-pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_font(ui, HEADING_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.text.0,
-        tracking: 0.0,
-    }
-}
-
-/// The tracked small-caps chip/header look ("YOU", "REFRESH", group
-/// headers). Callers pass UPPERCASED strings.
-pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_font(ui, CAPS_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: CAPS_TRACKING,
-    }
-}
-
-/// Shortcut hints.
-pub fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
-    TextStyle {
-        font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
-        tracking: 0.0,
-    }
-}
-
-/// A styled `imba::Text`.
 pub fn text(style: &TextStyle, content: impl Into<String>) -> imba::Text {
-    imba::text(content, style.font.clone(), style.color).tracking(style.tracking)
+    let text = imba::text(content, style.font.clone(), style.color).tracking(style.tracking);
+    match style.line_height {
+        Some(height) => text.line_height(height),
+        None => text,
+    }
 }
 
 /// THE rounded fill-plus-hairline backdrop — every card, well and
@@ -159,8 +169,8 @@ impl Surface {
                 paint.set_color(border);
                 canvas.draw_round_rect(
                     rect.with_inset((0.5, 0.5)),
-                    self.radius,
-                    self.radius,
+                    (self.radius - 0.5).max(0.0),
+                    (self.radius - 0.5).max(0.0),
                     &paint,
                 );
             }
@@ -190,11 +200,11 @@ impl RowStyle {
     /// List/menu rows (peeker rows, combo menu, pickers).
     pub fn standard(store: &Store, ui: &UiCtx) -> Self {
         Self {
-            inset: space::L,
-            trail_inset: space::L,
+            inset: space::S,
+            trail_inset: space::XS,
             label: label(store, ui),
-            trail: caption(store, ui),
-            air: space::S,
+            trail: key_hint(store, ui),
+            air: space::XS,
         }
     }
 
@@ -206,10 +216,10 @@ impl RowStyle {
         let tree = crate::env::Themes::of(store).ui().tree.clone();
         Self {
             inset: 0.0,
-            trail_inset: space::L,
+            trail_inset: space::XS,
             label: label(store, ui).sized(tree.font_size),
-            trail: caption(store, ui).sized(tree.font_size),
-            air: space::S,
+            trail: key_hint(store, ui),
+            air: space::XS,
         }
     }
 
@@ -219,11 +229,9 @@ impl RowStyle {
         Self {
             inset: search.group_text_x,
             trail_inset: search.group_text_x,
-            label: heading(store, ui)
-                .sized(search.group_font_size)
-                .colored(search.group_text.0),
-            trail: caption(store, ui).sized(search.group_font_size),
-            air: space::S,
+            label: role(store, 13.0, 16.0, 600, 0.0676, false).colored(search.group_text.0),
+            trail: key_hint(store, ui),
+            air: space::XS,
         }
     }
 }
@@ -243,6 +251,8 @@ pub struct ListRow<'a, Command> {
     style: RowStyle,
     label: Option<imba::Text>,
     trails: Vec<RowEntry<'a, Command>>,
+    background: Option<Color>,
+    enabled: bool,
 }
 
 impl<'a, Command: 'a> ListRow<'a, Command> {
@@ -252,11 +262,36 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
             style,
             label: None,
             trails: Vec::new(),
+            background: None,
+            enabled: true,
         }
     }
 
     pub fn label(mut self, content: impl Into<String>) -> Self {
         self.label = Some(text(&self.style.label, content));
+        self
+    }
+
+    /// Air List.Item interaction appearance. Apply before adding text slots.
+    pub fn state(mut self, store: &Store, state: ControlState) -> Self {
+        self.background = Some(air_tokens::color(
+            store,
+            match state {
+                ControlState::Hovered | ControlState::Focused => "list-item-background-hovered",
+                ControlState::Pressed => "list-item-background-focused",
+                _ => "list-item-background-default",
+            },
+        ));
+        if state == ControlState::Disabled {
+            self.enabled = false;
+            self.style.label.color = air_tokens::color(store, "text-disabled");
+            self.style.trail.color = self.style.label.color;
+        }
+        self
+    }
+
+    pub fn selected(mut self, store: &Store) -> Self {
+        self.background = Some(air_tokens::color(store, "list-item-background-selected"));
         self
     }
 
@@ -297,6 +332,8 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
             style,
             label,
             trails,
+            background,
+            enabled,
         } = self;
         let mut row = imba::Row::new(row_arena);
         if let Some(label) = label {
@@ -322,17 +359,30 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
             };
             row = match entry {
                 RowEntry::Text(text) => row.child_by_baseline(text.pad_insets(insets)),
-                RowEntry::Action(text, on_press) => {
+                RowEntry::Action(text, on_press) if enabled => {
                     row.child_by_baseline(text.on_click(move || on_press()).pad_insets(insets))
                 }
+                RowEntry::Action(text, _) => row.child_by_baseline(text.pad_insets(insets)),
             };
         }
         // The row's height is ITS OWN: the label's text block plus
         // the style's symmetric air — no shared row-height anywhere.
         let metrics = style.label.font.metrics().1;
-        let height = (-metrics.ascent + metrics.descent).ceil() + 2.0 * style.air;
+        let height = style
+            .label
+            .line_height
+            .unwrap_or_else(|| (-metrics.ascent + metrics.descent).ceil())
+            + 2.0 * style.air;
         row.align(imba::Alignment::CenterStart)
             .height(height)
+            .backdrop(
+                Surface {
+                    fill: background,
+                    border: None,
+                    radius: 4.0,
+                }
+                .painter(),
+            )
             .layout(arena, constraints)
     }
 }
@@ -395,7 +445,9 @@ mod tests {
         let ascent = -metrics.ascent;
         // The row is its own text block plus `space::S` each side,
         // so the centered baseline sits at pad + ascent.
-        let expected = space::S + ascent;
+        let expected = space::XS
+            + (style.label.line_height.unwrap() - (-metrics.ascent + metrics.descent)) * 0.5
+            + ascent;
 
         let thunk = imba::Layout::layout(
             ListRow::<()>::new(&arena, style.clone())
@@ -415,14 +467,15 @@ mod tests {
     }
 }
 
-/// Button roles: `Primary` is the accent call-to-action, `Ghost` the
-/// quiet outlined chip. Labels are caps-tracked; callers pass
-/// UPPERCASE.
+/// Air Button/primary, Button/secondary and ButtonGhost/off.
 #[derive(Clone, Copy)]
 pub enum ButtonRole {
     Primary,
+    Secondary,
     Ghost,
 }
+
+pub use imba::{ButtonVisual, ControlState};
 
 pub fn button<'a, Command: 'a>(
     arena: &'a Arena,
@@ -432,17 +485,89 @@ pub fn button<'a, Command: 'a>(
     content: impl Into<String>,
     on_press: impl Fn() -> Command + 'a,
 ) -> imba::Button<'a, Command, impl Fn() -> Command + 'a> {
-    let chat = crate::env::Themes::of(store).ui().chat.clone();
-    let style = match role {
-        ButtonRole::Primary => caps(store, ui).colored(chat.on_accent.0),
-        ButtonRole::Ghost => caps(store, ui),
+    let prefix = match role {
+        ButtonRole::Primary => "button-primary",
+        ButtonRole::Secondary => "button-secondary",
+        ButtonRole::Ghost => "ghost-button-off",
     };
-    let dim = style.color;
-    let button = imba::Button::new(arena, text(&style, content), on_press)
-        .radius(RADIUS_S)
-        .pad_content(imba::Insets::xy(space::L, space::S));
-    match role {
-        ButtonRole::Primary => button.fill(chat.accent.0),
-        ButtonRole::Ghost => button.stroke(dim),
+    let token = |suffix: &str| air_tokens::color(store, &format!("{prefix}-{suffix}"));
+    let visual = |state: &str| ButtonVisual {
+        fill: Some(token(&format!("background-{state}"))),
+        stroke: Some(token(&format!("border-{state}"))),
+        outline: None,
+    };
+    let focused = ButtonVisual {
+        stroke: Some(token("focus-border")),
+        outline: Some(token("focus-outline")),
+        ..visual("default")
+    };
+    let mut style = label(store, ui).colored(token("text-default"));
+    let ghost = matches!(role, ButtonRole::Ghost);
+    if !ghost {
+        style.tracking = 0.04;
     }
+    let content = content.into();
+    imba::Button::new(arena, text(&style, content.clone()), on_press)
+        .disabled_content(arena, text(&style.colored(token("text-disabled")), content))
+        .radius(if ghost { 3.0 } else { 4.0 })
+        .min_width(if ghost { 0.0 } else { 60.0 })
+        .max_width(if ghost { f32::MAX } else { 256.0 })
+        // Includes the label wrapper's 4px (2px for Ghost) on each side.
+        .pad_content(imba::Insets::xy(
+            if ghost { 4.0 } else { 10.0 },
+            if ghost { 2.0 } else { 4.0 },
+        ))
+        .visuals([
+            visual("default"),
+            visual("hovered"),
+            visual("pressed"),
+            focused,
+            visual("disabled"),
+        ])
+}
+
+/// Shared themed checkbox; the legacy imba checkbox remains available to custom themes.
+pub fn air_checkbox<'a>(
+    store: &Store,
+    value: imba::checkbox::CheckboxValue,
+    state: ControlState,
+) -> impl imba::Thunk<'a, imba::checkbox::CheckboxCommand> + 'a {
+    use imba::checkbox::{checkbox_with_visual, CheckboxStyle, CheckboxValue, CheckboxVisual};
+    let on = value != CheckboxValue::Unchecked;
+    let prefix = if on { "checkbox-on" } else { "checkbox-off" };
+    let token = |suffix: &str| air_tokens::color(store, &format!("{prefix}-{suffix}"));
+    let suffix = match state {
+        ControlState::Disabled => "disabled",
+        ControlState::Hovered => "hovered",
+        _ => "default",
+    };
+    let focused = state == ControlState::Focused;
+    let style = CheckboxStyle {
+        size: 16.0,
+        radius: 2.0,
+        stroke: 1.0,
+        ..Default::default()
+    };
+    let visual = CheckboxVisual {
+        background: token(&format!("background-{suffix}")),
+        border: token(&if focused {
+            "focus-border".to_owned()
+        } else {
+            format!("border-{suffix}")
+        }),
+        icon: air_tokens::color(
+            store,
+            if state == ControlState::Disabled {
+                "checkbox-icon-disabled"
+            } else {
+                "checkbox-icon-default"
+            },
+        ),
+        outline: if focused {
+            token("focus-outline")
+        } else {
+            Color::TRANSPARENT
+        },
+    };
+    checkbox_with_visual(value, style, visual, state != ControlState::Disabled)
 }

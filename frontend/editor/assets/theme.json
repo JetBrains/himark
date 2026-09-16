@@ -209,7 +209,7 @@
       "fold_button": "#cc8a94b8"
     },
     "window": {
-      "background": "#16161e",
+      "background": "#ff090909",
       "divider": "#ff2a2d3d",
       "divider_width": 1.0,
       "divider_inset": 14.0,
@@ -294,19 +294,19 @@
       "font_size": 15.0
     },
     "peeker": {
-      "background": "#16161e",
-      "well": "#ff1d1f2b",
-      "well_radius": 10.0,
-      "text": "#dce3f2",
-      "dim_text": "#a85c6885",
-      "rule": "#ff363a4f",
+      "background": "#ff18191b",
+      "well": "#12ffffff",
+      "well_radius": 8.0,
+      "text": "#ffe0e1e4",
+      "dim_text": "#85ffffff",
+      "rule": "#21ffffff",
       "rule_inset": 14.0,
       "highlight": "#3882aaff",
       "highlight_radius": 9.0,
       "accent": "#82aaff",
       "accent_width": 3.0,
       "accent_inset": 6.0,
-      "dir_text": "#a05c6885",
+      "dir_text": "#ffe0e1e4",
       "row_height": 44.0,
       "input_height": 56.0,
       "margin": 24.0,
@@ -338,9 +338,9 @@
       "input_fill": "#ff1d1f2b",
       "group_header": 46.0,
       "group_fill": "#00000000",
-      "group_text": "#f0c9d2e4",
-      "group_text_x": 68.0,
-      "group_font_size": 22.0,
+      "group_text": "#85ffffff",
+      "group_text_x": 8.0,
+      "group_font_size": 13.0,
       "group_separator": "#ff2a2d3d",
       "group_separator_thickness": 2.0,
       "row_separator": "#802a2d3d",
@@ -378,12 +378,12 @@
       ]
     },
     "checkbox": {
-      "size": 26.0,
-      "radius": 7.0,
-      "stroke": 2.0,
-      "border": "#a06b7591",
-      "fill": "#82aaff",
-      "check": "#16161e"
+      "size": 16.0,
+      "radius": 2.0,
+      "stroke": 1.0,
+      "border": "#42ffffff",
+      "fill": "#ff0870e4",
+      "check": "#ffffffff"
     },
     "table": {
       "grid": "#12667a9c",
@@ -430,12 +430,12 @@
       "stripe_deleted": "#ccc75c5c"
     },
     "tree": {
-      "font_size": 32.0,
-      "indent": 26.0,
-      "text_x": 36.0,
+      "font_size": 13.0,
+      "indent": 24.0,
+      "text_x": 28.0,
       "highlight": "#ff1d1f2b",
-      "directory": "#c9d2e4",
-      "file": "#c9d2e4"
+      "directory": "#ffe0e1e4",
+      "file": "#ffe0e1e4"
     },
     "chat": {
       "pad": 16.0,
