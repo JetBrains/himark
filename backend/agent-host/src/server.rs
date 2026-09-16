@@ -2941,7 +2941,11 @@ impl Host {
             found
         };
         let Some((text, version)) = found else {
-            return rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {}", params.channel));
+            return rpc::failure(
+                id,
+                NO_SUCH_CHANNEL,
+                format!("no channel {}", params.channel),
+            );
         };
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);

@@ -15,7 +15,9 @@ pub struct Applied<I, A> {
 pub enum Local<A> {
     Edit(A),
 
-    Took { seen_local: u64 },
+    Took {
+        seen_local: u64,
+    },
 
     /// Fires once every local edit enqueued before it is committed —
     /// the moment the shared state is known to hold them all.

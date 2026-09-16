@@ -421,6 +421,7 @@ mod app {
                         hiahp::fsroute::RouteStore {
                             directory: Arc::clone(&seats),
                             uris: Arc::clone(&resource_uris),
+                            channels: Arc::clone(&document_channels),
                         },
                     );
                     state.register_editor_command(Arc::new(himark::SaveDocument::existing_files()));
