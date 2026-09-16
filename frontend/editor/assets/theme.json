@@ -6,7 +6,8 @@
       "font_families": [
         "SF Pro Text",
         "Helvetica Neue",
-        "Arial"
+        "Segoe UI",
+        "sans-serif"
       ],
       "font_size": 32.0,
       "line_height": 1.36,
@@ -24,7 +25,9 @@
       "font_families": [
         "SF Mono",
         "Menlo",
-        "Monaco"
+        "JetBrains Mono",
+        "Consolas",
+        "monospace"
       ],
       "color": "#86b9e8",
       "background": "#1b2231",
@@ -89,7 +92,9 @@
       "font_families": [
         "SF Mono",
         "Menlo",
-        "Monaco"
+        "JetBrains Mono",
+        "Consolas",
+        "monospace"
       ],
       "font_size": 27.0,
       "line_height": 1.5,
@@ -122,7 +127,8 @@
       "font_families": [
         "SF Pro Text",
         "Helvetica Neue",
-        "Arial"
+        "Segoe UI",
+        "sans-serif"
       ],
       "color": "#66719c",
       "italic": true
@@ -193,7 +199,9 @@
       "font_families": [
         "SF Mono",
         "Menlo",
-        "Monaco"
+        "JetBrains Mono",
+        "Consolas",
+        "monospace"
       ],
       "font_size": 27.0,
       "line_height": 1.5,
@@ -351,7 +359,9 @@
       "font_families": [
         "SF Mono",
         "Menlo",
-        "Monaco"
+        "JetBrains Mono",
+        "Consolas",
+        "monospace"
       ],
       "font_size": 26.0,
       "background": "#16161e",
