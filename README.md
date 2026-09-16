@@ -10,6 +10,19 @@ A separate backend process, the **agent host**, owns everything that touches
 the outside world: files, search, terminals, language servers, git, and
 coding agents (Claude Code and Codex).
 
+<p align="center">
+  <img src="readme-screenshots/markdown.png" width="49%" alt="Markdown editing" />
+  <img src="readme-screenshots/chat.png" width="49%" alt="Agent chat" />
+</p>
+<p align="center">
+  <img src="readme-screenshots/diff.png" width="49%" alt="Inline diff" />
+  <img src="readme-screenshots/split.png" width="49%" alt="Split diff" />
+</p>
+<p align="center">
+  <img src="readme-screenshots/find.png" width="49%" alt="Search" />
+  <img src="readme-screenshots/tables.png" width="49%" alt="Tables" />
+</p>
+
 ## Repository layout
 
 ```
