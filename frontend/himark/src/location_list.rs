@@ -1097,8 +1097,7 @@ impl View for LocationList {
                 (constraints.max.width - inset).max(1.0).to_bits(),
                 std::sync::atomic::Ordering::Relaxed,
             );
-            self.results
-                .layout(arena, store, ui, constraints)
+            imba::Layout::layout(self.results.display(arena, store, ui), arena, constraints)
                 .map(LocationListCommand::Results)
         })
     }
@@ -1197,18 +1196,12 @@ impl View for ListPanel {
                 Some(entry) => panel.place(
                     0.0,
                     header,
-                    entry
-                        .list
-                        .layout(
-                            arena,
-                            store,
-                            ui,
-                            Constraints::tight(Size::new(
-                                size.width,
-                                (size.height - header).max(1.0),
-                            )),
-                        )
-                        .map(ListPanelCommand::List),
+                    imba::Layout::layout(
+                        entry.list.display(arena, store, ui),
+                        arena,
+                        Constraints::tight(Size::new(size.width, (size.height - header).max(1.0))),
+                    )
+                    .map(ListPanelCommand::List),
                 ),
                 None => panel.place(
                     0.0,
@@ -1323,10 +1316,9 @@ impl<'a> imba::Layout<'a, GroupCommand> for GroupFrame<'a> {
         let GroupFrame { group, store, ui } = self;
         let width = constraints.max.width;
         let chrome = crate::env::Themes::of(store).ui().search.clone();
-        let rows = group.rows.layout(
+        let rows = imba::Layout::layout(
+            group.rows.display(arena, store, ui),
             arena,
-            store,
-            ui,
             Constraints {
                 min: Size::default(),
                 max: Size::new((width - chrome.group_text_x).max(120.0), f32::MAX),

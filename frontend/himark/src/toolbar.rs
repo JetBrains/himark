@@ -298,18 +298,15 @@ impl Toolbar {
 
         match &self.session {
             Some(session) => {
-                let input = session
-                    .input
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints::tight(Size::new(
-                            input_width(well_width, &chrome),
-                            (chrome.well_height - chrome.input_shrink).max(1.0),
-                        )),
-                    )
-                    .map(ToolbarCommand::Input);
+                let input = imba::Layout::layout(
+                    session.input.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(
+                        input_width(well_width, &chrome),
+                        (chrome.well_height - chrome.input_shrink).max(1.0),
+                    )),
+                )
+                .map(ToolbarCommand::Input);
                 strip.place(
                     well_x + chrome.input_inset_x,
                     well_y + chrome.input_shrink * 0.5,

@@ -140,10 +140,9 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
     let ui = UiCtx::cold();
     let viewport = Rect::from_wh(200.0, 90.0);
     let widget = crate::Thunk::realize(
-        rows.layout(
+        crate::Layout::layout(
+            rows.display(&arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             Constraints::tight(Size::new(200.0, 90.0)),
         ),
         &arena,

@@ -650,16 +650,13 @@ impl View for Peeker {
                 let preview_height = (size.height - list_top - margin).max(1.0);
                 match slot {
                     PreviewSlot::Editor(preview) => {
-                        let pane = preview
-                            .pane
-                            .layout(
-                                arena,
-                                store,
-                                ui,
-                                Constraints::tight(Size::new(preview_width, preview_height)),
-                            )
-                            .map(PeekerCommand::Preview)
-                            .focus_scope(false);
+                        let pane = imba::Layout::layout(
+                            preview.pane.display(arena, store, ui),
+                            arena,
+                            Constraints::tight(Size::new(preview_width, preview_height)),
+                        )
+                        .map(PeekerCommand::Preview)
+                        .focus_scope(false);
                         container.place(preview_x, list_top, pane);
                     }
                     PreviewSlot::Widget(index) => {
@@ -690,14 +687,12 @@ impl View for Peeker {
             container.place(
                 list_x,
                 list_top,
-                self.list
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints::tight(Size::new(list_width, list_height)),
-                    )
-                    .map(PeekerCommand::Rows),
+                imba::Layout::layout(
+                    self.list.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(list_width, list_height)),
+                )
+                .map(PeekerCommand::Rows),
             );
 
             let keymap = leaf::<PeekerCommand>(size.width, size.height).event(

@@ -3023,7 +3023,11 @@ fn gutter_paints_numbers_beside_shifted_text() {
         min: skia_safe::Size::default(),
         max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
     };
-    let widget = imba::View::layout(&view, &arena, &store, &ui, constraints);
+    let widget = imba::Layout::layout(
+        imba::View::display(&view, &arena, &store, &ui),
+        &arena,
+        constraints,
+    );
     let size = imba::Thunk::size(&widget);
     let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
     assert!(
@@ -3062,7 +3066,11 @@ fn gutter_paints_numbers_beside_shifted_text() {
 
     drop(widget);
     view.gutter_width = 0.0;
-    let widget = imba::View::layout(&view, &arena, &store, &ui, constraints);
+    let widget = imba::Layout::layout(
+        imba::View::display(&view, &arena, &store, &ui),
+        &arena,
+        constraints,
+    );
     let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
     surface.canvas().clear(background);
     let _ = imba::Widget::handle_event(
@@ -3105,7 +3113,11 @@ fn gutter_numbers_share_the_text_baseline() {
         min: skia_safe::Size::default(),
         max: skia_safe::Size::new(400.0 + chrome.width, f32::MAX),
     };
-    let widget = imba::View::layout(&view, &arena, &store, &ui, constraints);
+    let widget = imba::Layout::layout(
+        imba::View::display(&view, &arena, &store, &ui),
+        &arena,
+        constraints,
+    );
     let size = imba::Thunk::size(&widget);
     let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(size.width, 200.0));
     let mut surface =
@@ -3452,7 +3464,11 @@ mod folding {
             max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
         };
         let y = view.document.height_before(editor, interior().start) + 2.0;
-        let widget = imba::View::layout(&view, &arena, &store, &ui, constraints);
+        let widget = imba::Layout::layout(
+            imba::View::display(&view, &arena, &store, &ui),
+            &arena,
+            constraints,
+        );
         let widget = imba::Thunk::realize(
             widget,
             &arena,
@@ -4264,7 +4280,11 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
         constraints: imba::constraints::Constraints,
         viewport: skia_safe::Rect,
     ) -> Vec<(skia_safe::Rect, imba::overlay::OverlayHost)> {
-        let thunk = imba::View::layout(view, arena, store, ui, constraints);
+        let thunk = imba::Layout::layout(
+            imba::View::display(view, arena, store, ui),
+            arena,
+            constraints,
+        );
         let mut widget = imba::Thunk::realize(thunk, arena, viewport);
         imba::Widget::overlays(&mut widget)
             .into_iter()
@@ -4391,7 +4411,11 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     };
     let drain =
         |viewport: skia_safe::Rect| -> Vec<imba::overlay::Overlay<'_, crate::EditorCommand>> {
-            let thunk = imba::View::layout(&view, &arena, &store, &ui, constraints);
+            let thunk = imba::Layout::layout(
+                imba::View::display(&view, &arena, &store, &ui),
+                &arena,
+                constraints,
+            );
             let mut widget = imba::Thunk::realize(thunk, &arena, viewport);
             imba::Widget::overlays(&mut widget)
                 .into_iter()

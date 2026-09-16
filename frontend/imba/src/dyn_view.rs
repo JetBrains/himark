@@ -57,7 +57,7 @@ where
     ) -> crate::ThunkBox<'a, DynCommand> {
         crate::ThunkBox::new(
             arena,
-            self.layout(arena, store, ui, constraints)
+            crate::Layout::layout(self.display(arena, store, ui), arena, constraints)
                 .map(|command| Box::new(command) as DynCommand),
         )
     }

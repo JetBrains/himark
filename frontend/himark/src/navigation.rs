@@ -196,7 +196,7 @@ impl Navigator for EditorNavigator {
         crate::OpenDocuments::touch(store, id);
         let mut pane =
             imba::scroll::ScrollView::new(crate::EditorIdView::new(id, editor).with_gutter());
-        pane.set_scroll_y(store, place.scroll_y);
+        pane.set_scroll_y(place.scroll_y);
         Some(crate::Panel::Editor(pane))
     }
 }

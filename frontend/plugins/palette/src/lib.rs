@@ -221,14 +221,12 @@ impl View for PaletteView {
             container.place(
                 list_x,
                 list_top,
-                self.list
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints::tight(Size::new(list_width, list_height)),
-                    )
-                    .map(PaletteCommand::Rows),
+                imba::Layout::layout(
+                    self.list.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(list_width, list_height)),
+                )
+                .map(PaletteCommand::Rows),
             );
 
             let keymap = leaf::<PaletteCommand>(size.width, size.height).event(

@@ -182,21 +182,12 @@ impl<Content> ScrollView<Content> {
         self.scroll_y
     }
 
-    /// Constructor-time restore for a FRESHLY built scroll: places
-    /// the offset without notifying the content (there is no stale
-    /// viewport state to supersede yet). Live scrolls go through
-    /// `set_scroll_y`, which keeps the content's retained viewport
-    /// honest.
-    pub fn restore_scroll_y(&mut self, scroll_y: f32) {
+    /// Programmatic placement (constructor restores, tail pins,
+    /// navigation). Content that anchors its viewport re-observes
+    /// the top on its next traversal — Paint, or the settle pulse a
+    /// mutating command raises (docs/viewport-preservation.md §3.1).
+    pub fn set_scroll_y(&mut self, scroll_y: f32) {
         self.scroll_y = scroll_y.max(0.0);
-        self.glide = None;
-    }
-}
-
-impl<Content: View> ScrollView<Content> {
-    pub fn set_scroll_y(&mut self, store: &mut Store, scroll_y: f32) {
-        self.scroll_y = scroll_y.max(0.0);
-        self.content.scrolled(store, self.scroll_y);
         self.glide = None;
     }
 }
@@ -225,13 +216,17 @@ where
             }),
             ScrollCommand::SetScrollY(scroll_y) => {
                 self.scroll_y = scroll_y.max(0.0);
-                self.content.scrolled(store, self.scroll_y);
+                // The content is not told: it RE-OBSERVES on the
+                // settle pulse this raise triggers — the pulse runs
+                // before any later batch, so a door never anchors on
+                // a top older than this move (docs §3.1).
+                fx.settle();
 
                 self.glide = None;
             }
             ScrollCommand::JumpTo(target) => {
                 self.scroll_y = target.max(0.0);
-                self.content.scrolled(store, self.scroll_y);
+                fx.settle();
 
                 self.glide = None;
             }
@@ -244,7 +239,7 @@ where
             }
             ScrollCommand::GlideStep(next, now) => {
                 self.scroll_y = next.max(0.0);
-                self.content.scrolled(store, self.scroll_y);
+                fx.settle();
                 if let Some(glide) = &mut self.glide {
                     glide.last = Some(now);
                     if (glide.target - self.scroll_y).abs() <= GLIDE_EPSILON {
@@ -255,7 +250,7 @@ where
             }
             ScrollCommand::BeginKnobDrag { scroll_y, grab } => {
                 self.scroll_y = scroll_y.max(0.0);
-                self.content.scrolled(store, self.scroll_y);
+                fx.settle();
                 self.drag = Some(grab);
                 self.glide = None;
             }
@@ -273,10 +268,9 @@ where
     ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
         crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let viewport = constraints.max;
-            let content = self.content.layout(
+            let content = crate::Layout::layout(
+                self.content.display(arena, store, ui),
                 arena,
-                store,
-                ui,
                 Constraints {
                     min: Size::new(0.0, viewport.height),
                     max: Size::new(viewport.width, f32::MAX),

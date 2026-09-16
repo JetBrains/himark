@@ -263,9 +263,9 @@ impl Panel {
         }
     }
 
-    pub fn set_scroll_y(&mut self, store: &mut Store, scroll_y: f32) {
+    pub fn set_scroll_y(&mut self, scroll_y: f32) {
         match self {
-            Self::Editor(pane) => pane.set_scroll_y(store, scroll_y),
+            Self::Editor(pane) => pane.set_scroll_y(scroll_y),
             Self::Plugin(_) => {}
         }
     }
@@ -373,7 +373,7 @@ impl Panel {
                     document.reveal_at(view.editor(), place.caret, &fonts, &theme, fx)
                 });
                 crate::OpenDocuments::put_document(store, view.document(), document);
-                pane.set_scroll_y(store, place.scroll_y);
+                pane.set_scroll_y(place.scroll_y);
                 true
             }
             Self::Plugin(view) => view.navigate_to_dyn(store, target, fx),
@@ -435,7 +435,7 @@ impl View for Panel {
                             crate::OpenDocuments::document_ref(store, view.document())
                         {
                             let target = document.height_before(view.editor(), anchor);
-                            pane.set_scroll_y(store, target);
+                            pane.set_scroll_y(target);
                         }
                     }
                 }
@@ -460,7 +460,7 @@ impl View for Panel {
             let content: imba::ThunkBox<'a, PanelCommand> = match self {
                 Self::Editor(pane) => imba::ThunkBox::new(
                     arena,
-                    pane.layout(arena, store, ui, constraints)
+                    imba::Layout::layout(pane.display(arena, store, ui), arena, constraints)
                         .map(PanelCommand::Editor)
                         .overlay_host(editor::sticky::HOST)
                         .overlay_host(editor::scroll_stripe::HOST),
@@ -1149,9 +1149,12 @@ impl View for WorkbenchNode {
                 Self::Leaf(slot) => match &slot.find {
                     None => imba::ThunkBox::new(
                         arena,
-                        slot.panel
-                            .layout(arena, store, ui, constraints)
-                            .map(NodeCommand::Leaf),
+                        imba::Layout::layout(
+                            slot.panel.display(arena, store, ui),
+                            arena,
+                            constraints,
+                        )
+                        .map(NodeCommand::Leaf),
                     ),
 
                     Some(find) => {
@@ -1162,17 +1165,15 @@ impl View for WorkbenchNode {
                         column.place(
                             0.0,
                             bar_height,
-                            slot.panel
-                                .layout(
-                                    arena,
-                                    store,
-                                    ui,
-                                    Constraints::tight(skia_safe::Size::new(
-                                        size.width,
-                                        (size.height - bar_height).max(1.0),
-                                    )),
-                                )
-                                .map(NodeCommand::Leaf),
+                            imba::Layout::layout(
+                                slot.panel.display(arena, store, ui),
+                                arena,
+                                Constraints::tight(skia_safe::Size::new(
+                                    size.width,
+                                    (size.height - bar_height).max(1.0),
+                                )),
+                            )
+                            .map(NodeCommand::Leaf),
                         );
                         column.place(
                             0.0,
@@ -1192,8 +1193,7 @@ impl View for WorkbenchNode {
                     let inset = window.divider_inset;
                     imba::ThunkBox::new(
                         arena,
-                        split
-                            .layout(arena, store, ui, constraints)
+                        imba::Layout::layout(split.display(arena, store, ui), arena, constraints)
                             .map(|command| NodeCommand::Split(Box::new(command)))
                             .paint_below(move |_arena, canvas, _| {
                                 let mut paint = skia_safe::Paint::default();

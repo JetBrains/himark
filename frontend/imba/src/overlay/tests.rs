@@ -512,17 +512,15 @@ fn scroll_carries_anchors_by_the_scroll_offset() {
             &mut batch.effects(),
         );
     }
-    let mut widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints {
-                min: Size::default(),
-                max: Size::new(100.0, 200.0),
-            },
-        )
-        .realize(&arena, Rect::from_wh(100.0, 200.0));
+    let mut widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints {
+            min: Size::default(),
+            max: Size::new(100.0, 200.0),
+        },
+    )
+    .realize(&arena, Rect::from_wh(100.0, 200.0));
 
     let overlays = widget.overlays();
     assert_eq!(overlays.len(), 1);

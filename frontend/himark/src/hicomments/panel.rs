@@ -385,15 +385,12 @@ impl View for CommentsView {
             let chrome = crate::env::Themes::of(store).ui().peeker.clone();
             let chip_height = chrome.hint_size * 2.0;
             let band = chrome.margin + chip_height + PANEL_PAD;
-            let rows = self
-                .list
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(size.width, size.height - band)),
-                )
-                .map(CommentsCommand::Rows);
+            let rows = imba::Layout::layout(
+                self.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(size.width, size.height - band)),
+            )
+            .map(CommentsCommand::Rows);
             overlay.place(0.0, band, rows);
 
             let chip_font = crate::fonts::ui_font(ui, chrome.hint_size);

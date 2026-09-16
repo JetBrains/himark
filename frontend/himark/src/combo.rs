@@ -38,17 +38,15 @@ where
     T::Command: Send + 'static,
 {
     let arena = imba::arena::Arena::default();
-    let size = item
-        .layout(
-            &arena,
-            store,
-            ui,
-            Constraints {
-                min: Size::default(),
-                max: Size::new(f32::INFINITY, f32::INFINITY),
-            },
-        )
-        .size();
+    let size = imba::Layout::layout(
+        item.display(&arena, store, ui),
+        &arena,
+        Constraints {
+            min: Size::default(),
+            max: Size::new(f32::INFINITY, f32::INFINITY),
+        },
+    )
+    .size();
     size
 }
 
@@ -618,15 +616,12 @@ where
             ),
         );
 
-        let rows = self
-            .menu
-            .layout(
-                arena,
-                self.store,
-                self.ui,
-                Constraints::tight(Size::new(width - 2.0, viewport_height)),
-            )
-            .map(|command| ComboCommand::Menu(Box::new(command)));
+        let rows = imba::Layout::layout(
+            self.menu.display(arena, self.store, self.ui),
+            arena,
+            Constraints::tight(Size::new(width - 2.0, viewport_height)),
+        )
+        .map(|command| ComboCommand::Menu(Box::new(command)));
         menu.place(1.0, 1.0, rows);
 
         let searching = self.searching;

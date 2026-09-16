@@ -261,14 +261,12 @@ fn scroll_view_clamps_wheel_commands_to_content_bounds() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 120.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 120.0));
 
     let gesture = crate::event::ScrollGesture::default();
 
@@ -381,14 +379,12 @@ fn scrolled(
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 120.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 120.0));
     let event = Event::Scroll {
         point: Point::new(50.0, 60.0),
         delta_x,
@@ -408,7 +404,7 @@ fn an_exhausted_owner_eats_the_gesture() {
         EventResult::Command(ScrollCommand::SetScrollY(y)) => assert_eq!(y, 380.0),
         _ => panic!("the view claims and scrolls"),
     }
-    view.set_scroll_y(&mut Store::new(), 380.0);
+    view.set_scroll_y(380.0);
 
     match scrolled(&view, &gesture, 0.0, 100.0) {
         EventResult::Handled => {}
@@ -473,14 +469,12 @@ fn a_fitted_view_never_claims() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 120.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 120.0));
     let gesture = crate::event::ScrollGesture::default();
     let event = Event::Scroll {
         point: Point::new(50.0, 60.0),
@@ -507,14 +501,12 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
     let ui = crate::ui::UiCtx::cold();
     perform_into(&mut view, &mut store, &ui, ScrollCommand::SetScrollY(75.0));
     let arena = Arena::default();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 120.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 120.0));
 
     let event = Event::MouseDown {
         mods: Default::default(),
@@ -723,14 +715,12 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
     let mut store = Store::new();
     let ui = crate::ui::UiCtx::cold();
     let command = {
-        let widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(10.0, 10.0)),
-            )
-            .realize(&arena, Rect::from_wh(10.0, 10.0));
+        let widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(10.0, 10.0)),
+        )
+        .realize(&arena, Rect::from_wh(10.0, 10.0));
         let event = Event::MouseDown {
             mods: Default::default(),
             point: Point::new(5.0, 5.0),
@@ -761,14 +751,12 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(200.0, 100.0)),
-        )
-        .realize(&arena, Rect::from_wh(200.0, 100.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(200.0, 100.0)),
+    )
+    .realize(&arena, Rect::from_wh(200.0, 100.0));
 
     let event = Event::MouseDown {
         mods: Default::default(),
@@ -821,14 +809,12 @@ fn split_view_divides_the_main_axis_by_ratio() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 200.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 200.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 200.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 200.0));
 
     let event = Event::MouseDown {
         mods: Default::default(),
@@ -897,14 +883,12 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     let arena = Arena::default();
 
     {
-        let widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(200.0, 120.0)),
-            )
-            .realize(&arena, Rect::from_wh(200.0, 120.0));
+        let widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(200.0, 120.0)),
+        )
+        .realize(&arena, Rect::from_wh(200.0, 120.0));
         let gesture = crate::event::ScrollGesture::default();
         let event = Event::Scroll {
             delta_x: 0.0,
@@ -921,14 +905,12 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     assert_eq!(view.focused(), Pane::First);
 
     let command = {
-        let widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(200.0, 120.0)),
-            )
-            .realize(&arena, Rect::from_wh(200.0, 120.0));
+        let widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(200.0, 120.0)),
+        )
+        .realize(&arena, Rect::from_wh(200.0, 120.0));
         let event = Event::MouseDown {
             mods: Default::default(),
             point: Point::new(150.0, 60.0),
@@ -948,14 +930,12 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     assert_eq!(view.focused(), Pane::Second);
 
     {
-        let widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(200.0, 120.0)),
-            )
-            .realize(&arena, Rect::from_wh(200.0, 120.0));
+        let widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(200.0, 120.0)),
+        )
+        .realize(&arena, Rect::from_wh(200.0, 120.0));
         let event = Event::TextInput { text: "x" };
         assert!(matches!(
             widget.handle_event(&arena, &event, Rect::from_wh(200.0, 120.0)),
@@ -1073,14 +1053,12 @@ fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
     let mut list = row_list();
 
     let command = {
-        let widget = list
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(100.0, 60.0)),
-            )
-            .realize(&arena, root_viewport());
+        let widget = crate::Layout::layout(
+            list.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(100.0, 60.0)),
+        )
+        .realize(&arena, root_viewport());
         assert_eq!(widget.size(), Size::new(100.0, 60.0), "heights stack");
 
         let event = Event::MouseDown {
@@ -1120,14 +1098,12 @@ fn list_routes_position_less_events_to_the_focused_row() {
     let mut list = row_list();
 
     {
-        let widget = list
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(100.0, 60.0)),
-            )
-            .realize(&arena, root_viewport());
+        let widget = crate::Layout::layout(
+            list.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(100.0, 60.0)),
+        )
+        .realize(&arena, root_viewport());
         let event = Event::TextInput { text: "x" };
         assert!(matches!(
             widget.handle_event(&arena, &event, root_viewport()),
@@ -1137,14 +1113,12 @@ fn list_routes_position_less_events_to_the_focused_row() {
 
     perform_into(&mut list, &mut store, &ui, ListCommand::Focus(2, None));
 
-    let widget = list
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 60.0)),
-        )
-        .realize(&arena, root_viewport());
+    let widget = crate::Layout::layout(
+        list.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 60.0)),
+    )
+    .realize(&arena, root_viewport());
     let event = Event::TextInput { text: "x" };
     let result = widget.handle_event(&arena, &event, root_viewport());
     assert!(
@@ -1258,14 +1232,12 @@ fn list_paint_reconciles_stale_row_heights() {
     ]));
 
     let commands = {
-        let widget = list
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(100.0, 60.0)),
-            )
-            .realize(&arena, root_viewport());
+        let widget = crate::Layout::layout(
+            list.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(100.0, 60.0)),
+        )
+        .realize(&arena, root_viewport());
         let canvas = surface.canvas();
         match widget.handle_event(
             &arena,
@@ -1286,14 +1258,12 @@ fn list_paint_reconciles_stale_row_heights() {
     }
     assert_eq!(list.total_height(), 50.0, "the fresh height is spliced in");
 
-    let widget = list
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 60.0)),
-        )
-        .realize(&arena, root_viewport());
+    let widget = crate::Layout::layout(
+        list.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 60.0)),
+    )
+    .realize(&arena, root_viewport());
     let canvas = surface.canvas();
     assert!(matches!(
         widget.handle_event(
@@ -1336,9 +1306,12 @@ fn list_scroll_benchmark() {
         let started = std::time::Instant::now();
 
         let command = {
-            let widget = view
-                .layout(&arena, &store, &ui, Constraints::tight(VIEWPORT))
-                .realize(&arena, viewport);
+            let widget = crate::Layout::layout(
+                view.display(&arena, &store, &ui),
+                &arena,
+                Constraints::tight(VIEWPORT),
+            )
+            .realize(&arena, viewport);
             let gesture = crate::event::ScrollGesture::default();
             let event = Event::Scroll {
                 delta_x: 0.0,
@@ -1356,9 +1329,12 @@ fn list_scroll_benchmark() {
         }
 
         {
-            let widget = view
-                .layout(&arena, &store, &ui, Constraints::tight(VIEWPORT))
-                .realize(&arena, viewport);
+            let widget = crate::Layout::layout(
+                view.display(&arena, &store, &ui),
+                &arena,
+                Constraints::tight(VIEWPORT),
+            )
+            .realize(&arena, viewport);
             let canvas = surface.canvas();
             let _ = widget.handle_event(
                 &arena,
@@ -1398,14 +1374,12 @@ fn focus_commands_of<V: View>(
     ui: &crate::ui::UiCtx,
 ) -> Vec<crate::PresentableCommand<V::Command>> {
     let arena = Arena::default();
-    let mut widget = view
-        .layout(
-            &arena,
-            store,
-            ui,
-            Constraints::tight(Size::new(200.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(200.0, 120.0));
+    let mut widget = crate::Layout::layout(
+        view.display(&arena, store, ui),
+        &arena,
+        Constraints::tight(Size::new(200.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(200.0, 120.0));
     let commands = std::mem::take(&mut widget.focus_data().commands);
     drop(widget);
     commands
@@ -1757,17 +1731,15 @@ mod animated_splice {
         let arena = Arena::default();
         let mut surface = surfaces::raster_n32_premul((100, 200)).expect("raster surface");
         let result = {
-            let widget = list
-                .layout(
-                    &arena,
-                    &store,
-                    &ui,
-                    Constraints {
-                        min: Size::default(),
-                        max: Size::new(100.0, f32::MAX),
-                    },
-                )
-                .realize(&arena, Rect::from_wh(100.0, 200.0));
+            let widget = crate::Layout::layout(
+                list.display(&arena, &store, &ui),
+                &arena,
+                Constraints {
+                    min: Size::default(),
+                    max: Size::new(100.0, f32::MAX),
+                },
+            )
+            .realize(&arena, Rect::from_wh(100.0, 200.0));
             widget.handle_event(
                 &arena,
                 &Event::Paint {
@@ -1921,14 +1893,12 @@ fn knob_event(
     let store = Store::new();
     let ui = crate::ui::UiCtx::cold();
     ui.set(scrollbar_style());
-    let widget = view
-        .layout(
-            &arena,
-            &store,
-            &ui,
-            Constraints::tight(Size::new(100.0, 120.0)),
-        )
-        .realize(&arena, Rect::from_wh(100.0, 120.0));
+    let widget = crate::Layout::layout(
+        view.display(&arena, &store, &ui),
+        &arena,
+        Constraints::tight(Size::new(100.0, 120.0)),
+    )
+    .realize(&arena, Rect::from_wh(100.0, 120.0));
     widget.handle_event(&arena, &event, Rect::from_wh(100.0, 120.0))
 }
 
@@ -2078,6 +2048,17 @@ mod viewport_preservation {
         ListView::from_slice_at(100.0, slice)
     }
 
+    fn observe_top(list: &mut ListView<Row, u64>, store: &mut Store, top: f32) {
+        let ui = crate::ui::UiCtx::cold();
+        let mut batch: crate::effect::Batch<ListCommand<RowCommand>> = crate::effect::Batch::new();
+        list.perform(
+            store,
+            &ui,
+            ListCommand::ViewportTop(top),
+            &mut batch.effects(),
+        );
+    }
+
     fn pulse_list(
         list: &ListView<Row, u64>,
         store: &Store,
@@ -2086,17 +2067,15 @@ mod viewport_preservation {
         viewport: Rect,
     ) -> EventResult<ListCommand<RowCommand>> {
         let arena = Arena::default();
-        let widget = list
-            .layout(
-                &arena,
-                store,
-                ui,
-                Constraints {
-                    min: Size::default(),
-                    max: Size::new(100.0, f32::MAX),
-                },
-            )
-            .realize(&arena, viewport);
+        let widget = crate::Layout::layout(
+            list.display(&arena, store, ui),
+            &arena,
+            Constraints {
+                min: Size::default(),
+                max: Size::new(100.0, f32::MAX),
+            },
+        )
+        .realize(&arena, viewport);
         widget.handle_event(&arena, event, viewport)
     }
 
@@ -2109,7 +2088,7 @@ mod viewport_preservation {
         // the top in through the `scrolled` hook — retained state,
         // mutated where every scroll mutation happens.
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
-        list.scrolled(&mut store, 45.0);
+        observe_top(&mut list, &mut store, 45.0);
         let viewport = Rect::from_xywh(0.0, 45.0, 100.0, 60.0);
 
         // Three 30px rows land ABOVE the viewport.
@@ -2127,7 +2106,7 @@ mod viewport_preservation {
         }
 
         // The correction lands as a scroll — which supersedes it.
-        list.scrolled(&mut store, 135.0);
+        observe_top(&mut list, &mut store, 135.0);
         assert!(
             matches!(
                 pulse_list(
@@ -2148,7 +2127,7 @@ mod viewport_preservation {
         let mut store = Store::new();
         let ui = crate::ui::UiCtx::cold();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
-        list.scrolled(&mut store, 45.0);
+        observe_top(&mut list, &mut store, 45.0);
         let viewport = Rect::from_xywh(0.0, 45.0, 100.0, 60.0);
 
         list.splice(10..10, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
@@ -2169,24 +2148,44 @@ mod viewport_preservation {
         let mut scroll = ScrollView::new(keyed_rows(
             &(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>(),
         ));
-        // set_scroll_y pushes the top into the content by itself.
-        scroll.set_scroll_y(&mut store, 45.0);
+        scroll.set_scroll_y(45.0);
+
+        let pulse = |scroll: &ScrollView<ListView<Row, u64>>, store: &Store| {
+            let arena = Arena::default();
+            let result = crate::Layout::layout(
+                scroll.display(&arena, store, &ui),
+                &arena,
+                Constraints::tight(Size::new(100.0, 60.0)),
+            )
+            .realize(&arena, Rect::from_wh(100.0, 60.0))
+            .handle_event(&arena, &Event::Settle, Rect::from_wh(100.0, 60.0));
+            result
+        };
+
+        // Round one: the widget RE-OBSERVES the moved top — the
+        // report is the answer, and its perform refreshes the
+        // retained copy before any door can read it.
+        let mut batch: crate::effect::Batch<ScrollCommand<ListCommand<RowCommand>>> =
+            crate::effect::Batch::new();
+        let commands = match pulse(&scroll, &store) {
+            EventResult::Command(command) => vec![command],
+            EventResult::Commands(commands) => commands,
+            _ => panic!("round one reports the top"),
+        };
+        assert!(commands.iter().any(|command| matches!(
+            command,
+            ScrollCommand::Content(ListCommand::ViewportTop(top)) if *top == 45.0
+        )));
+        for command in commands {
+            scroll.perform(&mut store, &ui, command, &mut batch.effects());
+        }
 
         scroll
             .content_mut()
             .splice(0..0, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
 
-        let arena = Arena::default();
-        let result = scroll
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(100.0, 60.0)),
-            )
-            .realize(&arena, Rect::from_wh(100.0, 60.0))
-            .handle_event(&arena, &Event::Settle, Rect::from_wh(100.0, 60.0));
-        match result {
+        // Round two: the door's correction, exact.
+        match pulse(&scroll, &store) {
             EventResult::Command(ScrollCommand::JumpTo(target)) => {
                 assert_eq!(target, 135.0, "the corner lands back on the anchored row");
             }
@@ -2230,18 +2229,16 @@ mod row_reveal {
         let event = Event::AnimationClock {
             now: AnimationClock::from_millis(16.0),
         };
-        let result = list
-            .layout(
-                &arena,
-                store,
-                ui,
-                Constraints {
-                    min: Size::default(),
-                    max: Size::new(100.0, f32::MAX),
-                },
-            )
-            .realize(&arena, viewport)
-            .handle_event(&arena, &event, viewport);
+        let result = crate::Layout::layout(
+            list.display(&arena, store, ui),
+            &arena,
+            Constraints {
+                min: Size::default(),
+                max: Size::new(100.0, f32::MAX),
+            },
+        )
+        .realize(&arena, viewport)
+        .handle_event(&arena, &event, viewport);
         result
     }
 

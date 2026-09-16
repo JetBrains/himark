@@ -546,18 +546,15 @@ impl View for AgentsPanel {
                 })
                 .hit_opaque();
             panel.place(0.0, 0.0, backdrop);
-            let rows = self
-                .list
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(
-                        PANEL_WIDTH - inset * 2.0 - 2.0,
-                        (size.height - inset * 2.0 - header - PANEL_PAD).max(1.0),
-                    )),
-                )
-                .map(AgentsCommand::Rows);
+            let rows = imba::Layout::layout(
+                self.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(
+                    PANEL_WIDTH - inset * 2.0 - 2.0,
+                    (size.height - inset * 2.0 - header - PANEL_PAD).max(1.0),
+                )),
+            )
+            .map(AgentsCommand::Rows);
             panel.place(inset + 1.0, inset + header + PANEL_PAD, rows);
             if let Some(input) = &self.adding {
                 let search = theme.ui().search.clone();
@@ -595,21 +592,19 @@ impl View for AgentsPanel {
                 panel.place(
                     inset + search.input_pad_x,
                     well_y + search.input_pad_y,
-                    input
-                        .layout(
-                            arena,
-                            store,
-                            ui,
-                            Constraints {
-                                min: Size::new(0.0, inner_height),
-                                max: Size::new(
-                                    (well_width - search.input_pad_x * 2.0).max(1.0),
-                                    inner_height,
-                                ),
-                            },
-                        )
-                        .map(AgentsCommand::AddHostInput)
-                        .focus_scope(true),
+                    imba::Layout::layout(
+                        input.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(0.0, inner_height),
+                            max: Size::new(
+                                (well_width - search.input_pad_x * 2.0).max(1.0),
+                                inner_height,
+                            ),
+                        },
+                    )
+                    .map(AgentsCommand::AddHostInput)
+                    .focus_scope(true),
                 );
             }
 

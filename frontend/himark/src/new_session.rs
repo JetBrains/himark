@@ -783,15 +783,13 @@ impl View for NewSessionView {
             root.place(
                 0.0,
                 top_pad,
-                self.input
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints::tight(Size::new(size.width, (editor_h - top_pad).max(1.0))),
-                    )
-                    .map(NewSessionCommand::Editor)
-                    .focus_scope(true),
+                imba::Layout::layout(
+                    self.input.display(arena, store, ui),
+                    arena,
+                    Constraints::tight(Size::new(size.width, (editor_h - top_pad).max(1.0))),
+                )
+                .map(NewSessionCommand::Editor)
+                .focus_scope(true),
             );
 
             let row_top = size.height - controls_h + 1.0;
@@ -1230,7 +1228,10 @@ impl View for ComposerPane {
                 );
                 return blank;
             };
-            imba::ThunkBox::new(arena, composer.layout(arena, store, ui, constraints))
+            imba::ThunkBox::new(
+                arena,
+                imba::Layout::layout(composer.display(arena, store, ui), arena, constraints),
+            )
         })
     }
 }

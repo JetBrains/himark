@@ -331,10 +331,9 @@ impl imba::View for HoverView {
                 let inner_height = document.content_height(self.view.editor);
                 let width = inner_width + CARD_PAD * 2.0;
                 let height = inner_height + CARD_PAD * 2.0;
-                let editor = self.view.layout(
+                let editor = imba::Layout::layout(
+                    self.view.display(arena, store, ui),
                     arena,
-                    store,
-                    ui,
                     imba::constraints::Constraints {
                         min: skia_safe::Size::new(inner_width, inner_height),
                         max: skia_safe::Size::new(inner_width, f32::MAX),

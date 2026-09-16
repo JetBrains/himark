@@ -108,10 +108,9 @@ impl View for TurnView {
         imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width.max(1.0);
             let content_width = Self::content_width(width);
-            let inner = self.cells.layout(
+            let inner = imba::Layout::layout(
+                self.cells.display(arena, store, ui),
                 arena,
-                store,
-                ui,
                 Constraints {
                     min: Size::new(content_width, 0.0),
                     max: Size::new(content_width, f32::MAX),

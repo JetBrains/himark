@@ -184,10 +184,9 @@ impl<'a> imba::Layout<'a, NodeCommand> for WorkbenchFrame<'a> {
             false => workbench_geometry(size.width, size.height, &theme.ui().window),
         };
         let split_height = (size.height - geometry.top).max(1.0);
-        let root = workbench.root.layout(
+        let root = imba::Layout::layout(
+            workbench.root.display(arena, store, ui),
             arena,
-            store,
-            ui,
             Constraints::tight(Size::new(geometry.split_width, split_height)),
         );
 

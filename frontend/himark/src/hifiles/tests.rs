@@ -541,11 +541,9 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         let arena = imba::arena::Arena::default();
         let ui = imba::UiCtx::cold();
         let size = skia_safe::Size::new(400.0, 600.0);
-        let widget = imba::View::layout(
-            &view,
+        let widget = imba::Layout::layout(
+            imba::View::display(&view, &arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             imba::constraints::Constraints::tight(size),
         );
         let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));

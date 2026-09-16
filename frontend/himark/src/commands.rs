@@ -16,11 +16,9 @@ pub fn palette_commands(
     let size = entity.viewport_size();
     let arena = imba::arena::Arena::default();
     let mut widget = imba::Thunk::realize(
-        imba::View::layout(
-            entity,
+        imba::Layout::layout(
+            imba::View::display(entity, &arena, store, ui),
             &arena,
-            store,
-            ui,
             imba::constraints::Constraints::tight(size),
         ),
         &arena,

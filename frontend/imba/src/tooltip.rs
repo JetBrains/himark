@@ -178,8 +178,7 @@ where
         crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let inner = ThunkBox::new(
                 arena,
-                self.view
-                    .layout(arena, store, ui, constraints)
+                crate::Layout::layout(self.view.display(arena, store, ui), arena, constraints)
                     .map(TooltipCommand::Host),
             );
             let tip = match &self.hover {
@@ -187,10 +186,9 @@ where
                     *anchor,
                     ThunkBox::new(
                         arena,
-                        tip.layout(
+                        crate::Layout::layout(
+                            tip.display(arena, store, ui),
                             arena,
-                            store,
-                            ui,
                             Constraints::tight(constraints.max).loosen(),
                         )
                         .map(|never: Infallible| match never {}),
@@ -368,14 +366,12 @@ mod tests {
         let commands = {
             let arena = Arena::default();
             let store = Store::new();
-            let widget = view
-                .layout(
-                    &arena,
-                    &store,
-                    &ui,
-                    Constraints::tight(Size::new(200.0, 40.0)),
-                )
-                .realize(&arena, Rect::from_wh(200.0, 40.0));
+            let widget = crate::Layout::layout(
+                view.display(&arena, &store, &ui),
+                &arena,
+                Constraints::tight(Size::new(200.0, 40.0)),
+            )
+            .realize(&arena, Rect::from_wh(200.0, 40.0));
             match widget.handle_event(&arena, &event, Rect::from_wh(200.0, 40.0)) {
                 EventResult::Command(command) => vec![command],
                 EventResult::Commands(commands) => commands,
@@ -393,14 +389,12 @@ mod tests {
         let arena = Arena::default();
         let store = Store::new();
         let ui = crate::ui::UiCtx::cold();
-        let mut widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(200.0, 40.0)),
-            )
-            .realize(&arena, Rect::from_wh(200.0, 40.0));
+        let mut widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(200.0, 40.0)),
+        )
+        .realize(&arena, Rect::from_wh(200.0, 40.0));
         let count = widget.overlays().len();
         drop(widget);
         count
@@ -461,14 +455,12 @@ mod tests {
         let arena = Arena::default();
         let store = Store::new();
         let ui = crate::ui::UiCtx::cold();
-        let widget = view
-            .layout(
-                &arena,
-                &store,
-                &ui,
-                Constraints::tight(Size::new(200.0, 40.0)),
-            )
-            .realize(&arena, Rect::from_wh(200.0, 40.0));
+        let widget = crate::Layout::layout(
+            view.display(&arena, &store, &ui),
+            &arena,
+            Constraints::tight(Size::new(200.0, 40.0)),
+        )
+        .realize(&arena, Rect::from_wh(200.0, 40.0));
         match widget.handle_event(
             &arena,
             &Event::HitTest {

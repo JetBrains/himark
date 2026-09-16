@@ -1967,7 +1967,11 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     toolbar_height,
                     imba::ThunkBox::new(
                         arena,
-                        layers.workbench.layout(arena, store, ui, base_below),
+                        imba::Layout::layout(
+                            layers.workbench.display(arena, store, ui),
+                            arena,
+                            base_below,
+                        ),
                     ),
                 ),
                 toolbar: layers.toolbar.layout(

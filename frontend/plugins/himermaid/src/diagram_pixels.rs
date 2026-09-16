@@ -15,11 +15,9 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let store = imba::Store::new();
     let ui = imba::UiCtx::cold();
     let arena = imba::arena::Arena::default();
-    let widget = imba::View::layout(
-        &view,
+    let widget = imba::Layout::layout(
+        imba::View::display(&view, &arena, &store, &ui),
         &arena,
-        &store,
-        &ui,
         imba::constraints::Constraints {
             min: Size::default(),
             max: Size::new(400.0, f32::MAX),

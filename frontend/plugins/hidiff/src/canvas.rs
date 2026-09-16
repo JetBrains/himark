@@ -366,10 +366,9 @@ fn mounted(
     });
     let height = {
         let frame = Arena::default();
-        let thunk = view.layout(
+        let thunk = imba::Layout::layout(
+            view.display(&frame, store, ui),
             &frame,
-            store,
-            ui,
             Constraints {
                 min: Size::new(editor_width, 0.0),
                 max: Size::new(editor_width + gutter, f32::MAX),
@@ -468,8 +467,7 @@ impl View for DiffCanvasView {
                 }
                 None => imba::ThunkBox::new(
                     arena,
-                    self.rows
-                        .layout(arena, store, ui, constraints)
+                    imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
                         .map(CanvasCommand::Rows),
                 ),
             };
@@ -766,17 +764,15 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
             }
             RowBody::Built { view } => {
                 let editor_target = (width - gutter).max(120.0);
-                let body = view
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints {
-                            min: Size::new(editor_target, 0.0),
-                            max: Size::new(editor_target + gutter, f32::MAX),
-                        },
-                    )
-                    .map(RowCommand::Diff);
+                let body = imba::Layout::layout(
+                    view.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(editor_target, 0.0),
+                        max: Size::new(editor_target + gutter, f32::MAX),
+                    },
+                )
+                .map(RowCommand::Diff);
                 let body_height = Thunk::size(&body).height;
                 let laid = view
                     .split

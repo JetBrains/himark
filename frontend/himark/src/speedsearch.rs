@@ -258,10 +258,9 @@ where
         imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut root = imba::container::container(arena, size);
-            let inner = self
-                .inner
-                .layout(arena, store, ui, constraints)
-                .map(SpeedSearchCommand::Inner);
+            let inner =
+                imba::Layout::layout(self.inner.display(arena, store, ui), arena, constraints)
+                    .map(SpeedSearchCommand::Inner);
             root.place(0.0, 0.0, inner);
 
             let searching = self.searching();
@@ -271,19 +270,16 @@ where
             let input_height = self.input.content_height().max(1.0);
             let pill_height = (input_height + 6.0).max(chrome.row_height * 0.75);
 
-            let input = self
-                .input
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(PILL_INPUT_WIDTH, input_height)),
-                )
-                .map(SpeedSearchCommand::Input)
-                .wrap(move |inner| ChainGate {
-                    inner,
-                    open: searching,
-                });
+            let input = imba::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(PILL_INPUT_WIDTH, input_height)),
+            )
+            .map(SpeedSearchCommand::Input)
+            .wrap(move |inner| ChainGate {
+                inner,
+                open: searching,
+            });
             let pill_width = PILL_INPUT_WIDTH + 16.0;
             let mut pill = imba::container::container(arena, Size::new(pill_width, pill_height));
             if searching {

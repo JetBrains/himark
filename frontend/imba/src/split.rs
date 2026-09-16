@@ -177,16 +177,20 @@ where
                 second_size.height,
             );
 
-            let first = self
-                .first
-                .layout(arena, store, ui, Constraints::tight(first_size))
-                .map(SplitCommand::First)
-                .focus_scope(self.focused == Pane::First);
-            let second = self
-                .second
-                .layout(arena, store, ui, Constraints::tight(second_size))
-                .map(SplitCommand::Second)
-                .focus_scope(self.focused == Pane::Second);
+            let first = crate::Layout::layout(
+                self.first.display(arena, store, ui),
+                arena,
+                Constraints::tight(first_size),
+            )
+            .map(SplitCommand::First)
+            .focus_scope(self.focused == Pane::First);
+            let second = crate::Layout::layout(
+                self.second.display(arena, store, ui),
+                arena,
+                Constraints::tight(second_size),
+            )
+            .map(SplitCommand::Second)
+            .focus_scope(self.focused == Pane::Second);
 
             let mut panes = container(arena, size);
             panes.place(first_rect.left, first_rect.top, first);

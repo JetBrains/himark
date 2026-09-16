@@ -204,9 +204,14 @@ impl imba::View for ChatPane {
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let widget: imba::ThunkBox<'a, Self::Command> =
                     match Chats::chat_ref(store, &self.chat) {
-                        Some(panel) => {
-                            imba::ThunkBox::new(arena, panel.layout(arena, store, ui, constraints))
-                        }
+                        Some(panel) => imba::ThunkBox::new(
+                            arena,
+                            imba::Layout::layout(
+                                panel.display(arena, store, ui),
+                                arena,
+                                constraints,
+                            ),
+                        ),
 
                         None => imba::ThunkBox::new(
                             arena,

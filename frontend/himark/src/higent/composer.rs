@@ -230,18 +230,16 @@ impl Composer {
         band.place(
             pad,
             box_pad,
-            self.input
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints {
-                        min: Size::new(editor_w, editor_h),
-                        max: Size::new(editor_w, editor_h),
-                    },
-                )
-                .map(ComposerCommand::Editor)
-                .focus_scope(focused),
+            imba::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints {
+                    min: Size::new(editor_w, editor_h),
+                    max: Size::new(editor_w, editor_h),
+                },
+            )
+            .map(ComposerCommand::Editor)
+            .focus_scope(focused),
         );
 
         let rewrap =

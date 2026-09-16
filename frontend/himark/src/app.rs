@@ -52,6 +52,7 @@ pub struct Application {
     /// viewport corrections land in the SAME frame
     /// (docs/viewport-preservation.md §3.2).
     settle_requested: bool,
+    settling: bool,
 }
 
 pub struct OpenedDocument {
@@ -359,6 +360,7 @@ impl Application {
             pending_file_events: Vec::new(),
             pending_diff_events: Vec::new(),
             settle_requested: false,
+            settling: false,
         };
         crate::startup_profile::log("Application::new", total_started);
         application
@@ -694,17 +696,6 @@ impl Application {
     }
 
     pub(crate) fn dispatch_paint(&mut self, window: WindowId, canvas: &Canvas, size: Size) -> bool {
-        // The settle loop: anchor-holding widgets answer the pulse
-        // with exact reveals; the resulting JumpTo commands perform
-        // inside the loop, so the frame below paints already
-        // corrected. Bounded — a correction that re-raises the bit
-        // gets a couple of rounds, then we take what we have.
-        let mut rounds = 0;
-        while self.settle_requested && rounds < 3 {
-            self.settle_requested = false;
-            self.dispatch_event(window, Event::Settle, size);
-            rounds += 1;
-        }
         let mut arena = std::mem::take(&mut self.ui_arena);
         arena.reset();
 
@@ -987,6 +978,33 @@ impl Application {
             for (window, size) in windows {
                 self.dispatch(window, Event::UserEvent(&event), size);
             }
+        }
+
+        // The settle loop, at the END of the bit-raising batch — not
+        // deferred to paint. The ordering is what buys exactness: a
+        // scroll batch pulses BEFORE any later batch performs, so a
+        // door never anchors on a top older than the last move; a
+        // door batch pulses before its frame, so no wrong frame
+        // paints (docs/viewport-preservation.md §3.2). Bounded; the
+        // guard keeps the pulse's own performs from recursing.
+        if !self.settling {
+            self.settling = true;
+            let mut rounds = 0;
+            while self.settle_requested && rounds < 3 {
+                self.settle_requested = false;
+                let windows: Vec<(crate::WindowId, Size)> = self
+                    .state
+                    .windows
+                    .ids()
+                    .into_iter()
+                    .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
+                    .collect();
+                for (window, size) in windows {
+                    self.dispatch(window, Event::Settle, size);
+                }
+                rounds += 1;
+            }
+            self.settling = false;
         }
         let probe_launch = probe
             .elapsed()
@@ -1594,8 +1612,8 @@ impl Application {
     ) -> impl Thunk<'a, AppCommand> + 'a {
         let size = constraints.max;
         let entity = crate::Windows::window_ref(store, window).expect("the window entity");
-        let content = entity.layout(arena, store, ui, constraints);
-        let stats = self.stats.layout(arena, store, ui, constraints);
+        let content = imba::Layout::layout(entity.display(arena, store, ui), arena, constraints);
+        let stats = imba::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
 
         let mut container = imba::container::container(arena, size);
         container.place(

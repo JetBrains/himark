@@ -159,18 +159,15 @@ impl View for CompletionPopupView {
                         },
                     ),
                 );
-                let rows = self
-                    .list
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        imba::constraints::Constraints::tight(skia_safe::Size::new(
-                            width - 2.0,
-                            height - 2.0,
-                        )),
-                    )
-                    .map(CompletionCommand::Rows);
+                let rows = imba::Layout::layout(
+                    self.list.display(arena, store, ui),
+                    arena,
+                    imba::constraints::Constraints::tight(skia_safe::Size::new(
+                        width - 2.0,
+                        height - 2.0,
+                    )),
+                )
+                .map(CompletionCommand::Rows);
                 popup.place(1.0, 1.0, rows);
 
                 let armed = self.list.len() > 0;

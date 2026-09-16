@@ -141,6 +141,12 @@ pub enum EditorCommand {
         anchor: u32,
     },
 
+    /// The widget re-observed its viewport top on a traversal — the
+    /// settle pulse, or paint (docs/viewport-preservation.md §3.1).
+    /// Refreshes the retained viewport and supersedes any pending
+    /// correction; the full `Viewport` report stays throttled.
+    ViewportTop(f32),
+
     ToggleSoftwrap,
 
     HorizontalScroll(f32),
@@ -1436,6 +1442,18 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
         let text_focused = self.document().focus(self.editor()) == EditorFocus::Text;
         match event {
             Event::Settle => {
+                // The pulse delivers the honest viewport: a drifted
+                // retained top means the scroll moved since the last
+                // observation — refresh it first; its perform also
+                // supersedes any pending correction (docs §3.1).
+                let retained = self.document().viewport(self.editor());
+                let drifted = match &retained {
+                    Some(held) => (held.start - viewport.top).abs() > 0.5,
+                    None => true,
+                };
+                if drifted {
+                    return EventResult::Command(EditorCommand::ViewportTop(viewport.top));
+                }
                 // The settle pulse (docs/viewport-preservation.md
                 // §3.2): if this editor holds the viewport's corner
                 // (its top is clipped from above) and a door left a

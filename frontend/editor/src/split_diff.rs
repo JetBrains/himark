@@ -966,14 +966,15 @@ impl View for SplitDiffView {
                 min: Size::new(half, 0.0),
                 max: Size::new(half, f32::MAX),
             };
-            let left = self
-                .left
-                .layout(arena, store, ui, half_constraints)
-                .map(SplitDiffCommand::Left);
-            let right = self
-                .right
-                .layout(arena, store, ui, half_constraints)
-                .map(SplitDiffCommand::Right);
+            let left =
+                imba::Layout::layout(self.left.display(arena, store, ui), arena, half_constraints)
+                    .map(SplitDiffCommand::Left);
+            let right = imba::Layout::layout(
+                self.right.display(arena, store, ui),
+                arena,
+                half_constraints,
+            )
+            .map(SplitDiffCommand::Right);
             let height = left.size().height.max(right.size().height);
             let divider = crate::env::Themes::of(store).ui().window.divider.0;
             let mut pair = container(arena, Size::new(width, height));

@@ -479,7 +479,7 @@ impl View for SearchView {
                         },
                     );
 
-                    entry.list.set_scroll_y(store, 0.0);
+                    entry.list.set_scroll_y(0.0);
                     self.put_list(store, entry);
 
                     self.refresh_contents(store, ui);
@@ -574,30 +574,27 @@ impl SearchView {
         panel.place(
             pad + chrome.input_pad_x,
             pad + chrome.input_pad_y,
-            self.input
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints {
-                        min: Size::new(0.0, inner_height),
-                        max: Size::new(
-                            (size.width - (pad + chrome.input_pad_x) * 2.0).max(1.0),
-                            inner_height,
-                        ),
-                    },
-                )
-                .map(SearchCommand::Input)
-                .focus_scope(self.focus == SearchArea::Input),
+            imba::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints {
+                    min: Size::new(0.0, inner_height),
+                    max: Size::new(
+                        (size.width - (pad + chrome.input_pad_x) * 2.0).max(1.0),
+                        inner_height,
+                    ),
+                },
+            )
+            .map(SearchCommand::Input)
+            .focus_scope(self.focus == SearchArea::Input),
         );
         match self.list_ref(store) {
             Some(list) => panel.place(
                 0.0,
                 input_bottom + pad,
-                list.layout(
+                imba::Layout::layout(
+                    list.display(arena, store, ui),
                     arena,
-                    store,
-                    ui,
                     Constraints::tight(Size::new(
                         size.width,
                         (size.height - input_bottom - pad).max(1.0),
@@ -705,14 +702,12 @@ impl SearchView {
         );
 
         if let Some(contents) = &self.contents {
-            let tree = contents
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(himark::DRAWER_WIDTH, size.height)),
-                )
-                .map(SearchCommand::Contents);
+            let tree = imba::Layout::layout(
+                contents.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(himark::DRAWER_WIDTH, size.height)),
+            )
+            .map(SearchCommand::Contents);
             panel.place(0.0, 0.0, MouseOnly(tree));
         }
 
@@ -728,10 +723,9 @@ impl SearchView {
             Some(list) => panel.place(
                 results_x,
                 results_top,
-                list.layout(
+                imba::Layout::layout(
+                    list.display(arena, store, ui),
                     arena,
-                    store,
-                    ui,
                     Constraints::tight(Size::new(
                         (size.width - results_x).max(160.0),
                         results_height,

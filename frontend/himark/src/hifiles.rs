@@ -696,16 +696,12 @@ impl View for SessionTreeView {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let rows = self
-                .tree
-                .list
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(size.width, size.height - PANEL_PAD)),
-                )
-                .map(TreeCommand::Rows);
+            let rows = imba::Layout::layout(
+                self.tree.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(size.width, size.height - PANEL_PAD)),
+            )
+            .map(TreeCommand::Rows);
             overlay.place(0.0, PANEL_PAD, rows);
 
             let searching = self.tree.list.searching();

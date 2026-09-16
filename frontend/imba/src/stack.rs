@@ -98,11 +98,14 @@ where
     ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
         crate::laid(
             move |_arena: &'a Arena, constraints: Constraints| StackWidget {
-                base: self.base.layout(arena, store, ui, constraints),
-                modal: self
-                    .modal
-                    .as_ref()
-                    .map(|modal| modal.layout(arena, store, ui, constraints)),
+                base: crate::Layout::layout(
+                    self.base.display(arena, store, ui),
+                    arena,
+                    constraints,
+                ),
+                modal: self.modal.as_ref().map(|modal| {
+                    crate::Layout::layout(modal.display(arena, store, ui), arena, constraints)
+                }),
             },
         )
     }

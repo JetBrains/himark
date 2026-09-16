@@ -124,7 +124,7 @@ impl View for ChatRow {
                     Either::Loader(row.wrap(move |inner| ArmedLoader { inner, armed }))
                 }
                 ChatRow::Turn(turn) => Either::Turn(
-                    turn.layout(arena, store, ui, constraints)
+                    imba::Layout::layout(turn.display(arena, store, ui), arena, constraints)
                         .map(RowCommand::Turn),
                 ),
             },
@@ -535,7 +535,8 @@ impl ChatPanel {
     }
 
     fn reveal_tail(&mut self, store: &mut Store) {
-        self.rows.set_scroll_y(store, f32::MAX);
+        let _ = store;
+        self.rows.set_scroll_y(f32::MAX);
     }
 
     fn build_cell(
@@ -1751,18 +1752,16 @@ impl View for ChatPanel {
             panel.place(
                 0.0,
                 0.0,
-                self.rows
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints {
-                            min: Size::new(size.width, rows_height),
-                            max: Size::new(size.width, rows_height),
-                        },
-                    )
-                    .map(ChatPanelCommand::Rows)
-                    .focus_scope(self.focus == ChatArea::Transcript),
+                imba::Layout::layout(
+                    self.rows.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(size.width, rows_height),
+                        max: Size::new(size.width, rows_height),
+                    },
+                )
+                .map(ChatPanelCommand::Rows)
+                .focus_scope(self.focus == ChatArea::Transcript),
             );
 
             let status = match &self.state {

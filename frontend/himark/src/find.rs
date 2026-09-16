@@ -384,21 +384,19 @@ impl FindBar {
         bar.place(
             pad + chrome.input_pad_x,
             pad * 0.5 + chrome.input_pad_y,
-            self.input
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints {
-                        min: Size::new(0.0, inner_height),
-                        max: Size::new(
-                            (well.width() - chrome.input_pad_x * 2.0).max(1.0),
-                            inner_height,
-                        ),
-                    },
-                )
-                .map(FindCommand::Input)
-                .focus_scope(self.focused),
+            imba::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints {
+                    min: Size::new(0.0, inner_height),
+                    max: Size::new(
+                        (well.width() - chrome.input_pad_x * 2.0).max(1.0),
+                        inner_height,
+                    ),
+                },
+            )
+            .map(FindCommand::Input)
+            .focus_scope(self.focused),
         );
 
         let status = self.status();

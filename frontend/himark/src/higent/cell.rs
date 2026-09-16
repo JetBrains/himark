@@ -785,10 +785,9 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             _ => header_h,
         };
         let diff_thunk = diff.map(|view| {
-            view.layout(
+            imba::Layout::layout(
+                view.display(arena, store, ui),
                 arena,
-                store,
-                ui,
                 Constraints {
                     min: Size::new(editor_target, 0.0),
                     max: Size::new(editor_target + chrome_gutter(store), f32::MAX),
@@ -831,17 +830,15 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
         card = card.child(imba::spacer(card_width, card_height));
         let content = editor
             .map(|editor| {
-                editor
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints {
-                            min: Size::new(editor_target, editor_height),
-                            max: Size::new(editor_target + editor.gutter_width, f32::MAX),
-                        },
-                    )
-                    .map(CellCommand::Editor)
+                imba::Layout::layout(
+                    editor.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(editor_target, editor_height),
+                        max: Size::new(editor_target + editor.gutter_width, f32::MAX),
+                    },
+                )
+                .map(CellCommand::Editor)
             })
             .map(|thunk| imba::ThunkBox::new(arena, thunk))
             .or(diff_thunk.map(|thunk| imba::ThunkBox::new(arena, thunk)));

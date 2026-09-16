@@ -214,7 +214,7 @@ impl RowList {
             list.select_only(selected);
         }
         self.scroll = ScrollView::new(list);
-        self.scroll.restore_scroll_y(scroll_y);
+        self.scroll.set_scroll_y(scroll_y);
     }
 
     pub fn select(&mut self, index: usize) {
@@ -311,11 +311,9 @@ mod tests {
         for tick in 0..120 {
             let commands = {
                 let arena = Arena::default();
-                let widget = imba::View::layout(
-                    &list,
+                let widget = imba::Layout::layout(
+                    imba::View::display(&list, &arena, &store, &ui),
                     &arena,
-                    &store,
-                    &ui,
                     imba::constraints::Constraints::tight(viewport),
                 );
                 let event = Event::AnimationClock {

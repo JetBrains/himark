@@ -503,27 +503,23 @@ impl View for CommentView {
                 .editor
                 .content_height()
                 .max(self.chrome.min_editor_height);
-            let editor = self
-                .editor
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints {
-                        min: Size::new(want, editor_height),
-                        max: Size::new(want, f32::MAX),
-                    },
-                )
-                .map(CommentCommand::Editor);
+            let editor = imba::Layout::layout(
+                self.editor.display(arena, store, ui),
+                arena,
+                Constraints {
+                    min: Size::new(want, editor_height),
+                    max: Size::new(want, f32::MAX),
+                },
+            )
+            .map(CommentCommand::Editor);
             container.place(pad, pad, editor);
 
             let mut y = pad + editor_height + pad;
             for entry in &self.foreign {
                 let height = entry.content_height();
-                let laid = entry.layout(
+                let laid = imba::Layout::layout(
+                    entry.display(arena, store, ui),
                     arena,
-                    store,
-                    ui,
                     Constraints {
                         min: Size::new(want, height),
                         max: Size::new(want, f32::MAX),

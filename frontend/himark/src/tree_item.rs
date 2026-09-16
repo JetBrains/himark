@@ -223,10 +223,9 @@ where
         let inset = f32::from(view.depth) * tree.indent;
         let width = constraints.max.width.max(1.0);
         let offset = inset + tree.text_x;
-        let inner = view.inner.layout(
+        let inner = imba::Layout::layout(
+            view.inner.display(arena, store, ui),
             arena,
-            store,
-            ui,
             Constraints {
                 min: Size::default(),
                 max: Size::new((width - offset).max(1.0), constraints.max.height),

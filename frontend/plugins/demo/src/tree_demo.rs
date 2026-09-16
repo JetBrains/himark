@@ -274,8 +274,7 @@ impl View for TreeDemoView {
         ui: &'a UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            self.rows
-                .layout(arena, store, ui, constraints)
+            imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
                 .map(Command::Rows)
         })
     }

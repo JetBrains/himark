@@ -36,11 +36,9 @@ fn paint_cell(
     path: &str,
 ) -> (f32, Vec<CellCommand>) {
     let arena = Arena::default();
-    let thunk = imba::View::layout(
-        cell,
+    let thunk = imba::Layout::layout(
+        imba::View::display(cell, &arena, store, ui),
         &arena,
-        store,
-        ui,
         Constraints {
             min: Size::default(),
             max: Size::new(width, f32::MAX),
@@ -137,11 +135,9 @@ fn expanded_before_cards_grow_to_their_content() {
 
     let height_of = |cell: &Cell, store: &Store, ui: &UiCtx| {
         let arena = Arena::default();
-        let thunk = imba::View::layout(
-            cell,
+        let thunk = imba::Layout::layout(
+            imba::View::display(cell, &arena, store, ui),
             &arena,
-            store,
-            ui,
             Constraints {
                 min: Size::default(),
                 max: Size::new(640.0, f32::MAX),
@@ -158,11 +154,9 @@ fn expanded_before_cards_grow_to_their_content() {
     for tick in 0..40u32 {
         let commands = {
             let arena = Arena::default();
-            let thunk = imba::View::layout(
-                &cell,
+            let thunk = imba::Layout::layout(
+                imba::View::display(&cell, &arena, &store, &ui),
                 &arena,
-                &store,
-                &ui,
                 Constraints {
                     min: Size::default(),
                     max: Size::new(640.0, f32::MAX),
@@ -232,11 +226,9 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     for _ in 0..2 {
         let cell = resolved(&before, &after);
         let arena = Arena::default();
-        let height = imba::Thunk::size(&imba::View::layout(
-            &cell,
+        let height = imba::Thunk::size(&imba::Layout::layout(
+            imba::View::display(&cell, &arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             Constraints {
                 min: Size::default(),
                 max: Size::new(640.0, f32::MAX),
@@ -256,13 +248,11 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         (137.5, "turn_scroll_137.png"),
         (400.0, "turn_scroll_400.png"),
     ] {
-        scroll.restore_scroll_y(scroll_y);
+        scroll.set_scroll_y(scroll_y);
         let arena = Arena::default();
-        let thunk = imba::View::layout(
-            &scroll,
+        let thunk = imba::Layout::layout(
+            imba::View::display(&scroll, &arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             Constraints::tight(Size::new(width, view_h)),
         );
         let viewport = Rect::from_wh(width, view_h);
@@ -291,11 +281,9 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     // The turn's laid extent is exactly the sum of its cells'
     // declared heights — the list contract the scroll rides on.
     let arena = Arena::default();
-    let turn_height = imba::Thunk::size(&imba::View::layout(
-        scroll.content(),
+    let turn_height = imba::Thunk::size(&imba::Layout::layout(
+        imba::View::display(scroll.content(), &arena, &store, &ui),
         &arena,
-        &store,
-        &ui,
         Constraints {
             min: Size::default(),
             max: Size::new(width, f32::MAX),

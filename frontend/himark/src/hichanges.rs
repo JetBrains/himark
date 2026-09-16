@@ -1369,15 +1369,12 @@ impl View for ChangesView {
                 .min(size.height * 0.4);
             let box_band = well_height + PANEL_PAD;
             let band = chrome.margin + chip_height + PANEL_PAD + box_band;
-            let rows = self
-                .list
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(size.width, size.height - band)),
-                )
-                .map(ChangesCommand::Rows);
+            let rows = imba::Layout::layout(
+                self.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(size.width, size.height - band)),
+            )
+            .map(ChangesCommand::Rows);
             overlay.place(0.0, band, rows);
 
             let well_y = chrome.margin + chip_height + PANEL_PAD;
@@ -1430,21 +1427,19 @@ impl View for ChangesView {
             overlay.place(
                 well_pad + search.input_pad_x,
                 well_y + search.input_pad_y,
-                self.message
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints {
-                            min: Size::new(0.0, inner_height),
-                            max: Size::new(
-                                (well_width - search.input_pad_x * 2.0).max(1.0),
-                                inner_height,
-                            ),
-                        },
-                    )
-                    .map(ChangesCommand::Message)
-                    .focus_scope(self.message_focused),
+                imba::Layout::layout(
+                    self.message.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(0.0, inner_height),
+                        max: Size::new(
+                            (well_width - search.input_pad_x * 2.0).max(1.0),
+                            inner_height,
+                        ),
+                    },
+                )
+                .map(ChangesCommand::Message)
+                .focus_scope(self.message_focused),
             );
 
             let searching = self.list.searching();

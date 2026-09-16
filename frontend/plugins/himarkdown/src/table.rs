@@ -1209,22 +1209,19 @@ impl View for TableEditor {
                     let cell_width = cell.view.layout_width().max(1.0);
                     let inner_width = (width - self.chrome.cell_pad_x * 2.0).max(1.0);
                     let inner_height = (height - self.chrome.cell_pad_y * 2.0).max(1.0);
-                    let widget = cell
-                        .view
-                        .layout(
-                            arena,
-                            store,
-                            ui,
-                            Constraints {
-                                min: Size::new(inner_width.max(cell_width), inner_height),
-                                max: Size::new(cell_width, f32::MAX),
-                            },
-                        )
-                        .map(move |command| TableCommand::Cell {
-                            row: row_index,
-                            col: col_index,
-                            command,
-                        });
+                    let widget = imba::Layout::layout(
+                        cell.view.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(inner_width.max(cell_width), inner_height),
+                            max: Size::new(cell_width, f32::MAX),
+                        },
+                    )
+                    .map(move |command| TableCommand::Cell {
+                        row: row_index,
+                        col: col_index,
+                        command,
+                    });
                     container.place(
                         x + self.chrome.cell_pad_x,
                         y + self.chrome.cell_pad_y,
@@ -1524,7 +1521,11 @@ mod hitbox {
             max: Size::new(600.0, f32::MAX),
         };
 
-        let _ = imba::View::layout(&editor, &arena, &store, &ui, constraints);
+        let _ = imba::Layout::layout(
+            imba::View::display(&editor, &arena, &store, &ui),
+            &arena,
+            constraints,
+        );
         let widths = solved_widths(&editor);
         let chrome = &editor.chrome;
         let strip = chrome.control_size + 6.0;
@@ -1536,7 +1537,11 @@ mod hitbox {
         let mut x_left = strip + chrome.thickness;
         for (col, width) in widths.iter().enumerate() {
             let point = skia_safe::Point::new(x_left + width - chrome.cell_pad_x - 2.0, y);
-            let widget = imba::View::layout(&editor, &arena, &store, &ui, constraints);
+            let widget = imba::Layout::layout(
+                imba::View::display(&editor, &arena, &store, &ui),
+                &arena,
+                constraints,
+            );
             let viewport = Rect::from_size(imba::Thunk::size(&widget));
             let widget = imba::Thunk::realize(widget, &arena, viewport);
             let result = imba::Widget::handle_event(
@@ -1583,11 +1588,9 @@ mod hitbox {
             min: Size::default(),
             max: Size::new(600.0, f32::MAX),
         };
-        let unfocused_size = imba::Thunk::size(&imba::View::layout(
-            &editor,
+        let unfocused_size = imba::Thunk::size(&imba::Layout::layout(
+            imba::View::display(&editor, &arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             constraints,
         ));
 
@@ -1602,7 +1605,11 @@ mod hitbox {
             count: 1,
         };
         let send = |editor: &TableEditor, event: &Event<'_>| {
-            let widget = imba::View::layout(editor, &arena, &store, &ui, constraints);
+            let widget = imba::Layout::layout(
+                imba::View::display(editor, &arena, &store, &ui),
+                &arena,
+                constraints,
+            );
             let viewport = Rect::from_size(imba::Thunk::size(&widget));
             let widget = imba::Thunk::realize(widget, &arena, viewport);
             match imba::Widget::handle_event(&widget, &arena, event, viewport) {
@@ -1646,11 +1653,9 @@ mod hitbox {
 
         editor.focused = Some((1, 0));
         assert_eq!(
-            imba::Thunk::size(&imba::View::layout(
-                &editor,
+            imba::Thunk::size(&imba::Layout::layout(
+                imba::View::display(&editor, &arena, &store, &ui),
                 &arena,
-                &store,
-                &ui,
                 constraints
             )),
             unfocused_size,

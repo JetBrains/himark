@@ -186,11 +186,9 @@ pub fn frame_commands<V: crate::View>(
 ) -> Vec<PresentableCommand<V::Command>> {
     let arena = crate::arena::Arena::default();
     let mut widget = crate::Thunk::realize(
-        crate::View::layout(
-            view,
+        crate::Layout::layout(
+            crate::View::display(view, &arena, store, ui),
             &arena,
-            store,
-            ui,
             crate::constraints::Constraints::tight(size),
         ),
         &arena,
@@ -211,11 +209,9 @@ pub fn frame_key<V: crate::View>(
 ) -> EventResult<V::Command> {
     let arena = crate::arena::Arena::default();
     let mut widget = crate::Thunk::realize(
-        crate::View::layout(
-            view,
+        crate::Layout::layout(
+            crate::View::display(view, &arena, store, ui),
             &arena,
-            store,
-            ui,
             crate::constraints::Constraints::tight(size),
         ),
         &arena,

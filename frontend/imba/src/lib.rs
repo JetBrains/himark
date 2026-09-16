@@ -83,16 +83,6 @@ pub trait View {
         fx: &mut effect::Effects<'_, Self::Command>,
     );
 
-    /// The enclosing scroll moved this content's viewport top —
-    /// called from the scroll's own perform, so it is ordinary
-    /// retained-state mutation, not a paint back-channel. Content
-    /// that anchors its viewport (docs/viewport-preservation.md)
-    /// keeps the top here (and drops any pending correction — a
-    /// landed scroll supersedes it); everyone else ignores it.
-    fn scrolled(&mut self, store: &mut Store, top: f32) {
-        let _ = (store, top);
-    }
-
     /// Read the state, name the structure (docs/UI.md, revision 3) —
     /// the ONLY stage with the store in scope; borrows from it and
     /// from the view ride the returned layout for the frame.
@@ -106,19 +96,6 @@ pub trait View {
     /// The composed pipeline — display, then size. Containers and
     /// the frame root call this; layout combinators address the
     /// stages separately.
-    fn layout<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-        constraints: Constraints,
-    ) -> ThunkBox<'a, Self::Command>
-    where
-        Self: Sized,
-    {
-        self.display(arena, store, ui).layout(arena, constraints)
-    }
-
     fn destroy(&mut self, store: &mut Store, fx: &mut effect::Effects<'_, Self::Command>) {
         let _ = (store, fx);
     }

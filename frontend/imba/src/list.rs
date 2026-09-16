@@ -323,6 +323,12 @@ pub enum ListCommand<C> {
 
     Focus(usize, Option<Box<ListCommand<C>>>),
 
+    /// The widget re-observed its viewport top on a traversal
+    /// (docs/viewport-preservation.md §3.1): the retained copy
+    /// refreshes, and any pending correction is superseded — the
+    /// scroll that moved the top knows better than the door did.
+    ViewportTop(f32),
+
     SetHeight(usize, f32),
 
     Animate(AnimationClock),
@@ -1181,10 +1187,9 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
 /// measurement costs a text measure, never a font-manager build.
 fn laid_row_height<T: View>(view: &T, store: &Store, ui: &UiCtx) -> f32 {
     let arena = Arena::default();
-    let thunk = view.layout(
+    let thunk = crate::Layout::layout(
+        view.display(&arena, store, ui),
         &arena,
-        store,
-        ui,
         Constraints {
             min: Size::default(),
             max: Size::new(f32::MAX, f32::MAX),
@@ -1213,13 +1218,6 @@ where
         }
     }
 
-    fn scrolled(&mut self, _store: &mut Store, top: f32) {
-        self.viewport_top = top;
-        // A scroll landing — the user's, or our own settled JumpTo —
-        // supersedes any pending correction.
-        self.settle_to = None;
-    }
-
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1245,19 +1243,17 @@ where
                 let laid_width =
                     f32::from_bits(self.laid_width.load(std::sync::atomic::Ordering::Relaxed));
                 if laid_width.is_finite() {
-                    let live = element
-                        .view
-                        .layout(
-                            &Arena::default(),
-                            store,
-                            ui,
-                            Constraints {
-                                min: Size::default(),
-                                max: Size::new(laid_width, f32::MAX),
-                            },
-                        )
-                        .size()
-                        .height;
+                    let frame = Arena::default();
+                    let live = crate::Layout::layout(
+                        element.view.display(&frame, store, ui),
+                        &frame,
+                        Constraints {
+                            min: Size::default(),
+                            max: Size::new(laid_width, f32::MAX),
+                        },
+                    )
+                    .size()
+                    .height;
                     if (live - element.height).abs() > 0.5 {
                         element.height = live;
                     }
@@ -1319,6 +1315,10 @@ where
                     }
                 }
                 self.animations = animations;
+            }
+            ListCommand::ViewportTop(top) => {
+                self.viewport_top = top;
+                self.settle_to = None;
             }
             ListCommand::Revealed => {
                 self.row_reveal = None;
@@ -1391,6 +1391,7 @@ where
                 selection: self.selection.as_ref(),
                 matches: &self.matches,
                 settle_to: self.settle_to,
+                viewport_top: self.viewport_top,
                 reveal,
                 reveal_lost,
                 animations: &self.animations,
@@ -1413,6 +1414,7 @@ struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     selection: Option<&'a SelectionState<K>>,
     matches: &'a Intervals<K, ()>,
     settle_to: Option<f32>,
+    viewport_top: f32,
 
     reveal: Option<(Rect, crate::event::Placement)>,
     reveal_lost: bool,
@@ -1445,15 +1447,16 @@ where
     ) -> EventResult<ListCommand<T::Command>> {
         let index = cursor.index() as usize;
         let rect = self.row_rect(cursor);
-        cursor
-            .element()
-            .view
-            .layout(arena, self.store, self.ui, self.child_constraints)
-            .focus_scope(self.focused == Some(index))
-            .realize(arena, child_viewport)
-            .handle_event(arena, event, child_viewport)
-            .map(move |command| ListCommand::Child(index, command))
-            .reveal_translated(rect.left, rect.top)
+        crate::Layout::layout(
+            cursor.element().view.display(arena, self.store, self.ui),
+            arena,
+            self.child_constraints,
+        )
+        .focus_scope(self.focused == Some(index))
+        .realize(arena, child_viewport)
+        .handle_event(arena, event, child_viewport)
+        .map(move |command| ListCommand::Child(index, command))
+        .reveal_translated(rect.left, rect.top)
     }
 
     fn cursor_at_y(&self, y: f32) -> Option<Cursor<ListElement<T>, ListMeasure>> {
@@ -1650,11 +1653,12 @@ where
     }
     let rect = list.row_rect(&cursor);
     let child_viewport = viewport_for_child(viewport, rect).unwrap_or_default();
-    let mut widget = cursor
-        .element()
-        .view
-        .layout(arena, list.store, list.ui, list.child_constraints)
-        .realize(arena, child_viewport);
+    let mut widget = crate::Layout::layout(
+        cursor.element().view.display(arena, list.store, list.ui),
+        arena,
+        list.child_constraints,
+    )
+    .realize(arena, child_viewport);
     Some(f(&mut widget, rect))
 }
 
@@ -1748,10 +1752,9 @@ where
                     canvas.clip_rect(Rect::from_size(rect.size()), None, true);
 
                     let index = cursor.index() as usize;
-                    let widget = cursor.element().view.layout(
+                    let widget = crate::Layout::layout(
+                        cursor.element().view.display(arena, self.store, self.ui),
                         arena,
-                        self.store,
-                        self.ui,
                         self.child_constraints,
                     );
                     let live = widget.size().height;
@@ -1792,6 +1795,13 @@ where
                         }
                     }
                 });
+                // Re-observe the viewport top from paint too — the
+                // belt for programmatic `set_scroll_y` placements,
+                // which raise no pulse (docs §3.1).
+                if (viewport.top - self.viewport_top).abs() > 0.5 {
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored)
+                        .merge(EventResult::Command(ListCommand::ViewportTop(viewport.top)));
+                }
                 match merged {
                     EventResult::Ignored => EventResult::Handled,
                     merged => merged,
@@ -1806,6 +1816,18 @@ where
                     merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(result);
                 });
                 if let Event::Settle = event {
+                    // The pulse delivers the honest viewport: a
+                    // drifted retained top means the scroll moved
+                    // since the last observation — refresh it FIRST.
+                    // Its perform also drops any pending correction
+                    // (the move supersedes the door), so no reveal
+                    // rides this round; the next round, if any,
+                    // speaks from fresh state.
+                    if (viewport.top - self.viewport_top).abs() > 0.5 {
+                        let mine = EventResult::Command(ListCommand::ViewportTop(viewport.top));
+                        merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
+                        return merged;
+                    }
                     // The deepest anchor speaks: a row's inner editor
                     // that already answered owns the corner; the
                     // list's own note only fills silence. The target

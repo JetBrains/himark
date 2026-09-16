@@ -129,7 +129,11 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
         }
         let size = match self.view {
             Some(view) => {
-                let inner = view.layout(self.arena, self.store, self.ui, self.constraints);
+                let inner = imba::Layout::layout(
+                    view.display(self.arena, self.store, self.ui),
+                    self.arena,
+                    self.constraints,
+                );
                 skia_safe::Size::new(self.constraints.max.width, imba::Thunk::size(&inner).height)
             }
             None => skia_safe::Size::default(),
@@ -144,8 +148,12 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
         viewport: skia_safe::Rect,
     ) -> imba::WidgetBox<'a, UnifiedDiffCommand> {
         let inner = self.view.map(|view| {
-            view.layout(self.arena, self.store, self.ui, self.constraints)
-                .realize(arena, viewport)
+            imba::Layout::layout(
+                view.display(self.arena, self.store, self.ui),
+                self.arena,
+                self.constraints,
+            )
+            .realize(arena, viewport)
         });
         imba::WidgetBox::new(
             arena,

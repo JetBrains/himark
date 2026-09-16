@@ -208,9 +208,12 @@ impl imba::View for UnifiedDiffView {
 
                     _ => imba::ThunkBox::new(
                         arena,
-                        self.split
-                            .layout(arena, store, ui, constraints)
-                            .map(UnifiedDiffCommand::Split),
+                        imba::Layout::layout(
+                            self.split.display(arena, store, ui),
+                            arena,
+                            constraints,
+                        )
+                        .map(UnifiedDiffCommand::Split),
                     ),
                 };
                 face.commands(move || self.toggle_surface())
@@ -271,8 +274,7 @@ impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
             &data,
             skia_safe::Point::new(0.0, 0.0),
         );
-        let inner = view
-            .layout(frame, store, ui, constraints)
+        let inner = imba::Layout::layout(view.display(frame, store, ui), frame, constraints)
             .realize(arena, viewport);
         imba::WidgetBox::new(arena, InlinePane { inner, projected })
     }

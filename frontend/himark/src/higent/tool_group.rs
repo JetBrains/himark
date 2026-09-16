@@ -105,7 +105,7 @@ impl View for ToolRowView {
             match self {
                 Self::Body(cell) => imba::ThunkBox::new(
                     arena,
-                    cell.layout(arena, store, ui, constraints)
+                    imba::Layout::layout(cell.display(arena, store, ui), arena, constraints)
                         .map(|command| ToolRowCommand::Cell(Box::new(command))),
                 ),
                 Self::Face(face) => {
@@ -643,10 +643,9 @@ impl ToolGroup {
     }
 
     fn measure(&self, store: &Store, ui: &UiCtx, view: &TreeItemView<ToolRowView>) -> f32 {
-        view.layout(
+        imba::Layout::layout(
+            view.display(&Arena::default(), store, ui),
             &Arena::default(),
-            store,
-            ui,
             Constraints {
                 min: Size::default(),
                 max: Size::new(self.width.max(1.0), f32::MAX),
@@ -667,7 +666,7 @@ impl ToolGroup {
         ui: &'a UiCtx,
         constraints: Constraints,
     ) -> impl Thunk<'a, ToolRowsCommand> + 'a {
-        self.rows.layout(arena, store, ui, constraints)
+        imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
     }
 }
 

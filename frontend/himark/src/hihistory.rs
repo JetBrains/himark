@@ -1258,15 +1258,12 @@ impl View for HistoryView {
 
             let band = PANEL_PAD;
 
-            let rows = self
-                .list
-                .layout(
-                    arena,
-                    store,
-                    ui,
-                    Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
-                )
-                .map(HistoryCommand::Rows);
+            let rows = imba::Layout::layout(
+                self.list.display(arena, store, ui),
+                arena,
+                Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
+            )
+            .map(HistoryCommand::Rows);
             section.place(0.0, band, rows);
 
             let searching = self.list.view().searching();

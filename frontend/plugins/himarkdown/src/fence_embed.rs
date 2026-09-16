@@ -526,7 +526,11 @@ impl<'a> imba::Layout<'a, himark::EditorCommand> for EmbedFrame<'a> {
         }
         .max(60.0);
         let mut pane = imba::container::container(arena, skia_safe::Size::new(width, height));
-        pane.place(0.0, 0.0, embed.view.layout(arena, store, ui, constraints));
+        pane.place(
+            0.0,
+            0.0,
+            imba::Layout::layout(embed.view.display(arena, store, ui), arena, constraints),
+        );
         imba::ThunkBox::new(arena, pane)
     }
 }

@@ -414,18 +414,15 @@ impl imba::View for BeforeInlay {
                 // animated height clips the reveal.
                 let want = (size.width - self.view.gutter_width).max(120.0);
                 let mut container = imba::container::container(arena, size);
-                let editor = self
-                    .view
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        Constraints {
-                            min: Size::new(size.width, 0.0),
-                            max: Size::new(size.width, f32::MAX),
-                        },
-                    )
-                    .map(BeforeCommand::Editor);
+                let editor = imba::Layout::layout(
+                    self.view.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(size.width, 0.0),
+                        max: Size::new(size.width, f32::MAX),
+                    },
+                )
+                .map(BeforeCommand::Editor);
                 container.place(0.0, 0.0, editor);
 
                 let stale = !appearing && (self.view.layout_width() - want).abs() > 1.0;

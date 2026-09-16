@@ -618,10 +618,9 @@ fn focus_moves_between_text_and_inlays() {
     {
         let arena = Arena::default();
         let ui = imba::UiCtx::cold();
-        let widget = pane.view.layout(
+        let widget = imba::Layout::layout(
+            pane.view.display(&arena, &pane.store, &ui),
             &arena,
-            &pane.store,
-            &ui,
             Constraints::tight(Size::new(420.0, 400.0)),
         );
         let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_wh(420.0, 400.0));
@@ -640,10 +639,9 @@ fn focus_moves_between_text_and_inlays() {
     {
         let arena = Arena::default();
         let ui = imba::UiCtx::cold();
-        let widget = pane.view.layout(
+        let widget = imba::Layout::layout(
+            pane.view.display(&arena, &pane.store, &ui),
             &arena,
-            &pane.store,
-            &ui,
             Constraints::tight(Size::new(420.0, 400.0)),
         );
         let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_wh(420.0, 400.0));
@@ -808,11 +806,9 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
         let arena = imba::arena::Arena::default();
         let ui = imba::UiCtx::cold();
         let view = pane.gathered();
-        let widget = View::layout(
-            &view,
+        let widget = imba::Layout::layout(
+            View::display(&view, &arena, &pane.store, &ui),
             &arena,
-            &pane.store,
-            &ui,
             Constraints {
                 min: skia_safe::Size::default(),
                 max: skia_safe::Size::new(420.0, f32::MAX),
@@ -2577,10 +2573,9 @@ fn double_and_triple_click_select_word_and_line() {
             count,
         };
         match imba::Thunk::realize(
-            pane.view.layout(
+            imba::Layout::layout(
+                pane.view.display(&arena, &pane.store, &ui),
                 &arena,
-                &pane.store,
-                &ui,
                 Constraints::tight(Size::new(420.0, 400.0)),
             ),
             &arena,
@@ -3776,11 +3771,9 @@ mod toc {
 
         let result = {
             let arena = imba::arena::Arena::default();
-            let widget = imba::View::layout(
-                &view,
+            let widget = imba::Layout::layout(
+                imba::View::display(&view, &arena, &store, &ui),
                 &arena,
-                &store,
-                &ui,
                 Constraints::tight(skia_safe::Size::new(800.0, 600.0)),
             );
             let widget =
@@ -3934,11 +3927,9 @@ fn installed_result_rows_paint_their_match_tints() {
 
         let arena = imba::arena::Arena::default();
         let view = EditorIdView::new(id, row_editor);
-        let widget = View::layout(
-            &view,
+        let widget = imba::Layout::layout(
+            View::display(&view, &arena, &store, &ui),
             &arena,
-            &store,
-            &ui,
             Constraints {
                 min: skia_safe::Size::default(),
                 max: skia_safe::Size::new(width, f32::MAX),

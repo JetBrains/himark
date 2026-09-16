@@ -1409,6 +1409,9 @@ impl Document {
 
                 self.pending_repairs(fx)
             }
+            EditorCommand::ViewportTop(top) => {
+                self.note_viewport_top(editor, top);
+            }
             EditorCommand::Viewport {
                 width,
                 top,
@@ -2062,31 +2065,20 @@ impl Document {
         self.editors.get(&editor)?.settle_to
     }
 
-    /// Whether a `note_scrolled(top)` would change anything — the
-    /// free pre-check that spares the store round-trip per wheel
-    /// tick.
-    pub fn scroll_note_current(&self, editor: EditorId, top: f32) -> bool {
-        let Some(state) = self.editors.get(&editor) else {
-            return true;
-        };
-        state.settle_to.is_none()
-            && state
-                .viewport
-                .as_ref()
-                .is_some_and(|viewport| (viewport.start - top).abs() <= 0.5)
-    }
-
-    /// The enclosing scroll moved: keep the retained viewport honest
-    /// (paint only re-reports on LARGE moves) and drop any pending
-    /// correction — the landed scroll supersedes it.
-    pub fn note_scrolled(&mut self, editor: EditorId, top: f32) {
+    /// A traversal re-observed the viewport top: keep the retained
+    /// viewport honest (the full paint report stays throttled) and
+    /// drop any pending correction — the observed move supersedes it
+    /// (docs/viewport-preservation.md §3.1).
+    pub fn note_viewport_top(&mut self, editor: EditorId, top: f32) {
         let Some(state) = self.editors.get_mut(&editor) else {
             return;
         };
-        if let Some(viewport) = &state.viewport {
-            let height = viewport.end - viewport.start;
-            state.viewport = Some(top..top + height);
-        }
+        let height = state
+            .viewport
+            .as_ref()
+            .map(|viewport| viewport.end - viewport.start)
+            .unwrap_or(0.0);
+        state.viewport = Some(top..top + height);
         state.settle_to = None;
     }
 

@@ -90,25 +90,6 @@ impl View for EditorIdView {
         crate::OpenDocuments::remove_if_editorless(store, self.document, fx);
     }
 
-    fn scrolled(&mut self, store: &mut Store, top: f32) {
-        // Keep the document's retained viewport honest on EVERY
-        // scroll landing — paint only re-reports on large moves —
-        // and drop any pending settle correction, which the landed
-        // scroll supersedes (docs/viewport-preservation.md §3.1).
-        // The cheap read first: cloning the entity in and out on
-        // every wheel tick is only worth it when something changes.
-        let stale = crate::OpenDocuments::document_ref(store, self.document)
-            .is_some_and(|document| !document.scroll_note_current(self.editor, top));
-        if !stale {
-            return;
-        }
-        let Some(mut document) = crate::OpenDocuments::document(store, self.document) else {
-            return;
-        };
-        document.note_scrolled(self.editor, top);
-        crate::OpenDocuments::put_document(store, self.document, document);
-    }
-
     fn perform(
         &mut self,
         store: &mut Store,
@@ -248,25 +229,25 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
             FocusData<'_, EditorCommand>,
         ) -> EventResult<EditorCommand>|
               -> EventResult<EditorCommand> {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
+            let mut widget =
+                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
+                    .realize(arena, skia_safe::Rect::default());
             let result = f(widget.focus_data());
             drop(widget);
             result
         };
         let commands = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
+            let mut widget =
+                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
+                    .realize(arena, skia_safe::Rect::default());
             let commands = std::mem::take(&mut widget.focus_data().commands);
             drop(widget);
             commands
         };
         let location = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
+            let mut widget =
+                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
+                    .realize(arena, skia_safe::Rect::default());
             let location = widget.focus_data().location.take();
             drop(widget);
             location
@@ -317,7 +298,11 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
                 pane.place(
                     self.content_pad,
                     0.0,
-                    view.layout(arena, self.store, self.ui, self.constraints),
+                    imba::Layout::layout(
+                        view.display(arena, self.store, self.ui),
+                        arena,
+                        self.constraints,
+                    ),
                 );
                 pane.realize(arena, viewport)
                     .handle_event(arena, event, viewport)
