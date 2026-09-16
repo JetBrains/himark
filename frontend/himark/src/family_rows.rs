@@ -14,6 +14,8 @@ pub enum FamilyRow {
     Pair(crate::DiffViewId),
 
     Chat(crate::higent::ahp_types::common::Uri),
+
+    Canvas(crate::diff_canvas::CanvasSource),
 }
 
 pub type RowMinter =

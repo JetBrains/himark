@@ -6,11 +6,13 @@ use himark::{
     SplitDiffView, UnifiedDiffCommand, UnifiedDiffView,
 };
 use imba::{
-    arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, Thunk, UiCtx, View,
-    Widget,
+    arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
 };
 
 const OPEN_HALF_WIDTH: f32 = 420.0;
+
+pub mod canvas;
+pub use canvas::{CanvasPlace, DiffCanvasView};
 
 #[derive(Clone, Copy)]
 pub struct PairPane {
@@ -84,44 +86,50 @@ impl View for PairPane {
 
     fn display<'a>(
         &'a self,
-        arena: &'a Arena,
+        _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            imba::eager(GatheredSplit {
-                ui,
-                store,
-                arena,
+        // A real THUNK: the gathered view moves into the arena, and
+        // `realize` lays it ONCE, bounded by the honest viewport —
+        // the widget closes over the result and every later ask
+        // (events, focus, keys, IME) is a read. The old shape was a
+        // pre-built widget behind `eager` that re-laid the whole
+        // split per ask and invented viewports for `focus_data`
+        // (the DiffCanvas.trace lesson).
+        imba::laid(
+            move |arena: &'a Arena, constraints: Constraints| GatheredThunk {
                 view: himark::OpenDocuments::diff_view_ref(store, self.id)
-                    .and_then(|pair| gathered(pair, store)),
+                    .and_then(|pair| gathered(pair, store))
+                    .map(|view| &*arena.alloc(view)),
+                store,
+                ui,
+                arena,
                 constraints,
                 laid: std::cell::Cell::new(None),
-            })
-        })
+            },
+        )
     }
 }
 
-struct GatheredSplit<'a> {
-    ui: &'a UiCtx,
+struct GatheredThunk<'a> {
+    view: Option<&'a UnifiedDiffView>,
     store: &'a Store,
-
+    ui: &'a UiCtx,
     arena: &'a Arena,
-    view: Option<UnifiedDiffView>,
     constraints: Constraints,
 
     laid: std::cell::Cell<Option<skia_safe::Size>>,
 }
 
-impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
+impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
     fn size(&self) -> skia_safe::Size {
         if let Some(size) = self.laid.get() {
             return size;
         }
-        let size = match &self.view {
+        let size = match self.view {
             Some(view) => {
-                let frame = Arena::default();
-                let inner = view.layout(&frame, self.store, self.ui, self.constraints);
+                let inner = view.layout(self.arena, self.store, self.ui, self.constraints);
                 skia_safe::Size::new(self.constraints.max.width, imba::Thunk::size(&inner).height)
             }
             None => skia_safe::Size::default(),
@@ -130,13 +138,58 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         size
     }
 
+    fn realize(
+        self,
+        arena: &'a Arena,
+        viewport: skia_safe::Rect,
+    ) -> imba::WidgetBox<'a, UnifiedDiffCommand> {
+        let inner = self.view.map(|view| {
+            view.layout(self.arena, self.store, self.ui, self.constraints)
+                .realize(arena, viewport)
+        });
+        imba::WidgetBox::new(
+            arena,
+            GatheredSplit {
+                view: self.view,
+                inner,
+            },
+        )
+    }
+}
+
+struct GatheredSplit<'a> {
+    view: Option<&'a UnifiedDiffView>,
+    inner: Option<imba::WidgetBox<'a, UnifiedDiffCommand>>,
+}
+
+impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
+    fn size(&self) -> skia_safe::Size {
+        self.inner
+            .as_ref()
+            .map(|inner| Widget::size(inner))
+            .unwrap_or_default()
+    }
+
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, UnifiedDiffCommand>> {
+        self.inner
+            .as_mut()
+            .map(|inner| inner.overlays())
+            .unwrap_or_default()
+    }
+
+    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
+        self.inner
+            .as_ref()
+            .is_some_and(|inner| inner.blocks_pointer(point))
+    }
+
     fn handle_event(
         &self,
         arena: &Arena,
         event: &imba::event::Event<'_>,
         viewport: skia_safe::Rect,
     ) -> imba::event::EventResult<UnifiedDiffCommand> {
-        let Some(view) = &self.view else {
+        let (Some(view), Some(inner)) = (self.view, &self.inner) else {
             return imba::event::EventResult::Ignored;
         };
 
@@ -150,113 +203,45 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
                 return imba::event::EventResult::Ignored;
             }
         }
-        view.layout(arena, self.store, self.ui, self.constraints)
-            .realize(arena, viewport)
-            .handle_event(arena, event, viewport)
+        inner.handle_event(arena, event, viewport)
     }
 
     fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, UnifiedDiffCommand>
     where
         'a: 'w,
     {
-        use imba::event::EventResult;
         use imba::focus::FocusData;
-        use imba::Thunk as _;
-        let Some(view) = &self.view else {
+        let (Some(view), Some(inner)) = (self.view, &mut self.inner) else {
             return FocusData::default();
         };
-        let store = self.store;
-        let ui = self.ui;
-        let arena = self.arena;
-        let constraints = self.constraints;
-
-        let with_chain = move |f: &mut dyn FnMut(
-            FocusData<'_, UnifiedDiffCommand>,
-        ) -> EventResult<UnifiedDiffCommand>|
-              -> EventResult<UnifiedDiffCommand> {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let result = f(imba::Widget::focus_data(&mut widget));
-            drop(widget);
-            result
-        };
-        let mut commands = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let commands = std::mem::take(&mut imba::Widget::focus_data(&mut widget).commands);
-            drop(widget);
-            commands
-        };
-        let location = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let location = imba::Widget::focus_data(&mut widget).location.take();
-            drop(widget);
-            location
-        };
-
-        if !commands
+        let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
+            if view.split.left.focus() != himark::EditorFocus::None {
+                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
+            } else if view.split.right.focus() != himark::EditorFocus::None {
+                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
+            } else if view.inline_editor.is_some_and(|editor| {
+                view.split.right.document.focus(editor) != himark::EditorFocus::None
+            }) {
+                Some(UnifiedDiffCommand::Inline)
+            } else {
+                None
+            };
+        let mut data = inner.focus_data();
+        let injected = data
+            .commands
             .iter()
-            .any(|presentable| presentable.id == "workbench.open-in-full")
-        {
-            let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
-                if view.split.left.focus() != himark::EditorFocus::None {
-                    Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
-                } else if view.split.right.focus() != himark::EditorFocus::None {
-                    Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
-                } else if view.inline_editor.is_some_and(|editor| {
-                    view.split.right.document.focus(editor) != himark::EditorFocus::None
-                }) {
-                    Some(UnifiedDiffCommand::Inline)
-                } else {
-                    None
-                };
-            if let Some(wrap) = wrap {
-                commands.push(imba::PresentableCommand::new(
-                    "workbench.open-in-full",
-                    "Open Working Copy",
-                    wrap(himark::EditorCommand::Dynamic {
-                        id: "workbench.open-in-full",
-                        payload: None,
-                    }),
-                ));
-            }
-        }
-        FocusData {
-            commands,
-            on_key: Some(Box::new(move |key, mods| {
-                with_chain(&mut |mut data| data.key(key, mods))
-            })),
-            on_text: Some(Box::new(move |text| {
-                with_chain(&mut |mut data| data.text(text))
-            })),
-            ime: Some(imba::focus::ImeSeat {
-                origin: skia_safe::Point::default(),
-                clip: None,
-                ask: Box::new(move |origin, clip, visit| {
-                    with_chain(&mut |mut data| match data.ime.take() {
-                        Some(mut seat) => {
-                            let at = skia_safe::Point::new(
-                                origin.x + seat.origin.x,
-                                origin.y + seat.origin.y,
-                            );
-                            (seat.ask)(at, clip, visit)
-                        }
-                        None => EventResult::Ignored,
-                    })
+            .any(|presentable| presentable.id == "workbench.open-in-full");
+        if let (false, Some(wrap)) = (injected, wrap) {
+            data.commands.push(imba::PresentableCommand::new(
+                "workbench.open-in-full",
+                "Open Working Copy",
+                wrap(himark::EditorCommand::Dynamic {
+                    id: "workbench.open-in-full",
+                    payload: None,
                 }),
-            }),
-            clipboard: Some(Box::new(move |visit| {
-                with_chain(&mut |mut data| match data.clipboard.as_mut() {
-                    Some(seat) => seat(visit),
-                    None => EventResult::Ignored,
-                })
-            })),
-            location,
+            ));
         }
+        data
     }
 }
 
@@ -565,6 +550,9 @@ pub fn row_minter() -> std::sync::Arc<himark::RowMinter> {
     std::sync::Arc::new(|_store, row| match row {
         himark::FamilyRow::Pair(id) => {
             Some(Box::new(DiffPanelView::over(*id)) as Box<dyn himark::DynPanelView>)
+        }
+        himark::FamilyRow::Canvas(source) => {
+            Some(Box::new(DiffCanvasView::fresh(source.clone())) as Box<dyn himark::DynPanelView>)
         }
         _ => None,
     })

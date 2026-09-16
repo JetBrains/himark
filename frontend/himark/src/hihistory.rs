@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::hichanges::{
     dir_forest, empty_side, entry_of, entry_serves, folder_scope, CatalogEntry, ChangeEntry,
-    ChangesStatus, DirSink, DirTrie, Dispatched, OpenDiffForPair,
+    ChangesStatus, DirSink, DirTrie, Dispatched,
 };
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::ChangesetState;
@@ -694,7 +694,8 @@ enum RowItem {
     },
 
     File {
-        old: Option<ResourceLocation>,
+        folder: ResourceLocation,
+        commit: String,
         new: ResourceLocation,
     },
 
@@ -707,6 +708,8 @@ enum RowItem {
 
 struct CommitSink<'a> {
     items: &'a mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
+    folder: &'a ResourceLocation,
+    commit: &'a str,
 }
 
 impl DirSink for CommitSink<'_> {
@@ -719,6 +722,8 @@ impl DirSink for CommitSink<'_> {
     }
 
     fn file(&mut self, entry: &ChangeEntry, key: &ResourceLocation) {
+        // The canvas row key for this entry — the pair's new side,
+        // exactly what `canvas_files` mints (docs/diff-canvas.md §6).
         let new = entry
             .after
             .clone()
@@ -726,7 +731,8 @@ impl DirSink for CommitSink<'_> {
         self.items.insert_mut(
             key.clone(),
             RowItem::File {
-                old: entry.before.clone(),
+                folder: self.folder.clone(),
+                commit: self.commit.to_owned(),
                 new,
             },
         );
@@ -792,7 +798,16 @@ fn graph_node(
                                 for entry in files.files.iter() {
                                     trie.insert(entry.clone());
                                 }
-                                dir_forest(&commit_key, trie, counts, &mut CommitSink { items })
+                                dir_forest(
+                                    &commit_key,
+                                    trie,
+                                    counts,
+                                    &mut CommitSink {
+                                        items,
+                                        folder,
+                                        commit: &commit.id,
+                                    },
+                                )
                             }
                         },
                     };
@@ -1118,9 +1133,14 @@ impl HistoryView {
             Some(RowItem::Commit { folder, id }) => {
                 self.list.view_mut().inner_mut().toggle(key, store, ui);
 
+                // OpenDiffCanvas also ensures the commit's file
+                // fetch — one request feeds the tree AND the canvas.
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(FetchCommitFiles { folder, commit: id }),
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        source: crate::diff_canvas::CanvasSource::Commit { folder, id },
+                        reveal: None,
+                    }),
                 )));
             }
             Some(RowItem::More { folder }) => {
@@ -1129,11 +1149,17 @@ impl HistoryView {
                     Arc::new(GrowHistory { folder }),
                 )));
             }
-            Some(RowItem::File { old, new }) => {
-                let old = old.unwrap_or_else(|| empty_side(&new));
+            Some(RowItem::File {
+                folder,
+                commit,
+                new,
+            }) => {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(OpenDiffForPair { old, new }),
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        source: crate::diff_canvas::CanvasSource::Commit { folder, id: commit },
+                        reveal: Some(new),
+                    }),
                 )));
             }
             Some(RowItem::Note) | None => {}

@@ -4,7 +4,7 @@
 use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
-use imba::{Thunk as _, UiCtx, View as _};
+use imba::{UiCtx, View as _};
 use skia_safe::Size;
 
 use crate::document::EditorBuild;
@@ -186,40 +186,21 @@ impl imba::View for UnifiedDiffView {
             move |_arena: &'a imba::arena::Arena, constraints: Constraints| {
                 let face: imba::ThunkBox<'a, UnifiedDiffCommand> = match self.inline_face(store) {
                     Some(view) if self.layout == DiffLayout::Inline => {
-                        // The inline face is fully laid (the outer
-                        // list scrolls it), so derive its viewport
-                        // over the whole extent and mint the
-                        // projected inlays here; the pane hosts them
-                        // itself.
-                        let data = crate::viewport::EditorViewport::build(
-                            &view.document,
-                            view.editor,
-                            0.0..view.content_height().max(1.0),
-                            false,
-                            false,
-                            None,
-                            &crate::env::ui_collection(store, ui),
-                            &crate::env::Themes::of(store),
-                        );
-                        let projected = crate::popup::projected_overlays(
-                            &view.document,
-                            view.editor,
-                            arena,
-                            store,
-                            ui,
-                            &data,
-                            skia_safe::Point::new(0.0, 0.0),
-                        );
+                        // A real THUNK: the projected inlays and the
+                        // face's own realization both happen at
+                        // realize time, BOUNDED by the viewport the
+                        // route delivers — never a full-extent build
+                        // at display (the DiffCanvas.trace lesson).
+                        // The pane hosts the projections itself.
                         imba::ThunkBox::new(
                             arena,
-                            imba::eager(InlinePane {
+                            InlineThunk {
                                 ui,
                                 store,
                                 arena,
                                 view,
                                 constraints,
-                                projected,
-                            })
+                            }
                             .map(UnifiedDiffCommand::Inline)
                             .overlay_host(crate::markup::INLAY_HOST),
                         )
@@ -238,25 +219,76 @@ impl imba::View for UnifiedDiffView {
     }
 }
 
-struct InlinePane<'a> {
+struct InlineThunk<'a> {
     ui: &'a UiCtx,
     store: &'a Store,
     arena: &'a imba::arena::Arena,
     view: EditorView,
     constraints: Constraints,
-
-    /// Host-targeting inlays, minted at display time — the per-event
-    /// relayouts below cannot answer `overlays()` with the pane's
-    /// lifetime.
-    projected: Vec<imba::overlay::Overlay<'a, EditorCommand>>,
 }
 
-impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
+impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
     fn size(&self) -> Size {
         Size::new(
             (self.view.gutter_width + self.view.layout_width()).max(self.constraints.min.width),
             self.view.content_height().max(self.constraints.min.height),
         )
+    }
+
+    fn realize(
+        self,
+        arena: &'a imba::arena::Arena,
+        viewport: skia_safe::Rect,
+    ) -> imba::WidgetBox<'a, EditorCommand> {
+        let InlineThunk {
+            ui,
+            store,
+            arena: frame,
+            view,
+            constraints,
+        } = self;
+        let view: &'a EditorView = frame.alloc(view);
+        // Projected inlays mint from the VISIBLE band's geometry —
+        // strips scrolled out of view simply are not mounted this
+        // frame, like everything else the viewport culls.
+        let band = viewport.top.max(0.0)..viewport.bottom.max(viewport.top);
+        let data = crate::viewport::EditorViewport::build(
+            &view.document,
+            view.editor,
+            band,
+            false,
+            false,
+            None,
+            &crate::env::ui_collection(store, ui),
+            &crate::env::Themes::of(store),
+        );
+        let projected = crate::popup::projected_overlays(
+            &view.document,
+            view.editor,
+            frame,
+            store,
+            ui,
+            &data,
+            skia_safe::Point::new(0.0, 0.0),
+        );
+        let inner = view
+            .layout(frame, store, ui, constraints)
+            .realize(arena, viewport);
+        imba::WidgetBox::new(arena, InlinePane { inner, projected })
+    }
+}
+
+/// The realized inline face: the editor widget, closed over its
+/// bounded viewport, plus the projections it minted. Every ask —
+/// events, focus, keys, IME, clipboard — is a read.
+struct InlinePane<'a> {
+    inner: imba::WidgetBox<'a, EditorCommand>,
+    projected: Vec<imba::overlay::Overlay<'a, EditorCommand>>,
+}
+
+impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
+    fn size(&self) -> Size {
+        imba::Widget::size(&self.inner)
     }
 
     fn handle_event(
@@ -265,13 +297,16 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
         event: &imba::event::Event<'_>,
         viewport: skia_safe::Rect,
     ) -> imba::event::EventResult<EditorCommand> {
-        self.view
-            .layout(arena, self.store, self.ui, self.constraints)
-            .realize(arena, viewport)
-            .handle_event(arena, event, viewport)
+        self.inner.handle_event(arena, event, viewport)
+    }
+
+    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
+        self.inner.blocks_pointer(point)
     }
 
     fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
+        // ONLY the projections: the inner editor's own emissions were
+        // always dropped on this face (the pane is the host).
         std::mem::take(&mut self.projected)
     }
 
@@ -279,71 +314,6 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
     where
         'a: 'w,
     {
-        use imba::event::EventResult;
-        use imba::focus::FocusData;
-        let view = &self.view;
-        let store = self.store;
-        let ui = self.ui;
-        let arena = self.arena;
-        let constraints = self.constraints;
-        let with_chain = move |f: &mut dyn FnMut(
-            FocusData<'_, EditorCommand>,
-        ) -> EventResult<EditorCommand>|
-              -> EventResult<EditorCommand> {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let result = f(imba::Widget::focus_data(&mut widget));
-            drop(widget);
-            result
-        };
-        let commands = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let commands = std::mem::take(&mut imba::Widget::focus_data(&mut widget).commands);
-            drop(widget);
-            commands
-        };
-        let location = {
-            let mut widget = view
-                .layout(arena, store, ui, constraints)
-                .realize(arena, skia_safe::Rect::default());
-            let location = imba::Widget::focus_data(&mut widget).location.take();
-            drop(widget);
-            location
-        };
-        FocusData {
-            commands,
-            on_key: Some(Box::new(move |key, mods| {
-                with_chain(&mut |mut data| data.key(key, mods))
-            })),
-            on_text: Some(Box::new(move |text| {
-                with_chain(&mut |mut data| data.text(text))
-            })),
-            ime: Some(imba::focus::ImeSeat {
-                origin: skia_safe::Point::default(),
-                clip: None,
-                ask: Box::new(move |origin, clip, visit| {
-                    with_chain(&mut |mut data| match data.ime.take() {
-                        Some(mut seat) => {
-                            let at = skia_safe::Point::new(
-                                origin.x + seat.origin.x,
-                                origin.y + seat.origin.y,
-                            );
-                            (seat.ask)(at, clip, visit)
-                        }
-                        None => EventResult::Ignored,
-                    })
-                }),
-            }),
-            clipboard: Some(Box::new(move |visit| {
-                with_chain(&mut |mut data| match data.clipboard.as_mut() {
-                    Some(seat) => seat(visit),
-                    None => EventResult::Ignored,
-                })
-            })),
-            location,
-        }
+        self.inner.focus_data()
     }
 }

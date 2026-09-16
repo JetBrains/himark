@@ -3,7 +3,6 @@
 
 use imba::arena::Arena;
 use imba::constraints::Constraints;
-use imba::event::{Event, EventResult};
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::{Thunk, UiCtx};
@@ -12,7 +11,7 @@ use skia_safe::{Point, Rect, Size};
 use crate::document::Document;
 use crate::editor::EditorId;
 use crate::editor_view::EditorCommand;
-use crate::markup::{Inlay, InlayCommand, InlayKey};
+use crate::markup::{Inlay, InlayKey};
 
 pub(crate) fn visible_popups<'a>(
     document: &Document,
@@ -142,20 +141,24 @@ pub(crate) fn projected_overlays<'a>(
                         InlayProjection::Span => 0.0,
                         InlayProjection::Aligned => anchor.left.max(0.0),
                     };
-                    let widget = PopupWidget {
-                        inlay,
-                        store,
-                        ui,
-                        arena,
-                        size: Size::new((host_size.width - left).max(1.0), anchor.height()),
-                    };
+                    // A real THUNK, not a pre-built widget: the host
+                    // realizes it with its own clipped viewport
+                    // (`place_realized`), so the content widget is
+                    // born closed over the bounded result — every
+                    // later ask (events, focus) is a read. The old
+                    // deferring PopupWidget re-laid per ask and had
+                    // to invent a full-extent viewport for
+                    // `focus_data` (the DiffCanvas.trace lesson).
+                    let size = Size::new((host_size.width - left).max(1.0), anchor.height());
+                    // The inlay moves into the arena so the thunk it
+                    // lays can borrow it for the frame's lifetime.
+                    let inlay: &Inlay = arena.alloc(inlay);
+                    let thunk = inlay
+                        .layout(arena, store, ui, Constraints::tight(size))
+                        .map(move |command| EditorCommand::Inlay { key, command });
                     vec![(
                         Point::new(left, anchor.top),
-                        imba::ThunkBox::new(
-                            arena,
-                            imba::eager(widget)
-                                .map(move |command| EditorCommand::Inlay { key, command }),
-                        ),
+                        imba::ThunkBox::new(arena, thunk),
                     )]
                 }),
             });
@@ -199,91 +202,18 @@ impl<'a> PopupSeed<'a> {
             self.position,
         );
         let key = self.key;
-        let widget = PopupWidget {
-            inlay: self.inlay,
-            store: self.store,
-            ui: self.ui,
-            arena: self.arena,
-            size: Size::new(resolved.width(), resolved.height()),
-        };
+        let inlay: &Inlay = self.arena.alloc(self.inlay);
+        let thunk = inlay
+            .layout(
+                self.arena,
+                self.store,
+                self.ui,
+                Constraints::tight(Size::new(resolved.width(), resolved.height())),
+            )
+            .map(move |command| EditorCommand::Inlay { key, command });
         vec![(
             Point::new(resolved.left, resolved.top),
-            imba::ThunkBox::new(
-                self.arena,
-                imba::eager(widget).map(move |command| EditorCommand::Inlay { key, command }),
-            ),
+            imba::ThunkBox::new(self.arena, thunk),
         )]
-    }
-}
-
-struct PopupWidget<'a> {
-    inlay: Inlay,
-    store: &'a Store,
-    ui: &'a UiCtx,
-
-    arena: &'a Arena,
-    size: Size,
-}
-
-impl<'a> imba::Widget<'a, InlayCommand> for PopupWidget<'a> {
-    fn size(&self) -> Size {
-        self.size
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<InlayCommand> {
-        let thunk = self.inlay.layout(
-            self.arena,
-            self.store,
-            self.ui,
-            Constraints::tight(self.size),
-        );
-        let widget = thunk.realize(self.arena, viewport);
-        widget.handle_event(arena, event, viewport)
-    }
-
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, InlayCommand>
-    where
-        'a: 'w,
-    {
-        use imba::focus::FocusData;
-        let inlay = &self.inlay;
-        let store = self.store;
-        let ui = self.ui;
-        let arena = self.arena;
-        let size = self.size;
-        let with_chain = move |f: &mut dyn FnMut(
-            FocusData<'_, InlayCommand>,
-        ) -> EventResult<InlayCommand>|
-              -> EventResult<InlayCommand> {
-            let mut widget = inlay
-                .layout(arena, store, ui, Constraints::tight(size))
-                .realize(arena, Rect::from_size(size));
-            let result = f(widget.focus_data());
-            drop(widget);
-            result
-        };
-        let commands = {
-            let mut widget = inlay
-                .layout(arena, store, ui, Constraints::tight(size))
-                .realize(arena, Rect::from_size(size));
-            let commands = std::mem::take(&mut widget.focus_data().commands);
-            drop(widget);
-            commands
-        };
-        FocusData {
-            commands,
-            on_key: Some(Box::new(move |key, mods| {
-                with_chain(&mut |mut data| data.key(key, mods))
-            })),
-            on_text: Some(Box::new(move |text| {
-                with_chain(&mut |mut data| data.text(text))
-            })),
-            ..FocusData::default()
-        }
     }
 }

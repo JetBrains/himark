@@ -2194,3 +2194,182 @@ mod viewport_preservation {
         }
     }
 }
+
+mod row_reveal {
+    use super::*;
+    use crate::anim::AnimationClock;
+    use crate::event::Placement;
+    use crate::list::{ListSlice, ListView};
+
+    fn keyed_rows(rows: &[(u64, f32)]) -> ListView<Row, u64> {
+        let mut slice: ListSlice<Row, u64> = ListSlice::new();
+        for (key, height) in rows {
+            slice.push_keyed_sized(*key, Row { height: *height }, *height);
+        }
+        ListView::from_slice_at(100.0, slice)
+    }
+
+    /// `merge` folds lone commands into `Commands` — accept both.
+    fn revealed(result: EventResult<ListCommand<RowCommand>>) -> bool {
+        match result {
+            EventResult::Command(ListCommand::Revealed) => true,
+            EventResult::Commands(commands) => commands
+                .iter()
+                .any(|command| matches!(command, ListCommand::Revealed)),
+            _ => false,
+        }
+    }
+
+    fn clock(
+        list: &ListView<Row, u64>,
+        store: &Store,
+        ui: &crate::ui::UiCtx,
+        viewport: Rect,
+    ) -> EventResult<ListCommand<RowCommand>> {
+        let arena = Arena::default();
+        let event = Event::AnimationClock {
+            now: AnimationClock::from_millis(16.0),
+        };
+        let result = list
+            .layout(
+                &arena,
+                store,
+                ui,
+                Constraints {
+                    min: Size::default(),
+                    max: Size::new(100.0, f32::MAX),
+                },
+            )
+            .realize(&arena, viewport)
+            .handle_event(&arena, &event, viewport);
+        result
+    }
+
+    #[test]
+    fn a_top_left_reveal_aims_the_row_exactly_and_disarms_on_landing() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
+        list.reveal_row(7, Placement::TopLeftAt);
+
+        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
+            EventResult::Reveal(reveal) => {
+                assert_eq!(reveal.placement, Placement::TopLeftAt);
+                assert_eq!(reveal.rect.top, 120.0, "key 7 starts at 6 rows of 20px");
+            }
+            _ => panic!("an armed reveal emits on the clock"),
+        }
+
+        // The scroll landed the jump: the next clock answers Revealed,
+        // and performing it disarms the slot.
+        assert!(
+            revealed(clock(
+                &list,
+                &store,
+                &ui,
+                Rect::from_xywh(0.0, 120.0, 100.0, 60.0)
+            )),
+            "a placed reveal reports Revealed"
+        );
+        let mut store = Store::new();
+        let mut batch: crate::effect::Batch<ListCommand<RowCommand>> = crate::effect::Batch::new();
+        list.perform(&mut store, &ui, ListCommand::Revealed, &mut batch.effects());
+        assert!(
+            matches!(
+                clock(&list, &store, &ui, Rect::from_xywh(0.0, 120.0, 100.0, 60.0)),
+                EventResult::Ignored
+            ),
+            "a disarmed reveal stays quiet"
+        );
+    }
+
+    #[test]
+    fn a_tail_reveal_settles_at_the_clamp() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        // 10 rows x 20px = 200px; a 60px viewport clamps at 140.
+        let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
+        list.reveal_row(10, Placement::TopLeftAt);
+
+        assert!(
+            matches!(
+                clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)),
+                EventResult::Reveal(_)
+            ),
+            "the tail row still asks for its jump"
+        );
+        // The scroll could only reach the clamp — that IS placed.
+        assert!(
+            revealed(clock(
+                &list,
+                &store,
+                &ui,
+                Rect::from_xywh(0.0, 140.0, 100.0, 60.0)
+            )),
+            "a clamped tail reveal satisfies at max scroll"
+        );
+    }
+
+    #[test]
+    fn a_reveal_survives_a_splice_between_arming_and_the_clock() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
+        list.reveal_row(7, Placement::TopLeftAt);
+
+        // Three 30px rows land above before the clock fires: the
+        // reveal resolves against the LIVE rope, not a stale rect.
+        list.splice(0..0, (0..3).map(|_| (Row { height: 30.0 }, 30.0)));
+
+        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
+            EventResult::Reveal(reveal) => {
+                assert_eq!(reveal.rect.top, 210.0, "90px of landings shifted the row");
+            }
+            _ => panic!("the reveal re-aims through the splice"),
+        }
+    }
+
+    #[test]
+    fn a_lost_key_disarms_instead_of_arming_forever() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
+        list.reveal_row(7, Placement::TopLeftAt);
+        list.splice(6..7, std::iter::empty::<(Row, f32)>());
+
+        assert!(
+            revealed(clock(
+                &list,
+                &store,
+                &ui,
+                Rect::from_xywh(0.0, 0.0, 100.0, 60.0)
+            )),
+            "a reveal whose key left the list asks to be disarmed"
+        );
+    }
+
+    #[test]
+    fn an_ensure_visible_reveal_keeps_the_golden_section_road() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
+        list.reveal_row(7, Placement::EnsureVisible);
+
+        match clock(&list, &store, &ui, Rect::from_xywh(0.0, 0.0, 100.0, 60.0)) {
+            EventResult::Reveal(reveal) => {
+                assert_eq!(reveal.placement, Placement::EnsureVisible);
+            }
+            _ => panic!("an off-screen row asks to be scrolled into view"),
+        }
+        // Fully visible already → satisfied without moving.
+        assert!(
+            revealed(clock(
+                &list,
+                &store,
+                &ui,
+                Rect::from_xywh(0.0, 110.0, 100.0, 60.0)
+            )),
+            "a visible row satisfies in place"
+        );
+    }
+}

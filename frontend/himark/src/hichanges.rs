@@ -887,9 +887,9 @@ fn relaunch_poll(
     );
 }
 
-pub(crate) struct OpenDiffForPair {
-    pub(crate) old: ResourceLocation,
-    pub(crate) new: ResourceLocation,
+pub struct OpenDiffForPair {
+    pub old: ResourceLocation,
+    pub new: ResourceLocation,
 }
 
 impl crate::DynamicCommand for OpenDiffForPair {
@@ -918,10 +918,7 @@ impl crate::DynamicCommand for OpenDiffForPair {
 enum RowItem {
     Branch,
 
-    File {
-        old: Option<ResourceLocation>,
-        new: ResourceLocation,
-    },
+    File { new: ResourceLocation },
 
     Note,
 }
@@ -992,7 +989,6 @@ fn folder_node(
                         self.items.insert_mut(
                             key.clone(),
                             RowItem::File {
-                                old: entry.before.clone(),
                                 new: entry.working.clone(),
                             },
                         );
@@ -1204,14 +1200,44 @@ impl ChangesView {
 
     fn activate_key(&mut self, key: &ResourceLocation, store: &Store, ui: &UiCtx) {
         match self.items.get(key).cloned() {
-            Some(RowItem::Branch) => self.list.inner_mut().toggle(key, store, ui),
-            Some(RowItem::File { old, new }) => {
+            Some(RowItem::Branch) => {
+                // The workspace folder ROOT opens the diff canvas
+                // (docs/diff-canvas.md §6); inner directories keep
+                // toggling. The chevron expands either way.
+                if crate::higent::session_folders(store, &self.workspace).contains(key) {
+                    self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
+                        self.window,
+                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                            source: crate::diff_canvas::CanvasSource::WorkingCopy {
+                                folder: key.clone(),
+                            },
+                            reveal: None,
+                        }),
+                    )));
+                    return;
+                }
+                self.list.inner_mut().toggle(key, store, ui)
+            }
+            Some(RowItem::File { new }) => {
                 self.list.inner_mut().list_mut().select_only(key.clone());
 
-                let old = old.unwrap_or_else(|| empty_side(&new));
+                // A file row REVEALS itself in the folder's canvas —
+                // the canvas row keys are these same locations.
+                let folder = crate::higent::session_folders(store, &self.workspace)
+                    .into_iter()
+                    .find(|folder| {
+                        folder.authority() == new.authority()
+                            && new.path().starts_with(folder.path())
+                    });
+                let Some(folder) = folder else {
+                    return;
+                };
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(OpenDiffForPair { old, new }),
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        source: crate::diff_canvas::CanvasSource::WorkingCopy { folder },
+                        reveal: Some(new),
+                    }),
                 )));
             }
             Some(RowItem::Note) | None => {}

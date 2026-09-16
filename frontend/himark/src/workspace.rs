@@ -132,6 +132,33 @@ impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
+/// One diff-canvas item's whole off-thread half (docs/diff-canvas.md
+/// §4): fetch both sides, build language-aware documents, diff,
+/// prepare the marks. The landing only mounts.
+pub struct BuildFileDiffEffect {
+    pub old: ResourceLocation,
+    pub new: ResourceLocation,
+
+    /// The canvas's content width at arm time — the landing lays the
+    /// editors at it and re-arms if the panel resized meanwhile.
+    pub width: f32,
+}
+
+pub struct BuiltFileDiff {
+    pub old: crate::Document,
+    pub new: crate::Document,
+    pub operation: crate::Operation,
+    pub marks: crate::PreparedMarks,
+    pub width: f32,
+
+    /// Both sides unreachable — the row reports instead of mounting.
+    pub failed: Option<String>,
+}
+
+impl Effect for BuildFileDiffEffect {
+    type Result = BuiltFileDiff;
+}
+
 pub fn open_by_location_effect(
     window: crate::WindowId,
     location: ResourceLocation,

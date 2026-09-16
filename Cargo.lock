@@ -1770,6 +1770,7 @@ dependencies = [
  "himarkdown",
  "imba",
  "operation",
+ "rpds",
  "skia-safe",
 ]
 

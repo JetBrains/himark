@@ -49,6 +49,7 @@ pub use tree_item::{
     tree_interaction, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand, TreeListCommand,
     TreeTint,
 };
+pub mod diff_canvas;
 mod family_rows;
 mod toolbar;
 mod watch;
@@ -64,9 +65,9 @@ pub use crate::diffs::{
 pub use crate::family_rows::{mint_unfronted, FamilyRow, RowMinter, RowMinters};
 pub use crate::workspace::{
     open_by_location_effect, open_locations, prebuild_group, prepare_built, BuildDocumentEffect,
-    BuiltDocument, FindEffect, FindTarget, ListDirectoryEffect, OpenByLocationEffect,
-    OpenDiffByLocationsEffect, PickSaveEffect, RowPrep, ScratchSpaces, SessionId,
-    StoreDocumentEffect,
+    BuildFileDiffEffect, BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect,
+    OpenByLocationEffect, OpenDiffByLocationsEffect, PickSaveEffect, RowPrep, ScratchSpaces,
+    SessionId, StoreDocumentEffect,
 };
 pub use ::editor::*;
 pub use app::*;

@@ -45,11 +45,56 @@ pub fn install_open_handlers(
         Arc::clone(&languages),
     ));
     app.register_handler::<himark::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler {
+        caller: caller.clone(),
+        workshop: Arc::clone(&workshop),
+        languages: Arc::clone(&languages),
+    });
+    app.register_handler::<himark::BuildFileDiffEffect>(BuildFileDiffHandler {
         caller,
         workshop,
         languages,
     });
     app.register_navigator(DiffNavigator);
+}
+
+/// The diff canvas's per-item build (docs/diff-canvas.md §4): both
+/// fetches, both documents, the Myers pass and the mark prep all run
+/// here, off the UI thread; the landing only mounts editors.
+pub struct BuildFileDiffHandler {
+    pub caller: imba::effect::EffectCaller,
+    pub workshop: Arc<::himark::Workshop>,
+    pub languages: Arc<himark::SyntaxLanguages>,
+}
+
+impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
+    async fn handle(&self, effect: himark::BuildFileDiffEffect) -> himark::BuiltFileDiff {
+        let fetch = |location: ResourceLocation| self.caller.call(FetchDocumentEffect { location });
+        let old_text = fetch(effect.old.clone()).await.flatten();
+        let new_text = fetch(effect.new.clone()).await.flatten();
+        let failed = (old_text.is_none() && new_text.is_none())
+            .then(|| format!("contents unavailable: {}", effect.new.name()));
+        let build = |location: &ResourceLocation, text: &str| {
+            document_for(
+                &self.languages,
+                location.name(),
+                text,
+                &self.workshop.fonts(),
+                &self.workshop.theme(),
+            )
+        };
+        let old = build(&effect.old, old_text.as_deref().unwrap_or(""));
+        let new = build(&effect.new, new_text.as_deref().unwrap_or(""));
+        let operation = himark::diff::diff(old.text(), new.text());
+        let marks = himark::prepare_marks(&operation, old.text());
+        himark::BuiltFileDiff {
+            old,
+            new,
+            operation,
+            marks,
+            width: effect.width,
+            failed,
+        }
+    }
 }
 
 pub struct OpenDiffByLocationsHandler {

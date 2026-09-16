@@ -467,17 +467,38 @@ fn activation_pairs_carry_the_exact_locations() {
         )
     };
     match items.get(&key("mod.md")) {
-        Some(RowItem::File {
-            old: Some(old),
-            new,
-        }) => {
-            assert_eq!(raw_ref(old).expect("a before ref").1, "hihost-git:/base");
+        Some(RowItem::File { new }) => {
             assert_eq!(new, &key("mod.md"), "the new side IS the working copy");
         }
         other => panic!("expected a paired file row, got {:?}", other.is_some()),
     }
-    match items.get(&key("new.md")) {
-        Some(RowItem::File { old: None, .. }) => {}
-        other => panic!("an add carries no old side, got {:?}", other.is_some()),
-    }
+
+    // The PAIR itself now rides the canvas feed — the same entries,
+    // normalized the way activation consumes them.
+    let mut store = imba::store::Store::new();
+    store.put(changes);
+    let (_, listing) = crate::diff_canvas::canvas_files(
+        &store,
+        &crate::diff_canvas::CanvasSource::WorkingCopy {
+            folder: folder.clone(),
+        },
+    );
+    let crate::diff_canvas::CanvasListing::Ready(files) = listing else {
+        panic!("a ready listing");
+    };
+    let by_key = |name: &str| {
+        files
+            .iter()
+            .find(|file| file.new == key(name))
+            .expect("a listed file")
+    };
+    assert_eq!(
+        raw_ref(&by_key("mod.md").old).expect("a before ref").1,
+        "hihost-git:/base"
+    );
+    assert_eq!(
+        by_key("new.md").old.authority().as_str(),
+        super::EMPTY_AUTHORITY,
+        "an add's old side is the empty authority"
+    );
 }

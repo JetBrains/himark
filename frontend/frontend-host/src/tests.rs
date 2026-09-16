@@ -1073,8 +1073,48 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         );
     }
 
+    // The file row reveals into the DIFF CANVAS now
+    // (docs/diff-canvas.md §6): rows populate from the adopted
+    // changeset, the visible placeholder arms its off-thread build,
+    // and the landing swaps in atomically.
+    let canvas_probe = |engine: &HimarkEngine| {
+        let mut shot = None;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                shot = Some(canvas.probe_rows());
+            }
+        });
+        shot
+    };
+    settle_until(&mut engine, "the canvas row built its diff", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        canvas_probe(engine).is_some_and(|rows| {
+            rows.iter().any(|(title, phase, _)| {
+                title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
+            })
+        })
+    });
+
+    // The Header-1 band opens the standalone pane — the old road,
+    // still reachable per file.
+    let chrome_top = himark::env::Themes::of(engine.app.store())
+        .ui()
+        .toolbar
+        .height;
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        150.0,
+        chrome_top + 40.0,
+        900.0,
+        700.0,
+    ));
+    settle(&mut engine);
+
     let mut halves = None;
     settle_until(&mut engine, "the diff pane mounted", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel.as_any().downcast_ref::<hidiff::DiffPanelView>() {
                 halves = Some(panel.halves(engine.app.store()));
@@ -2487,7 +2527,38 @@ fn a_one_sided_diff_goes_quiet() {
         900.0,
         700.0
     ));
+    // The file row reveals into the canvas; the one-sided build
+    // (empty old side) must land like any other.
+    settle_until(&mut engine, "the one-sided canvas row built", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut built = false;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                built = canvas.probe_rows().iter().any(|(title, phase, _)| {
+                    title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
+                });
+            }
+        });
+        built
+    });
+
+    // The header band still opens the standalone pane; the QUIET
+    // guarantee below is the pane's.
+    let chrome_top = himark::env::Themes::of(engine.app.store())
+        .ui()
+        .toolbar
+        .height;
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        150.0,
+        chrome_top + 40.0,
+        900.0,
+        700.0,
+    ));
     settle_until(&mut engine, "the one-sided diff pane mounted", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut mounted = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
             mounted |= panel.as_any().is::<hidiff::DiffPanelView>();
@@ -6273,11 +6344,20 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         700.0
     ));
     settle_until(&mut engine, "the commit diff mounted", |engine| {
-        let mut mounted = false;
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            mounted |= panel.as_any().is::<hidiff::DiffPanelView>();
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                built = matches!(
+                    canvas.source(),
+                    himark::diff_canvas::CanvasSource::Commit { .. }
+                ) && canvas.probe_rows().iter().any(|(title, phase, _)| {
+                    title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
+                });
+            }
         });
-        mounted
+        built
     });
 
     let history_cursor = |engine: &HimarkEngine| {

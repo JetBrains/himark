@@ -306,6 +306,13 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     /// so repeated pulses converge instead of compounding.
     settle_to: Option<f32>,
 
+    /// An armed keyed reveal, independent of selection: `reveal_row`
+    /// scrolls a row into view without touching what is selected.
+    /// Resolved against the LIVE rope on every clock, so splices
+    /// between arming and landing re-aim it for free; cleared by the
+    /// `Revealed` round trip, or when the key leaves the list.
+    row_reveal: Option<(K, crate::event::Placement)>,
+
     animations: Vec<SpliceAnimation>,
 
     generation: u64,
@@ -363,6 +370,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             laid_width: std::sync::atomic::AtomicU32::new(width.to_bits()),
             viewport_top: 0.0,
             settle_to: None,
+            row_reveal: None,
             animations: Vec::new(),
             generation: 0,
         }
@@ -531,6 +539,16 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         if let Some(selection) = &mut self.selection {
             selection.reveal = false;
         }
+        self.row_reveal = None;
+    }
+
+    /// Arm a keyed reveal WITHOUT selecting: `TopLeftAt` pins the
+    /// row's top edge to the viewport's (clamped at the end of the
+    /// list), `EnsureVisible` is the golden-section scroll-into-view.
+    /// Works on keys whose content has not landed yet — the reveal
+    /// aims at the row's reserved extent and survives its swap.
+    pub fn reveal_row(&mut self, key: K, placement: crate::event::Placement) {
+        self.row_reveal = Some((key, placement));
     }
 
     pub fn clear_selection(&mut self) {
@@ -1148,6 +1166,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
             ),
             viewport_top: self.viewport_top,
             settle_to: self.settle_to,
+            row_reveal: self.row_reveal.clone(),
 
             animations: self.animations.clone(),
             generation: self.generation,
@@ -1302,6 +1321,7 @@ where
                 self.animations = animations;
             }
             ListCommand::Revealed => {
+                self.row_reveal = None;
                 if let Some(selection) = &mut self.selection {
                     selection.reveal = false;
                 }
@@ -1339,11 +1359,8 @@ where
             self.laid_width
                 .store(width.to_bits(), std::sync::atomic::Ordering::Relaxed);
 
-            let reveal = self.selection.as_ref().and_then(|selection| {
-                if !selection.reveal {
-                    return None;
-                }
-                let index = self.own_row_index(selection.cursor.as_ref()?)?;
+            let rect_of = |key: &K| -> Option<Rect> {
+                let index = self.own_row_index(key)?;
                 let mut cursor = self.items.cursor();
                 if !cursor.seek_to_index(index as u32) {
                     return None;
@@ -1351,13 +1368,31 @@ where
                 let top = cursor.position().metric_at(ROW_PX) as f32;
                 let height = cursor.element_metrics().metric_at(ROW_PX) as f32;
                 Some(Rect::from_xywh(0.0, top, width.max(1.0), height))
-            });
+            };
+            // The armed keyed reveal outranks the selection's: it is
+            // explicit navigation. A key that left the list resolves
+            // to a `Revealed` round trip that disarms it.
+            let (reveal, reveal_lost) = match &self.row_reveal {
+                Some((key, placement)) => match rect_of(key) {
+                    Some(rect) => (Some((rect, *placement)), false),
+                    None => (None, true),
+                },
+                None => (
+                    self.selection
+                        .as_ref()
+                        .filter(|selection| selection.reveal)
+                        .and_then(|selection| rect_of(selection.cursor.as_ref()?))
+                        .map(|rect| (rect, crate::event::Placement::EnsureVisible)),
+                    false,
+                ),
+            };
             ListWidget {
                 items: &self.items,
                 selection: self.selection.as_ref(),
                 matches: &self.matches,
                 settle_to: self.settle_to,
                 reveal,
+                reveal_lost,
                 animations: &self.animations,
                 separators: self.separators,
                 store,
@@ -1379,7 +1414,8 @@ struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     matches: &'a Intervals<K, ()>,
     settle_to: Option<f32>,
 
-    reveal: Option<Rect>,
+    reveal: Option<(Rect, crate::event::Placement)>,
+    reveal_lost: bool,
     animations: &'a [SpliceAnimation],
     separators: Option<SeparatorStyle>,
     store: &'a Store,
@@ -1796,10 +1832,35 @@ where
                             .merge(EventResult::Command(ListCommand::Animate(*now)));
                     }
 
-                    if let Some(rect) = self.reveal {
-                        let mine = match crate::event::reveal_satisfied(viewport, rect) {
-                            true => EventResult::Command(ListCommand::Revealed),
-                            false => EventResult::Reveal(crate::event::Reveal::visible(rect)),
+                    if self.reveal_lost {
+                        merged = std::mem::replace(&mut merged, EventResult::Ignored)
+                            .merge(EventResult::Command(ListCommand::Revealed));
+                    }
+                    if let Some((rect, placement)) = self.reveal {
+                        let mine = match placement {
+                            crate::event::Placement::EnsureVisible => {
+                                match crate::event::reveal_satisfied(viewport, rect) {
+                                    true => EventResult::Command(ListCommand::Revealed),
+                                    false => {
+                                        EventResult::Reveal(crate::event::Reveal::visible(rect))
+                                    }
+                                }
+                            }
+                            crate::event::Placement::TopLeftAt => {
+                                // The scroll clamps at the end of the
+                                // list; satisfaction must measure
+                                // against the clamped target or a
+                                // tail row re-emits forever.
+                                let best = rect
+                                    .top
+                                    .min((self.size.height - viewport.height()).max(0.0));
+                                match (viewport.top - best).abs() < 0.5 {
+                                    true => EventResult::Command(ListCommand::Revealed),
+                                    false => {
+                                        EventResult::Reveal(crate::event::Reveal::top_left_at(rect))
+                                    }
+                                }
+                            }
                         };
                         merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                     }

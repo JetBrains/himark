@@ -342,14 +342,34 @@ fn fetched_commit_files_expand_with_pinned_sides() {
     let file_key = commit_key
         .child(ResourceType::directory(), "src")
         .child(ResourceType::document(), "lib.rs");
-    let Some(RowItem::File { old, new }) = items.get(&file_key) else {
+    let Some(RowItem::File {
+        folder: row_folder,
+        commit,
+        new,
+    }) = items.get(&file_key)
+    else {
         panic!("a file row under the commit");
     };
-    let (_, old_raw) =
-        crate::hichanges::raw_ref(old.as_ref().expect("a pinned old side")).expect("a before ref");
-    assert_eq!(old_raw, "hihost-git:/a-parent-ref");
+    assert_eq!(row_folder, &folder, "the row names its canvas source");
+    assert_eq!(commit, "b");
     let (_, new_raw) = crate::hichanges::raw_ref(new).expect("an after ref");
     assert_eq!(new_raw, "hihost-git:/a-commit-ref");
+
+    // The pinned old side rides the canvas feed now.
+    let mut store = imba::store::Store::new();
+    store.put(history);
+    let (_, listing) = crate::diff_canvas::canvas_files(
+        &store,
+        &crate::diff_canvas::CanvasSource::Commit {
+            folder: folder.clone(),
+            id: "b".to_owned(),
+        },
+    );
+    let crate::diff_canvas::CanvasListing::Ready(files) = listing else {
+        panic!("a ready listing");
+    };
+    let (_, old_raw) = crate::hichanges::raw_ref(&files[0].old).expect("a before ref");
+    assert_eq!(old_raw, "hihost-git:/a-parent-ref");
 }
 
 #[test]

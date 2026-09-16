@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+rpds = "1"
 himark = { path = "../../himark" }
 imba = { path = "../../imba" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
