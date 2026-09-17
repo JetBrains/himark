@@ -1882,3 +1882,340 @@ fn the_unified_view_switches_between_split_and_inline() {
     settle(&mut app, &mut surface);
     assert_eq!(pair_state(&app).unified_layout(), himark::DiffLayout::Split);
 }
+
+/// PERF REGRESSION (the DiffCanvas trace, 2026-09-17): painting the
+/// END of a large multi-hunk inline diff must cost the same as
+/// painting its BEGINNING — every recomputation is O(viewport). A
+/// linear-in-offset term shows up here as a top/bottom ratio in the
+/// tens; the assert allows generous noise, never linearity.
+#[test]
+fn inline_diff_paint_cost_is_flat_across_the_document() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    app.register_command(Arc::new(OpenDiff));
+    himarkdown::register_handlers(&mut app);
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::embedded_fonts::source()();
+
+    // 6000 lines, a one-line change every 150 — forty hunks.
+    let mut old_body = String::new();
+    let mut new_body = String::new();
+    for n in 0..6000 {
+        if n % 150 == 0 {
+            old_body.push_str(&format!("old change {n}\n"));
+            new_body.push_str(&format!("new change {n}\n"));
+        } else {
+            old_body.push_str(&format!("same line {n}\n"));
+            new_body.push_str(&format!("same line {n}\n"));
+        }
+    }
+    assert!(app.add_document(
+        app.sole_window(),
+        himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme),
+        "left.md".to_owned(),
+        false,
+    ));
+    assert!(app.add_document(
+        app.sole_window(),
+        himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme),
+        "right.md".to_owned(),
+        false,
+    ));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+        for _ in 0..6 {
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    settle(&mut app, &mut surface);
+    assert!(app.perform_registered(app.sole_window(), "diff.open"));
+    settle(&mut app, &mut surface);
+
+    let toggle = himark::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
+        .into_iter()
+        .find(|presentable| presentable.id == "diff.toggle-layout")
+        .expect("the pane offers the layout toggle")
+        .command;
+    assert!(app.perform_command(toggle));
+    settle(&mut app, &mut surface);
+
+    let paint_median_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+        let mut times = Vec::new();
+        for _ in 0..12 {
+            let started = std::time::Instant::now();
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        times[times.len() / 2]
+    };
+
+    let top = paint_median_ms(&mut app, &mut surface);
+
+    // One decisive fling to the very bottom, then let it settle.
+    for _ in 0..4 {
+        let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
+        settle(&mut app, &mut surface);
+    }
+    let bottom = paint_median_ms(&mut app, &mut surface);
+
+    eprintln!("[perf] paint median: top {top:.2}ms bottom {bottom:.2}ms");
+    assert!(
+        bottom < (top * 3.0).max(2.0),
+        "painting the diff's end must not cost more than its start: \
+         top {top:.2}ms bottom {bottom:.2}ms"
+    );
+}
+
+/// PERF REGRESSION, canvas edition (the DiffCanvas trace,
+/// 2026-09-17: frontend-host/src/tests.rs — a large file with dozens
+/// of hunks — painted far slower at its END than at its start).
+/// Canvas rendering must be O(viewport) wherever the band sits.
+#[test]
+fn canvas_diff_paint_cost_is_flat_across_the_document() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::embedded_fonts::source()();
+
+    // 8000 lines, a one-line change every 100 — eighty hunks.
+    let mut old_body = String::new();
+    let mut new_body = String::new();
+    for n in 0..20000 {
+        if n % 100 == 0 {
+            old_body.push_str(&format!("old change {n}\n"));
+            new_body.push_str(&format!("new change {n}\n"));
+        } else {
+            old_body.push_str(&format!("same line {n}\n"));
+            new_body.push_str(&format!("same line {n}\n"));
+        }
+    }
+    // Dense inline markup — the volume a syntax highlighter puts on
+    // a real source file (several styled spans per line).
+    let dense = |body: &str| {
+        let mut markup = himark::Markup::new();
+        let mut at = 0u32;
+        for line in body.split_inclusive('\n') {
+            let len = line.len() as u32;
+            for word in 0..5u32 {
+                let start = at + word * 4;
+                let end = (start + 3).min(at + len.saturating_sub(1));
+                if start < end {
+                    markup.push_styled(start..end, himark::StyleId::DiffAdded);
+                }
+            }
+            at += len;
+        }
+        markup
+    };
+    let old = himark::Document::new(
+        himark::Text::from_string_exact(old_body.clone()),
+        dense(&old_body),
+    );
+    let new = himark::Document::new(
+        himark::Text::from_string_exact(new_body.clone()),
+        dense(&new_body),
+    );
+    let _ = (&markdown_fonts, &theme);
+    let operation = himark::diff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "big.md".to_owned(),
+        old: location("big.md.old", himark::ResourceType::document()),
+        new: location("big.md", himark::ResourceType::document()),
+        added: Some(80),
+        removed: Some(80),
+    };
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 1100.0,
+        failed: None,
+    };
+    let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
+        folder: location("proj", himark::ResourceType::directory()),
+    });
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        canvas.seed_built_for_tests(&mut store, &ui, file, built);
+    }
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let settle = |app: &mut Application, surface: &mut skia_safe::Surface| {
+        for _ in 0..6 {
+            let _ = himark::test_driver::animate(
+                &mut *app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    settle(&mut app, &mut surface);
+
+    let paint_median_ms = |app: &mut Application, surface: &mut skia_safe::Surface| -> f64 {
+        let mut times = Vec::new();
+        for _ in 0..12 {
+            let started = std::time::Instant::now();
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        times[times.len() / 2]
+    };
+
+    let top = paint_median_ms(&mut app, &mut surface);
+    for _ in 0..4 {
+        let _ = himark::test_driver::scroll(&mut app, 10_000_000.0);
+        settle(&mut app, &mut surface);
+    }
+    let bottom = paint_median_ms(&mut app, &mut surface);
+
+    eprintln!("[perf] canvas paint median: top {top:.2}ms bottom {bottom:.2}ms");
+    // A linear-in-offset regression measures WAY past this (5.4x at
+    // 20k lines before the lazy sweep seed; grows with file size) —
+    // the bound is ratio-based so machine speed cancels out.
+    assert!(
+        bottom < (top * 3.0).max(2.0),
+        "painting the canvas diff's end must not cost more than its start: \
+         top {top:.2}ms bottom {bottom:.2}ms"
+    );
+}
+
+/// PERF REGRESSION: a huge file squashed into ONE viewport by folds
+/// (two hunks, everything between folded) must paint at the same
+/// cost as a small one — the fold gap's markup is never traversed
+/// (dedicated shape/style interval lanes + per-segment sweeps).
+#[test]
+fn folded_squash_paint_cost_is_size_independent() {
+    let median_for = |line_count: usize| -> f64 {
+        let fonts = AppFonts::embedded();
+        let mut app = Application::new(fonts);
+        let _ = app.add_window();
+
+        let mut old_body = String::new();
+        let mut new_body = String::new();
+        for n in 0..line_count {
+            if n == 0 || n == line_count - 1 {
+                old_body.push_str(&format!("old change {n}\n"));
+                new_body.push_str(&format!("new change {n}\n"));
+            } else {
+                old_body.push_str(&format!("same line {n}\n"));
+                new_body.push_str(&format!("same line {n}\n"));
+            }
+        }
+        let dense = |body: &str| {
+            let mut markup = himark::Markup::new();
+            let mut at = 0u32;
+            for line in body.split_inclusive('\n') {
+                let len = line.len() as u32;
+                for word in 0..5u32 {
+                    let start = at + word * 4;
+                    let end = (start + 3).min(at + len.saturating_sub(1));
+                    if start < end {
+                        markup.push_styled(start..end, himark::StyleId::DiffAdded);
+                    }
+                }
+                at += len;
+            }
+            markup
+        };
+        let old = himark::Document::new(
+            himark::Text::from_string_exact(old_body.clone()),
+            dense(&old_body),
+        );
+        let new = himark::Document::new(
+            himark::Text::from_string_exact(new_body.clone()),
+            dense(&new_body),
+        );
+        let operation = himark::diff::diff(old.text(), new.text());
+        let marks = himark::prepare_marks(&operation, old.text());
+        let location = |name: &str, kind| {
+            himark::ResourceLocation::new(
+                kind,
+                himark::Authority::new("test"),
+                vec!["proj".to_owned(), name.to_owned()],
+            )
+        };
+        let file = himark::diff_canvas::CanvasFile {
+            title: "big.md".to_owned(),
+            old: location("big.md.old", himark::ResourceType::document()),
+            new: location("big.md", himark::ResourceType::document()),
+            added: Some(2),
+            removed: Some(2),
+        };
+        let built = himark::BuiltFileDiff {
+            old,
+            new,
+            operation,
+            marks,
+            width: 1100.0,
+            failed: None,
+        };
+        let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
+            folder: location("proj", himark::ResourceType::directory()),
+        });
+        {
+            let ui = app.ui_handle();
+            let mut store = app.store_mut();
+            canvas.seed_built_for_tests(&mut store, &ui, file, built);
+        }
+        assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+        let size = skia_safe::Size::new(1100.0, 800.0);
+        let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+        for _ in 0..6 {
+            let _ = himark::test_driver::animate(
+                &mut app,
+                imba::anim::AnimationClock::from_millis(0.0),
+            );
+            let _ =
+                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        }
+        let mut times = Vec::new();
+        for _ in 0..10 {
+            let started = std::time::Instant::now();
+            let _ =
+                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        times[times.len() / 2]
+    };
+
+    let small = median_for(5_000);
+    let large = median_for(200_000);
+    eprintln!("[perf] squashed paint median: 5k lines {small:.2}ms, 200k lines {large:.2}ms");
+    assert!(
+        large < (small * 3.0).max(2.0),
+        "a fold-squashed viewport must paint independent of file size: \
+         5k {small:.2}ms vs 200k {large:.2}ms"
+    );
+}

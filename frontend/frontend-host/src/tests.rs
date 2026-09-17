@@ -6,28 +6,62 @@ use std::ptr::{null, null_mut};
 
 mod fake_host {
     use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Mutex;
+    use std::sync::{Arc, Mutex};
 
-    pub static PICKS: AtomicU64 = AtomicU64::new(0);
+    /// One PICKER SEAT per engine, hung off the callbacks' `ctx` —
+    /// no process-global statics, so parallel (or merely successive)
+    /// tests cannot bleed request ids into each other. Reads CONSUME
+    /// (`take_*`), so a second pick in the same test must wait for
+    /// its own request instead of replaying the first.
+    pub struct Seat {
+        pub picks: AtomicU64,
+        pub save_picks: Mutex<(u64, String)>,
+        pub fetches: Mutex<Vec<(u64, String)>>,
+        pub stores: Mutex<Vec<(u64, String, String)>>,
+        pub lists: Mutex<Vec<(u64, String)>>,
+    }
 
-    pub static FETCHES: Mutex<Vec<(u64, String)>> = Mutex::new(Vec::new());
+    impl Seat {
+        pub fn new() -> Arc<Seat> {
+            Arc::new(Seat {
+                picks: AtomicU64::new(0),
+                save_picks: Mutex::new((0, String::new())),
+                fetches: Mutex::new(Vec::new()),
+                stores: Mutex::new(Vec::new()),
+                lists: Mutex::new(Vec::new()),
+            })
+        }
 
-    pub static STORES: Mutex<Vec<(u64, String, String)>> = Mutex::new(Vec::new());
-    pub static LISTS: Mutex<Vec<(u64, String)>> = Mutex::new(Vec::new());
+        /// The raw ctx for `HimarkHostCallbacks` — the test keeps the
+        /// `Arc` alive for the engine's whole life.
+        pub fn ctx(self: &Arc<Self>) -> *mut std::ffi::c_void {
+            Arc::as_ptr(self) as *mut std::ffi::c_void
+        }
+
+        pub fn take_pick(&self) -> u64 {
+            self.picks.swap(0, Ordering::SeqCst)
+        }
+
+        pub fn take_save_pick(&self) -> (u64, String) {
+            std::mem::take(&mut *self.save_picks.lock().expect("save picks"))
+        }
+
+        unsafe fn of<'a>(ctx: *mut std::ffi::c_void) -> &'a Seat {
+            &*(ctx as *const Seat)
+        }
+    }
 
     unsafe fn joined_path(location: *const crate::HimarkLocation) -> String {
         let location = crate::host::location_from_abi(&*location).expect("a valid location");
         location.path().join("/")
     }
 
-    pub static SAVE_PICKS: Mutex<(u64, String)> = Mutex::new((0, String::new()));
-
-    pub unsafe extern "C" fn pick_files(_ctx: *mut std::ffi::c_void, request: u64, _window: u64) {
-        PICKS.store(request, Ordering::SeqCst);
+    pub unsafe extern "C" fn pick_files(ctx: *mut std::ffi::c_void, request: u64, _window: u64) {
+        Seat::of(ctx).picks.store(request, Ordering::SeqCst);
     }
 
     pub unsafe extern "C" fn pick_save(
-        _ctx: *mut std::ffi::c_void,
+        ctx: *mut std::ffi::c_void,
         request: u64,
         suggested: *const std::ffi::c_char,
         suggested_len: usize,
@@ -39,22 +73,23 @@ mod fake_host {
                 String::from_utf8_lossy(bytes).into_owned()
             }
         };
-        *SAVE_PICKS.lock().expect("save picks") = (request, name);
+        *Seat::of(ctx).save_picks.lock().expect("save picks") = (request, name);
     }
 
     pub unsafe extern "C" fn fetch_document(
-        _ctx: *mut std::ffi::c_void,
+        ctx: *mut std::ffi::c_void,
         request: u64,
         location: *const crate::HimarkLocation,
     ) {
-        FETCHES
+        Seat::of(ctx)
+            .fetches
             .lock()
             .expect("fetches")
             .push((request, joined_path(location)));
     }
 
     pub unsafe extern "C" fn store_document(
-        _ctx: *mut std::ffi::c_void,
+        ctx: *mut std::ffi::c_void,
         request: u64,
         location: *const crate::HimarkLocation,
         text: *const std::ffi::c_char,
@@ -63,18 +98,20 @@ mod fake_host {
         let text = std::str::from_utf8(std::slice::from_raw_parts(text.cast(), text_len))
             .expect("utf8 text")
             .to_owned();
-        STORES
+        Seat::of(ctx)
+            .stores
             .lock()
             .expect("stores")
             .push((request, joined_path(location), text));
     }
 
     pub unsafe extern "C" fn list_directory(
-        _ctx: *mut std::ffi::c_void,
+        ctx: *mut std::ffi::c_void,
         request: u64,
         location: *const crate::HimarkLocation,
     ) {
-        LISTS
+        Seat::of(ctx)
+            .lists
             .lock()
             .expect("lists")
             .push((request, joined_path(location)));
@@ -134,15 +171,44 @@ impl HostedFs {
     }
 }
 
-fn hosted_engine() -> (
-    std::sync::MutexGuard<'static, ()>,
-    HimarkEngine,
-    u64,
-    HostedFs,
-) {
+/// The hosted guard plus THIS engine's picker seat.
+struct Hosted {
+    _guard: std::sync::MutexGuard<'static, ()>,
+    seat: std::sync::Arc<fake_host::Seat>,
+}
+
+/// The picker request for THIS seat — pumping settles until the
+/// async picker effect actually fires, then CONSUMING the id. This
+/// is what the old one-settle-then-read-a-static could not promise.
+fn pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> u64 {
+    for _ in 0..400 {
+        let request = seat.take_pick();
+        if request != 0 {
+            return request;
+        }
+        settle(engine);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("the picker request never reached the host");
+}
+
+fn save_pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> (u64, String) {
+    for _ in 0..400 {
+        let (request, name) = seat.take_save_pick();
+        if request != 0 {
+            return (request, name);
+        }
+        settle(engine);
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    panic!("the save panel request never reached the host");
+}
+
+fn hosted_engine() -> (Hosted, HimarkEngine, u64, HostedFs) {
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let picker = fake_host::Seat::new();
     let dir = tempfile::tempdir().expect("hosted fs");
 
     std::env::set_var("HIMARK_HOST_HOME", dir.path().join("home"));
@@ -184,7 +250,7 @@ fn hosted_engine() -> (
     let local = engine.register_agent_server("Local Backend", seat);
     engine.set_local_backend(local);
     engine.set_host(HimarkHostCallbacks {
-        ctx: std::ptr::null_mut(),
+        ctx: picker.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
         fetch_document: Some(fake_host::fetch_document),
@@ -200,7 +266,15 @@ fn hosted_engine() -> (
     let root = dir.path().join("files");
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
-    (host, engine, window, fs)
+    (
+        Hosted {
+            _guard: host,
+            seat: picker,
+        },
+        engine,
+        window,
+        fs,
+    )
 }
 
 fn settle_until(
@@ -225,12 +299,18 @@ fn settle_into_session(engine: &mut HimarkEngine) {
     });
 }
 
-fn open_picked(engine: &mut HimarkEngine, window: u64, fs: &HostedFs, rel: &[&str], body: &str) {
+fn open_picked(
+    engine: &mut HimarkEngine,
+    seat: &fake_host::Seat,
+    window: u64,
+    fs: &HostedFs,
+    rel: &[&str],
+    body: &str,
+) {
     fs.write(rel, body);
     assert!(engine.perform_command(window, "file.open"));
     settle(engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
-    assert_ne!(request, 0, "the picker request reached the host");
+    let request = pick_request(engine, seat);
     assert!(engine.host_picked(request, vec![fs.doc(rel)]));
     let probe: String = body.chars().take(24).collect();
     settle_until(engine, "the picked file opened", |engine| {
@@ -383,7 +463,7 @@ fn probe_history_reopen_layout() {
     let body_a: String = (0..300)
         .map(|i| format!("// a longer comment line number {i} with enough words to be real\nfn item_{i}() {{}}\n\n"))
         .collect();
-    open_picked(&mut engine, window, &fs, &["a.rs"], &body_a);
+    open_picked(&mut engine, &_host.seat, window, &fs, &["a.rs"], &body_a);
     let _ = engine.draw(window, surface_stub(), 1100.0, 800.0, 1.0);
     settle(&mut engine);
 
@@ -486,8 +566,7 @@ fn the_file_picker_round_trip_opens_the_picked_files() {
     assert!(engine.perform_command(window, "file.open"));
 
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
-    assert_ne!(request, 0, "the picker request reached the host");
+    let request = pick_request(&mut engine, &_host.seat);
 
     assert!(engine.host_picked(
         request,
@@ -510,7 +589,7 @@ fn the_file_picker_round_trip_opens_the_picked_files() {
 
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.doc(&["docs", "picked.md"])]));
     settle(&mut engine);
     assert_eq!(
@@ -592,7 +671,7 @@ fn keymap_backspace_edits_the_dock_speed_search() {
     let (_host, mut engine, window, _fs) = hosted_engine();
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![directory_location(&["project"])]));
     settle_into_session(&mut engine);
     assert!(engine.perform_command(window, "files.tree"));
@@ -683,8 +762,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
 
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
-    assert_ne!(request, 0, "the pick reached the host");
+    let request = pick_request(&mut engine, &_host.seat);
 
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
 
@@ -901,7 +979,7 @@ fn the_docked_tree_follows_the_focused_document() {
     fs.write(&["project", "src", "lib.rs"], "fn main() {}");
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
     settle_into_session(&mut engine);
 
@@ -1008,7 +1086,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
 
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
@@ -1264,13 +1342,13 @@ fn stripes_take_the_changesets_old_text_as_base() {
     );
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     let file = himark::ResourceLocation::new(
         himark::ResourceType::document(),
         himark::Authority::new("local"),
@@ -1413,7 +1491,14 @@ fn the_workspace_switcher_switches_and_creates() {
 #[test]
 fn saving_stores_the_focused_document_to_its_location() {
     let (_host, mut engine, window, fs) = hosted_engine();
-    open_picked(&mut engine, window, &fs, &["notes.md"], "# notes");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["notes.md"],
+        "# notes",
+    );
 
     assert!(engine.text_input(window, "x"));
     settle(&mut engine);
@@ -1445,7 +1530,7 @@ fn a_cancelled_pick_lands_and_opens_nothing() {
     );
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
 
     assert!(engine.host_picked(request, Vec::new()));
     settle(&mut engine);
@@ -1825,7 +1910,14 @@ fn raw_string_conversion_validates_utf8_and_null_lengths() {
 #[test]
 fn external_edits_reach_documents_through_the_channel() {
     let (_host, mut engine, window, fs) = hosted_engine();
-    open_picked(&mut engine, window, &fs, &["watched.md"], "alpha\n");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["watched.md"],
+        "alpha\n",
+    );
 
     settle_until(&mut engine, "the document channel went live", |engine| {
         himark::OpenDocuments::list(engine.app.store())
@@ -1871,7 +1963,14 @@ fn external_edits_reach_documents_through_the_channel() {
 #[test]
 fn an_external_edit_merges_into_unsaved_typing() {
     let (_host, mut engine, window, fs) = hosted_engine();
-    open_picked(&mut engine, window, &fs, &["merged.md"], "alpha\nbeta\n");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["merged.md"],
+        "alpha\nbeta\n",
+    );
     settle_until(&mut engine, "the document channel went live", |engine| {
         himark::OpenDocuments::list(engine.app.store())
             .into_iter()
@@ -1931,6 +2030,7 @@ fn a_script_runs_reads_and_writes_over_the_real_host() {
     fs.write(&["plan.md"], "alpha");
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["walk.js"],
@@ -1974,6 +2074,7 @@ fn an_opened_mermaid_fence_renders_through_the_pipeline() {
     let (_host, mut engine, window, fs) = hosted_engine();
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["diagram.md"],
@@ -2001,7 +2102,7 @@ fn an_opened_mermaid_fence_renders_through_the_pipeline() {
 fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
     let (_host, mut engine, window, fs) = hosted_engine();
     let source = "fn main() { let value = 1; }\n";
-    open_picked(&mut engine, window, &fs, &["code.rs"], source);
+    open_picked(&mut engine, &_host.seat, window, &fs, &["code.rs"], source);
     let open = source.find('(').expect("opener") as u32;
     let close = source.find(')').expect("closer") as u32;
 
@@ -2051,6 +2152,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
     );
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["page.md"],
@@ -2168,6 +2270,7 @@ fn opening_the_embedded_file_in_a_pane_dedups_and_survives() {
     fs.write(&["sidecar.rs"], "fn sidecar() -> u32 {\n    42\n}\n");
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["page.md"],
@@ -2189,6 +2292,7 @@ fn opening_the_embedded_file_in_a_pane_dedups_and_survives() {
 
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["sidecar.rs"],
@@ -2221,6 +2325,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     fs.write(&["sidecar.rs"], "fn sidecar() -> u32 {\n    42\n}\n");
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["page.md"],
@@ -2247,6 +2352,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["sidecar.rs"],
@@ -2273,6 +2379,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     fs.write(&["sidecar.rs"], body);
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["page.md"],
@@ -2338,7 +2445,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
     assert!(engine.perform_command(window, "workbench.split-pane"));
     settle(&mut engine);
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
-    open_picked(&mut engine, window, &fs, &["sidecar.rs"], body);
+    open_picked(&mut engine, &_host.seat, window, &fs, &["sidecar.rs"], body);
     for _ in 0..3 {
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
         settle(&mut engine);
@@ -2369,8 +2476,7 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
 
     assert!(engine.perform_command(window, "file.save"));
     settle(&mut engine);
-    let (request, suggested) = fake_host::SAVE_PICKS.lock().expect("save picks").clone();
-    assert_ne!(request, 0, "the save panel request reached the host");
+    let (request, suggested) = save_pick_request(&mut engine, &_host.seat);
     assert_eq!(suggested, "scratch.md", "the scratch suggests its name");
 
     let picked = fs.doc(&["notes", "kept.md"]);
@@ -2462,13 +2568,13 @@ fn a_one_sided_diff_goes_quiet() {
     );
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     let file = himark::ResourceLocation::new(
         himark::ResourceType::document(),
         himark::Authority::new("local"),
@@ -4687,8 +4793,8 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
             .expect("entity");
         panic!(
             "hello.txt opened through the seat; wanted {file:?}; open: {all:?}; host lists: {:?}; host fetches: {:?}; modal up: {}",
-            fake_host::LISTS.lock().expect("lists"),
-            fake_host::FETCHES.lock().expect("fetches"),
+            _host.seat.lists.lock().expect("lists"),
+            _host.seat.fetches.lock().expect("fetches"),
             entity.plugin_modal().is_some(),
         )
     });
@@ -5125,7 +5231,7 @@ fn two_engines_sync_a_live_document() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let engine_at = |name: &str| -> (HimarkEngine, u64) {
+    let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
         let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
         let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
@@ -5135,8 +5241,9 @@ fn two_engines_sync_a_live_document() {
         ));
         let local = engine.register_agent_server(name, seat);
         engine.set_local_backend(local);
+        let host_seat = fake_host::Seat::new();
         engine.set_host(HimarkHostCallbacks {
-            ctx: std::ptr::null_mut(),
+            ctx: host_seat.ctx(),
             pick_files: Some(fake_host::pick_files),
             pick_save: Some(fake_host::pick_save),
             fetch_document: Some(fake_host::fetch_document),
@@ -5148,10 +5255,10 @@ fn two_engines_sync_a_live_document() {
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
-        (engine, window)
+        (engine, window, host_seat)
     };
-    let (mut alice, alice_window) = engine_at("Backend for Alice");
-    let (mut bob, bob_window) = engine_at("Backend for Bob");
+    let (mut alice, alice_window, alice_seat) = engine_at("Backend for Alice");
+    let (mut bob, bob_window, bob_seat) = engine_at("Backend for Bob");
 
     let file_path = dir.path().join("files/shared.md");
     std::fs::create_dir_all(file_path.parent().unwrap()).expect("mkdir");
@@ -5170,11 +5277,14 @@ fn two_engines_sync_a_live_document() {
             .collect::<Vec<String>>(),
     );
 
-    for (engine, window) in [(&mut alice, alice_window), (&mut bob, bob_window)] {
+    for (engine, window, seat) in [
+        (&mut alice, alice_window, &alice_seat),
+        (&mut bob, bob_window, &bob_seat),
+    ] {
         let window = window;
         assert!(engine.perform_command(window, "file.open"));
         settle(engine);
-        let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+        let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
         settle_until(engine, "the shared file opened", |engine| {
             engine
@@ -5284,7 +5394,7 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    let engine_at = |name: &str| -> (HimarkEngine, u64) {
+    let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
         let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
         let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
@@ -5294,8 +5404,9 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         ));
         let local = engine.register_agent_server(name, seat);
         engine.set_local_backend(local);
+        let host_seat = fake_host::Seat::new();
         engine.set_host(HimarkHostCallbacks {
-            ctx: std::ptr::null_mut(),
+            ctx: host_seat.ctx(),
             pick_files: Some(fake_host::pick_files),
             pick_save: Some(fake_host::pick_save),
             fetch_document: Some(fake_host::fetch_document),
@@ -5307,10 +5418,10 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         });
         let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
-        (engine, window)
+        (engine, window, host_seat)
     };
-    let (mut alice, alice_window) = engine_at("Backend for Alice");
-    let (mut bob, bob_window) = engine_at("Backend for Bob");
+    let (mut alice, alice_window, alice_seat) = engine_at("Backend for Alice");
+    let (mut bob, bob_window, bob_seat) = engine_at("Backend for Bob");
 
     let file_path = dir.path().join("files/shared.md");
     std::fs::create_dir_all(file_path.parent().unwrap()).expect("mkdir");
@@ -5329,11 +5440,11 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
             .collect::<Vec<String>>(),
     );
 
-    for (engine, window) in [(&mut alice, alice_window)] {
+    for (engine, window, seat) in [(&mut alice, alice_window, &alice_seat)] {
         let window = window;
         assert!(engine.perform_command(window, "file.open"));
         settle(engine);
-        let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+        let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
         settle_until(engine, "the shared file opened", |engine| {
             engine
@@ -5356,11 +5467,11 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         settle(&mut alice);
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    for (engine, window) in [(&mut bob, bob_window)] {
+    for (engine, window, seat) in [(&mut bob, bob_window, &bob_seat)] {
         let window = window;
         assert!(engine.perform_command(window, "file.open"));
         settle(engine);
-        let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+        let request = pick_request(engine, seat);
         assert!(engine.host_picked(request, vec![location.clone()]));
         settle_until(engine, "the shared file opened", |engine| {
             engine
@@ -5482,8 +5593,9 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         ));
     let local = engine.register_agent_server("Local Backend", seat);
     engine.set_local_backend(local);
+    let host_seat = fake_host::Seat::new();
     engine.set_host(HimarkHostCallbacks {
-        ctx: std::ptr::null_mut(),
+        ctx: host_seat.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
         fetch_document: Some(fake_host::fetch_document),
@@ -5622,8 +5734,7 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
     ));
     assert!(!probe(&engine).dir.open, "the pick dismissed the menu");
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
-    assert_ne!(request, 0, "the folder picker reached the host");
+    let request = pick_request(&mut engine, &host_seat);
     assert!(engine.host_picked(request, vec![fs.dir(&[])]));
     settle(&mut engine);
     let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
@@ -5782,8 +5893,9 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         ));
     let local = engine.register_agent_server("Local Backend", seat);
     engine.set_local_backend(local);
+    let host_seat = fake_host::Seat::new();
     engine.set_host(HimarkHostCallbacks {
-        ctx: std::ptr::null_mut(),
+        ctx: host_seat.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
         fetch_document: Some(fake_host::fetch_document),
@@ -5941,8 +6053,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         800.0,
     ));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
-    assert_ne!(request, 0, "the folder picker reached the host");
+    let request = pick_request(&mut engine, &host_seat);
     assert!(engine.host_picked(request, vec![fs.dir(&[])]));
     settle_until(
         engine_mut(&mut engine),
@@ -6132,8 +6243,9 @@ fn the_sheet_centers_on_the_window_over_the_dock() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
 
+    let host_seat = fake_host::Seat::new();
     engine.set_host(HimarkHostCallbacks {
-        ctx: std::ptr::null_mut(),
+        ctx: host_seat.ctx(),
         pick_files: Some(fake_host::pick_files),
         pick_save: Some(fake_host::pick_save),
         fetch_document: Some(fake_host::fetch_document),
@@ -6265,7 +6377,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     );
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
@@ -6532,7 +6644,7 @@ fn diff_resize_probe_over_real_code() {
     );
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
-    let request = fake_host::PICKS.load(std::sync::atomic::Ordering::SeqCst);
+    let request = pick_request(&mut engine, &_host.seat);
     assert!(engine.host_picked(request, vec![folder]));
     settle_into_session(&mut engine);
 
@@ -6675,6 +6787,7 @@ fn a_markdown_image_shows_under_its_line() {
     fs.write_bytes(&["shot.png"], &png);
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["page.md"],
@@ -6708,6 +6821,7 @@ fn hover_rest_mounts_a_markdown_popup_over_the_word() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     open_picked(
         &mut engine,
+        &_host.seat,
         window,
         &fs,
         &["hover.rs"],
@@ -6889,7 +7003,14 @@ fn the_two_call_cut_protocol_cuts_once_and_fills_the_pasteboard() {
 #[test]
 fn a_hosted_documents_disk_change_arrives_through_the_channel() {
     let (_host, mut engine, window, fs) = hosted_engine();
-    open_picked(&mut engine, window, &fs, &["agent.md"], "alpha\nbeta\n");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["agent.md"],
+        "alpha\nbeta\n",
+    );
 
     // The document channel goes live: the host owns the file now.
     settle_until(&mut engine, "the channel went live", |engine| {
@@ -6934,7 +7055,14 @@ fn a_hosted_documents_disk_change_arrives_through_the_channel() {
 #[test]
 fn repeated_external_saves_land_exactly_once_each() {
     let (_host, mut engine, window, fs) = hosted_engine();
-    open_picked(&mut engine, window, &fs, &["emacs.md"], "alpha\nbeta\n");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["emacs.md"],
+        "alpha\nbeta\n",
+    );
     settle_until(&mut engine, "the channel went live", |engine| {
         himark::OpenDocuments::list(engine.app.store())
             .into_iter()
@@ -7059,7 +7187,14 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     });
 
     // THEN the normal editor.
-    open_picked(&mut engine, window, &fs, &["live.md"], "alpha\nbeta\n");
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["live.md"],
+        "alpha\nbeta\n",
+    );
     let document_id = himark::OpenDocuments::list(engine.app.store())
         .into_iter()
         .find(|(_, entity)| entity.name() == "live.md")

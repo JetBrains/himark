@@ -1620,21 +1620,38 @@ impl AhpServer for WireHost {
 
 impl WireHost {
     fn poll_channel(&self, channel: Uri) -> SeatFuture<Vec<StateAction>> {
-        let feed = self.ensure_active().ok().and_then(|active| {
-            active
-                .feeds
-                .lock()
-                .expect("wire feeds")
-                .get(&channel)
-                .cloned()
-        });
-        match feed {
-            Some(feed) => Box::pin(PollFeed { feed }),
-            None => {
-                eprintln!("[hiahp] poll parked: not subscribed: {channel}");
-                Box::pin(std::future::pending())
+        let active = self.ensure_active().ok();
+        Box::pin(async move {
+            let Some(active) = active else {
+                // Not connected: park. Reconnect re-subscribes and
+                // re-arms the poll from scratch.
+                return std::future::pending().await;
+            };
+            let mut waited = false;
+            loop {
+                let feed = active
+                    .feeds
+                    .lock()
+                    .expect("wire feeds")
+                    .get(&channel)
+                    .cloned();
+                match feed {
+                    Some(feed) => return PollFeed { feed }.await,
+                    None => {
+                        // The SUBSCRIBE may still be in flight — the
+                        // poll loop re-arms only when this future
+                        // resolves, so parking forever here would
+                        // orphan the channel mirror for good. WAIT
+                        // for the feed instead.
+                        if !waited {
+                            waited = true;
+                            eprintln!("[hiahp] poll waiting: not subscribed yet: {channel}");
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                }
             }
-        }
+        })
     }
 }
 

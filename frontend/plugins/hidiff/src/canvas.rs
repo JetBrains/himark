@@ -230,6 +230,37 @@ impl DiffCanvasView {
         }
     }
 
+    /// TEST SUPPORT: seed one BUILT row directly — the perf harness
+    /// measures canvas RENDERING without the changes feed or a host.
+    #[doc(hidden)]
+    pub fn seed_built_for_tests(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        file: CanvasFile,
+        built: himark::BuiltFileDiff,
+    ) {
+        let theme = env::Themes::of(store);
+        let key = file.new.clone();
+        let mut slice: ListSlice<CanvasRow, ResourceLocation> = ListSlice::new();
+        slice.push_keyed_sized(
+            key.clone(),
+            CanvasRow {
+                file: file.clone(),
+                body: RowBody::Placeholder { armed: false },
+                rewrap_ask: None,
+            },
+            reserved_height(&theme, &file),
+        );
+        self.phases.insert_mut(key.clone(), RowPhase::Placeholder);
+        self.files.insert_mut(key.clone(), file);
+        let at = self.rows.content().len();
+        self.rows.content_mut().splice_slice(at..at, slice);
+        self.populated = true;
+        let mut throwaway = imba::effect::Batch::new();
+        self.land(store, ui, key, built, &mut throwaway.effects());
+    }
+
     fn launch(&self, index: usize, width: f32, fx: &mut Effects<'_, CanvasCommand>) {
         let Some(key) = self.rows.content().key_at(index).cloned() else {
             return;

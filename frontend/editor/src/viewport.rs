@@ -246,13 +246,32 @@ impl EditorViewport {
         let mut foldable_chunk_range = 0u32..0u32;
         let mut foldable_at = 0usize;
 
-        let mut marks_sweep = overlaid.line_marks_sweep(byte_start, Some(layout_width));
+        // The band is swept in CONTIGUOUS VISIBLE SEGMENTS: the
+        // sweep opens lazily at each segment's first line and is
+        // DROPPED at every collapsed run (a fold, or a windowed
+        // fragment's prefix — the zero-height items carrying bytes).
+        // A fresh query then seeks past the gap in the interval
+        // tree, so the gap's markup is never pulled: without the
+        // split, one fold squashing a large file made the next
+        // line's sweep swallow the whole gap — linear per frame
+        // (the DiffCanvas trace, 2026-09-17).
+        let mut marks_sweep: Option<crate::markup::LineMarksSweep<'_>> = None;
 
+        let probe_byte_start = byte_start;
+        let mut probe_iterations = 0usize;
+        let mut probe_flat = 0usize;
         loop {
+            probe_iterations += 1;
             let item = cursor.element();
             let byte_end = byte_start.saturating_add(item.byte_size);
 
             if item.height <= 0.0 {
+                probe_flat += 1;
+                if item.byte_size > 0 {
+                    // A collapsed run ends the segment — the next
+                    // visible line re-seeds the sweep past the gap.
+                    marks_sweep = None;
+                }
                 document_y += item.height + item.spacer_above;
                 carried_spacer += item.spacer_above;
                 if !cursor.advance() {
@@ -262,8 +281,9 @@ impl EditorViewport {
                 continue;
             }
             let line_range = byte_start..byte_end;
-            let (marks, inlays) =
-                marks_sweep.line(line_range.clone(), &mut inline_scratch, &mut hidden_scratch);
+            let (marks, inlays) = marks_sweep
+                .get_or_insert_with(|| overlaid.line_marks_sweep(byte_start, Some(layout_width)))
+                .line(line_range.clone(), &mut inline_scratch, &mut hidden_scratch);
 
             if gutter
                 && (line_range.end > foldable_chunk_range.end
@@ -426,10 +446,17 @@ impl EditorViewport {
 
         if let Some(started) = probe {
             eprintln!(
-                "[paint-probe] build={:.1}us lines={} shaped={}",
+                "[paint-probe] build={:.1}us lines={} shaped={} iters={} flat={} pulls={} active_peak={} y={} byte={} bounded={}",
                 started.elapsed().as_secs_f64() * 1e6,
                 viewport.lines.len(),
                 shaped_lines,
+                probe_iterations,
+                probe_flat,
+                marks_sweep.as_ref().map_or(0, |sweep| sweep.pulls),
+                marks_sweep.as_ref().map_or(0, |sweep| sweep.active_peak),
+                band.start,
+                probe_byte_start,
+                state.bounds.is_some(),
             );
         }
         viewport

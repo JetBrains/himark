@@ -39,7 +39,14 @@ pub enum MarkupScope {
 
 #[derive(Clone)]
 pub struct Markup {
-    intervals: Intervals<IntervalId, Decoration>,
+    /// The BULK lane: plain styled spans — a syntax highlighter puts
+    /// tens of thousands here. Nothing structural lives in it.
+    styles: Intervals<IntervalId, Decoration>,
+
+    /// The STRUCTURE lane: inlays, hidden/unhide, alignment and the
+    /// nested-syntax mounts — low cardinality, and the only tree the
+    /// line-shaping and inlay queries ever touch.
+    shape: Intervals<IntervalId, Decoration>,
     next_key: u32,
 
     scope: MarkupScope,
@@ -73,7 +80,10 @@ struct RecursiveLevel<'a> {
     markup: &'a Markup,
 
     layer: MarkupLayer,
-    iter: intervals::Query<'a, IntervalId, Decoration>,
+    iter: intervals::MergedQuery<
+        intervals::Query<'a, IntervalId, Decoration>,
+        intervals::Query<'a, IntervalId, Decoration>,
+    >,
 
     peeked: Option<intervals::IntervalRef<'a, IntervalId, Decoration>>,
 }
@@ -94,7 +104,11 @@ impl<'a> RecursiveLevel<'a> {
             base,
             markup,
             layer,
-            iter: markup.intervals.query(local, order),
+            iter: intervals::MergedQuery::new(
+                markup.shape.query(local.clone(), order),
+                markup.styles.query(local, order),
+                order,
+            ),
             peeked: None,
         };
         level.refill();
@@ -717,9 +731,48 @@ impl Markup {
         key
     }
 
+    fn is_shape(value: &Decoration) -> bool {
+        !matches!(value, Decoration::Styled(_))
+    }
+
+    fn insert_split(&mut self, items: impl IntoIterator<Item = Interval<IntervalId, Decoration>>) {
+        let (shape, styles): (Vec<_>, Vec<_>) = items
+            .into_iter()
+            .partition(|interval| Self::is_shape(&interval.value));
+        self.shape.insert(shape);
+        self.styles.insert(styles);
+    }
+
+    /// Both lanes, merged in offset order — for whole-markup reads
+    /// (oracles, set diffs, carries). Hot paths use one lane.
+    pub(crate) fn merged_query(
+        &self,
+        range: Range<u32>,
+        order: Order,
+    ) -> intervals::MergedQuery<
+        intervals::Query<'_, IntervalId, Decoration>,
+        intervals::Query<'_, IntervalId, Decoration>,
+    > {
+        intervals::MergedQuery::new(
+            self.shape.query(range.clone(), order),
+            self.styles.query(range, order),
+            order,
+        )
+    }
+
+    fn find_any(
+        &self,
+        key: &IntervalId,
+    ) -> Option<intervals::IntervalRef<'_, IntervalId, Decoration>> {
+        self.shape
+            .find_by_id(key)
+            .or_else(|| self.styles.find_by_id(key))
+    }
+
     pub fn new() -> Self {
         Self {
-            intervals: Intervals::new(),
+            styles: Intervals::new(),
+            shape: Intervals::new(),
             next_key: 0,
             scope: MarkupScope::View,
             syntaxes: rpds::HashTrieMapSync::new_sync(),
@@ -755,7 +808,7 @@ impl Markup {
             })
             .collect();
         self.next_key = next;
-        self.intervals.insert(seeded);
+        self.styles.insert(seeded);
     }
 
     pub fn builder() -> MarkupBuilder {
@@ -763,16 +816,15 @@ impl Markup {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.intervals.is_empty()
+        self.shape.is_empty() && self.styles.is_empty()
     }
 
     pub fn interval_count(&self) -> usize {
-        self.intervals.len()
+        self.shape.len() + self.styles.len()
     }
 
     pub fn query_count(&self) -> usize {
-        use intervals::{IntervalQuery, Order};
-        self.intervals.query(0..u32::MAX, Order::Ascending).count()
+        self.merged_query(0..u32::MAX, Order::Ascending).count()
     }
 
     pub(crate) fn has_inlays(&self) -> bool {
@@ -953,6 +1005,8 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
             peeked,
             active: Vec::new(),
             width,
+            pulls: 0,
+            active_peak: 0,
         }
     }
 }
@@ -963,6 +1017,9 @@ pub(crate) struct LineMarksSweep<'a> {
 
     active: Vec<intervals::IntervalRef<'a, IntervalId, Decoration>>,
     width: Option<f32>,
+
+    pub(crate) pulls: usize,
+    pub(crate) active_peak: usize,
 }
 
 impl<'a> LineMarksSweep<'a> {
@@ -979,7 +1036,9 @@ impl<'a> LineMarksSweep<'a> {
             let entered = self.peeked.take().expect("peeked");
             self.active.push(entered);
             self.peeked = self.iter.next();
+            self.pulls += 1;
         }
+        self.active_peak = self.active_peak.max(self.active.len());
 
         self.active.retain(|hit| hit.range.end >= range.start);
         classify_line_marks(
@@ -1263,7 +1322,7 @@ impl Markup {
         if self.syntaxes.is_empty() {
             return;
         }
-        for marker in self.intervals.query(local, Order::Ascending) {
+        for marker in self.shape.query(local, Order::Ascending) {
             if let Decoration::Syntax(id) = marker.value {
                 if let Some(syntax) = self.syntaxes.get(id) {
                     syntax.markup.collect_inlays(
@@ -1283,7 +1342,7 @@ impl Markup {
         layer: MarkupLayer,
     ) -> impl Iterator<Item = InlayInterval<'_>> {
         let has_inlays = self.has_inlays;
-        self.intervals
+        self.shape
             .query(range.clone(), Order::Ascending)
             .filter_map(move |interval| {
                 if !has_inlays || !intersects(&interval.range, &range) {
@@ -1316,7 +1375,7 @@ impl Markup {
 
     pub(crate) fn push_styled_keyed(&mut self, range: Range<u32>, id: StyleId) -> IntervalId {
         let key = self.mint();
-        self.intervals.insert([intervals::Interval {
+        self.styles.insert([intervals::Interval {
             range,
             greedy_left: false,
             greedy_right: false,
@@ -1329,7 +1388,7 @@ impl Markup {
     pub fn set_unhide(&mut self, range: Range<u32>) -> Option<Range<u32>> {
         let previous = self.take_unhide();
         let key = self.mint();
-        self.intervals.insert([intervals::Interval {
+        self.shape.insert([intervals::Interval {
             range,
             greedy_left: true,
             greedy_right: true,
@@ -1341,14 +1400,14 @@ impl Markup {
 
     pub fn take_unhide(&mut self) -> Option<Range<u32>> {
         let mut stale = None;
-        for interval in self.intervals.query(0..u32::MAX, Order::Ascending) {
+        for interval in self.shape.query(0..u32::MAX, Order::Ascending) {
             if matches!(interval.value, Decoration::Unhide) {
                 stale = Some((*interval.key, interval.range.clone()));
                 break;
             }
         }
         stale.map(|(key, range)| {
-            self.intervals.remove([key].iter());
+            self.shape.remove([key].iter());
             range
         })
     }
@@ -1361,7 +1420,7 @@ impl Markup {
 
     pub fn push_styled_covering(&mut self, range: Range<u32>, id: StyleId) {
         let key = self.mint();
-        self.intervals.insert([intervals::Interval {
+        self.styles.insert([intervals::Interval {
             range,
             greedy_left: true,
             greedy_right: true,
@@ -1376,7 +1435,7 @@ impl Markup {
         self.has_inlays = self.has_inlays || syntax.markup.has_inlays;
         self.has_popups = self.has_popups || syntax.markup.has_popups;
         self.syntaxes.insert_mut(state, syntax);
-        self.intervals.insert([intervals::Interval {
+        self.shape.insert([intervals::Interval {
             range,
             greedy_left: false,
             greedy_right: false,
@@ -1393,7 +1452,7 @@ impl Markup {
     pub(crate) fn child_syntax_at(&self, byte: u32, base: u32) -> Option<(&Syntax, Range<u32>)> {
         let local = byte.saturating_sub(base);
         let probe = local.saturating_sub(1)..local.saturating_add(1);
-        for marker in self.intervals.query(probe, Order::Ascending) {
+        for marker in self.shape.query(probe, Order::Ascending) {
             let Decoration::Syntax(id) = marker.value else {
                 continue;
             };
@@ -1447,7 +1506,7 @@ impl Markup {
         let mut markers = Vec::new();
         for site in relevant {
             let inherited_payload = old
-                .intervals
+                .shape
                 .query(site.range.clone(), Order::Ascending)
                 .find_map(|interval| match interval.value {
                     Decoration::Syntax(key) if interval.range == site.range => {
@@ -1489,7 +1548,7 @@ impl Markup {
         }
 
         for range in invalidated {
-            for interval in old.intervals.query(range.clone(), Order::Ascending) {
+            for interval in old.shape.query(range.clone(), Order::Ascending) {
                 if let Decoration::Syntax(key) = interval.value {
                     if intersects(&interval.range, range) && !inherited.contains(&key.0) {
                         self.syntaxes.remove_mut(key);
@@ -1497,7 +1556,7 @@ impl Markup {
                 }
             }
         }
-        self.intervals.insert(markers);
+        self.shape.insert(markers);
         dirty
     }
 
@@ -1506,7 +1565,7 @@ impl Markup {
             MarkupLayer::Markup(owner) if owner == markup => {}
             _ => return None,
         }
-        let interval = self.intervals.find_by_id(&key.key)?;
+        let interval = self.shape.find_by_id(&key.key)?;
         let Decoration::Inlay(inlay) = interval.value else {
             return None;
         };
@@ -1514,7 +1573,7 @@ impl Markup {
     }
 
     pub(crate) fn inlay_interval(&self, key: IntervalId) -> Option<(Range<u32>, InlayMode)> {
-        let interval = self.intervals.find_by_id(&key)?;
+        let interval = self.shape.find_by_id(&key)?;
         let Decoration::Inlay(inlay) = interval.value else {
             return None;
         };
@@ -1523,7 +1582,8 @@ impl Markup {
 
     pub(crate) fn remove_keys(&mut self, keys: impl IntoIterator<Item = IntervalId>) {
         let keys: Vec<IntervalId> = keys.into_iter().collect();
-        self.intervals.remove(keys.iter());
+        self.shape.remove(keys.iter());
+        self.styles.remove(keys.iter());
     }
 
     pub(crate) fn replace_inlay(&mut self, key: IntervalId, range: Range<u32>, inlay: Inlay) {
@@ -1533,7 +1593,7 @@ impl Markup {
 
         self.has_inlays = true;
         self.has_popups = self.has_popups || matches!(inlay.mode, InlayMode::Popup(_));
-        self.intervals.insert([Interval {
+        self.shape.insert([Interval {
             range,
             greedy_left: false,
             greedy_right: false,
@@ -1553,7 +1613,7 @@ impl Markup {
         let mut seen: std::collections::HashSet<IntervalId> = std::collections::HashSet::new();
         let mut victims: Vec<(IntervalId, Inlay)> = Vec::new();
         for range in changed {
-            for interval in self.intervals.query(range.clone(), Order::Ascending) {
+            for interval in self.shape.query(range.clone(), Order::Ascending) {
                 if !intersects(&interval.range, range) {
                     continue;
                 }
@@ -1576,7 +1636,7 @@ impl Markup {
     }
 
     pub(crate) fn inlay_at(&self, key: IntervalId) -> Option<&Inlay> {
-        let interval = self.intervals.find_by_id(&key)?;
+        let interval = self.shape.find_by_id(&key)?;
         let Decoration::Inlay(inlay) = interval.value else {
             return None;
         };
@@ -1589,7 +1649,7 @@ impl Markup {
         ui: &'w UiCtx,
         key: IntervalId,
     ) -> Option<imba::focus::FocusData<'w, InlayCommand>> {
-        let interval = self.intervals.find_by_id(&key)?;
+        let interval = self.shape.find_by_id(&key)?;
         let Decoration::Inlay(inlay) = interval.value else {
             return None;
         };
@@ -1597,7 +1657,7 @@ impl Markup {
     }
 
     pub(crate) fn inlay_passive(&self, key: IntervalId, command: &InlayCommand) -> bool {
-        let Some(interval) = self.intervals.find_by_id(&key) else {
+        let Some(interval) = self.shape.find_by_id(&key) else {
             return false;
         };
         let Decoration::Inlay(inlay) = interval.value else {
@@ -1614,7 +1674,7 @@ impl Markup {
         command: InlayCommand,
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
     ) -> (Option<(Range<u32>, InlayMode)>, Option<Operation>) {
-        let Some(interval) = self.intervals.find_by_id(&key) else {
+        let Some(interval) = self.shape.find_by_id(&key) else {
             return (None, None);
         };
         let Decoration::Inlay(inlay) = interval.value else {
@@ -1629,11 +1689,12 @@ impl Markup {
     pub(crate) fn edit(&mut self, operation: &Operation, view: &mut text::TextView, base: u32) {
         if !self.syntaxes.is_empty() {
             let Some(affected) = affected_span(operation) else {
-                self.intervals.edit(interval_steps(operation));
+                self.shape.edit(interval_steps(operation));
+                self.styles.edit(interval_steps(operation));
                 return;
             };
             let mut touched: Vec<(SyntaxId, Option<(Operation, u32)>)> = Vec::new();
-            for interval in self.intervals.query(affected, Order::Ascending) {
+            for interval in self.shape.query(affected, Order::Ascending) {
                 if let Decoration::Syntax(key) = interval.value {
                     match rebase_into(
                         operation,
@@ -1671,7 +1732,8 @@ impl Markup {
                 }
             }
         }
-        self.intervals.edit(interval_steps(operation));
+        self.shape.edit(interval_steps(operation));
+        self.styles.edit(interval_steps(operation));
     }
 
     pub(crate) fn carry_live_views_in(&mut self, live: &Markup, ranges: &[Range<u32>]) {
@@ -1680,7 +1742,7 @@ impl Markup {
         }
         let carried: Vec<Interval<IntervalId, Decoration>> = ranges
             .iter()
-            .flat_map(|range| self.intervals.query(range.clone(), Order::Ascending))
+            .flat_map(|range| self.shape.query(range.clone(), Order::Ascending))
             .filter_map(|interval| {
                 let Decoration::Inlay(incoming) = interval.value else {
                     return None;
@@ -1689,7 +1751,7 @@ impl Markup {
                 if !incoming.view.carry_live() {
                     return None;
                 }
-                let live_interval = live.intervals.find_by_id(interval.key)?;
+                let live_interval = live.shape.find_by_id(interval.key)?;
                 let Decoration::Inlay(live_inlay) = live_interval.value else {
                     return None;
                 };
@@ -1705,7 +1767,7 @@ impl Markup {
                 })
             })
             .collect();
-        self.intervals.insert(carried);
+        self.shape.insert(carried);
     }
 
     pub fn splice(
@@ -1718,7 +1780,7 @@ impl Markup {
         let mut stale = Vec::new();
         let mut stale_inlays: Vec<(IntervalId, Range<u32>, Inlay)> = Vec::new();
         for range in invalidated {
-            for interval in self.intervals.query(range.clone(), Order::Ascending) {
+            for interval in self.merged_query(range.clone(), Order::Ascending) {
                 if intersects(&interval.range, range) {
                     stale.push(*interval.key);
                     if let Decoration::Inlay(inlay) = interval.value {
@@ -1727,10 +1789,13 @@ impl Markup {
                 }
             }
         }
-        self.intervals.remove(stale.iter());
+        self.shape.remove(stale.iter());
+        self.styles.remove(stale.iter());
 
-        self.intervals
-            .insert(replacement.intervals.into_iter().map(|mut interval| {
+        let fresh: Vec<Interval<IntervalId, Decoration>> = replacement
+            .intervals
+            .into_iter()
+            .map(|mut interval| {
                 if let Decoration::Inlay(inlay) = &mut interval.value {
                     self.has_inlays = true;
                     self.has_popups = self.has_popups || matches!(inlay.mode, InlayMode::Popup(_));
@@ -1750,7 +1815,9 @@ impl Markup {
                 interval.key = IntervalId(self.next_key);
                 self.next_key = self.next_key.wrapping_add(1);
                 interval
-            }));
+            })
+            .collect();
+        self.insert_split(fresh);
     }
 }
 
@@ -1877,16 +1944,17 @@ impl MarkupBuilder {
         let has_popups = self.intervals.iter().any(|interval| {
             matches!(&interval.value, Decoration::Inlay(inlay) if matches!(inlay.mode, InlayMode::Popup(_)))
         });
-        let mut intervals = Intervals::new();
-        intervals.insert(self.intervals);
-        Markup {
-            intervals,
+        let mut markup = Markup {
+            styles: Intervals::new(),
+            shape: Intervals::new(),
             next_key: self.next_key,
             scope: MarkupScope::View,
             has_inlays,
             has_popups,
             syntaxes: rpds::HashTrieMapSync::new_sync(),
-        }
+        };
+        markup.insert_split(self.intervals);
+        markup
     }
 }
 
@@ -2128,7 +2196,7 @@ impl Markup {
     }
 
     pub fn has_outline(&self) -> bool {
-        for marker in self.intervals.query(0..u32::MAX, Order::Ascending) {
+        for marker in self.shape.query(0..u32::MAX, Order::Ascending) {
             let Decoration::Syntax(id) = marker.value else {
                 continue;
             };
@@ -2162,7 +2230,7 @@ impl Markup {
         base: u32,
         out: &mut Vec<(SyntaxId, IntervalId, Range<u32>, OutlineItem)>,
     ) {
-        for marker in self.intervals.query(0..u32::MAX, Order::Ascending) {
+        for marker in self.shape.query(0..u32::MAX, Order::Ascending) {
             let Decoration::Syntax(id) = marker.value else {
                 continue;
             };
@@ -2192,7 +2260,7 @@ impl Markup {
         syntax: SyntaxId,
         key: IntervalId,
     ) -> Option<Range<u32>> {
-        for marker in self.intervals.query(0..u32::MAX, Order::Ascending) {
+        for marker in self.shape.query(0..u32::MAX, Order::Ascending) {
             let Decoration::Syntax(id) = marker.value else {
                 continue;
             };
@@ -2217,7 +2285,7 @@ impl Markup {
             return;
         };
         for marker in self
-            .intervals
+            .shape
             .query(local..local.saturating_add(1), Order::Ascending)
         {
             let Decoration::Syntax(id) = marker.value else {
@@ -2243,7 +2311,7 @@ impl Markup {
 
     fn collect_channel_folds(&self, base: u32, span: &Range<u32>, out: &mut Vec<Range<u32>>) {
         let local = span.start.saturating_sub(base)..span.end.saturating_sub(base).max(1);
-        for marker in self.intervals.query(local, Order::Ascending) {
+        for marker in self.shape.query(local, Order::Ascending) {
             let Decoration::Syntax(id) = marker.value else {
                 continue;
             };
@@ -2273,7 +2341,7 @@ impl Markup {
     }
 
     pub fn styled_ranges_in(&self, span: Range<u32>) -> Vec<Range<u32>> {
-        self.intervals
+        self.styles
             .query(span, Order::Ascending)
             .filter_map(|interval| match interval.value {
                 Decoration::Styled(_) => Some(interval.range.clone()),
@@ -2283,7 +2351,7 @@ impl Markup {
     }
 
     pub fn syntax_in(&self, span: Range<u32>) -> Vec<(SyntaxId, Range<u32>)> {
-        self.intervals
+        self.shape
             .query(span, Order::Ascending)
             .filter_map(|interval| match interval.value {
                 Decoration::Syntax(key) => Some((*key, interval.range.clone())),
