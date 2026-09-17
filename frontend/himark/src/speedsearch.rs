@@ -207,6 +207,46 @@ where
 {
     type Command = SpeedSearchCommand<T::Command>;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        use imba::event::EventResult;
+        use imba::focus::FocusData;
+        let inner = self
+            .inner
+            .focus_data(store, ui)
+            .map(SpeedSearchCommand::Inner);
+        // The INPUT is always seated — typing is what STARTS a
+        // search; only the stepping keys wait for a live query. A
+        // closed search keeps its input commands out of the palette.
+        let searching = self.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                imba::event::Key::Up if searching => {
+                    EventResult::Command(SpeedSearchCommand::Step(-1))
+                }
+                imba::event::Key::Down if searching => {
+                    EventResult::Command(SpeedSearchCommand::Step(1))
+                }
+                imba::event::Key::Escape if searching => {
+                    EventResult::Command(SpeedSearchCommand::Clear)
+                }
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        let mut input = self
+            .input
+            .focus_data(store, ui)
+            .map(SpeedSearchCommand::Input);
+        if !searching {
+            input.commands = Vec::new();
+        }
+        own.merge_under(input).merge_under(inner)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         self.clear(fx);
         fx.scope(SpeedSearchCommand::Inner, |fx| {
@@ -379,15 +419,11 @@ where
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        let mut data = self.inner.focus_data();
-        if !self.open {
-            data.commands = Vec::new();
-        }
-        data
+        self.inner.layout_data()
     }
 }
 

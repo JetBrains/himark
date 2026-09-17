@@ -441,6 +441,15 @@ pub(crate) trait InlayView: Send + Sync {
         false
     }
 
+    /// The inlay's SEMANTIC focus answers — a state walk into the
+    /// wrapped view, nothing laid. Geometry (the IME rect) comes from
+    /// the realized inlay widget's `layout_data` instead.
+    fn focus_view<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, InlayCommand>;
+
     fn perform_view(
         &mut self,
         store: &mut Store,
@@ -524,6 +533,14 @@ where
         imba::DynView::layout_dyn(&self.0, arena, store, ui, constraints)
     }
 
+    fn focus_view<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, InlayCommand> {
+        imba::DynView::focus_data_dyn(&self.0, store, ui)
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         &self.0
     }
@@ -592,6 +609,14 @@ where
 
     fn passive_view(&self, command: &InlayCommand) -> bool {
         self.view.passive(command)
+    }
+
+    fn focus_view<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, InlayCommand> {
+        imba::DynView::focus_data_dyn(&self.view, store, ui)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -1558,20 +1583,17 @@ impl Markup {
         Some(inlay)
     }
 
-    pub(crate) fn with_inlay_focus<R>(
-        &self,
-        arena: &Arena,
-        store: &Store,
-        ui: &UiCtx,
+    pub(crate) fn inlay_focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
         key: IntervalId,
-        constraints: Constraints,
-        f: impl FnOnce(imba::focus::FocusData<'_, InlayCommand>) -> R,
-    ) -> Option<R> {
+    ) -> Option<imba::focus::FocusData<'w, InlayCommand>> {
         let interval = self.intervals.find_by_id(&key)?;
         let Decoration::Inlay(inlay) = interval.value else {
             return None;
         };
-        Some(inlay.with_focus(arena, store, ui, constraints, f))
+        Some(inlay.view.focus_view(store, ui))
     }
 
     pub(crate) fn inlay_passive(&self, key: IntervalId, command: &InlayCommand) -> bool {
@@ -1989,24 +2011,6 @@ impl Inlay {
         let ui = UiCtx::cold();
         let widget = self.layout(&arena, &store, &ui, constraints);
         widget.size()
-    }
-
-    pub(crate) fn with_focus<R>(
-        &self,
-        arena: &Arena,
-        store: &Store,
-        ui: &UiCtx,
-        constraints: Constraints,
-        f: impl FnOnce(imba::focus::FocusData<'_, InlayCommand>) -> R,
-    ) -> R {
-        use imba::{Thunk as _, Widget as _};
-        let mut widget = self
-            .view
-            .layout_view(arena, store, ui, constraints)
-            .realize(arena, skia_safe::Rect::default());
-        let result = f(widget.focus_data());
-        drop(widget);
-        result
     }
 
     pub(crate) fn perform(

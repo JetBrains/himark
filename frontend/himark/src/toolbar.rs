@@ -166,6 +166,20 @@ impl Toolbar {
         self.session = None;
     }
 
+    pub(crate) fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ToolbarCommand> {
+        match &self.session {
+            Some(session) => session
+                .input
+                .focus_data(store, ui)
+                .map(ToolbarCommand::Input),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
     pub(crate) fn perform(
         &mut self,
         store: &mut Store,

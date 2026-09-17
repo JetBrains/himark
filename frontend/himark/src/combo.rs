@@ -397,6 +397,34 @@ where
 {
     type Command = ComboCommand<T::Command>;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        use imba::focus::FocusData;
+        let searching = self.menu.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                Key::Up if !searching => EventResult::Command(ComboCommand::Select(-1)),
+                Key::Down if !searching => EventResult::Command(ComboCommand::Select(1)),
+                Key::Enter if searching => EventResult::Commands(vec![
+                    ComboCommand::PickCursor,
+                    ComboCommand::Menu(Box::new(SpeedSearchCommand::Clear)),
+                ]),
+                Key::Enter => EventResult::Command(ComboCommand::PickCursor),
+                Key::Escape if !searching => EventResult::Command(ComboCommand::Close),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(
+            self.menu
+                .focus_data(store, ui)
+                .map(|command| ComboCommand::Menu(Box::new(command))),
+        )
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,

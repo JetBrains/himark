@@ -12,25 +12,11 @@ pub fn palette_commands(
     ui: &imba::UiCtx,
     window: crate::WindowId,
 ) -> Vec<imba::PresentableCommand<AppCommand>> {
-    let entity = crate::Windows::window_ref(store, window).expect("the window entity");
-    let size = entity.viewport_size();
-    let arena = imba::arena::Arena::default();
-    let mut widget = imba::Thunk::realize(
-        imba::Layout::layout(
-            imba::View::display(entity, &arena, store, ui),
-            &arena,
-            imba::constraints::Constraints::tight(size),
-        ),
-        &arena,
-        skia_safe::Rect::from_size(size),
-    );
+    // A STATE WALK over the views — no tree is built for the palette.
     let mut commands: Vec<imba::PresentableCommand<AppCommand>> =
-        imba::Widget::focus_data(&mut widget)
-            .commands
-            .into_iter()
-            .map(|presentable| presentable.map(move |command| AppCommand::Content(window, command)))
-            .collect();
-    drop(widget);
+        crate::focus::window_focus_data(store, ui, window)
+            .map(|data| data.commands)
+            .unwrap_or_default();
     commands.extend(Commands::of(store).iter().map(|command| {
         imba::PresentableCommand::new(
             command.id(),

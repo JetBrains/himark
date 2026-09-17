@@ -389,13 +389,13 @@ where
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, TreeItemCommand<C>>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, TreeItemCommand<C>>
     where
         'a: 'w,
     {
         let offset = self.offset;
         self.inner
-            .focus_data()
+            .layout_data()
             .translated(offset, 0.0)
             .map(TreeItemCommand::Inner)
     }

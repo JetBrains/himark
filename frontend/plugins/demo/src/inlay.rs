@@ -376,6 +376,21 @@ impl DemoInlay {
 impl View for DemoInlay {
     type Command = DemoInlayCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+            "demo.inlay.toggle",
+            match self.expanded {
+                true => "Collapse Demo Inlay",
+                false => "Expand Demo Inlay",
+            },
+            DemoInlayCommand::Toggle,
+        )])
+    }
+
     fn perform(
         &mut self,
         _store: &mut Store,
@@ -416,16 +431,6 @@ impl View for DemoInlay {
                         }
                         _ => EventResult::Ignored,
                     }
-                })
-                .commands(move || {
-                    vec![imba::PresentableCommand::new(
-                        "demo.inlay.toggle",
-                        match self.expanded {
-                            true => "Collapse Demo Inlay",
-                            false => "Expand Demo Inlay",
-                        },
-                        DemoInlayCommand::Toggle,
-                    )]
                 });
             // The card's TITLE is an `imba::text` over the painted
             // chrome at exact baseline parity (top = the old rounded

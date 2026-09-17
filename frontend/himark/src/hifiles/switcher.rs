@@ -145,6 +145,27 @@ impl SessionSwitcherView {
 impl View for SessionSwitcherView {
     type Command = SwitcherCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, SwitcherCommand> {
+        let row_count = self.rows.len();
+        let selected = self.selected;
+        imba::focus::FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape => EventResult::Command(SwitcherCommand::Dismiss),
+                InputKey::Up => EventResult::Command(SwitcherCommand::Select(-1)),
+                InputKey::Down => EventResult::Command(SwitcherCommand::Select(1)),
+                InputKey::Enter if selected < row_count => {
+                    EventResult::Command(SwitcherCommand::Pick(selected))
+                }
+                _ => EventResult::Ignored,
+            })),
+            ..imba::focus::FocusData::default()
+        }
+    }
+
     fn perform(
         &mut self,
         _store: &mut Store,

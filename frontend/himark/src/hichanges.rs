@@ -1248,6 +1248,45 @@ impl ChangesView {
 impl View for ChangesView {
     type Command = ChangesCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ChangesCommand> {
+        use imba::focus::FocusData;
+        let searching = self.list.searching();
+        let message_focused = self.message_focused;
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, mods| match key {
+                InputKey::Enter if mods.command => EventResult::Command(ChangesCommand::Commit),
+                InputKey::Escape if message_focused => {
+                    EventResult::Command(ChangesCommand::FocusMessage(false))
+                }
+                _ if message_focused => EventResult::Ignored,
+                InputKey::Escape if !searching => EventResult::Command(ChangesCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(ChangesCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(ChangesCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(ChangesCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(ChangesCommand::Fold(true)),
+                InputKey::Enter if searching => EventResult::Commands(vec![
+                    ChangesCommand::Pick,
+                    ChangesCommand::Rows(SpeedSearchCommand::Clear),
+                ]),
+                InputKey::Enter => EventResult::Command(ChangesCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        let inner = match self.message_focused {
+            true => self
+                .message
+                .focus_data(store, ui)
+                .map(ChangesCommand::Message),
+            false => self.list.focus_data(store, ui).map(ChangesCommand::Rows),
+        };
+        own.merge_under(inner)
+    }
+
     fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         fx.scope(ChangesCommand::Rows, |fx| self.list.clear(fx));
     }
@@ -1530,11 +1569,11 @@ impl<'a, Inner: Widget<'a, ChangesCommand>> Widget<'a, ChangesCommand> for Recon
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, ChangesCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ChangesCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

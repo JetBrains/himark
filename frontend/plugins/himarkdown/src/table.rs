@@ -1151,6 +1151,65 @@ impl himark::InlayEditing for TableEditor {
 
 impl View for TableEditor {
     type Command = TableCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, TableCommand> {
+        let Some((row, col)) = self.focused else {
+            return imba::focus::FocusData::default();
+        };
+        let rows = self.rows.len();
+        let cols = self.rows.first().map_or(0, Vec::len);
+        let mut commands = vec![
+            imba::PresentableCommand::new(
+                "table.insert-row-below",
+                "Table: Insert Row Below",
+                TableCommand::InsertRow((row + 1).max(1)),
+            ),
+            imba::PresentableCommand::new(
+                "table.insert-column-left",
+                "Table: Insert Column Left",
+                TableCommand::InsertColumn(col),
+            ),
+            imba::PresentableCommand::new(
+                "table.insert-column-right",
+                "Table: Insert Column Right",
+                TableCommand::InsertColumn(col + 1),
+            ),
+        ];
+        if row >= 1 {
+            commands.push(imba::PresentableCommand::new(
+                "table.insert-row-above",
+                "Table: Insert Row Above",
+                TableCommand::InsertRow(row),
+            ));
+            if rows > 2 {
+                commands.push(imba::PresentableCommand::new(
+                    "table.remove-row",
+                    "Table: Remove Row",
+                    TableCommand::RemoveRow(row),
+                ));
+            }
+        }
+        if cols > 1 {
+            commands.push(imba::PresentableCommand::new(
+                "table.remove-column",
+                "Table: Remove Column",
+                TableCommand::RemoveColumn(col),
+            ));
+        }
+        let own = imba::focus::FocusData::of_commands(commands);
+        match self.rows.get(row).and_then(|cells| cells.get(col)) {
+            Some(cell) => cell
+                .view
+                .focus_data(store, ui)
+                .map(move |command| TableCommand::Cell { row, col, command })
+                .merge_under(own),
+            None => own,
+        }
+    }
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1245,52 +1304,6 @@ impl View for TableEditor {
                     painted,
                     relayout,
                     inner,
-                })
-                .commands(move || {
-                    let Some((row, col)) = self.focused else {
-                        return Vec::new();
-                    };
-                    let rows = self.rows.len();
-                    let cols = self.rows.first().map_or(0, Vec::len);
-                    let mut commands = vec![
-                        imba::PresentableCommand::new(
-                            "table.insert-row-below",
-                            "Table: Insert Row Below",
-                            TableCommand::InsertRow((row + 1).max(1)),
-                        ),
-                        imba::PresentableCommand::new(
-                            "table.insert-column-left",
-                            "Table: Insert Column Left",
-                            TableCommand::InsertColumn(col),
-                        ),
-                        imba::PresentableCommand::new(
-                            "table.insert-column-right",
-                            "Table: Insert Column Right",
-                            TableCommand::InsertColumn(col + 1),
-                        ),
-                    ];
-                    if row >= 1 {
-                        commands.push(imba::PresentableCommand::new(
-                            "table.insert-row-above",
-                            "Table: Insert Row Above",
-                            TableCommand::InsertRow(row),
-                        ));
-                        if rows > 2 {
-                            commands.push(imba::PresentableCommand::new(
-                                "table.remove-row",
-                                "Table: Remove Row",
-                                TableCommand::RemoveRow(row),
-                            ));
-                        }
-                    }
-                    if cols > 1 {
-                        commands.push(imba::PresentableCommand::new(
-                            "table.remove-column",
-                            "Table: Remove Column",
-                            TableCommand::RemoveColumn(col),
-                        ));
-                    }
-                    commands
                 })
         })
     }
@@ -1414,11 +1427,11 @@ where
         self.inner.handle_event(arena, event, viewport)
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, TableCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, TableCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

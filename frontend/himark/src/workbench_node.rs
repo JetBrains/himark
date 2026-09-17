@@ -450,6 +450,20 @@ impl View for Panel {
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, PanelCommand> {
+        match self {
+            Self::Editor(pane) => pane.focus_data(store, ui).map(PanelCommand::Editor),
+            Self::Plugin(view) => view
+                .as_ref()
+                .focus_data_dyn(store, ui)
+                .map(PanelCommand::Plugin),
+        }
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -525,6 +539,23 @@ pub(crate) enum WalkStep {
 }
 
 impl PaneSlot {
+    pub(crate) fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, PanelCommand> {
+        let panel = self.panel.focus_data(store, ui);
+        match &self.find {
+            // A focused find bar filters the keyboard before the
+            // panel content; its input editor supplies the text seat.
+            Some(find) if find.focused => find
+                .focus_data(store, ui)
+                .map(PanelCommand::Find)
+                .merge_over(panel),
+            _ => panel,
+        }
+    }
+
     pub(crate) fn of(panel: Panel) -> Self {
         Self {
             panel,
@@ -1066,6 +1097,19 @@ impl WorkbenchNode {
 
 impl View for WorkbenchNode {
     type Command = NodeCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, NodeCommand> {
+        match self {
+            Self::Leaf(slot) => slot.focus_data(store, ui).map(NodeCommand::Leaf),
+            Self::Split(split) => split
+                .focus_data(store, ui)
+                .map(|command| NodeCommand::Split(Box::new(command))),
+        }
+    }
 
     fn perform(
         &mut self,

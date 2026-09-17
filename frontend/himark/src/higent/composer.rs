@@ -246,22 +246,30 @@ impl Composer {
             ((self.input.content().layout_width() - editor_w).abs() > 1.0).then_some(editor_w);
 
         let animating = self.band.running();
-        let expanded = self.expanded;
         band.wrap_realized(move |inner| ComposerWidget {
             inner,
             rewrap,
             animating,
         })
-        .commands(move || {
-            vec![imba::PresentableCommand::new(
-                "chat.toggle-composer",
-                match expanded {
-                    true => "Shrink Chat Input",
-                    false => "Expand Chat Input to Full View",
-                },
-                ComposerCommand::ToggleExpand,
-            )]
-        })
+    }
+
+    pub(crate) fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, ComposerCommand> {
+        let own = imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+            "chat.toggle-composer",
+            match self.expanded {
+                true => "Shrink Chat Input",
+                false => "Expand Chat Input to Full View",
+            },
+            ComposerCommand::ToggleExpand,
+        )]);
+        self.input
+            .focus_data(store, ui)
+            .map(ComposerCommand::Editor)
+            .merge_under(own)
     }
 }
 
@@ -313,10 +321,10 @@ impl<'a> Widget<'a, ComposerCommand> for ComposerWidget<'a> {
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, ComposerCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ComposerCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }

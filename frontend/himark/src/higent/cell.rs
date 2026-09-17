@@ -409,6 +409,13 @@ impl Cell {
         }
     }
 
+    fn editor_view(&self) -> Option<&EditorView> {
+        match &self.body {
+            CellBody::Markdown(view) => Some(view),
+            CellBody::Tools(_) | CellBody::PendingDiff { .. } | CellBody::Diff { .. } => None,
+        }
+    }
+
     fn editor_view_mut(&mut self) -> Option<&mut EditorView> {
         match &mut self.body {
             CellBody::Markdown(editor) => Some(editor),
@@ -430,6 +437,20 @@ impl Cell {
 
 impl View for Cell {
     type Command = CellCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, CellCommand> {
+        match &self.body {
+            CellBody::Diff { view, .. } => view.focus_data(store, ui).map(CellCommand::Diff),
+            _ => match self.editor_view() {
+                Some(editor) => editor.focus_data(store, ui).map(CellCommand::Editor),
+                None => imba::focus::FocusData::default(),
+            },
+        }
+    }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         if let CellBody::Tools(group) = &mut self.body {
@@ -697,11 +718,11 @@ impl<'a, Inner: Widget<'a, CellCommand>> Widget<'a, CellCommand> for CellWidget<
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, CellCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, CellCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

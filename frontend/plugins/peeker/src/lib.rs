@@ -398,6 +398,30 @@ impl Peeker {
 impl View for Peeker {
     type Command = PeekerCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, PeekerCommand> {
+        use imba::event::EventResult;
+        let selected = self.selected;
+        imba::focus::FocusData {
+            commands: vec![imba::PresentableCommand::new(
+                "peeker.close",
+                "Close Peeker",
+                PeekerCommand::Close,
+            )],
+            on_key: Some(Box::new(move |key, _mods| match key {
+                Key::Up => EventResult::Command(PeekerCommand::Select(-1)),
+                Key::Down => EventResult::Command(PeekerCommand::Select(1)),
+                Key::Enter => EventResult::Command(PeekerCommand::Pick(selected)),
+                Key::Escape => EventResult::Command(PeekerCommand::Close),
+                _ => EventResult::Ignored,
+            })),
+            ..imba::focus::FocusData::default()
+        }
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         if let Some(token) = self.find_token.take() {
             fx.cancel(token);
@@ -714,13 +738,7 @@ impl View for Peeker {
             );
             container.place(0.0, 0.0, keymap);
 
-            container.commands(|| {
-                vec![imba::PresentableCommand::new(
-                    "peeker.close",
-                    "Close Peeker",
-                    PeekerCommand::Close,
-                )]
-            })
+            container
         })
     }
 }

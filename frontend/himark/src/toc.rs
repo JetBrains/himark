@@ -195,6 +195,33 @@ impl TocView {
 impl View for TocView {
     type Command = TocCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, TocCommand> {
+        use imba::focus::FocusData;
+        let rows = self.search.inner().list().len();
+        let searching = self.search.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(TocCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(TocCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(TocCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(TocCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(TocCommand::Fold(true)),
+                InputKey::Enter if rows > 0 && searching => EventResult::Commands(vec![
+                    TocCommand::Pick,
+                    TocCommand::List(SpeedSearchCommand::Clear),
+                ]),
+                InputKey::Enter if rows > 0 => EventResult::Command(TocCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.search.focus_data(store, ui).map(TocCommand::List))
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -612,6 +639,33 @@ impl OutlineView {
 
 impl View for OutlineView {
     type Command = OutlineCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, OutlineCommand> {
+        use imba::focus::FocusData;
+        let rows = self.search.inner().list().len();
+        let searching = self.search.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(OutlineCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(OutlineCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(OutlineCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(OutlineCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(OutlineCommand::Fold(true)),
+                InputKey::Enter if rows > 0 && searching => EventResult::Commands(vec![
+                    OutlineCommand::Pick,
+                    OutlineCommand::List(SpeedSearchCommand::Clear),
+                ]),
+                InputKey::Enter if rows > 0 => EventResult::Command(OutlineCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.search.focus_data(store, ui).map(OutlineCommand::List))
+    }
 
     fn perform(
         &mut self,

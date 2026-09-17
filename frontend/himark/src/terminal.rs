@@ -194,6 +194,53 @@ impl TerminalView {
 
 impl View for TerminalView {
     type Command = TerminalCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, TerminalCommand> {
+        use imba::event::EventResult;
+        let Some(session) = Terminals::session_ref(store, &self.channel) else {
+            return imba::focus::FocusData::default();
+        };
+        imba::focus::FocusData {
+            on_key: Some(Box::new(move |key, mods| {
+                let app_cursor = session.term.lock().mode().contains(TermMode::APP_CURSOR);
+                match encode_key(key, mods, app_cursor) {
+                    Some(bytes) => {
+                        session.write(&bytes);
+                        EventResult::Handled
+                    }
+                    None => EventResult::Ignored,
+                }
+            })),
+            on_text: Some(Box::new(move |text| {
+                session.write(text.as_bytes());
+                EventResult::Handled
+            })),
+            clipboard: Some(Box::new(move |visit| {
+                struct PtyPaste<'a> {
+                    session: &'a Session,
+                }
+                impl imba::ClipboardClient for PtyPaste<'_> {
+                    fn copy(&mut self) -> Option<imba::ClipboardContent> {
+                        None
+                    }
+                    fn cut(&mut self) -> Option<imba::ClipboardContent> {
+                        None
+                    }
+                    fn paste(&mut self, content: &imba::ClipboardContent) -> bool {
+                        self.session.write(content.text.as_bytes());
+                        true
+                    }
+                }
+                visit(&mut PtyPaste { session });
+                EventResult::Handled
+            })),
+            ..imba::focus::FocusData::default()
+        }
+    }
     fn perform(
         &mut self,
         store: &mut Store,
@@ -600,50 +647,6 @@ fn cursor_cell(term: &Term<Collector>, point: TermPoint) -> Option<char> {
 impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
     fn size(&self) -> Size {
         self.size
-    }
-
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, TerminalCommand>
-    where
-        'a: 'w,
-    {
-        use imba::event::EventResult;
-        let session: &Session = self.session;
-        imba::focus::FocusData {
-            on_key: Some(Box::new(move |key, mods| {
-                let app_cursor = session.term.lock().mode().contains(TermMode::APP_CURSOR);
-                match encode_key(key, mods, app_cursor) {
-                    Some(bytes) => {
-                        session.write(&bytes);
-                        EventResult::Handled
-                    }
-                    None => EventResult::Ignored,
-                }
-            })),
-            on_text: Some(Box::new(move |text| {
-                session.write(text.as_bytes());
-                EventResult::Handled
-            })),
-            clipboard: Some(Box::new(move |visit| {
-                struct PtyPaste<'a> {
-                    session: &'a Session,
-                }
-                impl imba::ClipboardClient for PtyPaste<'_> {
-                    fn copy(&mut self) -> Option<imba::ClipboardContent> {
-                        None
-                    }
-                    fn cut(&mut self) -> Option<imba::ClipboardContent> {
-                        None
-                    }
-                    fn paste(&mut self, content: &imba::ClipboardContent) -> bool {
-                        self.session.write(content.text.as_bytes());
-                        true
-                    }
-                }
-                visit(&mut PtyPaste { session });
-                EventResult::Handled
-            })),
-            ..imba::focus::FocusData::default()
-        }
     }
 
     fn handle_event(

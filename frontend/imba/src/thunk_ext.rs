@@ -8,9 +8,8 @@ use skia_safe::{Canvas, Rect, Size};
 use crate::{
     arena::Arena,
     event::{Event, EventResult},
-    focus::FocusData,
     overlay::{Overlay, OverlayContent, OverlayHost},
-    PresentableCommand, Thunk, Widget, WidgetBox,
+    Thunk, Widget, WidgetBox,
 };
 
 pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
@@ -103,19 +102,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
         }
     }
 
-    fn commands<F>(self, commands: F) -> impl Thunk<'a, Command> + 'a
-    where
-        Self: 'a,
-        Command: 'a,
-        F: Fn() -> Vec<PresentableCommand<Command>> + 'a,
-    {
-        CommandsThunk {
-            inner: self,
-            commands,
-            _command: PhantomData,
-        }
-    }
-
     fn overlay<F>(self, host: OverlayHost, content: F) -> impl Thunk<'a, Command> + 'a
     where
         Self: 'a,
@@ -187,39 +173,6 @@ where
             crate::overlay::MappedWidget {
                 inner: inner.realize(arena, viewport),
                 map,
-            },
-        )
-    }
-}
-
-struct CommandsThunk<Inner, Command, F> {
-    inner: Inner,
-    commands: F,
-    _command: PhantomData<fn() -> Command>,
-}
-
-impl<'a, Command: 'a, Inner, F> Thunk<'a, Command> for CommandsThunk<Inner, Command, F>
-where
-    Inner: Thunk<'a, Command> + 'a,
-    F: Fn() -> Vec<PresentableCommand<Command>> + 'a,
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn first_baseline(&self) -> Option<f32> {
-        self.inner.first_baseline()
-    }
-
-    fn realize(self, arena: &'a Arena, viewport: Rect) -> WidgetBox<'a, Command> {
-        let CommandsThunk {
-            inner, commands, ..
-        } = self;
-        WidgetBox::new(
-            arena,
-            CommandsWidget {
-                inner: inner.realize(arena, viewport),
-                commands,
             },
         )
     }
@@ -316,7 +269,6 @@ where
             FallbackEventWidget {
                 inner: inner.realize(arena, viewport),
                 event,
-                arena,
             },
         )
     }
@@ -386,47 +338,6 @@ where
     }
 }
 
-struct CommandsWidget<Inner, F> {
-    inner: Inner,
-    commands: F,
-}
-
-impl<'a, Command: 'a, Inner, F> Widget<'a, Command> for CommandsWidget<Inner, F>
-where
-    Inner: Widget<'a, Command>,
-    F: Fn() -> Vec<PresentableCommand<Command>>,
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<Overlay<'a, Command>> {
-        self.inner.overlays()
-    }
-
-    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
-        self.inner.blocks_pointer(point)
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<Command> {
-        self.inner.handle_event(arena, event, viewport)
-    }
-
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
-    where
-        'a: 'w,
-    {
-        self.inner
-            .focus_data()
-            .merge_under(FocusData::of_commands((self.commands)()))
-    }
-}
-
 struct FocusScopeWidget<Inner> {
     inner: Inner,
     focused: bool,
@@ -471,13 +382,13 @@ where
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
         match self.focused {
-            true => self.inner.focus_data(),
-            false => FocusData::default(),
+            true => self.inner.layout_data(),
+            false => crate::focus::LayoutData::default(),
         }
     }
 }
@@ -519,11 +430,11 @@ where
         overlays
     }
 
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 
@@ -557,11 +468,11 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 
     fn handle_event(
@@ -599,13 +510,12 @@ where
     }
 }
 
-struct FallbackEventWidget<'a, Inner, F> {
+struct FallbackEventWidget<Inner, F> {
     inner: Inner,
     event: F,
-    arena: &'a Arena,
 }
 
-impl<'a, Command: 'a, Inner, F> Widget<'a, Command> for FallbackEventWidget<'a, Inner, F>
+impl<'a, Command: 'a, Inner, F> Widget<'a, Command> for FallbackEventWidget<Inner, F>
 where
     Inner: Widget<'a, Command>,
     F: for<'event> Fn(&Arena, &Event<'event>, Size) -> EventResult<Command>,
@@ -622,24 +532,11 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        let size = self.inner.size();
-        let data = self.inner.focus_data();
-        let arena = self.arena;
-        let on_key = &self.event;
-        let on_text = &self.event;
-        data.merge_under(FocusData {
-            on_key: Some(Box::new(move |key, mods| {
-                (on_key)(arena, &Event::KeyDown { key, mods }, size)
-            })),
-            on_text: Some(Box::new(move |text| {
-                (on_text)(arena, &Event::TextInput { text }, size)
-            })),
-            ..FocusData::default()
-        })
+        self.inner.layout_data()
     }
 
     fn handle_event(
@@ -707,10 +604,10 @@ impl<'a, Command: 'a> Widget<'a, Command> for HitOpaqueWidget<'a, Command> {
         true
     }
 
-    fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }

@@ -115,6 +115,25 @@ impl PaletteView {
 impl View for PaletteView {
     type Command = PaletteCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        use imba::event::EventResult;
+        let selected = self.selected;
+        imba::focus::FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                Key::Up => EventResult::Command(PaletteCommand::Select(-1)),
+                Key::Down => EventResult::Command(PaletteCommand::Select(1)),
+                Key::Enter => EventResult::Command(PaletteCommand::Pick(selected)),
+                Key::Escape => EventResult::Command(PaletteCommand::Close),
+                _ => EventResult::Ignored,
+            })),
+            ..imba::focus::FocusData::default()
+        }
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,

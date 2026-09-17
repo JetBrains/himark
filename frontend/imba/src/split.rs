@@ -154,6 +154,17 @@ where
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        match self.focused {
+            Pane::First => self.first.focus_data(store, ui).map(SplitCommand::First),
+            Pane::Second => self.second.focus_data(store, ui).map(SplitCommand::Second),
+        }
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -264,9 +275,9 @@ impl<'a, FirstCommand: 'a, SecondCommand: 'a> Widget<'a, SplitCommand<FirstComma
         self.panes.overlays()
     }
 
-    fn focus_data<'w>(
+    fn layout_data<'w>(
         &'w mut self,
-    ) -> crate::focus::FocusData<'w, SplitCommand<FirstCommand, SecondCommand>>
+    ) -> crate::focus::LayoutData<'w, SplitCommand<FirstCommand, SecondCommand>>
     where
         'a: 'w,
     {
@@ -274,7 +285,7 @@ impl<'a, FirstCommand: 'a, SecondCommand: 'a> Widget<'a, SplitCommand<FirstComma
             Pane::First => 0,
             Pane::Second => 1,
         };
-        self.panes.focus_data_of(index)
+        self.panes.layout_data_of(index)
     }
 
     fn handle_event(

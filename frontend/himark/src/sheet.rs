@@ -179,6 +179,28 @@ impl Sheet {
 impl View for Sheet {
     type Command = SheetCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, SheetCommand> {
+        use imba::focus::FocusData;
+        let own = FocusData {
+            on_key: Some(Box::new(|key, _mods| match key {
+                imba::event::Key::Escape => EventResult::Command(SheetCommand::Toggle),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        // The content answers FIRST — the old shape was an event
+        // FALLBACK on the whole surface: Escape folds the sheet only
+        // when nothing inside (say, a standing completion popup)
+        // wanted it.
+        imba::DynView::focus_data_dyn(self.pane.as_ref(), store, ui)
+            .map(SheetCommand::Content)
+            .merge_under(own)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(SheetCommand::Content, |fx| {
             imba::DynView::destroy_dyn(self.pane.as_mut(), store, fx)

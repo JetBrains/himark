@@ -57,6 +57,18 @@ impl CheckboxView {
 
 impl imba::View for CheckboxView {
     type Command = CheckboxCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+            "checkbox.toggle",
+            "Toggle Checkbox",
+            CheckboxCommand::Toggle,
+        )])
+    }
     fn perform(
         &mut self,
         _store: &mut Store,
@@ -86,28 +98,18 @@ impl imba::View for CheckboxView {
         _store: &'a Store,
         _ui: &'a UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        use imba::thunk_ext::ThunkExt;
         let chrome = &self.chrome;
-        imba::fixed(
-            checkbox(
-                self.checked,
-                CheckboxStyle {
-                    size: chrome.size,
-                    radius: chrome.radius,
-                    stroke: chrome.stroke,
-                    border: chrome.border.0,
-                    fill: chrome.fill.0,
-                    check: chrome.check.0,
-                },
-            )
-            .commands(|| {
-                vec![imba::PresentableCommand::new(
-                    "checkbox.toggle",
-                    "Toggle Checkbox",
-                    CheckboxCommand::Toggle,
-                )]
-            }),
-        )
+        imba::fixed(checkbox(
+            self.checked,
+            CheckboxStyle {
+                size: chrome.size,
+                radius: chrome.radius,
+                stroke: chrome.stroke,
+                border: chrome.border.0,
+                fill: chrome.fill.0,
+                check: chrome.check.0,
+            },
+        ))
     }
 }
 
@@ -155,8 +157,7 @@ mod tests {
         let mut checkbox = CheckboxView::new(false, &theme);
         checkbox.set_range(2..5);
 
-        let mut commands =
-            imba::focus::frame_commands(&checkbox, &store, &ui, skia_safe::Size::new(40.0, 40.0));
+        let mut commands = imba::focus::frame_commands(&checkbox, &store, &ui);
         assert_eq!(commands.len(), 1);
         assert_eq!(commands[0].id, "checkbox.toggle");
         assert_eq!(commands[0].name, "Toggle Checkbox");

@@ -36,7 +36,6 @@ pub use store::{Component, Store};
 pub use ui::UiCtx;
 
 use arena::Arena;
-use constraints::Constraints;
 use event::{Event, EventResult};
 use skia_safe::{Point, Rect, Size};
 
@@ -98,6 +97,21 @@ pub trait View {
     /// stages separately.
     fn destroy(&mut self, store: &mut Store, fx: &mut effect::Effects<'_, Self::Command>) {
         let _ = (store, fx);
+    }
+
+    /// The SEMANTIC focus walk. Focus is state, and the view is the
+    /// state carrier: a composite delegates to the child its own
+    /// state says is focused (the same hand-routing idiom as
+    /// `perform`), appending its own palette commands on the way.
+    /// No layout, no arena, no viewport — geometry questions (the
+    /// IME caret rect) go to `Widget::layout_data` instead.
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> focus::FocusData<'w, Self::Command> {
+        let _ = (store, ui);
+        focus::FocusData::default()
     }
 }
 
@@ -200,11 +214,11 @@ impl<'a, Command: 'a> Widget<'a, Command> for WidgetBox<'a, Command> {
         self.0.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.0.focus_data()
+        self.0.layout_data()
     }
 }
 
@@ -236,11 +250,11 @@ impl<'a, Command: 'a, W: Widget<'a, Command>> Widget<'a, Command> for Eager<W> {
         self.0.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.0.focus_data()
+        self.0.layout_data()
     }
 }
 
@@ -273,12 +287,15 @@ pub trait Widget<'a, Command> {
         Vec::new()
     }
 
-    fn focus_data<'w>(&'w mut self) -> focus::FocusData<'w, Command>
+    /// The LAYOUT-derived focus answers, folded up the realized tree
+    /// with translate/clip like paint. Semantic focus (keys, text,
+    /// clipboard, commands, location) lives on `View::focus_data`.
+    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
         Command: 'a,
     {
-        focus::FocusData::default()
+        focus::LayoutData::default()
     }
 }
 

@@ -2805,9 +2805,8 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     let mut view = crate::EditorView::complete(document, 600.0, &test_fonts(), &test_theme());
     let store = imba::store::Store::new();
     let ui = imba::UiCtx::cold();
-    let size = skia_safe::Size::new(600.0, 400.0);
 
-    let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui, size)
+    let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui)
         .iter()
         .map(|presentable| presentable.id)
         .collect();
@@ -2820,7 +2819,7 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     );
 
     view.document.select_all(view.editor);
-    let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui, size)
+    let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui)
         .iter()
         .map(|presentable| presentable.id)
         .collect();
@@ -2828,7 +2827,7 @@ fn text_focus_offers_caret_commands_to_the_palette() {
 
     view.blur();
     assert!(
-        imba::focus::frame_commands(&view, &store, &ui, size).is_empty(),
+        imba::focus::frame_commands(&view, &store, &ui).is_empty(),
         "an unfocused editor offers nothing"
     );
 }

@@ -72,6 +72,14 @@ impl Clone for Box<dyn ModalView> {
 impl View for Box<dyn ModalView> {
     type Command = DynCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, DynCommand> {
+        self.as_ref().focus_data_dyn(store, ui)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,

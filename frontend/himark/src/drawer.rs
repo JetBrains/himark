@@ -85,6 +85,17 @@ impl Drawer {
 impl View for Drawer {
     type Command = DrawerCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, DrawerCommand> {
+        self.content
+            .as_ref()
+            .focus_data_dyn(store, ui)
+            .map(DrawerCommand::Content)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(DrawerCommand::Content, |fx| {
             imba::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)

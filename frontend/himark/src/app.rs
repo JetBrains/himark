@@ -700,12 +700,7 @@ impl Application {
         arena.reset();
 
         let store = self.window_store(window);
-        let following = self
-            .state
-            .windows
-            .entity(window)
-            .is_some_and(|entity| entity.dock_panel().is_some());
-        let (result, followed) = {
+        let result = {
             let widget = self.layout(
                 window,
                 &arena,
@@ -713,41 +708,17 @@ impl Application {
                 self.ui.as_ref(),
                 Constraints::tight(size),
             );
-            let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
-            let result = widget.handle_event(
+            let widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
+            widget.handle_event(
                 &arena,
                 &Event::Paint {
                     canvas,
                     focused: true,
                 },
                 Rect::from_size(size),
-            );
-            // The dock's tree-follow harvests from THE paint build —
-            // the one widget this frame already owns. Never build a
-            // focus tree to answer bookkeeping (DiffCanvas.trace).
-            let followed = match following {
-                true => crate::focus::focused_location(&mut imba::Widget::focus_data(&mut widget)),
-                false => None,
-            };
-            (result, followed)
+            )
         };
         self.ui_arena = arena;
-
-        if let Some(location) = followed {
-            let changed = self
-                .state
-                .windows
-                .entity(window)
-                .is_some_and(|entity| entity.focused_location() != Some(&location));
-            if changed {
-                self.window_txn(window, |store| {
-                    if let Some(mut entity) = Windows::window(store, window) {
-                        entity.note_focused_location(location);
-                        Windows::put(store, window, entity);
-                    }
-                });
-            }
-        }
 
         match result {
             EventResult::Ignored | EventResult::Handled => false,
@@ -803,47 +774,59 @@ impl Application {
             Event::KeyDown { key, mods } => Some((key, mods)),
             _ => None,
         };
-        let mut arena = std::mem::take(&mut self.ui_arena);
-        arena.reset();
-
         let store = self.window_store(window);
-        let (result, fallback) = {
-            let widget = self.layout(
-                window,
-                &arena,
-                &store,
-                self.ui.as_ref(),
-                Constraints::tight(size),
-            );
-            let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
-
-            let result = match &event {
-                Event::KeyDown { key, mods } => widget.focus_data().key(*key, *mods),
-                Event::TextInput { text } => widget.focus_data().text(text),
-                _ => widget.handle_event(&arena, &event, Rect::from_size(size)),
-            };
-
-            let fallback = match (key_down, &result) {
-                (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
-                    crate::Keymaps::binding_of(&store, key, mods).and_then(|id| {
-                        widget
-                            .focus_data()
-                            .commands
-                            .into_iter()
-                            .find(|presentable| presentable.id == id.as_ref())
-                            .map(|presentable| presentable.command)
-                            .or_else(|| {
-                                crate::commands::Commands::of(&store)
-                                    .find(id.as_ref())
-                                    .map(|command| AppCommand::Dynamic(window, command.clone()))
-                            })
-                    })
-                }
-                _ => None,
-            };
-            (result, fallback)
+        let (result, fallback) = match &event {
+            // Keyboard input routes through the SEMANTIC focus chain
+            // — a state walk over the views. No tree is built for a
+            // keystroke.
+            Event::KeyDown { .. } | Event::TextInput { .. } => {
+                let ui = self.ui.clone();
+                let result = {
+                    let chain = crate::focus::window_focus_data(&store, ui.as_ref(), window);
+                    match (&event, chain) {
+                        (Event::KeyDown { key, mods }, Some(mut data)) => data.key(*key, *mods),
+                        (Event::TextInput { text }, Some(mut data)) => data.text(text),
+                        _ => EventResult::Ignored,
+                    }
+                };
+                let fallback = match (key_down, &result) {
+                    (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
+                        crate::Keymaps::binding_of(&store, key, mods).and_then(|id| {
+                            crate::focus::window_focus_data(&store, ui.as_ref(), window)
+                                .map(|data| data.commands)
+                                .unwrap_or_default()
+                                .into_iter()
+                                .find(|presentable| presentable.id == id.as_ref())
+                                .map(|presentable| presentable.command)
+                                .or_else(|| {
+                                    crate::commands::Commands::of(&store)
+                                        .find(id.as_ref())
+                                        .map(|command| AppCommand::Dynamic(window, command.clone()))
+                                })
+                        })
+                    }
+                    _ => None,
+                };
+                (result, fallback)
+            }
+            _ => {
+                let mut arena = std::mem::take(&mut self.ui_arena);
+                arena.reset();
+                let result = {
+                    let widget = self.layout(
+                        window,
+                        &arena,
+                        &store,
+                        self.ui.as_ref(),
+                        Constraints::tight(size),
+                    );
+                    let widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
+                    widget.handle_event(&arena, &event, Rect::from_size(size))
+                };
+                self.ui_arena = arena;
+                (result, None)
+            }
         };
-        self.ui_arena = arena;
 
         if let Some(command) = fallback {
             return self.perform_batch(vec![command]);
@@ -991,6 +974,39 @@ impl Application {
                 rounds += 1;
             }
             self.settling = false;
+        }
+
+        // Dock tree-follow: the focused location is a STATE question
+        // now — walk the views, note the change. No tree was ever
+        // built for this bookkeeping.
+        for window in self.state.windows.ids() {
+            let following = self
+                .state
+                .windows
+                .entity(window)
+                .is_some_and(|entity| entity.dock_panel().is_some());
+            if !following {
+                continue;
+            }
+            let store = self.window_store(window);
+            let followed = crate::focus::window_focus_data(&store, ui.as_ref(), window)
+                .and_then(|mut data| crate::focus::focused_location(&mut data));
+            let Some(location) = followed else {
+                continue;
+            };
+            let changed = self
+                .state
+                .windows
+                .entity(window)
+                .is_some_and(|entity| entity.focused_location() != Some(&location));
+            if changed {
+                self.window_txn(window, |store| {
+                    if let Some(mut entity) = Windows::window(store, window) {
+                        entity.note_focused_location(location);
+                        Windows::put(store, window, entity);
+                    }
+                });
+            }
         }
         let probe_launch = probe
             .elapsed()

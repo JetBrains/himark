@@ -33,7 +33,7 @@ use skia_safe::{Paint, Rect, Size};
 
 use crate::higent::cell::{Cell, CellCommand, CellKind};
 use crate::higent::composer::{Composer, ComposerCommand, ComposerProps};
-use crate::higent::stack::{AskKeys, PermissionAsk, StackCommand, WidgetStack};
+use crate::higent::stack::{PermissionAsk, StackCommand, WidgetStack};
 use crate::higent::tool_group::{ToolCallSpec, ToolFace, ToolUpdate};
 use crate::higent::turn::{
     completed_tool_face, denied_tool_face, message_cell, part_cells, pending_tool_face,
@@ -56,6 +56,17 @@ enum ChatRow {
 
 impl View for ChatRow {
     type Command = RowCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, RowCommand> {
+        match self {
+            ChatRow::Turn(turn) => turn.focus_data(store, ui).map(RowCommand::Turn),
+            ChatRow::Loader { .. } => imba::focus::FocusData::default(),
+        }
+    }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         if let ChatRow::Turn(turn) = self {
@@ -159,11 +170,11 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedLoader<I
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, RowCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 
@@ -225,13 +236,13 @@ impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCom
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, RowCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
         match self {
-            Either::Loader(widget) => widget.focus_data(),
-            Either::Turn(widget) => widget.focus_data(),
+            Either::Loader(widget) => widget.layout_data(),
+            Either::Turn(widget) => widget.layout_data(),
         }
     }
 }
@@ -1528,6 +1539,59 @@ fn peeled_activation(command: &RowsCommand) -> bool {
 impl View for ChatPanel {
     type Command = ChatPanelCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
+        use imba::focus::FocusData;
+        let ask = self.stack.ask_keys();
+        let composer_empty = self.composer.is_empty();
+        let expanded = self.composer.expanded();
+        let focus = self.focus;
+
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, mods| match (key, mods) {
+                (Key::Enter, mods) if ask.is_some() && composer_empty && !mods.shift => {
+                    EventResult::Command(ChatPanelCommand::Answer(0))
+                }
+                (Key::Escape, _) if ask.is_some() => match ask.and_then(|ask| ask.deny) {
+                    Some(deny) => EventResult::Command(ChatPanelCommand::Answer(deny)),
+                    None => EventResult::Ignored,
+                },
+
+                (Key::Escape, _) if expanded => {
+                    EventResult::Command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
+                }
+
+                (Key::Enter, mods) if mods.command && focus == ChatArea::Composer => {
+                    EventResult::Command(ChatPanelCommand::Send)
+                }
+                _ => EventResult::Ignored,
+            })),
+            on_text: Some(Box::new(move |text| {
+                let Some(ask) = ask else {
+                    return EventResult::Ignored;
+                };
+                match text.chars().next().and_then(|c| c.to_digit(10)) {
+                    Some(digit) if digit >= 1 && (digit as usize) <= ask.count => {
+                        EventResult::Command(ChatPanelCommand::Answer(digit as usize - 1))
+                    }
+                    _ => EventResult::Ignored,
+                }
+            })),
+            ..FocusData::default()
+        };
+        let area = match self.focus {
+            ChatArea::Composer => self
+                .composer
+                .focus_data(store, ui)
+                .map(ChatPanelCommand::Composer),
+            ChatArea::Transcript => self.rows.focus_data(store, ui).map(ChatPanelCommand::Rows),
+        };
+        own.merge_under(area)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         if let Some(token) = self.fetch_token.take() {
             fx.cancel(token);
@@ -1968,7 +2032,6 @@ impl View for ChatPanel {
             let rows_height_ = rows_height;
             let focus = self.focus;
             let boot = matches!(self.state, Link::Idle);
-            let ask = self.stack.ask_keys();
             let strip_top = size.height - toolbar_h + 1.0;
             panel.wrap_realized(move |panel| ChatWidget {
                 panel,
@@ -1978,9 +2041,6 @@ impl View for ChatPanel {
                 toolbar_stale,
                 strip_origin,
                 strip_top,
-                ask,
-                composer_empty,
-                expanded: self.composer.expanded(),
             })
         })
     }
@@ -1996,10 +2056,6 @@ struct ChatWidget<Inner> {
 
     strip_origin: std::sync::Arc<std::sync::atomic::AtomicU64>,
     strip_top: f32,
-    ask: Option<AskKeys>,
-    composer_empty: bool,
-
-    expanded: bool,
 }
 
 const ROWS_CHILD: usize = 0;
@@ -2067,49 +2123,11 @@ impl<'a> Widget<'a, ChatPanelCommand>
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, ChatPanelCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ChatPanelCommand>
     where
         'a: 'w,
     {
-        use imba::focus::FocusData;
-        let ask = self.ask;
-        let composer_empty = self.composer_empty;
-        let expanded = self.expanded;
-        let focus = self.focus;
-
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, mods| match (key, mods) {
-                (Key::Enter, mods) if ask.is_some() && composer_empty && !mods.shift => {
-                    EventResult::Command(ChatPanelCommand::Answer(0))
-                }
-                (Key::Escape, _) if ask.is_some() => match ask.and_then(|ask| ask.deny) {
-                    Some(deny) => EventResult::Command(ChatPanelCommand::Answer(deny)),
-                    None => EventResult::Ignored,
-                },
-
-                (Key::Escape, _) if expanded => {
-                    EventResult::Command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
-                }
-
-                (Key::Enter, mods) if mods.command && focus == ChatArea::Composer => {
-                    EventResult::Command(ChatPanelCommand::Send)
-                }
-                _ => EventResult::Ignored,
-            })),
-            on_text: Some(Box::new(move |text| {
-                let Some(ask) = ask else {
-                    return EventResult::Ignored;
-                };
-                match text.chars().next().and_then(|c| c.to_digit(10)) {
-                    Some(digit) if digit >= 1 && (digit as usize) <= ask.count => {
-                        EventResult::Command(ChatPanelCommand::Answer(digit as usize - 1))
-                    }
-                    _ => EventResult::Ignored,
-                }
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.panel.focus_data())
+        self.panel.layout_data()
     }
 }
 

@@ -8,17 +8,38 @@ use imba::{ClipboardClient, ImeClient};
 use crate::app::AppCommand;
 use crate::Application;
 
+/// The semantic focus chain of a window — a STATE WALK over the view
+/// tree. No arena, no layout, no realize: focus is state, and the
+/// views carry it (imba `View::focus_data`).
+pub(crate) fn window_focus_data<'a>(
+    store: &'a imba::store::Store,
+    ui: &'a imba::UiCtx,
+    window: crate::WindowId,
+) -> Option<FocusData<'a, AppCommand>> {
+    let entity = crate::Windows::window_ref(store, window)?;
+    Some(
+        imba::View::focus_data(entity, store, ui)
+            .map(move |command| AppCommand::Content(window, command)),
+    )
+}
+
 impl Application {
-    fn with_focus_chain<R>(
+    pub fn with_ime_client<R>(
         &mut self,
         window: crate::WindowId,
-        f: impl FnOnce(&mut FocusData<'_, AppCommand>) -> R,
+        f: impl FnOnce(&mut dyn ImeClient) -> R,
     ) -> Option<R> {
+        // The IME seat is layout-derived (the caret rect rides the
+        // realized frame's fold), so this ask builds one bounded
+        // widget — the only remaining build-to-ask, and it fires
+        // only while composing.
         let size = self.window_viewport(window)?;
         let store = self.window_store(window);
         let mut arena = std::mem::take(&mut self.ui_arena);
         arena.reset();
-        let (result, pending) = {
+        let mut f = Some(f);
+        let mut answer = None;
+        let performed = {
             let widget = self.layout(
                 window,
                 &arena,
@@ -27,36 +48,23 @@ impl Application {
                 imba::constraints::Constraints::tight(size),
             );
             let mut widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(size));
-            let mut data = imba::Widget::focus_data(&mut widget);
-            let result = f(&mut data);
-
-            drop(data);
-            (result, ())
-        };
-        let _ = pending;
-        self.ui_arena = arena;
-        Some(result)
-    }
-
-    pub fn with_ime_client<R>(
-        &mut self,
-        window: crate::WindowId,
-        f: impl FnOnce(&mut dyn ImeClient) -> R,
-    ) -> Option<R> {
-        let mut f = Some(f);
-        let mut answer = None;
-        let performed = self.with_focus_chain(window, |data| {
-            data.ime.take().map(|mut seat| {
-                if std::env::var("HIMARK_TRACE_IME").is_ok() {
-                    eprintln!("[ime] seat origin = {:?}", seat.origin);
-                }
-                (seat.ask)(seat.origin, seat.clip, &mut |client| {
-                    if let Some(f) = f.take() {
-                        answer = Some(f(client));
+            let performed = imba::Widget::layout_data(&mut widget)
+                .ime
+                .take()
+                .map(|mut seat| {
+                    if std::env::var("HIMARK_TRACE_IME").is_ok() {
+                        eprintln!("[ime] seat origin = {:?}", seat.origin);
                     }
-                })
-            })
-        })?;
+                    (seat.ask)(seat.origin, seat.clip, &mut |client| {
+                        if let Some(f) = f.take() {
+                            answer = Some(f(client));
+                        }
+                    })
+                });
+            drop(widget);
+            performed
+        };
+        self.ui_arena = arena;
 
         if let Some(result) = performed {
             self.perform_chain_result(result);
@@ -69,9 +77,12 @@ impl Application {
         window: crate::WindowId,
         f: impl FnOnce(&mut dyn ClipboardClient) -> R,
     ) -> Option<R> {
+        let store = self.window_store(window);
+        let ui = self.ui.clone();
         let mut f = Some(f);
         let mut answer = None;
-        let performed = self.with_focus_chain(window, |data| {
+        let performed = {
+            let mut data = window_focus_data(&store, ui.as_ref(), window)?;
             data.clipboard.as_mut().map(|seat| {
                 seat(&mut |client| {
                     if let Some(f) = f.take() {
@@ -79,7 +90,7 @@ impl Application {
                     }
                 })
             })
-        })?;
+        };
         if let Some(result) = performed {
             self.perform_chain_result(result);
         }
@@ -99,11 +110,7 @@ impl Application {
     }
 }
 
-/// The focused location of an ALREADY-BUILT focus chain. There is
-/// deliberately no window-taking variant: answering this needs the
-/// whole realized widget tree, and whoever asks must be SEEN
-/// building one — or borrowing the frame's (`dispatch_paint`
-/// harvests from the paint build; one widget per frame, period).
+/// The focused location out of an already-collected focus chain.
 pub(crate) fn focused_location(
     data: &mut FocusData<'_, AppCommand>,
 ) -> Option<crate::ResourceLocation> {

@@ -129,6 +129,66 @@ impl UnifiedDiffView {
 impl imba::View for UnifiedDiffView {
     type Command = UnifiedDiffCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
+        use imba::event::EventResult;
+        use imba::focus::FocusData;
+        let inner = match self.layout {
+            DiffLayout::Split => self
+                .split
+                .focus_data(store, ui)
+                .map(UnifiedDiffCommand::Split),
+            DiffLayout::Inline => {
+                // The face view is MINTED per ask (documents are
+                // persistent, the clone is cheap); handlers re-mint
+                // per call because the semantic data may not outlive
+                // a temporary.
+                let (commands, location) = match self.inline_face(store) {
+                    Some(view) => {
+                        let mut data = view.focus_data(store, ui);
+                        (
+                            std::mem::take(&mut data.commands)
+                                .into_iter()
+                                .map(|presentable| presentable.map(UnifiedDiffCommand::Inline))
+                                .collect(),
+                            data.location.take(),
+                        )
+                    }
+                    None => (Vec::new(), None),
+                };
+                let with_face = move |f: &mut dyn FnMut(
+                    imba::focus::FocusData<'_, EditorCommand>,
+                )
+                    -> EventResult<EditorCommand>| {
+                    match self.inline_face(store) {
+                        Some(view) => f(view.focus_data(store, ui)).map(UnifiedDiffCommand::Inline),
+                        None => EventResult::Ignored,
+                    }
+                };
+                FocusData {
+                    commands,
+                    on_key: Some(Box::new(move |k, mods| {
+                        with_face(&mut |mut data| data.key(k, mods))
+                    })),
+                    on_text: Some(Box::new(move |text| {
+                        with_face(&mut |mut data| data.text(text))
+                    })),
+                    clipboard: Some(Box::new(move |visit| {
+                        with_face(&mut |mut data| match data.clipboard.as_mut() {
+                            Some(seat) => seat(visit),
+                            None => EventResult::Ignored,
+                        })
+                    })),
+                    location,
+                }
+            }
+        };
+        inner.merge_under(FocusData::of_commands(self.toggle_surface()))
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -216,7 +276,7 @@ impl imba::View for UnifiedDiffView {
                         .map(UnifiedDiffCommand::Split),
                     ),
                 };
-                face.commands(move || self.toggle_surface())
+                face
             },
         )
     }
@@ -312,10 +372,10 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
         std::mem::take(&mut self.projected)
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, EditorCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }

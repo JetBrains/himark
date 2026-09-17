@@ -180,6 +180,17 @@ impl ChatPane {
 impl imba::View for ChatPane {
     type Command = ChatPanelCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
+        match Chats::chat_ref(store, &self.chat) {
+            Some(panel) => panel.focus_data(store, ui),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,

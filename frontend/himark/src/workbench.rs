@@ -130,6 +130,14 @@ pub fn workbench_geometry(
 impl View for Workbench {
     type Command = NodeCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, NodeCommand> {
+        self.root.focus_data(store, ui)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,

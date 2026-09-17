@@ -582,8 +582,8 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
 
 #[test]
 fn focus_moves_between_text_and_inlays() {
-    use imba::{arena::Arena, constraints::Constraints, event::EventResult, Widget};
-    use skia_safe::{Point, Rect, Size};
+    use imba::event::EventResult;
+    use skia_safe::Point;
 
     let mut pane = TestPane::new(plain_document("abc"), 420.0);
     pane.replace_inlay(
@@ -616,16 +616,9 @@ fn focus_moves_between_text_and_inlays() {
     );
 
     {
-        let arena = Arena::default();
         let ui = imba::UiCtx::cold();
-        let widget = imba::Layout::layout(
-            pane.view.display(&arena, &pane.store, &ui),
-            &arena,
-            Constraints::tight(Size::new(420.0, 400.0)),
-        );
-        let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_wh(420.0, 400.0));
         assert!(matches!(
-            widget.focus_data().text("x"),
+            imba::View::focus_data(&pane.view, &pane.store, &ui).text("x"),
             EventResult::Ignored
         ));
     }
@@ -637,16 +630,9 @@ fn focus_moves_between_text_and_inlays() {
     assert_eq!(pane.gathered().focus(), EditorFocus::Text);
 
     {
-        let arena = Arena::default();
         let ui = imba::UiCtx::cold();
-        let widget = imba::Layout::layout(
-            pane.view.display(&arena, &pane.store, &ui),
-            &arena,
-            Constraints::tight(Size::new(420.0, 400.0)),
-        );
-        let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_wh(420.0, 400.0));
         assert!(matches!(
-            widget.focus_data().text("x"),
+            imba::View::focus_data(&pane.view, &pane.store, &ui).text("x"),
             EventResult::Command(EditorCommand::InsertText { .. })
         ));
     }
@@ -1704,20 +1690,24 @@ fn palette_commands_follow_the_modal_focus() {
             imba::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
-                    use imba::thunk_ext::ThunkExt;
                     imba::leaf::leaf::<TestModalCommand>(
                         constraints.max.width,
                         constraints.max.height,
                     )
-                    .commands(|| {
-                        vec![imba::PresentableCommand::new(
-                            "test.modal.close",
-                            "Close Test Modal",
-                            TestModalCommand::Close,
-                        )]
-                    })
                 },
             )
+        }
+
+        fn focus_data<'w>(
+            &'w self,
+            _store: &'w Store,
+            _ui: &'w imba::UiCtx,
+        ) -> imba::focus::FocusData<'w, TestModalCommand> {
+            imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+                "test.modal.close",
+                "Close Test Modal",
+                TestModalCommand::Close,
+            )])
         }
     }
     impl ModalView for TestModal {
@@ -4124,6 +4114,21 @@ mod dock_tests {
 
     impl View for DockStub {
         type Command = StubCommand;
+
+        fn focus_data<'w>(
+            &'w self,
+            _store: &'w Store,
+            _ui: &'w UiCtx,
+        ) -> imba::focus::FocusData<'w, StubCommand> {
+            imba::focus::FocusData {
+                on_key: Some(Box::new(|key, _mods| match key {
+                    Key::Escape => EventResult::Command(StubCommand::Close),
+                    Key::Enter => EventResult::Command(StubCommand::Ask),
+                    _ => EventResult::Ignored,
+                })),
+                ..imba::focus::FocusData::default()
+            }
+        }
 
         fn perform(
             &mut self,

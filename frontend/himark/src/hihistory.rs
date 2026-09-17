@@ -1170,6 +1170,32 @@ impl HistoryView {
 impl View for HistoryView {
     type Command = HistoryCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, HistoryCommand> {
+        use imba::focus::FocusData;
+        let searching = self.list.view().searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(HistoryCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(HistoryCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(HistoryCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(HistoryCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(HistoryCommand::Fold(true)),
+                InputKey::Enter if searching => EventResult::Commands(vec![
+                    HistoryCommand::Pick,
+                    HistoryCommand::Rows(TooltipCommand::Host(SpeedSearchCommand::Clear)),
+                ]),
+                InputKey::Enter => EventResult::Command(HistoryCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.list.focus_data(store, ui).map(HistoryCommand::Rows))
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1362,11 +1388,11 @@ impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryComman
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, HistoryCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, HistoryCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

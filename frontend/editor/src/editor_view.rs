@@ -701,6 +701,100 @@ impl EditorView {
 impl View for EditorView {
     type Command = EditorCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, EditorCommand> {
+        use imba::event::EventResult;
+        use imba::focus::FocusData;
+        let inner = match self.document.focus(self.editor) {
+            EditorFocus::Inlay(key) => {
+                let wrap = move |command| EditorCommand::Inlay { key, command };
+                let (commands, location) = match self.document.inlay_focus_data(store, ui, key) {
+                    Some(mut data) => (
+                        std::mem::take(&mut data.commands)
+                            .into_iter()
+                            .map(|presentable| presentable.map(wrap))
+                            .collect(),
+                        data.location.take(),
+                    ),
+                    None => (Vec::new(), None),
+                };
+                let with_inlay = move |f: &mut dyn FnMut(
+                    imba::focus::FocusData<'_, crate::markup::InlayCommand>,
+                ) -> EventResult<
+                    crate::markup::InlayCommand,
+                >| {
+                    self.document
+                        .inlay_focus_data(store, ui, key)
+                        .map(|data| f(data))
+                        .unwrap_or(EventResult::Ignored)
+                        .map(wrap)
+                };
+                FocusData {
+                    commands,
+                    on_key: Some(Box::new(move |k, mods| {
+                        with_inlay(&mut |mut data| data.key(k, mods))
+                    })),
+                    on_text: Some(Box::new(move |text| {
+                        with_inlay(&mut |mut data| data.text(text))
+                    })),
+                    clipboard: Some(Box::new(move |visit| {
+                        with_inlay(&mut |mut data| match data.clipboard.as_mut() {
+                            Some(seat) => seat(visit),
+                            None => EventResult::Ignored,
+                        })
+                    })),
+                    location,
+                }
+            }
+            EditorFocus::Text => FocusData {
+                commands: self.caret_surface(),
+
+                on_key: None,
+                on_text: Some(Box::new(move |text| {
+                    EventResult::Command(EditorCommand::InsertText {
+                        text: text.to_owned(),
+                    })
+                })),
+
+                clipboard: Some(Box::new(move |visit| {
+                    let mut client = EditorClipboardClient {
+                        document: &self.document,
+                        editor: self.editor,
+                        command: None,
+                    };
+                    visit(&mut client);
+                    match client.command {
+                        Some(command) => EventResult::Command(command),
+                        None => EventResult::Handled,
+                    }
+                })),
+
+                location: self
+                    .location
+                    .as_ref()
+                    .map(|location| Box::new(location.clone()) as Box<dyn std::any::Any>),
+            },
+            EditorFocus::None => FocusData::default(),
+        };
+        // Standing popups (completion, hover actions) filter the
+        // keyboard before the text they decorate — semantic state,
+        // not z-order: they exist, so they answer first.
+        let inner = {
+            let mut over = FocusData::default();
+            for (key, _, _, _) in self.document.popups_in(self.editor, 0..u32::MAX) {
+                if let Some(data) = self.document.inlay_focus_data(store, ui, key) {
+                    over = over
+                        .merge_over(data.map(move |command| EditorCommand::Inlay { key, command }));
+                }
+            }
+            over.merge_over(inner)
+        };
+        inner.merge_under(FocusData::of_commands(self.dynamic_surface(store)))
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -900,9 +994,6 @@ impl View for EditorView {
                 EditorChain {
                     inner: root.realize_into(viewport),
                     view: self,
-                    store,
-                    ui,
-                    arena,
                     fonts: fonts.clone(),
                     theme: crate::env::Themes::of(store),
                     popups,
@@ -1227,9 +1318,6 @@ impl EditorView {
 struct EditorChain<'a> {
     inner: imba::container::RealizedContainer<'a, EditorCommand>,
     view: &'a EditorView,
-    store: &'a Store,
-    ui: &'a UiCtx,
-    arena: &'a Arena,
     fonts: WidgetFonts,
     theme: crate::theme::Theme,
 
@@ -1256,107 +1344,25 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
         overlays
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, EditorCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
         use imba::event::EventResult;
-        use imba::focus::FocusData;
+        use imba::focus::LayoutData;
         let view = self.view;
-
         let bounds = imba::Widget::size(&self.inner);
 
-        let inner = match view.document.focus(view.editor) {
-            EditorFocus::Inlay(key) => {
-                let constraints = Constraints {
-                    min: Size::default(),
-                    max: Size::new(view.document.layout_width(view.editor).max(1.0), f32::MAX),
-                };
-                let store = self.store;
-                let ui = self.ui;
-                let arena = self.arena;
-                let wrap = move |command| EditorCommand::Inlay { key, command };
-                let commands = view
-                    .document
-                    .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                        std::mem::take(&mut data.commands)
-                    })
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|presentable| presentable.map(wrap))
-                    .collect();
-                FocusData {
-                    commands,
-                    on_key: Some(Box::new(move |k, mods| {
-                        view.document
-                            .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                                data.key(k, mods)
-                            })
-                            .unwrap_or(EventResult::Ignored)
-                            .map(wrap)
-                    })),
-                    on_text: Some(Box::new(move |text| {
-                        view.document
-                            .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                                data.text(text)
-                            })
-                            .unwrap_or(EventResult::Ignored)
-                            .map(wrap)
-                    })),
-
-                    ime: Some(imba::focus::ImeSeat {
-                        origin: skia_safe::Point::default(),
-                        clip: None,
-                        ask: Box::new(move |origin, clip, visit| {
-                            view.document
-                                .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                                    match data.ime.take() {
-                                        Some(mut seat) => {
-                                            let at = skia_safe::Point::new(
-                                                origin.x + seat.origin.x,
-                                                origin.y + seat.origin.y,
-                                            );
-                                            (seat.ask)(at, clip, visit)
-                                        }
-                                        None => EventResult::Ignored,
-                                    }
-                                })
-                                .unwrap_or(EventResult::Ignored)
-                                .map(wrap)
-                        }),
-                    }),
-                    clipboard: Some(Box::new(move |visit| {
-                        view.document
-                            .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                                match data.clipboard.as_mut() {
-                                    Some(seat) => seat(visit),
-                                    None => EventResult::Ignored,
-                                }
-                            })
-                            .unwrap_or(EventResult::Ignored)
-                            .map(wrap)
-                    })),
-                    location: view
-                        .document
-                        .with_inlay_focus(arena, store, ui, key, constraints, |mut data| {
-                            data.location.take()
-                        })
-                        .flatten(),
-                }
-            }
+        match view.document.focus(view.editor) {
+            // A focused inlay's seat comes out of the realized tree:
+            // the placed (gated) inlay widget volunteers it and the
+            // container fold translates it into place. Projected
+            // inlays surface through their HOST pane's fold instead.
+            EditorFocus::Inlay(_) => self.inner.layout_data(),
             EditorFocus::Text => {
                 let fonts = &self.fonts;
                 let theme = &self.theme;
-                FocusData {
-                    commands: view.caret_surface(),
-
-                    on_key: None,
-                    on_text: Some(Box::new(move |text| {
-                        EventResult::Command(EditorCommand::InsertText {
-                            text: text.to_owned(),
-                        })
-                    })),
-
+                LayoutData {
                     ime: Some(imba::focus::ImeSeat {
                         origin: skia_safe::Point::new(view.gutter_width.max(0.0), 0.0),
                         clip: None,
@@ -1382,28 +1388,10 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                             }
                         }),
                     }),
-                    clipboard: Some(Box::new(move |visit| {
-                        let mut client = EditorClipboardClient {
-                            document: &view.document,
-                            editor: view.editor,
-                            command: None,
-                        };
-                        visit(&mut client);
-                        match client.command {
-                            Some(command) => EventResult::Command(command),
-                            None => EventResult::Handled,
-                        }
-                    })),
-
-                    location: view
-                        .location
-                        .as_ref()
-                        .map(|location| Box::new(location.clone()) as Box<dyn std::any::Any>),
                 }
             }
-            EditorFocus::None => FocusData::default(),
-        };
-        inner.merge_under(FocusData::of_commands(view.dynamic_surface(self.store)))
+            EditorFocus::None => LayoutData::default(),
+        }
     }
 }
 
@@ -1862,13 +1850,13 @@ where
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
         match self.focused {
-            true => self.inner.focus_data(),
-            false => imba::focus::FocusData::default(),
+            true => self.inner.layout_data(),
+            false => imba::focus::LayoutData::default(),
         }
     }
 }

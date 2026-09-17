@@ -105,6 +105,48 @@ impl View for EditorIdView {
         crate::OpenDocuments::put_document(store, self.document, view.document);
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, EditorCommand> {
+        use imba::event::EventResult;
+        use imba::focus::FocusData;
+        // The editor view is MINTED from the store per ask (documents
+        // are persistent, the clone is cheap); handlers re-mint per
+        // call because the data may not outlive a temporary.
+        let (commands, location) = match self.gathered(store) {
+            Some(view) => {
+                let mut data = view.focus_data(store, ui);
+                (std::mem::take(&mut data.commands), data.location.take())
+            }
+            None => (Vec::new(), None),
+        };
+        let with_view =
+            move |f: &mut dyn FnMut(FocusData<'_, EditorCommand>) -> EventResult<EditorCommand>| {
+                match self.gathered(store) {
+                    Some(view) => f(view.focus_data(store, ui)),
+                    None => EventResult::Ignored,
+                }
+            };
+        FocusData {
+            commands,
+            on_key: Some(Box::new(move |key, mods| {
+                with_view(&mut |mut data| data.key(key, mods))
+            })),
+            on_text: Some(Box::new(move |text| {
+                with_view(&mut |mut data| data.text(text))
+            })),
+            clipboard: Some(Box::new(move |visit| {
+                with_view(&mut |mut data| match data.clipboard.as_mut() {
+                    Some(seat) => seat(visit),
+                    None => EventResult::Ignored,
+                })
+            })),
+            location,
+        }
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -211,60 +253,33 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, EditorCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
         use imba::event::EventResult;
-        use imba::focus::FocusData;
+        use imba::focus::LayoutData;
 
         let Some(view) = &self.view else {
-            return FocusData::default();
+            return LayoutData::default();
         };
         let store = self.store;
         let ui = self.ui;
         let arena = self.arena;
         let constraints = self.constraints;
-        let with_chain = move |f: &mut dyn FnMut(
-            FocusData<'_, EditorCommand>,
-        ) -> EventResult<EditorCommand>|
-              -> EventResult<EditorCommand> {
-            let mut widget =
-                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
-                    .realize(arena, skia_safe::Rect::default());
-            let result = f(widget.focus_data());
-            drop(widget);
-            result
-        };
-        let commands = {
-            let mut widget =
-                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
-                    .realize(arena, skia_safe::Rect::default());
-            let commands = std::mem::take(&mut widget.focus_data().commands);
-            drop(widget);
-            commands
-        };
-        let location = {
-            let mut widget =
-                imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
-                    .realize(arena, skia_safe::Rect::default());
-            let location = widget.focus_data().location.take();
-            drop(widget);
-            location
-        };
-        FocusData {
-            commands,
-            on_key: Some(Box::new(move |key, mods| {
-                with_chain(&mut |mut data| data.key(key, mods))
-            })),
-            on_text: Some(Box::new(move |text| {
-                with_chain(&mut |mut data| data.text(text))
-            })),
+        let viewport = self.viewport;
+        LayoutData {
+            // The rect is a layout question: the pane realizes its
+            // editor ON THE ASK, bounded by the frame's viewport —
+            // IME composition is rare enough that nothing else pays.
             ime: Some(imba::focus::ImeSeat {
                 origin: skia_safe::Point::new(self.content_pad, 0.0),
                 clip: None,
                 ask: Box::new(move |origin, clip, visit| {
-                    with_chain(&mut |mut data| match data.ime.take() {
+                    let mut widget =
+                        imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
+                            .realize(arena, viewport);
+                    let result = match widget.layout_data().ime.take() {
                         Some(mut seat) => {
                             let at = skia_safe::Point::new(
                                 origin.x + seat.origin.x,
@@ -273,16 +288,11 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
                             (seat.ask)(at, clip, visit)
                         }
                         None => EventResult::Ignored,
-                    })
+                    };
+                    drop(widget);
+                    result
                 }),
             }),
-            clipboard: Some(Box::new(move |visit| {
-                with_chain(&mut |mut data| match data.clipboard.as_mut() {
-                    Some(seat) => seat(visit),
-                    None => EventResult::Ignored,
-                })
-            })),
-            location,
         }
     }
 

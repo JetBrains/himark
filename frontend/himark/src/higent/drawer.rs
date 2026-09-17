@@ -394,6 +394,38 @@ fn session_label(summary: &SessionSummary) -> String {
 impl View for AgentsPanel {
     type Command = AgentsCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, AgentsCommand> {
+        use imba::focus::FocusData;
+        if let Some(input) = &self.adding {
+            let own = FocusData {
+                on_key: Some(Box::new(|key, _mods| match key {
+                    InputKey::Enter => EventResult::Command(AgentsCommand::SubmitAddHost),
+                    InputKey::Escape => EventResult::Command(AgentsCommand::CancelAddHost),
+                    _ => EventResult::Ignored,
+                })),
+                ..FocusData::default()
+            };
+            return own.merge_under(input.focus_data(store, ui).map(AgentsCommand::AddHostInput));
+        }
+        let own = FocusData {
+            on_key: Some(Box::new(|key, _mods| match key {
+                InputKey::Escape => EventResult::Command(AgentsCommand::Dismiss),
+                InputKey::Up => EventResult::Command(AgentsCommand::Select(-1)),
+                InputKey::Down => EventResult::Command(AgentsCommand::Select(1)),
+                InputKey::Left => EventResult::Command(AgentsCommand::Fold(false)),
+                InputKey::Right => EventResult::Command(AgentsCommand::Fold(true)),
+                InputKey::Enter => EventResult::Command(AgentsCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.list.focus_data(store, ui).map(AgentsCommand::Rows))
+    }
+
     fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         for (_, token) in self.polls.iter() {
             fx.cancel(*token);
@@ -689,11 +721,11 @@ impl<'a, Inner: Widget<'a, AgentsCommand>> Widget<'a, AgentsCommand> for BootShe
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, AgentsCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, AgentsCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

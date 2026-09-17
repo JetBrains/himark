@@ -982,14 +982,19 @@ impl View for Row {
             crate::eager(RowWidget {
                 height: self.height,
             })
-            .commands(|| {
-                vec![crate::PresentableCommand::new(
-                    "row.poke",
-                    "Poke Row",
-                    RowCommand::Text("poked"),
-                )]
-            })
         })
+    }
+
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w Store,
+        _ui: &'w crate::ui::UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        crate::focus::FocusData::of_commands(vec![crate::PresentableCommand::new(
+            "row.poke",
+            "Poke Row",
+            RowCommand::Text("poked"),
+        )])
     }
 }
 
@@ -1373,16 +1378,7 @@ fn focus_commands_of<V: View>(
     store: &Store,
     ui: &crate::ui::UiCtx,
 ) -> Vec<crate::PresentableCommand<V::Command>> {
-    let arena = Arena::default();
-    let mut widget = crate::Layout::layout(
-        view.display(&arena, store, ui),
-        &arena,
-        Constraints::tight(Size::new(200.0, 120.0)),
-    )
-    .realize(&arena, Rect::from_wh(200.0, 120.0));
-    let commands = std::mem::take(&mut widget.focus_data().commands);
-    drop(widget);
-    commands
+    crate::focus::frame_commands(view, store, ui)
 }
 
 #[test]

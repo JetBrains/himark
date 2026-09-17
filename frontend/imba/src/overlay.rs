@@ -174,11 +174,11 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, ParentCommand>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, ParentCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data().map(&self.map)
+        self.inner.layout_data().map(&self.map)
     }
 }
 
@@ -252,11 +252,11 @@ impl<'a, Command: 'a> Widget<'a, Command> for OverlayHostWidget<'a, Command> {
         self.stacked.blocks_pointer(point)
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.stacked.focus_data()
+        self.stacked.layout_data()
     }
 }
 

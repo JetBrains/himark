@@ -151,13 +151,13 @@ impl<'a, Command: 'a> RealizedContainer<'a, Command> {
         self.children.push(Child { rect, widget });
     }
 
-    pub fn focus_data_of(&mut self, index: usize) -> crate::focus::FocusData<'_, Command> {
+    pub fn layout_data_of(&mut self, index: usize) -> crate::focus::LayoutData<'_, Command> {
         match self.children.get_mut(index) {
             Some(child) => {
                 let rect = child.rect;
-                child.widget.focus_data().translated(rect.left, rect.top)
+                child.widget.layout_data().translated(rect.left, rect.top)
             }
-            None => crate::focus::FocusData::default(),
+            None => crate::focus::LayoutData::default(),
         }
     }
 
@@ -190,14 +190,14 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
             .any(|child| child.blocks_pointer_at(point))
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, Command>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        let mut folded = crate::focus::FocusData::default();
+        let mut folded = crate::focus::LayoutData::default();
         for child in self.children.iter_mut().rev() {
             let rect = child.rect;
-            folded = folded.merge_over(child.widget.focus_data().translated(rect.left, rect.top));
+            folded = folded.merge_over(child.widget.layout_data().translated(rect.left, rect.top));
         }
         folded
     }

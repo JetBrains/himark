@@ -148,6 +148,17 @@ impl Dock {
 impl View for Dock {
     type Command = DockCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, DockCommand> {
+        self.content
+            .as_ref()
+            .focus_data_dyn(store, ui)
+            .map(DockCommand::Content)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(DockCommand::Content, |fx| {
             imba::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)

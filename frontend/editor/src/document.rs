@@ -800,17 +800,14 @@ impl Document {
         }
     }
 
-    pub fn with_inlay_focus<R>(
-        &self,
-        arena: &imba::arena::Arena,
-        store: &Store,
-        ui: &imba::UiCtx,
-        key: crate::markup::InlayKey,
-        constraints: imba::constraints::Constraints,
-        f: impl FnOnce(imba::focus::FocusData<'_, crate::markup::InlayCommand>) -> R,
-    ) -> Option<R> {
+    pub fn inlay_focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+        key: InlayKey,
+    ) -> Option<imba::focus::FocusData<'w, crate::markup::InlayCommand>> {
         self.markup_of(key.layer)
-            .and_then(|markup| markup.with_inlay_focus(arena, store, ui, key.key, constraints, f))
+            .and_then(|markup| markup.inlay_focus_data(store, ui, key.key))
     }
 
     fn with_markup_mut<R>(&mut self, layer: MarkupLayer, f: impl FnOnce(&mut Markup) -> R) -> R {

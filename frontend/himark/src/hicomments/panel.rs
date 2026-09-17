@@ -319,6 +319,32 @@ impl CommentsView {
 impl View for CommentsView {
     type Command = CommentsCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, CommentsCommand> {
+        use imba::focus::FocusData;
+        let searching = self.list.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(CommentsCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(CommentsCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(CommentsCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(CommentsCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(CommentsCommand::Fold(true)),
+                InputKey::Enter if searching => EventResult::Commands(vec![
+                    CommentsCommand::Pick,
+                    CommentsCommand::Rows(SpeedSearchCommand::Clear),
+                ]),
+                InputKey::Enter => EventResult::Command(CommentsCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.list.focus_data(store, ui).map(CommentsCommand::Rows))
+    }
+
     fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         fx.scope(CommentsCommand::Rows, |fx| self.list.clear(fx));
     }
@@ -505,11 +531,11 @@ impl<'a, Inner: Widget<'a, CommentsCommand>> Widget<'a, CommentsCommand> for Rec
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, CommentsCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, CommentsCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

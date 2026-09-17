@@ -85,6 +85,25 @@ pub struct ResultGroup {
 impl View for ResultGroup {
     type Command = GroupCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, GroupCommand> {
+        let own = match self.document.is_some() {
+            true => imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+                "workbench.open-in-full",
+                "Open File in Full",
+                GroupCommand::Open,
+            )]),
+            false => imba::focus::FocusData::default(),
+        };
+        self.rows
+            .focus_data(store, ui)
+            .map(GroupCommand::Rows)
+            .merge_under(own)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -926,6 +945,16 @@ fn prepare_rows(
 impl View for LocationList {
     type Command = LocationListCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, LocationListCommand> {
+        self.results
+            .focus_data(store, ui)
+            .map(LocationListCommand::Results)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         let fonts = crate::env::Fonts::of(store)();
         self.generation += 1;
@@ -1142,6 +1171,17 @@ impl ListPanel {
 impl View for ListPanel {
     type Command = ListPanelCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ListPanelCommand> {
+        match LocationLists::entry_ref(store, self.id) {
+            Some(entry) => entry.list.focus_data(store, ui).map(ListPanelCommand::List),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1249,11 +1289,11 @@ impl<'a> imba::Widget<'a, ListPanelCommand> for ListPanelWidget<'a> {
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, ListPanelCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ListPanelCommand>
     where
         'a: 'w,
     {
-        self.panel.focus_data()
+        self.panel.layout_data()
     }
 }
 
@@ -1348,7 +1388,6 @@ impl<'a> imba::Layout<'a, GroupCommand> for GroupFrame<'a> {
             },
         );
 
-        let openable = group.document.is_some();
         let column = imba::Column::new(arena).child(header).child(
             imba::fixed(rows.map(GroupCommand::Rows)).pad_insets(imba::Insets {
                 left: chrome.group_text_x,
@@ -1357,17 +1396,6 @@ impl<'a> imba::Layout<'a, GroupCommand> for GroupFrame<'a> {
                 bottom: 0.0,
             }),
         );
-        let laid = column.layout(arena, constraints);
-        imba::ThunkBox::new(
-            arena,
-            laid.commands(move || match openable {
-                true => vec![imba::PresentableCommand::new(
-                    "workbench.open-in-full",
-                    "Open File in Full",
-                    GroupCommand::Open,
-                )],
-                false => Vec::new(),
-            }),
-        )
+        column.layout(arena, constraints)
     }
 }

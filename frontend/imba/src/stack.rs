@@ -90,6 +90,37 @@ where
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        match &self.modal {
+            // A standing modal owns the keyboard: whatever it leaves
+            // unhandled is swallowed, never falling through to the
+            // base.
+            Some(modal) => {
+                let mut data = modal.focus_data(store, ui).map(StackCommand::Modal);
+                let mut inner_key = data.on_key.take();
+                data.on_key = Some(Box::new(move |key, mods| {
+                    match inner_key.as_deref_mut().map(|h| h(key, mods)) {
+                        None | Some(EventResult::Ignored) => EventResult::Handled,
+                        Some(result) => result,
+                    }
+                }));
+                let mut inner_text = data.on_text.take();
+                data.on_text = Some(Box::new(move |text| {
+                    match inner_text.as_deref_mut().map(|h| h(text)) {
+                        None | Some(EventResult::Ignored) => EventResult::Handled,
+                        Some(result) => result,
+                    }
+                }));
+                data
+            }
+            None => self.base.focus_data(store, ui).map(StackCommand::Base),
+        }
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -167,32 +198,15 @@ impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand,
         overlays
     }
 
-    fn focus_data<'w>(
+    fn layout_data<'w>(
         &'w mut self,
-    ) -> crate::focus::FocusData<'w, StackCommand<BaseCommand, ModalCommand>>
+    ) -> crate::focus::LayoutData<'w, StackCommand<BaseCommand, ModalCommand>>
     where
         'a: 'w,
     {
         match &mut self.modal {
-            Some(modal) => {
-                let mut data = modal.focus_data().map(StackCommand::Modal);
-                let mut inner_key = data.on_key.take();
-                data.on_key = Some(Box::new(move |key, mods| {
-                    match inner_key.as_deref_mut().map(|h| h(key, mods)) {
-                        None | Some(EventResult::Ignored) => EventResult::Handled,
-                        Some(result) => result,
-                    }
-                }));
-                let mut inner_text = data.on_text.take();
-                data.on_text = Some(Box::new(move |text| {
-                    match inner_text.as_deref_mut().map(|h| h(text)) {
-                        None | Some(EventResult::Ignored) => EventResult::Handled,
-                        Some(result) => result,
-                    }
-                }));
-                data
-            }
-            None => self.base.focus_data().map(StackCommand::Base),
+            Some(modal) => modal.layout_data().map(StackCommand::Modal),
+            None => self.base.layout_data().map(StackCommand::Base),
         }
     }
 

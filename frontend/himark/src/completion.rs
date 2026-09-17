@@ -109,6 +109,27 @@ pub struct CompletionPopupView {
 impl View for CompletionPopupView {
     type Command = CompletionCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        _store: &'w imba::store::Store,
+        _ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, CompletionCommand> {
+        use imba::event::EventResult;
+        let armed = self.list.len() > 0;
+        imba::focus::FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                Key::Up if armed => EventResult::Command(CompletionCommand::Select(-1)),
+                Key::Down if armed => EventResult::Command(CompletionCommand::Select(1)),
+                Key::Enter | Key::Tab if armed => {
+                    EventResult::Command(CompletionCommand::PickCursor)
+                }
+                Key::Escape => EventResult::Command(CompletionCommand::Close),
+                _ => EventResult::Ignored,
+            })),
+            ..imba::focus::FocusData::default()
+        }
+    }
+
     fn perform(
         &mut self,
         _store: &mut Store,

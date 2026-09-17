@@ -129,161 +129,40 @@ impl View for Layers {
         }
     }
 
-    fn display<'a>(
-        &'a self,
-        _arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, WindowCommand> + imba::LayoutValue + 'a {
-        WindowFrame {
-            layers: self,
-            store,
-            ui,
-        }
-    }
-}
-
-fn below_layer<'a, Command: 'a>(
-    arena: &'a Arena,
-    size: Size,
-    top: f32,
-    thunk: imba::ThunkBox<'a, Command>,
-) -> imba::container::Container<'a, Command> {
-    let mut layer = imba::container::container(arena, size);
-    layer.place_boxed(0.0, top, thunk);
-    layer
-}
-
-struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
-    base: BaseWidget,
-    toolbar: ToolbarWidget,
-    side: Option<DynWidget>,
-    dock: Option<DynWidget>,
-    bottom: Option<DynWidget>,
-    modal: Option<DynWidget>,
-
-    focus: LayerFocus,
-
-    toolbar_height: f32,
-
-    bottom_rect: Option<skia_safe::Rect>,
-
-    dock_edge_x: Option<f32>,
-}
-
-impl<'a, BaseThunk, ToolbarThunk, DynThunk> Thunk<'a, WindowCommand>
-    for LayersWidget<BaseThunk, ToolbarThunk, DynThunk>
-where
-    BaseThunk: Thunk<'a, NodeCommand> + 'a,
-    ToolbarThunk: Thunk<'a, crate::toolbar::ToolbarCommand> + 'a,
-    DynThunk: Thunk<'a, imba::DynCommand> + 'a,
-{
-    fn size(&self) -> Size {
-        self.base.size()
-    }
-
-    fn realize(
-        self,
-        arena: &'a Arena,
-        viewport: skia_safe::Rect,
-    ) -> imba::WidgetBox<'a, WindowCommand> {
-        let LayersWidget {
-            base,
-            toolbar,
-            side,
-            dock,
-            bottom,
-            modal,
-            focus,
-            toolbar_height,
-            bottom_rect,
-            dock_edge_x,
-        } = self;
-
-        imba::WidgetBox::new(
-            arena,
-            RealizedLayers {
-                base: base.realize(arena, viewport),
-                toolbar: toolbar.realize(arena, viewport),
-                side: side.map(|side| side.realize(arena, viewport)),
-                dock: dock.map(|dock| dock.realize(arena, viewport)),
-                bottom: bottom.map(|bottom| bottom.realize(arena, viewport)),
-                modal: modal.map(|modal| modal.realize(arena, viewport)),
-                focus,
-                toolbar_height,
-                bottom_rect,
-                dock_edge_x,
-            },
-        )
-    }
-}
-
-struct RealizedLayers<'a> {
-    base: imba::WidgetBox<'a, NodeCommand>,
-    toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
-    side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    bottom: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    modal: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    focus: LayerFocus,
-    toolbar_height: f32,
-    bottom_rect: Option<skia_safe::Rect>,
-    dock_edge_x: Option<f32>,
-}
-
-impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
-    fn size(&self) -> Size {
-        Widget::size(&self.base)
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, WindowCommand>> {
-        use imba::overlay::map_overlays;
-        let mut overlays = map_overlays(self.base.overlays(), &WindowCommand::Base);
-        overlays.append(&mut map_overlays(
-            self.toolbar.overlays(),
-            &WindowCommand::Toolbar,
-        ));
-        if let Some(side) = &mut self.side {
-            overlays.append(&mut map_overlays(side.overlays(), &WindowCommand::Side));
-        }
-        if let Some(dock) = &mut self.dock {
-            overlays.append(&mut map_overlays(dock.overlays(), &WindowCommand::Dock));
-        }
-        if let Some(bottom) = &mut self.bottom {
-            overlays.append(&mut map_overlays(bottom.overlays(), &WindowCommand::Bottom));
-        }
-        if let Some(modal) = &mut self.modal {
-            overlays.append(&mut map_overlays(modal.overlays(), &WindowCommand::Modal));
-        }
-        overlays
-    }
-
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, WindowCommand>
-    where
-        'a: 'w,
-    {
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, WindowCommand> {
         use imba::event::EventResult;
         use imba::focus::FocusData;
         let focus = self.focus;
 
-        let toolbar = self.toolbar.focus_data().map(WindowCommand::Toolbar);
-        let modal = self
-            .modal
-            .as_mut()
-            .map(|modal| modal.focus_data().map(WindowCommand::Modal));
+        let toolbar = self
+            .toolbar
+            .focus_data(store, ui)
+            .map(WindowCommand::Toolbar);
+        let modal = self.modal.as_ref().map(|modal| {
+            modal
+                .as_ref()
+                .focus_data_dyn(store, ui)
+                .map(WindowCommand::Modal)
+        });
         let side = self
             .side
-            .as_mut()
-            .map(|side| side.focus_data().map(WindowCommand::Side));
+            .as_ref()
+            .map(|side| side.focus_data_dyn(store, ui).map(WindowCommand::Side));
         let dock = self
-            .dock
-            .as_mut()
-            .map(|dock| dock.focus_data().map(WindowCommand::Dock));
-        let bottom = self
-            .bottom
-            .as_mut()
-            .map(|bottom| bottom.focus_data().map(WindowCommand::Bottom));
-        let base = self.base.focus_data().map(WindowCommand::Base);
+            .workbench
+            .dock()
+            .map(|dock| dock.focus_data_dyn(store, ui).map(WindowCommand::Dock));
+        let bottom = self.workbench.shown_bottom().map(|bottom| {
+            imba::DynView::focus_data_dyn(bottom, store, ui).map(WindowCommand::Bottom)
+        });
+        let base = self
+            .workbench
+            .focus_data(store, ui)
+            .map(WindowCommand::Base);
         let has_modal = modal.is_some();
         let has_side = side.is_some();
 
@@ -454,25 +333,13 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         fn first<T>(seats: Vec<Option<T>>) -> Option<T> {
             seats.into_iter().flatten().next()
         }
-        let (ime, clipboard, location) = {
-            let t = (
-                toolbar.ime.take(),
-                toolbar.clipboard.take(),
-                toolbar.location.take(),
-            );
-            let m = (
-                modal.ime.take(),
-                modal.clipboard.take(),
-                modal.location.take(),
-            );
-            let sd = (side.ime.take(), side.clipboard.take(), side.location.take());
-            let d = (dock.ime.take(), dock.clipboard.take(), dock.location.take());
-            let b = (
-                bottom.ime.take(),
-                bottom.clipboard.take(),
-                bottom.location.take(),
-            );
-            let ba = (base.ime.take(), base.clipboard.take(), base.location.take());
+        let (clipboard, location) = {
+            let t = (toolbar.clipboard.take(), toolbar.location.take());
+            let m = (modal.clipboard.take(), modal.location.take());
+            let sd = (side.clipboard.take(), side.location.take());
+            let d = (dock.clipboard.take(), dock.location.take());
+            let b = (bottom.clipboard.take(), bottom.location.take());
+            let ba = (base.clipboard.take(), base.location.take());
             let toolbar_first = focus == LayerFocus::Toolbar;
             macro_rules! route_seat {
                 ($slot:tt) => {{
@@ -496,17 +363,193 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
                     }
                 }};
             }
-            (route_seat!(0), route_seat!(1), route_seat!(2))
+            (route_seat!(0), route_seat!(1))
         };
 
         FocusData {
             commands,
             on_key,
             on_text,
-            ime,
             clipboard,
             location,
         }
+    }
+
+    fn display<'a>(
+        &'a self,
+        _arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::Layout<'a, WindowCommand> + imba::LayoutValue + 'a {
+        WindowFrame {
+            layers: self,
+            store,
+            ui,
+        }
+    }
+}
+
+fn below_layer<'a, Command: 'a>(
+    arena: &'a Arena,
+    size: Size,
+    top: f32,
+    thunk: imba::ThunkBox<'a, Command>,
+) -> imba::container::Container<'a, Command> {
+    let mut layer = imba::container::container(arena, size);
+    layer.place_boxed(0.0, top, thunk);
+    layer
+}
+
+struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
+    base: BaseWidget,
+    toolbar: ToolbarWidget,
+    side: Option<DynWidget>,
+    dock: Option<DynWidget>,
+    bottom: Option<DynWidget>,
+    modal: Option<DynWidget>,
+
+    focus: LayerFocus,
+
+    toolbar_height: f32,
+
+    bottom_rect: Option<skia_safe::Rect>,
+
+    dock_edge_x: Option<f32>,
+}
+
+impl<'a, BaseThunk, ToolbarThunk, DynThunk> Thunk<'a, WindowCommand>
+    for LayersWidget<BaseThunk, ToolbarThunk, DynThunk>
+where
+    BaseThunk: Thunk<'a, NodeCommand> + 'a,
+    ToolbarThunk: Thunk<'a, crate::toolbar::ToolbarCommand> + 'a,
+    DynThunk: Thunk<'a, imba::DynCommand> + 'a,
+{
+    fn size(&self) -> Size {
+        self.base.size()
+    }
+
+    fn realize(
+        self,
+        arena: &'a Arena,
+        viewport: skia_safe::Rect,
+    ) -> imba::WidgetBox<'a, WindowCommand> {
+        let LayersWidget {
+            base,
+            toolbar,
+            side,
+            dock,
+            bottom,
+            modal,
+            focus,
+            toolbar_height,
+            bottom_rect,
+            dock_edge_x,
+        } = self;
+
+        imba::WidgetBox::new(
+            arena,
+            RealizedLayers {
+                base: base.realize(arena, viewport),
+                toolbar: toolbar.realize(arena, viewport),
+                side: side.map(|side| side.realize(arena, viewport)),
+                dock: dock.map(|dock| dock.realize(arena, viewport)),
+                bottom: bottom.map(|bottom| bottom.realize(arena, viewport)),
+                modal: modal.map(|modal| modal.realize(arena, viewport)),
+                focus,
+                toolbar_height,
+                bottom_rect,
+                dock_edge_x,
+            },
+        )
+    }
+}
+
+struct RealizedLayers<'a> {
+    base: imba::WidgetBox<'a, NodeCommand>,
+    toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
+    side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
+    dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
+    bottom: Option<imba::WidgetBox<'a, imba::DynCommand>>,
+    modal: Option<imba::WidgetBox<'a, imba::DynCommand>>,
+    focus: LayerFocus,
+    toolbar_height: f32,
+    bottom_rect: Option<skia_safe::Rect>,
+    dock_edge_x: Option<f32>,
+}
+
+impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
+    fn size(&self) -> Size {
+        Widget::size(&self.base)
+    }
+
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, WindowCommand>> {
+        use imba::overlay::map_overlays;
+        let mut overlays = map_overlays(self.base.overlays(), &WindowCommand::Base);
+        overlays.append(&mut map_overlays(
+            self.toolbar.overlays(),
+            &WindowCommand::Toolbar,
+        ));
+        if let Some(side) = &mut self.side {
+            overlays.append(&mut map_overlays(side.overlays(), &WindowCommand::Side));
+        }
+        if let Some(dock) = &mut self.dock {
+            overlays.append(&mut map_overlays(dock.overlays(), &WindowCommand::Dock));
+        }
+        if let Some(bottom) = &mut self.bottom {
+            overlays.append(&mut map_overlays(bottom.overlays(), &WindowCommand::Bottom));
+        }
+        if let Some(modal) = &mut self.modal {
+            overlays.append(&mut map_overlays(modal.overlays(), &WindowCommand::Modal));
+        }
+        overlays
+    }
+
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, WindowCommand>
+    where
+        'a: 'w,
+    {
+        use imba::focus::LayoutData;
+        let focus = self.focus;
+        let has_modal = self.modal.is_some();
+        let toolbar_first = focus == LayerFocus::Toolbar;
+
+        let t = self.toolbar.layout_data().map(WindowCommand::Toolbar).ime;
+        let m = self
+            .modal
+            .as_mut()
+            .and_then(|modal| modal.layout_data().map(WindowCommand::Modal).ime);
+        let sd = self
+            .side
+            .as_mut()
+            .and_then(|side| side.layout_data().map(WindowCommand::Side).ime);
+        let d = self
+            .dock
+            .as_mut()
+            .and_then(|dock| dock.layout_data().map(WindowCommand::Dock).ime);
+        let b = self
+            .bottom
+            .as_mut()
+            .and_then(|bottom| bottom.layout_data().map(WindowCommand::Bottom).ime);
+        let ba = self.base.layout_data().map(WindowCommand::Base).ime;
+
+        fn first<T>(seats: Vec<Option<T>>) -> Option<T> {
+            seats.into_iter().flatten().next()
+        }
+        let ime = if has_modal {
+            match toolbar_first {
+                true => first(vec![t, m]),
+                false => first(vec![m, t]),
+            }
+        } else {
+            let banded = |gate: bool, seat| if gate { seat } else { None };
+            let bottom_seat = banded(focus == LayerFocus::Bottom, b);
+            let dock_seat = banded(focus == LayerFocus::Dock, d);
+            match toolbar_first {
+                true => first(vec![t, sd, bottom_seat, dock_seat, ba]),
+                false => first(vec![sd, bottom_seat, dock_seat, t, ba]),
+            }
+        };
+        LayoutData { ime }
     }
 
     fn handle_event(
@@ -1811,6 +1854,14 @@ impl Window {
 
 impl View for Window {
     type Command = WindowCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, WindowCommand> {
+        self.content.focus_data(store, ui)
+    }
 
     fn perform(
         &mut self,

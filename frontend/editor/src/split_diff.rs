@@ -803,6 +803,22 @@ pub fn prepare_marks(diff: &Operation, left_text: &Text) -> PreparedMarks {
 impl View for SplitDiffView {
     type Command = SplitDiffCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w imba::store::Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, SplitDiffCommand> {
+        if self.left.focus() != crate::editor_view::EditorFocus::None {
+            self.left.focus_data(store, ui).map(SplitDiffCommand::Left)
+        } else if self.right.focus() != crate::editor_view::EditorFocus::None {
+            self.right
+                .focus_data(store, ui)
+                .map(SplitDiffCommand::Right)
+        } else {
+            imba::focus::FocusData::default()
+        }
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1034,13 +1050,13 @@ impl<'a> imba::Widget<'a, SplitDiffCommand> for PairChain<'a> {
         self.pair.overlays()
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, SplitDiffCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, SplitDiffCommand>
     where
         'a: 'w,
     {
         match self.focused {
-            Some(index) => self.pair.focus_data_of(index),
-            None => imba::focus::FocusData::default(),
+            Some(index) => self.pair.layout_data_of(index),
+            None => imba::focus::LayoutData::default(),
         }
     }
 }

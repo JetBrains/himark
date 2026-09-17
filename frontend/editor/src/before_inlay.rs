@@ -405,6 +405,14 @@ impl BeforeInlay {
 impl imba::View for BeforeInlay {
     type Command = BeforeCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w imba::store::Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, BeforeCommand> {
+        self.view.focus_data(store, ui).map(BeforeCommand::Editor)
+    }
+
     fn perform(
         &mut self,
         store: &mut imba::store::Store,
@@ -514,10 +522,10 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, BeforeCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, BeforeCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }

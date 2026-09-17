@@ -410,6 +410,22 @@ impl CommentView {
 impl View for CommentView {
     type Command = CommentCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, CommentCommand> {
+        let own = imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
+            "comments.remove",
+            "Remove Comment",
+            CommentCommand::Remove,
+        )]);
+        self.editor
+            .focus_data(store, ui)
+            .map(CommentCommand::Editor)
+            .merge_under(own)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -581,13 +597,6 @@ impl View for CommentView {
                     self.paint_card(canvas, Rect::from_size(size))
                 })
                 .wrap(move |inner| RewrapOnPaint { stale, want, inner })
-                .commands(|| {
-                    vec![imba::PresentableCommand::new(
-                        "comments.remove",
-                        "Remove Comment",
-                        CommentCommand::Remove,
-                    )]
-                })
         })
     }
 }
@@ -658,10 +667,10 @@ impl<'a, Inner: Widget<'a, CommentCommand>> Widget<'a, CommentCommand> for Rewra
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, CommentCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, CommentCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }

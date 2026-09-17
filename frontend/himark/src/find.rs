@@ -87,6 +87,28 @@ pub struct FindBar {
 }
 
 impl FindBar {
+    pub(crate) fn focus_data<'w>(
+        &'w self,
+        store: &'w imba::store::Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, FindCommand> {
+        use imba::event::EventResult;
+        use imba::focus::FocusData;
+        if !self.focused {
+            return FocusData::default();
+        }
+        let own = FocusData {
+            on_key: Some(Box::new(|key, mods| match key {
+                Key::Enter if mods.shift => EventResult::Command(FindCommand::Previous),
+                Key::Enter => EventResult::Command(FindCommand::Next),
+                Key::Escape => EventResult::Command(FindCommand::Close),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.input.focus_data(store, ui).map(FindCommand::Input))
+    }
+
     pub fn new() -> Self {
         let mut input = EditorView::input(600.0, crate::fonts::source());
         input.focus_text();

@@ -461,6 +461,14 @@ fn mounted(
 impl View for DiffCanvasView {
     type Command = CanvasCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, CanvasCommand> {
+        self.rows.focus_data(store, ui).map(CanvasCommand::Rows)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -595,11 +603,11 @@ impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasP
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, CanvasCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, CanvasCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 
@@ -656,6 +664,17 @@ fn reserved_height(theme: &himark::Theme, file: &CanvasFile) -> f32 {
 
 impl View for CanvasRow {
     type Command = RowCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, RowCommand> {
+        match &self.body {
+            RowBody::Built { view } => view.focus_data(store, ui).map(RowCommand::Diff),
+            _ => imba::focus::FocusData::default(),
+        }
+    }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         if let RowBody::Built { view } = &mut self.body {
@@ -1014,11 +1033,11 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedPlacehol
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, RowCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 
@@ -1049,11 +1068,11 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for RewrapOnPaint
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, RowCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

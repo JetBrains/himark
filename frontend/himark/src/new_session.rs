@@ -597,6 +597,61 @@ fn host_folders(store: &Store, host: HostId) -> Vec<crate::ResourceLocation> {
 impl View for NewSessionView {
     type Command = NewSessionCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, NewSessionCommand> {
+        use imba::focus::FocusData;
+        // A STANDING combo menu owns the keyboard before the prompt.
+        let open = if self.host.open {
+            Some(self.host.focus_data(store, ui).map(NewSessionCommand::Host))
+        } else if self.dir.open {
+            Some(self.dir.focus_data(store, ui).map(NewSessionCommand::Dir))
+        } else if self.mode.open {
+            Some(self.mode.focus_data(store, ui).map(NewSessionCommand::Mode))
+        } else if self.model.open {
+            Some(
+                self.model
+                    .focus_data(store, ui)
+                    .map(NewSessionCommand::Model),
+            )
+        } else if self.effort.open {
+            Some(
+                self.effort
+                    .focus_data(store, ui)
+                    .map(NewSessionCommand::Effort),
+            )
+        } else if self.edits.open {
+            Some(
+                self.edits
+                    .focus_data(store, ui)
+                    .map(NewSessionCommand::Edits),
+            )
+        } else {
+            None
+        };
+        let own = FocusData {
+            on_key: Some(Box::new(|key, mods| match key {
+                Key::Enter if mods.command => EventResult::Command(NewSessionCommand::Start),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        let inner = match open {
+            Some(combo) => combo.merge_over(
+                self.input
+                    .focus_data(store, ui)
+                    .map(NewSessionCommand::Editor),
+            ),
+            None => self
+                .input
+                .focus_data(store, ui)
+                .map(NewSessionCommand::Editor),
+        };
+        own.merge_under(inner)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -1113,20 +1168,11 @@ impl<'a, Inner: Widget<'a, NewSessionCommand>> Widget<'a, NewSessionCommand>
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, NewSessionCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, NewSessionCommand>
     where
         'a: 'w,
     {
-        use imba::focus::FocusData;
-
-        let own = FocusData {
-            on_key: Some(Box::new(|key, mods| match key {
-                Key::Enter if mods.command => EventResult::Command(NewSessionCommand::Start),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.inner.focus_data())
+        self.inner.layout_data()
     }
 }
 
@@ -1196,6 +1242,17 @@ impl Clone for ComposerPane {
 
 impl View for ComposerPane {
     type Command = NewSessionCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, NewSessionCommand> {
+        match Composers::composer_ref(store, self.window) {
+            Some(composer) => composer.focus_data(store, ui),
+            None => imba::focus::FocusData::default(),
+        }
+    }
 
     fn perform(
         &mut self,

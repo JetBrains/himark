@@ -394,6 +394,32 @@ impl Default for SearchView {
 impl View for SearchView {
     type Command = SearchCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, SearchCommand> {
+        use imba::focus::FocusData;
+        let modal = !self.docked;
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                imba::event::Key::Escape if modal => {
+                    imba::event::EventResult::Command(SearchCommand::Close)
+                }
+                _ => imba::event::EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        let area = match self.focus {
+            SearchArea::Input => self.input.focus_data(store, ui).map(SearchCommand::Input),
+            SearchArea::Results => self
+                .list_ref(store)
+                .map(|list| list.focus_data(store, ui).map(SearchCommand::List))
+                .unwrap_or_default(),
+        };
+        own.merge_under(area)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         if let Some(token) = self.scan_token.take() {
             fx.cancel(token);
@@ -832,9 +858,15 @@ impl<'a> Widget<'a, SearchCommand> for SearchWidget<'a> {
                     _ => EventResult::Command(SearchCommand::Focus(area, None)),
                 }
             }
-            Event::Scroll { .. } | Event::AnimationClock { .. } | Event::ThemeChanged => {
-                self.panel.handle_event(arena, event, viewport)
-            }
+            // Settle is a BROADCAST like paint: every scroll host
+            // re-observes its viewport top on the pulse
+            // (docs/viewport-preservation.md §3.1) — routing it to
+            // the focused area only would leave the other list
+            // reporting drift on every later paint.
+            Event::Scroll { .. }
+            | Event::AnimationClock { .. }
+            | Event::ThemeChanged
+            | Event::Settle => self.panel.handle_event(arena, event, viewport),
 
             _ => {
                 let index = match self.focus {
@@ -846,27 +878,15 @@ impl<'a> Widget<'a, SearchCommand> for SearchWidget<'a> {
         }
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, SearchCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, SearchCommand>
     where
         'a: 'w,
     {
-        use imba::focus::FocusData;
-
-        let modal = self.modal;
         let index = match self.focus {
             SearchArea::Input => self.input_index,
             SearchArea::Results => self.results_index,
         };
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                imba::event::Key::Escape if modal => {
-                    imba::event::EventResult::Command(SearchCommand::Close)
-                }
-                _ => imba::event::EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.panel.focus_data_of(index))
+        self.panel.layout_data_of(index)
     }
 }
 

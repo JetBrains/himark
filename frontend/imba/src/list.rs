@@ -1362,6 +1362,63 @@ where
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        use crate::event::EventResult;
+        use crate::focus::FocusData;
+        let Some(index) = self.focused else {
+            return FocusData::default();
+        };
+        if self.items.is_empty() {
+            return FocusData::default();
+        }
+        // Ropes only hand out borrows through live cursors, so the
+        // owned answers (commands, location) are drained through one
+        // cursor here and every handler re-seeks on the call — a
+        // state walk per ask, nothing laid.
+        let (commands, location) = {
+            let mut cursor = self.items.cursor();
+            match cursor.seek_to_index(index as u32) {
+                true => {
+                    let mut data = cursor.element().view.focus_data(store, ui);
+                    (std::mem::take(&mut data.commands), data.location.take())
+                }
+                false => return FocusData::default(),
+            }
+        };
+        let with_row =
+            move |f: &mut dyn FnMut(FocusData<'_, T::Command>) -> EventResult<T::Command>| {
+                let mut cursor = self.items.cursor();
+                match cursor.seek_to_index(index as u32) {
+                    true => f(cursor.element().view.focus_data(store, ui))
+                        .map(|command| ListCommand::Child(index, command)),
+                    false => EventResult::Ignored,
+                }
+            };
+        FocusData {
+            commands: commands
+                .into_iter()
+                .map(|presentable| presentable.map(|command| ListCommand::Child(index, command)))
+                .collect(),
+            on_key: Some(Box::new(move |key, mods| {
+                with_row(&mut |mut data| data.key(key, mods))
+            })),
+            on_text: Some(Box::new(move |text| {
+                with_row(&mut |mut data| data.text(text))
+            })),
+            clipboard: Some(Box::new(move |visit| {
+                with_row(&mut |mut data| match data.clipboard.as_mut() {
+                    Some(seat) => seat(visit),
+                    None => EventResult::Ignored,
+                })
+            })),
+            location,
+        }
+    }
+
     fn display<'a>(
         &'a self,
         _arena: &'a Arena,
@@ -1557,54 +1614,32 @@ where
         self.list.handle_event(arena, event, viewport)
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, ListCommand<T::Command>>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, ListCommand<T::Command>>
     where
         'a: 'w,
     {
         use crate::event::EventResult;
-        use crate::focus::FocusData;
+        use crate::focus::LayoutData;
         let Some(index) = self.list.focused else {
-            return FocusData::default();
+            return LayoutData::default();
         };
         if self.list.items.is_empty() {
-            return FocusData::default();
+            return LayoutData::default();
         }
         let list = &self.list;
         let arena = self.arena;
         let viewport = self.viewport;
-        let commands = with_focused_row(list, arena, viewport, index, |widget| {
-            std::mem::take(&mut widget.focus_data().commands)
-        })
-        .unwrap_or_default()
-        .into_iter()
-        .map(|presentable| presentable.map(|command| ListCommand::Child(index, command)))
-        .collect();
-        FocusData {
-            commands,
-            on_key: Some(Box::new(move |key, mods| {
-                with_focused_row(list, arena, viewport, index, |widget| {
-                    widget
-                        .focus_data()
-                        .key(key, mods)
-                        .map(|command| ListCommand::Child(index, command))
-                })
-                .unwrap_or(EventResult::Ignored)
-            })),
-            on_text: Some(Box::new(move |text| {
-                with_focused_row(list, arena, viewport, index, |widget| {
-                    widget
-                        .focus_data()
-                        .text(text)
-                        .map(|command| ListCommand::Child(index, command))
-                })
-                .unwrap_or(EventResult::Ignored)
-            })),
+        LayoutData {
+            // The focused row may not be mounted (scrolled away); it
+            // is realized on the ASK, bounded by its row viewport —
+            // IME composition is rare enough that the lazy build
+            // stays off every other path.
             ime: Some(crate::focus::ImeSeat {
                 origin: skia_safe::Point::default(),
                 clip: None,
                 ask: Box::new(move |origin, clip, visit| {
                     with_focused_row_at(list, arena, viewport, index, |widget, rect| {
-                        match widget.focus_data().ime.take() {
+                        match widget.layout_data().ime.take() {
                             Some(mut seat) => {
                                 let at = skia_safe::Point::new(
                                     origin.x + rect.left + seat.origin.x,
@@ -1619,35 +1654,8 @@ where
                     .unwrap_or(EventResult::Ignored)
                 }),
             }),
-            clipboard: Some(Box::new(move |visit| {
-                with_focused_row(list, arena, viewport, index, |widget| {
-                    match widget.focus_data().clipboard.as_mut() {
-                        Some(seat) => seat(visit).map(|command| ListCommand::Child(index, command)),
-                        None => EventResult::Ignored,
-                    }
-                })
-                .unwrap_or(EventResult::Ignored)
-            })),
-            location: with_focused_row(list, arena, viewport, index, |widget| {
-                widget.focus_data().location.take()
-            })
-            .flatten(),
         }
     }
-}
-
-fn with_focused_row<'a, T, K, R>(
-    list: &ListWidget<'a, T, K>,
-    arena: &'a Arena,
-    viewport: Rect,
-    index: usize,
-    f: impl FnOnce(&mut crate::WidgetBox<'_, T::Command>) -> R,
-) -> Option<R>
-where
-    T: View + Clone,
-    K: Clone + Eq + Hash,
-{
-    with_focused_row_at(list, arena, viewport, index, |widget, _rect| f(widget))
 }
 
 fn with_focused_row_at<'a, T, K, R>(

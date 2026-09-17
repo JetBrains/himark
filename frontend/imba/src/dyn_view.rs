@@ -23,6 +23,12 @@ pub trait DynView {
     ) -> crate::ThunkBox<'a, DynCommand>;
 
     fn destroy_dyn(&mut self, store: &mut Store, fx: &mut crate::effect::Effects<'_, DynCommand>);
+
+    fn focus_data_dyn<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, DynCommand>;
 }
 
 impl<V> DynView for V
@@ -68,6 +74,15 @@ where
             |fx| self.destroy(store, fx),
         )
     }
+
+    fn focus_data_dyn<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, DynCommand> {
+        self.focus_data(store, ui)
+            .map(|command| Box::new(command) as DynCommand)
+    }
 }
 
 pub trait CloneDynView: DynView + Send + Sync {
@@ -110,5 +125,13 @@ impl View for Box<dyn DynView> {
         crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
             self.as_ref().layout_dyn(arena, store, ui, constraints)
         })
+    }
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, DynCommand> {
+        self.as_ref().focus_data_dyn(store, ui)
     }
 }

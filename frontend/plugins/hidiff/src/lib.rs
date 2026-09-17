@@ -61,6 +61,14 @@ fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
 impl View for PairPane {
     type Command = UnifiedDiffCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
+        pane_focus_data(self.id, store, ui)
+    }
+
     fn perform(
         &mut self,
         store: &mut Store,
@@ -165,6 +173,78 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
     }
 }
 
+/// The pane's semantic focus: the unified view is MINTED from the
+/// store per ask (documents are persistent, the clone is cheap);
+/// handlers re-mint per call. The standing "open in full" command
+/// rides whichever side of the pair is focused.
+fn pane_focus_data<'w>(
+    id: himark::DiffViewId,
+    store: &'w Store,
+    ui: &'w imba::UiCtx,
+) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
+    use imba::event::EventResult;
+    use imba::focus::FocusData;
+    let mint = move || {
+        himark::OpenDocuments::diff_view_ref(store, id).and_then(|pair| gathered(pair, store))
+    };
+    let Some(view) = mint() else {
+        return FocusData::default();
+    };
+    let (mut commands, location) = {
+        let mut data = view.focus_data(store, ui);
+        (std::mem::take(&mut data.commands), data.location.take())
+    };
+    let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
+        if view.split.left.focus() != himark::EditorFocus::None {
+            Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
+        } else if view.split.right.focus() != himark::EditorFocus::None {
+            Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
+        } else if view.inline_editor.is_some_and(|editor| {
+            view.split.right.document.focus(editor) != himark::EditorFocus::None
+        }) {
+            Some(UnifiedDiffCommand::Inline)
+        } else {
+            None
+        };
+    let injected = commands
+        .iter()
+        .any(|presentable| presentable.id == "workbench.open-in-full");
+    if let (false, Some(wrap)) = (injected, wrap) {
+        commands.push(imba::PresentableCommand::new(
+            "workbench.open-in-full",
+            "Open Working Copy",
+            wrap(himark::EditorCommand::Dynamic {
+                id: "workbench.open-in-full",
+                payload: None,
+            }),
+        ));
+    }
+    let with_view = move |f: &mut dyn FnMut(
+        imba::focus::FocusData<'_, UnifiedDiffCommand>,
+    ) -> EventResult<UnifiedDiffCommand>| {
+        match mint() {
+            Some(view) => f(view.focus_data(store, ui)),
+            None => EventResult::Ignored,
+        }
+    };
+    FocusData {
+        commands,
+        on_key: Some(Box::new(move |key, mods| {
+            with_view(&mut |mut data| data.key(key, mods))
+        })),
+        on_text: Some(Box::new(move |text| {
+            with_view(&mut |mut data| data.text(text))
+        })),
+        clipboard: Some(Box::new(move |visit| {
+            with_view(&mut |mut data| match data.clipboard.as_mut() {
+                Some(seat) => seat(visit),
+                None => EventResult::Ignored,
+            })
+        })),
+        location,
+    }
+}
+
 struct GatheredSplit<'a> {
     view: Option<&'a UnifiedDiffView>,
     inner: Option<imba::WidgetBox<'a, UnifiedDiffCommand>>,
@@ -214,42 +294,14 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         inner.handle_event(arena, event, viewport)
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, UnifiedDiffCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, UnifiedDiffCommand>
     where
         'a: 'w,
     {
-        use imba::focus::FocusData;
-        let (Some(view), Some(inner)) = (self.view, &mut self.inner) else {
-            return FocusData::default();
-        };
-        let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
-            if view.split.left.focus() != himark::EditorFocus::None {
-                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
-            } else if view.split.right.focus() != himark::EditorFocus::None {
-                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
-            } else if view.inline_editor.is_some_and(|editor| {
-                view.split.right.document.focus(editor) != himark::EditorFocus::None
-            }) {
-                Some(UnifiedDiffCommand::Inline)
-            } else {
-                None
-            };
-        let mut data = inner.focus_data();
-        let injected = data
-            .commands
-            .iter()
-            .any(|presentable| presentable.id == "workbench.open-in-full");
-        if let (false, Some(wrap)) = (injected, wrap) {
-            data.commands.push(imba::PresentableCommand::new(
-                "workbench.open-in-full",
-                "Open Working Copy",
-                wrap(himark::EditorCommand::Dynamic {
-                    id: "workbench.open-in-full",
-                    payload: None,
-                }),
-            ));
+        match &mut self.inner {
+            Some(inner) => inner.layout_data(),
+            None => imba::focus::LayoutData::default(),
         }
-        data
     }
 }
 
@@ -310,6 +362,14 @@ impl DiffPanelView {
 
 impl View for DiffPanelView {
     type Command = imba::scroll::ScrollCommand<UnifiedDiffCommand>;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+    ) -> imba::focus::FocusData<'w, Self::Command> {
+        self.pane.focus_data(store, ui)
+    }
 
     fn perform(
         &mut self,

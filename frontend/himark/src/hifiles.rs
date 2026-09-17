@@ -546,6 +546,32 @@ impl SessionTreeView {
 impl View for SessionTreeView {
     type Command = TreeCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, TreeCommand> {
+        use imba::focus::FocusData;
+        let searching = self.tree.list.searching();
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(TreeCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(TreeCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(TreeCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(TreeCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(TreeCommand::Fold(true)),
+                InputKey::Enter if searching => EventResult::Commands(vec![
+                    TreeCommand::Pick,
+                    TreeCommand::Rows(SpeedSearchCommand::Clear),
+                ]),
+                InputKey::Enter => EventResult::Command(TreeCommand::Pick),
+                _ => EventResult::Ignored,
+            })),
+            ..FocusData::default()
+        };
+        own.merge_under(self.tree.list.focus_data(store, ui).map(TreeCommand::Rows))
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(TreeCommand::Rows, |fx| self.tree.list.clear(fx));
         self.persist(store);
@@ -814,11 +840,11 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
         result
     }
 
-    fn focus_data<'w>(&'w mut self) -> imba::focus::FocusData<'w, TreeCommand>
+    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, TreeCommand>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 
@@ -852,26 +878,14 @@ impl crate::DynamicCommand for ToggleSessionTree {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        // The focused location costs a full layout+realize of the
-        // window — built HERE, visibly, once, for this one-shot
-        // command (crate::focus::focused_location takes the widget).
-        let reveal = app.window_viewport(window).and_then(|size| {
-            let arena = imba::arena::Arena::default();
+        // The focused location is a state walk over the views now —
+        // nothing is laid to answer it.
+        let reveal = {
             let chain_store = app.window_store(window);
             let ui = app.ui_ctx();
-            let widget = app.layout(
-                window,
-                &arena,
-                &chain_store,
-                &ui,
-                imba::constraints::Constraints::tight(size),
-            );
-            let mut widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(size));
-            let location =
-                crate::focus::focused_location(&mut imba::Widget::focus_data(&mut widget));
-            drop(widget);
-            location
-        });
+            crate::focus::window_focus_data(&chain_store, &ui, window)
+                .and_then(|mut data| crate::focus::focused_location(&mut data))
+        };
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();

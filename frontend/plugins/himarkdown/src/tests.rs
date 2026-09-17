@@ -395,7 +395,7 @@ fn a_focused_table_cell_presents_structural_commands() {
     let view = entity;
     let ui = imba::UiCtx::cold();
     assert!(
-        imba::focus::frame_commands(&view, &store, &ui, skia_safe::Size::new(700.0, 700.0))
+        imba::focus::frame_commands(&view, &store, &ui)
             .iter()
             .all(|presentable| presentable.id.starts_with("editor.")),
         "before the click only the editor's caret commands are on offer"
@@ -419,8 +419,7 @@ fn a_focused_table_cell_presents_structural_commands() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let commands =
-        imba::focus::frame_commands(&view, &store, &ui, skia_safe::Size::new(700.0, 700.0));
+    let commands = imba::focus::frame_commands(&view, &store, &ui);
     let ids: Vec<&str> = commands.iter().map(|command| command.id).collect();
     assert!(ids.contains(&"table.insert-row-below"), "ids: {ids:?}");
     assert!(ids.contains(&"table.insert-row-above"), "ids: {ids:?}");

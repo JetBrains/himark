@@ -260,6 +260,16 @@ where
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        self.content
+            .focus_data(store, ui)
+            .map(ScrollCommand::Content)
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -310,14 +320,14 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
         crate::overlay::map_overlays(overlays, &ScrollCommand::Content)
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, ScrollCommand<ContentCommand>>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, ScrollCommand<ContentCommand>>
     where
         'a: 'w,
     {
         let scroll_y = self.scroll_y;
         let viewport = self.viewport;
         self.content
-            .focus_data()
+            .layout_data()
             .translated(0.0, -scroll_y)
             .clipped(Rect::from_wh(viewport.width, viewport.height))
             .map(ScrollCommand::Content)

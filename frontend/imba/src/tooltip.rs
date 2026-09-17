@@ -169,6 +169,14 @@ where
         }
     }
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w crate::ui::UiCtx,
+    ) -> crate::focus::FocusData<'w, Self::Command> {
+        self.view.focus_data(store, ui).map(TooltipCommand::Host)
+    }
+
     fn display<'a>(
         &'a self,
         arena: &'a Arena,
@@ -296,11 +304,11 @@ impl<'a, C: 'a> Widget<'a, TooltipCommand<C>> for TooltipWidget<'a, C> {
         overlays
     }
 
-    fn focus_data<'w>(&'w mut self) -> crate::focus::FocusData<'w, TooltipCommand<C>>
+    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, TooltipCommand<C>>
     where
         'a: 'w,
     {
-        self.inner.focus_data()
+        self.inner.layout_data()
     }
 }
 

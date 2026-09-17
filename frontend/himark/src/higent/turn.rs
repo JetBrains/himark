@@ -85,6 +85,14 @@ impl TurnView {
 impl View for TurnView {
     type Command = TurnCommand;
 
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, TurnCommand> {
+        self.cells.focus_data(store, ui)
+    }
+
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         self.cells.destroy(store, fx);
     }
