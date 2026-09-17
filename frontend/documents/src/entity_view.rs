@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, Thunk, UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View, Widget};
 
 use editor::{EditorCommand, EditorId, EditorView};
 
@@ -182,8 +182,6 @@ impl View for EditorIdView {
                     arena,
                     constraints,
                     content_pad: ::editor::env::Themes::of(store).ui().window.content_pad,
-
-                    viewport: skia_safe::Rect::new_empty(),
                 },
                 ::editor::INLAY_HOST,
             )
@@ -200,54 +198,9 @@ struct GatheredPane<'a> {
     constraints: Constraints,
 
     content_pad: f32,
-
-    viewport: skia_safe::Rect,
 }
 
 impl<'a> imba::Thunk<'a, EditorCommand> for GatheredPane<'a> {
-    fn size(&self) -> skia_safe::Size {
-        Widget::size(self)
-    }
-
-    fn realize(
-        mut self,
-        arena: &'a Arena,
-        viewport: skia_safe::Rect,
-    ) -> imba::WidgetBox<'a, EditorCommand> {
-        self.viewport = viewport;
-        imba::WidgetBox::new(arena, self)
-    }
-}
-
-impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-        let Some(view) = &self.view else {
-            return Vec::new();
-        };
-
-        let mut overlays = view.popup_overlays(
-            self.arena,
-            self.store,
-            self.ui,
-            self.constraints.max.width,
-            self.viewport,
-        );
-
-        overlays.extend(view.sticky_overlays(
-            self.arena,
-            self.store,
-            self.ui,
-            self.constraints.max.width,
-            self.viewport,
-        ));
-
-        overlays.extend(view.scroll_stripe_overlays(self.arena, self.store, self.viewport));
-        for overlay in &mut overlays {
-            overlay.translate(self.content_pad, 0.0);
-        }
-        overlays
-    }
-
     fn size(&self) -> skia_safe::Size {
         match &self.view {
             Some(view) => skia_safe::Size::new(
@@ -258,30 +211,64 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
         }
     }
 
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, EditorCommand>
-    where
-        'a: 'w,
-    {
-        use imba::focus::LayoutData;
+    fn realize(
+        self,
+        arena: &'a Arena,
+        viewport: skia_safe::Rect,
+    ) -> imba::WidgetBox<'a, EditorCommand> {
+        let size = imba::Thunk::size(&self);
+        let GatheredPane {
+            ui,
+            view,
+            store,
+            arena: frame,
+            constraints,
+            content_pad,
+        } = self;
+        // Realized ONCE, bounded by the frame's viewport: the
+        // editor's own display derives its shared viewport and mints
+        // its popup/projected/sticky emissions, which the container
+        // collects (translated by the pad). The pane adds only the
+        // scroll stripes — the one emission display leaves to hosts.
+        // The old shape re-laid the editor per ask and re-built the
+        // viewport for every overlay flavor.
+        let mut pane = imba::container::container(frame, size);
+        let mut stripes = Vec::new();
+        if let Some(view) = view {
+            let view: &'a EditorView = frame.alloc(view);
+            pane.place(
+                content_pad,
+                0.0,
+                imba::Layout::layout(view.display(frame, store, ui), frame, constraints),
+            );
+            stripes = view.scroll_stripe_overlays(frame, store, viewport);
+            for overlay in &mut stripes {
+                overlay.translate(content_pad, 0.0);
+            }
+        }
+        let inner = pane.realize_into(viewport);
+        imba::WidgetBox::new(arena, RealizedGatheredPane { inner, stripes })
+    }
+}
 
-        let Some(view) = &self.view else {
-            return LayoutData::default();
-        };
-        // This pane defers its editor build; for the fold it realizes
-        // NOW, into the frame arena, bounded by the frame's viewport
-        // — and the TARGET decides by recognition whether the seat is
-        // really in here. Only the IME ask ever pays for this.
-        let widget = imba::Layout::layout(
-            view.display(self.arena, self.store, self.ui),
-            self.arena,
-            self.constraints,
-        )
-        .realize(self.arena, self.viewport);
-        let widget = imba::arena::ArenaBox::leak(self.arena.boxed(widget));
-        widget.layout_data(target).translated(self.content_pad, 0.0)
+struct RealizedGatheredPane<'a> {
+    inner: imba::container::RealizedContainer<'a, EditorCommand>,
+    stripes: Vec<imba::overlay::Overlay<'a, EditorCommand>>,
+}
+
+impl<'a> Widget<'a, EditorCommand> for RealizedGatheredPane<'a> {
+    fn size(&self) -> skia_safe::Size {
+        Widget::size(&self.inner)
+    }
+
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
+        let mut overlays = self.inner.overlays();
+        overlays.append(&mut self.stripes);
+        overlays
+    }
+
+    fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
+        self.inner.blocks_pointer(point)
     }
 
     fn handle_event(
@@ -290,22 +277,16 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
         event: &imba::event::Event<'_>,
         viewport: skia_safe::Rect,
     ) -> imba::event::EventResult<EditorCommand> {
-        match &self.view {
-            Some(view) => {
-                let mut pane = imba::container::container(arena, Widget::size(self));
-                pane.place(
-                    self.content_pad,
-                    0.0,
-                    imba::Layout::layout(
-                        view.display(arena, self.store, self.ui),
-                        arena,
-                        self.constraints,
-                    ),
-                );
-                pane.realize(arena, viewport)
-                    .handle_event(arena, event, viewport)
-            }
-            None => imba::event::EventResult::Ignored,
-        }
+        self.inner.handle_event(arena, event, viewport)
+    }
+
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, EditorCommand>
+    where
+        'a: 'w,
+    {
+        self.inner.layout_data(target)
     }
 }

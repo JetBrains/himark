@@ -207,7 +207,7 @@ impl WidgetFonts {
     }
 }
 
-struct SharedViewport<'a> {
+pub(crate) struct SharedViewport<'a> {
     document: &'a crate::document::Document,
     editor: crate::editor::EditorId,
     fonts: WidgetFonts,
@@ -216,41 +216,38 @@ struct SharedViewport<'a> {
     number_lines: bool,
 
     stripes: Option<crate::diff::DiffId>,
-    cell: std::cell::RefCell<Option<(bool, crate::viewport::EditorViewport)>>,
+
+    /// Selections-visible, decided FROM STATE at display time (the
+    /// frame's focused seat vs this editor's) — so the one build is
+    /// final and paint never re-derives it.
+    focused: bool,
+    cell: std::cell::RefCell<Option<crate::viewport::EditorViewport>>,
 }
 
 impl<'a> SharedViewport<'a> {
     /// The viewport is derived ONCE per frame and serves everyone —
     /// the gutter, the core paint, the inlay placement, the projected
-    /// overlays. Display-time askers pass `focused: false` (they
-    /// don't know window focus); a later focused paint upgrades the
-    /// build once, since focus adds the selections.
+    /// overlays. Focus is baked in from STATE at construction, so
+    /// there is no focused "upgrade": the realize-time build is the
+    /// build paint reads.
     fn viewport(
         &self,
         band: std::ops::Range<f32>,
-        focused: bool,
     ) -> std::cell::Ref<'_, crate::viewport::EditorViewport> {
-        let stale = match &*self.cell.borrow() {
-            None => true,
-            Some((built_focused, _)) => focused && !built_focused,
-        };
-        if stale {
-            *self.cell.borrow_mut() = Some((
-                focused,
-                crate::viewport::EditorViewport::build(
-                    self.document,
-                    self.editor,
-                    band,
-                    focused,
-                    self.number_lines,
-                    self.stripes,
-                    &self.fonts.collection(),
-                    &self.theme,
-                ),
+        if self.cell.borrow().is_none() {
+            *self.cell.borrow_mut() = Some(crate::viewport::EditorViewport::build(
+                self.document,
+                self.editor,
+                band,
+                self.focused,
+                self.number_lines,
+                self.stripes,
+                &self.fonts.collection(),
+                &self.theme,
             ));
         }
         std::cell::Ref::map(self.cell.borrow(), |cell| {
-            &cell.as_ref().expect("just built").1
+            cell.as_ref().expect("just built")
         })
     }
 }
@@ -297,11 +294,9 @@ impl<'a> Widget<'a, EditorCommand> for EditorGutterView<'a> {
         viewport: Rect,
     ) -> EventResult<EditorCommand> {
         match event {
-            Event::Paint { canvas, focused } => {
+            Event::Paint { canvas, focused: _ } => {
                 let chrome = self.shared.theme.ui().editor_gutter.clone();
-                let data = self
-                    .shared
-                    .viewport(viewport.top..viewport.bottom, *focused);
+                let data = self.shared.viewport(viewport.top..viewport.bottom);
                 let font = gutter_font(chrome.number_size);
                 let (_, metrics) = font.metrics();
                 let mut paint = skia_safe::Paint::default();
@@ -414,7 +409,7 @@ impl EditorGutterView<'_> {
         y: f32,
         pick: impl FnOnce(&crate::viewport::ViewportLine) -> R,
     ) -> Option<R> {
-        let data = self.shared.viewport(band, false);
+        let data = self.shared.viewport(band);
         data.lines
             .iter()
             .find(|line| y < line.top + line.height)
@@ -902,6 +897,10 @@ impl View for EditorView {
                 true => Size::new(core_size.width + gutter, core_size.height),
                 false => Size::new(gutter + target_width.max(0.0), core_size.height),
             };
+            let focused = match crate::env::FrameFocus::of(store) {
+                Some(seat) => document.seat_key(editor_id) == Some(seat),
+                None => document.focus(editor_id) == EditorFocus::Text,
+            };
             lazy(size, move |viewport| {
                 let shared = std::rc::Rc::new(SharedViewport {
                     document,
@@ -910,6 +909,7 @@ impl View for EditorView {
                     theme: crate::env::Themes::of(store),
                     number_lines: gutter > 0.0,
                     stripes,
+                    focused,
                     cell: std::cell::RefCell::new(None),
                 });
                 let mut root = container(arena, size);
@@ -939,7 +939,7 @@ impl View for EditorView {
                 );
                 // The frame's viewport, derived once — the gutter and
                 // the core paints reuse this same build.
-                let data = shared.viewport(viewport.top..viewport.bottom, false);
+                let data = shared.viewport(viewport.top..viewport.bottom);
                 self.place_visible_inlays(editor_id, arena, store, ui, &fonts, &mut core, &data);
                 // The text origin's horizontal pan: softwrap never
                 // pans; otherwise the core slides left by the clamped
@@ -1009,106 +1009,6 @@ impl View for EditorView {
 }
 
 impl EditorView {
-    pub fn popup_overlays<'a>(
-        &self,
-        arena: &'a imba::arena::Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-        max_width: f32,
-        viewport: Rect,
-    ) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-        let document = &self.document;
-        let editor_id = self.editor;
-        let fonts = WidgetFonts::resolve(store, ui);
-        let gutter = self.gutter_width.max(0.0);
-        let target_width = max_width - gutter;
-        let origin = match document.softwrap(editor_id) {
-            true => skia_safe::Point::new(gutter, 0.0),
-            false => {
-                let core_width = document.max_width(editor_id).max(target_width);
-                skia_safe::Point::new(
-                    gutter
-                        - document
-                            .scroll_x(editor_id)
-                            .min((core_width - target_width).max(0.0)),
-                    0.0,
-                )
-            }
-        };
-        let mut overlays = match document.has_popups(editor_id) {
-            true => crate::popup::visible_popups(
-                document,
-                editor_id,
-                &fonts.collection(),
-                &crate::env::Themes::of(store),
-                arena,
-                store,
-                ui,
-                viewport,
-                origin,
-            ),
-            false => Vec::new(),
-        };
-        // The host-targeting inlays (fold strips, before-cards) ride
-        // the same channel in the aggregated paths (the list rows,
-        // the workbench pane) as they do in the editor chain.
-        let data = crate::viewport::EditorViewport::build(
-            document,
-            editor_id,
-            viewport.top..viewport.bottom,
-            false,
-            false,
-            None,
-            &fonts.collection(),
-            &crate::env::Themes::of(store),
-        );
-        overlays.extend(crate::popup::projected_overlays(
-            document, editor_id, arena, store, ui, &data, origin,
-        ));
-        overlays
-    }
-
-    pub fn sticky_overlays<'a>(
-        &self,
-        arena: &'a imba::arena::Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-        max_width: f32,
-        viewport: Rect,
-    ) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-        let document = &self.document;
-        let editor_id = self.editor;
-        let gutter = self.gutter_width.max(0.0);
-
-        if gutter <= 0.0 || viewport.top <= 0.0 {
-            return Vec::new();
-        }
-        let fonts = WidgetFonts::resolve(store, ui);
-        let target_width = max_width - gutter;
-
-        let origin_x = match document.softwrap(editor_id) {
-            true => gutter,
-            false => {
-                let core_width = document.max_width(editor_id).max(target_width);
-                gutter
-                    - document
-                        .scroll_x(editor_id)
-                        .min((core_width - target_width).max(0.0))
-            }
-        };
-        crate::sticky::sticky_overlays(
-            document,
-            editor_id,
-            &fonts.collection(),
-            &crate::env::Themes::of(store),
-            arena,
-            viewport,
-            origin_x,
-            gutter,
-            max_width,
-        )
-    }
-
     pub fn scroll_stripe_overlays<'a>(
         &self,
         arena: &'a imba::arena::Arena,
@@ -1480,9 +1380,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
             }
             Event::Paint { canvas, focused } => {
                 {
-                    let data = self
-                        .shared
-                        .viewport(viewport.top..viewport.bottom, *focused);
+                    let data = self.shared.viewport(viewport.top..viewport.bottom);
                     self.document().paint_with(
                         self.editor(),
                         &data,

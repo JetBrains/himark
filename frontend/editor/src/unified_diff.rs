@@ -313,41 +313,22 @@ impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
             constraints,
         } = self;
         let view: &'a EditorView = frame.alloc(view);
-        // Projected inlays mint from the VISIBLE band's geometry —
-        // strips scrolled out of view simply are not mounted this
-        // frame, like everything else the viewport culls.
-        let band = viewport.top.max(0.0)..viewport.bottom.max(viewport.top);
-        let data = crate::viewport::EditorViewport::build(
-            &view.document,
-            view.editor,
-            band,
-            false,
-            false,
-            None,
-            &crate::env::ui_collection(store, ui),
-            &crate::env::Themes::of(store),
-        );
-        let projected = crate::popup::projected_overlays(
-            &view.document,
-            view.editor,
-            frame,
-            store,
-            ui,
-            &data,
-            skia_safe::Point::new(0.0, 0.0),
-        );
+        // ONE build per frame: the editor's own realize derives the
+        // shared viewport and mints the projected inlays from it —
+        // this pane only FILTERS the emissions to the projections
+        // (the strips and before-cards riding INLAY_HOST), exactly
+        // what the old duplicate build re-minted by hand.
         let inner = imba::Layout::layout(view.display(frame, store, ui), frame, constraints)
             .realize(arena, viewport);
-        imba::WidgetBox::new(arena, InlinePane { inner, projected })
+        imba::WidgetBox::new(arena, InlinePane { inner })
     }
 }
 
 /// The realized inline face: the editor widget, closed over its
-/// bounded viewport, plus the projections it minted. Every ask —
-/// events, focus, keys, IME, clipboard — is a read.
+/// bounded viewport. Every ask — events, focus, keys, IME,
+/// clipboard — is a read.
 struct InlinePane<'a> {
     inner: imba::WidgetBox<'a, EditorCommand>,
-    projected: Vec<imba::overlay::Overlay<'a, EditorCommand>>,
 }
 
 impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
@@ -369,9 +350,12 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
     }
 
     fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, EditorCommand>> {
-        // ONLY the projections: the inner editor's own emissions were
-        // always dropped on this face (the pane is the host).
-        std::mem::take(&mut self.projected)
+        // ONLY the projections surface on this face (the pane is the
+        // host); the editor's popup/sticky emissions stay dropped,
+        // as they always were here.
+        let mut overlays = self.inner.overlays();
+        overlays.retain(|overlay| overlay.host == crate::markup::INLAY_HOST);
+        overlays
     }
 
     fn layout_data<'w>(

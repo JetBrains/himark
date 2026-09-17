@@ -997,14 +997,7 @@ impl View for SplitDiffView {
             pair.place(0.0, 0.0, left);
             pair.place(half + CENTER_GAP, 0.0, right);
 
-            let focused = if self.left.focus() != crate::editor_view::EditorFocus::None {
-                Some(0)
-            } else if self.right.focus() != crate::editor_view::EditorFocus::None {
-                Some(1)
-            } else {
-                None
-            };
-            let pair = pair.wrap_realized(move |pair| PairChain { pair, focused });
+            let pair = pair.wrap_realized(move |pair| PairChain { pair });
 
             pair.paint_above(move |_arena, canvas, rect| {
                 let mut paint = skia_safe::Paint::default();
@@ -1029,7 +1022,6 @@ impl View for SplitDiffView {
 
 struct PairChain<'a> {
     pair: imba::container::RealizedContainer<'a, SplitDiffCommand>,
-    focused: Option<usize>,
 }
 
 impl<'a> imba::Widget<'a, SplitDiffCommand> for PairChain<'a> {

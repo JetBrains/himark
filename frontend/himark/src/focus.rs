@@ -34,7 +34,7 @@ impl Application {
         // that key — it never re-decides focus. This is the only
         // remaining build-to-ask, and it fires only while composing.
         let size = self.window_viewport(window)?;
-        let store = self.window_store(window);
+        let store = self.frame_store(window);
         let target = {
             let mut data = window_focus_data(&store, self.ui.as_ref(), window)?;
             data.seat.take()?

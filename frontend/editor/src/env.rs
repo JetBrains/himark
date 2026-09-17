@@ -130,3 +130,21 @@ impl Themes {
             .unwrap_or_else(crate::theme::Theme::embedded)
     }
 }
+
+/// The frame's focused SEAT — the semantic walk's answer, stashed
+/// into the frame store by whoever builds a tree. The editor derives
+/// its selections-visible bit from it AT BUILD TIME, so the viewport
+/// snapshot never needs a focused "upgrade" at paint. Absent (bare
+/// harnesses, cells): fall back to the editor's own focus state.
+#[derive(Clone, Copy)]
+pub struct FrameFocus(pub imba::focus::SeatKey);
+
+impl FrameFocus {
+    pub fn set(store: &mut imba::store::Store, seat: imba::focus::SeatKey) {
+        store.put(FrameFocus(seat));
+    }
+
+    pub fn of(store: &imba::store::Store) -> Option<imba::focus::SeatKey> {
+        store.get::<FrameFocus>().map(|frame| frame.0)
+    }
+}

@@ -402,6 +402,20 @@ impl Application {
         self.state.gather(Some(window), scope.as_ref(), &self.seats)
     }
 
+    /// The frame's store: the window store plus the FOCUSED SEAT
+    /// (the semantic walk's answer), so editors derive their
+    /// selections-visible bit from STATE at build time — one
+    /// viewport build per frame, no focused upgrade at paint.
+    pub(crate) fn frame_store(&self, window: WindowId) -> imba::store::Store {
+        let mut store = self.window_store(window);
+        let seat = crate::focus::window_focus_data(&store, self.ui.as_ref(), window)
+            .and_then(|mut data| data.seat.take());
+        if let Some(seat) = seat {
+            ::editor::env::FrameFocus::set(&mut store, seat);
+        }
+        store
+    }
+
     fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
         let mut store = self.state.gather(None, None, &self.seats);
         mutate(&mut store);
@@ -699,7 +713,7 @@ impl Application {
         let mut arena = std::mem::take(&mut self.ui_arena);
         arena.reset();
 
-        let store = self.window_store(window);
+        let store = self.frame_store(window);
         let result = {
             let widget = self.layout(
                 window,
@@ -812,6 +826,7 @@ impl Application {
             _ => {
                 let mut arena = std::mem::take(&mut self.ui_arena);
                 arena.reset();
+                let store = self.frame_store(window);
                 let result = {
                     let widget = self.layout(
                         window,

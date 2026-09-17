@@ -760,15 +760,6 @@ impl Markup {
         )
     }
 
-    fn find_any(
-        &self,
-        key: &IntervalId,
-    ) -> Option<intervals::IntervalRef<'_, IntervalId, Decoration>> {
-        self.shape
-            .find_by_id(key)
-            .or_else(|| self.styles.find_by_id(key))
-    }
-
     pub fn new() -> Self {
         Self {
             styles: Intervals::new(),

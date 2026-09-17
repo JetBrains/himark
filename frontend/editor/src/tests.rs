@@ -1654,13 +1654,15 @@ fn popup_overlays_carry_projected_inlays() {
     let ui = imba::UiCtx::cold();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
-    let overlays = view.popup_overlays(
+    // Through the PRODUCTION path: the editor's own realize mints
+    // the projections from its shared viewport build.
+    let laid = imba::Layout::layout(
+        imba::View::display(&view, &arena, &store, &ui),
         &arena,
-        &store,
-        &ui,
-        240.0,
-        skia_safe::Rect::from_wh(240.0, 400.0),
+        imba::constraints::Constraints::tight(skia_safe::Size::new(240.0, 400.0)),
     );
+    let mut widget = imba::Thunk::realize(laid, &arena, skia_safe::Rect::from_wh(240.0, 400.0));
+    let overlays = imba::Widget::overlays(&mut widget);
     let projected: Vec<_> = overlays
         .iter()
         .filter(|overlay| overlay.host == crate::markup::INLAY_HOST)
