@@ -461,6 +461,20 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             .then(|| cursor.element().height)
     }
 
+    /// A row view CLONE — the test oracle's read; ropes only hand
+    /// out borrows through live cursors.
+    #[doc(hidden)]
+    pub fn view_at(&self, index: usize) -> Option<T> {
+        if self.items.is_empty() {
+            return None;
+        }
+        let mut cursor = self.items.cursor();
+        if !cursor.seek_to_index(index as u32) {
+            return None;
+        }
+        Some(cursor.element().view.clone())
+    }
+
     pub fn key_at(&self, index: usize) -> Option<&K> {
         let index = index as u32;
         self.structure

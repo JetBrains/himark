@@ -21,6 +21,11 @@ impl Document {
         at: u32,
         base: &Document,
         diff: crate::diff::DiffId,
+        // A USER toggle grows the card open; a programmatic mount
+        // (the inline face expanding every block at mint) appears
+        // settled — animation announces a change the user caused,
+        // not one the pane was born with.
+        animate: bool,
         fonts: &FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -151,11 +156,14 @@ impl Document {
         let Some(markup_id) = self.before_markup_of(editor) else {
             return;
         };
+        let card = match animate {
+            true => BeforeInlay::appearing(card, base_lines),
+            false => BeforeInlay::settled(card, base_lines),
+        };
         self.push_inlay(
             markup_id,
             anchor,
-            Inlay::new(InlayMode::Above, BeforeInlay::appearing(card, base_lines))
-                .over_aligned(crate::markup::INLAY_HOST),
+            Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST),
             fonts,
             theme,
             fx,
@@ -213,7 +221,7 @@ impl Document {
         }
         complete(block.take(), &mut anchors);
         for at in anchors {
-            self.toggle_before_inlay(editor, at, base, diff, fonts, theme, fx);
+            self.toggle_before_inlay(editor, at, base, diff, false, fonts, theme, fx);
         }
     }
 
@@ -299,6 +307,32 @@ pub enum BeforeCommand {
     Tick(AnimationClock),
 }
 
+impl BeforeCommand {
+    /// Traffic the pane's machinery sends on its own — geometry
+    /// upkeep, animation ticks, async pipeline results. It must never
+    /// move focus (neither the host's nor the card's): only user
+    /// interaction is allowed to.
+    pub(crate) fn passive(&self) -> bool {
+        match self {
+            BeforeCommand::Rewrap(_) | BeforeCommand::Tick(_) => true,
+            BeforeCommand::Editor(command) => Self::passive_editor(command),
+        }
+    }
+
+    fn passive_editor(command: &crate::editor_view::EditorCommand) -> bool {
+        use crate::editor_view::EditorCommand;
+        matches!(
+            command,
+            EditorCommand::ApplyRepair(_)
+                | EditorCommand::ApplyReparse(_)
+                | EditorCommand::ApplyEnrichment(_)
+                | EditorCommand::Retheme { .. }
+                | EditorCommand::Viewport { .. }
+                | EditorCommand::ViewportTop(_)
+        )
+    }
+}
+
 #[derive(Clone)]
 pub struct BeforeInlay {
     view: EditorView,
@@ -310,11 +344,7 @@ pub struct BeforeInlay {
 
 impl BeforeInlay {
     fn appearing(view: EditorView, base_range: Range<u32>) -> Self {
-        let motion = Motion::Ease {
-            duration_ms: 160.0,
-            easing: Easing::EaseOut,
-        };
-        let mut grow = Animation::done(0.0, motion);
+        let mut grow = Animation::done(0.0, Self::MOTION);
         grow.set(1.0);
         Self {
             view,
@@ -322,6 +352,21 @@ impl BeforeInlay {
             grow,
         }
     }
+
+    /// Born fully open — the programmatic mount. No growth: the card
+    /// was never closed as far as the user is concerned.
+    fn settled(view: EditorView, base_range: Range<u32>) -> Self {
+        Self {
+            view,
+            base_range,
+            grow: Animation::done(1.0, Self::MOTION),
+        }
+    }
+
+    const MOTION: Motion = Motion::Ease {
+        duration_ms: 160.0,
+        easing: Easing::EaseOut,
+    };
 
     #[doc(hidden)]
     pub fn shown_text(&self) -> String {
@@ -369,15 +414,7 @@ impl imba::View for BeforeInlay {
     ) {
         match command {
             BeforeCommand::Editor(command) => {
-                use crate::editor_view::EditorCommand;
-
-                if !matches!(
-                    command,
-                    EditorCommand::ApplyRepair(_)
-                        | EditorCommand::ApplyReparse(_)
-                        | EditorCommand::Retheme { .. }
-                        | EditorCommand::Viewport { .. }
-                ) {
+                if !BeforeCommand::passive_editor(&command) {
                     self.view.focus_text();
                 }
                 fx.scope(BeforeCommand::Editor, |fx| {

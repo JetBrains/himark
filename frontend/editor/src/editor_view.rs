@@ -712,8 +712,16 @@ impl View for EditorView {
             if let Some((base, diff)) = &self.base {
                 let fonts = crate::env::ui_collection(store, ui);
                 let theme = crate::env::Themes::of(store);
-                self.document
-                    .toggle_before_inlay(self.editor, at, base, *diff, &fonts, &theme, fx);
+                self.document.toggle_before_inlay(
+                    self.editor,
+                    at,
+                    base,
+                    *diff,
+                    true,
+                    &fonts,
+                    &theme,
+                    fx,
+                );
             }
             return;
         }

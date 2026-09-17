@@ -122,7 +122,7 @@ fn a_diff_cell_lays_out_sane_heights_and_settles_its_rewrap() {
 }
 
 #[test]
-fn expanded_before_cards_grow_to_their_content() {
+fn expanded_before_cards_are_born_full_size() {
     // The deleted-code cards are born 1px tall and GROW on animation
     // ticks — the ticks must reach them through the overlay host they
     // render on.
@@ -184,10 +184,11 @@ fn expanded_before_cards_grow_to_their_content() {
         }
     }
 
-    let grown = height_of(&cell, &store, &ui);
+    let after_ticks = height_of(&cell, &store, &ui);
     assert!(
-        grown > born + 20.0,
-        "the deleted-code cards grew: born {born}, grown {grown}"
+        (after_ticks - born).abs() < 0.5,
+        "programmatic cards are born FULL SIZE — no growth to run: \
+         born {born}, after the clock {after_ticks}"
     );
     paint_cell(&cell, &store, &ui, 640.0, "cell_with_cards.png");
     let CellBody::Diff { view, .. } = &cell.body else {
@@ -198,7 +199,7 @@ fn expanded_before_cards_grow_to_their_content() {
     assert!(!cards.is_empty(), "the deleted lines ride before-cards");
     assert!(
         cards.iter().all(|(_, card)| !card.is_appearing()),
-        "the grow settled"
+        "programmatic mounts never animate"
     );
 }
 

@@ -86,15 +86,6 @@ impl Application {
         answer
     }
 
-    pub fn focused_location(&mut self, window: crate::WindowId) -> Option<crate::ResourceLocation> {
-        self.with_focus_chain(window, |data| {
-            data.location
-                .take()
-                .and_then(|location| location.downcast_ref::<crate::ResourceLocation>().cloned())
-        })
-        .flatten()
-    }
-
     fn perform_chain_result(&mut self, result: EventResult<AppCommand>) {
         match result {
             EventResult::Command(command) => {
@@ -106,4 +97,17 @@ impl Application {
             EventResult::Ignored | EventResult::Handled | EventResult::Reveal(_) => {}
         }
     }
+}
+
+/// The focused location of an ALREADY-BUILT focus chain. There is
+/// deliberately no window-taking variant: answering this needs the
+/// whole realized widget tree, and whoever asks must be SEEN
+/// building one — or borrowing the frame's (`dispatch_paint`
+/// harvests from the paint build; one widget per frame, period).
+pub(crate) fn focused_location(
+    data: &mut FocusData<'_, AppCommand>,
+) -> Option<crate::ResourceLocation> {
+    data.location
+        .take()
+        .and_then(|location| location.downcast_ref::<crate::ResourceLocation>().cloned())
 }

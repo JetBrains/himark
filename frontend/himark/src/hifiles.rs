@@ -852,7 +852,26 @@ impl crate::DynamicCommand for ToggleSessionTree {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let reveal = app.focused_location(window);
+        // The focused location costs a full layout+realize of the
+        // window — built HERE, visibly, once, for this one-shot
+        // command (crate::focus::focused_location takes the widget).
+        let reveal = app.window_viewport(window).and_then(|size| {
+            let arena = imba::arena::Arena::default();
+            let chain_store = app.window_store(window);
+            let ui = app.ui_ctx();
+            let widget = app.layout(
+                window,
+                &arena,
+                &chain_store,
+                &ui,
+                imba::constraints::Constraints::tight(size),
+            );
+            let mut widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(size));
+            let location =
+                crate::focus::focused_location(&mut imba::Widget::focus_data(&mut widget));
+            drop(widget);
+            location
+        });
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();

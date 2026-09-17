@@ -700,7 +700,12 @@ impl Application {
         arena.reset();
 
         let store = self.window_store(window);
-        let result = {
+        let following = self
+            .state
+            .windows
+            .entity(window)
+            .is_some_and(|entity| entity.dock_panel().is_some());
+        let (result, followed) = {
             let widget = self.layout(
                 window,
                 &arena,
@@ -708,17 +713,41 @@ impl Application {
                 self.ui.as_ref(),
                 Constraints::tight(size),
             );
-            let widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
-            widget.handle_event(
+            let mut widget = imba::Thunk::realize(widget, &arena, Rect::from_size(size));
+            let result = widget.handle_event(
                 &arena,
                 &Event::Paint {
                     canvas,
                     focused: true,
                 },
                 Rect::from_size(size),
-            )
+            );
+            // The dock's tree-follow harvests from THE paint build —
+            // the one widget this frame already owns. Never build a
+            // focus tree to answer bookkeeping (DiffCanvas.trace).
+            let followed = match following {
+                true => crate::focus::focused_location(&mut imba::Widget::focus_data(&mut widget)),
+                false => None,
+            };
+            (result, followed)
         };
         self.ui_arena = arena;
+
+        if let Some(location) = followed {
+            let changed = self
+                .state
+                .windows
+                .entity(window)
+                .is_some_and(|entity| entity.focused_location() != Some(&location));
+            if changed {
+                self.window_txn(window, |store| {
+                    if let Some(mut entity) = Windows::window(store, window) {
+                        entity.note_focused_location(location);
+                        Windows::put(store, window, entity);
+                    }
+                });
+            }
+        }
 
         match result {
             EventResult::Ignored | EventResult::Handled => false,
@@ -903,49 +932,6 @@ impl Application {
         self.launch(batch);
         if theme_before.name() != ::editor::env::Themes::of(&self.committed).name() {
             self.propagate_theme_change();
-        }
-
-        for window in self.state.windows.ids() {
-            let following = self
-                .state
-                .windows
-                .entity(window)
-                .is_some_and(|entity| entity.dock_panel().is_some());
-            if !following {
-                continue;
-            }
-
-            let document = self
-                .state
-                .windows
-                .entity(window)
-                .and_then(|entity| entity.focused_document_id());
-            let location = match document {
-                Some(document) => {
-                    let mut found = None;
-                    self.window_txn(window, |store| {
-                        found = crate::OpenDocuments::location(store, document);
-                    });
-                    found
-                }
-                None => self.focused_location(window),
-            };
-            let Some(location) = location else {
-                continue;
-            };
-            let changed = self
-                .state
-                .windows
-                .entity(window)
-                .is_some_and(|entity| entity.focused_location() != Some(&location));
-            if changed {
-                self.window_txn(window, |store| {
-                    if let Some(mut entity) = Windows::window(store, window) {
-                        entity.note_focused_location(location);
-                        Windows::put(store, window, entity);
-                    }
-                });
-            }
         }
 
         let changed: std::collections::HashSet<crate::Subscription> =

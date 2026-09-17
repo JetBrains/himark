@@ -1377,10 +1377,9 @@ impl Document {
                         Some(crate::fold::FoldCommand::Tick(_))
                     );
                     let passive = fold_tick
-                        || matches!(
-                            command.downcast_ref::<crate::before_inlay::BeforeCommand>(),
-                            Some(crate::before_inlay::BeforeCommand::Tick(_))
-                        )
+                        || command
+                            .downcast_ref::<crate::before_inlay::BeforeCommand>()
+                            .is_some_and(crate::before_inlay::BeforeCommand::passive)
                         || self.markup_of(key.layer).is_some_and(|markup| {
                             matches!(
                                 markup.inlay_interval(key.key),

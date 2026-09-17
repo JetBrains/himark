@@ -1847,8 +1847,27 @@ fn the_unified_view_switches_between_split_and_inline() {
         );
     }
 
-    himark::test_driver::click(&mut app, 550.0, 60.0, 1100.0, 800.0);
+    // The head card is born FULL SIZE now (settled programmatic
+    // mounts): line 0 grew by the card's hole, so the old aim (60,
+    // inside line 0's text) shifts down by exactly the hole — the
+    // inline line-0 height minus the card-less split face's.
+    let hole = {
+        let right = himark::OpenDocuments::document_ref(app.store(), right_id).expect("right");
+        right.height_before(inline_editor, 9) - right.height_before(right_editor, 9)
+    };
+    // Aim at line 0's TEXT: the settled before-card fills its full
+    // hole from birth, so the text sits `hole` below the line's top
+    // (~77px of pane chrome above; 88 lands mid-glyph).
+    himark::test_driver::click(&mut app, 550.0, 88.0 + hole, 1100.0, 800.0);
     let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    {
+        let right = himark::OpenDocuments::document_ref(app.store(), right_id).expect("right");
+        assert_eq!(
+            right.focus(inline_editor),
+            himark::EditorFocus::Text,
+            "the click should land on host text, not a card"
+        );
+    }
     let before = document_text(&app, "right.md");
     let _ = himark::test_driver::type_text(&mut app, "Z");
     settle(&mut app, &mut surface);

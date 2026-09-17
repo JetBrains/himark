@@ -111,6 +111,85 @@ impl DiffCanvasView {
             .collect()
     }
 
+    /// Per Built row: (title, host/inline focus, each card's focus).
+    #[doc(hidden)]
+    pub fn probe_focus(&self) -> Vec<(String, String, Vec<String>)> {
+        let rows = self.rows.content();
+        (0..rows.len())
+            .filter_map(|index| {
+                let key = rows.key_at(index)?;
+                let title = self.files.get(key)?.title.clone();
+                let row = rows.view_at(index)?;
+                let RowBody::Built { view } = &row.body else {
+                    return None;
+                };
+                let inline = view.inline_editor?;
+                let host = format!("{:?}", view.split.right.document.focus(inline));
+                let cards = view
+                    .split
+                    .right
+                    .document
+                    .before_inlay_views(inline)
+                    .into_iter()
+                    .map(|(_, card)| format!("{:?}", card.card_focus()))
+                    .collect();
+                Some((title, host, cards))
+            })
+            .collect()
+    }
+
+    /// Per Built row: (host text head, each card's text head).
+    #[doc(hidden)]
+    pub fn probe_texts(&self) -> Vec<(String, Vec<String>)> {
+        let rows = self.rows.content();
+        (0..rows.len())
+            .filter_map(|index| {
+                let row = rows.view_at(index)?;
+                let RowBody::Built { view } = &row.body else {
+                    return None;
+                };
+                let inline = view.inline_editor?;
+                let host = {
+                    let text = view.split.right.document.text();
+                    let end = text.byte_count().min(120) as u32;
+                    text.view().substring(0..end)
+                };
+                let cards = view
+                    .split
+                    .right
+                    .document
+                    .before_inlay_views(inline)
+                    .into_iter()
+                    .map(|(_, card)| card.shown_text())
+                    .collect();
+                Some((host, cards))
+            })
+            .collect()
+    }
+
+    /// Geometry oracle: (content_height, [(anchor_byte, y_of_anchor)]).
+    #[doc(hidden)]
+    pub fn probe_geometry(&self) -> Vec<(f32, Vec<(u32, f32)>)> {
+        let rows = self.rows.content();
+        (0..rows.len())
+            .filter_map(|index| {
+                let row = rows.view_at(index)?;
+                let RowBody::Built { view } = &row.body else {
+                    return None;
+                };
+                let inline = view.inline_editor?;
+                let document = &view.split.right.document;
+                let content = document.content_height(inline);
+                let anchors = document
+                    .before_inlays(inline)
+                    .into_iter()
+                    .map(|(range, _, _)| (range.start, document.height_before(inline, range.start)))
+                    .collect();
+                Some((content, anchors))
+            })
+            .collect()
+    }
+
     fn refresh(&mut self, store: &mut Store) {
         let (generation, listing) = canvas_files(store, &self.source);
         self.seen = Some(generation);
