@@ -7,7 +7,7 @@ mod render;
 mod view;
 
 pub use panel::{GalleryPanel, OpenGallery};
-pub use render::{write_screenshots, Gallery, SCREENSHOT_WIDTH};
+pub use render::{Gallery, SCREENSHOT_WIDTH};
 pub use view::{GalleryCommand, GalleryMode, GalleryView};
 
 #[cfg(test)]

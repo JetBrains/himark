@@ -14,7 +14,7 @@ pub fn source() -> FontSource {
         Arc::new(|| {
             thread_local! {
                 static COLLECTION: FontCollection = {
-                    let mut collection = FontCollection::new();
+                    let mut collection = editor::embedded_fonts::collection();
                     collection.set_default_font_manager(FontMgr::new(), None);
                     collection
                 };

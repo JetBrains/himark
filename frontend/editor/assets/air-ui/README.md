@@ -29,6 +29,10 @@ Mappings:
 - Surfaces: 8px Card radius, 12px content padding, Card fill and general
   border tokens; bordered and outline are compositions of those primitives.
 
-The resolved color table is in `src/ui/air_tokens.rs`. Existing theme fields
-retain control of text, tree and surface colors. The extra control-state
-colors use the corresponding Air light/dark palette.
+Colors and typography are resolved through `ui.air` in the editor's
+`theme.json` and `theme-light.json`, alongside the existing application theme.
+The `air-ui` crate consumes these typed theme fields. Inter and JetBrains Mono
+are registered as `Air Inter` and `Air JetBrains Mono` in the shared font
+collection, so they do not replace existing editor font families. It caches weight and optical
+size variants for both the editor and UI text. Focus outlines use Imba's
+existing window overlay host and do not change layout or hit bounds.

@@ -11,7 +11,6 @@
 use crate::arena::{self, Arena};
 use crate::constraints::Constraints;
 use crate::{Thunk, ThunkBox};
-use skia_safe::Contains;
 
 /// A structured, unsized subtree: state read, geometry pending.
 /// Consumed by sizing (single-shot, like every frame artifact). The
@@ -804,7 +803,6 @@ pub struct Text {
     font: skia_safe::Font,
     color: skia_safe::Color,
     tracking: f32,
-    line_height: Option<f32>,
 }
 
 pub fn text(content: impl Into<String>, font: skia_safe::Font, color: skia_safe::Color) -> Text {
@@ -813,16 +811,10 @@ pub fn text(content: impl Into<String>, font: skia_safe::Font, color: skia_safe:
         font,
         color,
         tracking: 0.0,
-        line_height: None,
     }
 }
 
 impl Text {
-    /// CSS-style line box, with shaped glyphs and symmetric leading.
-    pub fn line_height(mut self, height: f32) -> Self {
-        self.line_height = Some(height);
-        self
-    }
     /// Extra per-glyph advance — the caps-label look several chrome
     /// labels hand-roll today.
     pub fn tracking(mut self, tracking: f32) -> Self {
@@ -833,76 +825,6 @@ impl Text {
 
 impl<'a, Command: 'a> Layout<'a, Command> for Text {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
-        if let Some(height) = self.line_height {
-            use skia_safe::textlayout::{
-                FontCollection, ParagraphBuilder, ParagraphStyle, TextStyle, TypefaceFontProvider,
-            };
-            thread_local! {
-                static COLLECTIONS: std::cell::RefCell<std::collections::HashMap<u32, FontCollection>> = Default::default();
-            }
-            let fonts = COLLECTIONS.with(|collections| {
-                collections
-                    .borrow_mut()
-                    .entry(self.font.typeface().unique_id())
-                    .or_insert_with(|| {
-                        let mut provider = TypefaceFontProvider::new();
-                        provider.register_typeface(self.font.typeface(), Some("imba-text"));
-                        let mut fonts = FontCollection::new();
-                        fonts.set_asset_font_manager(skia_safe::FontMgr::from(provider));
-                        fonts.set_default_font_manager(skia_safe::FontMgr::new(), None);
-                        fonts
-                    })
-                    .clone()
-            });
-            let mut style = TextStyle::new();
-            style
-                .set_font_families(&["imba-text"])
-                .set_font_style(self.font.typeface().font_style())
-                .set_font_size(self.font.size())
-                .set_color(self.color)
-                .set_letter_spacing(self.tracking)
-                .set_height(height / self.font.size())
-                .set_height_override(true)
-                .set_half_leading(true);
-            style
-                .set_font_edging(skia_safe::font::Edging::AntiAlias)
-                .set_subpixel(true)
-                .set_font_hinting(skia_safe::FontHinting::None);
-            let mut paragraph_style = ParagraphStyle::new();
-            paragraph_style.set_text_style(&style).set_max_lines(1);
-            paragraph_style.turn_hinting_off();
-            let mut builder = ParagraphBuilder::new(&paragraph_style, fonts);
-            builder.add_text(&self.text);
-            let mut paragraph = builder.build();
-            paragraph.layout(1_000_000.0);
-            let width = paragraph
-                .max_intrinsic_width()
-                .min(constraints.max.width)
-                .max(constraints.min.width);
-            // Blink rounds the font's ascent/descent before distributing the
-            // line box's leading. Keep the CSS baseline, while retaining the
-            // paragraph's shaping and fractional horizontal advances.
-            let metrics = self.font.metrics().1;
-            let ascent = (-metrics.ascent).round();
-            let descent = metrics.descent.round();
-            let baseline = ascent + ((height - ascent - descent) * 0.5).floor();
-            let text_y = baseline - paragraph.alphabetic_baseline();
-            let label = crate::leaf::leaf::<Command>(width, height).paint_instead(
-                move |_arena, canvas, rect| {
-                    canvas.save();
-                    canvas.clip_rect(rect, None, false);
-                    paragraph.paint(canvas, (rect.left, rect.top + text_y));
-                    canvas.restore();
-                },
-            );
-            return ThunkBox::new(
-                arena,
-                WithBaseline {
-                    thunk: label,
-                    baseline,
-                },
-            );
-        }
         let (_, metrics) = self.font.metrics();
         let ascent = -metrics.ascent;
         let height = (ascent + metrics.descent).ceil().max(1.0);
@@ -922,7 +844,6 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
             font,
             color,
             tracking,
-            ..
         } = self;
         let label = crate::leaf::leaf::<Command>(width, height).paint_instead(
             move |_arena, canvas, rect| {
@@ -1322,55 +1243,28 @@ where
 /// chrome; the content is any layout (a `Text`, a `Row` of texts),
 /// centered in the padded surface. Replaces the ad-hoc
 /// paint-a-round-rect-then-draw_str-then-event chips.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum ControlState {
-    #[default]
-    Default,
-    Hovered,
-    Pressed,
-    Focused,
-    Disabled,
-}
-
-#[derive(Clone, Copy, Default)]
-pub struct ButtonVisual {
-    pub fill: Option<skia_safe::Color>,
-    pub stroke: Option<skia_safe::Color>,
-    pub outline: Option<skia_safe::Color>,
-}
-
 pub struct Button<'a, Command, F> {
     content: LayoutBox<'a, Command>,
-    disabled_content: Option<LayoutBox<'a, Command>>,
     on_click: F,
     insets: Insets,
     fill: Option<skia_safe::Color>,
     stroke: Option<skia_safe::Color>,
     radius: f32,
     min_width: f32,
-    max_width: f32,
     enabled: bool,
-    state: ControlState,
-    visuals: Option<[ButtonVisual; 5]>,
-    on_state_change: Option<Box<dyn Fn(ControlState) -> Command + 'a>>,
 }
 
 impl<'a, Command: 'a, F: Fn() -> Command + 'a> Button<'a, Command, F> {
     pub fn new(arena: &'a Arena, content: impl Layout<'a, Command> + 'a, on_click: F) -> Self {
         Self {
             content: LayoutBox::new(arena, content),
-            disabled_content: None,
             on_click,
             insets: Insets::xy(10.0, 4.0),
             fill: None,
             stroke: None,
             radius: 4.0,
             min_width: 0.0,
-            max_width: f32::MAX,
             enabled: true,
-            state: ControlState::Default,
-            visuals: None,
-            on_state_change: None,
         }
     }
 
@@ -1399,38 +1293,8 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Button<'a, Command, F> {
         self
     }
 
-    pub fn max_width(mut self, max_width: f32) -> Self {
-        self.max_width = max_width;
-        self
-    }
-
-    pub fn disabled_content(
-        mut self,
-        arena: &'a Arena,
-        content: impl Layout<'a, Command> + 'a,
-    ) -> Self {
-        self.disabled_content = Some(LayoutBox::new(arena, content));
-        self
-    }
-
-    pub fn visuals(mut self, visuals: [ButtonVisual; 5]) -> Self {
-        self.visuals = Some(visuals);
-        self
-    }
-
-    /// Controlled interaction state; owners retain it between rebuilt views.
-    pub fn state(mut self, state: ControlState) -> Self {
-        self.state = state;
-        self
-    }
-
-    pub fn on_state_change(mut self, callback: impl Fn(ControlState) -> Command + 'a) -> Self {
-        self.on_state_change = Some(Box::new(callback));
-        self
-    }
-
-    /// A disabled button swallows presses and uses its configured disabled
-    /// visual and content, falling back to the normal appearance when absent.
+    /// A disabled button swallows its presses (the caller dims its
+    /// own colors).
     pub fn enabled(mut self, enabled: bool) -> Self {
         self.enabled = enabled;
         self
@@ -1439,31 +1303,21 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Button<'a, Command, F> {
 
 impl<'a, Command: 'a, F: Fn() -> Command + 'a> Layout<'a, Command> for Button<'a, Command, F> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
-        let enabled = self.enabled && self.state != ControlState::Disabled;
-        let state = if enabled {
-            self.state
-        } else {
-            ControlState::Disabled
-        };
-        let max_width = constraints.max.width.min(self.max_width);
         let x = self.insets.left + self.insets.right;
         let y = self.insets.top + self.insets.bottom;
         let inner = Constraints {
             min: Size::default(),
             max: Size::new(
-                (max_width - x).max(0.0),
+                (constraints.max.width - x).max(0.0),
                 (constraints.max.height - y).max(0.0),
             ),
         };
-        let content = if enabled {
-            self.content
-        } else {
-            self.disabled_content.unwrap_or(self.content)
-        }
-        .layout(arena, inner);
+        let content = self.content.layout(arena, inner);
         let label = content.size();
         let size = Size::new(
-            (label.width + x).max(self.min_width).min(max_width),
+            (label.width + x)
+                .max(self.min_width)
+                .min(constraints.max.width),
             (label.height + y).min(constraints.max.height),
         );
         let mut surface = container(arena, size);
@@ -1477,42 +1331,12 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Layout<'a, Command> for Button<'a
             stroke,
             radius,
             on_click,
-            visuals,
-            on_state_change,
+            enabled,
             ..
         } = self;
-        let visual = visuals
-            .map(|styles| styles[state as usize])
-            .unwrap_or(ButtonVisual {
-                fill,
-                stroke,
-                outline: None,
-            });
-        let ButtonVisual {
-            fill,
-            stroke,
-            outline,
-        } = visual;
-        let outset = if outline.is_some_and(|color| color.a() > 0) {
-            2.0
-        } else {
-            0.0
-        };
         let chrome = surface.paint_below(move |_arena, canvas, rect| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);
-            if let Some(outline) = outline {
-                paint.set_color(outline);
-                paint.set_stroke(true);
-                paint.set_stroke_width(2.0);
-                canvas.draw_round_rect(
-                    rect.with_outset((1.0, 1.0)),
-                    radius + 1.0,
-                    radius + 1.0,
-                    &paint,
-                );
-                paint.set_stroke(false);
-            }
             if let Some(fill) = fill {
                 paint.set_color(fill);
                 canvas.draw_round_rect(rect, radius, radius, &paint);
@@ -1521,52 +1345,17 @@ impl<'a, Command: 'a, F: Fn() -> Command + 'a> Layout<'a, Command> for Button<'a
                 paint.set_stroke(true);
                 paint.set_stroke_width(1.0);
                 paint.set_color(stroke);
-                canvas.draw_round_rect(
-                    rect.with_inset((0.5, 0.5)),
-                    (radius - 0.5).max(0.0),
-                    (radius - 0.5).max(0.0),
-                    &paint,
-                );
+                canvas.draw_round_rect(rect.with_inset((0.5, 0.5)), radius, radius, &paint);
             }
         });
-        let armed = chrome.event(move |_arena, event, size| {
-            use crate::event::{Event, EventResult, MouseButton};
-            let next = match event {
-                Event::HitTest { miss: true, .. } => Some(ControlState::Default),
-                Event::HitTest { miss: false, .. } if state != ControlState::Pressed => {
-                    Some(ControlState::Hovered)
-                }
-                Event::MouseDown {
-                    button: MouseButton::Left,
-                    ..
-                } => Some(ControlState::Pressed),
-                Event::MouseUp { point } if state == ControlState::Pressed => {
-                    Some(if skia_safe::Rect::from_size(size).contains(*point) {
-                        ControlState::Hovered
-                    } else {
-                        ControlState::Default
-                    })
-                }
-                _ => None,
-            };
-            let mut result = match event {
-                Event::MouseDown {
-                    button: MouseButton::Left,
-                    ..
-                } if enabled => EventResult::Command(on_click()),
-                Event::MouseDown { .. } if !enabled => EventResult::Handled,
-                _ => EventResult::Ignored,
-            };
-            if enabled {
-                if let (Some(next), Some(callback)) =
-                    (next.filter(|next| *next != state), &on_state_change)
-                {
-                    result = result.merge(EventResult::Command(callback(next)));
-                }
+        let armed = chrome.event(move |_arena, event, _size| match event {
+            crate::event::Event::MouseDown { .. } if enabled => {
+                crate::event::EventResult::Command(on_click())
             }
-            result
+            crate::event::Event::MouseDown { .. } => crate::event::EventResult::Handled,
+            _ => crate::event::EventResult::Ignored,
         });
-        ThunkBox::new(arena, armed.hit_opaque().paint_overflow(outset))
+        ThunkBox::new(arena, armed)
     }
 }
 
@@ -1791,62 +1580,5 @@ impl<Command> EventHandler<Command> for Shield {
             crate::event::Event::MouseDown { .. } => crate::event::EventResult::Handled,
             _ => crate::event::EventResult::Ignored,
         }
-    }
-}
-
-#[cfg(test)]
-mod button_visual_tests {
-    use super::*;
-    use crate::Widget;
-
-    #[test]
-    fn focus_ring_survives_nested_layout_clips_without_changing_size() {
-        let arena = Arena::default();
-        let visual = ButtonVisual {
-            fill: Some(skia_safe::Color::BLUE),
-            outline: Some(skia_safe::Color::GREEN),
-            ..Default::default()
-        };
-        let button = Button::new(&arena, fixed(crate::leaf::leaf::<()>(20.0, 16.0)), || ())
-            .pad_content(Insets::xy(0.0, 0.0))
-            .visuals([visual; 5])
-            .state(ControlState::Focused);
-        let thunk = Column::new(&arena)
-            .child(Row::new(&arena).child(button))
-            .pad(4.0)
-            .layout(
-                &arena,
-                Constraints {
-                    min: Size::default(),
-                    max: Size::new(100.0, 100.0),
-                },
-            );
-        assert_eq!(thunk.size(), Size::new(28.0, 24.0));
-        let rect = skia_safe::Rect::from_size(thunk.size());
-        let widget = thunk.realize(&arena, rect);
-        let mut surface = skia_safe::surfaces::raster_n32_premul((32, 32)).unwrap();
-        surface.canvas().clear(skia_safe::Color::BLACK);
-        widget.handle_event(
-            &arena,
-            &crate::event::Event::Paint {
-                canvas: surface.canvas(),
-                focused: true,
-            },
-            rect,
-        );
-        let image = surface.image_snapshot();
-        let mut pixel = [0u8; 4];
-        assert!(image.read_pixels(
-            &skia_safe::ImageInfo::new_n32_premul((1, 1), None),
-            &mut pixel,
-            4,
-            (2, 10),
-            skia_safe::image::CachingHint::Allow
-        ));
-        assert_eq!(
-            pixel,
-            [0, 255, 0, 255],
-            "the outer ring must remain visible"
-        );
     }
 }

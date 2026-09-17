@@ -1,0 +1,13 @@
+[package]
+name = "air-ui"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+editor = { path = "../editor" }
+imba = { path = "../imba" }
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
+
+[dev-dependencies]
+serde_json = "1"

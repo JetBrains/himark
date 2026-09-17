@@ -209,7 +209,7 @@
       "fold_button": "#d63d464d"
     },
     "window": {
-      "background": "#ffeeeff0",
+      "background": "#ffffff",
       "divider": "#ffdadde4",
       "divider_width": 1.0,
       "divider_inset": 14.0,
@@ -294,19 +294,19 @@
       "font_size": 15.0
     },
     "peeker": {
-      "background": "#ffffffff",
-      "well": "#08000000",
-      "well_radius": 8.0,
-      "text": "#ff090909",
-      "dim_text": "#8a000000",
-      "rule": "#2e000000",
+      "background": "#ffffff",
+      "well": "#fff0f2f7",
+      "well_radius": 10.0,
+      "text": "#23262d",
+      "dim_text": "#a86b7280",
+      "rule": "#ffc9cdd8",
       "rule_inset": 14.0,
       "highlight": "#2e3574f0",
       "highlight_radius": 9.0,
       "accent": "#3574f0",
       "accent_width": 3.0,
       "accent_inset": 6.0,
-      "dir_text": "#ff090909",
+      "dir_text": "#a06b7280",
       "row_height": 44.0,
       "input_height": 56.0,
       "margin": 24.0,
@@ -338,9 +338,9 @@
       "input_fill": "#1c6b7284",
       "group_header": 46.0,
       "group_fill": "#00000000",
-      "group_text": "#8a000000",
-      "group_text_x": 8.0,
-      "group_font_size": 13.0,
+      "group_text": "#f0333a48",
+      "group_text_x": 68.0,
+      "group_font_size": 22.0,
       "group_separator": "#6e6b7284",
       "group_separator_thickness": 2.0,
       "row_separator": "#2c6b7284",
@@ -378,12 +378,12 @@
       ]
     },
     "checkbox": {
-      "size": 16.0,
-      "radius": 2.0,
-      "stroke": 1.0,
-      "border": "#45000000",
-      "fill": "#ff0870e4",
-      "check": "#ffffffff"
+      "size": 26.0,
+      "radius": 7.0,
+      "stroke": 2.0,
+      "border": "#a89aa0ac",
+      "fill": "#3574f0",
+      "check": "#ffffff"
     },
     "combo": {
       "label_color": "#ff5f6672",
@@ -439,12 +439,12 @@
       "stripe_deleted": "#ccc04848"
     },
     "tree": {
-      "font_size": 13.0,
-      "indent": 24.0,
-      "text_x": 28.0,
+      "font_size": 32.0,
+      "indent": 26.0,
+      "text_x": 36.0,
       "highlight": "#ffe9edf5",
-      "directory": "#ff090909",
-      "file": "#ff090909"
+      "directory": "#16181d",
+      "file": "#33373f"
     },
     "chat": {
       "pad": 16.0,
@@ -474,6 +474,231 @@
       "stop_color": "#ffc03a40",
       "ask_surface": "#ffffff",
       "ask_border": "#ffb9c9ea"
+    },
+    "air": {
+      "background": "#ffeeeff0",
+      "surface": "#08000000",
+      "border": "#2e000000",
+      "text": "#ff090909",
+      "secondary_text": "#8a000000",
+      "disabled_text": "#73000000",
+      "icon": "#8a000000",
+      "typography": {
+        "label": {
+          "family": "Air Inter",
+          "size": 13.0,
+          "line_height": 16.0,
+          "weight": 500,
+          "tracking": 0.052
+        },
+        "caption": {
+          "family": "Air Inter",
+          "size": 12.0,
+          "line_height": 16.0,
+          "weight": 520,
+          "tracking": 0.06
+        },
+        "heading": {
+          "family": "Air Inter",
+          "size": 19.0,
+          "line_height": 24.0,
+          "weight": 620,
+          "tracking": 0.0
+        },
+        "caps": {
+          "family": "Air Inter",
+          "size": 10.0,
+          "line_height": 14.0,
+          "weight": 720,
+          "tracking": 1.0
+        },
+        "key_hint": {
+          "family": "Air Inter",
+          "size": 10.0,
+          "line_height": 14.0,
+          "weight": 520,
+          "tracking": 0.06
+        },
+        "code": {
+          "family": "Air JetBrains Mono",
+          "size": 13.0,
+          "line_height": 22.0,
+          "weight": 420,
+          "tracking": 0.0
+        },
+        "header": {
+          "family": "Air Inter",
+          "size": 13.0,
+          "line_height": 16.0,
+          "weight": 620,
+          "tracking": 0.0676
+        }
+      },
+      "primary": {
+        "states": {
+          "default": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#ff1868cb",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#ff1d61ba",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#ff0870e4",
+            "border": "#ffffffff",
+            "outline": "#ff0870e4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ffffffff",
+        "disabled_text": "#73000000"
+      },
+      "secondary": {
+        "states": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#08000000",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#0f000000",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#ffa8c6f4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ff090909",
+        "disabled_text": "#73000000"
+      },
+      "ghost": {
+        "states": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#0f000000",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#17000000",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#00ffffff"
+          },
+          "disabled": {
+            "fill": "#00ffffff",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ff090909",
+        "disabled_text": "#73000000"
+      },
+      "checkbox": {
+        "unchecked": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#ffa8c6f4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "checked": {
+          "default": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#ff0870e4",
+            "border": "#ffffffff",
+            "outline": "#ff0870e4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "icon": "#ffffffff",
+        "disabled_icon": "#45000000"
+      },
+      "list": {
+        "default": "#00ffffff",
+        "hovered": "#0d000000",
+        "pressed": "#330870e4",
+        "selected": "#21000000"
+      },
+      "tree": {
+        "font_size": 13.0,
+        "indent": 24.0,
+        "text_x": 28.0,
+        "highlight": "#ffe9edf5",
+        "directory": "#ff090909",
+        "file": "#ff090909"
+      }
     }
   }
 }

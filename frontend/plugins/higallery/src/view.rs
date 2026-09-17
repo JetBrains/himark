@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Backend-free catalogue of the shared UI primitives, used by the desktop
-//! gallery binary and its headless visual regression tests.
-use imba::{
-    arena::Arena, checkbox::CheckboxValue, thunk_ext::ThunkExt, Column, Layout, LayoutExt, Row,
-    Store, UiCtx, View,
-};
+//! workbench panel and its headless visual regression tests.
+use imba::{arena::Arena, thunk_ext::ThunkExt, Column, Layout, LayoutExt, Row, Store, UiCtx, View};
 
-use himark::{ui::*, TreeItemView, TreeLabel, TreeTint};
+use air_ui::{checkbox::CheckboxValue, *};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GalleryMode {
@@ -86,7 +83,7 @@ impl GalleryView {
         ui: &'a UiCtx,
     ) -> impl Layout<'a, GalleryCommand> + imba::LayoutValue + 'a {
         let themes = himark::env::Themes::of(store);
-        let theme = themes.ui();
+        let theme = &themes.ui().air;
         let static_states = self.mode == GalleryMode::AllStates;
         let title = heading(store, ui);
         let note = caption(store, ui);
@@ -149,12 +146,12 @@ impl GalleryView {
 
         let mut surfaces = Row::new(arena).gap(space::L);
         for (name, surface) in [
-            ("Fill", Surface::fill(theme.peeker.well.0)),
+            ("Fill", Surface::fill(theme.surface.0)),
             (
                 "Bordered",
-                Surface::bordered(theme.peeker.well.0, theme.peeker.rule.0),
+                Surface::bordered(theme.surface.0, theme.border.0),
             ),
-            ("Outline", Surface::outline(theme.peeker.rule.0)),
+            ("Outline", Surface::outline(theme.border.0)),
         ] {
             surfaces = surfaces.weighted(
                 1.0,
@@ -244,14 +241,11 @@ impl GalleryView {
                     CheckboxValue::Checked => "Checked",
                     CheckboxValue::Indeterminate => "Indeterminate",
                 };
-                let label = label(store, ui).colored(air_tokens::color(
-                    store,
-                    if state == ControlState::Disabled {
-                        "text-disabled"
-                    } else {
-                        "text-primary"
-                    },
-                ));
+                let label = label(store, ui).colored(if state == ControlState::Disabled {
+                    theme.disabled_text.0
+                } else {
+                    theme.text.0
+                });
                 let control = Row::new(arena)
                     .gap(6.0)
                     .align_items(imba::CrossAlign::Center)
@@ -381,10 +375,16 @@ impl View for GalleryView {
 
     fn display<'a>(
         &'a self,
-        arena: &'a Arena,
+        _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        self.content(arena, store, ui)
+        // Resolve focus overlays inside the scroll content so its viewport
+        // clips the ink along with the gallery when a control scrolls away.
+        imba::laid(move |arena: &'a Arena, constraints| {
+            self.content(arena, store, ui)
+                .layout(arena, constraints)
+                .overlay_host(imba::overlay::WINDOW)
+        })
     }
 }

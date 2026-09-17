@@ -225,19 +225,16 @@ impl WidgetStack {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.accent.0,
                 tracking: 0.0,
-                line_height: None,
             };
             let body_style = crate::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.85),
                 color: chrome.text_color.0,
                 tracking: 0.0,
-                line_height: None,
             };
             let code_style = crate::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.text_color.0,
                 tracking: 0.0,
-                line_height: None,
             };
             let has_preview = ask.input.is_some();
             let mut body = imba::Column::new(arena)

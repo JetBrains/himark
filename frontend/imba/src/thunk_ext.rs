@@ -38,7 +38,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
             inner: self,
             paint,
             mode: PaintMode::Below,
-            outset: 0.0,
             _command: PhantomData,
         }
     }
@@ -53,7 +52,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
             inner: self,
             paint,
             mode: PaintMode::Above,
-            outset: 0.0,
             _command: PhantomData,
         }
     }
@@ -68,7 +66,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
             inner: self,
             paint,
             mode: PaintMode::Instead,
-            outset: 0.0,
             _command: PhantomData,
         }
     }
@@ -82,21 +79,6 @@ pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
         EventThunk {
             inner: self,
             event,
-            _command: PhantomData,
-        }
-    }
-
-    /// Let ancestors retain a control's ink outside its layout box.
-    fn paint_overflow(self, outset: f32) -> impl Thunk<'a, Command> + 'a
-    where
-        Self: 'a,
-        Command: 'a,
-    {
-        PaintThunk {
-            inner: self,
-            paint: |_arena: &Arena, _canvas: &Canvas, _rect: Rect| {},
-            mode: PaintMode::Below,
-            outset,
             _command: PhantomData,
         }
     }
@@ -277,7 +259,6 @@ struct PaintThunk<Inner, Command, F> {
     inner: Inner,
     paint: F,
     mode: PaintMode,
-    outset: f32,
     _command: PhantomData<fn() -> Command>,
 }
 
@@ -296,11 +277,7 @@ where
 
     fn realize(self, arena: &'a Arena, viewport: Rect) -> WidgetBox<'a, Command> {
         let PaintThunk {
-            inner,
-            paint,
-            mode,
-            outset,
-            ..
+            inner, paint, mode, ..
         } = self;
         WidgetBox::new(
             arena,
@@ -308,7 +285,6 @@ where
                 inner: inner.realize(arena, viewport),
                 paint,
                 mode,
-                outset,
             },
         )
     }
@@ -432,10 +408,6 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn paint_outset(&self) -> f32 {
-        self.inner.paint_outset()
-    }
-
     fn handle_event(
         &self,
         arena: &Arena,
@@ -474,10 +446,6 @@ where
 
     fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
         self.inner.blocks_pointer(point)
-    }
-
-    fn paint_outset(&self) -> f32 {
-        self.inner.paint_outset()
     }
 
     fn handle_event(
@@ -570,7 +538,6 @@ struct PaintWidget<Inner, F> {
     inner: Inner,
     paint: F,
     mode: PaintMode,
-    outset: f32,
 }
 
 impl<'a, Command: 'a, Inner, F> Widget<'a, Command> for PaintWidget<Inner, F>
@@ -588,10 +555,6 @@ where
 
     fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
         self.inner.blocks_pointer(point)
-    }
-
-    fn paint_outset(&self) -> f32 {
-        self.outset.max(self.inner.paint_outset())
     }
 
     fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
@@ -657,10 +620,6 @@ where
 
     fn blocks_pointer(&self, point: skia_safe::Point) -> bool {
         self.inner.blocks_pointer(point)
-    }
-
-    fn paint_outset(&self) -> f32 {
-        self.inner.paint_outset()
     }
 
     fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>
@@ -746,10 +705,6 @@ impl<'a, Command: 'a> Widget<'a, Command> for HitOpaqueWidget<'a, Command> {
 
     fn blocks_pointer(&self, _point: skia_safe::Point) -> bool {
         true
-    }
-
-    fn paint_outset(&self) -> f32 {
-        self.inner.paint_outset()
     }
 
     fn focus_data<'w>(&'w mut self) -> FocusData<'w, Command>

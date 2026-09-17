@@ -176,13 +176,6 @@ impl<'a, Command: 'a> RealizedContainer<'a, Command> {
 }
 
 impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
-    fn paint_outset(&self) -> f32 {
-        self.children
-            .iter()
-            .map(|child| child.widget.paint_outset())
-            .fold(0.0, f32::max)
-    }
-
     fn size(&self) -> Size {
         self.size
     }
@@ -286,12 +279,7 @@ impl<Command> Child<'_, Command> {
 
                 canvas.save();
                 canvas.translate((self.rect.left, self.rect.top));
-                let outset = self.widget.paint_outset();
-                canvas.clip_rect(
-                    Rect::from_size(self.rect.size()).with_outset((outset, outset)),
-                    None,
-                    true,
-                );
+                canvas.clip_rect(Rect::from_size(self.rect.size()), None, true);
                 let result = self.widget.handle_event(arena, event, child_viewport);
                 canvas.restore();
                 result.reveal_translated(self.rect.left, self.rect.top)

@@ -3,6 +3,7 @@
 
 use super::*;
 use imba::event::MouseButton;
+use imba::thunk_ext::ThunkExt;
 use imba::{
     arena::Arena,
     event::{Event, EventResult},
@@ -267,8 +268,8 @@ fn registered_action_opens_a_scrollable_gallery_panel() {
 // specimen content and positions. Export to HIMARK_SHOT for cross-render review.
 #[test]
 fn air_reference_specimens() {
-    use himark::ui::*;
-    use imba::checkbox::CheckboxValue;
+    use air_ui::checkbox::CheckboxValue;
+    use air_ui::*;
     use imba::{constraints::Constraints, LayoutExt};
     let output = std::env::var_os("HIMARK_SHOT").map(PathBuf::from);
     for light in [false, true] {
@@ -281,7 +282,7 @@ fn air_reference_specimens() {
         let ui = imba::UiCtx::cold();
         let mut surface = surfaces::raster_n32_premul((700, 740)).unwrap();
         let canvas = surface.canvas();
-        canvas.clear(air_tokens::color(&store, "background"));
+        canvas.clear(himark::env::Themes::of(&store).ui().air.background.0);
         let arena = Arena::default();
         let mut specimens: Vec<(f32, f32, imba::LayoutBox<'_, ()>)> = Vec::new();
         for (index, (style, sample)) in [
@@ -362,18 +363,18 @@ fn air_reference_specimens() {
         for (col, (name, surface)) in [
             (
                 "Fill",
-                Surface::fill(air_tokens::color(&store, "card-background-default-default")),
+                Surface::fill(himark::env::Themes::of(&store).ui().air.surface.0),
             ),
             (
                 "Bordered",
                 Surface::bordered(
-                    air_tokens::color(&store, "card-background-default-default"),
-                    air_tokens::color(&store, "border"),
+                    himark::env::Themes::of(&store).ui().air.surface.0,
+                    himark::env::Themes::of(&store).ui().air.border.0,
                 ),
             ),
             (
                 "Outline",
-                Surface::outline(air_tokens::color(&store, "border")),
+                Surface::outline(himark::env::Themes::of(&store).ui().air.border.0),
             ),
         ]
         .into_iter()
@@ -433,7 +434,9 @@ fn air_reference_specimens() {
                 thunk.size().height
             ));
             let rect = Rect::from_size(thunk.size());
-            let widget = thunk.realize(&arena, rect);
+            let widget = thunk
+                .overlay_host(imba::overlay::WINDOW)
+                .realize(&arena, rect);
             canvas.save();
             canvas.translate((x, y));
             widget.handle_event(
@@ -468,7 +471,7 @@ fn air_reference_specimens() {
 
 #[test]
 fn button_hover_press_release_and_leave_survive_view_rebuilds() {
-    use himark::ui::ControlState;
+    use air_ui::ControlState;
     let mut gallery = Gallery::new(GalleryMode::Interactive);
     let point = control(&gallery, Command::Press);
     let size = Size::new(WIDTH, 1400.0);

@@ -82,17 +82,20 @@ impl View for TreeLabel {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        let mut style = crate::ui::RowStyle::drawer(store, ui);
-        // Tree rows breathe more than menu rows.
-        style.air = crate::ui::space::M;
-        let tree = crate::env::Themes::of(store).ui().tree.clone();
+        let mut style = crate::RowStyle::drawer(store, ui);
+        // Air tree items use the same 24px line box as list items.
+        style.air = crate::space::XS;
+        let tree = editor::env::Themes::of(store).ui().air.tree.clone();
         let label_style = match (self.dim, self.tint) {
-            (true, _) => style.trail.clone(),
+            (true, _) => style
+                .label
+                .clone()
+                .colored(editor::env::Themes::of(store).ui().air.disabled_text.0),
             (false, TreeTint::Directory) => style.label.clone().colored(tree.directory.0),
             (false, TreeTint::File) => style.label.clone().colored(tree.file.0),
             (false, TreeTint::Label) => style.label.clone(),
         };
-        let mut row = crate::ui::ListRow::new(arena, style.clone())
+        let mut row = crate::ListRow::new(arena, style.clone())
             .label_styled(&label_style, self.label.clone());
         for (text, color) in &self.trail {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
@@ -218,8 +221,7 @@ where
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, TreeItemCommand<V::Command>> {
         let TreeItemChrome { view, store, ui } = self;
-        let tree = crate::env::Themes::of(store).ui().tree.clone();
-        let colors = crate::env::Themes::of(store).ui().peeker.clone();
+        let tree = editor::env::Themes::of(store).ui().air.tree.clone();
         let inset = f32::from(view.depth) * tree.indent;
         let width = constraints.max.width.max(1.0);
         let offset = inset + tree.text_x;
@@ -238,8 +240,7 @@ where
             TreeItemWidget {
                 inner,
                 offset,
-                triangle_x: inset + tree.text_x * 0.28,
-                triangle_half: (tree.font_size * 0.28).max(4.0),
+                triangle_x: inset + tree.text_x - 20.0,
                 expanded: view.expanded,
 
                 zone: match (view.expanded.is_some(), view.toggle_on_body) {
@@ -247,7 +248,7 @@ where
                     (true, false) => offset,
                     (false, _) => 0.0,
                 },
-                color: colors.dim_text.0,
+                color: editor::env::Themes::of(store).ui().air.icon.0,
                 size: Size::new(width, height),
                 _command: std::marker::PhantomData,
             },
@@ -259,7 +260,6 @@ struct TreeItemWidget<Inner, C> {
     inner: Inner,
     offset: f32,
     triangle_x: f32,
-    triangle_half: f32,
     expanded: Option<bool>,
     zone: f32,
     color: skia_safe::Color,
@@ -284,7 +284,6 @@ where
             inner,
             offset,
             triangle_x,
-            triangle_half,
             expanded,
             zone,
             color,
@@ -297,7 +296,6 @@ where
                 inner: inner.realize(arena, viewport),
                 offset,
                 triangle_x,
-                triangle_half,
                 expanded,
                 zone,
                 color,
@@ -337,28 +335,31 @@ where
         match event {
             Event::Paint { canvas, .. } => {
                 if let Some(expanded) = self.expanded {
-                    // The STANDARD chevron — the same stroke the
-                    // editor gutter draws for folds: down when
-                    // expanded, right when collapsed.
+                    // Air UI resources/icons/chevron-down.svg, rotated for a closed branch.
                     let mut paint = Paint::default();
                     paint.set_anti_alias(true);
                     paint.set_color(self.color);
-                    paint.set_stroke(true);
-                    paint.set_stroke_width(2.0);
-                    let cx = self.triangle_x + self.triangle_half;
-                    let cy = self.size.height * 0.5;
-                    let arm = self.triangle_half * 0.8;
-                    let mut path = skia_safe::PathBuilder::new();
-                    if expanded {
-                        path.move_to((cx - arm, cy - arm * 0.6));
-                        path.line_to((cx, cy + arm * 0.8));
-                        path.line_to((cx + arm, cy - arm * 0.6));
-                    } else {
-                        path.move_to((cx - arm * 0.6, cy - arm));
-                        path.line_to((cx + arm * 0.8, cy));
-                        path.line_to((cx - arm * 0.6, cy + arm));
+                    canvas.save();
+                    canvas.translate((self.triangle_x, (self.size.height - 16.0) * 0.5));
+                    if !expanded {
+                        canvas.translate((8.0, 8.0));
+                        canvas.rotate(-90.0, None);
+                        canvas.translate((-8.0, -8.0));
                     }
+                    let mut path = skia_safe::PathBuilder::new();
+                    path.move_to((12.707, 6.0));
+                    for point in [
+                        (8.0, 10.707),
+                        (3.29297, 6.0),
+                        (4.0, 5.29297),
+                        (8.0, 9.29297),
+                        (12.0, 5.29297),
+                    ] {
+                        path.line_to(point);
+                    }
+                    path.close();
                     canvas.draw_path(&path.detach(), &paint);
+                    canvas.restore();
                 }
                 canvas.save();
                 canvas.translate((self.offset, 0.0));

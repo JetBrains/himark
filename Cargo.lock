@@ -102,6 +102,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "air-ui"
+version = "0.1.0"
+dependencies = [
+ "editor",
+ "imba",
+ "serde_json",
+ "skia-safe",
+]
+
+[[package]]
 name = "alacritty_terminal"
 version = "0.26.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1840,6 +1850,7 @@ dependencies = [
 name = "higallery"
 version = "0.1.0"
 dependencies = [
+ "air-ui",
  "himark",
  "imba",
  "skia-safe",
@@ -2040,8 +2051,6 @@ version = "0.1.0"
 dependencies = [
  "desktop",
  "frontend-host",
- "higallery",
- "imba",
  "skia-safe",
  "softbuffer",
  "winit",

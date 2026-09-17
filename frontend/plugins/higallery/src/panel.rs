@@ -6,7 +6,7 @@ use imba::{
     arena::Arena,
     effect::Effects,
     scroll::{ScrollCommand, ScrollView},
-    Layout, LayoutValue, Store, UiCtx, View,
+    Layout, LayoutExt, LayoutValue, Store, UiCtx, View,
 };
 
 /// The workbench supplies fonts, theme, event routing, and the scroll viewport.
@@ -45,7 +45,14 @@ impl View for GalleryPanel {
         store: &'a Store,
         ui: &'a UiCtx,
     ) -> impl Layout<'a, Self::Command> + LayoutValue + 'a {
-        self.scroll.display(arena, store, ui)
+        let background = himark::env::Themes::of(store).ui().air.background.0;
+        self.scroll.display(arena, store, ui).backdrop(
+            move |_: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                let mut paint = skia_safe::Paint::default();
+                paint.set_color(background);
+                canvas.draw_rect(rect, &paint);
+            },
+        )
     }
 }
 

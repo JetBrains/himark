@@ -6,16 +6,16 @@ use imba::{
     arena::Arena,
     constraints::Constraints,
     event::{Event, EventResult},
+    thunk_ext::ThunkExt,
     Layout, Store, Thunk, UiCtx, Widget,
 };
-use skia_safe::{surfaces, Canvas, EncodedImageFormat, Image, Rect, Size};
-use std::{error::Error, path::Path};
+use skia_safe::{surfaces, Canvas, Image, Rect, Size};
+use std::error::Error;
 
 pub const SCREENSHOT_WIDTH: f32 = 1100.0;
 
 /// A standalone adapter: no Application, workbench, host services, or window.
-/// Air typography embeds its fonts in the shared roles; this adapter also
-/// supplies a deterministic fallback for the remaining app chrome.
+/// Shares the editor's embedded font collection for deterministic rendering.
 pub struct Gallery {
     pub(crate) store: Store,
     pub(crate) ui: UiCtx,
@@ -32,12 +32,6 @@ impl Gallery {
         store.put(himark::env::Themes(theme));
         let ui = UiCtx::cold();
         ui.set(himark::env::UiFonts(himark::embedded_fonts::collection()));
-        ui.set(himark::fonts::ChromeTypeface(
-            himark::embedded_fonts::typeface(),
-        ));
-        ui.set(himark::fonts::ChromeTextTypeface(
-            himark::embedded_fonts::typeface(),
-        ));
         Self {
             store,
             ui,
@@ -82,18 +76,13 @@ impl Gallery {
     }
 
     pub fn draw(&self, canvas: &Canvas, size: Size, scroll: f32) {
-        canvas.clear(
-            himark::env::Themes::of(&self.store)
-                .ui()
-                .window
-                .background
-                .0,
-        );
+        canvas.clear(himark::env::Themes::of(&self.store).ui().air.background.0);
         let arena = Arena::default();
         let viewport = Rect::from_xywh(0.0, scroll, size.width, size.height);
         let widget = self
             .content(&arena)
             .layout(&arena, Self::constraints(size.width))
+            .overlay_host(imba::overlay::WINDOW)
             .realize(&arena, viewport);
         canvas.save();
         canvas.clip_rect(Rect::from_size(size), None, false);
@@ -123,6 +112,7 @@ impl Gallery {
             let widget = self
                 .content(&arena)
                 .layout(&arena, Self::constraints(size.width))
+                .overlay_host(imba::overlay::WINDOW)
                 .realize(&arena, viewport);
             widget.handle_event(&arena, &event.translated(0.0, scroll), viewport)
         };
@@ -134,21 +124,4 @@ impl Gallery {
             _ => {}
         }
     }
-}
-
-/// Render complete views and exit without constructing the application or an event loop.
-pub fn write_screenshots(directory: &Path, modes: &[GalleryMode]) -> Result<(), Box<dyn Error>> {
-    std::fs::create_dir_all(directory)?;
-    for &mode in modes {
-        let image = Gallery::new(mode).screenshot()?;
-        let data = image
-            .encode(None, EncodedImageFormat::PNG, None)
-            .ok_or("could not encode gallery PNG")?;
-        let name = match mode {
-            GalleryMode::Interactive => "interactive.png",
-            GalleryMode::AllStates => "all-states.png",
-        };
-        std::fs::write(directory.join(name), data.as_bytes())?;
-    }
-    Ok(())
 }

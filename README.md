@@ -233,21 +233,10 @@ The `higallery` plugin provides **Open UI Gallery** in the command palette
 workbench panel using the running app's fonts and theme. It is registered in
 the native and web hosts.
 
-The standalone desktop target uses the same view without an editor workspace
-or agent host:
-
-```sh
-cargo run -p himark-winit --bin gallery
-cargo run -p himark-winit --bin gallery -- --all-states
-
-# Render complete PNGs and exit; no app, display server, or window is started:
-cargo run -p himark-winit --bin gallery -- --screenshots /tmp/himark-gallery
-# Export only the full list of states:
-cargo run -p himark-winit --bin gallery -- --screenshots /tmp/himark-gallery --all-states
-```
-
-`--screenshots DIRECTORY` writes `interactive.png` and `all-states.png` by
-default. Add `--interactive` or `--all-states` to select a single mode.
+The `air-ui` crate owns the Air components independently of the existing
+Himark controls, so views can migrate one at a time. Colors and typography
+come from the `ui.air` section of the shared theme JSON. Text uses the
+application's font collection, including its cached variable font instances.
 
 Use the mode buttons to switch between **Interactive** and **Full list of
 states**. Interactive mode lets you click buttons and row actions, toggle the
@@ -259,8 +248,6 @@ and states, and expanded/collapsed/leaf tree items. Interactive buttons retain
 hover and press state across view rebuilds. The shared button exposes
 `.state(...)` and `.on_state_change(...)` so other views can own their state
 in the same way.
-The standalone window also supports Tab to switch modes, Page Up/Down to
-scroll, and Home/End to jump to the ends.
 
 The headless screenshot tests render the **entire gallery** in both modes and
 compare it with checked-in PNG baselines in both light and dark themes,
@@ -270,7 +257,7 @@ ignored by default on other platforms because Skia's font rasterizer differs.
 The interaction and workbench action tests run on every platform.
 
 ```sh
-cargo test -p higallery --lib
+cargo test -p air-ui -p higallery --lib
 
 # Export images as well as checking them (HIMARK_SHOT is a directory):
 HIMARK_SHOT=/tmp/himark-gallery cargo test -p higallery --lib
@@ -287,7 +274,7 @@ to `target/gallery-screenshots` (or `HIMARK_SHOT`) for CI to upload.
 ### Comparing against Air UI
 
 The reference source and component mappings are documented in
-`frontend/himark/assets/air-ui/README.md`. The shared primitives own the
+`frontend/editor/assets/air-ui/README.md`. The `air-ui` components own the
 styling; the gallery does not scale or restyle a separate copy.
 
 The geometry regression test checks 40 specimens in each theme against

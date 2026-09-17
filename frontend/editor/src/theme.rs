@@ -8,6 +8,8 @@ use std::sync::Arc;
 use serde::Deserialize;
 use skia_safe::Color;
 
+pub mod air;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum StyleId {
     Emphasis,
@@ -520,6 +522,9 @@ impl From<Rgba> for Color {
 
 #[derive(Clone, Deserialize)]
 pub struct UiTheme {
+    #[serde(default = "air::defaults")]
+    pub air: air::AirTheme,
+
     pub window: WindowChrome,
 
     #[serde(default)]
