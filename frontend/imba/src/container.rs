@@ -151,16 +151,6 @@ impl<'a, Command: 'a> RealizedContainer<'a, Command> {
         self.children.push(Child { rect, widget });
     }
 
-    pub fn layout_data_of(&mut self, index: usize) -> crate::focus::LayoutData<'_, Command> {
-        match self.children.get_mut(index) {
-            Some(child) => {
-                let rect = child.rect;
-                child.widget.layout_data().translated(rect.left, rect.top)
-            }
-            None => crate::focus::LayoutData::default(),
-        }
-    }
-
     pub fn route_to(
         &self,
         index: usize,
@@ -190,14 +180,22 @@ impl<'a, Command> Widget<'a, Command> for RealizedContainer<'a, Command> {
             .any(|child| child.blocks_pointer_at(point))
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
         let mut folded = crate::focus::LayoutData::default();
         for child in self.children.iter_mut().rev() {
             let rect = child.rect;
-            folded = folded.merge_over(child.widget.layout_data().translated(rect.left, rect.top));
+            folded = folded.merge_over(
+                child
+                    .widget
+                    .layout_data(target)
+                    .translated(rect.left, rect.top),
+            );
         }
         folded
     }

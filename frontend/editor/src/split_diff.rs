@@ -1050,14 +1050,14 @@ impl<'a> imba::Widget<'a, SplitDiffCommand> for PairChain<'a> {
         self.pair.overlays()
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, SplitDiffCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, SplitDiffCommand>
     where
         'a: 'w,
     {
-        match self.focused {
-            Some(index) => self.pair.layout_data_of(index),
-            None => imba::focus::LayoutData::default(),
-        }
+        self.pair.layout_data(target)
     }
 }
 

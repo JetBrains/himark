@@ -419,11 +419,14 @@ where
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 

@@ -711,16 +711,18 @@ impl View for EditorView {
         let inner = match self.document.focus(self.editor) {
             EditorFocus::Inlay(key) => {
                 let wrap = move |command| EditorCommand::Inlay { key, command };
-                let (commands, location) = match self.document.inlay_focus_data(store, ui, key) {
-                    Some(mut data) => (
-                        std::mem::take(&mut data.commands)
-                            .into_iter()
-                            .map(|presentable| presentable.map(wrap))
-                            .collect(),
-                        data.location.take(),
-                    ),
-                    None => (Vec::new(), None),
-                };
+                let (commands, location, seat) =
+                    match self.document.inlay_focus_data(store, ui, key) {
+                        Some(mut data) => (
+                            std::mem::take(&mut data.commands)
+                                .into_iter()
+                                .map(|presentable| presentable.map(wrap))
+                                .collect(),
+                            data.location.take(),
+                            data.seat.take(),
+                        ),
+                        None => (Vec::new(), None, None),
+                    };
                 let with_inlay = move |f: &mut dyn FnMut(
                     imba::focus::FocusData<'_, crate::markup::InlayCommand>,
                 ) -> EventResult<
@@ -747,6 +749,7 @@ impl View for EditorView {
                         })
                     })),
                     location,
+                    seat,
                 }
             }
             EditorFocus::Text => FocusData {
@@ -776,6 +779,8 @@ impl View for EditorView {
                     .location
                     .as_ref()
                     .map(|location| Box::new(location.clone()) as Box<dyn std::any::Any>),
+
+                seat: self.document.seat_key(self.editor),
             },
             EditorFocus::None => FocusData::default(),
         };
@@ -1344,7 +1349,10 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
         overlays
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
@@ -1353,13 +1361,12 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
         let view = self.view;
         let bounds = imba::Widget::size(&self.inner);
 
-        match view.document.focus(view.editor) {
-            // A focused inlay's seat comes out of the realized tree:
-            // the placed (gated) inlay widget volunteers it and the
-            // container fold translates it into place. Projected
-            // inlays surface through their HOST pane's fold instead.
-            EditorFocus::Inlay(_) => self.inner.layout_data(),
-            EditorFocus::Text => {
+        // RECOGNITION, not routing: this editor answers only when
+        // the target names ITS seat; anything else forwards into the
+        // fold (nested inlay editors carry their own keys).
+        match view.document.seat_key(view.editor) == Some(target) {
+            false => self.inner.layout_data(target),
+            true => {
                 let fonts = &self.fonts;
                 let theme = &self.theme;
                 LayoutData {
@@ -1390,7 +1397,6 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                     }),
                 }
             }
-            EditorFocus::None => LayoutData::default(),
         }
     }
 }
@@ -1850,13 +1856,13 @@ where
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        match self.focused {
-            true => self.inner.layout_data(),
-            false => imba::focus::LayoutData::default(),
-        }
+        self.inner.layout_data(target)
     }
 }

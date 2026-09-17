@@ -1569,11 +1569,14 @@ impl<'a, Inner: Widget<'a, ChangesCommand>> Widget<'a, ChangesCommand> for Recon
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ChangesCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, ChangesCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 

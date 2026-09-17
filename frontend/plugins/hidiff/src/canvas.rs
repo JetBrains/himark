@@ -603,11 +603,14 @@ impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasP
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, CanvasCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, CanvasCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 
@@ -1033,11 +1036,14 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedPlacehol
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 
@@ -1068,11 +1074,14 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for RewrapOnPaint
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 

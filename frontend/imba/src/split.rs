@@ -277,15 +277,12 @@ impl<'a, FirstCommand: 'a, SecondCommand: 'a> Widget<'a, SplitCommand<FirstComma
 
     fn layout_data<'w>(
         &'w mut self,
+        target: crate::focus::SeatKey,
     ) -> crate::focus::LayoutData<'w, SplitCommand<FirstCommand, SecondCommand>>
     where
         'a: 'w,
     {
-        let index = match self.focused {
-            Pane::First => 0,
-            Pane::Second => 1,
-        };
-        self.panes.layout_data_of(index)
+        self.panes.layout_data(target)
     }
 
     fn handle_event(

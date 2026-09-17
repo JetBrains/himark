@@ -840,11 +840,14 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, TreeCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, TreeCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 

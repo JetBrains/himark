@@ -1379,12 +1379,16 @@ where
         // owned answers (commands, location) are drained through one
         // cursor here and every handler re-seeks on the call — a
         // state walk per ask, nothing laid.
-        let (commands, location) = {
+        let (commands, location, seat) = {
             let mut cursor = self.items.cursor();
             match cursor.seek_to_index(index as u32) {
                 true => {
                     let mut data = cursor.element().view.focus_data(store, ui);
-                    (std::mem::take(&mut data.commands), data.location.take())
+                    (
+                        std::mem::take(&mut data.commands),
+                        data.location.take(),
+                        data.seat.take(),
+                    )
                 }
                 false => return FocusData::default(),
             }
@@ -1416,6 +1420,7 @@ where
                 })
             })),
             location,
+            seat,
         }
     }
 
@@ -1614,74 +1619,50 @@ where
         self.list.handle_event(arena, event, viewport)
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, ListCommand<T::Command>>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, ListCommand<T::Command>>
     where
         'a: 'w,
     {
-        use crate::event::EventResult;
         use crate::focus::LayoutData;
+        // The list realizes rows per traversal, so there is nothing
+        // standing to fold. The FOCUSED row (the list's own state, a
+        // hint — not a second copy of anyone else's routing) is
+        // realized here into the frame arena, and the target key
+        // decides by RECOGNITION whether the seat is really inside.
         let Some(index) = self.list.focused else {
             return LayoutData::default();
         };
         if self.list.items.is_empty() {
             return LayoutData::default();
         }
-        let list = &self.list;
-        let arena = self.arena;
-        let viewport = self.viewport;
-        LayoutData {
-            // The focused row may not be mounted (scrolled away); it
-            // is realized on the ASK, bounded by its row viewport —
-            // IME composition is rare enough that the lazy build
-            // stays off every other path.
-            ime: Some(crate::focus::ImeSeat {
-                origin: skia_safe::Point::default(),
-                clip: None,
-                ask: Box::new(move |origin, clip, visit| {
-                    with_focused_row_at(list, arena, viewport, index, |widget, rect| {
-                        match widget.layout_data().ime.take() {
-                            Some(mut seat) => {
-                                let at = skia_safe::Point::new(
-                                    origin.x + rect.left + seat.origin.x,
-                                    origin.y + rect.top + seat.origin.y,
-                                );
-                                (seat.ask)(at, clip, visit)
-                                    .map(|command| ListCommand::Child(index, command))
-                            }
-                            None => EventResult::Ignored,
-                        }
-                    })
-                    .unwrap_or(EventResult::Ignored)
-                }),
-            }),
+        let mut cursor = self.list.items.cursor();
+        if !cursor.seek_to_index(index as u32) {
+            return LayoutData::default();
         }
+        let rect = self.list.row_rect(&cursor);
+        let child_viewport = viewport_for_child(self.viewport, rect).unwrap_or_default();
+        // The cursor moves into the arena so the row view's borrow
+        // reaches the frame lifetime; the realized row rides along.
+        let cursor: &'a _ = crate::arena::ArenaBox::leak(self.arena.boxed(cursor));
+        let widget = crate::Layout::layout(
+            cursor
+                .element()
+                .view
+                .display(self.arena, self.list.store, self.list.ui),
+            self.arena,
+            self.list.child_constraints,
+        )
+        .realize(self.arena, child_viewport);
+        let widget: &'w mut crate::WidgetBox<'a, T::Command> =
+            crate::arena::ArenaBox::leak(self.arena.boxed(widget));
+        widget
+            .layout_data(target)
+            .translated(rect.left, rect.top)
+            .map(move |command| ListCommand::Child(index, command))
     }
-}
-
-fn with_focused_row_at<'a, T, K, R>(
-    list: &ListWidget<'a, T, K>,
-    arena: &'a Arena,
-    viewport: Rect,
-    index: usize,
-    f: impl FnOnce(&mut crate::WidgetBox<'_, T::Command>, Rect) -> R,
-) -> Option<R>
-where
-    T: View + Clone,
-    K: Clone + Eq + Hash,
-{
-    let mut cursor = list.items.cursor();
-    if !cursor.seek_to_index(index as u32) {
-        return None;
-    }
-    let rect = list.row_rect(&cursor);
-    let child_viewport = viewport_for_child(viewport, rect).unwrap_or_default();
-    let mut widget = crate::Layout::layout(
-        cursor.element().view.display(arena, list.store, list.ui),
-        arena,
-        list.child_constraints,
-    )
-    .realize(arena, child_viewport);
-    Some(f(&mut widget, rect))
 }
 
 impl<'a, T, K> Widget<'a, ListCommand<T::Command>> for ListWidget<'a, T, K>

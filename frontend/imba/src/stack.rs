@@ -200,13 +200,18 @@ impl<'a, BaseCommand: 'a, ModalCommand: 'a> Widget<'a, StackCommand<BaseCommand,
 
     fn layout_data<'w>(
         &'w mut self,
+        target: crate::focus::SeatKey,
     ) -> crate::focus::LayoutData<'w, StackCommand<BaseCommand, ModalCommand>>
     where
         'a: 'w,
     {
+        let base = self.base.layout_data(target).map(StackCommand::Base);
         match &mut self.modal {
-            Some(modal) => modal.layout_data().map(StackCommand::Modal),
-            None => self.base.layout_data().map(StackCommand::Base),
+            Some(modal) => modal
+                .layout_data(target)
+                .map(StackCommand::Modal)
+                .merge_over(base),
+            None => base,
         }
     }
 

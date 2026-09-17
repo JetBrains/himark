@@ -62,6 +62,12 @@ pub struct Editor {
     pub(crate) bounds: Option<FragmentKey>,
     pub(crate) focus: EditorFocus,
 
+    /// The seat's IDENTITY — the flat key the semantic walk hands to
+    /// the layout fold; the widget born from this editor answers the
+    /// IME ask by RECOGNIZING it (imba::focus::SeatKey). Clones share
+    /// it: a persistent copy is the same logical editor.
+    pub(crate) seat: imba::focus::SeatKey,
+
     pub(crate) softwrap: bool,
 
     pub(crate) scroll_x: f32,
@@ -164,6 +170,7 @@ impl Editor {
             before: None,
             bounds,
             focus: EditorFocus::Text,
+            seat: imba::focus::SeatKey::mint(),
             softwrap: true,
             scroll_x: 0.0,
             target_width: width,

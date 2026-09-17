@@ -170,11 +170,14 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedLoader<I
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 
@@ -236,13 +239,16 @@ impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCom
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, RowCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, RowCommand>
     where
         'a: 'w,
     {
         match self {
-            Either::Loader(widget) => widget.layout_data(),
-            Either::Turn(widget) => widget.layout_data(),
+            Either::Loader(widget) => widget.layout_data(target),
+            Either::Turn(widget) => widget.layout_data(target),
         }
     }
 }
@@ -2123,11 +2129,14 @@ impl<'a> Widget<'a, ChatPanelCommand>
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ChatPanelCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, ChatPanelCommand>
     where
         'a: 'w,
     {
-        self.panel.layout_data()
+        self.panel.layout_data(target)
     }
 }
 

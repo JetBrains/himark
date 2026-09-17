@@ -304,11 +304,14 @@ impl<'a, C: 'a> Widget<'a, TooltipCommand<C>> for TooltipWidget<'a, C> {
         overlays
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, TooltipCommand<C>>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, TooltipCommand<C>>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 

@@ -382,14 +382,16 @@ where
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        match self.focused {
-            true => self.inner.layout_data(),
-            false => crate::focus::LayoutData::default(),
-        }
+        // No gate: the fold answers by RECOGNITION of the target
+        // key, so an unfocused scope simply contains no match.
+        self.inner.layout_data(target)
     }
 }
 
@@ -430,11 +432,14 @@ where
         overlays
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }
 
@@ -468,11 +473,14 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 
     fn handle_event(
@@ -532,11 +540,14 @@ where
         self.inner.blocks_pointer(point)
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 
     fn handle_event(
@@ -604,10 +615,13 @@ impl<'a, Command: 'a> Widget<'a, Command> for HitOpaqueWidget<'a, Command> {
         true
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }

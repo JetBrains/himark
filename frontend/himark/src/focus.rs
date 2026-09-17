@@ -29,12 +29,16 @@ impl Application {
         window: crate::WindowId,
         f: impl FnOnce(&mut dyn ImeClient) -> R,
     ) -> Option<R> {
-        // The IME seat is layout-derived (the caret rect rides the
-        // realized frame's fold), so this ask builds one bounded
-        // widget — the only remaining build-to-ask, and it fires
-        // only while composing.
+        // Two asks, one source of truth: the SEMANTIC walk names the
+        // focused seat, and the layout fold answers by RECOGNIZING
+        // that key — it never re-decides focus. This is the only
+        // remaining build-to-ask, and it fires only while composing.
         let size = self.window_viewport(window)?;
         let store = self.window_store(window);
+        let target = {
+            let mut data = window_focus_data(&store, self.ui.as_ref(), window)?;
+            data.seat.take()?
+        };
         let mut arena = std::mem::take(&mut self.ui_arena);
         arena.reset();
         let mut f = Some(f);
@@ -48,7 +52,7 @@ impl Application {
                 imba::constraints::Constraints::tight(size),
             );
             let mut widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_size(size));
-            let performed = imba::Widget::layout_data(&mut widget)
+            let performed = imba::Widget::layout_data(&mut widget, target)
                 .ime
                 .take()
                 .map(|mut seat| {

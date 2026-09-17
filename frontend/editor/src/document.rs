@@ -1171,6 +1171,10 @@ impl Document {
         id
     }
 
+    pub fn seat_key(&self, editor: EditorId) -> Option<imba::focus::SeatKey> {
+        self.editors.get(&editor).map(|state| state.seat)
+    }
+
     pub fn manage_repairs_in_pair(&mut self, editor: EditorId) {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.pair_managed = true;

@@ -1289,11 +1289,14 @@ impl<'a> imba::Widget<'a, ListPanelCommand> for ListPanelWidget<'a> {
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, ListPanelCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, ListPanelCommand>
     where
         'a: 'w,
     {
-        self.panel.layout_data()
+        self.panel.layout_data(target)
     }
 }
 

@@ -190,9 +190,13 @@ fn pane_focus_data<'w>(
     let Some(view) = mint() else {
         return FocusData::default();
     };
-    let (mut commands, location) = {
+    let (mut commands, location, seat) = {
         let mut data = view.focus_data(store, ui);
-        (std::mem::take(&mut data.commands), data.location.take())
+        (
+            std::mem::take(&mut data.commands),
+            data.location.take(),
+            data.seat.take(),
+        )
     };
     let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
         if view.split.left.focus() != himark::EditorFocus::None {
@@ -242,6 +246,7 @@ fn pane_focus_data<'w>(
             })
         })),
         location,
+        seat,
     }
 }
 
@@ -294,12 +299,15 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         inner.handle_event(arena, event, viewport)
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, UnifiedDiffCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, UnifiedDiffCommand>
     where
         'a: 'w,
     {
         match &mut self.inner {
-            Some(inner) => inner.layout_data(),
+            Some(inner) => inner.layout_data(target),
             None => imba::focus::LayoutData::default(),
         }
     }

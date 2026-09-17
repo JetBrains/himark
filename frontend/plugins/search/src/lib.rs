@@ -878,15 +878,14 @@ impl<'a> Widget<'a, SearchCommand> for SearchWidget<'a> {
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, SearchCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, SearchCommand>
     where
         'a: 'w,
     {
-        let index = match self.focus {
-            SearchArea::Input => self.input_index,
-            SearchArea::Results => self.results_index,
-        };
-        self.panel.layout_data_of(index)
+        self.panel.layout_data(target)
     }
 }
 

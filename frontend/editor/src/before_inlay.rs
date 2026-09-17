@@ -522,10 +522,13 @@ impl<'a, Inner: imba::Widget<'a, BeforeCommand>> imba::Widget<'a, BeforeCommand>
         result
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, BeforeCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, BeforeCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }

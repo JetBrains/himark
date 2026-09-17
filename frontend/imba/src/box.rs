@@ -47,10 +47,13 @@ where
         (**self).overlays()
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, Command>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        (**self).layout_data()
+        (**self).layout_data(target)
     }
 }

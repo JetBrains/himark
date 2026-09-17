@@ -333,13 +333,37 @@ impl View for Layers {
         fn first<T>(seats: Vec<Option<T>>) -> Option<T> {
             seats.into_iter().flatten().next()
         }
-        let (clipboard, location) = {
-            let t = (toolbar.clipboard.take(), toolbar.location.take());
-            let m = (modal.clipboard.take(), modal.location.take());
-            let sd = (side.clipboard.take(), side.location.take());
-            let d = (dock.clipboard.take(), dock.location.take());
-            let b = (bottom.clipboard.take(), bottom.location.take());
-            let ba = (base.clipboard.take(), base.location.take());
+        let (clipboard, location, seat) = {
+            let t = (
+                toolbar.clipboard.take(),
+                toolbar.location.take(),
+                toolbar.seat.take(),
+            );
+            let m = (
+                modal.clipboard.take(),
+                modal.location.take(),
+                modal.seat.take(),
+            );
+            let sd = (
+                side.clipboard.take(),
+                side.location.take(),
+                side.seat.take(),
+            );
+            let d = (
+                dock.clipboard.take(),
+                dock.location.take(),
+                dock.seat.take(),
+            );
+            let b = (
+                bottom.clipboard.take(),
+                bottom.location.take(),
+                bottom.seat.take(),
+            );
+            let ba = (
+                base.clipboard.take(),
+                base.location.take(),
+                base.seat.take(),
+            );
             let toolbar_first = focus == LayerFocus::Toolbar;
             macro_rules! route_seat {
                 ($slot:tt) => {{
@@ -363,7 +387,7 @@ impl View for Layers {
                     }
                 }};
             }
-            (route_seat!(0), route_seat!(1))
+            (route_seat!(0), route_seat!(1), route_seat!(2))
         };
 
         FocusData {
@@ -372,6 +396,7 @@ impl View for Layers {
             on_text,
             clipboard,
             location,
+            seat,
         }
     }
 
@@ -504,52 +529,47 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         overlays
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, WindowCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, WindowCommand>
     where
         'a: 'w,
     {
-        use imba::focus::LayoutData;
-        let focus = self.focus;
-        let has_modal = self.modal.is_some();
-        let toolbar_first = focus == LayerFocus::Toolbar;
-
-        let t = self.toolbar.layout_data().map(WindowCommand::Toolbar).ime;
-        let m = self
-            .modal
-            .as_mut()
-            .and_then(|modal| modal.layout_data().map(WindowCommand::Modal).ime);
-        let sd = self
-            .side
-            .as_mut()
-            .and_then(|side| side.layout_data().map(WindowCommand::Side).ime);
-        let d = self
-            .dock
-            .as_mut()
-            .and_then(|dock| dock.layout_data().map(WindowCommand::Dock).ime);
-        let b = self
-            .bottom
-            .as_mut()
-            .and_then(|bottom| bottom.layout_data().map(WindowCommand::Bottom).ime);
-        let ba = self.base.layout_data().map(WindowCommand::Base).ime;
-
-        fn first<T>(seats: Vec<Option<T>>) -> Option<T> {
-            seats.into_iter().flatten().next()
+        // A DUMB fold: no copy of the region priority lives here.
+        // The target key names the seat; exactly one region
+        // contains it.
+        let mut folded = self.base.layout_data(target).map(WindowCommand::Base);
+        folded = self
+            .toolbar
+            .layout_data(target)
+            .map(WindowCommand::Toolbar)
+            .merge_over(folded);
+        if let Some(side) = &mut self.side {
+            folded = side
+                .layout_data(target)
+                .map(WindowCommand::Side)
+                .merge_over(folded);
         }
-        let ime = if has_modal {
-            match toolbar_first {
-                true => first(vec![t, m]),
-                false => first(vec![m, t]),
-            }
-        } else {
-            let banded = |gate: bool, seat| if gate { seat } else { None };
-            let bottom_seat = banded(focus == LayerFocus::Bottom, b);
-            let dock_seat = banded(focus == LayerFocus::Dock, d);
-            match toolbar_first {
-                true => first(vec![t, sd, bottom_seat, dock_seat, ba]),
-                false => first(vec![sd, bottom_seat, dock_seat, t, ba]),
-            }
-        };
-        LayoutData { ime }
+        if let Some(dock) = &mut self.dock {
+            folded = dock
+                .layout_data(target)
+                .map(WindowCommand::Dock)
+                .merge_over(folded);
+        }
+        if let Some(bottom) = &mut self.bottom {
+            folded = bottom
+                .layout_data(target)
+                .map(WindowCommand::Bottom)
+                .merge_over(folded);
+        }
+        if let Some(modal) = &mut self.modal {
+            folded = modal
+                .layout_data(target)
+                .map(WindowCommand::Modal)
+                .merge_over(folded);
+        }
+        folded
     }
 
     fn handle_event(

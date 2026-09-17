@@ -320,14 +320,17 @@ impl<'a, ContentCommand: 'a> Widget<'a, ScrollCommand<ContentCommand>>
         crate::overlay::map_overlays(overlays, &ScrollCommand::Content)
     }
 
-    fn layout_data<'w>(&'w mut self) -> crate::focus::LayoutData<'w, ScrollCommand<ContentCommand>>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: crate::focus::SeatKey,
+    ) -> crate::focus::LayoutData<'w, ScrollCommand<ContentCommand>>
     where
         'a: 'w,
     {
         let scroll_y = self.scroll_y;
         let viewport = self.viewport;
         self.content
-            .layout_data()
+            .layout_data(target)
             .translated(0.0, -scroll_y)
             .clipped(Rect::from_wh(viewport.width, viewport.height))
             .map(ScrollCommand::Content)

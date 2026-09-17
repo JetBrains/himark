@@ -214,11 +214,11 @@ impl<'a, Command: 'a> Widget<'a, Command> for WidgetBox<'a, Command> {
         self.0.blocks_pointer(point)
     }
 
-    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
+    fn layout_data<'w>(&'w mut self, target: focus::SeatKey) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.0.layout_data()
+        self.0.layout_data(target)
     }
 }
 
@@ -250,11 +250,11 @@ impl<'a, Command: 'a, W: Widget<'a, Command>> Widget<'a, Command> for Eager<W> {
         self.0.blocks_pointer(point)
     }
 
-    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
+    fn layout_data<'w>(&'w mut self, target: focus::SeatKey) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
     {
-        self.0.layout_data()
+        self.0.layout_data(target)
     }
 }
 
@@ -288,13 +288,16 @@ pub trait Widget<'a, Command> {
     }
 
     /// The LAYOUT-derived focus answers, folded up the realized tree
-    /// with translate/clip like paint. Semantic focus (keys, text,
-    /// clipboard, commands, location) lives on `View::focus_data`.
-    fn layout_data<'w>(&'w mut self) -> focus::LayoutData<'w, Command>
+    /// with translate/clip like paint. The TARGET names the focused
+    /// seat (harvested from the semantic walk); a widget answers by
+    /// RECOGNIZING its own key — containers stay dumb folds, no
+    /// second copy of the focus routing exists on this side.
+    fn layout_data<'w>(&'w mut self, target: focus::SeatKey) -> focus::LayoutData<'w, Command>
     where
         'a: 'w,
         Command: 'a,
     {
+        let _ = target;
         focus::LayoutData::default()
     }
 }

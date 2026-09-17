@@ -146,7 +146,7 @@ impl imba::View for UnifiedDiffView {
                 // persistent, the clone is cheap); handlers re-mint
                 // per call because the semantic data may not outlive
                 // a temporary.
-                let (commands, location) = match self.inline_face(store) {
+                let (commands, location, seat) = match self.inline_face(store) {
                     Some(view) => {
                         let mut data = view.focus_data(store, ui);
                         (
@@ -155,9 +155,10 @@ impl imba::View for UnifiedDiffView {
                                 .map(|presentable| presentable.map(UnifiedDiffCommand::Inline))
                                 .collect(),
                             data.location.take(),
+                            data.seat.take(),
                         )
                     }
-                    None => (Vec::new(), None),
+                    None => (Vec::new(), None, None),
                 };
                 let with_face = move |f: &mut dyn FnMut(
                     imba::focus::FocusData<'_, EditorCommand>,
@@ -183,6 +184,7 @@ impl imba::View for UnifiedDiffView {
                         })
                     })),
                     location,
+                    seat,
                 }
             }
         };
@@ -372,10 +374,13 @@ impl<'a> imba::Widget<'a, EditorCommand> for InlinePane<'a> {
         std::mem::take(&mut self.projected)
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
-        self.inner.layout_data()
+        self.inner.layout_data(target)
     }
 }

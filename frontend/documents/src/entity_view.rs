@@ -115,12 +115,16 @@ impl View for EditorIdView {
         // The editor view is MINTED from the store per ask (documents
         // are persistent, the clone is cheap); handlers re-mint per
         // call because the data may not outlive a temporary.
-        let (commands, location) = match self.gathered(store) {
+        let (commands, location, seat) = match self.gathered(store) {
             Some(view) => {
                 let mut data = view.focus_data(store, ui);
-                (std::mem::take(&mut data.commands), data.location.take())
+                (
+                    std::mem::take(&mut data.commands),
+                    data.location.take(),
+                    data.seat.take(),
+                )
             }
-            None => (Vec::new(), None),
+            None => (Vec::new(), None, None),
         };
         let with_view =
             move |f: &mut dyn FnMut(FocusData<'_, EditorCommand>) -> EventResult<EditorCommand>| {
@@ -144,6 +148,7 @@ impl View for EditorIdView {
                 })
             })),
             location,
+            seat,
         }
     }
 
@@ -253,47 +258,30 @@ impl<'a> Widget<'a, EditorCommand> for GatheredPane<'a> {
         }
     }
 
-    fn layout_data<'w>(&'w mut self) -> imba::focus::LayoutData<'w, EditorCommand>
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, EditorCommand>
     where
         'a: 'w,
     {
-        use imba::event::EventResult;
         use imba::focus::LayoutData;
 
         let Some(view) = &self.view else {
             return LayoutData::default();
         };
-        let store = self.store;
-        let ui = self.ui;
-        let arena = self.arena;
-        let constraints = self.constraints;
-        let viewport = self.viewport;
-        LayoutData {
-            // The rect is a layout question: the pane realizes its
-            // editor ON THE ASK, bounded by the frame's viewport —
-            // IME composition is rare enough that nothing else pays.
-            ime: Some(imba::focus::ImeSeat {
-                origin: skia_safe::Point::new(self.content_pad, 0.0),
-                clip: None,
-                ask: Box::new(move |origin, clip, visit| {
-                    let mut widget =
-                        imba::Layout::layout(view.display(arena, store, ui), arena, constraints)
-                            .realize(arena, viewport);
-                    let result = match widget.layout_data().ime.take() {
-                        Some(mut seat) => {
-                            let at = skia_safe::Point::new(
-                                origin.x + seat.origin.x,
-                                origin.y + seat.origin.y,
-                            );
-                            (seat.ask)(at, clip, visit)
-                        }
-                        None => EventResult::Ignored,
-                    };
-                    drop(widget);
-                    result
-                }),
-            }),
-        }
+        // This pane defers its editor build; for the fold it realizes
+        // NOW, into the frame arena, bounded by the frame's viewport
+        // — and the TARGET decides by recognition whether the seat is
+        // really in here. Only the IME ask ever pays for this.
+        let widget = imba::Layout::layout(
+            view.display(self.arena, self.store, self.ui),
+            self.arena,
+            self.constraints,
+        )
+        .realize(self.arena, self.viewport);
+        let widget = imba::arena::ArenaBox::leak(self.arena.boxed(widget));
+        widget.layout_data(target).translated(self.content_pad, 0.0)
     }
 
     fn handle_event(

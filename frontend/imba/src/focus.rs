@@ -42,6 +42,26 @@ pub struct FocusData<'w, Command> {
     pub clipboard: Option<ClipboardSeat<'w, Command>>,
 
     pub location: Option<Box<dyn std::any::Any>>,
+
+    /// The focused text seat's IDENTITY — minted by the leaf that
+    /// owns it, riding the walk untouched (like `location`). The
+    /// layout fold takes it as the TARGET and answers by
+    /// recognition, never by re-deciding focus: the two trees share
+    /// this one value instead of two copies of the routing.
+    pub seat: Option<SeatKey>,
+}
+
+/// An opaque, globally minted identity for a text seat. Flat on
+/// purpose: the layout fold visits the realized tree anyway, so the
+/// key only needs to be RECOGNIZED at the leaf — never routed by.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct SeatKey(u64);
+
+impl SeatKey {
+    pub fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
 }
 
 impl<Command> Default for FocusData<'_, Command> {
@@ -52,6 +72,7 @@ impl<Command> Default for FocusData<'_, Command> {
             on_text: None,
             clipboard: None,
             location: None,
+            seat: None,
         }
     }
 }
@@ -101,6 +122,7 @@ impl<'w, Command> FocusData<'w, Command> {
                 Box::new(move |visit| seat(visit).map(&map))
             }),
             location: self.location,
+            seat: self.seat,
         }
     }
 
@@ -125,6 +147,7 @@ impl<'w, Command> FocusData<'w, Command> {
             }),
             clipboard: self.clipboard.or(outer.clipboard),
             location: self.location.or(outer.location),
+            seat: self.seat.or(outer.seat),
         }
     }
 
