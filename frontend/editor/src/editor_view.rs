@@ -1306,6 +1306,10 @@ impl EditorCoreView<'_> {
         self.shared.document
     }
 
+    fn dragging(&self) -> bool {
+        self.document().editor(self.editor()).drag.is_some()
+    }
+
     fn editor(&self) -> crate::editor::EditorId {
         self.shared.editor
     }
@@ -1518,10 +1522,17 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 },
             }),
 
-            Event::MouseDrag { point, .. } if text_focused => {
+            // Drags and releases are BROADCAST by containers (no
+            // rect cull), so they may only be claimed by the editor
+            // that OWNS the drag — the one whose click armed it. A
+            // text-focused gate here let a once-clicked before-card
+            // claim every later release and steal the host's focus.
+            Event::MouseDrag { point, .. } if self.dragging() => {
                 EventResult::Command(EditorCommand::Drag { point: *point })
             }
-            Event::MouseUp { .. } if text_focused => EventResult::Command(EditorCommand::DragEnd),
+            Event::MouseUp { .. } if self.dragging() => {
+                EventResult::Command(EditorCommand::DragEnd)
+            }
 
             Event::HitTest { point, miss } if self.location.is_some() => {
                 use skia_safe::Contains;

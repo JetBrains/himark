@@ -16,3 +16,4 @@ flag!(landing_probe, "HIMARK_LANDING_PROBE");
 flag!(trace_repair, "HIMARK_TRACE_REPAIR");
 flag!(trace_resize, "HIMARK_TRACE_RESIZE");
 flag!(trace_skip, "HIMARK_TRACE_SKIP");
+flag!(focus_trace, "HIMARK_TRACE_FOCUS");

@@ -2219,3 +2219,115 @@ fn folded_squash_paint_cost_is_size_independent() {
          5k {small:.2}ms vs 200k {large:.2}ms"
     );
 }
+
+#[test]
+fn a_full_click_on_host_text_keeps_host_focus() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    // Small diff: a changed head, unchanged middle, changed tail —
+    // two before-cards on the inline face.
+    let mut old_body = String::from("old head\n");
+    let mut new_body = String::from("new head\n");
+    for n in 0..30 {
+        old_body.push_str(&format!("same line {n}\n"));
+        new_body.push_str(&format!("same line {n}\n"));
+    }
+    old_body.push_str("old tail\n");
+    new_body.push_str("new tail\n");
+
+    himarkdown::register_handlers(&mut app);
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::embedded_fonts::source()();
+    let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
+    let operation = himark::diff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "small.md".to_owned(),
+        old: location("small.md.old", himark::ResourceType::document()),
+        new: location("small.md", himark::ResourceType::document()),
+        added: Some(2),
+        removed: Some(2),
+    };
+    // A MISMATCHED build width — the real canvas arms at one width
+    // and lands after a resize; the rewrap ride reconciles.
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 700.0,
+        failed: None,
+    };
+    let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
+        folder: location("proj", himark::ResourceType::directory()),
+    });
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        canvas.seed_built_for_tests(&mut store, &ui, file, built);
+    }
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    for _ in 0..6 {
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    }
+
+    let host_focus = |app: &Application| -> String {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = canvas
+                    .probe_focus()
+                    .into_iter()
+                    .next()
+                    .map(|(_, host, _)| host);
+            }
+        });
+        shot.expect("the built row")
+    };
+    let full_click = |app: &mut Application, y: f32| {
+        let _ = himark::test_driver::click(app, 550.0, y, 1100.0, 800.0);
+        let _ = himark::test_driver::mouse_up(app, 550.0, y);
+    };
+
+    // REGRESSION (the focus-trace hunt, 2026-09-18): MouseUp is
+    // BROADCAST by containers, and a once-clicked before-card kept
+    // its inner editor text-focused — so it claimed every later
+    // release and its DragEnd yanked host focus back into the card
+    // on every host click. Releases belong to the DRAG OWNER only.
+    let (card_y, text_y) = (200.0, 260.0);
+    full_click(&mut app, card_y);
+    assert!(
+        host_focus(&app).starts_with("Inlay"),
+        "the card click focuses the card: {}",
+        host_focus(&app)
+    );
+
+    full_click(&mut app, text_y);
+    assert_eq!(
+        host_focus(&app),
+        "Text",
+        "a full host click keeps host focus"
+    );
+    full_click(&mut app, text_y);
+    assert_eq!(host_focus(&app), "Text", "…and stays on EVERY later click");
+
+    let _ = himark::test_driver::mouse_move(&mut app, 550.0, card_y);
+    assert_eq!(host_focus(&app), "Text", "hovering the card moves nothing");
+}

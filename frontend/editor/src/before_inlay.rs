@@ -329,6 +329,10 @@ impl BeforeCommand {
                 | EditorCommand::Retheme { .. }
                 | EditorCommand::Viewport { .. }
                 | EditorCommand::ViewportTop(_)
+                // Focus rides CLICKS; a drag continuation or release
+                // reaching a card must never move it.
+                | EditorCommand::Drag { .. }
+                | EditorCommand::DragEnd
         )
     }
 }

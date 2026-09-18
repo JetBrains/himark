@@ -2358,6 +2358,22 @@ impl Document {
         let fonts = crate::env::ui_collection(store, ui);
         let theme = &crate::env::Themes::of(store);
         if take_focus {
+            if crate::env_flags::focus_trace() && self.focus(editor) != EditorFocus::Inlay(key) {
+                let label = if let Some(before) =
+                    command.downcast_ref::<crate::before_inlay::BeforeCommand>()
+                {
+                    match before {
+                        crate::before_inlay::BeforeCommand::Editor(inner) => {
+                            format!("Before(Editor::{})", editor_command_label(inner))
+                        }
+                        crate::before_inlay::BeforeCommand::Rewrap(_) => "Before(Rewrap)".into(),
+                        crate::before_inlay::BeforeCommand::Tick(_) => "Before(Tick)".into(),
+                    }
+                } else {
+                    format!("{:?}", command.type_id())
+                };
+                eprintln!("[focus-trace] host {editor:?} -> Inlay({key:?}) via {label}",);
+            }
             self.set_focus(editor, EditorFocus::Inlay(key));
         }
         let (performed, edit) = fx.scope(
@@ -3034,4 +3050,28 @@ fn utf16_to_byte_in(s: &str, utf16: u32) -> u32 {
 pub enum Provenance {
     Ours,
     Shared,
+}
+
+fn editor_command_label(command: &crate::editor_view::EditorCommand) -> &'static str {
+    use crate::editor_view::EditorCommand as E;
+    match command {
+        E::InsertText { .. } => "InsertText",
+        E::Enter { .. } => "Enter",
+        E::Click { .. } => "Click",
+        E::Drag { .. } => "Drag",
+        E::DragEnd => "DragEnd",
+        E::Hover(_) => "Hover",
+        E::Move { .. } => "Move",
+        E::Viewport { .. } => "Viewport",
+        E::ViewportTop(_) => "ViewportTop",
+        E::ApplyRepair(_) => "ApplyRepair",
+        E::ApplyReparse(_) => "ApplyReparse",
+        E::ApplyEnrichment(_) => "ApplyEnrichment",
+        E::ApplyScrollStripes(_) => "ApplyScrollStripes",
+        E::Retheme { .. } => "Retheme",
+        E::Inlay { .. } => "Inlay",
+        E::SetMarkedText { .. } => "SetMarkedText",
+        E::HorizontalScroll(_) => "HorizontalScroll",
+        _ => "other",
+    }
 }
