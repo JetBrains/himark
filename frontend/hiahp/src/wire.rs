@@ -1075,21 +1075,23 @@ impl AhpServer for WireHost {
         &self,
         channel: Uri,
     ) -> SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
+        // The pump MUST advance `last_seen` (via `pump_channel`, like
+        // every other channel) — a bespoke pump that ignored it left
+        // the client's cursor behind the doc channel, so a reconnect
+        // re-requested already-seen edits and the rebase log applied
+        // them a second time as foreign ops: character doubling after
+        // a reconnect.
+        let last_seen = Arc::clone(&self.last_seen);
+        let tag = self.tag.clone();
         Box::pin(self.run_ask(move |active| async move {
-            let mut sub = active.client.attach_subscription(&channel).await;
+            let sub = active.client.attach_subscription(&channel).await;
             let feed = Arc::new(Feed::default());
             active
                 .feeds
                 .lock()
                 .expect("wire feeds")
                 .insert(channel.clone(), Arc::clone(&feed));
-            tokio::spawn(async move {
-                while let Some(event) = sub.recv().await {
-                    if let ahp::SubscriptionEvent::Action(envelope) = event {
-                        feed.push(envelope.action);
-                    }
-                }
-            });
+            pump_channel(sub, feed, last_seen, tag);
             let result: serde_json::Value = active
                 .client
                 .request("subscribe", serde_json::json!({ "channel": channel }))
@@ -1154,9 +1156,9 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn unsubscribe_document(&self, channel: &Uri) {
+    fn unsubscribe_document(&self, channel: &Uri) -> SeatFuture<()> {
         let channel = channel.clone();
-        let _ = self.run_ask(move |active| async move {
+        let ask = self.run_ask(move |active| async move {
             active.feeds.lock().expect("wire feeds").remove(&channel);
             active
                 .client
@@ -1164,6 +1166,11 @@ impl AhpServer for WireHost {
                 .await
                 .map_err(|error| format!("unsubscribe {channel}: {error}"))
         });
+        // A failed unsubscribe means the connection died — and a dead
+        // connection takes its subscriptions with it.
+        Box::pin(async move {
+            let _ = ask.await;
+        })
     }
 
     fn lsp(

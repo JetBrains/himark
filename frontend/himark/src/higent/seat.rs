@@ -213,7 +213,10 @@ pub trait AhpServer: Send + Sync + 'static {
         )))
     }
 
-    fn unsubscribe_document(&self, channel: &Uri);
+    /// Resolves once the host has dropped the subscription (or the
+    /// connection is dead, which drops it with the connection) — the
+    /// caller can order a fresh subscribe strictly AFTER it.
+    fn unsubscribe_document(&self, channel: &Uri) -> SeatFuture<()>;
 
     fn lsp(
         &self,

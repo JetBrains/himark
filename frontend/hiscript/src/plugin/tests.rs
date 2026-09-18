@@ -351,7 +351,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
         subscribe_document(channel: String) -> himark::higent::SeatFuture<Result<himark::higent::seat::DocumentState, String>>;
         poll_document(channel: String) -> himark::higent::SeatFuture<Vec<himark::higent::seat::DocumentApplied>>;
         dispatch_document(channel: &String, action: himark::higent::seat::DocumentApplied) -> ();
-        unsubscribe_document(channel: &String) -> ();
+        unsubscribe_document(channel: &String) -> himark::higent::SeatFuture<()>;
         lsp(session: String, method: String, params: serde_json::Value) -> himark::higent::SeatFuture<Result<serde_json::Value, String>>;
     }
 

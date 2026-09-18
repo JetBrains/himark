@@ -58,7 +58,7 @@ impl crate::higent::AhpServer for InertSeat {
         subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
         poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
         dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
-        unsubscribe_document(channel: &String) -> ();
+        unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
         lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
     }
 

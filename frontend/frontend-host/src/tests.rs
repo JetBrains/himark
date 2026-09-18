@@ -3148,6 +3148,26 @@ impl Drop for SpawnedHost {
     }
 }
 
+/// Re-exec entry point for `spawn_host_inner`: it launches THIS
+/// freshly-built test binary with `--ignored --exact
+/// tests::agent_host_subprocess` and `HIMARK_TEST_AGENT_HOST=1`, so
+/// the agent host under test is always current host code — there is
+/// no separate `himark-agent-host` binary to rebuild and forget. A
+/// plain `--ignored` run without the env is a no-op.
+#[test]
+#[ignore = "internal re-exec entry point (spawn_host_inner)"]
+fn agent_host_subprocess() {
+    if std::env::var_os("HIMARK_TEST_AGENT_HOST").is_none() {
+        return;
+    }
+    let socket = std::env::var_os("HIMARK_TEST_AGENT_HOST_SOCKET").map(std::path::PathBuf::from);
+    let http = std::env::var("HIMARK_TEST_AGENT_HOST_HTTP").ok();
+    let web_root =
+        std::env::var_os("HIMARK_TEST_AGENT_HOST_WEB_ROOT").map(std::path::PathBuf::from);
+    let code = agent_host::run_with(socket.as_deref(), http.as_deref(), web_root.as_deref());
+    std::process::exit(code);
+}
+
 fn spawn_host(dir: &std::path::Path, claude_binary: &str) -> SpawnedHost {
     spawn_host_with_args(dir, claude_binary, &[])
 }
@@ -3167,33 +3187,45 @@ fn spawn_host_inner(
     clean: bool,
     args: &[&str],
 ) -> SpawnedHost {
-    let bin = std::env::current_exe()
-        .expect("test exe")
-        .parent()
-        .expect("deps dir")
-        .parent()
-        .expect("debug dir")
-        .join("himark-agent-host");
-    assert!(
-        bin.exists(),
-        "himark-agent-host not built at {bin:?} — `cargo build -p agent-host`"
-    );
+    // Re-exec THIS freshly-built test binary as the host (the hidden
+    // `agent_host_subprocess` entry point calls `agent_host::run_with`),
+    // so the subprocess is always current host code. libtest owns argv,
+    // so the host's own flags travel as env instead.
+    let bin = std::env::current_exe().expect("test exe");
     let home = dir.join("host-home");
     std::fs::create_dir_all(&home).expect("host home");
     let socket = home.join("host.sock");
     let log = std::fs::File::create(home.join("host.log")).expect("host log");
+    let flag = |name: &str| {
+        args.iter()
+            .position(|arg| *arg == name)
+            .and_then(|at| args.get(at + 1))
+            .copied()
+    };
     let mut command = std::process::Command::new(&bin);
-    command.arg("--socket").arg(&socket);
-    for extra in args {
-        command.arg(extra);
-    }
+    command.args([
+        "tests::agent_host_subprocess",
+        "--exact",
+        "--ignored",
+        "--nocapture",
+        "--test-threads=1",
+    ]);
+    // env_clear FIRST — it would otherwise wipe the vars set below.
     if clean {
         command
             .env_clear()
             .env("PATH", std::env::var("PATH").unwrap_or_default())
             .env("HOME", std::env::var("HOME").unwrap_or_default());
     }
+    if let Some(http) = flag("--http") {
+        command.env("HIMARK_TEST_AGENT_HOST_HTTP", http);
+    }
+    if let Some(web_root) = flag("--web-root") {
+        command.env("HIMARK_TEST_AGENT_HOST_WEB_ROOT", web_root);
+    }
     let child = command
+        .env("HIMARK_TEST_AGENT_HOST", "1")
+        .env("HIMARK_TEST_AGENT_HOST_SOCKET", &socket)
         .env("HIMARK_HOST_HOME", &home)
         .env("HIMARK_LOG_DIR", &home)
         .env("HIMARK_CLAUDE_BIN", claude_binary)
@@ -3203,7 +3235,7 @@ fn spawn_host_inner(
         .stdout(std::process::Stdio::null())
         .stderr(log)
         .spawn()
-        .expect("the host binary spawns");
+        .expect("the test binary re-execs as the host");
     let mut waited = 0;
     while !socket.exists() {
         std::thread::sleep(std::time::Duration::from_millis(20));
@@ -3478,6 +3510,271 @@ fn the_seat_replays_the_gap_after_a_connection_drop() {
         !actions.is_empty(),
         "the gap's actions must REPLAY into the standing chat feed"
     );
+    drop(spawned);
+    drop(host);
+}
+
+/// A document channel must survive reconnects: the host's reconnect
+/// handler used to omit document channels from its known-channel
+/// test, so a reconnect dumped them into `missing` and NEVER
+/// re-subscribed the outbox — after which broadcasts reached nobody
+/// and the buffer silently desynced. This drives one client (alice)
+/// through a proxy we can sever while a second client (bob) edits
+/// the shared document live, across several sever/restore cycles,
+/// plus one edit made WHILE alice is disconnected (the gap replay).
+#[test]
+fn a_document_channel_survives_reconnects() {
+    use documents::sync::{SyncEdit, SyncState};
+    use himark::higent::AhpServer;
+    use rebase::RebaseLog;
+
+    let host = HOSTED
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let dir = tempfile::tempdir().expect("tempdir");
+    let spawned = spawn_host(dir.path(), "false");
+    let socket = spawned.socket.clone();
+
+    // Bob talks straight to the host; alice rides a severable proxy.
+    let proxy_path = dir.path().join("proxy.sock");
+    let mut proxy = SeverableProxy::start(&proxy_path, &socket);
+    let alice_seat: Arc<dyn AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+        crate::hiahp::wire::test_runtime(),
+        crate::test_connector(),
+        format!("unix:{}", proxy_path.display()),
+    ));
+    let bob_seat: Arc<dyn AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+        crate::hiahp::wire::test_runtime(),
+        crate::test_connector(),
+        format!("unix:{}", socket.display()),
+    ));
+    drive(alice_seat.connect()).expect("alice connects");
+    drive(bob_seat.connect()).expect("bob connects");
+
+    let file = dir.path().join("shared.md");
+    std::fs::write(&file, "shared\n").unwrap();
+    let uri = himark::higent::ResourceUri::new(format!(
+        "file://{}",
+        file.canonicalize().expect("canonical").display()
+    ));
+    let session = "hihost-fs:/local".to_owned();
+    let opened_a = drive(alice_seat.open_document(session.clone(), Some(uri.clone()), None))
+        .expect("alice opens");
+    let opened_b =
+        drive(bob_seat.open_document(session.clone(), Some(uri.clone()), None)).expect("bob opens");
+    assert_eq!(opened_a.document, opened_b.document, "idempotent open");
+    let channel = opened_a.document;
+    let snapshot_a =
+        drive(alice_seat.subscribe_document(channel.clone())).expect("alice subscribes");
+    let snapshot_b = drive(bob_seat.subscribe_document(channel.clone())).expect("bob subscribes");
+
+    let replica = |snapshot: &himark_ahp_ext_types::DocumentState| {
+        RebaseLog::new(
+            SyncState::new(
+                himark::Text::from_string_exact(&snapshot.text),
+                himark::EditLog::new(),
+            ),
+            snapshot.version,
+        )
+    };
+    let mut alice = replica(&snapshot_a);
+    let mut bob = replica(&snapshot_b);
+
+    fn typed(
+        log: &mut RebaseLog<himark_ahp_ext_types::Uid, SyncEdit>,
+        id: himark_ahp_ext_types::Uid,
+        at: usize,
+        insert: &str,
+    ) -> himark_ahp_ext_types::DocumentApplied {
+        let state = log.display();
+        let mut builder = operation::OperationBuilder::new();
+        if at > 0 {
+            builder.push_retain(at as u32);
+        }
+        builder.push_insert(insert.to_owned());
+        let tail = state.text.byte_count() - at;
+        if tail > 0 {
+            builder.push_retain(tail as u32);
+        }
+        let edit = SyncEdit::captured(
+            state.log.clone(),
+            builder.finish(),
+            himark::EditIdentity::mint(),
+        );
+        let dispatch = log.local(id, edit).expect("a settled edit dispatches");
+        himark_ahp_ext_types::DocumentApplied {
+            base: dispatch.base,
+            operation: crate::hiahp::docsync::wire_operation(
+                &dispatch.before.text,
+                dispatch.action.operation().expect("it landed"),
+            ),
+            id: dispatch.id,
+            origin: None,
+        }
+    }
+
+    fn absorb(
+        log: &mut RebaseLog<himark_ahp_ext_types::Uid, SyncEdit>,
+        action: &himark_ahp_ext_types::DocumentApplied,
+    ) {
+        if log.ack(&action.id) {
+            return;
+        }
+        log.remote(
+            action.id,
+            SyncEdit::Theirs {
+                resolve: crate::hiahp::docsync::resolve_wire(action.operation.clone()),
+            },
+        );
+    }
+
+    let shown = |log: &RebaseLog<himark_ahp_ext_types::Uid, SyncEdit>| {
+        let text = &log.display().text;
+        text.view().substring(0..text.byte_count() as u32)
+    };
+
+    // `poll_document` runs in the caller's context and parks on a
+    // tokio timer while it waits for a feed, so it must be driven
+    // INSIDE the runtime (unlike the other seat calls, which do their
+    // work on the runtime and hand `drive` a plain result slot). The
+    // active is always live here — the reconnect is forced via
+    // `list_sessions` on the bare thread first.
+    // A bounded drain that never hangs on an empty feed — the
+    // straggler-duplicate probe.
+    let blk_try =
+        |future: himark::higent::SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>>,
+         millis: u64| {
+            crate::hiahp::wire::test_runtime()
+                .block_on(async move {
+                    tokio::time::timeout(std::time::Duration::from_millis(millis), future).await
+                })
+                .unwrap_or_default()
+        };
+
+    // One bob edit reaches alice EXACTLY ONCE and converges. The
+    // second, bounded poll is the duplicate detector: a leaked or
+    // doubled subscription would enqueue a straggler here.
+    let mut nonce = 0u128;
+    let mut bob_types_and_alice_hears = |alice_seat: &Arc<dyn AhpServer>,
+                                         alice: &mut RebaseLog<_, _>,
+                                         bob: &mut RebaseLog<_, _>,
+                                         at: usize,
+                                         insert: &str| {
+        nonce += 1;
+        let action = typed(bob, himark_ahp_ext_types::Uid(0xb000 + nonce), at, insert);
+        bob_seat.dispatch_document(&channel, action);
+        // Bob drains his own echo so his log settles.
+        let echo = blk_try(bob_seat.poll_document(channel.clone()), 800);
+        for a in &echo {
+            absorb(bob, a);
+        }
+        // Alice hears it once.
+        let heard = blk_try(alice_seat.poll_document(channel.clone()), 800);
+
+        assert_eq!(
+            heard.len(),
+            1,
+            "alice hears bob's edit exactly once: {heard:?}"
+        );
+        for a in &heard {
+            absorb(alice, a);
+        }
+        let straggler = blk_try(alice_seat.poll_document(channel.clone()), 300);
+
+        assert!(straggler.is_empty(), "no duplicate delivery: {straggler:?}");
+        assert_eq!(shown(alice), shown(bob), "alice and bob converge");
+    };
+
+    // Baseline, connection healthy.
+    bob_types_and_alice_hears(&alice_seat, &mut alice, &mut bob, 0, "A");
+    assert_eq!(shown(&alice), "Ashared\n");
+
+    // Several sever/restore cycles, a live bob edit across each.
+    for cycle in 0..3 {
+        proxy.sever();
+        drop(proxy);
+        proxy = SeverableProxy::start(&proxy_path, &socket);
+        // Force alice's reconnect from the TEST thread (the runtime
+        // refuses a reconnect requested from within itself).
+        let mut recovered = false;
+        for _ in 0..100 {
+            if drive(alice_seat.list_sessions(None)).is_ok() {
+                recovered = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        assert!(recovered, "alice reconnects on cycle {cycle}");
+        bob_types_and_alice_hears(&alice_seat, &mut alice, &mut bob, 0, "B");
+    }
+
+    // The gap: bob edits WHILE alice is severed; the reconnect replay
+    // must deliver the missed edit.
+    proxy.sever();
+    nonce += 1;
+    let missed = typed(&mut bob, himark_ahp_ext_types::Uid(0xb000 + nonce), 0, "C");
+    bob_seat.dispatch_document(&channel, missed);
+    for a in &blk_try(bob_seat.poll_document(channel.clone()), 800) {
+        absorb(&mut bob, a);
+    }
+    drop(proxy);
+    let _proxy = SeverableProxy::start(&proxy_path, &socket);
+    let mut recovered = false;
+    for _ in 0..100 {
+        if drive(alice_seat.list_sessions(None)).is_ok() {
+            recovered = true;
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    assert!(recovered, "alice reconnects after the gap");
+    // The missed edit replays into alice's standing feed.
+    let mut converged = false;
+    for _ in 0..200 {
+        for a in &blk_try(alice_seat.poll_document(channel.clone()), 200) {
+            absorb(&mut alice, a);
+        }
+        if shown(&alice) == shown(&bob) {
+            converged = true;
+            break;
+        }
+    }
+    assert!(
+        converged,
+        "the gap edit replays on reconnect: alice={:?} bob={:?}",
+        shown(&alice),
+        shown(&bob)
+    );
+
+    // Alice's OWN edits still flow to bob after all the churn.
+    nonce += 1;
+    let from_alice = typed(
+        &mut alice,
+        himark_ahp_ext_types::Uid(0xa000 + nonce),
+        0,
+        "Z",
+    );
+    alice_seat.dispatch_document(&channel, from_alice);
+    for a in &blk_try(alice_seat.poll_document(channel.clone()), 800) {
+        absorb(&mut alice, a);
+    }
+    let mut bob_saw = false;
+    for _ in 0..200 {
+        for a in &blk_try(bob_seat.poll_document(channel.clone()), 200) {
+            absorb(&mut bob, a);
+        }
+        if shown(&bob) == shown(&alice) {
+            bob_saw = true;
+            break;
+        }
+    }
+    assert!(
+        bob_saw,
+        "alice's post-reconnect edit reaches bob: alice={:?} bob={:?}",
+        shown(&alice),
+        shown(&bob)
+    );
+
     drop(spawned);
     drop(host);
 }
@@ -7129,6 +7426,100 @@ fn repeated_external_saves_land_exactly_once_each() {
         emacs_save(&fs, &expected);
         landed(&mut engine, &expected);
     }
+}
+
+/// The character-doubling regression: closing a document must
+/// UNSUBSCRIBE its channel. A close used to abort the sync loop
+/// mid-flight and leak the host-side subscription; reopening the
+/// file subscribed AGAIN, every `document/applied` arrived once per
+/// leaked row, and the rebase log applied the duplicates as foreign
+/// edits — each typed character landed once per leak on top of
+/// itself, and the shared applies kept the dirty flag stuck. Two
+/// close/reopen cycles, then byte-exact typing: a duplicate never
+/// settles.
+#[test]
+fn a_reopened_document_types_exactly_once() {
+    let (_host, mut engine, window, fs) = hosted_engine();
+    let live = |engine: &HimarkEngine| {
+        himark::OpenDocuments::list(engine.app.store())
+            .into_iter()
+            .find(|(id, entity)| {
+                entity.name() == "cycle.md"
+                    && himark::OpenDocuments::host_synced(engine.app.store(), *id)
+            })
+            .map(|(id, _)| id)
+    };
+
+    for _ in 0..2 {
+        open_picked(
+            &mut engine,
+            &_host.seat,
+            window,
+            &fs,
+            &["cycle.md"],
+            "alpha\n",
+        );
+        settle_until(&mut engine, "the channel went live", |engine| {
+            live(engine).is_some()
+        });
+        assert_eq!(
+            hiahp::docsync::SyncSeats::count(engine.app.store()),
+            1,
+            "one open, one sync loop"
+        );
+        assert!(engine.perform_command(window, "workbench.close"));
+        settle_until(&mut engine, "the close took the sync loop", |engine| {
+            hiahp::docsync::SyncSeats::count(engine.app.store()) == 0
+        });
+    }
+
+    open_picked(
+        &mut engine,
+        &_host.seat,
+        window,
+        &fs,
+        &["cycle.md"],
+        "alpha\n",
+    );
+    settle_until(&mut engine, "the channel went live again", |engine| {
+        live(engine).is_some()
+    });
+    let document_id = live(&engine).expect("the reopened document");
+    let text_of = |engine: &HimarkEngine| -> String {
+        let document =
+            himark::OpenDocuments::document_ref(engine.app.store(), document_id).expect("open");
+        let mut view = document.text().view();
+        let end = view.byte_count().min(u32::MAX as usize) as u32;
+        view.substring(0..end)
+    };
+
+    assert!(himark::test_driver::type_text(&mut engine.app, "typed "));
+    settle_until(&mut engine, "the typed text landed byte-exact", |engine| {
+        text_of(engine) == "typed alpha\n"
+    });
+    // The echo round trip is the duplicator's moment, and external
+    // appends are the deterministic wait for it: the channel is
+    // ordered, so by the time an external edit shows, the typed
+    // echo — and every duplicate a leaked subscription would add —
+    // has already applied. Byte-EQUALITY makes any duplicate fail
+    // the ladder loudly. The external writes touch only the TAIL
+    // (never the typed prefix), so the three-way merge has no shared
+    // insert to race on, whichever of the echo and the reload lands
+    // first.
+    for (disk, expected) in [
+        ("alpha\nONE\n", "typed alpha\nONE\n"),
+        ("alpha\nONE\nTWO\n", "typed alpha\nONE\nTWO\n"),
+    ] {
+        fs.write(&["cycle.md"], disk);
+        settle_until(&mut engine, "the append landed byte-exact", |engine| {
+            text_of(engine) == expected
+        });
+    }
+    assert_eq!(
+        hiahp::docsync::SyncSeats::count(engine.app.store()),
+        1,
+        "one document, one sync loop"
+    );
 }
 
 /// The user's exact repro (2026-09-15): open a WORKING-COPY DIFF of a

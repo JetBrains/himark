@@ -360,6 +360,10 @@ fn subscribe_outbox(state: &mut State, channel: &Uri, connection: u64, outbox: &
         .cloned()
         .unwrap_or_else(rpds::VectorSync::new_sync);
     rows.push_back_mut((connection, outbox.clone()));
+    eprintln!(
+        "[host-probe] subscribe {channel} conn={connection} rows={}",
+        rows.len()
+    );
     state.subscribers.insert_mut(channel.clone(), rows);
 }
 
@@ -863,6 +867,15 @@ impl Host {
                         self.dispatch(params).await;
                     } else if notification.method == "lsp/$/cancelRequest" {
                         self.lsp_cancel(connection, &params);
+                    } else if notification.method == "unsubscribe" {
+                        // The SDK's `Client::unsubscribe` is a
+                        // NOTIFICATION; serving only the request form
+                        // leaves the subscriber row alive, and a
+                        // reopened channel then hears every action
+                        // once per leaked row.
+                        if let Ok(params) = serde_json::from_value::<UnsubscribeParams>(params) {
+                            self.unsubscribe(connection, &params.channel);
+                        }
                     }
                 }
                 _ => {}
@@ -946,47 +959,7 @@ impl Host {
             },
             "unsubscribe" => match serde_json::from_value::<UnsubscribeParams>(params) {
                 Ok(params) => {
-                    self.update(|state| {
-                        let empty = match state.subscribers.get(&params.channel) {
-                            Some(subscribers) => {
-                                let kept = drop_subscriber(subscribers, connection);
-                                let empty = kept.is_empty();
-                                state.subscribers.insert_mut(params.channel.clone(), kept);
-                                empty
-                            }
-                            None => true,
-                        };
-
-                        if empty {
-                            state.watches.remove_mut(&params.channel);
-                            state.changesets.remove_mut(&params.channel);
-
-                            let owners: Vec<Uri> = state
-                                .sessions
-                                .iter()
-                                .filter(|(_, session)| {
-                                    session.documents.contains_key(&params.channel)
-                                })
-                                .map(|(uri, _)| uri.clone())
-                                .collect();
-                            state.mirror_watches.remove_mut(&params.channel);
-                            for uri in owners {
-                                let mut session = state.sessions[&uri].clone();
-                                session.documents.remove_mut(&params.channel);
-                                session.disk_texts.remove_mut(&params.channel);
-                                let mirrors: Vec<Uri> = session
-                                    .mirrors
-                                    .iter()
-                                    .filter(|(_, held)| *held == &params.channel)
-                                    .map(|(resource, _)| resource.clone())
-                                    .collect();
-                                for resource in mirrors {
-                                    session.mirrors.remove_mut(&resource);
-                                }
-                                state.sessions.insert_mut(uri, session);
-                            }
-                        }
-                    });
+                    self.unsubscribe(connection, &params.channel);
                     rpc::success(id, Value::Null)
                 }
                 Err(error) => rpc::failure(id, INVALID_PARAMS, error.to_string()),
@@ -1155,8 +1128,13 @@ impl Host {
                         || state.chats.contains_key(channel)
                         || state.terminals.contains_key(channel)
                         || state.changesets.contains_key(channel)
+                        || state.histories.contains_key(channel)
                         || state.lsp_diagnostics.contains_key(channel)
                         || state.watches.contains_key(channel)
+                        || state
+                            .sessions
+                            .values()
+                            .any(|session| session.documents.contains_key(channel))
                         || annotations_session(channel)
                             .is_some_and(|session| state.sessions.contains_key(&session));
                     if !known {
@@ -1186,7 +1164,19 @@ impl Host {
 
         let mut snapshots = Vec::new();
         for channel in &channels {
-            if let Some(snapshot) = self.subscribe_channel(connection, outbox, channel) {
+            // Document, history and diagnostics channels carry their
+            // own subscribe routing; the classic channels answer a
+            // reconnect Snapshot. Either way the load-bearing effect
+            // is re-subscribing the outbox so live broadcasts resume
+            // — the client keeps its own replica and ignores the
+            // snapshot payload on this path.
+            if channel.starts_with(crate::documents::CHANNEL_PREFIX) {
+                let _ = self.subscribe_document(connection, outbox, id, channel);
+            } else if crate::history::channel_folder(channel).is_some() {
+                let _ = self.subscribe_history(connection, outbox, id, channel);
+            } else if channel.starts_with(LSP_DIAGNOSTICS_PREFIX) {
+                let _ = self.subscribe_diagnostics(connection, outbox, id, channel);
+            } else if let Some(snapshot) = self.subscribe_channel(connection, outbox, channel) {
                 snapshots.push(snapshot);
             }
         }
@@ -1235,6 +1225,52 @@ impl Host {
             ),
             None => rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {channel}")),
         }
+    }
+
+    /// Drop one connection's subscription to a channel; when the
+    /// LAST subscriber leaves, dispose the channel's dependents
+    /// (watches, changesets, document mirrors). Serves both wire
+    /// forms — the request and the SDK's notification.
+    fn unsubscribe(&self, connection: u64, channel: &Uri) {
+        self.update(|state| {
+            let empty = match state.subscribers.get(channel) {
+                Some(subscribers) => {
+                    let kept = drop_subscriber(subscribers, connection);
+                    let empty = kept.is_empty();
+                    state.subscribers.insert_mut(channel.clone(), kept);
+                    empty
+                }
+                None => true,
+            };
+
+            if empty {
+                state.watches.remove_mut(channel);
+                state.changesets.remove_mut(channel);
+
+                let owners: Vec<Uri> = state
+                    .sessions
+                    .iter()
+                    .filter(|(_, session)| session.documents.contains_key(channel))
+                    .map(|(uri, _)| uri.clone())
+                    .collect();
+                state.mirror_watches.remove_mut(channel);
+                for uri in owners {
+                    let mut session = state.sessions[&uri].clone();
+                    session.documents.remove_mut(channel);
+                    session.disk_texts.remove_mut(channel);
+                    let mirrors: Vec<Uri> = session
+                        .mirrors
+                        .iter()
+                        .filter(|(_, held)| *held == channel)
+                        .map(|(resource, _)| resource.clone())
+                        .collect();
+                    for resource in mirrors {
+                        session.mirrors.remove_mut(&resource);
+                    }
+                    state.sessions.insert_mut(uri, session);
+                }
+            }
+        });
     }
 
     fn subscribe_channel(
