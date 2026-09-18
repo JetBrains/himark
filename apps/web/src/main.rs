@@ -305,6 +305,7 @@ mod app {
             state.register_command(std::sync::Arc::new(himark::hifiles::ToggleSessionSwitcher));
             state.register_command(std::sync::Arc::new(hidiff::OpenDiff));
             state.register_row_minter(hidiff::row_minter());
+            state.register_navigator(hidiff::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
             state.register_overlay_surface(peeker::overlay_surface());
@@ -324,7 +325,9 @@ mod app {
             state.register_command(std::sync::Arc::new(himark::higent::NewChat));
             state.register_toolbar_button(himark::higent::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::hichanges::ToggleChangesView));
-            state.register_command(std::sync::Arc::new(himark::hichanges::RefetchChanges));
+            state.register_command(std::sync::Arc::new(
+                himark::hichanges::RefetchChanges::default(),
+            ));
             state.register_toolbar_button(himark::hichanges::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::hihistory::ToggleHistoryView));
             state.register_toolbar_button(himark::hihistory::toolbar_button());

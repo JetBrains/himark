@@ -74,6 +74,45 @@ pub enum CanvasListing {
     Ready(Vec<CanvasFile>),
 }
 
+/// What the canvas's FIRST row shows, per source: a commit canvas
+/// heads with the commit's message and author; the working-copy
+/// canvas heads with the commit composer (the box that used to sit in
+/// the changes dock).
+#[derive(Clone, PartialEq, Debug)]
+pub enum CanvasBanner {
+    Composer {
+        folder: ResourceLocation,
+    },
+    Commit {
+        /// The full message when the host sent one, the summary
+        /// otherwise.
+        message: String,
+        author: String,
+    },
+}
+
+pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanner> {
+    match source {
+        CanvasSource::WorkingCopy { folder } => Some(CanvasBanner::Composer {
+            folder: folder.clone(),
+        }),
+        CanvasSource::Commit { folder, id } => {
+            let held = crate::hihistory::History::folder(store, folder)?;
+            let commit = held.commits.iter().find(|commit| commit.id == *id)?;
+            Some(CanvasBanner::Commit {
+                message: commit
+                    .message
+                    .clone()
+                    .unwrap_or_else(|| commit.summary.clone()),
+                author: match &commit.author.email {
+                    Some(email) => format!("{} <{}>", commit.author.name, email),
+                    None => commit.author.name.clone(),
+                },
+            })
+        }
+    }
+}
+
 /// The per-frame staleness probe — O(1), no listing built. The panel
 /// derives rows only when this moves (the ReconcileShell contract).
 pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
@@ -147,39 +186,30 @@ fn listing_of<'a>(
     }
 }
 
-/// The reveal mailbox: `OpenDiffCanvas` posts here, the canvas
-/// panel's paint probe sees a match and its perform TAKES it. A slot
-/// rather than an event so it survives the panel being minted in the
-/// same batch that armed it.
-#[derive(Clone, Default)]
-pub struct CanvasReveal(Option<(CanvasSource, ResourceLocation)>);
+/// The canvas's navigation place. Canvases are STORE-HELD state
+/// (hidiff's `Canvases` collection); the panel is a reference view,
+/// and opening one goes through the ordinary navigation road: the
+/// focused pane answers `navigate_to` in place, otherwise the
+/// registered canvas navigator finds — or creates — the source's
+/// canvas and hands back a view of it. Equality is the SOURCE alone:
+/// the reveal is a delivery, not an identity.
+#[derive(Clone)]
+pub struct CanvasPlace {
+    pub source: CanvasSource,
+    pub reveal: Option<ResourceLocation>,
+}
 
-impl CanvasReveal {
-    pub fn post(store: &mut Store, source: CanvasSource, key: ResourceLocation) {
-        store.put(CanvasReveal(Some((source, key))));
-    }
-
-    /// The widget-side probe — read-only, cheap.
-    pub fn pending_for(store: &Store, source: &CanvasSource) -> bool {
-        store
-            .get::<CanvasReveal>()
-            .and_then(|slot| slot.0.as_ref())
-            .is_some_and(|(held, _)| held == source)
-    }
-
-    pub fn take_for(store: &mut Store, source: &CanvasSource) -> Option<ResourceLocation> {
-        let held = store.get::<CanvasReveal>()?.0.clone()?;
-        if held.0 != *source {
-            return None;
-        }
-        store.put(CanvasReveal(None));
-        Some(held.1)
+impl PartialEq for CanvasPlace {
+    fn eq(&self, other: &Self) -> bool {
+        self.source == other.source
     }
 }
 
-/// Open (or re-mint) the canvas for a source; an armed reveal rides
-/// the mailbox. The panel type lives in `plugins/hidiff` — minting
-/// goes through the `FamilyRow` road like every restorable panel.
+impl crate::Place for CanvasPlace {}
+
+/// Open the canvas for a source — or REUSE the one already open (the
+/// canvas is found by source in the store; a fresh view of it costs
+/// nothing). An armed reveal rides the place.
 pub struct OpenDiffCanvas {
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
@@ -199,9 +229,6 @@ impl crate::DynamicCommand for OpenDiffCanvas {
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        if let Some(key) = &self.reveal {
-            CanvasReveal::post(store, self.source.clone(), key.clone());
-        }
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
@@ -216,15 +243,40 @@ impl crate::DynamicCommand for OpenDiffCanvas {
                 fx,
             );
         }
-        let row = crate::FamilyRow::Canvas(self.source.clone());
-        let Some(panel) = crate::family_rows::mint(store, &row) else {
-            eprintln!("[himark] no canvas minter registered");
-            return;
-        };
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let _ = entity.open_panel(store, panel, fx);
+        let place = CanvasPlace {
+            source: self.source.clone(),
+            reveal: self.reveal.clone(),
+        };
+        if !entity.navigate(store, window, &crate::NavigationLocation::new(place), fx) {
+            eprintln!("[himark] no canvas navigator registered");
+        }
         crate::Windows::put(store, window, entity);
+    }
+}
+
+/// Open a canvas file's live side in an ordinary pane — the header's
+/// click (and `workbench.open-in-full` on a focused row).
+pub struct OpenCanvasFile {
+    pub location: ResourceLocation,
+}
+
+impl crate::DynamicCommand for OpenCanvasFile {
+    fn id(&self) -> &'static str {
+        "diff.open-file"
+    }
+    fn name(&self) -> String {
+        "Open File".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        crate::workspace::open_locations(store, window, &[self.location.clone()], fx);
     }
 }

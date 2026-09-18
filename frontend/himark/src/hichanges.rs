@@ -4,8 +4,6 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use ::editor::{EditorCommand, EditorView};
-
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
@@ -23,7 +21,7 @@ use imba::{
     leaf::leaf,
     store::Store,
     thunk_ext::ThunkExt,
-    Layout as _, LayoutExt as _, Thunk as _, UiCtx, View, Widget,
+    UiCtx, View, Widget,
 };
 use skia_safe::{Rect, Size};
 
@@ -416,13 +414,19 @@ impl Changes {
         (!lines.is_empty()).then(|| lines.join("\n"))
     }
 
-    pub fn refetch(store: &mut Store, window: crate::WindowId, fx: &mut crate::AppFx<'_>) {
+    pub fn refetch(
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+        only: Option<&ResourceLocation>,
+    ) {
         let Some(changes) = store.get::<Changes>() else {
             return;
         };
         let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> = changes
             .folders
             .iter()
+            .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
                 entry
                     .channel
@@ -956,6 +960,7 @@ fn folder_node(
             dim: true,
             trail: Vec::new(),
             tint: crate::TreeTint::Label,
+            action: None,
             children: Vec::new(),
         }]
     };
@@ -1005,6 +1010,8 @@ fn folder_node(
         dim: false,
         trail: Vec::new(),
         tint: crate::TreeTint::Directory,
+        // Refetch is PER REPOSITORY — the chip rides its root row.
+        action: Some("REFRESH".to_owned()),
         children,
     }
 }
@@ -1042,6 +1049,7 @@ pub(crate) fn dir_forest(
             dim: false,
             trail: Vec::new(),
             tint: crate::TreeTint::Directory,
+            action: None,
             children: nested,
         });
     }
@@ -1064,6 +1072,7 @@ pub(crate) fn dir_forest(
             dim: false,
             trail,
             tint: crate::TreeTint::File,
+            action: None,
             children: Vec::new(),
         });
     }
@@ -1073,11 +1082,7 @@ pub(crate) fn dir_forest(
 pub enum ChangesCommand {
     Rows(SpeedSearchCommand<TreeListCommand>),
 
-    Message(EditorCommand),
-
-    FocusMessage(bool),
-
-    Commit,
+    Refetch(ResourceLocation),
 
     Select(isize),
 
@@ -1087,18 +1092,12 @@ pub enum ChangesCommand {
 
     Refresh,
 
-    Refetch,
-
     Dismiss,
 }
 
 pub struct ChangesView {
     list: SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-
-    message: EditorView,
-
-    message_focused: bool,
 
     workspace: crate::SessionId,
 
@@ -1113,8 +1112,6 @@ impl Clone for ChangesView {
         Self {
             list: self.list.clone(),
             items: self.items.clone(),
-            message: self.message.clone(),
-            message_focused: self.message_focused,
             workspace: self.workspace.clone(),
             window: self.window,
             seen: self.seen,
@@ -1138,8 +1135,6 @@ impl ChangesView {
                 crate::env::Fonts::of(store),
             ),
             items: rpds::HashTrieMapSync::new_sync(),
-            message: EditorView::input(600.0, crate::fonts::source()),
-            message_focused: false,
             workspace,
             window,
             seen: 0,
@@ -1147,18 +1142,6 @@ impl ChangesView {
         };
         panel.refresh(store, ui);
         panel
-    }
-
-    #[doc(hidden)]
-    pub fn message_text(&self) -> String {
-        let text = self.message.document.text();
-        let end = text.byte_count().min(u32::MAX as usize) as u32;
-        text.view().substring(0..end)
-    }
-
-    #[doc(hidden)]
-    pub fn message_focused(&self) -> bool {
-        self.message_focused
     }
 
     pub fn row_count(&self) -> usize {
@@ -1255,14 +1238,8 @@ impl View for ChangesView {
     ) -> imba::focus::FocusData<'w, ChangesCommand> {
         use imba::focus::FocusData;
         let searching = self.list.searching();
-        let message_focused = self.message_focused;
         let own = FocusData {
-            on_key: Some(Box::new(move |key, mods| match key {
-                InputKey::Enter if mods.command => EventResult::Command(ChangesCommand::Commit),
-                InputKey::Escape if message_focused => {
-                    EventResult::Command(ChangesCommand::FocusMessage(false))
-                }
-                _ if message_focused => EventResult::Ignored,
+            on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(ChangesCommand::Dismiss),
                 InputKey::Up if !searching => EventResult::Command(ChangesCommand::Select(-1)),
                 InputKey::Down if !searching => EventResult::Command(ChangesCommand::Select(1)),
@@ -1277,14 +1254,7 @@ impl View for ChangesView {
             })),
             ..FocusData::default()
         };
-        let inner = match self.message_focused {
-            true => self
-                .message
-                .focus_data(store, ui)
-                .map(ChangesCommand::Message),
-            false => self.list.focus_data(store, ui).map(ChangesCommand::Rows),
-        };
-        own.merge_under(inner)
+        own.merge_under(self.list.focus_data(store, ui).map(ChangesCommand::Rows))
     }
 
     fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
@@ -1301,8 +1271,12 @@ impl View for ChangesView {
         match command {
             ChangesCommand::Rows(command) => {
                 if let SpeedSearchCommand::Inner(inner) = &command {
+                    if let Some(index) = crate::tree_action(inner) {
+                        if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
+                            return self.perform(store, ui, ChangesCommand::Refetch(folder), fx);
+                        }
+                    }
                     if let Some((index, _)) = crate::tree_interaction(inner) {
-                        self.message_focused = false;
                         return self.activate(index, store, ui);
                     }
                 }
@@ -1311,44 +1285,6 @@ impl View for ChangesView {
                 });
             }
 
-            ChangesCommand::Message(command) => {
-                if matches!(command, EditorCommand::Click { .. }) && !self.message_focused {
-                    self.message_focused = true;
-                    self.message.focus_text();
-                }
-                fx.scope(ChangesCommand::Message, |fx| {
-                    self.message.perform(store, ui, command, fx)
-                });
-            }
-            ChangesCommand::FocusMessage(focused) => {
-                self.message_focused = focused;
-                match focused {
-                    true => self.message.focus_text(),
-                    false => self.message.blur(),
-                }
-            }
-            ChangesCommand::Commit => {
-                let message = self.message_text();
-                if message.trim().is_empty() {
-                    return;
-                }
-
-                let folder = crate::higent::session_folders(store, &self.workspace)
-                    .into_iter()
-                    .find(|folder| {
-                        crate::hihistory::History::folder(store, folder)
-                            .is_some_and(|entry| entry.channel_named())
-                    });
-                let Some(folder) = folder else {
-                    return;
-                };
-                self.message = EditorView::input(600.0, crate::fonts::source());
-                self.message_focused = false;
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::hihistory::CommitHistory { folder, message }),
-                )));
-            }
             ChangesCommand::Select(delta) => self.list.inner_mut().list_mut().cursor_step(delta),
             ChangesCommand::Fold(expand) => self.list.inner_mut().fold_cursor(expand, store, ui),
             ChangesCommand::Pick => {
@@ -1357,10 +1293,12 @@ impl View for ChangesView {
                 }
             }
             ChangesCommand::Refresh => self.refresh(store, ui),
-            ChangesCommand::Refetch => {
+            ChangesCommand::Refetch(folder) => {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(RefetchChanges),
+                    Arc::new(RefetchChanges {
+                        folder: Some(folder),
+                    }),
                 )));
             }
             ChangesCommand::Dismiss => {
@@ -1379,35 +1317,10 @@ impl View for ChangesView {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let chrome = crate::env::Themes::of(store).ui().peeker.clone();
-            let search = crate::env::Themes::of(store).ui().search.clone();
-            let chip = crate::ui::button(
-                arena,
-                store,
-                ui,
-                crate::ui::ButtonRole::Ghost,
-                "REFRESH",
-                || ChangesCommand::Refetch,
-            )
-            .layout(
-                arena,
-                Constraints {
-                    min: Size::default(),
-                    max: size,
-                },
-            );
-            let chip_size = chip.size();
-            let chip_height = chip_size.height;
-
-            // The well follows the message editor's TRUE height: a
-            // multi-line commit message grows the box (and pushes the
-            // rows down) instead of spilling over them. Capped so a wall
-            // of text never eats the whole panel.
-            let well_height = (self.message.content_height() + search.input_pad_y * 2.0)
-                .max(search.input_height)
-                .min(size.height * 0.4);
-            let box_band = well_height + PANEL_PAD;
-            let band = chrome.margin + chip_height + PANEL_PAD + box_band;
+            // The commit composer lives in the diff canvas's first
+            // row and REFRESH rides each repository's root row — the
+            // dock is just the tree.
+            let band = PANEL_PAD;
             let rows = imba::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
@@ -1416,86 +1329,9 @@ impl View for ChangesView {
             .map(ChangesCommand::Rows);
             overlay.place(0.0, band, rows);
 
-            let well_y = chrome.margin + chip_height + PANEL_PAD;
-            let well_pad = chrome.margin;
-            let well_width = (size.width - well_pad * 2.0).max(1.0);
-            let input_fill = search.input_fill;
-            let message_focused = self.message_focused;
-            let message_empty = self.message.document.text().byte_count() == 0;
-            let placeholder_font = crate::fonts::ui_text_font(ui, chrome.hint_size);
-            let placeholder_dim = chrome.dim_text.0;
-            // The message well: rounded fill backdrop, a placeholder
-            // `Text` while empty (on the old painter's baseline:
-            // height * 0.5 + hint_size * 0.35), a press focusing it.
-            let mut well = imba::ZBox::new(arena).child(imba::spacer(well_width, well_height));
-            if message_empty && !message_focused {
-                let drop = (well_height * 0.5
-                    + chrome.hint_size * 0.35
-                    + placeholder_font.metrics().1.ascent)
-                    .max(0.0);
-                well = well.child(
-                    imba::text(
-                        "Message (⌘⏎ to commit)",
-                        placeholder_font.clone(),
-                        placeholder_dim,
-                    )
-                    .pad_insets(imba::Insets {
-                        left: 10.0,
-                        top: drop,
-                        right: 0.0,
-                        bottom: 0.0,
-                    }),
-                );
-            }
-            let well = well
-                .backdrop(
-                    crate::ui::Surface::fill(input_fill.0)
-                        .radius(crate::ui::RADIUS_S)
-                        .painter(),
-                )
-                .on_click(|| ChangesCommand::FocusMessage(true))
-                .layout(
-                    arena,
-                    Constraints {
-                        min: Size::default(),
-                        max: Size::new(well_width, well_height),
-                    },
-                );
-            overlay.place_boxed(well_pad, well_y, well);
-            let inner_height = (well_height - search.input_pad_y * 2.0).max(1.0);
-            overlay.place(
-                well_pad + search.input_pad_x,
-                well_y + search.input_pad_y,
-                imba::Layout::layout(
-                    self.message.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(0.0, inner_height),
-                        max: Size::new(
-                            (well_width - search.input_pad_x * 2.0).max(1.0),
-                            inner_height,
-                        ),
-                    },
-                )
-                .map(ChangesCommand::Message)
-                .focus_scope(self.message_focused),
-            );
-
             let searching = self.list.searching();
-            let message_focused = self.message_focused;
             let keymap = leaf::<ChangesCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        mods,
-                    } if mods.command => EventResult::Command(ChangesCommand::Commit),
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if message_focused => {
-                        EventResult::Command(ChangesCommand::FocusMessage(false))
-                    }
-                    _ if message_focused => EventResult::Ignored,
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
@@ -1530,11 +1366,6 @@ impl View for ChangesView {
                 },
             );
             overlay.place(0.0, 0.0, keymap);
-            overlay.place_boxed(
-                (size.width - chrome.margin - chip_size.width).max(0.0),
-                chrome.margin,
-                chip,
-            );
 
             let stale = Changes::generation(store) != self.seen;
             overlay.wrap(move |inner| ReconcileShell { inner, stale })
@@ -1633,7 +1464,12 @@ impl crate::DynamicCommand for ToggleChangesView {
     }
 }
 
-pub struct RefetchChanges;
+/// Refetch changesets — one repository's when `folder` names it, every
+/// riding folder's otherwise (the palette / test road).
+#[derive(Default)]
+pub struct RefetchChanges {
+    pub folder: Option<ResourceLocation>,
+}
 
 impl crate::DynamicCommand for RefetchChanges {
     fn id(&self) -> &'static str {
@@ -1649,7 +1485,7 @@ impl crate::DynamicCommand for RefetchChanges {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        Changes::refetch(store, window, fx);
+        Changes::refetch(store, window, fx, self.folder.as_ref());
     }
 }
 

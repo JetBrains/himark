@@ -1651,6 +1651,166 @@ mod list_tree {
     }
 }
 
+mod list_sticky {
+    use super::*;
+    use crate::list::{ListSlice, StickyStyle, STICKY_HOST};
+
+    fn style() -> crate::list::StickySource {
+        std::sync::Arc::new(|_store: &Store| StickyStyle {
+            background: skia_safe::Color::WHITE,
+            divider: skia_safe::Color::BLACK,
+            divider_width: 1.0,
+        })
+    }
+
+    /// Two families, every row 10px:
+    /// 0:P1 1..=3:kids · 4:P2 5..=7:kids — parenthood is the cover
+    /// span, nothing else.
+    fn family() -> ListView<Row, u64> {
+        let mut slice: ListSlice<Row, u64> = ListSlice::new();
+        for (parent, kids) in [(1u64, 10u64), (2, 20)] {
+            let start = slice.len();
+            slice.push_keyed_sized(parent, Row { height: 10.0 }, 10.0);
+            for k in 0..3u64 {
+                slice.push_keyed_sized(kids + k, Row { height: 10.0 }, 10.0);
+            }
+            slice.cover(parent, start..start + 4);
+        }
+        ListView::from_slice(slice).with_sticky(style())
+    }
+
+    /// The list realized at a scrolled viewport — `top` is the scroll
+    /// offset in content coordinates, exactly what a ScrollView hands
+    /// down.
+    fn sticky_overlays<'a>(
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a crate::ui::UiCtx,
+        list: &'a ListView<Row, u64>,
+        top: f32,
+    ) -> Vec<crate::overlay::Overlay<'a, ListCommand<RowCommand>>> {
+        crate::Layout::layout(
+            list.display(arena, store, ui),
+            arena,
+            Constraints::tight(Size::new(100.0, 80.0)),
+        )
+        .realize(arena, Rect::from_xywh(0.0, top, 100.0, 40.0))
+        .overlays()
+    }
+
+    #[test]
+    fn a_scrolled_family_plants_its_parent_and_the_boundary_hands_off() {
+        let mut store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let _ = &mut store;
+        let arena = Arena::default();
+        let list = family();
+
+        // At rest nothing plants.
+        assert!(sticky_overlays(&arena, &store, &ui, &list, 0.0).is_empty());
+
+        // Inside P1's kids the parent row has scrolled behind the
+        // top edge — it plants, anchored at the viewport top.
+        let overlays = sticky_overlays(&arena, &store, &ui, &list, 15.0);
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].host, STICKY_HOST);
+        assert_eq!(overlays[0].anchor, Rect::from_xywh(0.0, 15.0, 100.0, 10.0));
+
+        // The boundary: P2's REAL row sits exactly at the top edge —
+        // nothing plants, the handoff is seamless.
+        assert!(sticky_overlays(&arena, &store, &ui, &list, 40.0).is_empty());
+
+        // A hair past it, P2 plants.
+        let overlays = sticky_overlays(&arena, &store, &ui, &list, 45.0);
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].anchor, Rect::from_xywh(0.0, 45.0, 100.0, 10.0));
+    }
+
+    #[test]
+    fn without_the_option_nothing_plants() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let arena = Arena::default();
+        let mut slice: ListSlice<Row, u64> = ListSlice::new();
+        slice.push_keyed_sized(1, Row { height: 10.0 }, 10.0);
+        slice.push_keyed_sized(11, Row { height: 10.0 }, 10.0);
+        slice.push_keyed_sized(12, Row { height: 10.0 }, 10.0);
+        slice.cover(1, 0..3);
+        let list = ListView::from_slice(slice);
+        assert!(sticky_overlays(&arena, &store, &ui, &list, 15.0).is_empty());
+    }
+
+    #[test]
+    fn nested_parents_stack_and_stop_at_the_chain_break() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let arena = Arena::default();
+        // 0:P1 [ 1:A [ 2:a1 3:a2 ] 4:b ] 5:P2 6:c
+        let mut slice: ListSlice<Row, u64> = ListSlice::new();
+        for key in [1u64, 11, 111, 112, 12, 2, 21] {
+            slice.push_keyed_sized(key, Row { height: 10.0 }, 10.0);
+        }
+        slice.cover(11, 1..4);
+        slice.cover(1, 0..5);
+        slice.cover(2, 5..7);
+        let list = ListView::from_slice(slice).with_sticky(style());
+
+        // Probing inside A's kids: P1 plants, then (below the P1
+        // plant) A plants; b breaks the chain at depth two.
+        let overlays = sticky_overlays(&arena, &store, &ui, &list, 25.0);
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(
+            overlays[0].anchor,
+            Rect::from_xywh(0.0, 25.0, 100.0, 20.0),
+            "two planted lines stack into one band"
+        );
+
+        // Under row b only P1 encloses — a single plant again.
+        let overlays = sticky_overlays(&arena, &store, &ui, &list, 42.0);
+        assert_eq!(overlays.len(), 1);
+        assert_eq!(overlays[0].anchor, Rect::from_xywh(0.0, 42.0, 100.0, 10.0));
+    }
+
+    #[test]
+    fn a_planted_line_routes_presses_as_the_real_row() {
+        let store = Store::new();
+        let ui = crate::ui::UiCtx::cold();
+        let arena = Arena::default();
+        let list = family();
+
+        let mut overlays = sticky_overlays(&arena, &store, &ui, &list, 55.0);
+        assert_eq!(overlays.len(), 1, "P2 is planted over its kids");
+        let overlay = overlays.pop().unwrap();
+        let anchor = overlay.anchor;
+        let mut minted = overlay
+            .content
+            .layout(&arena, Size::new(100.0, 40.0), anchor);
+        assert_eq!(minted.len(), 1);
+        let (at, thunk) = minted.pop().unwrap();
+        assert_eq!(at, Point::new(0.0, anchor.top));
+
+        let band = Rect::from_xywh(0.0, 0.0, 100.0, 10.0);
+        let widget = thunk.realize(&arena, band);
+        let result = widget.handle_event(
+            &arena,
+            &Event::MouseDown {
+                mods: Default::default(),
+                point: Point::new(50.0, 5.0),
+                button: MouseButton::Left,
+                count: 1,
+            },
+            band,
+        );
+        let EventResult::Command(ListCommand::Focus(4, Some(inner))) = result else {
+            panic!("a planted press should focus the planted row, like the real one");
+        };
+        let ListCommand::Child(4, RowCommand::Click(point)) = *inner else {
+            panic!("the press should route as the PLANTED row's own Child(4, Click)");
+        };
+        assert_eq!(point, Point::new(50.0, 5.0));
+    }
+}
+
 mod animated_splice {
     use super::*;
     use crate::anim::AnimationClock;

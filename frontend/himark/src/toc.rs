@@ -88,6 +88,7 @@ impl DirTrie {
                 dim: false,
                 trail: Vec::new(),
                 tint: crate::TreeTint::Label,
+                action: None,
                 children: Vec::new(),
             });
             targets.insert_mut(key, file);
@@ -99,6 +100,7 @@ impl DirTrie {
             dim: true,
             trail: Vec::new(),
             tint: crate::TreeTint::Label,
+            action: None,
             children,
         }
     }
@@ -148,6 +150,7 @@ impl TocView {
                 dim: false,
                 trail: Vec::new(),
                 tint: crate::TreeTint::Label,
+                action: None,
                 children: Vec::new(),
             });
             targets.insert_mut(key, file);
@@ -737,6 +740,7 @@ impl View for OutlineView {
                             dim: false,
                             trail: vec![(row.line.to_string(), line_color)],
                             tint: crate::TreeTint::Label,
+                            action: None,
                             children: Vec::new(),
                         },
                     ));

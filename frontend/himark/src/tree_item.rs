@@ -31,11 +31,18 @@ pub struct TreeLabel {
     tint: TreeTint,
 
     trail: Vec<(String, skia_safe::Color)>,
+
+    /// A right-aligned ghost chip on the row (the changes view's
+    /// per-repository REFRESH); a press mints `Action`.
+    action: Option<String>,
 }
 
 #[derive(Clone, Copy)]
 pub enum TreeLabelCommand {
     Activate,
+
+    /// The row's right-aligned action chip was pressed.
+    Action,
 }
 
 impl TreeLabel {
@@ -46,6 +53,7 @@ impl TreeLabel {
             dim,
             tint: TreeTint::Label,
             trail: Vec::new(),
+            action: None,
         }
     }
 
@@ -56,6 +64,11 @@ impl TreeLabel {
 
     pub fn with_trail(mut self, trail: Vec<(String, skia_safe::Color)>) -> Self {
         self.trail = trail;
+        self
+    }
+
+    pub fn with_action(mut self, action: Option<String>) -> Self {
+        self.action = action;
         self
     }
 
@@ -98,13 +111,46 @@ impl View for TreeLabel {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }
         let pick = self.pick;
-        row.on_event(
-            move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                Event::MouseDown { .. } if pick => EventResult::Command(TreeLabelCommand::Activate),
-                Event::MouseDown { .. } => EventResult::Handled,
-                _ => EventResult::Ignored,
-            },
-        )
+        let action = self.action.clone();
+        imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+            let row = row.on_event(
+                move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                    Event::MouseDown { .. } if pick => {
+                        EventResult::Command(TreeLabelCommand::Activate)
+                    }
+                    Event::MouseDown { .. } => EventResult::Handled,
+                    _ => EventResult::Ignored,
+                },
+            );
+            // Chip-less rows stay the BARE row — a ZBox's containment
+            // would cull the indent-gutter presses the row answers.
+            let Some(action) = action.clone() else {
+                return imba::Layout::layout(row, arena, constraints);
+            };
+            // The chip rides ON TOP (Z order = press priority): its
+            // click never falls through to the row's Activate.
+            imba::Layout::layout(
+                imba::ZBox::new(arena).child(row).child_aligned(
+                    imba::Alignment::CenterEnd,
+                    crate::ui::button(
+                        arena,
+                        store,
+                        ui,
+                        crate::ui::ButtonRole::Ghost,
+                        action,
+                        || TreeLabelCommand::Action,
+                    )
+                    .pad_insets(imba::Insets {
+                        left: 0.0,
+                        top: 0.0,
+                        right: crate::ui::space::M,
+                        bottom: 0.0,
+                    }),
+                ),
+                arena,
+                constraints,
+            )
+        })
     }
 }
 
@@ -114,6 +160,11 @@ pub struct TreeItemView<V: Clone> {
     depth: u16,
     expanded: Option<bool>,
     toggle_on_body: bool,
+
+    /// The inner carries an action chip: presses in the toggle zone
+    /// route to the inner FIRST, and a minted command (the chip's)
+    /// wins over the body toggle.
+    action_first: bool,
 }
 
 pub enum TreeItemCommand<C> {
@@ -128,6 +179,7 @@ impl<V: Clone> TreeItemView<V> {
             depth,
             expanded: None,
             toggle_on_body: false,
+            action_first: false,
         }
     }
 
@@ -137,11 +189,17 @@ impl<V: Clone> TreeItemView<V> {
             depth,
             expanded: Some(expanded),
             toggle_on_body: false,
+            action_first: false,
         }
     }
 
     pub fn toggling_on_body(mut self) -> Self {
         self.toggle_on_body = true;
+        self
+    }
+
+    pub fn with_action_priority(mut self) -> Self {
+        self.action_first = true;
         self
     }
 
@@ -246,6 +304,7 @@ where
                     (true, false) => offset,
                     (false, _) => 0.0,
                 },
+                action_first: view.action_first,
                 color: colors.dim_text.0,
                 size: Size::new(width, height),
                 _command: std::marker::PhantomData,
@@ -261,6 +320,7 @@ struct TreeItemWidget<Inner, C> {
     triangle_half: f32,
     expanded: Option<bool>,
     zone: f32,
+    action_first: bool,
     color: skia_safe::Color,
     size: Size,
     _command: std::marker::PhantomData<C>,
@@ -286,6 +346,7 @@ where
             triangle_half,
             expanded,
             zone,
+            action_first,
             color,
             size,
             ..
@@ -299,6 +360,7 @@ where
                 triangle_half,
                 expanded,
                 zone,
+                action_first,
                 color,
                 size,
                 _command: std::marker::PhantomData,
@@ -369,6 +431,19 @@ where
                 result
             }
             Event::MouseDown { point, .. } if self.expanded.is_some() && point.x < self.zone => {
+                // The toggle claim, with ONE exception: on rows whose
+                // inner carries an ACTION CHIP, a press the inner
+                // answers with a COMMAND wins over the body toggle —
+                // a `Handled` body press still toggles.
+                if self.action_first {
+                    let local = event.translated(-self.offset, 0.0);
+                    if let EventResult::Command(command) =
+                        self.inner.handle_event(arena, &local, child_viewport)
+                    {
+                        return EventResult::Command(TreeItemCommand::Inner(command))
+                            .reveal_translated(self.offset, 0.0);
+                    }
+                }
                 EventResult::Command(TreeItemCommand::Toggle)
             }
             Event::MouseDown { .. }
@@ -424,5 +499,28 @@ pub fn tree_interaction(command: &TreeListCommand) -> Option<(usize, bool)> {
     match command {
         TreeItemCommand::Toggle => Some((index, true)),
         TreeItemCommand::Inner(TreeLabelCommand::Activate) => Some((index, false)),
+        TreeItemCommand::Inner(TreeLabelCommand::Action) => None,
+    }
+}
+
+/// A press on a row's right-aligned action chip, decoded like
+/// `tree_interaction`.
+pub fn tree_action(command: &TreeListCommand) -> Option<usize> {
+    use imba::list::ListCommand;
+    use imba::scroll::ScrollCommand;
+    let ScrollCommand::Content(command) = command else {
+        return None;
+    };
+    let (index, command) = match command {
+        ListCommand::Child(index, command) => (*index, command),
+        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
+            ListCommand::Child(_, command) => (*index, command),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    match command {
+        TreeItemCommand::Inner(TreeLabelCommand::Action) => Some(index),
+        _ => None,
     }
 }

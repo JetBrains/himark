@@ -46,8 +46,8 @@ pub use speedsearch::{
     SpeedSearchHandler, SpeedSearchView,
 };
 pub use tree_item::{
-    tree_interaction, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand, TreeListCommand,
-    TreeTint,
+    tree_action, tree_interaction, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand,
+    TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
 mod family_rows;

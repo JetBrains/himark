@@ -12,7 +12,7 @@ use imba::{
 const OPEN_HALF_WIDTH: f32 = 420.0;
 
 pub mod canvas;
-pub use canvas::{CanvasPlace, DiffCanvasView};
+pub use canvas::{CanvasNavigator, Canvases, DiffCanvasView};
 
 #[derive(Clone, Copy)]
 pub struct PairPane {
@@ -627,9 +627,8 @@ pub fn row_minter() -> std::sync::Arc<himark::RowMinter> {
         himark::FamilyRow::Pair(id) => {
             Some(Box::new(DiffPanelView::over(*id)) as Box<dyn himark::DynPanelView>)
         }
-        himark::FamilyRow::Canvas(source) => {
-            Some(Box::new(DiffCanvasView::fresh(source.clone())) as Box<dyn himark::DynPanelView>)
-        }
+        // Canvases open through the NAVIGATION road (CanvasNavigator)
+        // — reuse is a store lookup, not a mint.
         _ => None,
     })
 }

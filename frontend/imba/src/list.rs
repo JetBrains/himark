@@ -21,6 +21,28 @@ use crate::{
 
 const ROW_PX: MetricId = MetricId(0);
 
+/// The dedicated overlay host for a list's sticky lines — the pane
+/// that owns the scrolling list declares it (`.overlay_host`), the
+/// list plants into it.
+pub const STICKY_HOST: crate::overlay::OverlayHost =
+    crate::overlay::OverlayHost("imba.list-sticky");
+
+const MAX_STICKY: usize = 4;
+
+/// How the planted band paints around the rows it re-realizes: the
+/// band must be OPAQUE (it floats over the scrolled content) and
+/// close with a divider. Colors are the caller's — imba stays
+/// theme-free.
+#[derive(Clone, Copy)]
+pub struct StickyStyle {
+    pub background: Color,
+    pub divider: Color,
+    pub divider_width: f32,
+}
+
+/// Resolved at display time, so the band re-themes live.
+pub type StickySource = std::sync::Arc<dyn Fn(&Store) -> StickyStyle + Send + Sync>;
+
 pub struct ListElement<T> {
     view: T,
     height: f32,
@@ -316,6 +338,9 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     animations: Vec<SpliceAnimation>,
 
     generation: u64,
+
+    /// Sticky parent lines (see `with_sticky`).
+    sticky: Option<StickySource>,
 }
 
 pub enum ListCommand<C> {
@@ -379,6 +404,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             row_reveal: None,
             animations: Vec::new(),
             generation: 0,
+            sticky: None,
         }
     }
 
@@ -399,6 +425,18 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
 
     pub fn with_separators(mut self, style: SeparatorStyle) -> Self {
         self.separators = Some(style);
+        self
+    }
+
+    /// Sticky parent lines: while a node's subtree fills the top of
+    /// the viewport, the node's OWN row is planted at the top of the
+    /// list (into `STICKY_HOST`). Parenthood is the list's own
+    /// structure — any node whose span covers more rows than its own
+    /// qualifies; chains nest up to a small depth. The planted line
+    /// is the live row view RE-REALIZED, so everything the row offers
+    /// (buttons, chevrons, presses) keeps working in the plant.
+    pub fn with_sticky(mut self, style: StickySource) -> Self {
+        self.sticky = Some(style);
         self
     }
 
@@ -1190,6 +1228,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
 
             animations: self.animations.clone(),
             generation: self.generation,
+            sticky: self.sticky.clone(),
         }
     }
 }
@@ -1464,6 +1503,7 @@ where
             };
             ListWidget {
                 items: &self.items,
+                structure: &self.structure,
                 selection: self.selection.as_ref(),
                 matches: &self.matches,
                 settle_to: self.settle_to,
@@ -1472,6 +1512,7 @@ where
                 reveal_lost,
                 animations: &self.animations,
                 separators: self.separators,
+                sticky: self.sticky.as_ref().map(|source| source(store)),
                 store,
                 ui,
                 child_constraints: Constraints {
@@ -1487,6 +1528,7 @@ where
 
 struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     items: &'a Rope<ListElement<T>, ListMeasure>,
+    structure: &'a Intervals<K, ()>,
     selection: Option<&'a SelectionState<K>>,
     matches: &'a Intervals<K, ()>,
     settle_to: Option<f32>,
@@ -1496,6 +1538,7 @@ struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     reveal_lost: bool,
     animations: &'a [SpliceAnimation],
     separators: Option<SeparatorStyle>,
+    sticky: Option<StickyStyle>,
     store: &'a Store,
     ui: &'a UiCtx,
     child_constraints: Constraints,
@@ -1564,6 +1607,196 @@ where
             }
         }
     }
+
+    /// The parent chain to PLANT for this viewport: for the row under
+    /// the (stack-consumed) top edge, the enclosing nodes — outermost
+    /// first — whose own rows have scrolled behind the stack. A node
+    /// encloses when its structure span covers more rows than its
+    /// own; at a boundary the incoming node's real row IS at the top,
+    /// so nothing plants and the handoff is seamless.
+    fn sticky_chain(&self, viewport: Rect) -> Vec<StickyLine<T>> {
+        let mut lines: Vec<StickyLine<T>> = Vec::new();
+        let mut consumed = 0.0f32;
+        while lines.len() < MAX_STICKY {
+            let probe_y = viewport.top + consumed;
+            if probe_y >= viewport.bottom {
+                break;
+            }
+            let Some(cursor) = self.cursor_at_y(probe_y) else {
+                break;
+            };
+            let probe = cursor.index();
+            let mut parents: Vec<std::ops::Range<u32>> = self
+                .structure
+                .query(probe..probe.saturating_add(1), Order::Ascending)
+                .filter(|interval| {
+                    interval.range.start <= probe
+                        && probe < interval.range.end
+                        && interval.range.end - interval.range.start > 1
+                })
+                .map(|interval| interval.range.clone())
+                .collect();
+            parents.sort_by(|a, b| a.start.cmp(&b.start).then(b.end.cmp(&a.end)));
+            parents.dedup_by(|a, b| a.start == b.start);
+            if parents.len() <= lines.len() {
+                break;
+            }
+            if !lines
+                .iter()
+                .zip(parents.iter())
+                .all(|(line, span)| line.index == span.start as usize)
+            {
+                break;
+            }
+            let span = parents[lines.len()].clone();
+            let mut row = self.items.cursor();
+            if !row.seek_to_index(span.start) {
+                break;
+            }
+            let top = row.position().metric_at(ROW_PX) as f32;
+            let height = row.element_metrics().metric_at(ROW_PX) as f32;
+            if top >= probe_y || height <= 0.0 {
+                break;
+            }
+            lines.push(StickyLine {
+                index: span.start as usize,
+                view: row.element().view.clone(),
+                height,
+            });
+            consumed += height;
+        }
+        lines
+    }
+}
+
+struct StickyLine<T> {
+    index: usize,
+    view: T,
+    height: f32,
+}
+
+/// The planted band: an overlay over the scrolled list re-realizing
+/// the parent rows LIVE — commands route as the rows' own
+/// (`Child(index, …)`), so a planted row's buttons work exactly like
+/// the real one's. Opaque background, closing divider; presses stop
+/// here (the band shadows what it covers).
+struct StickyLines<'a, T: Clone> {
+    rows: Vec<StickyLine<T>>,
+    style: StickyStyle,
+    store: &'a Store,
+    ui: &'a UiCtx,
+    child_constraints: Constraints,
+
+    /// Where the list's content starts inside the pane-wide band.
+    content_left: f32,
+    size: Size,
+}
+
+impl<'a, T: Clone> StickyLines<'a, T> {
+    fn line_at(&self, y: f32) -> Option<(&StickyLine<T>, f32)> {
+        let mut top = 0.0;
+        for line in &self.rows {
+            if y < top + line.height {
+                return Some((line, top));
+            }
+            top += line.height;
+        }
+        None
+    }
+}
+
+impl<'a, T> Widget<'a, ListCommand<T::Command>> for StickyLines<'a, T>
+where
+    T: View + Clone,
+    T::Command: 'a,
+{
+    fn size(&self) -> Size {
+        self.size
+    }
+
+    fn handle_event(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        _viewport: Rect,
+    ) -> EventResult<ListCommand<T::Command>> {
+        let route =
+            |line: &StickyLine<T>, event: &Event<'_>| -> EventResult<ListCommand<T::Command>> {
+                let index = line.index;
+                let child_viewport = Rect::from_xywh(
+                    0.0,
+                    0.0,
+                    self.child_constraints.max.width.max(1.0),
+                    line.height,
+                );
+                crate::Layout::layout(
+                    line.view.display(arena, self.store, self.ui),
+                    arena,
+                    self.child_constraints,
+                )
+                .focus_scope(false)
+                .realize(arena, child_viewport)
+                .handle_event(arena, event, child_viewport)
+                .map(move |command| ListCommand::Child(index, command))
+            };
+        match event {
+            Event::Paint { canvas, .. } => {
+                let bounds = Rect::from_size(self.size);
+                let mut paint = Paint::default();
+                paint.set_anti_alias(false);
+                paint.set_color(self.style.background);
+                canvas.draw_rect(bounds, &paint);
+
+                let mut merged: EventResult<ListCommand<T::Command>> = EventResult::Ignored;
+                let mut top = 0.0;
+                for line in &self.rows {
+                    canvas.save();
+                    canvas.translate((self.content_left, top));
+                    canvas.clip_rect(
+                        Rect::from_xywh(
+                            0.0,
+                            0.0,
+                            (bounds.width() - self.content_left).max(0.0),
+                            line.height,
+                        ),
+                        None,
+                        false,
+                    );
+                    let result = route(line, event);
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(result);
+                    canvas.restore();
+                    top += line.height;
+                }
+
+                paint.set_color(self.style.divider);
+                canvas.draw_rect(
+                    Rect::from_xywh(
+                        0.0,
+                        bounds.bottom - self.style.divider_width,
+                        bounds.width(),
+                        self.style.divider_width,
+                    ),
+                    &paint,
+                );
+                merged
+            }
+            // Presses mirror the list's own: the planted row FOCUSES,
+            // exactly as its real twin would.
+            Event::MouseDown { point, .. } => match self.line_at(point.y) {
+                Some((line, top)) => {
+                    let index = line.index;
+                    match route(line, &event.translated(-self.content_left, -top)) {
+                        EventResult::Command(command) => {
+                            EventResult::Command(ListCommand::Focus(index, Some(Box::new(command))))
+                        }
+                        _ => EventResult::Command(ListCommand::Focus(index, None)),
+                    }
+                }
+                None => EventResult::Handled,
+            },
+            _ => EventResult::Ignored,
+        }
+    }
 }
 
 impl<'a, T, K> Thunk<'a, ListCommand<T::Command>> for ListWidget<'a, T, K>
@@ -1608,6 +1841,45 @@ where
 {
     fn size(&self) -> Size {
         self.list.size
+    }
+
+    fn overlays(&mut self) -> Vec<crate::overlay::Overlay<'a, ListCommand<T::Command>>> {
+        let Some(style) = self.list.sticky else {
+            return Vec::new();
+        };
+        let viewport = self.viewport;
+        if viewport.top <= 0.0 || viewport.height() <= 0.0 {
+            return Vec::new();
+        }
+        let rows = self.list.sticky_chain(viewport);
+        if rows.is_empty() {
+            return Vec::new();
+        }
+        let height: f32 = rows.iter().map(|line| line.height).sum();
+        let width = self.list.size.width;
+        let store = self.list.store;
+        let ui = self.list.ui;
+        let child_constraints = self.list.child_constraints;
+        let arena = self.arena;
+        vec![crate::overlay::Overlay {
+            host: STICKY_HOST,
+            anchor: Rect::from_xywh(0.0, viewport.top, width.max(1.0), height),
+            content: Box::new(move |host_size: Size, anchor: Rect| {
+                let widget = StickyLines {
+                    rows,
+                    style,
+                    store,
+                    ui,
+                    child_constraints,
+                    content_left: anchor.left.max(0.0),
+                    size: Size::new(host_size.width.max(1.0), height),
+                };
+                vec![(
+                    skia_safe::Point::new(0.0, anchor.top),
+                    crate::ThunkBox::new(arena, crate::eager(widget)),
+                )]
+            }),
+        }]
     }
 
     fn handle_event(

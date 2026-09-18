@@ -373,6 +373,7 @@ impl HimarkEngine {
         app.register_command(Arc::new(himark::hifiles::ToggleSessionSwitcher));
         app.register_command(Arc::new(hidiff::OpenDiff));
         app.register_row_minter(hidiff::row_minter());
+        app.register_navigator(hidiff::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
 
         app.register_editor_command(Arc::new(himark::hicomments::AddComment));
@@ -905,7 +906,7 @@ impl HimarkEngine {
 
             self.app.register_command(Arc::new(himark::ReloadDocument));
             self.app
-                .register_command(Arc::new(himark::hichanges::RefetchChanges));
+                .register_command(Arc::new(himark::hichanges::RefetchChanges::default()));
             self.app
                 .register_toolbar_button(himark::hichanges::toolbar_button());
             self.app

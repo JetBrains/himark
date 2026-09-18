@@ -119,6 +119,7 @@ fn folder_node(
         dim: false,
         trail: Vec::new(),
         tint: crate::TreeTint::Label,
+        action: None,
         children: dir_children(folder, trie, items),
     })
 }
@@ -149,6 +150,7 @@ fn dir_children(
             dim: true,
             trail: Vec::new(),
             tint: crate::TreeTint::Label,
+            action: None,
             children: nested,
         });
     }
@@ -179,6 +181,7 @@ fn dir_children(
                 dim: record.resolved,
                 trail: Vec::new(),
                 tint: crate::TreeTint::Label,
+                action: None,
                 children: Vec::new(),
             });
         }
@@ -189,6 +192,7 @@ fn dir_children(
             dim: false,
             trail: Vec::new(),
             tint: crate::TreeTint::Label,
+            action: None,
             children: leaves,
         });
     }
@@ -286,6 +290,7 @@ impl CommentsView {
                 dim: true,
                 trail: Vec::new(),
                 tint: crate::TreeTint::Label,
+                action: None,
                 children: Vec::new(),
             });
         }

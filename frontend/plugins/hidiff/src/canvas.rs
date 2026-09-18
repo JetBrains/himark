@@ -1,19 +1,23 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The diff canvas (docs/diff-canvas.md): one huge list — per changed
-//! file a Header-1 band and the file's diff beneath it. Diffs build
-//! lazily when their row paints, entirely off-thread, and land
-//! atomically: the swap and the height move in one perform, and the
-//! settle pulse re-aims the viewport before the frame paints.
+//! The diff canvas (docs/diff-canvas.md): one huge TREE-shaped list —
+//! per changed file a Header-1 parent row (name, counts, the header
+//! buttons) and the file's diff as its child row. Diffs build lazily
+//! when their row paints, entirely off-thread, and land atomically:
+//! the swap and the height move in one perform, and the settle pulse
+//! re-aims the viewport before the frame paints. The header rows ride
+//! the list's own sticky machinery (`ListView::with_sticky`), so the
+//! current file's name — buttons included — stays planted while its
+//! diff scrolls; collapsing a file folds its diff row away.
 
 use himark::diff_canvas::{
-    canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasReveal, CanvasSource,
+    canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
 };
 use himark::{env, EditorView, ResourceLocation, UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
-use imba::list::{ListCommand, ListSlice, ListView};
+use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
 use imba::scroll::{ScrollCommand, ScrollView};
 use imba::thunk_ext::ThunkExt;
 use imba::{arena::Arena, constraints::Constraints, store::Store, Thunk, UiCtx, View, Widget};
@@ -23,7 +27,18 @@ const MIN_EST_LINES: i64 = 4;
 const MAX_EST_LINES: i64 = 60;
 const EST_CONTEXT_LINES: i64 = 4;
 
-type CanvasRows = ListView<CanvasRow, ResourceLocation>;
+/// The row key: the file's `new` side names the FILE node (the header
+/// row and its cover span — the reveal target), and the diff child
+/// keys itself beside it. The banner heads the list and covers
+/// nothing, so the sticky machinery never plants it.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub(crate) enum CanvasKey {
+    Banner,
+    File(ResourceLocation),
+    Diff(ResourceLocation),
+}
+
+type CanvasRows = ListView<CanvasRow, CanvasKey>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
 pub enum CanvasCommand {
@@ -32,17 +47,30 @@ pub enum CanvasCommand {
     /// The paint probe saw the feed's generation move.
     Refresh,
 
-    /// The paint probe saw an armed reveal for this source.
+    /// The paint probe saw an armed reveal on an already-populated
+    /// canvas (a reuse navigation delivered it).
     PickupReveal,
 
     Landed {
         key: ResourceLocation,
         built: himark::BuiltFileDiff,
     },
+
+    /// A key-addressed row command — effect landings route by KEY,
+    /// never by a captured index: collapse/expand splices shift
+    /// indices under in-flight work.
+    ToRow {
+        key: ResourceLocation,
+        command: RowCommand,
+    },
 }
 
+/// The canvas STATE, store-held in `Canvases` (the `OpenDocuments`
+/// discipline): panels are `DiffCanvasView` reference views over a
+/// `CanvasId`; opening a source that already has a canvas reuses it —
+/// nothing is ever rebuilt for a second click.
 #[derive(Clone)]
-pub struct DiffCanvasView {
+pub struct Canvas {
     source: CanvasSource,
     rows: ScrollView<CanvasRows>,
     files: rpds::HashTrieMapSync<ResourceLocation, CanvasFile>,
@@ -53,6 +81,19 @@ pub struct DiffCanvasView {
     request: Option<himark::PanelRequest>,
 
     phases: rpds::HashTrieMapSync<ResourceLocation, RowPhase>,
+
+    /// An armed reveal: applied at populate, or picked up by the
+    /// paint probe when a reuse navigation arms it later.
+    reveal: Option<ResourceLocation>,
+
+    /// Views standing on this canvas. At zero the canvas retires —
+    /// except the WORKING-COPY canvas, which stays once opened.
+    refs: u32,
+
+    /// Collapsed files' diff rows, parked with their heights — the
+    /// views stay alive (a built diff keeps its editors), the list
+    /// just stops holding their rows.
+    stash: rpds::HashTrieMapSync<ResourceLocation, (CanvasRow, f32)>,
 }
 
 /// A row's lifecycle, panel-tracked — the test oracle.
@@ -63,22 +104,32 @@ pub enum RowPhase {
     Failed,
 }
 
-impl DiffCanvasView {
-    pub fn fresh(source: CanvasSource) -> Self {
+fn sticky_style() -> imba::list::StickySource {
+    std::sync::Arc::new(|store: &Store| {
+        let window = env::Themes::of(store).ui().window.clone();
+        StickyStyle {
+            background: window.background.0,
+            divider: window.divider.0,
+            divider_width: window.divider_width,
+        }
+    })
+}
+
+impl Canvas {
+    fn fresh(source: CanvasSource) -> Self {
         Self {
             source,
-            rows: ScrollView::new(ListView::empty()),
+            rows: ScrollView::new(ListView::empty().with_sticky(sticky_style())),
             files: rpds::HashTrieMapSync::new_sync(),
             note: None,
             seen: None,
             populated: false,
             request: None,
             phases: rpds::HashTrieMapSync::new_sync(),
+            reveal: None,
+            refs: 0,
+            stash: rpds::HashTrieMapSync::new_sync(),
         }
-    }
-
-    pub fn source(&self) -> &CanvasSource {
-        &self.source
     }
 
     #[doc(hidden)]
@@ -91,22 +142,135 @@ impl DiffCanvasView {
         self.rows.scroll_y()
     }
 
-    /// (title, phase, reserved/current height), in list order.
+    /// (title, phase, current diff-row height), in list order;
+    /// collapsed files report their parked row at height zero.
     #[doc(hidden)]
     pub fn probe_rows(&self) -> Vec<(String, RowPhase, f32)> {
         let rows = self.rows.content();
         (0..rows.len())
             .filter_map(|index| {
                 let key = rows.key_at(index)?;
-                let file = self.files.get(key)?;
+                let CanvasKey::File(location) = key else {
+                    return None;
+                };
+                let title = self.files.get(location)?.title.clone();
+                let phase = self
+                    .phases
+                    .get(location)
+                    .copied()
+                    .unwrap_or(RowPhase::Placeholder);
+                let height = rows
+                    .row_range(&CanvasKey::Diff(location.clone()))
+                    .and_then(|range| rows.height_at(range.start))
+                    .unwrap_or(0.0);
+                Some((title, phase, height))
+            })
+            .collect()
+    }
+
+    fn diff_rows(&self) -> Vec<(String, DiffRow)> {
+        let rows = self.rows.content();
+        let mut out = Vec::new();
+        for index in 0..rows.len() {
+            let Some(CanvasKey::File(location)) = rows.key_at(index) else {
+                continue;
+            };
+            let Some(title) = self.files.get(location).map(|file| file.title.clone()) else {
+                continue;
+            };
+            let held = match rows.row_range(&CanvasKey::Diff(location.clone())) {
+                Some(range) => rows.view_at(range.start),
+                None => self.stash.get(location).map(|(row, _)| row.clone()),
+            };
+            if let Some(CanvasRow::Diff(diff)) = held {
+                out.push((title, diff));
+            }
+        }
+        out
+    }
+
+    #[doc(hidden)]
+    pub fn probe_focused_row(&self) -> Option<usize> {
+        self.rows.content().focused()
+    }
+
+    fn banner_row(&self) -> Option<BannerRow> {
+        let range = self.rows.content().row_range(&CanvasKey::Banner)?;
+        match self.rows.content().view_at(range.start)? {
+            CanvasRow::Banner(banner) => Some(banner),
+            _ => None,
+        }
+    }
+
+    fn composer_text(&self) -> Option<String> {
+        match self.banner_row()? {
+            BannerRow::Composer { message, .. } => {
+                let text = message.document.text();
+                let end = text.byte_count().min(u32::MAX as usize) as u32;
+                Some(text.view().substring(0..end))
+            }
+            _ => None,
+        }
+    }
+
+    /// (focused, text) of the working-copy composer banner.
+    #[doc(hidden)]
+    pub fn probe_composer(&self) -> Option<(bool, String)> {
+        match self.banner_row()? {
+            BannerRow::Composer { message, focused } => {
+                let text = message.document.text();
+                let end = text.byte_count().min(u32::MAX as usize) as u32;
+                Some((focused, text.view().substring(0..end)))
+            }
+            _ => None,
+        }
+    }
+
+    /// (message, author) of a commit canvas's banner.
+    #[doc(hidden)]
+    pub fn probe_banner(&self) -> Option<(String, String)> {
+        match self.banner_row()? {
+            BannerRow::Commit { message, author } => Some((message, author)),
+            _ => None,
+        }
+    }
+
+    /// Per Built row: (left content height, right content height,
+    /// inline content height, left width, right width) — the split
+    /// alignment oracle.
+    #[doc(hidden)]
+    pub fn probe_half_heights(&self) -> Vec<(f32, f32, f32, f32, f32)> {
+        self.diff_rows()
+            .into_iter()
+            .filter_map(|(_, diff)| {
+                let RowBody::Built { view } = &diff.body else {
+                    return None;
+                };
+                let left = &view.split.left;
+                let right = &view.split.right;
                 Some((
-                    file.title.clone(),
-                    self.phases
-                        .get(key)
-                        .copied()
-                        .unwrap_or(RowPhase::Placeholder),
-                    rows.height_at(index)?,
+                    left.document.content_height(left.editor),
+                    right.document.content_height(right.editor),
+                    view.inline_editor
+                        .map(|editor| right.document.content_height(editor))
+                        .unwrap_or(-1.0),
+                    left.document.layout_width(left.editor),
+                    right.document.layout_width(right.editor),
                 ))
+            })
+            .collect()
+    }
+
+    /// Per Built row (parked ones included): (title, current face).
+    #[doc(hidden)]
+    pub fn probe_layouts(&self) -> Vec<(String, himark::DiffLayout)> {
+        self.diff_rows()
+            .into_iter()
+            .filter_map(|(title, diff)| {
+                let RowBody::Built { view } = &diff.body else {
+                    return None;
+                };
+                Some((title, view.layout))
             })
             .collect()
     }
@@ -114,13 +278,10 @@ impl DiffCanvasView {
     /// Per Built row: (title, host/inline focus, each card's focus).
     #[doc(hidden)]
     pub fn probe_focus(&self) -> Vec<(String, String, Vec<String>)> {
-        let rows = self.rows.content();
-        (0..rows.len())
-            .filter_map(|index| {
-                let key = rows.key_at(index)?;
-                let title = self.files.get(key)?.title.clone();
-                let row = rows.view_at(index)?;
-                let RowBody::Built { view } = &row.body else {
+        self.diff_rows()
+            .into_iter()
+            .filter_map(|(title, diff)| {
+                let RowBody::Built { view } = &diff.body else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -141,11 +302,10 @@ impl DiffCanvasView {
     /// Per Built row: (host text head, each card's text head).
     #[doc(hidden)]
     pub fn probe_texts(&self) -> Vec<(String, Vec<String>)> {
-        let rows = self.rows.content();
-        (0..rows.len())
-            .filter_map(|index| {
-                let row = rows.view_at(index)?;
-                let RowBody::Built { view } = &row.body else {
+        self.diff_rows()
+            .into_iter()
+            .filter_map(|(_, diff)| {
+                let RowBody::Built { view } = &diff.body else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -170,11 +330,10 @@ impl DiffCanvasView {
     /// Geometry oracle: (content_height, [(anchor_byte, y_of_anchor)]).
     #[doc(hidden)]
     pub fn probe_geometry(&self) -> Vec<(f32, Vec<(u32, f32)>)> {
-        let rows = self.rows.content();
-        (0..rows.len())
-            .filter_map(|index| {
-                let row = rows.view_at(index)?;
-                let RowBody::Built { view } = &row.body else {
+        self.diff_rows()
+            .into_iter()
+            .filter_map(|(_, diff)| {
+                let RowBody::Built { view } = &diff.body else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -200,7 +359,7 @@ impl DiffCanvasView {
                 }
             }
             CanvasListing::Ready(files) => {
-                // Reconcile of an already-populated canvas is phase 6
+                // Reconcile of an already-populated canvas is deferred
                 // (docs/diff-canvas.md §7); v1 populates exactly once.
                 if self.populated {
                     return;
@@ -208,17 +367,52 @@ impl DiffCanvasView {
                 self.populated = true;
                 self.note = None;
                 let theme = env::Themes::of(store);
-                let mut slice: ListSlice<CanvasRow, ResourceLocation> = ListSlice::new();
+                let band = header_band(&theme);
+                let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                match himark::diff_canvas::canvas_banner(store, &self.source) {
+                    Some(himark::diff_canvas::CanvasBanner::Composer { .. }) => {
+                        let message = fresh_composer_box(store);
+                        let height = composer_band(&theme, Some(&message));
+                        slice.push_keyed_sized(
+                            CanvasKey::Banner,
+                            CanvasRow::Banner(BannerRow::Composer {
+                                message,
+                                focused: false,
+                            }),
+                            height,
+                        );
+                    }
+                    Some(himark::diff_canvas::CanvasBanner::Commit { message, author }) => {
+                        let height = commit_band(&theme, &message);
+                        slice.push_keyed_sized(
+                            CanvasKey::Banner,
+                            CanvasRow::Banner(BannerRow::Commit { message, author }),
+                            height,
+                        );
+                    }
+                    None => {}
+                }
                 for file in &files {
+                    let start = slice.len();
                     slice.push_keyed_sized(
-                        file.new.clone(),
-                        CanvasRow {
+                        CanvasKey::File(file.new.clone()),
+                        CanvasRow::Header(HeaderRow {
+                            file: file.clone(),
+                            collapsed: false,
+                            built: false,
+                        }),
+                        band,
+                    );
+                    slice.push_keyed_sized(
+                        CanvasKey::Diff(file.new.clone()),
+                        CanvasRow::Diff(DiffRow {
                             file: file.clone(),
                             body: RowBody::Placeholder { armed: false },
                             rewrap_ask: None,
-                        },
-                        reserved_height(&theme, file),
+                        }),
+                        reserved_body(&theme, file),
                     );
+                    slice.cover(CanvasKey::File(file.new.clone()), start..start + 2);
                 }
                 for file in files {
                     self.phases
@@ -226,6 +420,11 @@ impl DiffCanvasView {
                     self.files.insert_mut(file.new.clone(), file);
                 }
                 self.rows.content_mut().splice_slice(0..0, slice);
+                if let Some(key) = self.reveal.take() {
+                    self.rows
+                        .content_mut()
+                        .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
+                }
             }
         }
     }
@@ -242,16 +441,26 @@ impl DiffCanvasView {
     ) {
         let theme = env::Themes::of(store);
         let key = file.new.clone();
-        let mut slice: ListSlice<CanvasRow, ResourceLocation> = ListSlice::new();
+        let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
         slice.push_keyed_sized(
-            key.clone(),
-            CanvasRow {
+            CanvasKey::File(key.clone()),
+            CanvasRow::Header(HeaderRow {
+                file: file.clone(),
+                collapsed: false,
+                built: false,
+            }),
+            header_band(&theme),
+        );
+        slice.push_keyed_sized(
+            CanvasKey::Diff(key.clone()),
+            CanvasRow::Diff(DiffRow {
                 file: file.clone(),
                 body: RowBody::Placeholder { armed: false },
                 rewrap_ask: None,
-            },
-            reserved_height(&theme, &file),
+            }),
+            reserved_body(&theme, &file),
         );
+        slice.cover(CanvasKey::File(key.clone()), 0..2);
         self.phases.insert_mut(key.clone(), RowPhase::Placeholder);
         self.files.insert_mut(key.clone(), file);
         let at = self.rows.content().len();
@@ -262,10 +471,10 @@ impl DiffCanvasView {
     }
 
     fn launch(&self, index: usize, width: f32, fx: &mut Effects<'_, CanvasCommand>) {
-        let Some(key) = self.rows.content().key_at(index).cloned() else {
+        let Some(CanvasKey::Diff(location)) = self.rows.content().key_at(index).cloned() else {
             return;
         };
-        let Some(file) = self.files.get(&key) else {
+        let Some(file) = self.files.get(&location) else {
             return;
         };
         fx.push(
@@ -275,7 +484,7 @@ impl DiffCanvasView {
                 width,
             })
             .map(move |built| CanvasCommand::Landed {
-                key: key.clone(),
+                key: location.clone(),
                 built,
             }),
         );
@@ -289,23 +498,19 @@ impl DiffCanvasView {
         built: himark::BuiltFileDiff,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        let Some(range) = self.rows.content().row_range(&key) else {
-            return;
-        };
-        let index = range.start;
         let Some(file) = self.files.get(&key).cloned() else {
             return;
         };
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
+        let route = key.clone();
         let (body, body_height) = match built.failed.clone() {
             Some(error) => (RowBody::Failed(error), chrome.title_size * 3.0),
             None => {
                 let (view, height) = fx.scope(
-                    move |command: RowCommand| {
-                        CanvasCommand::Rows(ScrollCommand::Content(ListCommand::Child(
-                            index, command,
-                        )))
+                    move |command: RowCommand| CanvasCommand::ToRow {
+                        key: route.clone(),
+                        command,
                     },
                     |fx| mounted(store, ui, built, fx),
                 );
@@ -319,24 +524,186 @@ impl DiffCanvasView {
                 _ => RowPhase::Built,
             },
         );
-        let height = header_band(&theme) + body_height + chrome.gap;
-        let mut slice: ListSlice<CanvasRow, ResourceLocation> = ListSlice::new();
-        slice.push_keyed_sized(
-            key.clone(),
-            CanvasRow {
+        let diff = CanvasRow::Diff(DiffRow {
+            file: file.clone(),
+            body,
+            rewrap_ask: None,
+        });
+        let diff_height = body_height + chrome.gap;
+
+        if let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone())) {
+            let start = header_range.start;
+            let expanded = self
+                .rows
+                .content()
+                .row_range(&CanvasKey::Diff(key.clone()))
+                .is_some();
+            let header = CanvasRow::Header(HeaderRow {
                 file,
-                body,
-                rewrap_ask: None,
-            },
-            height,
+                collapsed: !expanded,
+                built: true,
+            });
+            let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+            slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
+            if expanded {
+                slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, diff_height);
+                slice.cover(CanvasKey::File(key.clone()), 0..2);
+                self.rows
+                    .content_mut()
+                    .splice_slice(start..start + 2, slice);
+            } else {
+                // Collapsed before the build landed: park the built
+                // row; expand splices it in.
+                slice.cover(CanvasKey::File(key.clone()), 0..1);
+                self.stash.insert_mut(key.clone(), (diff, diff_height));
+                self.rows
+                    .content_mut()
+                    .splice_slice(start..start + 1, slice);
+            }
+            // The swap is a height mutation like any other: the door
+            // noted the anchor, the pulse re-aims before this frame
+            // paints. Zero wrong frames (docs/diff-canvas.md §4).
+            fx.settle();
+        }
+    }
+
+    fn toggle_collapse(&mut self, key: &ResourceLocation, fx: &mut Effects<'_, CanvasCommand>) {
+        let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone()))
+        else {
+            return;
+        };
+        let start = header_range.start;
+        let Some(file) = self.files.get(key).cloned() else {
+            return;
+        };
+        let built = matches!(
+            self.phases.get(key),
+            Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
-        self.rows
-            .content_mut()
-            .splice_slice(index..index + 1, slice);
-        // The swap is a height mutation like any other: the door
-        // noted the anchor, the pulse re-aims before this frame
-        // paints. Zero wrong frames (docs/diff-canvas.md §4).
+        let band = self.rows.content().height_at(start).unwrap_or(64.0);
+        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+            Some(diff_range) => {
+                let Some(diff) = self.rows.content().view_at(diff_range.start) else {
+                    return;
+                };
+                let height = self
+                    .rows
+                    .content()
+                    .height_at(diff_range.start)
+                    .unwrap_or(0.0);
+                self.stash.insert_mut(key.clone(), (diff, height));
+                let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                slice.push_keyed_sized(
+                    CanvasKey::File(key.clone()),
+                    CanvasRow::Header(HeaderRow {
+                        file,
+                        collapsed: true,
+                        built,
+                    }),
+                    band,
+                );
+                slice.cover(CanvasKey::File(key.clone()), 0..1);
+                self.rows
+                    .content_mut()
+                    .splice_slice(start..start + 2, slice);
+            }
+            None => {
+                let (diff, height) = match self.stash.get(key) {
+                    Some((diff, height)) => (diff.clone(), *height),
+                    None => return,
+                };
+                self.stash.remove_mut(key);
+                let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                slice.push_keyed_sized(
+                    CanvasKey::File(key.clone()),
+                    CanvasRow::Header(HeaderRow {
+                        file,
+                        collapsed: false,
+                        built,
+                    }),
+                    band,
+                );
+                slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
+                slice.cover(CanvasKey::File(key.clone()), 0..2);
+                self.rows
+                    .content_mut()
+                    .splice_slice(start..start + 1, slice);
+            }
+        }
         fx.settle();
+    }
+
+    /// A header ask, wherever it was pressed — the in-flow row or the
+    /// planted sticky copy route identically.
+    fn header_action(
+        &mut self,
+        key: &ResourceLocation,
+        action: HeaderAction,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        match action {
+            HeaderAction::OpenFile => {
+                if let Some(file) = self.files.get(key) {
+                    self.request = Some(himark::PanelRequest::Perform(std::sync::Arc::new(
+                        himark::diff_canvas::OpenCanvasFile {
+                            location: file.new.clone(),
+                        },
+                    )));
+                }
+            }
+            HeaderAction::OpenPane => {
+                if let Some(file) = self.files.get(key) {
+                    self.request = Some(himark::PanelRequest::Perform(std::sync::Arc::new(
+                        himark::hichanges::OpenDiffForPair {
+                            old: file.old.clone(),
+                            new: file.new.clone(),
+                        },
+                    )));
+                }
+            }
+            HeaderAction::ToggleCollapse => self.toggle_collapse(key, fx),
+            HeaderAction::ToggleFace => {
+                let command = RowCommand::Header(HeaderAction::ToggleFace);
+                self.to_row(key.clone(), command, store, ui, fx);
+            }
+        }
+    }
+
+    /// Route a row command by KEY: to the live diff row, or into the
+    /// parked one while its file is collapsed.
+    fn to_row(
+        &mut self,
+        key: ResourceLocation,
+        command: RowCommand,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+            Some(range) => {
+                let index = range.start;
+                let rows = ScrollCommand::Content(ListCommand::Child(index, command));
+                fx.scope(CanvasCommand::Rows, |fx| {
+                    self.rows.perform(store, ui, rows, fx)
+                });
+            }
+            None => {
+                let Some((mut row, height)) = self.stash.get(&key).cloned() else {
+                    return;
+                };
+                let route = key.clone();
+                fx.scope(
+                    move |command: RowCommand| CanvasCommand::ToRow {
+                        key: route.clone(),
+                        command,
+                    },
+                    |fx| row.perform(store, ui, command, fx),
+                );
+                self.stash.insert_mut(key, (row, height));
+            }
+        }
     }
 }
 
@@ -452,7 +819,7 @@ fn mounted(
     let left = EditorView {
         document: before_doc,
         editor: left_editor,
-        reports_geometry: false,
+        reports_geometry: true,
         location: None,
         gutter_width: 0.0,
         base: None,
@@ -460,7 +827,7 @@ fn mounted(
     let right = EditorView {
         document: after_doc,
         editor: right_editor,
-        reports_geometry: false,
+        reports_geometry: true,
         location: None,
         gutter_width: 0.0,
         base: None,
@@ -489,9 +856,7 @@ fn mounted(
     (view, height)
 }
 
-impl View for DiffCanvasView {
-    type Command = CanvasCommand;
-
+impl Canvas {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
@@ -504,35 +869,46 @@ impl View for DiffCanvasView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
+        command: CanvasCommand,
+        fx: &mut Effects<'_, CanvasCommand>,
     ) {
         match command {
             CanvasCommand::Refresh => self.refresh(store),
             CanvasCommand::PickupReveal => {
-                if let Some(key) = CanvasReveal::take_for(store, &self.source) {
+                if let Some(key) = self.reveal.take() {
                     self.rows
                         .content_mut()
-                        .reveal_row(key, Placement::TopLeftAt);
+                        .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
+                    fx.settle();
                 }
             }
             CanvasCommand::Landed { key, built } => self.land(store, ui, key, built, fx),
+            CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
             CanvasCommand::Rows(command) => {
                 match row_ask(&command) {
                     Some((index, RowCommand::Arm(width))) => self.launch(index, *width, fx),
-                    Some((index, RowCommand::OpenFull)) => {
-                        // The header opens the standalone pane — the
-                        // pre-canvas road, still reachable per file.
-                        let file = self
-                            .rows
-                            .content()
-                            .key_at(index)
-                            .and_then(|key| self.files.get(key));
-                        if let Some(file) = file {
+                    Some((index, RowCommand::Header(action))) => {
+                        let key = match self.rows.content().key_at(index) {
+                            Some(CanvasKey::File(location)) | Some(CanvasKey::Diff(location)) => {
+                                Some(location.clone())
+                            }
+                            _ => None,
+                        };
+                        if let Some(key) = key {
+                            let action = *action;
+                            self.header_action(&key, action, store, ui, fx);
+                        }
+                    }
+                    // The canvas posts the commit ask (it owns the
+                    // folder and the request); the text is read HERE,
+                    // before the routed command resets the row's box.
+                    Some((_, RowCommand::Composer(ComposerCommand::Commit))) => {
+                        let text = self.composer_text().unwrap_or_default();
+                        if !text.trim().is_empty() {
                             self.request = Some(himark::PanelRequest::Perform(
-                                std::sync::Arc::new(himark::hichanges::OpenDiffForPair {
-                                    old: file.old.clone(),
-                                    new: file.new.clone(),
+                                std::sync::Arc::new(himark::hihistory::CommitHistory {
+                                    folder: self.source.folder().clone(),
+                                    message: text,
                                 }),
                             ));
                         }
@@ -551,11 +927,11 @@ impl View for DiffCanvasView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::Layout<'a, CanvasCommand> + imba::LayoutValue + 'a {
         let _ = arena;
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
             let refresh = self.seen != Some(canvas_generation(store, &self.source));
-            let reveal = CanvasReveal::pending_for(store, &self.source);
+            let reveal = self.populated && self.reveal.is_some();
             let inner: imba::ThunkBox<'a, CanvasCommand> = match &self.note {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
@@ -586,7 +962,11 @@ impl View for DiffCanvasView {
                 None => imba::ThunkBox::new(
                     arena,
                     imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
-                        .map(CanvasCommand::Rows),
+                        .map(CanvasCommand::Rows)
+                        // The list plants its sticky headers here —
+                        // the canvas IS the pane face, so the band
+                        // spans it edge to edge.
+                        .overlay_host(imba::list::STICKY_HOST),
                 ),
             };
             inner.wrap(move |widget| CanvasProbe {
@@ -645,18 +1025,308 @@ impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasP
     }
 }
 
+// ------------------------------------------------------------ canvases
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct CanvasId(u64);
+
+impl CanvasId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// The store-held canvases (the `OpenDocuments` discipline): at most
+/// one canvas per source, found — never rebuilt — on every open.
+/// Canvases live while views retain them; the working-copy canvas
+/// stays once opened.
+#[derive(Clone, Default)]
+pub struct Canvases(rpds::HashTrieMapSync<CanvasId, Canvas>);
+
+impl Canvases {
+    pub fn by_source(store: &Store, source: &CanvasSource) -> Option<CanvasId> {
+        store
+            .get::<Canvases>()?
+            .0
+            .iter()
+            .find(|(_, canvas)| canvas.source == *source)
+            .map(|(id, _)| *id)
+    }
+
+    fn find_or_create(store: &mut Store, source: &CanvasSource) -> CanvasId {
+        if let Some(id) = Self::by_source(store, source) {
+            return id;
+        }
+        let id = CanvasId::mint();
+        let canvas = Canvas::fresh(source.clone());
+        store.update::<Canvases>(|held| {
+            held.0.insert_mut(id, canvas);
+        });
+        id
+    }
+
+    fn get<'a>(store: &'a Store, id: CanvasId) -> Option<&'a Canvas> {
+        store.get::<Canvases>()?.0.get(&id)
+    }
+
+    fn take(store: &mut Store, id: CanvasId) -> Option<Canvas> {
+        let canvas = Self::get(store, id)?.clone();
+        store.update::<Canvases>(|held| {
+            held.0.remove_mut(&id);
+        });
+        Some(canvas)
+    }
+
+    fn put(store: &mut Store, id: CanvasId, canvas: Canvas) {
+        store.update::<Canvases>(|held| {
+            held.0.insert_mut(id, canvas);
+        });
+    }
+
+    fn retain(store: &mut Store, id: CanvasId) {
+        if let Some(mut canvas) = Self::take(store, id) {
+            canvas.refs += 1;
+            Self::put(store, id, canvas);
+        }
+    }
+
+    fn release(store: &mut Store, id: CanvasId) {
+        let Some(mut canvas) = Self::take(store, id) else {
+            return;
+        };
+        canvas.refs = canvas.refs.saturating_sub(1);
+        // View-retained lifetime — except the WORKING-COPY canvas,
+        // which stays around once opened (its diffs keep serving the
+        // next open for free).
+        if canvas.refs > 0 || matches!(canvas.source, CanvasSource::WorkingCopy { .. }) {
+            Self::put(store, id, canvas);
+        }
+    }
+
+    pub fn set_reveal(store: &mut Store, id: CanvasId, key: ResourceLocation) {
+        if let Some(mut canvas) = Self::take(store, id) {
+            canvas.reveal = Some(key);
+            Self::put(store, id, canvas);
+        }
+    }
+}
+
+/// The canvas PANEL — a REFERENCE view over the store-held canvas,
+/// the `PairPane` shape: panes hold ids, state lives in `Canvases`,
+/// and a second view of the same source costs nothing.
+#[derive(Clone)]
+pub struct DiffCanvasView {
+    id: CanvasId,
+    source: CanvasSource,
+    request: Option<himark::PanelRequest>,
+}
+
+impl DiffCanvasView {
+    pub fn over(store: &mut Store, source: CanvasSource) -> Self {
+        let id = Canvases::find_or_create(store, &source);
+        Canvases::retain(store, id);
+        Self {
+            id,
+            source,
+            request: None,
+        }
+    }
+
+    pub fn id(&self) -> CanvasId {
+        self.id
+    }
+
+    pub fn source(&self) -> &CanvasSource {
+        &self.source
+    }
+
+    fn canvas<'a>(&self, store: &'a Store) -> Option<&'a Canvas> {
+        Canvases::get(store, self.id)
+    }
+
+    /// TEST SUPPORT: a view over a canvas seeded with one BUILT row.
+    #[doc(hidden)]
+    pub fn seeded_for_tests(
+        store: &mut Store,
+        ui: &UiCtx,
+        source: CanvasSource,
+        file: CanvasFile,
+        built: himark::BuiltFileDiff,
+    ) -> Self {
+        let view = Self::over(store, source);
+        if let Some(mut canvas) = Canvases::take(store, view.id) {
+            canvas.seed_built_for_tests(store, ui, file, built);
+            Canvases::put(store, view.id, canvas);
+        }
+        view
+    }
+
+    #[doc(hidden)]
+    pub fn probe_note(&self, store: &Store) -> Option<String> {
+        self.canvas(store)?.probe_note().map(str::to_owned)
+    }
+
+    #[doc(hidden)]
+    pub fn probe_scroll_top(&self, store: &Store) -> f32 {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_scroll_top())
+            .unwrap_or(0.0)
+    }
+
+    #[doc(hidden)]
+    pub fn probe_rows(&self, store: &Store) -> Vec<(String, RowPhase, f32)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_rows())
+            .unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_focused_row(&self, store: &Store) -> Option<usize> {
+        self.canvas(store)?.probe_focused_row()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_composer(&self, store: &Store) -> Option<(bool, String)> {
+        self.canvas(store)?.probe_composer()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_banner(&self, store: &Store) -> Option<(String, String)> {
+        self.canvas(store)?.probe_banner()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, himark::DiffLayout)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_layouts())
+            .unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_half_heights(&self, store: &Store) -> Vec<(f32, f32, f32, f32, f32)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_half_heights())
+            .unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_focus(&self, store: &Store) -> Vec<(String, String, Vec<String>)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_focus())
+            .unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_texts())
+            .unwrap_or_default()
+    }
+
+    #[doc(hidden)]
+    pub fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
+        self.canvas(store)
+            .map(|canvas| canvas.probe_geometry())
+            .unwrap_or_default()
+    }
+}
+
+impl View for DiffCanvasView {
+    type Command = CanvasCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, CanvasCommand> {
+        match self.canvas(store) {
+            Some(canvas) => canvas.focus_data(store, ui),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut Effects<'_, Self::Command>,
+    ) {
+        let Some(mut canvas) = Canvases::take(store, self.id) else {
+            return;
+        };
+        canvas.perform(store, ui, command, fx);
+        // Requests are the PANEL's ask (`take_request` has no store):
+        // pull what the canvas minted into the view.
+        if let Some(request) = canvas.request.take() {
+            self.request = Some(request);
+        }
+        Canvases::put(store, self.id, canvas);
+    }
+
+    fn display<'a>(
+        &'a self,
+        _arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+        imba::laid(
+            move |arena: &'a Arena, constraints: Constraints| match self.canvas(store) {
+                Some(canvas) => {
+                    imba::Layout::layout(canvas.display(arena, store, ui), arena, constraints)
+                }
+                None => imba::ThunkBox::new(
+                    arena,
+                    imba::leaf::leaf::<CanvasCommand>(constraints.max.width.max(1.0), 1.0),
+                ),
+            },
+        )
+    }
+}
+
 // ---------------------------------------------------------------- rows
+
+/// What a header row's face offers — pressed on the in-flow row or on
+/// its planted sticky copy alike.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum HeaderAction {
+    /// The header body (and cmd-enter): open the live file in a pane.
+    OpenFile,
+
+    /// The side-by-side button: the standalone diff pane.
+    OpenPane,
+
+    /// The layout button: inline ⇄ split for this file's diff.
+    ToggleFace,
+
+    /// The chevron: fold the diff row away / bring it back.
+    ToggleCollapse,
+}
 
 pub enum RowCommand {
     /// The placeholder painted un-armed: build me, at this width.
     Arm(f32),
 
-    /// The header band was pressed: open the standalone diff pane.
-    OpenFull,
+    Header(HeaderAction),
 
     Diff(UnifiedDiffCommand),
 
+    Composer(ComposerCommand),
+
     Rewrap(f32),
+}
+
+pub enum ComposerCommand {
+    Message(himark::EditorCommand),
+
+    /// A press on the well outside the editor's own face.
+    Focus,
+
+    /// ⌘⏎ or the COMMIT button. The CANVAS posts the CommitHistory
+    /// ask (it owns the source folder and the panel request); the row
+    /// then resets its box.
+    Commit,
 }
 
 #[derive(Clone)]
@@ -667,7 +1337,39 @@ enum RowBody {
 }
 
 #[derive(Clone)]
-pub(crate) struct CanvasRow {
+pub(crate) enum CanvasRow {
+    Banner(BannerRow),
+    Header(HeaderRow),
+    Diff(DiffRow),
+}
+
+/// The canvas's first row (docs/diff-canvas.md): the commit's message
+/// and author on a commit canvas, the commit composer on the
+/// working-copy canvas.
+#[derive(Clone)]
+pub(crate) enum BannerRow {
+    Commit {
+        message: String,
+        author: String,
+    },
+    Composer {
+        message: himark::EditorView,
+        focused: bool,
+    },
+}
+
+#[derive(Clone)]
+pub(crate) struct HeaderRow {
+    file: CanvasFile,
+    collapsed: bool,
+
+    /// Whether a diff stands behind this header — the face toggle
+    /// only shows then.
+    built: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct DiffRow {
     file: CanvasFile,
     body: RowBody,
 
@@ -684,7 +1386,48 @@ fn header_band(theme: &himark::Theme) -> f32 {
     h1.font_size.unwrap_or(48.0) + h1.block_gap.unwrap_or(24.0)
 }
 
-fn reserved_height(theme: &himark::Theme, file: &CanvasFile) -> f32 {
+/// The composer banner's height — the CHAT COMPOSER's whole footprint
+/// (higent/chat.rs): the input band (one chat line at rest, `box_pad`
+/// = pad × 0.75 above and below) and the TOOLBAR row under it, ruled
+/// off. The box grows UNBOUNDED with the message — a commit message
+/// is as long as its author wants it; the canvas just scrolls.
+fn composer_band(theme: &himark::Theme, message: Option<&himark::EditorView>) -> f32 {
+    let chat = theme.ui().chat.clone();
+    let one_line = chat.title_size * 1.6;
+    let grown = message
+        .map(|editor| editor.content_height())
+        .unwrap_or(one_line)
+        .max(one_line);
+    grown + chat.pad * 1.5 + theme.ui().toolbar.height
+}
+
+/// A fresh commit box — the CHAT composer's input recipe
+/// (higent/composer.rs `fresh_input`): a markdown document, the
+/// placeholder the editor's own.
+fn fresh_composer_box(store: &Store) -> himark::EditorView {
+    let fonts = env::Fonts::of(store)();
+    let theme = env::Themes::of(store);
+    let document =
+        himark::Document::new(himark::Text::from_string_exact(""), himark::Markup::new())
+            .with_syntax(
+                himark::Syntax::new("markdown", None, himark::Markup::new()),
+                &[],
+            );
+    let mut view = himark::EditorView::of_document(document, 600.0, &fonts, &theme);
+    view.set_placeholder("Commit message", &fonts, &theme);
+    view
+}
+
+const BANNER_MESSAGE_LINES: usize = 12;
+
+fn commit_band(theme: &himark::Theme, message: &str) -> f32 {
+    let chat = theme.ui().chat.clone();
+    let line = chat.title_size * 1.5;
+    let lines = message.lines().take(BANNER_MESSAGE_LINES).count().max(1) + 1; // + the author line
+    lines as f32 * line + chat.pad * 2.0
+}
+
+fn reserved_body(theme: &himark::Theme, file: &CanvasFile) -> f32 {
     let chrome = theme.ui().chat.clone();
     let line = chrome.title_size * 1.5;
     let known = file.added.is_some() || file.removed.is_some();
@@ -693,7 +1436,23 @@ fn reserved_height(theme: &himark::Theme, file: &CanvasFile) -> f32 {
             .clamp(MIN_EST_LINES, MAX_EST_LINES),
         false => 12,
     };
-    header_band(theme) + chrome.gap + est as f32 * line
+    chrome.gap + est as f32 * line
+}
+
+fn open_commands(location: &ResourceLocation) -> Vec<imba::PresentableCommand<RowCommand>> {
+    let _ = location;
+    vec![
+        imba::PresentableCommand::new(
+            "workbench.open-in-full",
+            "Open File in Full",
+            RowCommand::Header(HeaderAction::OpenFile),
+        ),
+        imba::PresentableCommand::new(
+            "diff.open-pane",
+            "Diff: Open in Side-by-Side Panel",
+            RowCommand::Header(HeaderAction::OpenPane),
+        ),
+    ]
 }
 
 impl View for CanvasRow {
@@ -704,14 +1463,48 @@ impl View for CanvasRow {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, RowCommand> {
-        match &self.body {
-            RowBody::Built { view } => view.focus_data(store, ui).map(RowCommand::Diff),
-            _ => imba::focus::FocusData::default(),
+        match self {
+            CanvasRow::Banner(BannerRow::Composer { message, .. }) => {
+                // ⌘⏎ commits from anywhere in the box; text and keys
+                // ride the editor's own focus data.
+                let own = imba::focus::FocusData {
+                    on_key: Some(Box::new(|key, mods| match key {
+                        imba::event::Key::Enter if mods.command => {
+                            EventResult::Command(RowCommand::Composer(ComposerCommand::Commit))
+                        }
+                        _ => EventResult::Ignored,
+                    })),
+                    ..imba::focus::FocusData::default()
+                };
+                own.merge_under(
+                    message
+                        .focus_data(store, ui)
+                        .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
+                )
+            }
+            CanvasRow::Banner(_) => imba::focus::FocusData::default(),
+            CanvasRow::Header(header) => {
+                imba::focus::FocusData::of_commands(open_commands(&header.file.new))
+            }
+            CanvasRow::Diff(diff) => {
+                let own = imba::focus::FocusData::of_commands(open_commands(&diff.file.new));
+                match &diff.body {
+                    RowBody::Built { view } => view
+                        .focus_data(store, ui)
+                        .map(RowCommand::Diff)
+                        .merge_under(own),
+                    _ => own,
+                }
+            }
         }
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        if let RowBody::Built { view } = &mut self.body {
+        if let CanvasRow::Diff(DiffRow {
+            body: RowBody::Built { view },
+            ..
+        }) = self
+        {
             fx.scope(RowCommand::Diff, |fx| view.destroy(store, fx));
         }
     }
@@ -723,27 +1516,91 @@ impl View for CanvasRow {
         command: Self::Command,
         fx: &mut Effects<'_, Self::Command>,
     ) {
+        let diff = match self {
+            // Header rows carry no state of their own: header actions
+            // are the CANVAS's (it owns the splices and requests).
+            CanvasRow::Header(_) => return,
+            CanvasRow::Banner(banner) => {
+                let BannerRow::Composer { message, focused } = banner else {
+                    return;
+                };
+                match command {
+                    RowCommand::Composer(ComposerCommand::Message(command)) => {
+                        if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
+                            *focused = true;
+                            message.focus_text();
+                        }
+                        fx.scope(
+                            |command| RowCommand::Composer(ComposerCommand::Message(command)),
+                            |fx| message.perform(store, ui, command, fx),
+                        );
+                    }
+                    RowCommand::Composer(ComposerCommand::Focus) => {
+                        *focused = true;
+                        message.focus_text();
+                    }
+                    // The canvas already posted the ask (reading the
+                    // text first) — the row just resets its box.
+                    RowCommand::Composer(ComposerCommand::Commit) => {
+                        *message = fresh_composer_box(store);
+                        *focused = false;
+                    }
+                    // The paint probe saw the box wrapped at the
+                    // wrong width (the chat composer's Rewrap ride).
+                    RowCommand::Rewrap(width) => {
+                        let fonts = env::Fonts::of(store)();
+                        let theme = env::Themes::of(store);
+                        let editor = message.editor;
+                        fx.scope(
+                            |command| RowCommand::Composer(ComposerCommand::Message(command)),
+                            |fx| {
+                                message
+                                    .document
+                                    .resize(editor, width, 0, &fonts, &theme, fx)
+                            },
+                        );
+                    }
+                    _ => {}
+                }
+                return;
+            }
+            CanvasRow::Diff(diff) => diff,
+        };
         match command {
-            RowCommand::OpenFull => {}
+            RowCommand::Header(HeaderAction::ToggleFace) => {
+                let RowBody::Built { view } = &mut diff.body else {
+                    return;
+                };
+                let next = view.layout.other();
+                fx.scope(RowCommand::Diff, |fx| {
+                    view.perform(store, ui, UnifiedDiffCommand::SetLayout(next), fx)
+                });
+            }
+            RowCommand::Header(_) | RowCommand::Composer(_) => {}
             RowCommand::Arm(_) => {
-                if let RowBody::Placeholder { armed } = &mut self.body {
+                if let RowBody::Placeholder { armed } = &mut diff.body {
                     *armed = true;
                 }
             }
             RowCommand::Diff(command) => {
-                let RowBody::Built { view } = &mut self.body else {
+                let RowBody::Built { view } = &mut diff.body else {
                     return;
                 };
                 fx.scope(RowCommand::Diff, |fx| view.perform(store, ui, command, fx));
             }
             RowCommand::Rewrap(width) => {
-                if self.rewrap_ask != Some(width) {
-                    self.rewrap_ask = Some(width);
+                if diff.rewrap_ask != Some(width) {
+                    diff.rewrap_ask = Some(width);
                     return;
                 }
-                let RowBody::Built { view } = &mut self.body else {
+                let RowBody::Built { view } = &mut diff.body else {
                     return;
                 };
+                // Inline-face only: on the split face the halves own
+                // their widths (a stale ask must not undo them).
+                if view.layout == himark::DiffLayout::Split {
+                    return;
+                }
                 let fonts = env::Fonts::of(store)();
                 let theme = env::Themes::of(store);
                 let left_editor = view.split.left.editor;
@@ -829,166 +1686,516 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let width = constraints.max.width.max(1.0);
-        let band = header_band(&theme);
         let gutter = theme.ui().editor_gutter.width;
 
-        let header = header_layout(arena, store, ui, &row.file, band, width);
-
-        match &row.body {
-            RowBody::Placeholder { armed } => {
-                let reserved = reserved_height(&theme, &row.file);
-                let body_height = (reserved - band - chrome.gap).max(0.0);
-                let skeleton = skeleton_layout(arena, &theme, &row.file, width, body_height);
-                let card = imba::ZBox::new(arena)
-                    .child(imba::spacer(width, reserved - chrome.gap))
-                    .child(imba::fixed(header).on_click(|| RowCommand::OpenFull))
-                    .child(imba::fixed(skeleton).pad_insets(imba::Insets {
-                        left: 0.0,
-                        top: band,
-                        right: 0.0,
-                        bottom: 0.0,
-                    }))
-                    .pad_insets(imba::Insets {
-                        left: 0.0,
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: chrome.gap,
-                    })
-                    .layout(arena, constraints);
-                let armed = *armed;
-                imba::ThunkBox::new(
-                    arena,
-                    card.wrap(move |inner| ArmedPlaceholder { inner, armed }),
-                )
-            }
-            RowBody::Failed(error) => {
-                let text = format!("{} — {error}", row.file.title);
-                let font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.85);
-                let color = chrome.loader_color.0;
-                let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
-                    .paint_instead(move |_arena, canvas, rect| {
+        match row {
+            CanvasRow::Banner(BannerRow::Commit { message, author }) => {
+                let band = commit_band(&theme, message);
+                let line = chrome.title_size * 1.5;
+                let inset = chrome.pad;
+                let title_font = himark::fonts::ui_text_font(ui, chrome.title_size);
+                let body_font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.9);
+                let text_color = chrome.text_color.0;
+                let dim = chrome.loader_color.0;
+                let title_size = chrome.title_size;
+                let lines: Vec<String> = message
+                    .lines()
+                    .take(BANNER_MESSAGE_LINES)
+                    .map(str::to_owned)
+                    .collect();
+                let author = author.clone();
+                let face = imba::leaf::leaf::<RowCommand>(width, band).paint_instead(
+                    move |_arena, canvas, rect| {
                         let mut paint = Paint::default();
                         paint.set_anti_alias(true);
-                        paint.set_color(color);
-                        canvas.draw_str(
-                            &text,
-                            (rect.left + 16.0, rect.top + rect.height() * 0.5),
-                            &font,
-                            &paint,
-                        );
-                    });
-                imba::ZBox::new(arena)
-                    .child(imba::spacer(width, band + chrome.title_size * 3.0))
-                    .child(imba::fixed(header).on_click(|| RowCommand::OpenFull))
-                    .child(imba::fixed(body).pad_insets(imba::Insets {
-                        left: 0.0,
-                        top: band,
-                        right: 0.0,
-                        bottom: 0.0,
-                    }))
-                    .pad_insets(imba::Insets {
-                        left: 0.0,
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: chrome.gap,
-                    })
-                    .layout(arena, constraints)
-            }
-            RowBody::Built { view } => {
-                let editor_target = (width - gutter).max(120.0);
-                let body = imba::Layout::layout(
-                    view.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(editor_target, 0.0),
-                        max: Size::new(editor_target + gutter, f32::MAX),
+                        let mut y = rect.top + inset + title_size;
+                        paint.set_color(text_color);
+                        for (n, text) in lines.iter().enumerate() {
+                            let font = match n {
+                                0 => &title_font,
+                                _ => &body_font,
+                            };
+                            canvas.draw_str(text, (rect.left + inset, y), font, &paint);
+                            y += line;
+                        }
+                        paint.set_color(dim);
+                        canvas.draw_str(&author, (rect.left + inset, y), &body_font, &paint);
                     },
-                )
-                .map(RowCommand::Diff);
-                let body_height = Thunk::size(&body).height;
-                let laid = view
-                    .split
-                    .right
-                    .document
-                    .layout_width(view.split.right.editor);
-                let rewrap = ((laid - editor_target).abs() > 1.0).then_some(editor_target);
-                let card = imba::ZBox::new(arena)
-                    .child(imba::spacer(width, band + body_height))
-                    .child(imba::fixed(header).on_click(|| RowCommand::OpenFull))
-                    .child(imba::fixed(body).pad_insets(imba::Insets {
-                        left: 0.0,
-                        top: band,
-                        right: 0.0,
-                        bottom: 0.0,
-                    }))
+                );
+                imba::ThunkBox::new(arena, face)
+            }
+            CanvasRow::Banner(BannerRow::Composer { message, focused }) => {
+                // The CHAT COMPOSER's layout, copied whole: the bare
+                // input band (the placeholder is the editor's own,
+                // growing UNBOUNDED with the message), a hairline,
+                // and the TOOLBAR row under it — empty for now — with
+                // the COMMIT cell flush right at the SEND cell's
+                // fixed height and dress: tracked caps + the ⌘⏎ hint
+                // over an accent fill with a 1px accent left rule.
+                let band = composer_band(&theme, Some(message));
+                let pad = chrome.pad;
+                let box_pad = pad * 0.75;
+                let ui_theme = theme.ui();
+                let toolbar_h = ui_theme.toolbar.height;
+                let editor_h = band - toolbar_h - box_pad * 2.0;
+
+                let combo = ui_theme.combo.clone();
+                let caps_font = himark::fonts::ui_font(ui, combo.label_size * 1.1);
+                let key_font = himark::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                let label = "COMMIT";
+                let cell_width = label
+                    .chars()
+                    .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                    .sum::<f32>()
+                    + key_font.measure_str("⌘⏎", None).0
+                    + combo.gap
+                    + combo.pad * 2.0;
+                let sendable = message.document.text().byte_count() > 0;
+                let accent = chrome.accent.0;
+                let on_accent = chrome.on_accent.0;
+                let accent_soft = ui_theme.peeker.dim_text.0;
+                let cell_h = toolbar_h - 1.0;
+                let mid = cell_h * 0.5;
+                let caps_ascent = -caps_font.metrics().1.ascent;
+                let key_ascent = -key_font.metrics().1.ascent;
+                let cell = imba::Row::new(arena)
+                    .gap(combo.gap)
+                    .child(
+                        imba::text(label, caps_font.clone(), on_accent)
+                            .tracking(1.5)
+                            .pad_insets(imba::Insets {
+                                left: 0.0,
+                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            }),
+                    )
+                    .child(imba::text("⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                        imba::Insets {
+                            left: 0.0,
+                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                            right: 0.0,
+                            bottom: 0.0,
+                        },
+                    ))
                     .pad_insets(imba::Insets {
-                        left: 0.0,
+                        left: combo.pad,
                         top: 0.0,
                         right: 0.0,
-                        bottom: chrome.gap,
+                        bottom: 0.0,
                     })
-                    .layout(arena, constraints);
+                    .sized(cell_width, cell_h)
+                    .backdrop(
+                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                            let mut paint = Paint::default();
+                            let mut fill = accent;
+                            if !sendable {
+                                fill = fill.with_a(0x50);
+                            }
+                            paint.set_color(fill.with_a(fill.a() / 3));
+                            canvas.draw_rect(rect, &paint);
+                            paint.set_anti_alias(false);
+                            paint.set_color(fill);
+                            canvas.draw_rect(
+                                Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                                &paint,
+                            );
+                        },
+                    )
+                    .on_click(|| RowCommand::Composer(ComposerCommand::Commit))
+                    .layout(arena, Constraints::tight(Size::new(cell_width, cell_h)));
+
+                let editor_w = (width - pad * 2.0).max(120.0);
+                let input_band = band - toolbar_h;
+                let mut face = imba::container::container(arena, Size::new(width, band));
+                // Bottom-most: a press anywhere on the INPUT band
+                // focuses the box (the editor sits on top; the
+                // toolbar row is its own zone).
+                face.place(
+                    0.0,
+                    0.0,
+                    imba::leaf::leaf::<RowCommand>(width, input_band).event(
+                        |_arena, event, _size| match event {
+                            Event::MouseDown {
+                                button: imba::event::MouseButton::Left,
+                                ..
+                            } => EventResult::Command(RowCommand::Composer(ComposerCommand::Focus)),
+                            _ => EventResult::Ignored,
+                        },
+                    ),
+                );
+                face.place(
+                    pad,
+                    box_pad,
+                    imba::Layout::layout(
+                        message.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(editor_w, editor_h),
+                            max: Size::new(editor_w, editor_h),
+                        },
+                    )
+                    .map(|command| RowCommand::Composer(ComposerCommand::Message(command)))
+                    .focus_scope(*focused),
+                );
+                // The toolbar row: ruled off above, the COMMIT cell
+                // flush right — the chat footer's shape, awaiting its
+                // cells.
+                let rule = ui_theme.toolbar.rule.0;
+                face.place(
+                    0.0,
+                    input_band,
+                    imba::leaf::leaf::<RowCommand>(width, 1.0).paint_instead(
+                        move |_arena, canvas, rect| {
+                            let mut paint = Paint::default();
+                            paint.set_anti_alias(false);
+                            paint.set_color(rule);
+                            canvas.draw_rect(rect, &paint);
+                        },
+                    ),
+                );
+                face.place_boxed(width - cell_width, input_band + 1.0, cell);
+                let rewrap = ((message.layout_width() - editor_w).abs() > 1.0).then_some(editor_w);
                 imba::ThunkBox::new(
                     arena,
-                    card.wrap(move |inner| RewrapOnPaint { inner, rewrap }),
+                    face.wrap_realized(move |inner| RewrapOnPaint { inner, rewrap }),
                 )
             }
+            CanvasRow::Header(header) => {
+                let band = header_band(&theme);
+                let face = HeaderFace::new(store, ui, header, band, width);
+                imba::ThunkBox::new(arena, imba::eager(HeaderWidget { face }))
+            }
+            CanvasRow::Diff(diff) => match &diff.body {
+                RowBody::Placeholder { armed } => {
+                    let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
+                    let skeleton = skeleton_layout(arena, &theme, &diff.file, width, body_height);
+                    let card = imba::ZBox::new(arena)
+                        .child(imba::spacer(width, body_height))
+                        .child(imba::fixed(skeleton))
+                        .pad_insets(imba::Insets {
+                            left: 0.0,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: chrome.gap,
+                        })
+                        .layout(arena, constraints);
+                    let armed = *armed;
+                    imba::ThunkBox::new(
+                        arena,
+                        card.wrap(move |inner| ArmedPlaceholder { inner, armed }),
+                    )
+                }
+                RowBody::Failed(error) => {
+                    let text = format!("{} — {error}", diff.file.title);
+                    let font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.85);
+                    let color = chrome.loader_color.0;
+                    let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
+                        .paint_instead(move |_arena, canvas, rect| {
+                            let mut paint = Paint::default();
+                            paint.set_anti_alias(true);
+                            paint.set_color(color);
+                            canvas.draw_str(
+                                &text,
+                                (rect.left + 16.0, rect.top + rect.height() * 0.5),
+                                &font,
+                                &paint,
+                            );
+                        });
+                    imba::ZBox::new(arena)
+                        .child(imba::spacer(width, chrome.title_size * 3.0))
+                        .child(imba::fixed(body))
+                        .pad_insets(imba::Insets {
+                            left: 0.0,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: chrome.gap,
+                        })
+                        .layout(arena, constraints)
+                }
+                RowBody::Built { view } => {
+                    let editor_target = (width - gutter).max(120.0);
+                    let body = imba::Layout::layout(
+                        view.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(editor_target, 0.0),
+                            max: Size::new(editor_target + gutter, f32::MAX),
+                        },
+                    )
+                    .map(RowCommand::Diff);
+                    let body_height = Thunk::size(&body).height;
+                    // The row-level rewrap governs the INLINE face
+                    // only. On the split face the halves report their
+                    // own painted geometry (`reports_geometry`) and
+                    // resize themselves to the half-pane width — a
+                    // row-level rewrap to the full width would fight
+                    // them every frame.
+                    let rewrap = match view.layout {
+                        himark::DiffLayout::Split => None,
+                        himark::DiffLayout::Inline => {
+                            let laid = view
+                                .split
+                                .right
+                                .document
+                                .layout_width(view.split.right.editor);
+                            ((laid - editor_target).abs() > 1.0).then_some(editor_target)
+                        }
+                    };
+                    let card = imba::ZBox::new(arena)
+                        .child(imba::spacer(width, body_height))
+                        .child(imba::fixed(body))
+                        .pad_insets(imba::Insets {
+                            left: 0.0,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: chrome.gap,
+                        })
+                        .layout(arena, constraints);
+                    imba::ThunkBox::new(
+                        arena,
+                        card.wrap(move |inner| RewrapOnPaint { inner, rewrap }),
+                    )
+                }
+            },
         }
     }
 }
 
-/// The Header-1 band: the file name in the markdown Header 1
-/// attributes, right-aligned; the `+N −M` trail at the left edge in
-/// the tree's colors.
-fn header_layout<'a>(
-    arena: &'a Arena,
-    store: &Store,
-    ui: &UiCtx,
-    file: &CanvasFile,
+// ------------------------------------------------------------- header
+
+/// The Header-1 band, with its affordances: the collapse chevron and
+/// the `+N −M` trail at the left, the file name right-aligned before
+/// the three buttons at the right edge — toggle layout, open file,
+/// open the side-by-side pane. The body of the band opens the file.
+struct HeaderFace {
+    title: String,
+    added: Option<i64>,
+    removed: Option<i64>,
+    collapsed: bool,
+
     band: f32,
     width: f32,
-) -> imba::ThunkBox<'a, RowCommand> {
-    let theme = env::Themes::of(store);
-    let chrome = theme.ui().chat.clone();
-    let h1 = theme.resolve([himark::StyleId::Header(1)]);
-    let size = h1.font_size.unwrap_or(48.0);
-    let mut font = himark::fonts::ui_text_font(ui, size);
-    if h1.bold {
-        font.set_embolden(true);
+    inset: f32,
+
+    title_font: skia_safe::Font,
+    title_size: f32,
+    title_color: skia_safe::Color,
+    trail_font: skia_safe::Font,
+    added_color: skia_safe::Color,
+    removed_color: skia_safe::Color,
+    affordance_color: skia_safe::Color,
+
+    chevron: Rect,
+    buttons: Vec<(HeaderAction, Rect)>,
+}
+
+impl HeaderFace {
+    fn new(store: &Store, ui: &UiCtx, header: &HeaderRow, band: f32, width: f32) -> Self {
+        let theme = env::Themes::of(store);
+        let chrome = theme.ui().chat.clone();
+        let h1 = theme.resolve([himark::StyleId::Header(1)]);
+        let size = h1.font_size.unwrap_or(48.0);
+        let mut title_font = himark::fonts::ui_text_font(ui, size);
+        if h1.bold {
+            title_font.set_embolden(true);
+        }
+        let inset = chrome.pad;
+        let glyph = chrome.title_size * 1.2;
+        let zone = glyph + chrome.title_size;
+
+        // Button zones, right edge inward: [toggle] [open] [pane].
+        let mut buttons = Vec::new();
+        let mut right = width - inset;
+        for action in [
+            HeaderAction::OpenPane,
+            HeaderAction::OpenFile,
+            HeaderAction::ToggleFace,
+        ] {
+            if action == HeaderAction::ToggleFace && !header.built {
+                continue;
+            }
+            buttons.push((action, Rect::from_xywh(right - zone, 0.0, zone, band)));
+            right -= zone;
+        }
+
+        Self {
+            title: header.file.title.clone(),
+            added: header.file.added.filter(|n| *n > 0),
+            removed: header.file.removed.filter(|n| *n > 0),
+            collapsed: header.collapsed,
+            band,
+            width,
+            inset,
+            title_font,
+            title_size: size,
+            title_color: h1.color.unwrap_or(chrome.text_color.0),
+            trail_font: himark::fonts::ui_text_font(ui, chrome.title_size),
+            added_color: chrome.added_color.0,
+            removed_color: chrome.removed_color.0,
+            affordance_color: chrome.loader_color.0,
+            chevron: Rect::from_xywh(0.0, 0.0, inset + chrome.title_size, band),
+            buttons,
+        }
     }
-    let color = h1.color.unwrap_or(chrome.text_color.0);
-    let trail_font = himark::fonts::ui_text_font(ui, chrome.title_size);
-    let added = file.added.filter(|n| *n > 0);
-    let removed = file.removed.filter(|n| *n > 0);
-    let (added_color, removed_color) = (chrome.added_color.0, chrome.removed_color.0);
-    let title = file.title.clone();
-    let inset = chrome.pad;
-    let thunk =
-        imba::leaf::leaf::<RowCommand>(width, band).paint_instead(move |_arena, canvas, rect| {
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_color(color);
-            let title_width = font.measure_str(&title, None).0;
-            let baseline = rect.top + size;
+
+    fn action_at(&self, x: f32) -> HeaderAction {
+        if self.chevron.right > x {
+            return HeaderAction::ToggleCollapse;
+        }
+        for (action, zone) in &self.buttons {
+            if x >= zone.left && x < zone.right {
+                return *action;
+            }
+        }
+        HeaderAction::OpenFile
+    }
+
+    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
+        let mut paint = Paint::default();
+        paint.set_anti_alias(true);
+        let baseline = rect.top + self.title_size;
+
+        // The chevron: right-pointing when collapsed, down when open.
+        let glyph = self.trail_font.size() * 0.5;
+        let center = (
+            rect.left + self.chevron.left + self.inset * 0.5 + glyph * 0.5,
+            baseline - glyph * 0.6,
+        );
+        paint.set_style(skia_safe::paint::Style::Stroke);
+        paint.set_stroke_width((glyph * 0.22).max(1.0));
+        paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+        paint.set_color(self.affordance_color);
+        let mut path = skia_safe::PathBuilder::new();
+        if self.collapsed {
+            path.move_to((center.0 - glyph * 0.25, center.1 - glyph * 0.5));
+            path.line_to((center.0 + glyph * 0.35, center.1));
+            path.line_to((center.0 - glyph * 0.25, center.1 + glyph * 0.5));
+        } else {
+            path.move_to((center.0 - glyph * 0.5, center.1 - glyph * 0.25));
+            path.line_to((center.0, center.1 + glyph * 0.35));
+            path.line_to((center.0 + glyph * 0.5, center.1 - glyph * 0.25));
+        }
+        canvas.draw_path(&path.detach(), &paint);
+        paint.set_style(skia_safe::paint::Style::Fill);
+
+        // The +N −M trail after the chevron.
+        let mut x = rect.left + self.chevron.right;
+        if let Some(added) = self.added {
+            paint.set_color(self.added_color);
+            let label = format!("+{added}");
+            canvas.draw_str(&label, (x, baseline), &self.trail_font, &paint);
+            x += self.trail_font.measure_str(&label, None).0 + 8.0;
+        }
+        if let Some(removed) = self.removed {
+            paint.set_color(self.removed_color);
             canvas.draw_str(
-                &title,
-                ((rect.right - inset - title_width).max(rect.left), baseline),
-                &font,
+                &format!("−{removed}"),
+                (x, baseline),
+                &self.trail_font,
                 &paint,
             );
-            let mut x = rect.left + inset;
-            if let Some(added) = added {
-                paint.set_color(added_color);
-                let label = format!("+{added}");
-                canvas.draw_str(&label, (x, baseline), &trail_font, &paint);
-                x += trail_font.measure_str(&label, None).0 + 8.0;
+        }
+
+        // The buttons, hairline glyphs on the affordance color.
+        paint.set_style(skia_safe::paint::Style::Stroke);
+        paint.set_color(self.affordance_color);
+        let side = self.trail_font.size() * 1.05;
+        paint.set_stroke_width((side * 0.11).max(1.0));
+        for (action, zone) in &self.buttons {
+            let center = (
+                rect.left + zone.left + zone.width() * 0.5,
+                baseline - side * 0.42,
+            );
+            let half = side * 0.5;
+            let frame = Rect::from_xywh(center.0 - half, center.1 - half, side, side);
+            match action {
+                HeaderAction::ToggleFace => {
+                    // Two columns — switch the diff's face.
+                    canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
+                    canvas.draw_line((center.0, frame.top), (center.0, frame.bottom), &paint);
+                }
+                HeaderAction::OpenFile => {
+                    // A corner arrow leaving the box.
+                    let inset = side * 0.22;
+                    let mut path = skia_safe::PathBuilder::new();
+                    path.move_to((frame.left + side * 0.5, frame.top + inset));
+                    path.line_to((frame.left + inset, frame.top + inset));
+                    path.line_to((frame.left + inset, frame.bottom - inset));
+                    path.line_to((frame.right - inset, frame.bottom - inset));
+                    path.line_to((frame.right - inset, frame.top + side * 0.5));
+                    canvas.draw_path(&path.detach(), &paint);
+                    let mut arrow = skia_safe::PathBuilder::new();
+                    arrow.move_to((center.0 + side * 0.05, center.1 - side * 0.05));
+                    arrow.line_to((frame.right, frame.top));
+                    arrow.move_to((frame.right - side * 0.32, frame.top));
+                    arrow.line_to((frame.right, frame.top));
+                    arrow.line_to((frame.right, frame.top + side * 0.32));
+                    canvas.draw_path(&arrow.detach(), &paint);
+                }
+                HeaderAction::OpenPane => {
+                    // A framed pair of panes — the standalone
+                    // side-by-side diff.
+                    canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
+                    let third = frame.left + frame.width() * 0.5;
+                    canvas.draw_line((third, frame.top), (third, frame.bottom), &paint);
+                    let mid = frame.top + frame.height() * 0.5;
+                    canvas.draw_line((frame.left, mid), (third, mid), &paint);
+                }
+                _ => {}
             }
-            if let Some(removed) = removed {
-                paint.set_color(removed_color);
-                canvas.draw_str(&format!("−{removed}"), (x, baseline), &trail_font, &paint);
+        }
+        paint.set_style(skia_safe::paint::Style::Fill);
+
+        // The file name, right-aligned before the buttons.
+        let buttons_left = self
+            .buttons
+            .last()
+            .map(|(_, zone)| zone.left)
+            .unwrap_or(self.width - self.inset);
+        paint.set_color(self.title_color);
+        let title_width = self.title_font.measure_str(&self.title, None).0;
+        canvas.draw_str(
+            &self.title,
+            (
+                (rect.left + buttons_left - self.inset - title_width)
+                    .max(rect.left + self.chevron.right),
+                baseline,
+            ),
+            &self.title_font,
+            &paint,
+        );
+    }
+}
+
+struct HeaderWidget {
+    face: HeaderFace,
+}
+
+impl<'a> Widget<'a, RowCommand> for HeaderWidget {
+    fn size(&self) -> Size {
+        Size::new(self.face.width, self.face.band)
+    }
+
+    fn handle_event(
+        &self,
+        _arena: &Arena,
+        event: &Event<'_>,
+        _viewport: Rect,
+    ) -> EventResult<RowCommand> {
+        match event {
+            Event::Paint { canvas, .. } => {
+                self.face.paint(canvas, Rect::from_size(self.size()));
+                EventResult::Handled
             }
-        });
-    imba::ThunkBox::new(arena, thunk)
+            Event::MouseDown {
+                button: imba::event::MouseButton::Left,
+                point,
+                ..
+            } => EventResult::Command(RowCommand::Header(self.face.action_at(point.x))),
+            _ => EventResult::Ignored,
+        }
+    }
 }
 
 /// The skeleton under a pending header: rounded bars at the line
@@ -1118,12 +2325,30 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for RewrapOnPaint
 
 // ---------------------------------------------------------------- panel
 
-#[derive(Clone, PartialEq)]
-pub struct CanvasPlace {
-    pub source: CanvasSource,
-}
+use himark::diff_canvas::CanvasPlace;
 
-impl himark::Place for CanvasPlace {}
+/// Answers `CanvasPlace` navigations: find — or create — the source's
+/// store-held canvas and hand back a REFERENCE view of it. Reuse is
+/// the lookup; nothing is ever rebuilt for a second open.
+pub struct CanvasNavigator;
+
+impl himark::Navigator for CanvasNavigator {
+    type Place = CanvasPlace;
+
+    fn navigate(
+        &self,
+        store: &mut Store,
+        _window: himark::WindowId,
+        place: &CanvasPlace,
+        _fx: &mut himark::AppFx<'_>,
+    ) -> Option<himark::Panel> {
+        let view = DiffCanvasView::over(store, place.source.clone());
+        if let Some(key) = &place.reveal {
+            Canvases::set_reveal(store, view.id(), key.clone());
+        }
+        Some(himark::Panel::Plugin(Box::new(view)))
+    }
+}
 
 impl himark::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
@@ -1135,16 +2360,25 @@ impl himark::PanelView for DiffCanvasView {
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
         Some(CanvasPlace {
             source: self.source.clone(),
+            reveal: None,
         })
     }
 
     fn navigate_to(
         &mut self,
-        _store: &mut Store,
+        store: &mut Store,
         place: &CanvasPlace,
         _fx: &mut himark::AppFx<'_>,
     ) -> bool {
-        place.source == self.source
+        if place.source != self.source {
+            return false;
+        }
+        // Reuse IN PLACE: arm the reveal on the shared canvas — the
+        // paint probe picks it up next frame.
+        if let Some(key) = &place.reveal {
+            Canvases::set_reveal(store, self.id, key.clone());
+        }
+        true
     }
 
     fn title(&self, store: &Store) -> String {
@@ -1155,10 +2389,10 @@ impl himark::PanelView for DiffCanvasView {
         self.request.take()
     }
 
-    fn dismantle(&mut self, _store: &mut Store) {
-        // Row documents and editors are ROW-owned (the chat cell
-        // discipline) — they die with the views. Nothing is
-        // registered anywhere to retract.
+    fn dismantle(&mut self, store: &mut Store) {
+        // Row documents and editors are ROW-owned — they die with the
+        // canvas when the collection lets go of it.
+        Canvases::release(store, self.id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

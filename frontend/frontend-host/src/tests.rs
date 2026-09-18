@@ -606,6 +606,17 @@ fn dock_x(x: f32) -> f32 {
     900.0 - himark::DOCK_WIDTH + x
 }
 
+/// The center of the canvas header's side-by-side button — the
+/// RIGHTMOST of the three header buttons, inset from the canvas
+/// pane's right edge (the pane ends where the dock begins). Mirrors
+/// `HeaderFace::new` in hidiff/src/canvas.rs.
+fn canvas_pane_button_x() -> f32 {
+    let ui = himark::Theme::embedded();
+    let chat = &ui.ui().chat;
+    let zone = chat.title_size * 1.2 + chat.title_size;
+    900.0 - himark::DOCK_WIDTH - chat.pad - zone * 0.5
+}
+
 /// Mirrors `ListRow`'s own sizing (text block + 8px each side) so the
 /// click helpers land where the rows actually laid themselves.
 fn derived_row_height(font_size: f32) -> f32 {
@@ -629,21 +640,19 @@ fn tree_row_y(index: usize) -> f32 {
 fn changes_row_y(index: usize) -> f32 {
     let ui = himark::Theme::embedded();
     let row = derived_row_height(ui.ui().tree.font_size);
-    let peeker = &ui.ui().peeker;
-    let search = &ui.ui().search;
-    let band = peeker.margin + peeker.hint_size * 2.0 + 6.0 + search.input_height + 6.0;
-    ui.ui().toolbar.height + band + row * index as f32 + row / 2.0
+    // REFRESH rides the repository root row now — the dock is just
+    // the tree under a slim pad.
+    ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
 }
 
-fn changes_message_y() -> f32 {
+/// The height of the canvas's first row on a working-copy canvas —
+/// the commit composer at the CHAT composer's footprint: input band
+/// plus the toolbar row. Mirrors `composer_band` in
+/// hidiff/src/canvas.rs with an empty box.
+fn canvas_composer_band() -> f32 {
     let ui = himark::Theme::embedded();
-    let peeker = &ui.ui().peeker;
-    let search = &ui.ui().search;
-    ui.ui().toolbar.height
-        + peeker.margin
-        + peeker.hint_size * 2.0
-        + 6.0
-        + search.input_height / 2.0
+    let chat = &ui.ui().chat;
+    chat.title_size * 1.6 + chat.pad * 1.5 + ui.ui().toolbar.height
 }
 
 fn history_row_y(index: usize) -> f32 {
@@ -1159,7 +1168,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         let mut shot = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
-                shot = Some(canvas.probe_rows());
+                shot = Some(canvas.probe_rows(engine.app.store()));
             }
         });
         shot
@@ -1174,16 +1183,18 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         })
     });
 
-    // The Header-1 band opens the standalone pane — the old road,
-    // still reachable per file.
+    // The header's side-by-side button opens the standalone pane —
+    // the old road, still reachable per file (the header BODY opens
+    // the live file now). The working-copy canvas heads with the
+    // commit composer, so the file header sits one band down.
     let chrome_top = himark::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
     assert!(himark::test_driver::click(
         &mut engine.app,
-        150.0,
-        chrome_top + 40.0,
+        canvas_pane_button_x(),
+        chrome_top + canvas_composer_band() + 40.0,
         900.0,
         700.0,
     ));
@@ -1295,7 +1306,15 @@ and another
 ",
     )
     .unwrap();
-    assert!(engine.perform_command(window, "changes.refetch"));
+    // The per-repository REFRESH chip rides the root row, right
+    // aligned — the press refetches THIS folder's changeset.
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        850.0,
+        changes_row_y(0),
+        900.0,
+        700.0
+    ));
     settle_until(&mut engine, "the refetch recomputed the counts", |engine| {
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
         rows(engine).is_some_and(|rows| {
@@ -2641,24 +2660,81 @@ fn a_one_sided_diff_goes_quiet() {
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
-                built = canvas.probe_rows().iter().any(|(title, phase, _)| {
-                    title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
-                });
+                built = canvas
+                    .probe_rows(engine.app.store())
+                    .iter()
+                    .any(|(title, phase, _)| {
+                        title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
+                    });
             }
         });
         built
     });
 
-    // The header band still opens the standalone pane; the QUIET
-    // guarantee below is the pane's.
+    // The header BODY opens the live file in an ordinary pane. The
+    // canvas sits in a split half here, so the body span is narrow —
+    // x=90 clears the chevron and stays left of the three buttons.
+    // The composer banner heads the canvas; the header sits below it.
     let chrome_top = himark::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
+    let header_y = chrome_top + canvas_composer_band() + 40.0;
     assert!(himark::test_driver::click(
         &mut engine.app,
-        150.0,
-        chrome_top + 40.0,
+        90.0,
+        header_y,
+        900.0,
+        700.0,
+    ));
+    settle_until(&mut engine, "the header click opened the file", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        engine
+            .substring(
+                window,
+                HimarkRange {
+                    start: 0,
+                    length: u32::MAX,
+                },
+            )
+            .is_some_and(|text| text.contains("brand new"))
+    });
+
+    // Clicking the changes row again REUSES the store-held canvas —
+    // the fresh view references it, so the diff stands ALREADY BUILT
+    // with no placeholder frame and no rebuild.
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        dock_x(90.0),
+        changes_row_y(1),
+        900.0,
+        700.0
+    ));
+    {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        let mut built = false;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                built |= canvas
+                    .probe_rows(engine.app.store())
+                    .iter()
+                    .any(|(title, phase, _)| {
+                        title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
+                    });
+            }
+        });
+        assert!(built, "the reused canvas is built on its FIRST frame");
+    }
+    settle(&mut engine);
+
+    // The header's side-by-side BUTTON opens the standalone pane; the
+    // QUIET guarantee below is the pane's.
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        canvas_pane_button_x(),
+        header_y,
         900.0,
         700.0,
     ));
@@ -6761,13 +6837,39 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                 built = matches!(
                     canvas.source(),
                     himark::diff_canvas::CanvasSource::Commit { .. }
-                ) && canvas.probe_rows().iter().any(|(title, phase, _)| {
-                    title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
-                });
+                ) && canvas.probe_rows(engine.app.store()).iter().any(
+                    |(title, phase, _)| {
+                        title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
+                    },
+                );
             }
         });
         built
     });
+
+    // The commit canvas heads with the commit's message and author.
+    {
+        let mut banner = None;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                if matches!(
+                    canvas.source(),
+                    himark::diff_canvas::CanvasSource::Commit { .. }
+                ) {
+                    banner = canvas.probe_banner(engine.app.store());
+                }
+            }
+        });
+        let (message, author) = banner.expect("the commit banner heads the canvas");
+        assert!(
+            message.starts_with("second commit"),
+            "the banner carries the message: {message:?}"
+        );
+        assert!(
+            author.contains("Test") && author.contains("test@example.com"),
+            "…and the author: {author:?}"
+        );
+    }
 
     let history_cursor = |engine: &HimarkEngine| {
         himark::Windows::window_ref(engine.app.store(), engine.app.sole_window()).and_then(
@@ -6816,31 +6918,78 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         settle(&mut engine);
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
     }
+    // The commit composer lives in the working-copy CANVAS's first
+    // row now: pick the changed file, the canvas opens, the box heads
+    // the list.
+    settle_until(&mut engine, "the changed row listed", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+            .and_then(|entity| {
+                entity
+                    .dock_panel()
+                    .and_then(|side| {
+                        side.as_any()
+                            .downcast_ref::<himark::hichanges::ChangesView>()
+                    })
+                    .map(|view| view.rows())
+            })
+            .is_some_and(|rows| {
+                rows.iter().any(|(depth, label, pick)| {
+                    *depth == 1 && label.starts_with("README.md") && *pick
+                })
+            })
+    });
     assert!(himark::test_driver::click(
         &mut engine.app,
         dock_x(90.0),
-        changes_message_y(),
+        changes_row_y(1),
         900.0,
         700.0
     ));
-    let changes_box = |engine: &HimarkEngine| {
-        himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .and_then(|entity| {
-                entity.dock_panel().and_then(|side| {
-                    side.as_any()
-                        .downcast_ref::<himark::hichanges::ChangesView>()
-                        .map(|view| (view.message_focused(), view.message_text()))
-                })
-            })
-            .expect("the changes view")
+    let composer = |engine: &HimarkEngine| {
+        let mut shot = None;
+        engine.app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                if matches!(
+                    canvas.source(),
+                    himark::diff_canvas::CanvasSource::WorkingCopy { .. }
+                ) {
+                    shot = canvas.probe_composer(engine.app.store());
+                }
+            }
+        });
+        shot
     };
-    assert!(changes_box(&engine).0, "the well click focused the box");
+    settle_until(&mut engine, "the composer banner stands", |engine| {
+        let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+        let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
+        composer(engine).is_some()
+    });
+
+    let chrome_top = himark::env::Themes::of(engine.app.store())
+        .ui()
+        .toolbar
+        .height;
+    // The canvas sits in a split half here, so the COMMIT cell eats
+    // the right side of the band — click well inside the editor zone.
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        60.0,
+        chrome_top + 14.0,
+        900.0,
+        700.0
+    ));
+    assert!(
+        composer(&engine).expect("the composer").0,
+        "the well click focused the box"
+    );
     assert!(himark::test_driver::type_text(
         &mut engine.app,
         "wired commit"
     ));
     assert_eq!(
-        changes_box(&engine).1,
+        composer(&engine).expect("the composer").1,
         "wired commit",
         "typing lands in the box"
     );
@@ -6851,7 +7000,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         imba::event::Modifiers::default(),
     );
     assert_eq!(
-        changes_box(&engine).1,
+        composer(&engine).expect("the composer").1,
         "wired commi",
         "keymap commands route to the box editor"
     );

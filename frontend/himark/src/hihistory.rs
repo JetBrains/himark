@@ -759,6 +759,7 @@ fn graph_node(
             dim: true,
             trail: Vec::new(),
             tint: crate::TreeTint::Label,
+            action: None,
             children: Vec::new(),
         }
     };
@@ -824,6 +825,7 @@ fn graph_node(
                         dim: false,
                         trail,
                         tint: crate::TreeTint::Label,
+                        action: None,
                         children,
                     });
                 }
@@ -842,6 +844,7 @@ fn graph_node(
                         dim: true,
                         trail: Vec::new(),
                         tint: crate::TreeTint::Label,
+                        action: None,
                         children: Vec::new(),
                     });
                 }
@@ -861,6 +864,7 @@ fn graph_node(
         dim: false,
         trail: Vec::new(),
         tint: crate::TreeTint::Label,
+        action: None,
         children,
     }
 }

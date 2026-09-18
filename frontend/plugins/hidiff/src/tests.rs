@@ -2057,14 +2057,19 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         width: 1100.0,
         failed: None,
     };
-    let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
-        folder: location("proj", himark::ResourceType::directory()),
-    });
-    {
+    let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        canvas.seed_built_for_tests(&mut store, &ui, file, built);
-    }
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
     let size = skia_safe::Size::new(1100.0, 800.0);
@@ -2179,14 +2184,19 @@ fn folded_squash_paint_cost_is_size_independent() {
             width: 1100.0,
             failed: None,
         };
-        let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
-            folder: location("proj", himark::ResourceType::directory()),
-        });
-        {
+        let canvas = {
             let ui = app.ui_handle();
             let mut store = app.store_mut();
-            canvas.seed_built_for_tests(&mut store, &ui, file, built);
-        }
+            DiffCanvasView::seeded_for_tests(
+                &mut store,
+                &ui,
+                himark::diff_canvas::CanvasSource::WorkingCopy {
+                    folder: location("proj", himark::ResourceType::directory()),
+                },
+                file,
+                built,
+            )
+        };
         assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
         let size = skia_safe::Size::new(1100.0, 800.0);
@@ -2268,18 +2278,21 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         width: 700.0,
         failed: None,
     };
-    let mut canvas = DiffCanvasView::fresh(himark::diff_canvas::CanvasSource::WorkingCopy {
-        folder: location("proj", himark::ResourceType::directory()),
-    });
-    {
+    let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        canvas.seed_built_for_tests(&mut store, &ui, file, built);
-    }
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
-    let size = skia_safe::Size::new(1100.0, 800.0);
-    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     for _ in 0..6 {
@@ -2289,11 +2302,12 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     }
 
     let host_focus = |app: &Application| -> String {
+        let store = app.store();
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
                 shot = canvas
-                    .probe_focus()
+                    .probe_focus(store)
                     .into_iter()
                     .next()
                     .map(|(_, host, _)| host);
@@ -2330,4 +2344,330 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 
     let _ = himark::test_driver::mouse_move(&mut app, 550.0, card_y);
     assert_eq!(host_focus(&app), "Text", "hovering the card moves nothing");
+}
+
+#[test]
+fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let mut old_body = String::from("old head\n");
+    let mut new_body = String::from("new head\n");
+    for n in 0..60 {
+        old_body.push_str(&format!("same line {n}\n"));
+        new_body.push_str(&format!("same line {n}\n"));
+    }
+    old_body.push_str("old tail\n");
+    new_body.push_str("new tail\n");
+
+    himarkdown::register_handlers(&mut app);
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::embedded_fonts::source()();
+    let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
+    let operation = himark::diff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "long.md".to_owned(),
+        old: location("long.md.old", himark::ResourceType::document()),
+        new: location("long.md", himark::ResourceType::document()),
+        added: Some(2),
+        removed: Some(2),
+    };
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 1100.0,
+        failed: None,
+    };
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut settle = |app: &mut Application| {
+        for _ in 0..6 {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    settle(&mut app);
+
+    let probe = |app: &Application| -> (
+        Vec<(String, canvas::RowPhase, f32)>,
+        Vec<(String, himark::DiffLayout)>,
+        f32,
+    ) {
+        let store = app.store();
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = Some((
+                    canvas.probe_rows(store),
+                    canvas.probe_layouts(store),
+                    canvas.probe_scroll_top(store),
+                ));
+            }
+        });
+        shot.expect("the canvas panel")
+    };
+    let click = |app: &mut Application, x: f32, y: f32| {
+        let _ = himark::test_driver::click(app, x, y, 1100.0, 800.0);
+        let _ = himark::test_driver::mouse_up(app, x, y);
+    };
+
+    let (rows, layouts, _) = probe(&app);
+    assert_eq!(rows.len(), 1);
+    assert!(rows[0].2 > 0.0, "the diff row stands expanded: {rows:?}");
+    assert_eq!(layouts[0].1, himark::DiffLayout::Inline, "mounted inline");
+
+    // The header geometry, mirrored from HeaderFace::new: the chevron
+    // strip at the left, the three buttons walking in from the right.
+    let chrome_top = himark::env::Themes::of(app.store()).ui().toolbar.height;
+    let chat_pad;
+    let chat_title;
+    {
+        let ui = himark::env::Themes::of(app.store()).ui().chat.clone();
+        chat_pad = ui.pad;
+        chat_title = ui.title_size;
+    }
+    let zone = chat_title * 2.2;
+    let header_y = chrome_top + 20.0;
+    let chevron_x = chat_pad * 0.5;
+    let face_x = 1100.0 - chat_pad - zone * 2.5;
+
+    // The layout button flips the face…
+    click(&mut app, face_x, header_y);
+    settle(&mut app);
+    assert_eq!(
+        probe(&app).1[0].1,
+        himark::DiffLayout::Split,
+        "the face button flips inline → split"
+    );
+
+    // …the chevron folds the diff away (the row leaves the list, the
+    // built view parks)…
+    click(&mut app, chevron_x, header_y);
+    settle(&mut app);
+    let (rows, layouts, _) = probe(&app);
+    assert_eq!(rows[0].2, 0.0, "collapsed: no diff row stands: {rows:?}");
+    assert_eq!(rows[0].1, canvas::RowPhase::Built, "…but the build is kept");
+    assert_eq!(layouts.len(), 1, "the parked row still answers probes");
+
+    // …and the face button still routes INTO the parked row.
+    click(&mut app, face_x, header_y);
+    settle(&mut app);
+    assert_eq!(
+        probe(&app).1[0].1,
+        himark::DiffLayout::Inline,
+        "toggling a collapsed file reaches the parked view"
+    );
+
+    // The chevron brings the diff back at its parked height.
+    click(&mut app, chevron_x, header_y);
+    settle(&mut app);
+    let (rows, _, _) = probe(&app);
+    assert!(rows[0].2 > 0.0, "expanded again: {rows:?}");
+
+    // Scroll the header behind the top edge: the list PLANTS it, and
+    // the planted chevron folds the file exactly like the real one.
+    let _ = himark::test_driver::scroll(&mut app, 400.0);
+    settle(&mut app);
+    let (_, _, scrolled) = probe(&app);
+    assert!(scrolled > 0.0, "the canvas scrolled: {scrolled}");
+    click(&mut app, chevron_x, chrome_top + 20.0);
+    settle(&mut app);
+    let (rows, _, _) = probe(&app);
+    assert_eq!(
+        rows[0].2, 0.0,
+        "the planted header's chevron collapsed the file: {rows:?}"
+    );
+
+    // The focused row offers the open roads on the focus chain —
+    // cmd-enter ("workbench.open-in-full") needs nothing more.
+    let offered = himark::palette_commands(app.store(), &app.ui_handle(), app.sole_window());
+    for id in ["workbench.open-in-full", "diff.open-pane"] {
+        assert!(
+            offered.iter().any(|presentable| presentable.id == id),
+            "the focused canvas row offers {id}"
+        );
+    }
+}
+
+// REGRESSION (2026-09-18): the canvas halves shipped with
+// `reports_geometry: false`, so on the split face the BOUNDED
+// editors never got the Viewport road — beyond the initial layout
+// budget every line stayed a ~6px estimate, folds never collapsed,
+// and the face opened onto thousands of pixels of blank wash. The
+// halves now report geometry like the standalone pane's, resize to
+// the half-pane width, and heal through the pair lane.
+#[test]
+fn the_split_face_folds_and_wraps_to_its_halves() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let mut old_body = String::from("old head\n");
+    let mut new_body = String::from("new head\n");
+    for n in 0..600 {
+        old_body.push_str(&format!("same line {n}\n"));
+        new_body.push_str(&format!("same line {n}\n"));
+    }
+    old_body.push_str("old tail\n");
+    new_body.push_str("new tail\n");
+
+    himarkdown::register_handlers(&mut app);
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::embedded_fonts::source()();
+    let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
+    let operation = himark::diff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "long.md".to_owned(),
+        old: location("long.md.old", himark::ResourceType::document()),
+        new: location("long.md", himark::ResourceType::document()),
+        added: Some(2),
+        removed: Some(2),
+    };
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 1100.0,
+        failed: None,
+    };
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut settle = |app: &mut Application| {
+        for _ in 0..8 {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    settle(&mut app);
+
+    let probe = |app: &Application| {
+        let store = app.store();
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = Some((canvas.probe_rows(store), canvas.probe_layouts(store)));
+            }
+        });
+        shot.expect("the canvas panel")
+    };
+    let halves = |app: &Application| {
+        let store = app.store();
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = Some(canvas.probe_half_heights(store));
+            }
+        });
+        shot.expect("the canvas panel")
+    };
+    let (rows, layouts) = probe(&app);
+    assert_eq!(layouts[0].1, himark::DiffLayout::Inline);
+    let inline_height = rows[0].2;
+    assert!(
+        inline_height < 1200.0,
+        "the inline face folds the 600-line run: {inline_height}"
+    );
+
+    let chrome_top = himark::env::Themes::of(app.store()).ui().toolbar.height;
+    let (chat_pad, chat_title) = {
+        let ui = himark::env::Themes::of(app.store()).ui().chat.clone();
+        (ui.pad, ui.title_size)
+    };
+    let zone = chat_title * 2.2;
+    let face_x = 1100.0 - chat_pad - zone * 2.5;
+    let _ = himark::test_driver::click(&mut app, face_x, chrome_top + 20.0, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, face_x, chrome_top + 20.0);
+    settle(&mut app);
+    settle(&mut app);
+
+    let (rows, layouts) = probe(&app);
+    assert_eq!(layouts[0].1, himark::DiffLayout::Split);
+    assert!(
+        rows[0].2 < inline_height + 400.0,
+        "the split face folds too — no blank wash of estimated lines \
+         (was ~4350px when the halves never healed): {}",
+        rows[0].2
+    );
+    let (left_height, right_height, _, left_width, right_width) = halves(&app)[0];
+    assert!(
+        (left_height - right_height).abs() <= 1.0,
+        "the halves stand aligned: {left_height} vs {right_height}"
+    );
+    assert!(
+        left_width < 700.0 && (left_width - right_width).abs() <= 1.0,
+        "each half wraps to the HALF-pane width: {left_width}/{right_width}"
+    );
+
+    // Back to inline: the row-level rewrap returns all editors to the
+    // full row width, so the pair sync engages again.
+    let _ = himark::test_driver::click(&mut app, face_x, chrome_top + 20.0, 1100.0, 800.0);
+    let _ = himark::test_driver::mouse_up(&mut app, face_x, chrome_top + 20.0);
+    settle(&mut app);
+    settle(&mut app);
+    settle(&mut app);
+    let (rows, layouts) = probe(&app);
+    assert_eq!(layouts[0].1, himark::DiffLayout::Inline);
+    assert!(
+        (rows[0].2 - inline_height).abs() < 200.0,
+        "the inline face comes back at its folded height: {} vs {inline_height}",
+        rows[0].2
+    );
+    let (_, _, _, left_width, right_width) = halves(&app)[0];
+    assert!(
+        (left_width - right_width).abs() <= 1.0 && left_width > 700.0,
+        "the halves rewrap to the full row width for the pair sync: \
+         {left_width}/{right_width}"
+    );
 }

@@ -23,6 +23,10 @@ pub struct ForestNode<K> {
 
     pub trail: Vec<(String, skia_safe::Color)>,
     pub tint: TreeTint,
+
+    /// A right-aligned action chip on the row (`tree_action` decodes
+    /// its press).
+    pub action: Option<String>,
     pub children: Vec<ForestNode<K>>,
 }
 
@@ -35,6 +39,7 @@ struct Entry<K> {
     dim: bool,
     trail: Vec<(String, skia_safe::Color)>,
     tint: TreeTint,
+    action: Option<String>,
     depth: u16,
     children: Vec<K>,
 }
@@ -80,6 +85,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
                 dim: node.dim,
                 trail: node.trail.clone(),
                 tint: node.tint,
+                action: node.action.clone(),
                 depth,
                 children: node
                     .children
@@ -180,10 +186,15 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
     fn row(&self, _key: &K, entry: &Entry<K>, expanded: bool) -> TreeRow {
         let label = TreeLabel::new(entry.label.clone(), entry.pick, entry.dim)
             .with_trail(entry.trail.clone())
+            .with_action(entry.action.clone())
             .tinted(entry.tint);
         let row = match entry.children.is_empty() {
             true => TreeItemView::leaf(label, entry.depth),
             false => TreeItemView::branch(label, entry.depth, expanded),
+        };
+        let row = match entry.action.is_some() {
+            true => row.with_action_priority(),
+            false => row,
         };
         match entry.pick {
             true => row,
