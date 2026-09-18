@@ -41,10 +41,7 @@ pub fn ui_collection(
     store: &imba::store::Store,
     ui: &imba::UiCtx,
 ) -> skia_safe::textlayout::FontCollection {
-    match ui.get::<UiFonts>() {
-        Some(fonts) => fonts.0.clone(),
-        None => Fonts::of(store)(),
-    }
+    ui.env(|| UiFonts(Fonts::of(store)())).0.clone()
 }
 
 pub fn ui_typeface(

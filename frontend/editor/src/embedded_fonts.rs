@@ -46,10 +46,30 @@ pub fn typeface() -> Typeface {
 }
 
 pub fn collection() -> FontCollection {
-    let mut provider = TypefaceFontProvider::new();
-    provider.register_typeface(typeface(), Some(FAMILY));
+    let mut fallback = TypefaceFontProvider::new();
+    fallback.register_typeface(typeface(), Some(FAMILY));
+    let mut assets = TypefaceFontProvider::new();
+    // Register once per shared collection. The aliases keep the bundled UI
+    // fonts from replacing an editor's system or web-installed font family.
+    // Skia caches family, weight and optical-size resolution in this collection.
+    for (family, bytes) in [
+        (
+            "Air Inter",
+            include_bytes!("../assets/air-ui/InterVariable-latin.ttf").as_slice(),
+        ),
+        (
+            "Air JetBrains Mono",
+            include_bytes!("../assets/air-ui/JetBrainsMonoVariable-latin.ttf").as_slice(),
+        ),
+    ] {
+        let face = FontMgr::new()
+            .new_from_data(bytes, None)
+            .expect("embedded UI font loads");
+        assets.register_typeface(face, Some(family));
+    }
     let mut collection = FontCollection::new();
-    collection.set_default_font_manager(FontMgr::from(provider), Some(FAMILY));
+    collection.set_asset_font_manager(FontMgr::from(assets));
+    collection.set_default_font_manager(FontMgr::from(fallback), Some(FAMILY));
     collection
 }
 

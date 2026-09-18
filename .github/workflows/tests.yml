@@ -185,6 +185,14 @@ jobs:
           path: target/nextest/ci/junit.xml
           if-no-files-found: warn
 
+      - name: Upload gallery screenshot differences
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: gallery-screenshots
+          path: target/gallery-screenshots/*.png
+          if-no-files-found: ignore
+
   web-check:
     name: Check Web (Emscripten)
     runs-on: ubuntu-24.04

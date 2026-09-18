@@ -374,6 +374,7 @@ impl HimarkEngine {
         app.register_command(Arc::new(hidiff::OpenDiff));
         app.register_row_minter(hidiff::row_minter());
         app.register_command(Arc::new(demo::OpenTreeDemo));
+        app.register_command(Arc::new(higallery::OpenGallery));
 
         app.register_editor_command(Arc::new(himark::hicomments::AddComment));
 

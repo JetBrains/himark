@@ -484,6 +484,231 @@
       "stop_color": "#ffc03a40",
       "ask_surface": "#ffffff",
       "ask_border": "#ffb9c9ea"
+    },
+    "air": {
+      "background": "#ffeeeff0",
+      "surface": "#08000000",
+      "border": "#2e000000",
+      "text": "#ff090909",
+      "secondary_text": "#8a000000",
+      "disabled_text": "#73000000",
+      "icon": "#8a000000",
+      "typography": {
+        "label": {
+          "family": "Air Inter",
+          "size": 13.0,
+          "line_height": 16.0,
+          "weight": 500,
+          "tracking": 0.052
+        },
+        "caption": {
+          "family": "Air Inter",
+          "size": 12.0,
+          "line_height": 16.0,
+          "weight": 520,
+          "tracking": 0.06
+        },
+        "heading": {
+          "family": "Air Inter",
+          "size": 19.0,
+          "line_height": 24.0,
+          "weight": 620,
+          "tracking": 0.0
+        },
+        "caps": {
+          "family": "Air Inter",
+          "size": 10.0,
+          "line_height": 14.0,
+          "weight": 720,
+          "tracking": 1.0
+        },
+        "key_hint": {
+          "family": "Air Inter",
+          "size": 10.0,
+          "line_height": 14.0,
+          "weight": 520,
+          "tracking": 0.06
+        },
+        "code": {
+          "family": "Air JetBrains Mono",
+          "size": 13.0,
+          "line_height": 22.0,
+          "weight": 420,
+          "tracking": 0.0
+        },
+        "header": {
+          "family": "Air Inter",
+          "size": 13.0,
+          "line_height": 16.0,
+          "weight": 620,
+          "tracking": 0.0676
+        }
+      },
+      "primary": {
+        "states": {
+          "default": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#ff1868cb",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#ff1d61ba",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#ff0870e4",
+            "border": "#ffffffff",
+            "outline": "#ff0870e4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ffffffff",
+        "disabled_text": "#73000000"
+      },
+      "secondary": {
+        "states": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#08000000",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#0f000000",
+            "border": "#2e000000",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#ffa8c6f4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ff090909",
+        "disabled_text": "#73000000"
+      },
+      "ghost": {
+        "states": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#0f000000",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#17000000",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#00ffffff"
+          },
+          "disabled": {
+            "fill": "#00ffffff",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          }
+        },
+        "text": "#ff090909",
+        "disabled_text": "#73000000"
+      },
+      "checkbox": {
+        "unchecked": {
+          "default": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#00ffffff",
+            "border": "#45000000",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#00ffffff",
+            "border": "#ff2a7deb",
+            "outline": "#ffa8c6f4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "checked": {
+          "default": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "hovered": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "pressed": {
+            "fill": "#ff0870e4",
+            "border": "#00ffffff",
+            "outline": "#00000000"
+          },
+          "focused": {
+            "fill": "#ff0870e4",
+            "border": "#ffffffff",
+            "outline": "#ff0870e4"
+          },
+          "disabled": {
+            "fill": "#0f000000",
+            "border": "#17000000",
+            "outline": "#00000000"
+          }
+        },
+        "icon": "#ffffffff",
+        "disabled_icon": "#45000000"
+      },
+      "list": {
+        "default": "#00ffffff",
+        "hovered": "#0d000000",
+        "pressed": "#330870e4",
+        "selected": "#21000000"
+      },
+      "tree": {
+        "font_size": 13.0,
+        "indent": 24.0,
+        "text_x": 28.0,
+        "highlight": "#ffe9edf5",
+        "directory": "#ff090909",
+        "file": "#ff090909"
+      }
     }
   }
 }
