@@ -1,0 +1,11 @@
+[package]
+name = "myersdiff"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+editor = { path = "../editor" }
+operation = { path = "../operation" }
+text = { path = "../text" }
+similar = "2.6"

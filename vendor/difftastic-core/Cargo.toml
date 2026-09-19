@@ -1,0 +1,27 @@
+[package]
+name = "difftastic-core"
+version = "0.71.0"
+edition = "2021"
+license = "MIT"
+publish = false
+description = "Vendored structural-diff core of difftastic (https://github.com/Wilfred/difftastic), tag 0.71.0"
+
+[dependencies]
+typed-arena = "2.0.2"
+rustc-hash = "2.0.0"
+strsim = "0.11.0"
+radix-heap = "0.4.2"
+imara-diff = { version = "0.2.0", default-features = false }
+bumpalo = "3.18.0"
+hashbrown = "0.17.0"
+line-numbers = "0.3.0"
+smallvec = "1.13.2"
+lazy_static = "1.4.0"
+regex = "1.10.4"
+strum = { version = "0.28", features = ["derive"] }
+log = "0.4.14"
+glob = "0.3.2"
+humansize = "2.1.3"
+
+[dev-dependencies]
+pretty_assertions = "1.3.0"

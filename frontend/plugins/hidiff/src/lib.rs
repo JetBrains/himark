@@ -50,6 +50,7 @@ fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
                 OpenDocuments::diff_handle(store, pair.diff)?.base_markup,
                 pair.right_extras,
                 None,
+                himark::env::Differ::of(store),
             )?,
         };
         Some(UnifiedDiffView::new(SplitDiffView::new(
@@ -508,7 +509,7 @@ pub fn diff_panel(
         false => prep.or_else(|| {
             let base = OpenDocuments::document_ref(store, left)?;
             let target = OpenDocuments::document_ref(store, right)?;
-            let operation = himark::diff::diff(base.text(), target.text());
+            let operation = himark::env::Differ::of(store).diff(base.text(), target.text(), None);
             let marks = himark::prepare_marks(&operation, base.text());
             Some(DiffPrep { operation, marks })
         }),
@@ -610,6 +611,7 @@ pub fn diff_panel(
             handle.base_markup,
             right_extras,
             prep.map(|prep| prep.marks.window),
+            himark::env::Differ::of(store),
         )
     };
     Some(DiffPanelView::new(

@@ -56,6 +56,12 @@ pub struct RefetchDiffEffect {
     pub current: editor::Text,
 
     pub fetched: String,
+
+    /// The edge-installed policy (`editor::env::Differ`), captured at
+    /// launch. The merge path passes no syntax — it wants the minimal
+    /// exact edit, so any policy degrades to its text pass here
+    /// (docs/structural-diff.md, decision 3).
+    pub policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 
 pub struct RefetchRebase {
@@ -217,8 +223,8 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
                 synced: true,
             };
         }
-        let theirs = ::editor::diff::diff(&effect.baseline, &fetched);
-        let ours = ::editor::diff::diff(&effect.baseline, &effect.current);
+        let theirs = effect.policy.diff(&effect.baseline, &fetched, None);
+        let ours = effect.policy.diff(&effect.baseline, &effect.current, None);
         let clean = ours.iter().all(|op| matches!(op, operation::Op::Retain(_)));
         let (operation, synced) = match clean {
             true => (theirs, true),
@@ -234,9 +240,10 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
                 );
                 let synced = target == effect.fetched;
                 (
-                    ::editor::diff::diff(
+                    effect.policy.diff(
                         &effect.current,
                         &editor::Text::from_string_exact(&target),
+                        None,
                     ),
                     synced,
                 )
@@ -350,6 +357,7 @@ pub fn rediff<R: 'static>(
             baseline: entity.baseline.clone(),
             current: document.text().clone(),
             fetched,
+            policy: editor::env::Differ::of(store),
         })
         .map(move |rebase| wrap(document_id, base_revision, serial, rebase)),
     );
@@ -397,6 +405,7 @@ pub fn apply_refetched<R: 'static>(
             baseline: entity.baseline.clone(),
             current: document.text().clone(),
             fetched: text,
+            policy: editor::env::Differ::of(store),
         })
         .map(move |rebase| wrap(document_id, base_revision, serial, rebase)),
     );

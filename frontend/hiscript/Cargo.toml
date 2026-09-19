@@ -6,13 +6,14 @@ license = "Apache-2.0"
 
 [features]
 default = ["plugin"]
-plugin = ["dep:himark", "dep:operation", "dep:imba"]
+plugin = ["dep:himark", "dep:operation", "dep:imba", "dep:myersdiff"]
 
 [dependencies]
 rquickjs = { version = "0.9", features = ["bindgen"] }
 himark = { path = "../himark", optional = true }
 imba = { path = "../imba", optional = true }
 operation = { path = "../operation", optional = true }
+myersdiff = { path = "../myersdiff", optional = true }
 
 [dev-dependencies]
 himark = { path = "../himark", features = ["test-support"] }

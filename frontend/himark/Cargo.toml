@@ -16,6 +16,7 @@ regex = "1"
 rpds = "1"
 documents = { path = "../documents" }
 editor = { path = "../editor" }
+myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }
 operation = { path = "../operation" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }

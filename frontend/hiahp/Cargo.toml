@@ -20,6 +20,7 @@ rpds = "1"
 rebase = { path = "../rebase" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
+myersdiff = { path = "../myersdiff" }
 base64 = "0.22"
 ahp = "0.7"
 ahp-types = "0.7"

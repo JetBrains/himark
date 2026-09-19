@@ -1528,7 +1528,7 @@ fn paired_layouts_align_retained_boundaries() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let diff = crate::diff::diff(left.text(), right.text());
+    let diff = myersdiff::diff(left.text(), right.text());
     let left_len = left_source.len() as u32;
     {
         let mut left_layout = left.editors.get(&left_editor).unwrap().layout.clone();
@@ -1718,7 +1718,7 @@ fn paired_layouts_absorb_one_sided_inlays() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let diff = crate::diff::diff(left.text(), right.text());
+    let diff = myersdiff::diff(left.text(), right.text());
     let mut left_layout = left.editors.get(&left_editor).unwrap().layout.clone();
     let mut right_layout = right.editors.get(&right_editor).unwrap().layout.clone();
     let _ = crate::split_diff::align::sync_spacers(
@@ -3584,7 +3584,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = crate::diff::diff(&text::Text::from_string_exact(base), document.text());
+        let operation = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         let viewport = build(&document, editor, Some(id));
@@ -3622,7 +3622,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = crate::diff::diff(&text::Text::from_string_exact(base), document.text());
+        let operation = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         // Typing ABOVE the standing hunk shifts its stripe the same
@@ -3646,7 +3646,7 @@ mod gutter_stripes {
 
         // The landing installs the fresh derivation and the typed
         // line stripes.
-        let minimal = crate::diff::diff(&text::Text::from_string_exact(base), document.text());
+        let minimal = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
         let fresh = crate::diff::hunk_markup(&minimal, document.text());
         assert!(document.install_normalized_diff(id, minimal, 0));
         document.install_diff_markup(
@@ -3685,7 +3685,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = crate::diff::diff(&text::Text::from_string_exact("one\n"), document.text());
+        let operation = myersdiff::diff(&text::Text::from_string_exact("one\n"), document.text());
         let id = document.add_diff(operation, 0);
         let unjoined = build(&document, editor, None);
         assert!(unjoined.lines.iter().all(|line| line.diff.is_none()));
@@ -3728,7 +3728,7 @@ mod before_inlay {
             fx!(),
         );
         let base_document = plain_document(BASE);
-        let operation = crate::diff::diff(base_document.text(), document.text());
+        let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
         crate::EditorView {
             document,
@@ -3871,7 +3871,7 @@ mod before_inlay {
             fx!(),
         );
         let base_document = plain_document(base);
-        let operation = crate::diff::diff(base_document.text(), document.text());
+        let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
         let mut view = crate::EditorView {
             document,
@@ -3921,7 +3921,7 @@ mod before_inlay_presentation {
             fx!(),
         );
         let base_document = plain_document(BASE);
-        let operation = crate::diff::diff(base_document.text(), document.text());
+        let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
         crate::EditorView {
             document,
@@ -4806,7 +4806,7 @@ fn translucent_washes_never_double_at_block_seams() {
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
-    let operation = crate::diff::diff(&text::Text::from_string_exact(""), document.text());
+    let operation = myersdiff::diff(&text::Text::from_string_exact(""), document.text());
     let id = document.add_diff(operation, 0);
     let hunks = document.diff(id).expect("tracked").markup();
     document.show_markup(editor, hunks);
@@ -4862,7 +4862,7 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
     let theme = test_theme();
     let left = plain_document(before);
     let mut right = plain_document(after);
-    let operation = crate::diff::diff(left.text(), right.text());
+    let operation = myersdiff::diff(left.text(), right.text());
     let id = right.add_diff(operation.clone(), left.revision());
     let hunks = right.diff(id).expect("tracked").markup();
     let prepared = crate::split_diff::prepare_marks(&operation, left.text());

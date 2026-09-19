@@ -1,0 +1,19 @@
+[package]
+name = "structdiff"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+difftastic-core = { path = "../../vendor/difftastic-core" }
+editor = { path = "../editor" }
+hisitter = { path = "../hisitter" }
+myersdiff = { path = "../myersdiff" }
+operation = { path = "../operation" }
+text = { path = "../text" }
+tree-sitter = "0.26"
+typed-arena = "2.0.2"
+line-numbers = "0.3.0"
+
+[dev-dependencies]
+mdparser = { path = "../mdparser" }

@@ -272,7 +272,8 @@ impl Cell {
                 // documents): operation, THE diff markup, and the
                 // prepared marks — washes, word tints, fold strips —
                 // all settled before the first frame.
-                let operation = crate::diff::diff(&before_text, after_doc.text());
+                let operation =
+                    ::editor::env::Differ::of(store).diff(&before_text, after_doc.text(), None);
                 let diff_id = after_doc.add_diff(operation.clone(), before_doc.revision());
                 after_doc.install_normalized_diff(
                     diff_id,
@@ -355,6 +356,7 @@ impl Cell {
                     left_marks,
                     right_extras,
                     Some(prepared.window),
+                    ::editor::env::Differ::of(store),
                 )
                 .expect("the entry was just installed");
                 let left = EditorView {
@@ -503,7 +505,9 @@ impl View for Cell {
                     return;
                 }
 
-                let operation = crate::diff::diff(editor.document.text(), &text);
+                // A patch, not a picture: the minimal exact edit
+                // (docs/structural-diff.md, decision 3).
+                let operation = myersdiff::diff(editor.document.text(), &text);
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {

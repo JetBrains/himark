@@ -65,6 +65,10 @@ pub struct CanvasFile {
     pub new: ResourceLocation,
     pub added: Option<i64>,
     pub removed: Option<i64>,
+    /// The owning store's generation at which the host last touched
+    /// this entry (`ChangeEntry::updated`) — the canvas reconcile
+    /// rebuilds a row exactly when this moves past the row's build.
+    pub updated: u64,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -179,6 +183,7 @@ fn listing_of<'a>(
                         new,
                         added: entry.added,
                         removed: entry.removed,
+                        updated: entry.updated,
                     }
                 })
                 .collect(),

@@ -918,6 +918,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "diff"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8"
+
+[[package]]
+name = "difftastic-core"
+version = "0.71.0"
+dependencies = [
+ "bumpalo",
+ "glob",
+ "hashbrown 0.17.1",
+ "humansize",
+ "imara-diff",
+ "lazy_static",
+ "line-numbers",
+ "log",
+ "pretty_assertions",
+ "radix-heap",
+ "regex",
+ "rustc-hash 2.1.3",
+ "smallvec",
+ "strsim",
+ "strum",
+ "typed-arena",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -980,6 +1008,7 @@ version = "0.1.0"
 dependencies = [
  "editor",
  "imba",
+ "myersdiff",
  "operation",
  "rebase",
  "rpds",
@@ -1078,7 +1107,7 @@ version = "0.8.0-alpha.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "219fd4382e892b3eb905d02a7cfb30ca60a7dad662a554b4aebf056f270c7649"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.17.1",
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
@@ -1110,12 +1139,12 @@ version = "0.1.0"
 dependencies = [
  "imba",
  "intervals",
+ "myersdiff",
  "operation",
  "rope",
  "rpds",
  "serde",
  "serde_json",
- "similar",
  "skia-safe",
  "sumtree",
  "text",
@@ -1229,6 +1258,12 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foldhash"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
 name = "foldhash"
@@ -1404,6 +1439,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skia-safe",
+ "structdiff",
  "tempfile",
  "tokio",
  "tracing",
@@ -1676,13 +1712,22 @@ dependencies = [
 
 [[package]]
 name = "hashbrown"
+version = "0.15.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
+dependencies = [
+ "foldhash 0.1.5",
+]
+
+[[package]]
+name = "hashbrown"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 dependencies = [
  "allocator-api2",
  "equivalent",
- "foldhash",
+ "foldhash 0.2.0",
 ]
 
 [[package]]
@@ -1714,6 +1759,7 @@ dependencies = [
  "host-discovery",
  "humantime",
  "imba",
+ "myersdiff",
  "operation",
  "rebase",
  "rpds",
@@ -1825,6 +1871,7 @@ dependencies = [
  "himark",
  "himarkdown",
  "imba",
+ "myersdiff",
  "operation",
  "rpds",
  "skia-safe",
@@ -2062,6 +2109,7 @@ dependencies = [
  "host-discovery",
  "humantime",
  "imba",
+ "myersdiff",
  "operation",
  "regex",
  "rpds",
@@ -2252,6 +2300,7 @@ version = "0.1.0"
 dependencies = [
  "himark",
  "imba",
+ "myersdiff",
  "operation",
  "rquickjs",
  "serde_json",
@@ -2437,6 +2486,15 @@ name = "httpdate"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df3b46402a9d5adb4c86a0cf463f42e19994e3ee891101b1841f30a545cb49a9"
+
+[[package]]
+name = "humansize"
+version = "2.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6cb51c9a029ddc91b07a787f1d86b53ccfa49b0e86688c946ebe8d3555685dd7"
+dependencies = [
+ "libm",
+]
 
 [[package]]
 name = "humantime"
@@ -2682,6 +2740,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65b27460c2c92b037f3f94c538ed9a3342f3fdf923606781629ccb35f82d042a"
 
 [[package]]
+name = "imara-diff"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f01d462f766df78ab820dd06f5eb700233c51f0f4c2e846520eaf4ba6aa5c5c"
+dependencies = [
+ "hashbrown 0.15.5",
+ "memchr",
+]
+
+[[package]]
 name = "imba"
 version = "0.1.0"
 dependencies = [
@@ -2700,7 +2768,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.17.1",
  "serde",
  "serde_core",
 ]
@@ -2936,6 +3004,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "line-numbers"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "20cb02b1f7cf0c1da53c7bc8686223e492cefdba080086ecdd7f20315c6e2edd"
+
+[[package]]
 name = "linux"
 version = "0.1.0"
 dependencies = [
@@ -2991,8 +3065,8 @@ dependencies = [
  "cfg-if",
  "cssparser",
  "encoding_rs",
- "foldhash",
- "hashbrown",
+ "foldhash 0.2.0",
+ "hashbrown 0.17.1",
  "memchr",
  "mime",
  "precomputed-hash",
@@ -3156,6 +3230,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "536bfad37a309d62069485248eeaba1e8d9853aaf951caaeaed0585a95346f08"
 dependencies = [
  "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "myersdiff"
+version = "0.1.0"
+dependencies = [
+ "editor",
+ "operation",
+ "similar",
+ "text",
 ]
 
 [[package]]
@@ -3840,6 +3924,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "925383efa346730478fb4838dbe9137d2a47675ad789c546d150a6e1dd4ab31c"
 
 [[package]]
+name = "pretty_assertions"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d"
+dependencies = [
+ "diff",
+ "yansi",
+]
+
+[[package]]
 name = "prettyplease"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3913,6 +4007,12 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "radix-heap"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "59ffec9df464013295b499298811e6a3de31bf8128092135826517db12dee601"
 
 [[package]]
 name = "rand"
@@ -4767,6 +4867,43 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
+
+[[package]]
+name = "structdiff"
+version = "0.1.0"
+dependencies = [
+ "difftastic-core",
+ "editor",
+ "hisitter",
+ "line-numbers",
+ "mdparser",
+ "myersdiff",
+ "operation",
+ "text",
+ "tree-sitter",
+ "typed-arena",
+]
+
+[[package]]
+name = "strum"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9628de9b8791db39ceda2b119bbe13134770b56c138ec1d3af810d045c04f9bd"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab85eea0270ee17587ed4156089e10b9e6880ee688791d45a905f5b1ca36f664"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "subtle"
@@ -5887,6 +6024,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-arena"
+version = "2.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6af6ae20167a9ece4bcb41af5b80f8a1f1df981f6391189ce00fd257af04126a"
+
+[[package]]
 name = "typenum"
 version = "1.20.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6290,6 +6433,7 @@ dependencies = [
  "hizig",
  "host-discovery",
  "imba",
+ "myersdiff",
  "palette 0.1.0",
  "peeker",
  "search",
@@ -6712,6 +6856,12 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "yansi"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049"
 
 [[package]]
 name = "yeslogic-fontconfig-sys"

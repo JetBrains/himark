@@ -204,7 +204,7 @@ fn the_diff_markup_is_derived_from_the_operation_and_classifies_hunks() {
     // (`hunk_markup`, the presentation stage).
     let left = text::Text::from_string_exact("aaa\nbbb\nccc dog fox\nddd\neee\n");
     let right = text::Text::from_string_exact("aaa\nNEW LINE\nbbb\nccc cat fox\nddd\n");
-    let operation = crate::diff::diff(&left, &right);
+    let operation = myersdiff::diff(&left, &right);
     let markup = crate::diff::hunk_markup(&operation, &right);
     assert_eq!(operation.new_len() as usize, right.byte_count());
 
@@ -239,7 +239,7 @@ fn removing_the_last_diff_owes_one_clearing_relaunch() {
     let base = text::Text::from_string_exact(&source.replace("line 050", "line ~50"));
     let mut document = plain_document(&source);
     let editor = pane(&mut document);
-    let operation = crate::diff::diff(&base, document.text());
+    let operation = myersdiff::diff(&base, document.text());
     let id = document.add_diff(operation, 0);
     document.mark_scroll_stripes(editor, document.diff(id).expect("tracked").markup());
 
@@ -289,7 +289,7 @@ fn a_diff_carries_its_change_map_from_birth() {
     let mut document = plain_document(&source);
     let editor = pane(&mut document);
 
-    let operation = crate::diff::diff(&base, document.text());
+    let operation = myersdiff::diff(&base, document.text());
     let id = document.add_diff(operation, 0);
     let map = document.diff(id).expect("tracked").markup();
     assert!(
@@ -330,7 +330,7 @@ fn a_diff_carries_its_change_map_from_birth() {
     // A normalize landing installs the worker-derived refresh.
     let generation = document.scroll_stripe_generation();
     let base_now = document.text().clone();
-    let identity = crate::diff::diff(&base_now, document.text());
+    let identity = myersdiff::diff(&base_now, document.text());
     let fresh = crate::diff::hunk_markup(&identity, document.text());
     assert!(document.install_normalized_diff(id, identity, 0));
     document.install_diff_markup(

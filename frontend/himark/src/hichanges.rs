@@ -106,6 +106,13 @@ pub struct ChangeEntry {
     pub after: Option<ResourceLocation>,
     pub added: Option<i64>,
     pub removed: Option<i64>,
+    /// The `Changes` generation at which the host last touched this
+    /// entry — the canvas's per-row staleness probe. `ChangesetFileSet`
+    /// stamps unconditionally (the host resends a file only when it
+    /// changed — value equality cannot see a same-stats content edit);
+    /// full-snapshot replaces stamp by value comparison against the
+    /// previous entry with the same id.
+    pub(crate) updated: u64,
 }
 
 pub(crate) fn entry_of(
@@ -155,7 +162,37 @@ pub(crate) fn entry_of(
         after: after_ref,
         added: counts.added,
         removed: counts.removed,
+        updated: 0,
     })
+}
+
+/// Value identity for stamping — everything but the stamp itself.
+fn same_entry(a: &ChangeEntry, b: &ChangeEntry) -> bool {
+    a.id == b.id
+        && a.rel == b.rel
+        && a.working == b.working
+        && a.before == b.before
+        && a.after == b.after
+        && a.added == b.added
+        && a.removed == b.removed
+}
+
+/// Carries stamps across a full-list replace: an entry value-equal to
+/// its predecessor (same id) keeps the old stamp; new or changed
+/// entries take `stamp`.
+fn stamp_entries<'a>(
+    previous: impl Iterator<Item = &'a ChangeEntry>,
+    fresh: impl Iterator<Item = &'a mut ChangeEntry>,
+    stamp: u64,
+) {
+    let by_id: std::collections::HashMap<&str, &ChangeEntry> =
+        previous.map(|entry| (entry.id.as_str(), entry)).collect();
+    for entry in fresh {
+        entry.updated = match by_id.get(entry.id.as_str()) {
+            Some(old) if same_entry(old, entry) => old.updated,
+            _ => stamp,
+        };
+    }
 }
 
 #[derive(Clone, Default)]
@@ -519,11 +556,13 @@ impl Changes {
         let Some(uris) = self.uris.clone() else {
             return;
         };
-        entry.files = state
+        let mut fresh: Vec<ChangeEntry> = state
             .files
             .iter()
             .filter_map(|file| entry_of(&*uris, folder, file))
             .collect();
+        stamp_entries(entry.files.iter(), fresh.iter_mut(), self.generation + 1);
+        entry.files = fresh.into_iter().collect();
         Self::write_refs(refs, folder, &entry);
         self.folders.insert_mut(folder.clone(), entry);
         self.generation += 1;
@@ -560,6 +599,8 @@ impl Changes {
             return;
         };
 
+        let stamp = self.generation + 1;
+        let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
         let mut files: Vec<Option<ChangeEntry>> = entry.files.iter().cloned().map(Some).collect();
         let mut by_id: std::collections::HashMap<String, usize> = files
             .iter()
@@ -569,12 +610,13 @@ impl Changes {
         for action in actions {
             match action {
                 StateAction::ChangesetContentChanged(content) => {
-                    files = content
+                    let mut fresh: Vec<ChangeEntry> = content
                         .files
                         .iter()
                         .filter_map(|file| entry_of(&*uris, folder, file))
-                        .map(Some)
                         .collect();
+                    stamp_entries(previous.iter(), fresh.iter_mut(), stamp);
+                    files = fresh.into_iter().map(Some).collect();
                     by_id = files
                         .iter()
                         .enumerate()
@@ -591,7 +633,11 @@ impl Changes {
                     if let Some(at) = by_id.remove(&set.file.id) {
                         files[at] = None;
                     }
-                    if let Some(fresh) = entry_of(&*uris, folder, &set.file) {
+                    if let Some(mut fresh) = entry_of(&*uris, folder, &set.file) {
+                        // The host resends a file exactly when it
+                        // changed — stamp unconditionally; value
+                        // equality cannot see a same-stats edit.
+                        fresh.updated = stamp;
                         by_id.insert(fresh.id.clone(), files.len());
                         files.push(Some(fresh));
                     }

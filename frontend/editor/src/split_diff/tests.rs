@@ -3,6 +3,23 @@
 
 use super::*;
 
+/// `myersdiff::Myers` implements the LIB build's `DiffPolicy`; the
+/// test harness compiles `editor` separately, so tests need their own
+/// shim over the same function.
+struct TestMyers;
+
+impl crate::diff::DiffPolicy for TestMyers {
+    fn diff(
+        &self,
+        base: &text::Text,
+        target: &text::Text,
+        _syntax: Option<&crate::diff::DiffSyntax<'_>>,
+    ) -> Operation {
+        myersdiff::diff(base, target)
+    }
+}
+
+
 fn fonts() -> skia_safe::textlayout::FontCollection {
     crate::embedded_fonts::collection()
 }
@@ -100,16 +117,24 @@ fn drain(view: &mut SplitDiffView, effects: Vec<imba::effect::AnyEffect<SplitDif
 }
 
 fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffState {
-    let operation = crate::diff::diff(left.text(), right.text());
+    let operation = myersdiff::diff(left.text(), right.text());
     let id = right.add_diff(operation, left.revision());
     let left_marks = left.add_markup();
     let right_marks = right.add_markup();
-    DiffState::attach(id, left, right, left_marks, right_marks, None)
+    DiffState::attach(
+        id,
+        left,
+        right,
+        left_marks,
+        right_marks,
+        None,
+        std::sync::Arc::new(TestMyers),
+    )
         .expect("the entry was just installed")
 }
 
 fn normalize(view: &mut SplitDiffView) {
-    let minimal = crate::diff::diff(view.left.document.text(), view.right.document.text());
+    let minimal = myersdiff::diff(view.left.document.text(), view.right.document.text());
     let id = view.state.id;
     let base_revision = view.left.document.revision();
     assert!(view
@@ -1246,7 +1271,7 @@ fn prepare_marks_dresses_the_whole_document() {
     right.push_str("new tail\n");
     let left_text = Text::from_string_exact(left.clone());
 
-    let diff = crate::diff::diff(&left_text, &Text::from_string_exact(right));
+    let diff = myersdiff::diff(&left_text, &Text::from_string_exact(right));
     let prepared = prepare_marks(&diff, &left_text);
 
     let deep = left.len() as u32 - 10;
@@ -1297,7 +1322,7 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
     let mut left_document = crate::test_document::plain_document(&left_source);
     let mut right_document = crate::test_document::plain_document(&right_source);
 
-    let operation = crate::diff::diff(left_document.text(), right_document.text());
+    let operation = myersdiff::diff(left_document.text(), right_document.text());
     let id = right_document.add_diff(operation.clone(), left_document.revision());
     assert!(right_document.install_normalized_diff(
         id,
@@ -1365,6 +1390,7 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         left_marks,
         right_marks,
         Some(prepared.window.clone()),
+        std::sync::Arc::new(TestMyers),
     )
     .expect("the entry stands");
     assert_eq!(

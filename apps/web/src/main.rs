@@ -463,7 +463,11 @@ mod app {
                     });
                     state.observe_stripe_bases();
 
-                    hiahp::open::install_open_handlers(&mut state, Arc::new(web_languages()));
+                    hiahp::open::install_open_handlers(
+                        &mut state,
+                        Arc::new(web_languages()),
+                        Arc::new(myersdiff::Myers),
+                    );
                 }
             }
             let window = state.add_window();

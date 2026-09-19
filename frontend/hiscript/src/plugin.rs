@@ -280,7 +280,8 @@ impl imba::effect::EffectHandler<RunScriptEffect> for RunScriptHandler {
                     edits.push(ScriptEdit::Open {
                         id: snapshot.id,
                         base_revision: snapshot.revision,
-                        operation: himark::diff::diff(&snapshot.text, &fresh),
+                        // A patch, not a picture (docs/structural-diff.md, decision 3).
+                        operation: myersdiff::diff(&snapshot.text, &fresh),
                     });
                 }
                 None => edits.push(ScriptEdit::Store {

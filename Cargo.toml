@@ -36,6 +36,9 @@ members = [
     "apps/windows",
     "apps/web",
     "apps/web/tools/grammar-pack",
+    "vendor/difftastic-core",
+    "frontend/myersdiff",
+    "frontend/structdiff",
 ]
 default-members = [
     "frontend/rope",

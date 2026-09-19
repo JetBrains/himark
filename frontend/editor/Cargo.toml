@@ -16,7 +16,9 @@ rpds = "1"
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 text = { path = "../text" }
 tokenize = { path = "../tokenize" }
-similar = "2.6"
 
 [features]
 test-support = []
+
+[dev-dependencies]
+myersdiff = { path = "../myersdiff" }

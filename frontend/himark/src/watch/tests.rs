@@ -17,6 +17,14 @@ fn located(name: &str) -> ResourceLocation {
     )
 }
 
+fn test_store() -> Store {
+    let mut store = Store::new();
+    // The prod construction sites capture the policy from the store;
+    // bare stores would degrade to ReplaceAll and change merge shapes.
+    store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
+    store
+}
+
 fn text_of(document: &Document) -> String {
     let mut view = document.text().view();
     let end = view.byte_count().min(u32::MAX as usize) as u32;
@@ -60,7 +68,7 @@ fn registered(store: &mut Store, source: &str) -> crate::DocumentId {
 
 #[test]
 fn a_clean_document_follows_the_disk() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
     let mut batch = imba::effect::Batch::new();
     let serial = OpenDocuments::stamp_refetch(&mut store, id);
@@ -110,11 +118,11 @@ fn a_clean_document_follows_the_disk() {
 
 #[test]
 fn a_stale_diff_landing_discards_itself() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
     let stale_revision = document.revision();
-    let operation = ::editor::diff::diff(
+    let operation = myersdiff::diff(
         document.text(),
         &crate::Text::from_string_exact("external\n"),
     );
@@ -155,7 +163,7 @@ fn a_stale_diff_landing_discards_itself() {
 
 #[test]
 fn an_absorbed_external_edit_kicks_the_reparse_lane() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let mut document = plain_document("alpha\nbeta\n");
     document.install_syntax(
         ::editor::Syntax {
@@ -181,7 +189,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
 
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
     let base_revision = document.revision();
-    let operation = ::editor::diff::diff(
+    let operation = myersdiff::diff(
         document.text(),
         &crate::Text::from_string_exact("alpha\nCHANGED\n"),
     );
@@ -215,7 +223,7 @@ fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
 
 #[test]
 fn a_dirty_document_merges_the_external_change() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
     typed(&mut store, id, 0, "MINE ");
 
@@ -266,7 +274,7 @@ fn a_dirty_document_merges_the_external_change() {
 
 #[test]
 fn a_dirty_save_echo_keeps_the_typing() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     typed(&mut store, id, 0, "typed ");
     let before = OpenDocuments::document_ref(&store, id)
@@ -306,7 +314,7 @@ fn a_dirty_save_echo_keeps_the_typing() {
 
 #[test]
 fn typing_racing_the_merge_rediffs_until_it_converges() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let mut batch = imba::effect::Batch::new();
     let serial = OpenDocuments::stamp_refetch(&mut store, id);
@@ -397,14 +405,14 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
 /// land exactly once and nothing may go stale.
 #[test]
 fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "base\n");
 
     let shared = |store: &mut Store, target: &str| {
         let base = OpenDocuments::document_ref(store, id)
             .expect("the document")
             .revision();
-        let op = ::editor::diff::diff(
+        let op = myersdiff::diff(
             OpenDocuments::document_ref(store, id)
                 .expect("the document")
                 .text(),
@@ -512,12 +520,12 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
 
 #[test]
 fn the_saves_own_echo_is_a_no_op() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
     let before = document.revision();
     let operation =
-        ::editor::diff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
+        myersdiff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
     OpenDocuments::edit_external(
         &mut store,
         id,
@@ -536,7 +544,7 @@ fn the_saves_own_echo_is_a_no_op() {
 
 #[test]
 fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
 
     let stale_serial = OpenDocuments::stamp_refetch(&mut store, id);
@@ -594,7 +602,7 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
 
 #[test]
 fn a_stale_diff_landing_drops_by_serial() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let stale_serial = OpenDocuments::stamp_refetch(&mut store, id);
     let mut batch = imba::effect::Batch::new();
@@ -638,7 +646,7 @@ fn a_stale_diff_landing_drops_by_serial() {
 
 #[test]
 fn a_missing_fetch_keeps_ours() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let mut batch = imba::effect::Batch::new();
     let serial = OpenDocuments::stamp_refetch(&mut store, id);
@@ -790,7 +798,7 @@ fn the_palette_reload_follows_the_disk() {
 
 #[test]
 fn a_shared_edit_is_not_a_reload() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let document = plain_document("alpha\n");
     let saved = document.revision();
     let id = OpenDocuments::register(
@@ -826,7 +834,7 @@ fn a_shared_edit_is_not_a_reload() {
     assert!(dirty_at > saved, "typing dirtied it");
 
     let identity = ::editor::EditIdentity::mint();
-    let peer = ::editor::diff::diff(
+    let peer = myersdiff::diff(
         OpenDocuments::document_ref(&store, id)
             .expect("the document")
             .text(),
@@ -872,14 +880,14 @@ fn a_shared_edit_is_not_a_reload() {
 /// same insertion past itself and applying it again.
 #[test]
 fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
 
     // The shared edit lands: the buffer now holds the agent's line.
     let base = OpenDocuments::document_ref(&store, id)
         .expect("the document")
         .revision();
-    let shared = ::editor::diff::diff(
+    let shared = myersdiff::diff(
         OpenDocuments::document_ref(&store, id)
             .expect("the document")
             .text(),
@@ -944,14 +952,14 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
 /// recognized inside the dirty diff and dropped — not duplicated.
 #[test]
 fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
 
     let step = |store: &mut Store, target: &str| {
         let base = OpenDocuments::document_ref(store, id)
             .expect("the document")
             .revision();
-        let op = ::editor::diff::diff(
+        let op = myersdiff::diff(
             OpenDocuments::document_ref(store, id)
                 .expect("the document")
                 .text(),
@@ -1018,12 +1026,12 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
 /// resurrect anything).
 #[test]
 fn a_shared_deletions_file_echo_deletes_nothing_further() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nDOOMED\nbeta\n");
     let base = OpenDocuments::document_ref(&store, id)
         .expect("the document")
         .revision();
-    let op = ::editor::diff::diff(
+    let op = myersdiff::diff(
         OpenDocuments::document_ref(&store, id)
             .expect("the document")
             .text(),
@@ -1080,12 +1088,12 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
 /// conflict. Nobody's bytes may be dropped.
 #[test]
 fn a_same_line_conflict_keeps_both_sides_bytes() {
-    let mut store = Store::new();
+    let mut store = test_store();
     let id = registered(&mut store, "alpha\nMIDDLE\nbeta\n");
     // Ours: rewrite MIDDLE locally.
     {
         let mut document = OpenDocuments::document(&store, id).expect("the document");
-        let op = ::editor::diff::diff(
+        let op = myersdiff::diff(
             document.text(),
             &crate::Text::from_string_exact("alpha\nOURS\nbeta\n"),
         );
@@ -1147,7 +1155,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
 /// channel dies (mode two).
 #[test]
 fn a_host_synced_document_stops_watching_and_absorbing() {
-    let mut store = Store::new();
+    let mut store = test_store();
     Watching::install(&mut store);
     let id = registered(&mut store, "alpha\n");
     OpenDocuments::set_watch(&mut store, id, Some(Subscription(7)));

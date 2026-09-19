@@ -359,6 +359,9 @@ impl HimarkEngine {
     pub fn with_fonts(fonts: AppFonts) -> Self {
         let mut app = Application::new(fonts);
         app.register_syntax_languages(syntax_languages());
+        app.register_diff_policy(Arc::new(structdiff::Structural::new(Arc::new(
+            syntax_languages(),
+        ))));
         app.register_enrichers(enrichment_passes());
         search::register_handlers(&mut app);
 
@@ -895,7 +898,11 @@ impl HimarkEngine {
         let installed = self.agent_host_filesystem;
 
         if capabilities.fetch_document && !installed.fetch_document {
-            hiahp::open::install_open_handlers(&mut self.app, Arc::new(syntax_languages()));
+            hiahp::open::install_open_handlers(
+                &mut self.app,
+                Arc::new(syntax_languages()),
+                Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
+            );
             self.app
                 .register_handler::<himark::FetchBaseEffect>(fsroute::RouteBase {
                     refs: self.change_refs.clone(),

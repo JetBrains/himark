@@ -10,6 +10,7 @@ search = { path = "../../frontend/plugins/search" }
 palette = { path = "../../frontend/plugins/palette" }
 peeker = { path = "../../frontend/plugins/peeker" }
 hidiff = { path = "../../frontend/plugins/hidiff" }
+myersdiff = { path = "../../frontend/myersdiff" }
 hirust = { path = "../../frontend/plugins/lang/hirust" }
 hipython = { path = "../../frontend/plugins/lang/hipython" }
 hijavascript = { path = "../../frontend/plugins/lang/hijavascript" }

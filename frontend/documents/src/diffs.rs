@@ -207,6 +207,7 @@ impl OpenDocuments {
         prepared: Option<Operation>,
     ) -> Option<DiffId> {
         let mut result = None;
+        let policy = editor::env::Differ::of(store);
         store.update::<OpenDocuments>(|docs| {
             if let Some(existing) = docs.diffs.by_pair(base, target) {
                 let mut record = docs.diffs.record(existing).expect("indexed").clone();
@@ -247,7 +248,7 @@ impl OpenDocuments {
             }
             let operation = match prepared.clone() {
                 Some(prepared) => prepared,
-                None => editor::diff::diff(&base_text, target_entity.document.text()),
+                None => policy.diff(&base_text, target_entity.document.text(), None),
             };
             let normalized_at_birth = prepared.is_some();
             let mut target_document = target_entity.document.clone();
@@ -410,6 +411,7 @@ pub fn sync_diff_lanes<R: 'static>(
     {
         return;
     }
+    let policy = editor::env::Differ::of(store);
     store.update::<OpenDocuments>(|docs| {
         for id in docs.diffs.ids() {
             let Some(mut record) = docs.diffs.record(id).cloned() else {
@@ -421,6 +423,7 @@ pub fn sync_diff_lanes<R: 'static>(
             let base_revision = base_entity.document.revision();
             let base_log = base_entity.document.log().clone();
             let base_text = base_entity.document.text().clone();
+            let base_syntax = syntax_snapshot(&base_entity.document);
             let Some(target_entity) = docs.entries.get(&record.target) else {
                 continue;
             };
@@ -450,6 +453,11 @@ pub fn sync_diff_lanes<R: 'static>(
                 if probe() {
                     eprintln!("[diffs] normalize {id:?} at {now:?}");
                 }
+                let target_syntax = syntax_snapshot(&target_entity.document);
+                let language = target_syntax.as_ref().map(|(language, _)| language.clone());
+                let base_tree = base_syntax
+                    .filter(|(base_language, _)| Some(base_language) == language.as_ref())
+                    .map(|(_, tree)| tree);
                 let effect = DiffNormalizeEffect {
                     diff: id,
                     base_text: base_text.clone(),
@@ -461,6 +469,10 @@ pub fn sync_diff_lanes<R: 'static>(
                         .cloned(),
                     base_revision,
                     target_revision,
+                    language,
+                    base_tree,
+                    target_tree: target_syntax.map(|(_, tree)| tree),
+                    policy: policy.clone(),
                 };
                 fx.relaunch_erased(
                     &mut record.normalize_token,
@@ -684,6 +696,26 @@ pub struct DiffNormalizeEffect {
     pub(crate) previous: Option<editor::Markup>,
     pub(crate) base_revision: u64,
     pub(crate) target_revision: u64,
+    /// Target's language when its tree was fresh at capture — the
+    /// policy's cue to try structural alignment.
+    pub(crate) language: Option<String>,
+    pub(crate) base_tree: Option<Box<dyn editor::SyntaxTree>>,
+    pub(crate) target_tree: Option<Box<dyn editor::SyntaxTree>>,
+    /// The edge-installed policy (`editor::env::Differ`), captured at
+    /// launch so the handler needs no store access.
+    pub(crate) policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
+}
+
+/// Language + deep tree clone, only when the tree matches the text
+/// exactly (no edits since the last completed reparse) — a stale tree
+/// would misalign the structural pass into pure fallback work.
+fn syntax_snapshot(document: &editor::Document) -> Option<(String, Box<dyn editor::SyntaxTree>)> {
+    if !document.edited_since_parse().is_empty() {
+        return None;
+    }
+    let syntax = document.syntax()?;
+    let tree = syntax.tree.as_ref()?.clone_tree();
+    Some((syntax.language.clone(), tree))
 }
 
 pub struct Normalized {
@@ -709,7 +741,17 @@ pub struct DiffNormalizeHandler;
 
 impl EffectHandler<DiffNormalizeEffect> for DiffNormalizeHandler {
     async fn handle(&self, effect: DiffNormalizeEffect) -> Normalized {
-        let operation = editor::diff::diff(&effect.base_text, &effect.target_text);
+        let syntax = effect
+            .language
+            .as_deref()
+            .map(|language| editor::diff::DiffSyntax {
+                language,
+                base_tree: effect.base_tree.as_deref(),
+                target_tree: effect.target_tree.as_deref(),
+            });
+        let operation = effect
+            .policy
+            .diff(&effect.base_text, &effect.target_text, syntax.as_ref());
         let markup = editor::diff::hunk_markup(&operation, &effect.target_text);
         let changed = editor::set_diff(effect.previous.as_ref(), &markup);
         Normalized {
@@ -871,7 +913,7 @@ mod tests {
         let prepared = {
             let base = OpenDocuments::document_ref(&store, base_id).expect("registered");
             let target = OpenDocuments::document_ref(&store, target_id).expect("registered");
-            editor::diff::diff(base.text(), target.text())
+            myersdiff::diff(base.text(), target.text())
         };
         let id = OpenDocuments::track_diff(&mut store, base_id, target_id, false, Some(prepared))
             .expect("both registered");

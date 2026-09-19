@@ -43,6 +43,11 @@ pub trait AppExt {
     fn register_syntax_languages(&mut self, languages: ::editor::SyntaxLanguages) -> bool;
 
     fn register_enrichers(&mut self, enrichers: ::editor::Enrichers) -> bool;
+
+    fn register_diff_policy(
+        &mut self,
+        policy: std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
+    ) -> bool;
 }
 
 impl AppExt for Application {
@@ -133,5 +138,12 @@ impl AppExt for Application {
 
     fn register_enrichers(&mut self, enrichers: ::editor::Enrichers) -> bool {
         self.perform_command(AppCommand::RegisterEnrichers(enrichers))
+    }
+
+    fn register_diff_policy(
+        &mut self,
+        policy: std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
+    ) -> bool {
+        self.perform_command(AppCommand::RegisterDiffPolicy(policy))
     }
 }

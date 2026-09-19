@@ -11,6 +11,7 @@ imba = { path = "../../imba" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 
 [dev-dependencies]
+myersdiff = { path = "../../myersdiff" }
 editor = { path = "../../editor" }
 operation = { path = "../../operation" }
 himark = { path = "../../himark", features = ["test-support"] }

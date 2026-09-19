@@ -699,7 +699,9 @@ impl himark::DynamicCommand for AdoptSnapshot {
         };
         let snapshot = himark::Text::from_string_exact(&self.snapshot);
         let mut history = log.as_of(since);
-        let adopt = himark::diff::diff(&at_open, &snapshot);
+        // A patch, not a picture: the minimal exact edit
+        // (docs/structural-diff.md, decision 3).
+        let adopt = myersdiff::diff(&at_open, &snapshot);
         let adopted = !rules::is_identity(&adopt);
         if adopted {
             let old_len = at_open.byte_count().min(u32::MAX as usize) as u32;

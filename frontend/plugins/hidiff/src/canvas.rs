@@ -349,7 +349,7 @@ impl Canvas {
             .collect()
     }
 
-    fn refresh(&mut self, store: &mut Store) {
+    fn refresh(&mut self, store: &mut Store, fx: &mut Effects<'_, CanvasCommand>) {
         let (generation, listing) = canvas_files(store, &self.source);
         self.seen = Some(generation);
         match listing {
@@ -359,9 +359,8 @@ impl Canvas {
                 }
             }
             CanvasListing::Ready(files) => {
-                // Reconcile of an already-populated canvas is deferred
-                // (docs/diff-canvas.md §7); v1 populates exactly once.
                 if self.populated {
+                    self.reconcile(store, files, fx);
                     return;
                 }
                 self.populated = true;
@@ -409,6 +408,7 @@ impl Canvas {
                             file: file.clone(),
                             body: RowBody::Placeholder { armed: false },
                             rewrap_ask: None,
+                            built_width: None,
                         }),
                         reserved_body(&theme, file),
                     );
@@ -426,6 +426,186 @@ impl Canvas {
                         .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
                 }
             }
+        }
+    }
+
+    /// Reconcile a populated canvas with a fresh listing — the unified
+    /// gate's second half (docs/diff-canvas.md §7). Removed pairs
+    /// retire, added pairs splice in as lazy placeholders, and a pair
+    /// the host stamped newer than the row's build relaunches its
+    /// build at the standing width — the old view keeps showing until
+    /// the landing swaps it, so a refresh never flashes placeholders.
+    /// Surviving rows never move: the feed reorders on every touch
+    /// (`ChangesetFileSet` re-appends), and rows must not jump.
+    fn reconcile(
+        &mut self,
+        store: &mut Store,
+        fresh: Vec<CanvasFile>,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        self.note = None;
+        let mut moved = false;
+        let incoming: std::collections::HashSet<ResourceLocation> =
+            fresh.iter().map(|file| file.new.clone()).collect();
+        let retired: Vec<ResourceLocation> = self
+            .files
+            .keys()
+            .filter(|key| !incoming.contains(*key))
+            .cloned()
+            .collect();
+        for key in retired {
+            self.retire(&key);
+            moved = true;
+        }
+
+        let theme = env::Themes::of(store);
+        let band = header_band(&theme);
+        let mut anchor = match self.rows.content().row_range(&CanvasKey::Banner) {
+            Some(range) => range.end,
+            None => 0,
+        };
+        for file in fresh {
+            let key = file.new.clone();
+            match self.files.get(&key).cloned() {
+                Some(known) => {
+                    if let Some(header) =
+                        self.rows.content().row_range(&CanvasKey::File(key.clone()))
+                    {
+                        anchor = match self.rows.content().row_range(&CanvasKey::Diff(key.clone()))
+                        {
+                            Some(diff) => header.end.max(diff.end),
+                            None => header.end,
+                        };
+                    }
+                    if file.updated > known.updated {
+                        self.files.insert_mut(key.clone(), file.clone());
+                        self.refresh_header(&key, &file, band);
+                        self.relaunch(&key, &file, fx);
+                        moved = true;
+                    } else if file != known {
+                        // A value change without a stamp move should
+                        // not happen; keep the chrome honest anyway.
+                        self.files.insert_mut(key.clone(), file.clone());
+                        self.refresh_header(&key, &file, band);
+                        moved = true;
+                    }
+                }
+                None => {
+                    let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                    slice.push_keyed_sized(
+                        CanvasKey::File(key.clone()),
+                        CanvasRow::Header(HeaderRow {
+                            file: file.clone(),
+                            collapsed: false,
+                            built: false,
+                        }),
+                        band,
+                    );
+                    slice.push_keyed_sized(
+                        CanvasKey::Diff(key.clone()),
+                        CanvasRow::Diff(DiffRow {
+                            file: file.clone(),
+                            body: RowBody::Placeholder { armed: false },
+                            rewrap_ask: None,
+                            built_width: None,
+                        }),
+                        reserved_body(&theme, &file),
+                    );
+                    slice.cover(CanvasKey::File(key.clone()), 0..2);
+                    self.rows.content_mut().splice_slice(anchor..anchor, slice);
+                    anchor += 2;
+                    self.phases.insert_mut(key.clone(), RowPhase::Placeholder);
+                    self.files.insert_mut(key, file);
+                    moved = true;
+                }
+            }
+        }
+        if moved {
+            fx.settle();
+        }
+    }
+
+    fn retire(&mut self, key: &ResourceLocation) {
+        if let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) {
+            let end = match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+                Some(diff) => header.end.max(diff.end),
+                None => header.end,
+            };
+            let empty: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+            self.rows.content_mut().splice_slice(header.start..end, empty);
+        }
+        self.files.remove_mut(key);
+        self.phases.remove_mut(key);
+        self.stash.remove_mut(key);
+        if self.reveal.as_ref() == Some(key) {
+            self.reveal = None;
+        }
+    }
+
+    /// Resplices one header row in place — same band, fresh stats.
+    fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile, band: f32) {
+        let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) else {
+            return;
+        };
+        let collapsed = self
+            .rows
+            .content()
+            .row_range(&CanvasKey::Diff(key.clone()))
+            .is_none();
+        let built = matches!(
+            self.phases.get(key),
+            Some(RowPhase::Built) | Some(RowPhase::Failed)
+        );
+        let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+        slice.push_keyed_sized(
+            CanvasKey::File(key.clone()),
+            CanvasRow::Header(HeaderRow {
+                file: file.clone(),
+                collapsed,
+                built,
+            }),
+            band,
+        );
+        slice.cover(CanvasKey::File(key.clone()), 0..1);
+        self.rows
+            .content_mut()
+            .splice_slice(header.start..header.start + 1, slice);
+    }
+
+    /// Relaunch a stale row's build at its standing width. A row that
+    /// never built (placeholder) has no width yet — its paint arm
+    /// picks up the fresh pair from `files` on its own.
+    fn relaunch(
+        &self,
+        key: &ResourceLocation,
+        file: &CanvasFile,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let Some(width) = self.built_width(key) else {
+            return;
+        };
+        let location = key.clone();
+        fx.push(
+            AnyEffect::new(himark::BuildFileDiffEffect {
+                old: file.old.clone(),
+                new: file.new.clone(),
+                width,
+            })
+            .map(move |built| CanvasCommand::Landed {
+                key: location.clone(),
+                built,
+            }),
+        );
+    }
+
+    fn built_width(&self, key: &ResourceLocation) -> Option<f32> {
+        let row = match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+            Some(range) => self.rows.content().view_at(range.start),
+            None => self.stash.get(key).map(|(row, _)| row.clone()),
+        }?;
+        match row {
+            CanvasRow::Diff(DiffRow { built_width, .. }) => built_width,
+            _ => None,
         }
     }
 
@@ -457,6 +637,7 @@ impl Canvas {
                 file: file.clone(),
                 body: RowBody::Placeholder { armed: false },
                 rewrap_ask: None,
+                built_width: None,
             }),
             reserved_body(&theme, &file),
         );
@@ -504,6 +685,7 @@ impl Canvas {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let route = key.clone();
+        let built_width = built.width;
         let (body, body_height) = match built.failed.clone() {
             Some(error) => (RowBody::Failed(error), chrome.title_size * 3.0),
             None => {
@@ -528,6 +710,7 @@ impl Canvas {
             file: file.clone(),
             body,
             rewrap_ask: None,
+            built_width: Some(built_width),
         });
         let diff_height = body_height + chrome.gap;
 
@@ -814,6 +997,7 @@ fn mounted(
         left_marks,
         right_extras,
         Some(prepared.window),
+        himark::env::Differ::of(store),
     )
     .expect("the entry was just installed");
     let left = EditorView {
@@ -873,7 +1057,7 @@ impl Canvas {
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         match command {
-            CanvasCommand::Refresh => self.refresh(store),
+            CanvasCommand::Refresh => self.refresh(store, fx),
             CanvasCommand::PickupReveal => {
                 if let Some(key) = self.reveal.take() {
                     self.rows
@@ -1162,6 +1346,52 @@ impl DiffCanvasView {
         view
     }
 
+    /// TEST SUPPORT: feed a fresh listing straight into the reconcile
+    /// (bypassing the Changes feed); returns how many builds it
+    /// relaunched.
+    #[doc(hidden)]
+    pub fn reconcile_for_tests(&self, store: &mut Store, files: Vec<CanvasFile>) -> usize {
+        let mut launched = 0;
+        if let Some(mut canvas) = Canvases::take(store, self.id) {
+            let mut batch = imba::effect::Batch::new();
+            {
+                let mut fx = batch.effects();
+                canvas.reconcile(store, files, &mut fx);
+            }
+            // The settle pulse rides the same channel — strip it, count
+            // only real builds.
+            let _ = batch.take_settle();
+            launched = batch
+                .drain()
+                .into_iter()
+                .filter(|message| {
+                    matches!(
+                        message,
+                        imba::effect::Message::Launch(..) | imba::effect::Message::Relaunch(..)
+                    )
+                })
+                .count();
+            Canvases::put(store, self.id, canvas);
+        }
+        launched
+    }
+
+    /// TEST SUPPORT: land a build for a key, as the effect would.
+    #[doc(hidden)]
+    pub fn land_for_tests(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        key: himark::ResourceLocation,
+        built: himark::BuiltFileDiff,
+    ) {
+        if let Some(mut canvas) = Canvases::take(store, self.id) {
+            let mut batch = imba::effect::Batch::new();
+            canvas.land(store, ui, key, built, &mut batch.effects());
+            Canvases::put(store, self.id, canvas);
+        }
+    }
+
     #[doc(hidden)]
     pub fn probe_note(&self, store: &Store) -> Option<String> {
         self.canvas(store)?.probe_note().map(str::to_owned)
@@ -1379,6 +1609,11 @@ pub(crate) struct DiffRow {
     /// resize storm. A rewrap only runs once the same target arrives
     /// twice — i.e. the width held still for a frame.
     rewrap_ask: Option<f32>,
+
+    /// The width the standing build ran at — the reconcile relaunches
+    /// a stale row at this width so the fresh build lands into the
+    /// same geometry (the old view keeps showing until it does).
+    built_width: Option<f32>,
 }
 
 fn header_band(theme: &himark::Theme) -> f32 {

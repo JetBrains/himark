@@ -3,8 +3,16 @@
 
 use super::*;
 
-fn resolved(before: &str, after: &str) -> Cell {
+fn policy_store() -> Store {
     let mut store = Store::new();
+    // Production stores carry the edge-installed diff policy; a bare
+    // store degrades to ReplaceAll and every diff becomes one hunk.
+    store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
+    store
+}
+
+fn resolved(before: &str, after: &str) -> Cell {
+    let mut store = policy_store();
     let ui = UiCtx::cold();
     let (mut cell, _) = Cell::pending_diff(
         &store,
@@ -95,7 +103,7 @@ fn edited_sources() -> (String, String) {
 
 #[test]
 fn a_diff_cell_lays_out_sane_heights_and_settles_its_rewrap() {
-    let mut store = Store::new();
+    let mut store = policy_store();
     let ui = UiCtx::cold();
     let (before, after) = edited_sources();
     let mut cell = resolved(&before, &after);
@@ -128,7 +136,7 @@ fn expanded_before_cards_are_born_full_size() {
     // render on.
     use imba::anim::AnimationClock;
 
-    let mut store = Store::new();
+    let mut store = policy_store();
     let ui = UiCtx::cold();
     let (before, after) = edited_sources();
     let mut cell = resolved(&before, &after);
@@ -210,7 +218,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     // the viewport.
     use imba::scroll::ScrollView;
 
-    let store = Store::new();
+    let store = policy_store();
     let ui = UiCtx::cold();
     let (before, after) = edited_sources();
     let mut cells: Vec<(Cell, f32)> = Vec::new();

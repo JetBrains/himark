@@ -26,6 +26,22 @@ impl Parsers {
     }
 }
 
+/// The diff policy the edge installed (docs/structural-diff.md): every
+/// place that computes an `Operation` from two texts reads it from
+/// here. Absent only in bare-store unit tests — then the exact but
+/// content-blind [`crate::diff::ReplaceAll`] stands in.
+#[derive(Clone)]
+pub struct Differ(pub std::sync::Arc<dyn crate::diff::DiffPolicy>);
+
+impl Differ {
+    pub fn of(store: &Store) -> std::sync::Arc<dyn crate::diff::DiffPolicy> {
+        store
+            .get::<Differ>()
+            .map(|differ| differ.0.clone())
+            .unwrap_or_else(|| std::sync::Arc::new(crate::diff::ReplaceAll))
+    }
+}
+
 #[derive(Clone)]
 pub struct Enrichers(pub std::sync::Arc<crate::enrich::Enrichers>);
 

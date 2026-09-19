@@ -11,6 +11,7 @@ crate-type = ["rlib", "staticlib"]
 [dependencies]
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
+structdiff = { path = "../structdiff" }
 hiahp = { path = "../hiahp" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }

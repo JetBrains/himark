@@ -30,6 +30,10 @@ const MARK_SLACK_PX: f32 = 2_000.0;
 pub struct DiffState {
     id: crate::diff::DiffId,
 
+    /// The edge-installed policy (`env::Differ`), carried so the
+    /// repair fallbacks below can recompute without store access.
+    policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
+
     diff: Operation,
 
     seen_generation: u64,
@@ -70,15 +74,17 @@ impl DiffState {
         left_marks: crate::markup::MarkupId,
         right_marks: crate::markup::MarkupId,
         seeded: Option<Range<u32>>,
+        policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
     ) -> Option<Self> {
         let mut entry = right.diff(id)?.clone();
         let operation = match entry.apply_base_edits(left.log()) {
             true => entry.operation().clone(),
 
-            false => crate::diff::diff(left.text(), right.text()),
+            false => policy.diff(left.text(), right.text(), None),
         };
         Some(Self {
             id,
+            policy,
             diff: operation,
             seen_generation: entry.generation(),
             left_revision: left.revision(),
@@ -247,8 +253,11 @@ impl SplitDiffView {
         let (mut region, text_moved) = match self.roll_forward() {
             Some((rolled, moved)) => (rolled, moved),
             None => {
-                self.state.diff =
-                    crate::diff::diff(self.left.document.text(), self.right.document.text());
+                self.state.diff = self.state.policy.diff(
+                    self.left.document.text(),
+                    self.right.document.text(),
+                    None,
+                );
                 self.state.left_revision = self.left.document.revision();
                 self.state.right_revision = self.right.document.revision();
                 self.state.marks_dirty = true;

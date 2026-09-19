@@ -5836,7 +5836,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             .expect("open");
         let mut store = app.store_mut();
         let mut document = crate::OpenDocuments::document(&store, base).expect("open");
-        let catch_up = ::editor::diff::diff(
+        let catch_up = myersdiff::diff(
             document.text(),
             &::editor::Text::from_string_exact(&target_text),
         );

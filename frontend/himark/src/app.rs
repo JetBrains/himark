@@ -163,6 +163,8 @@ pub enum AppCommand {
 
     RegisterLanguages(::editor::SyntaxLanguages),
 
+    RegisterDiffPolicy(std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
+
     RegisterEnrichers(::editor::Enrichers),
 }
 
@@ -336,6 +338,9 @@ impl Application {
         let overlay_font = crate::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
 
         crate::commands::register_builtins(&mut store);
+        // The baseline diff policy; outer edges override via
+        // `register_diff_policy` (docs/structural-diff.md).
+        store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
         crate::Navigators::register(&mut store, crate::navigation::EditorNavigator);
 
         let workshop = Arc::new(::editor::Workshop::new(
@@ -1160,6 +1165,7 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::CloseModal(_) => "close modal",
         AppCommand::ViewportResized(..) => "viewport",
         AppCommand::RegisterLanguages(_) => "register languages",
+        AppCommand::RegisterDiffPolicy(_) => "register diff policy",
         AppCommand::RegisterEnrichers(_) => "register enrichers",
         AppCommand::Stats(_) => "stats",
         AppCommand::Entity(_, EditorCommand::ApplyRepair(_)) => "repair",
@@ -1612,6 +1618,9 @@ impl Application {
             }
             AppCommand::RegisterLanguages(languages) => {
                 store.put(::editor::env::Parsers(std::sync::Arc::new(languages)));
+            }
+            AppCommand::RegisterDiffPolicy(policy) => {
+                store.put(::editor::env::Differ(policy));
             }
             AppCommand::RegisterEnrichers(enrichers) => {
                 store.put(::editor::env::Enrichers(std::sync::Arc::new(enrichers)));

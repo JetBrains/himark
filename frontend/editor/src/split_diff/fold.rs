@@ -227,7 +227,7 @@ mod tests {
             .collect();
         let left = text(&(left_lines.join("\n") + "\n"));
         let right = text(&(right_lines.join("\n") + "\n"));
-        let diff = crate::diff::diff(&left, &right);
+        let diff = myersdiff::diff(&left, &right);
 
         let len = left.view().byte_count() as u32;
         let folds = derive_folds(&diff, &left, 0..len, FOLD_CONTEXT);
@@ -250,7 +250,7 @@ mod tests {
         let base: Vec<String> = (0..8).map(|n| format!("same {n}")).collect();
         let left = text(&(base.join("\n") + "\nLEFT END\n"));
         let right = text(&(base.join("\n") + "\nRIGHT END\n"));
-        let diff = crate::diff::diff(&left, &right);
+        let diff = myersdiff::diff(&left, &right);
         let len = left.view().byte_count() as u32;
         let folds = derive_folds(&diff, &left, 0..len, FOLD_CONTEXT);
         assert_eq!(folds.len(), 1, "{folds:?}");
@@ -263,7 +263,7 @@ mod tests {
     fn short_runs_yield_nothing() {
         let left = text("same a\nsame b\nLEFT\nsame c\nsame d\n");
         let right = text("same a\nsame b\nRIGHT\nsame c\nsame d\n");
-        let diff = crate::diff::diff(&left, &right);
+        let diff = myersdiff::diff(&left, &right);
         let len = left.view().byte_count() as u32;
         assert!(derive_folds(&diff, &left, 0..len, FOLD_CONTEXT).is_empty());
     }

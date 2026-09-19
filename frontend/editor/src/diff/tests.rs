@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use myersdiff::diff;
 
 fn text(source: &str) -> Text {
     Text::from_string_exact(source)

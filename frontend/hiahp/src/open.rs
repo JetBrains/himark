@@ -32,6 +32,7 @@ pub fn document_for(
 pub fn install_open_handlers(
     app: &mut himark::Application,
     languages: Arc<himark::SyntaxLanguages>,
+    diff_policy: Arc<dyn himark::diff::DiffPolicy>,
 ) {
     let caller = app.effect_caller();
     let workshop = Arc::clone(app.workshop());
@@ -48,11 +49,13 @@ pub fn install_open_handlers(
         caller: caller.clone(),
         workshop: Arc::clone(&workshop),
         languages: Arc::clone(&languages),
+        diff_policy: Arc::clone(&diff_policy),
     });
     app.register_handler::<himark::BuildFileDiffEffect>(BuildFileDiffHandler {
         caller,
         workshop,
         languages,
+        diff_policy,
     });
     app.register_navigator(DiffNavigator);
 }
@@ -64,6 +67,7 @@ pub struct BuildFileDiffHandler {
     pub caller: imba::effect::EffectCaller,
     pub workshop: Arc<::himark::Workshop>,
     pub languages: Arc<himark::SyntaxLanguages>,
+    pub diff_policy: Arc<dyn himark::diff::DiffPolicy>,
 }
 
 impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
@@ -84,7 +88,9 @@ impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
         };
         let old = build(&effect.old, old_text.as_deref().unwrap_or(""));
         let new = build(&effect.new, new_text.as_deref().unwrap_or(""));
-        let operation = himark::diff::diff(old.text(), new.text());
+        let operation = self
+            .diff_policy
+            .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
         let marks = himark::prepare_marks(&operation, old.text());
         himark::BuiltFileDiff {
             old,
@@ -101,6 +107,7 @@ pub struct OpenDiffByLocationsHandler {
     pub caller: imba::effect::EffectCaller,
     pub workshop: Arc<::himark::Workshop>,
     pub languages: Arc<himark::SyntaxLanguages>,
+    pub diff_policy: Arc<dyn himark::diff::DiffPolicy>,
 }
 
 impl OpenDiffByLocationsHandler {
@@ -133,7 +140,9 @@ impl OpenDiffByLocationsHandler {
         let old = build(&old_location, old_text.as_deref().unwrap_or(""));
         let new = build(&new_location, new_text.as_deref().unwrap_or(""));
 
-        let operation = himark::diff::diff(old.text(), new.text());
+        let operation = self
+            .diff_policy
+            .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
         let marks = himark::prepare_marks(&operation, old.text());
         AppCommand::Dynamic(
             window,
@@ -323,4 +332,22 @@ impl DynamicCommand for FetchFailed {
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
     }
+}
+
+/// Syntax context for the built pair: the fresh documents were parsed
+/// right here, so their trees match their texts exactly.
+fn diff_syntax<'a>(
+    old: &'a himark::Document,
+    new: &'a himark::Document,
+) -> Option<himark::diff::DiffSyntax<'a>> {
+    let target = new.syntax()?;
+    let base_tree = old
+        .syntax()
+        .filter(|base| base.language == target.language)
+        .and_then(|base| base.tree.as_deref());
+    Some(himark::diff::DiffSyntax {
+        language: &target.language,
+        base_tree,
+        target_tree: target.tree.as_deref(),
+    })
 }

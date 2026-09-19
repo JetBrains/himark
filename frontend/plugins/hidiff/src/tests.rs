@@ -1050,7 +1050,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
-    let mut store = imba::store::Store::new();
+    let mut store = policy_store();
     let ui = imba::UiCtx::cold();
     let mut perform = |document: &mut himark::Document, command| {
         let mut batch = imba::effect::Batch::new();
@@ -1449,7 +1449,7 @@ fn document_text(app: &Application, name: &str) -> String {
 
 #[test]
 fn dismantle_retracts_editors_and_removes_the_editorless_side() {
-    let mut store = imba::store::Store::new();
+    let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
     let mut open = |body: &str, extra_editor: bool| {
@@ -1581,9 +1581,17 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
     assert_eq!(hits[0].1, "left body\n", "the focused half's document");
 }
 
+fn policy_store() -> imba::store::Store {
+    let mut store = imba::store::Store::new();
+    // Production stores carry the edge-installed diff policy; a bare
+    // store degrades to ReplaceAll and every diff becomes one hunk.
+    store.put(himark::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
+    store
+}
+
 #[test]
 fn the_panel_opens_dressed_with_no_effects_run() {
-    let mut store = imba::store::Store::new();
+    let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
     let mut middle = String::new();
@@ -1632,7 +1640,7 @@ fn the_panel_opens_dressed_with_no_effects_run() {
 
 #[test]
 fn a_shared_pair_ignores_a_handed_prep() {
-    let mut store = imba::store::Store::new();
+    let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
     let mut register = |body: &str, name: &str| {
@@ -1646,7 +1654,7 @@ fn a_shared_pair_ignores_a_handed_prep() {
 
     let foreign_left = himark::Text::from_string_exact("something\nelse\n".to_owned());
     let foreign_right = himark::Text::from_string_exact("something\nELSE\n".to_owned());
-    let operation = himark::diff::diff(&foreign_left, &foreign_right);
+    let operation = myersdiff::diff(&foreign_left, &foreign_right);
     let marks = himark::prepare_marks(&operation, &foreign_left);
     let panel = diff_panel(&mut store, old, new, Some(DiffPrep { operation, marks }))
         .expect("the shared pair still opens");
@@ -2032,7 +2040,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         dense(&new_body),
     );
     let _ = (&markdown_fonts, &theme);
-    let operation = himark::diff::diff(old.text(), new.text());
+    let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
 
     let location = |name: &str, kind| {
@@ -2048,6 +2056,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         new: location("big.md", himark::ResourceType::document()),
         added: Some(80),
         removed: Some(80),
+        updated: 0,
     };
     let built = himark::BuiltFileDiff {
         old,
@@ -2160,7 +2169,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             himark::Text::from_string_exact(new_body.clone()),
             dense(&new_body),
         );
-        let operation = himark::diff::diff(old.text(), new.text());
+        let operation = myersdiff::diff(old.text(), new.text());
         let marks = himark::prepare_marks(&operation, old.text());
         let location = |name: &str, kind| {
             himark::ResourceLocation::new(
@@ -2175,6 +2184,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             new: location("big.md", himark::ResourceType::document()),
             added: Some(2),
             removed: Some(2),
+        updated: 0,
         };
         let built = himark::BuiltFileDiff {
             old,
@@ -2252,7 +2262,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let markdown_fonts = himark::embedded_fonts::source()();
     let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
-    let operation = himark::diff::diff(old.text(), new.text());
+    let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
@@ -2267,6 +2277,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         new: location("small.md", himark::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
+        updated: 0,
     };
     // A MISMATCHED build width — the real canvas arms at one width
     // and lands after a resize; the rewrap ride reconciles.
@@ -2366,7 +2377,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let markdown_fonts = himark::embedded_fonts::source()();
     let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
-    let operation = himark::diff::diff(old.text(), new.text());
+    let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
@@ -2381,6 +2392,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         new: location("long.md", himark::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
+        updated: 0,
     };
     let built = himark::BuiltFileDiff {
         old,
@@ -2543,7 +2555,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let markdown_fonts = himark::embedded_fonts::source()();
     let old = himarkdown::document_from_markdown(&old_body, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &markdown_fonts, &theme);
-    let operation = himark::diff::diff(old.text(), new.text());
+    let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
@@ -2558,6 +2570,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         new: location("long.md", himark::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
+        updated: 0,
     };
     let built = himark::BuiltFileDiff {
         old,
@@ -2670,4 +2683,132 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         "the halves rewrap to the full row width for the pair sync: \
          {left_width}/{right_width}"
     );
+}
+
+/// The unified-gate reconcile (docs/diff-canvas.md §7): a populated
+/// canvas follows the change set — stale rows rebuild IN PLACE (the
+/// old build keeps showing until the fresh one lands), additions
+/// splice in as lazy placeholders, removals retire, untouched rows
+/// are not rebuilt.
+#[test]
+fn reconcile_follows_the_change_set_without_flashing() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let canvas_file = |name: &str, updated: u64| himark::diff_canvas::CanvasFile {
+        title: name.to_owned(),
+        old: location(&format!("{name}.old"), himark::ResourceType::document()),
+        new: location(name, himark::ResourceType::document()),
+        added: Some(1),
+        removed: Some(1),
+        updated,
+    };
+    let built_diff = |old_body: &str, new_body: &str| {
+        let old = himark::Document::new(
+            himark::Text::from_string_exact(old_body),
+            himark::Markup::new(),
+        );
+        let new = himark::Document::new(
+            himark::Text::from_string_exact(new_body),
+            himark::Markup::new(),
+        );
+        let operation = myersdiff::diff(old.text(), new.text());
+        let marks = himark::prepare_marks(&operation, old.text());
+        himark::BuiltFileDiff {
+            old,
+            new,
+            operation,
+            marks,
+            width: 1100.0,
+            failed: None,
+        }
+    };
+
+    let file_a = canvas_file("a.md", 1);
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file_a.clone(),
+            built_diff("one\ntwo\n", "one\nTWO\n"),
+        )
+    };
+
+    let rows = view.probe_rows(&app.store());
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].1, canvas::RowPhase::Built);
+
+    // The same listing again: nothing moves, nothing rebuilds.
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), vec![file_a.clone()]);
+    assert_eq!(launched, 0, "an unchanged entry must not rebuild");
+    assert_eq!(view.probe_rows(&app.store())[0].1, canvas::RowPhase::Built);
+
+    // The host touches a.md (stamp moves) and adds c.md.
+    let mut file_a_touched = file_a.clone();
+    file_a_touched.updated = 2;
+    file_a_touched.added = Some(3);
+    let file_c = canvas_file("c.md", 2);
+    let launched = view.reconcile_for_tests(
+        &mut app.store_mut(),
+        vec![file_a_touched.clone(), file_c.clone()],
+    );
+    assert_eq!(launched, 1, "exactly the stale row relaunches its build");
+    let rows = view.probe_rows(&app.store());
+    assert_eq!(rows.len(), 2, "{rows:?}");
+    assert_eq!(
+        (rows[0].0.as_str(), rows[0].1),
+        ("a.md", canvas::RowPhase::Built),
+        "the stale row keeps showing its old build — no placeholder flash"
+    );
+    assert_eq!(
+        (rows[1].0.as_str(), rows[1].1),
+        ("c.md", canvas::RowPhase::Placeholder),
+        "the addition arrives as a lazy placeholder"
+    );
+
+    // The relaunched build lands: still Built, swapped in place.
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(
+            &mut store,
+            &ui,
+            file_a.new.clone(),
+            built_diff("one\ntwo\n", "one\nTWO\nthree\n"),
+        );
+    }
+    assert_eq!(view.probe_rows(&app.store())[0].1, canvas::RowPhase::Built);
+
+    // A touch that does NOT move the stamp (host silence) rebuilds
+    // nothing even though the reconcile ran.
+    let launched = view.reconcile_for_tests(
+        &mut app.store_mut(),
+        vec![file_a_touched.clone(), file_c.clone()],
+    );
+    assert_eq!(launched, 0);
+
+    // a.md leaves the change set (e.g. reverted): its rows retire.
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), vec![file_c.clone()]);
+    assert_eq!(launched, 0);
+    let rows = view.probe_rows(&app.store());
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0].0, "c.md");
+
+    // Cleared entirely (the commit case): the canvas empties.
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), Vec::new());
+    assert_eq!(launched, 0);
+    assert!(view.probe_rows(&app.store()).is_empty());
 }
