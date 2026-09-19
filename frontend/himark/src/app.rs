@@ -608,6 +608,10 @@ impl Application {
         self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
     }
 
+    pub fn register_sync_observer(&mut self, observer: std::sync::Arc<crate::SyncObserver>) {
+        self.setup(|store| crate::family_rows::SyncObservers::register(store, observer));
+    }
+
     pub fn workshop(&self) -> &Arc<::editor::Workshop> {
         &self.workshop
     }
@@ -912,6 +916,10 @@ impl Application {
                 |document, command| AppCommand::Entity(document, command),
             );
         }
+        // Plugin store-state observers (e.g. hidiff's Canvases) sync
+        // against the fresh document/diff/changeset state — so a
+        // collection stays current without a panel painting it.
+        crate::family_rows::SyncObservers::run(&mut store);
         let probe_perform = probe.elapsed();
         self.commit(store);
         if validate_enabled() {

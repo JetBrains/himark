@@ -21,6 +21,36 @@ pub enum FamilyRow {
 pub type RowMinter =
     dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;
 
+/// A store-state sync callback, invoked on the app's sync tick. Lets a
+/// plugin keep its own store-held collection current in step with the
+/// document/diff/changeset state — e.g. hidiff reconciling its
+/// `Canvases` when the change set moves, independent of any panel
+/// painting ([[registered-document-identity]]).
+pub type SyncObserver = dyn Fn(&mut Store) + Send + Sync;
+
+#[derive(Clone, Default)]
+pub struct SyncObservers(rpds::VectorSync<Arc<SyncObserver>>);
+
+impl SyncObservers {
+    pub fn register(store: &mut Store, observer: Arc<SyncObserver>) {
+        store.update::<SyncObservers>(|observers| {
+            observers.0.push_back_mut(observer);
+        });
+    }
+
+    /// Run every registered observer against the store. Called once per
+    /// sync tick, after the diff/stripe lanes.
+    pub fn run(store: &mut Store) {
+        let observers: Vec<Arc<SyncObserver>> = match store.get::<SyncObservers>() {
+            Some(observers) => observers.0.iter().cloned().collect(),
+            None => return,
+        };
+        for observer in observers {
+            observer(store);
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct RowMinters(rpds::VectorSync<Arc<RowMinter>>);
 

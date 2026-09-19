@@ -2812,3 +2812,198 @@ fn reconcile_follows_the_change_set_without_flashing() {
     assert_eq!(launched, 0);
     assert!(view.probe_rows(&app.store()).is_empty());
 }
+
+/// The registered-document fix (docs/registered-document-identity):
+/// a canvas row's target is the registered `OpenDocuments` document
+/// for its location, and TYPING into it updates the row's tracked
+/// diff — the bug that motivated moving rows off throwaway snapshots.
+#[test]
+fn typing_in_a_canvas_row_updates_its_diff() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let doc_loc = |name: &str| {
+        himark::ResourceLocation::new(
+            himark::ResourceType::document(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+
+    // Identical sides: the initial diff is the identity.
+    let body = "hello\nworld\n";
+    let old =
+        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
+    let new =
+        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
+    let operation = myersdiff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+    let file = himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: doc_loc("a.md.old"),
+        new: doc_loc("a.md"),
+        added: Some(0),
+        removed: Some(0),
+        updated: 0,
+    };
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 1100.0,
+        failed: None,
+    };
+
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: himark::ResourceLocation::new(
+                    himark::ResourceType::directory(),
+                    himark::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+            },
+            file,
+            built,
+        )
+    };
+
+    // The row's target IS the registered document for its location —
+    // not a throwaway snapshot.
+    let target_id = himark::OpenDocuments::by_location(&app.store(), &doc_loc("a.md"))
+        .expect("the canvas row registered its target document");
+
+    // The diff the Diffs subsystem tracks for this row.
+    let pair = view
+        .probe_pair(&app.store(), &doc_loc("a.md"))
+        .expect("a built pair");
+    let diff_id = himark::OpenDocuments::diff_view_ref(&app.store(), pair)
+        .expect("the tracked diff view")
+        .diff;
+
+    let op_of = |app: &Application| {
+        himark::OpenDocuments::document_ref(app.store(), target_id)
+            .and_then(|document| document.diff(diff_id).map(|entry| entry.operation().clone()))
+            .expect("the row's diff is tracked on the registered document")
+    };
+    let has_edit =
+        |op: &operation::Operation| op.iter().any(|o| !matches!(o, operation::Op::Retain(_)));
+
+    let before = op_of(&app);
+    assert!(
+        !has_edit(&before),
+        "identical sides start as the identity diff: {before:?}"
+    );
+
+    // Type an "X" after "hello" into the registered target document.
+    {
+        let fonts = himark::env::Fonts::of(&app.store())();
+        let theme = himark::env::Themes::of(&app.store());
+        let mut store = app.store_mut();
+        let mut document =
+            himark::OpenDocuments::document(&store, target_id).expect("target document");
+        let mut batch = imba::effect::Batch::new();
+        document.edit(
+            &operation::Operation::insert_at(5, "X"),
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        himark::OpenDocuments::put_document(&mut store, target_id, document);
+    }
+
+    let after = op_of(&app);
+    assert_ne!(
+        before, after,
+        "typing into the row must update its tracked diff"
+    );
+    assert!(
+        after
+            .iter()
+            .any(|o| matches!(o, operation::Op::Insert(text) if text == "X")),
+        "the diff reflects the typed insert: {after:?}"
+    );
+}
+
+/// `Canvases::sync` is the tick driver that keeps canvas state current
+/// off-paint (the reveal-after-change fix). It must reconcile stale
+/// canvases and leave up-to-date ones untouched, without corrupting
+/// the store-held state. (The change-set→row reconcile it delegates to
+/// is covered by `reconcile_follows_the_change_set_without_flashing`;
+/// full Changes population lives behind himark's session machinery.)
+#[test]
+fn canvases_sync_is_a_safe_no_op_when_current() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let doc_loc = |name: &str| {
+        himark::ResourceLocation::new(
+            himark::ResourceType::document(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: doc_loc("a.md.old"),
+        new: doc_loc("a.md"),
+        added: Some(0),
+        removed: Some(0),
+        updated: 0,
+    };
+    let make = |body: &str| {
+        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new())
+    };
+    let old = make("hello\n");
+    let new = make("hello\n");
+    let operation = myersdiff::diff(old.text(), new.text());
+    let marks = himark::prepare_marks(&operation, old.text());
+    let built = himark::BuiltFileDiff {
+        old,
+        new,
+        operation,
+        marks,
+        width: 1100.0,
+        failed: None,
+    };
+
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: himark::ResourceLocation::new(
+                    himark::ResourceType::directory(),
+                    himark::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+            },
+            file,
+            built,
+        )
+    };
+
+    let before = view.probe_rows(&app.store());
+    assert_eq!(before.len(), 1, "seeded one row");
+
+    // The tick driver runs against every store-held canvas.
+    crate::Canvases::sync(&mut app.store_mut());
+
+    // With no live Changes source the sync is a no-op: the row and its
+    // registered pair survive intact (state not corrupted).
+    let after = view.probe_rows(&app.store());
+    assert_eq!(after, before, "sync must not disturb an up-to-date canvas");
+    assert!(
+        view.probe_pair(&app.store(), &doc_loc("a.md")).is_some(),
+        "the row's registered pair survives a sync tick"
+    );
+}

@@ -14,7 +14,7 @@
 use himark::diff_canvas::{
     canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
 };
-use himark::{env, EditorView, ResourceLocation, UnifiedDiffCommand};
+use himark::{env, ResourceLocation, UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
@@ -235,15 +235,36 @@ impl Canvas {
         }
     }
 
+    /// TEST SUPPORT: the registered `DiffViewId` backing a built row.
+    #[doc(hidden)]
+    pub fn probe_pair(&self, key: &ResourceLocation) -> Option<himark::DiffViewId> {
+        let row = self
+            .rows
+            .content()
+            .row_range(&CanvasKey::Diff(key.clone()))
+            .and_then(|range| self.rows.content().view_at(range.start))
+            .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
+        match row {
+            CanvasRow::Diff(DiffRow {
+                body: RowBody::Built { pane },
+                ..
+            }) => Some(pane.id()),
+            _ => None,
+        }
+    }
+
     /// Per Built row: (left content height, right content height,
     /// inline content height, left width, right width) — the split
     /// alignment oracle.
     #[doc(hidden)]
-    pub fn probe_half_heights(&self) -> Vec<(f32, f32, f32, f32, f32)> {
+    pub fn probe_half_heights(&self, store: &Store) -> Vec<(f32, f32, f32, f32, f32)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(_, diff)| {
-                let RowBody::Built { view } = &diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return None;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return None;
                 };
                 let left = &view.split.left;
@@ -263,11 +284,14 @@ impl Canvas {
 
     /// Per Built row (parked ones included): (title, current face).
     #[doc(hidden)]
-    pub fn probe_layouts(&self) -> Vec<(String, himark::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, himark::DiffLayout)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(title, diff)| {
-                let RowBody::Built { view } = &diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return None;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return None;
                 };
                 Some((title, view.layout))
@@ -277,11 +301,14 @@ impl Canvas {
 
     /// Per Built row: (title, host/inline focus, each card's focus).
     #[doc(hidden)]
-    pub fn probe_focus(&self) -> Vec<(String, String, Vec<String>)> {
+    pub fn probe_focus(&self, store: &Store) -> Vec<(String, String, Vec<String>)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(title, diff)| {
-                let RowBody::Built { view } = &diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return None;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -301,11 +328,14 @@ impl Canvas {
 
     /// Per Built row: (host text head, each card's text head).
     #[doc(hidden)]
-    pub fn probe_texts(&self) -> Vec<(String, Vec<String>)> {
+    pub fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(_, diff)| {
-                let RowBody::Built { view } = &diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return None;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -329,11 +359,14 @@ impl Canvas {
 
     /// Geometry oracle: (content_height, [(anchor_byte, y_of_anchor)]).
     #[doc(hidden)]
-    pub fn probe_geometry(&self) -> Vec<(f32, Vec<(u32, f32)>)> {
+    pub fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(_, diff)| {
-                let RowBody::Built { view } = &diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return None;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -454,7 +487,7 @@ impl Canvas {
             .cloned()
             .collect();
         for key in retired {
-            self.retire(&key);
+            self.retire(store, &key);
             moved = true;
         }
 
@@ -525,7 +558,8 @@ impl Canvas {
         }
     }
 
-    fn retire(&mut self, key: &ResourceLocation) {
+    fn retire(&mut self, store: &mut Store, key: &ResourceLocation) {
+        self.teardown_row(store, key);
         if let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) {
             let end = match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
                 Some(diff) => header.end.max(diff.end),
@@ -541,6 +575,27 @@ impl Canvas {
         self.stash.remove_mut(key);
         if self.reveal.as_ref() == Some(key) {
             self.reveal = None;
+        }
+    }
+
+    /// Untrack a row's diff and drop its editors from the (shared)
+    /// registered documents — the rows no longer die with the canvas
+    /// now that they ARE registered documents
+    /// ([[registered-document-identity]]). Covers the live row and a
+    /// collapsed row parked in the stash.
+    fn teardown_row(&self, store: &mut Store, key: &ResourceLocation) {
+        let pane = self
+            .rows
+            .content()
+            .row_range(&CanvasKey::Diff(key.clone()))
+            .and_then(|range| self.rows.content().view_at(range.start))
+            .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()));
+        if let Some(CanvasRow::Diff(DiffRow {
+            body: RowBody::Built { pane },
+            ..
+        })) = pane
+        {
+            crate::teardown_diff_view(store, pane.id());
         }
     }
 
@@ -684,6 +739,10 @@ impl Canvas {
         let Some(file) = self.files.get(&key).cloned() else {
             return;
         };
+        // A relaunch (a stale row rebuilding) replaces a Built row:
+        // untrack the standing diff before the fresh mount, or it
+        // leaks a tracked pair + editors ([[registered-document-identity]]).
+        self.teardown_row(store, &key);
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let route = key.clone();
@@ -691,14 +750,20 @@ impl Canvas {
         let (body, body_height) = match built.failed.clone() {
             Some(error) => (RowBody::Failed(error), chrome.title_size * 3.0),
             None => {
-                let (view, height) = fx.scope(
+                let mounted = fx.scope(
                     move |command: RowCommand| CanvasCommand::ToRow {
                         key: route.clone(),
                         command,
                     },
-                    |fx| mounted(store, ui, built, fx),
+                    |fx| mounted(store, ui, &file, built, fx),
                 );
-                (RowBody::Built { view }, height)
+                match mounted {
+                    Some((pane, height)) => (RowBody::Built { pane }, height),
+                    None => (
+                        RowBody::Failed("could not open the diff".to_owned()),
+                        chrome.title_size * 3.0,
+                    ),
+                }
             }
         };
         self.phases.insert_mut(
@@ -911,126 +976,48 @@ fn row_ask(command: &RowsCommand) -> Option<(usize, &RowCommand)> {
     dig(inner)
 }
 
+/// Mount a row's diff over REGISTERED documents tracked by the Diffs
+/// subsystem ([[registered-document-identity]]): reuse the open
+/// document for each side's location — or register the freshly-fetched
+/// build — then `build_diff_view` tracks the pair (so the normalize
+/// lane runs and edits compose) and mints a store-held `DiffView`. The
+/// row holds only the `PairPane` id; its documents live in
+/// `OpenDocuments`, exactly like any pane.
 fn mounted(
     store: &mut Store,
     ui: &UiCtx,
+    file: &CanvasFile,
     built: himark::BuiltFileDiff,
     fx: &mut Effects<'_, RowCommand>,
-) -> (himark::UnifiedDiffView, f32) {
-    let fonts = env::Fonts::of(store)();
+) -> Option<(crate::PairPane, f32)> {
     let theme = env::Themes::of(store);
-    let mut before_doc = built.old;
-    let mut after_doc = built.new;
-    let operation = built.operation;
-    let prepared = built.marks;
-
-    let diff_id = after_doc.add_diff(operation.clone(), before_doc.revision());
-    after_doc.install_normalized_diff(diff_id, operation, before_doc.revision());
-    let hunks = after_doc.diff(diff_id).expect("just added").markup();
-
     let gutter = theme.ui().editor_gutter.width;
     let editor_width = (built.width - gutter).max(120.0);
-    let mut throwaway = imba::effect::Batch::new();
-    let quiet = &mut throwaway.effects();
 
-    let left_marks = before_doc.add_markup();
-    before_doc.replace_markup(
-        left_marks,
-        prepared.left.clone(),
-        &[],
-        &fonts,
-        &theme,
-        quiet,
-    );
-    let left_editor = before_doc.add_editor(
-        editor_width,
-        None,
-        himark::EditorBuild::Bounded,
-        &[left_marks],
-        &fonts,
-        &theme,
-        quiet,
-    );
-    before_doc.manage_repairs_in_pair(left_editor);
+    let old_id = register_side(store, &file.old, built.old);
+    let new_id = register_side(store, &file.new, built.new);
 
-    let right_editor = after_doc.add_editor(
-        editor_width,
-        None,
-        himark::EditorBuild::Bounded,
-        &[hunks],
-        &fonts,
-        &theme,
-        quiet,
-    );
-    after_doc.manage_repairs_in_pair(right_editor);
-    let right_extras = after_doc.add_owned_markup(right_editor);
-    after_doc.replace_markup(
-        right_extras,
-        prepared.right.clone(),
-        &[],
-        &fonts,
-        &theme,
-        quiet,
-    );
-
-    if let Some(parsers) = env::Parsers::of(store) {
-        fx.scope(
-            |command: himark::EditorCommand| {
-                RowCommand::Diff(UnifiedDiffCommand::Split(himark::SplitDiffCommand::Left(
-                    command,
-                )))
-            },
-            |fx| before_doc.launch_reparse(parsers.clone(), fx),
-        );
-        fx.scope(
-            |command: himark::EditorCommand| {
-                RowCommand::Diff(UnifiedDiffCommand::Split(himark::SplitDiffCommand::Right(
-                    command,
-                )))
-            },
-            |fx| after_doc.launch_reparse(parsers, fx),
-        );
-    }
-
-    let state = himark::DiffState::attach(
-        diff_id,
-        &before_doc,
-        &after_doc,
-        left_marks,
-        right_extras,
-        Some(prepared.window),
-        himark::env::Differ::of(store),
-    )
-    .expect("the entry was just installed");
-    let left = EditorView {
-        document: before_doc,
-        editor: left_editor,
-        reports_geometry: true,
-        location: None,
-        gutter_width: 0.0,
-        base: None,
+    let prep = crate::DiffPrep {
+        operation: built.operation,
+        marks: built.marks,
     };
-    let right = EditorView {
-        document: after_doc,
-        editor: right_editor,
-        reports_geometry: true,
-        location: None,
-        gutter_width: 0.0,
-        base: None,
-    };
-    let mut view = himark::UnifiedDiffView::new(himark::SplitDiffView::new(left, right, state));
+    let id = crate::build_diff_view(store, old_id, new_id, Some(prep), editor_width)?;
+    let mut pane = crate::PairPane::over(id);
+
+    // Default to the inline face.
     fx.scope(RowCommand::Diff, |fx| {
-        view.perform(
+        pane.perform(
             store,
             ui,
             UnifiedDiffCommand::SetLayout(himark::DiffLayout::Inline),
             fx,
         )
     });
+
     let height = {
         let frame = Arena::default();
         let thunk = imba::Layout::layout(
-            view.display(&frame, store, ui),
+            pane.display(&frame, store, ui),
             &frame,
             Constraints {
                 min: Size::new(editor_width, 0.0),
@@ -1039,7 +1026,29 @@ fn mounted(
         );
         Thunk::size(&thunk).height
     };
-    (view, height)
+    Some((pane, height))
+}
+
+/// A document keyed to a `ResourceLocation` must BE the registered
+/// `OpenDocuments` document for it ([[registered-document-identity]]).
+fn register_side(
+    store: &mut Store,
+    location: &ResourceLocation,
+    document: himark::Document,
+) -> himark::DocumentId {
+    match himark::OpenDocuments::by_location(store, location) {
+        Some(id) => id,
+        None => {
+            let revision = document.revision();
+            himark::OpenDocuments::register(
+                store,
+                document,
+                Some(location.clone()),
+                location.name().to_owned(),
+                revision,
+            )
+        }
+    }
 }
 
 impl Canvas {
@@ -1296,6 +1305,43 @@ impl Canvases {
             Self::put(store, id, canvas);
         }
     }
+
+    /// Reconcile every store-held canvas against the current change set
+    /// / commit history — driven from the app's sync tick, so a
+    /// canvas's file list stays current even when no panel is painting
+    /// it. This is why `Canvases` is store state: clicking a file in
+    /// the changes view reveals it because the row is already there
+    /// ([[registered-document-identity]]).
+    pub fn sync(store: &mut Store) {
+        let ids: Vec<CanvasId> = match store.get::<Canvases>() {
+            Some(canvases) => canvases.0.keys().copied().collect(),
+            None => return,
+        };
+        for id in ids {
+            let stale = match Self::get(store, id) {
+                Some(canvas) => canvas.seen != Some(canvas_generation(store, &canvas.source)),
+                None => false,
+            };
+            if !stale {
+                continue;
+            }
+            if let Some(mut canvas) = Self::take(store, id) {
+                // A headless sync: the row-list membership (placeholders
+                // for new files, retirement of removed) is pure state.
+                // Any builds relaunched here land when the panel next
+                // paints; the throwaway effects are dropped.
+                let mut batch = imba::effect::Batch::new();
+                canvas.refresh(store, &mut batch.effects());
+                Self::put(store, id, canvas);
+            }
+        }
+    }
+}
+
+/// The `himark::SyncObserver` that keeps `Canvases` current on the sync
+/// tick. Registered at the edge alongside the row minter and navigator.
+pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
+    std::sync::Arc::new(|store: &mut Store| Canvases::sync(store))
 }
 
 /// The canvas PANEL — a REFERENCE view over the store-held canvas,
@@ -1346,6 +1392,16 @@ impl DiffCanvasView {
             Canvases::put(store, view.id, canvas);
         }
         view
+    }
+
+    /// TEST SUPPORT: the registered `DiffViewId` backing a built row.
+    #[doc(hidden)]
+    pub fn probe_pair(
+        &self,
+        store: &Store,
+        key: &himark::ResourceLocation,
+    ) -> Option<himark::DiffViewId> {
+        self.canvas(store)?.probe_pair(key)
     }
 
     /// TEST SUPPORT: feed a fresh listing straight into the reconcile
@@ -1431,35 +1487,35 @@ impl DiffCanvasView {
     #[doc(hidden)]
     pub fn probe_layouts(&self, store: &Store) -> Vec<(String, himark::DiffLayout)> {
         self.canvas(store)
-            .map(|canvas| canvas.probe_layouts())
+            .map(|canvas| canvas.probe_layouts(store))
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn probe_half_heights(&self, store: &Store) -> Vec<(f32, f32, f32, f32, f32)> {
         self.canvas(store)
-            .map(|canvas| canvas.probe_half_heights())
+            .map(|canvas| canvas.probe_half_heights(store))
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn probe_focus(&self, store: &Store) -> Vec<(String, String, Vec<String>)> {
         self.canvas(store)
-            .map(|canvas| canvas.probe_focus())
+            .map(|canvas| canvas.probe_focus(store))
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn probe_texts(&self, store: &Store) -> Vec<(String, Vec<String>)> {
         self.canvas(store)
-            .map(|canvas| canvas.probe_texts())
+            .map(|canvas| canvas.probe_texts(store))
             .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn probe_geometry(&self, store: &Store) -> Vec<(f32, Vec<(u32, f32)>)> {
         self.canvas(store)
-            .map(|canvas| canvas.probe_geometry())
+            .map(|canvas| canvas.probe_geometry(store))
             .unwrap_or_default()
     }
 }
@@ -1565,7 +1621,7 @@ pub enum ComposerCommand {
 enum RowBody {
     Placeholder { armed: bool },
     Failed(String),
-    Built { view: himark::UnifiedDiffView },
+    Built { pane: crate::PairPane },
 }
 
 #[derive(Clone)]
@@ -1726,7 +1782,7 @@ impl View for CanvasRow {
             CanvasRow::Diff(diff) => {
                 let own = imba::focus::FocusData::of_commands(open_commands(&diff.file.new));
                 match &diff.body {
-                    RowBody::Built { view } => view
+                    RowBody::Built { pane } => pane
                         .focus_data(store, ui)
                         .map(RowCommand::Diff)
                         .merge_under(own),
@@ -1737,12 +1793,13 @@ impl View for CanvasRow {
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
+        let _ = fx;
         if let CanvasRow::Diff(DiffRow {
-            body: RowBody::Built { view },
+            body: RowBody::Built { pane },
             ..
         }) = self
         {
-            fx.scope(RowCommand::Diff, |fx| view.destroy(store, fx));
+            crate::teardown_diff_view(store, pane.id());
         }
     }
 
@@ -1805,12 +1862,16 @@ impl View for CanvasRow {
         };
         match command {
             RowCommand::Header(HeaderAction::ToggleFace) => {
-                let RowBody::Built { view } = &mut diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
+                    return;
+                };
+                let Some(view) = crate::gathered_view(store, pane.id()) else {
                     return;
                 };
                 let next = view.layout.other();
+                let mut pane = *pane;
                 fx.scope(RowCommand::Diff, |fx| {
-                    view.perform(store, ui, UnifiedDiffCommand::SetLayout(next), fx)
+                    pane.perform(store, ui, UnifiedDiffCommand::SetLayout(next), fx)
                 });
             }
             RowCommand::Header(_) | RowCommand::Composer(_) => {}
@@ -1820,75 +1881,23 @@ impl View for CanvasRow {
                 }
             }
             RowCommand::Diff(command) => {
-                let RowBody::Built { view } = &mut diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
                     return;
                 };
-                fx.scope(RowCommand::Diff, |fx| view.perform(store, ui, command, fx));
+                let mut pane = *pane;
+                fx.scope(RowCommand::Diff, |fx| pane.perform(store, ui, command, fx));
             }
             RowCommand::Rewrap(width) => {
                 if diff.rewrap_ask != Some(width) {
                     diff.rewrap_ask = Some(width);
                     return;
                 }
-                let RowBody::Built { view } = &mut diff.body else {
+                let RowBody::Built { pane } = &diff.body else {
                     return;
                 };
-                // Inline-face only: on the split face the halves own
-                // their widths (a stale ask must not undo them).
-                if view.layout == himark::DiffLayout::Split {
-                    return;
-                }
-                let fonts = env::Fonts::of(store)();
-                let theme = env::Themes::of(store);
-                let left_editor = view.split.left.editor;
-                let right_editor = view.split.right.editor;
-                let inline = view.inline_editor;
-                fx.scope(
-                    |command: himark::EditorCommand| {
-                        RowCommand::Diff(UnifiedDiffCommand::Split(himark::SplitDiffCommand::Left(
-                            command,
-                        )))
-                    },
-                    |fx| {
-                        view.split
-                            .left
-                            .document
-                            .resize(left_editor, width, 0, &fonts, &theme, fx)
-                    },
-                );
-                fx.scope(
-                    |command: himark::EditorCommand| {
-                        RowCommand::Diff(UnifiedDiffCommand::Split(
-                            himark::SplitDiffCommand::Right(command),
-                        ))
-                    },
-                    |fx| {
-                        view.split
-                            .right
-                            .document
-                            .resize(right_editor, width, 0, &fonts, &theme, fx)
-                    },
-                );
-                if let Some(inline) = inline {
-                    fx.scope(
-                        |command: himark::EditorCommand| {
-                            RowCommand::Diff(UnifiedDiffCommand::Inline(command))
-                        },
-                        |fx| {
-                            view.split
-                                .right
-                                .document
-                                .resize(inline, width, 0, &fonts, &theme, fx)
-                        },
-                    );
-                }
+                let id = pane.id();
                 fx.scope(RowCommand::Diff, |fx| {
-                    view.perform(
-                        store,
-                        ui,
-                        UnifiedDiffCommand::Split(himark::SplitDiffCommand::Resync),
-                        fx,
-                    )
+                    crate::rewrap_pair(store, ui, id, width, fx)
                 });
             }
         }
@@ -2150,10 +2159,10 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                         })
                         .layout(arena, constraints)
                 }
-                RowBody::Built { view } => {
+                RowBody::Built { pane } => {
                     let editor_target = (width - gutter).max(120.0);
                     let body = imba::Layout::layout(
-                        view.display(arena, store, ui),
+                        pane.display(arena, store, ui),
                         arena,
                         Constraints {
                             min: Size::new(editor_target, 0.0),
@@ -2168,16 +2177,19 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     // resize themselves to the half-pane width — a
                     // row-level rewrap to the full width would fight
                     // them every frame.
-                    let rewrap = match view.layout {
-                        himark::DiffLayout::Split => None,
-                        himark::DiffLayout::Inline => {
-                            let laid = view
-                                .split
-                                .right
-                                .document
-                                .layout_width(view.split.right.editor);
-                            ((laid - editor_target).abs() > 1.0).then_some(editor_target)
-                        }
+                    let rewrap = match crate::gathered_view(store, pane.id()) {
+                        Some(view) => match view.layout {
+                            himark::DiffLayout::Split => None,
+                            himark::DiffLayout::Inline => {
+                                let laid = view
+                                    .split
+                                    .right
+                                    .document
+                                    .layout_width(view.split.right.editor);
+                                ((laid - editor_target).abs() > 1.0).then_some(editor_target)
+                            }
+                        },
+                        None => None,
                     };
                     let card = imba::ZBox::new(arena)
                         .child(imba::spacer(width, body_height))

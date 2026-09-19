@@ -12,11 +12,21 @@ use imba::{
 const OPEN_HALF_WIDTH: f32 = 420.0;
 
 pub mod canvas;
-pub use canvas::{CanvasNavigator, Canvases, DiffCanvasView};
+pub use canvas::{canvas_sync_observer, CanvasNavigator, Canvases, DiffCanvasView};
 
 #[derive(Clone, Copy)]
 pub struct PairPane {
     id: himark::DiffViewId,
+}
+
+impl PairPane {
+    pub fn over(id: himark::DiffViewId) -> Self {
+        Self { id }
+    }
+
+    pub fn id(&self) -> himark::DiffViewId {
+        self.id
+    }
 }
 
 fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
@@ -57,6 +67,110 @@ fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
             left_view, right_view, state,
         )))
     }
+}
+
+/// Reconstruct a tracked pair's `UnifiedDiffView` from the store — the
+/// read side of the registered-diff mechanism (documents live in
+/// `OpenDocuments`, the view is gathered per ask). Used by the diff
+/// canvas rows for layout/probe reads.
+pub fn gathered_view(store: &Store, id: himark::DiffViewId) -> Option<UnifiedDiffView> {
+    gathered(himark::OpenDocuments::diff_view_ref(store, id)?, store)
+}
+
+/// Tear down a tracked pair: drop the store-held `DiffView`, remove the
+/// pair's editors from the (possibly shared) registered documents, and
+/// untrack the diff from the Diffs subsystem. Does NOT close the
+/// documents — they may be open elsewhere. Shared by `DiffPanelView`
+/// and the diff canvas.
+pub fn teardown_diff_view(store: &mut Store, id: himark::DiffViewId) {
+    let Some(pair) = himark::OpenDocuments::take_diff_view(store, id) else {
+        return;
+    };
+    if let Some(inline) = pair.state.as_ref().and_then(|state| state.inline_editor()) {
+        if let Some(mut document) = OpenDocuments::document(store, pair.right.document()) {
+            document.remove_editor(inline);
+            OpenDocuments::put_document(store, pair.right.document(), document);
+        }
+    }
+    for entity in [pair.left, pair.right] {
+        if let Some(mut document) = OpenDocuments::document(store, entity.document()) {
+            document.remove_editor(entity.editor());
+            OpenDocuments::put_document(store, entity.document(), document);
+        }
+    }
+    himark::OpenDocuments::untrack_diff(
+        store,
+        pair.diff,
+        &mut imba::effect::Batch::<UnifiedDiffCommand>::new().effects(),
+    );
+}
+
+/// Re-wrap the inline face of a tracked pair to `width` (the row-level
+/// rewrap, docs/diff-canvas.md §4): gather, resize the half + inline
+/// editors on the registered documents, resync, write back. The split
+/// face owns its half widths and is left alone.
+pub fn rewrap_pair(
+    store: &mut Store,
+    ui: &UiCtx,
+    id: himark::DiffViewId,
+    width: f32,
+    fx: &mut imba::effect::Effects<'_, UnifiedDiffCommand>,
+) {
+    let Some(mut pair) = himark::OpenDocuments::take_diff_view(store, id) else {
+        return;
+    };
+    let Some(mut view) = gathered(&pair, store) else {
+        himark::OpenDocuments::put_diff_view(store, id, pair);
+        return;
+    };
+    if view.layout == himark::DiffLayout::Split {
+        himark::OpenDocuments::put_diff_view(store, id, pair);
+        return;
+    }
+    let fonts = himark::env::Fonts::of(store)();
+    let theme = himark::env::Themes::of(store);
+    let left_editor = view.split.left.editor;
+    let right_editor = view.split.right.editor;
+    let inline = view.inline_editor;
+    fx.scope(
+        |c: himark::EditorCommand| UnifiedDiffCommand::Split(himark::SplitDiffCommand::Left(c)),
+        |fx| {
+            view.split
+                .left
+                .document
+                .resize(left_editor, width, 0, &fonts, &theme, fx)
+        },
+    );
+    fx.scope(
+        |c: himark::EditorCommand| UnifiedDiffCommand::Split(himark::SplitDiffCommand::Right(c)),
+        |fx| {
+            view.split
+                .right
+                .document
+                .resize(right_editor, width, 0, &fonts, &theme, fx)
+        },
+    );
+    if let Some(inline) = inline {
+        fx.scope(
+            |c: himark::EditorCommand| UnifiedDiffCommand::Inline(c),
+            |fx| {
+                view.split
+                    .right
+                    .document
+                    .resize(inline, width, 0, &fonts, &theme, fx)
+            },
+        );
+    }
+    view.perform(
+        store,
+        ui,
+        UnifiedDiffCommand::Split(himark::SplitDiffCommand::Resync),
+        fx,
+    );
+    OpenDocuments::put_document(store, pair.left.document(), view.split.left.document);
+    OpenDocuments::put_document(store, pair.right.document(), view.split.right.document);
+    pair.state = Some(view.split.state);
+    himark::OpenDocuments::put_diff_view(store, id, pair);
 }
 
 impl View for PairPane {
@@ -442,29 +556,7 @@ impl himark::PanelView for DiffPanelView {
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        let Some(pair) = himark::OpenDocuments::take_diff_view(store, self.pane.content().id)
-        else {
-            return;
-        };
-        let diff = pair.diff;
-
-        if let Some(inline) = pair.state.as_ref().and_then(|state| state.inline_editor()) {
-            if let Some(mut document) = OpenDocuments::document(store, pair.right.document()) {
-                document.remove_editor(inline);
-                OpenDocuments::put_document(store, pair.right.document(), document);
-            }
-        }
-        for entity in [pair.left, pair.right] {
-            if let Some(mut document) = OpenDocuments::document(store, entity.document()) {
-                document.remove_editor(entity.editor());
-                OpenDocuments::put_document(store, entity.document(), document);
-            }
-        }
-        himark::OpenDocuments::untrack_diff(
-            store,
-            diff,
-            &mut imba::effect::Batch::<UnifiedDiffCommand>::new().effects(),
-        );
+        teardown_diff_view(store, self.pane.content().id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -501,6 +593,25 @@ pub fn diff_panel(
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
 ) -> Option<DiffPanelView> {
+    let id = build_diff_view(store, left, right, prep, OPEN_HALF_WIDTH)?;
+    Some(DiffPanelView::over(id))
+}
+
+/// Register a tracked diff over two ALREADY-REGISTERED documents and
+/// mint the store-held `DiffView` for it: track it through the Diffs
+/// subsystem (so the normalize lane runs and edits compose), add a
+/// bounded editor per half, seed the prepared markups, and attach the
+/// `DiffState`. Returns the `DiffViewId` for a `PairPane` to render.
+/// The reusable core of `diff_panel`; the diff canvas drives it per
+/// row so its rows are registered documents, not throwaway snapshots
+/// (docs/diff-canvas.md §7, [[registered-document-identity]]).
+pub fn build_diff_view(
+    store: &mut Store,
+    left: himark::DocumentId,
+    right: himark::DocumentId,
+    prep: Option<DiffPrep>,
+    half_width: f32,
+) -> Option<himark::DiffViewId> {
     let fonts = himark::env::Fonts::of(store)();
     let theme = himark::env::Themes::of(store);
 
@@ -562,7 +673,7 @@ pub fn diff_panel(
             let mut document = OpenDocuments::document(store, document_id)?;
 
             let editor = document.add_editor(
-                OPEN_HALF_WIDTH,
+                half_width,
                 None,
                 himark::EditorBuild::Bounded,
                 &[marks],
@@ -614,14 +725,19 @@ pub fn diff_panel(
             himark::env::Differ::of(store),
         )
     };
-    Some(DiffPanelView::new(
+    let id = himark::DiffViewId::mint();
+    himark::OpenDocuments::put_diff_view(
         store,
-        left_view,
-        right_view,
-        handle,
-        right_extras,
-        state,
-    ))
+        id,
+        himark::DiffView {
+            left: left_view,
+            right: right_view,
+            diff: handle.id,
+            right_extras,
+            state,
+        },
+    );
+    Some(id)
 }
 
 pub fn row_minter() -> std::sync::Arc<himark::RowMinter> {

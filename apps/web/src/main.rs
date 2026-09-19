@@ -305,6 +305,7 @@ mod app {
             state.register_command(std::sync::Arc::new(himark::hifiles::ToggleSessionSwitcher));
             state.register_command(std::sync::Arc::new(hidiff::OpenDiff));
             state.register_row_minter(hidiff::row_minter());
+            state.register_sync_observer(hidiff::canvas_sync_observer());
             state.register_navigator(hidiff::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 

@@ -376,6 +376,7 @@ impl HimarkEngine {
         app.register_command(Arc::new(himark::hifiles::ToggleSessionSwitcher));
         app.register_command(Arc::new(hidiff::OpenDiff));
         app.register_row_minter(hidiff::row_minter());
+        app.register_sync_observer(hidiff::canvas_sync_observer());
         app.register_navigator(hidiff::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
 

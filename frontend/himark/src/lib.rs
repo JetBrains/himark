@@ -62,7 +62,9 @@ pub use crate::diffs::{
     rearm_base_asks, sync_stripe_bases, DiffChanged, DiffHandle, DiffNormalizeEffect,
     DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
 };
-pub use crate::family_rows::{mint_unfronted, FamilyRow, RowMinter, RowMinters};
+pub use crate::family_rows::{
+    mint_unfronted, FamilyRow, RowMinter, RowMinters, SyncObserver, SyncObservers,
+};
 pub use crate::workspace::{
     open_by_location_effect, open_locations, prebuild_group, prepare_built, BuildDocumentEffect,
     BuildFileDiffEffect, BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect,
