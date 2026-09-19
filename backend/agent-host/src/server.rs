@@ -2986,7 +2986,7 @@ impl Host {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        if let Err(error) = std::fs::write(&path, &text) {
+        if let Err(error) = crate::uris::atomic_write(&path, text.as_bytes()) {
             return rpc::failure(id, INTERNAL, format!("{}: {error}", path.display()));
         }
         self.update(|state| {
@@ -3743,7 +3743,7 @@ impl Host {
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
-        match std::fs::write(&path, data) {
+        match crate::uris::atomic_write(&path, data.as_bytes()) {
             Ok(()) => {
                 self.changes_touched(&path);
                 rpc::success(id, Value::Null)

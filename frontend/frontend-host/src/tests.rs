@@ -155,15 +155,26 @@ impl HostedFs {
     }
 
     fn write(&self, rel: &[&str], text: &str) {
-        let path = self.path(rel);
-        std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
-        std::fs::write(path, text).expect("write");
+        self.write_bytes(rel, text.as_bytes());
     }
 
+    /// ATOMIC write (temp + rename), like a real editor's save. A bare
+    /// `fs::write` truncates then fills, and the host's mirror watcher
+    /// (server.rs `reload_mirror`) can read the file in that empty
+    /// window and clobber the synced channel to empty — the intermittent
+    /// "document opened empty" flake. Rename replaces in one step, so
+    /// the watcher only ever sees whole content.
     fn write_bytes(&self, rel: &[&str], bytes: &[u8]) {
         let path = self.path(rel);
-        std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
-        std::fs::write(path, bytes).expect("write");
+        let parent = path.parent().expect("a parent");
+        std::fs::create_dir_all(parent).expect("mkdir");
+        let tmp = parent.join(format!(
+            ".{}.tmp{}",
+            path.file_name().and_then(|n| n.to_str()).unwrap_or("f"),
+            std::process::id()
+        ));
+        std::fs::write(&tmp, bytes).expect("write temp");
+        std::fs::rename(&tmp, &path).expect("atomic rename");
     }
 
     fn read(&self, rel: &[&str]) -> Option<String> {
@@ -282,14 +293,22 @@ fn settle_until(
     what: &str,
     mut done: impl FnMut(&mut HimarkEngine) -> bool,
 ) {
-    for _ in 0..400 {
+    // Wall-clock bounded, generous: CI runs one nextest process per
+    // test in parallel across the suite, and a starved executor slice
+    // can stretch an effect chain far past what a quiet machine needs.
+    let deadline = std::time::Duration::from_secs(30);
+    let started = std::time::Instant::now();
+    while started.elapsed() < deadline {
         settle(engine);
         if done(engine) {
             return;
         }
         std::thread::sleep(std::time::Duration::from_millis(5));
     }
-    panic!("never settled: {what}");
+    panic!(
+        "never settled: {what} (waited {:?} — a full deadline means a          parked effect, not a slow one)",
+        started.elapsed()
+    );
 }
 
 fn settle_into_session(engine: &mut HimarkEngine) {
