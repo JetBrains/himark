@@ -187,7 +187,7 @@ impl Navigator for EditorNavigator {
             if place.caret > 0 {
                 let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
-                document.reveal_at(editor, place.caret, &fonts, &theme, fx);
+                document.reveal_at_instant(editor, place.caret, &fonts, &theme, fx);
             }
             editor
         });

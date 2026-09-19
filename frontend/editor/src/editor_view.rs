@@ -1503,7 +1503,11 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 if imba::event::reveal_satisfied(viewport, rect) {
                     return EventResult::Command(EditorCommand::RevealSettled);
                 }
-                EventResult::Reveal(imba::event::Reveal::visible(rect))
+                let mut reveal = imba::event::Reveal::visible(rect);
+                if self.document().reveal_jump(self.editor()) {
+                    reveal.motion = imba::event::Motion::Jump;
+                }
+                EventResult::Reveal(reveal)
             }
             Event::MouseDown {
                 button: MouseButton::Left,

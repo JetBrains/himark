@@ -272,6 +272,10 @@ impl crate::DynamicCommand for OpenDiffCanvas {
 /// click (and `workbench.open-in-full` on a focused row).
 pub struct OpenCanvasFile {
     pub location: ResourceLocation,
+    /// The caret to land on — carried from the row's diff editor so
+    /// cmd-enter opens at the position being read, matching the
+    /// standalone split-diff pane (docs/editor/diff-canvas.md §6).
+    pub target: Option<std::ops::Range<crate::LineCol>>,
 }
 
 impl crate::DynamicCommand for OpenCanvasFile {
@@ -288,6 +292,30 @@ impl crate::DynamicCommand for OpenCanvasFile {
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        crate::workspace::open_locations(store, window, &[self.location.clone()], fx);
+        let Some(target) = self.target.clone() else {
+            // No caret to honor — the plain open, dedup + authority
+            // remap included.
+            crate::workspace::open_locations(store, window, &[self.location.clone()], fx);
+            return;
+        };
+        // Honor the caret: the canvas row's document is registered
+        // (docs/editor/diff-canvas.md §7), so this is a show at target;
+        // fall back to a targeted fetch if it somehow is not.
+        match crate::OpenDocuments::by_location(store, &self.location) {
+            Some(document_id) => {
+                if let Some(mut entity) = crate::Windows::window(store, window) {
+                    entity.show_document(store, window, document_id, Some(target), fx);
+                    crate::Windows::put(store, window, entity);
+                }
+            }
+            None => {
+                fx.push(crate::open_by_location_effect(
+                    window,
+                    self.location.clone(),
+                    true,
+                    Some(target),
+                ));
+            }
+        }
     }
 }

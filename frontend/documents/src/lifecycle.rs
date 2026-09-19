@@ -26,7 +26,7 @@ pub fn mount_editor(
     );
     if let Some(target) = target {
         let byte = crate::offset_at(&mut document.text().view(), target.start) as u32;
-        document.reveal_at(editor, byte, &fonts, &theme, fx);
+        document.reveal_at_instant(editor, byte, &fonts, &theme, fx);
     }
 
     if let Some(parsers) = editor::env::Parsers::of(store) {

@@ -3092,7 +3092,11 @@ fn a_committed_change_set_empties_the_canvas() {
         8,
         himark::diff_canvas::CanvasListing::Ready(vec![canvas_file(&key, 3)]),
     );
-    assert_eq!(view.probe_rows(&app.store()).len(), 1, "fresh change arrives");
+    assert_eq!(
+        view.probe_rows(&app.store()).len(),
+        1,
+        "fresh change arrives"
+    );
     view.adopt_for_tests(
         &mut app.store_mut(),
         9,
@@ -3196,14 +3200,20 @@ fn a_retired_file_leaves_no_orphan_row() {
         removed: Some(1),
         updated,
     };
-    let make = |b: &str| {
-        himark::Document::new(himark::Text::from_string_exact(b), himark::Markup::new())
-    };
+    let make =
+        |b: &str| himark::Document::new(himark::Text::from_string_exact(b), himark::Markup::new());
     let built = |o: &str, n: &str| {
         let (old, new) = (make(o), make(n));
         let operation = myersdiff::diff(old.text(), new.text());
         let marks = himark::prepare_marks(&operation, old.text());
-        himark::BuiltFileDiff { old, new, operation, marks, width: 1100.0, failed: None }
+        himark::BuiltFileDiff {
+            old,
+            new,
+            operation,
+            marks,
+            width: 1100.0,
+            failed: None,
+        }
     };
 
     // Seed a.md built, then reconcile in b.md and build it too.
@@ -3219,7 +3229,7 @@ fn a_retired_file_leaves_no_orphan_row() {
                     himark::Authority::new("test"),
                     vec!["proj".to_owned()],
                 ),
-                    },
+            },
             file("a.md", 1),
             built("a\n", "A\n"),
         )

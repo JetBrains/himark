@@ -973,6 +973,11 @@ impl Canvas {
                     self.request = Some(himark::PanelRequest::Perform(std::sync::Arc::new(
                         himark::diff_canvas::OpenCanvasFile {
                             location: file.new.clone(),
+                            // Land on the caret the row's diff editor
+                            // holds — cmd-enter continues where the
+                            // user was reading, like the standalone
+                            // split-diff pane.
+                            target: self.row_caret(store, key),
                         },
                     )));
                 }
@@ -993,6 +998,44 @@ impl Canvas {
                 self.to_row(key.clone(), command, store, ui, fx);
             }
         }
+    }
+
+    /// The caret position (target-side) of a built row's diff editor,
+    /// as a `LineCol` range — the cmd-enter navigation target. `None`
+    /// for an unbuilt row (nothing focused yet) or a missing pane.
+    fn row_caret(
+        &self,
+        store: &Store,
+        key: &ResourceLocation,
+    ) -> Option<std::ops::Range<himark::LineCol>> {
+        let pane = self
+            .rows
+            .content()
+            .row_range(&CanvasKey::Diff(key.clone()))
+            .and_then(|range| self.rows.content().view_at(range.start))
+            .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
+        let CanvasRow::Diff(DiffRow {
+            body: RowBody::Built { pane },
+            ..
+        }) = pane
+        else {
+            return None;
+        };
+        let view = himark::OpenDocuments::diff_view_ref(store, pane.id())?;
+        let right = view.right;
+        // The canvas shows the INLINE face by default, where the
+        // user's caret lives on the inline editor; both it and the
+        // split-right editor ride the same (target) document.
+        let editor = view
+            .state
+            .as_ref()
+            .and_then(|state| state.inline_editor())
+            .unwrap_or_else(|| right.editor());
+        let document = himark::OpenDocuments::document_ref(store, right.document())?;
+        let byte = document.caret_byte(editor);
+        let mut text = document.text().view();
+        let at = himark::line_col_at(&mut text, byte as usize);
+        Some(at..at)
     }
 
     /// Route a row command by KEY: to the live diff row, or into the
@@ -1485,7 +1528,9 @@ impl DiffCanvasView {
 
     #[doc(hidden)]
     pub fn probe_row_keys(&self, store: &Store) -> Vec<String> {
-        self.canvas(store).map(|c| c.probe_row_keys()).unwrap_or_default()
+        self.canvas(store)
+            .map(|c| c.probe_row_keys())
+            .unwrap_or_default()
     }
 
     /// TEST SUPPORT: drive the REAL listing adoption (the branch the

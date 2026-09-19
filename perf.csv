@@ -12095,3 +12095,7 @@ timestamp,commit,profile,bench,metric,value_ms
 1789784117,96bff9cd1,debug,diff-typing,p50_ms,0.3549
 1789784118,96bff9cd1,debug,diff-resize,frame_p50_ms,4.3868
 1789784118,96bff9cd1,debug,diff-resize,frame_worst_ms,6.8388
+1789833843,d13623e52,debug,editor-scroll,build_p50_ms,0.1192
+1789833843,d13623e52,debug,editor-scroll,build_p95_ms,0.2412
+1789833845,d13623e52,debug,plain-typing,keystroke_p50_ms,0.3830
+1789833847,d13623e52,debug,fold-toggle,monster_ms,2.2066

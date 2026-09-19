@@ -50,6 +50,10 @@ pub struct Editor {
     pub(crate) carets: MultiCaret,
 
     pub(crate) reveal: bool,
+    /// The pending reveal positions INSTANTLY (Motion::Jump): set for
+    /// a freshly mounted editor's first reveal — a pane that was not
+    /// on screen must appear at its target, not glide there.
+    pub(crate) reveal_jump: bool,
 
     pub(crate) markups: Vec<MarkupId>,
 
@@ -166,6 +170,7 @@ impl Editor {
                     .map_or(0, |range| range.start),
             ),
             reveal: false,
+            reveal_jump: false,
             folds: None,
             before: None,
             bounds,

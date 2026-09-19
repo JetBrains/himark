@@ -313,18 +313,31 @@ fn pane_focus_data<'w>(
             data.seat.take(),
         )
     };
-    let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> =
-        if view.split.left.focus() != himark::EditorFocus::None {
-            Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
-        } else if view.split.right.focus() != himark::EditorFocus::None {
-            Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
-        } else if view.inline_editor.is_some_and(|editor| {
-            view.split.right.document.focus(editor) != himark::EditorFocus::None
-        }) {
-            Some(UnifiedDiffCommand::Inline)
-        } else {
-            None
-        };
+    // Route by the ACTIVE face: in the inline face only the inline
+    // editor is on screen — the split editors' focus flags can be
+    // stale-true from before a face toggle, and checking them first
+    // sent commands (cmd-enter's open-in-full among them) to an
+    // editor whose caret was never placed.
+    let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
+        himark::DiffLayout::Inline => {
+            if view.inline_editor.is_some_and(|editor| {
+                view.split.right.document.focus(editor) != himark::EditorFocus::None
+            }) {
+                Some(UnifiedDiffCommand::Inline)
+            } else {
+                None
+            }
+        }
+        himark::DiffLayout::Split => {
+            if view.split.left.focus() != himark::EditorFocus::None {
+                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
+            } else if view.split.right.focus() != himark::EditorFocus::None {
+                Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
+            } else {
+                None
+            }
+        }
+    };
     let injected = commands
         .iter()
         .any(|presentable| presentable.id == "workbench.open-in-full");

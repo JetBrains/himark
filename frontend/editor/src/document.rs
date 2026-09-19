@@ -1347,6 +1347,7 @@ impl Document {
             EditorCommand::RevealSettled => {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.reveal = false;
+                    state.reveal_jump = false;
                 }
             }
 
@@ -1867,9 +1868,33 @@ impl Document {
         }
     }
 
+    /// `reveal_at`, but the scroll positions INSTANTLY instead of
+    /// gliding — for an editor whose pane was not on screen when the
+    /// navigation happened (a fresh mount).
+    pub fn reveal_at_instant(
+        &mut self,
+        editor: EditorId,
+        byte: u32,
+        fonts: &FontCollection,
+        theme: &crate::theme::Theme,
+        fx: &mut EditorEffects<'_>,
+    ) {
+        self.reveal_at(editor, byte, fonts, theme, fx);
+        if let Some(state) = self.editors.get_mut(&editor) {
+            state.reveal_jump = true;
+        }
+    }
+
+    pub fn reveal_jump(&self, editor: EditorId) -> bool {
+        self.editors
+            .get(&editor)
+            .is_some_and(|state| state.reveal_jump)
+    }
+
     pub fn cancel_reveal(&mut self, editor: EditorId) {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal = false;
+            state.reveal_jump = false;
         }
     }
 
