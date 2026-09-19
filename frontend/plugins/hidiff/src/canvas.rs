@@ -532,7 +532,9 @@ impl Canvas {
                 None => header.end,
             };
             let empty: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-            self.rows.content_mut().splice_slice(header.start..end, empty);
+            self.rows
+                .content_mut()
+                .splice_slice(header.start..end, empty);
         }
         self.files.remove_mut(key);
         self.phases.remove_mut(key);

@@ -482,4 +482,3 @@ fn shrink_unchanged_at_ends<'a>(
         (changed, Vec::from(lhs_nodes), Vec::from(rhs_nodes))
     }
 }
-

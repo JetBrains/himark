@@ -2184,7 +2184,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             new: location("big.md", himark::ResourceType::document()),
             added: Some(2),
             removed: Some(2),
-        updated: 0,
+            updated: 0,
         };
         let built = himark::BuiltFileDiff {
             old,

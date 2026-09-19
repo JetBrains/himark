@@ -524,8 +524,7 @@ fn the_saves_own_echo_is_a_no_op() {
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
     let before = document.revision();
-    let operation =
-        myersdiff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
+    let operation = myersdiff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
     OpenDocuments::edit_external(
         &mut store,
         id,

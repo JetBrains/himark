@@ -19,7 +19,6 @@ impl crate::diff::DiffPolicy for TestMyers {
     }
 }
 
-
 fn fonts() -> skia_safe::textlayout::FontCollection {
     crate::embedded_fonts::collection()
 }
@@ -130,7 +129,7 @@ fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffState {
         None,
         std::sync::Arc::new(TestMyers),
     )
-        .expect("the entry was just installed")
+    .expect("the entry was just installed")
 }
 
 fn normalize(view: &mut SplitDiffView) {

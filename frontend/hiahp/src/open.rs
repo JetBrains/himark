@@ -88,9 +88,9 @@ impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
         };
         let old = build(&effect.old, old_text.as_deref().unwrap_or(""));
         let new = build(&effect.new, new_text.as_deref().unwrap_or(""));
-        let operation = self
-            .diff_policy
-            .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
+        let operation =
+            self.diff_policy
+                .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
         let marks = himark::prepare_marks(&operation, old.text());
         himark::BuiltFileDiff {
             old,
@@ -140,9 +140,9 @@ impl OpenDiffByLocationsHandler {
         let old = build(&old_location, old_text.as_deref().unwrap_or(""));
         let new = build(&new_location, new_text.as_deref().unwrap_or(""));
 
-        let operation = self
-            .diff_policy
-            .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
+        let operation =
+            self.diff_policy
+                .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
         let marks = himark::prepare_marks(&operation, old.text());
         AppCommand::Dynamic(
             window,

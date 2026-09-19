@@ -236,4 +236,3 @@ pub fn apply(operation: &Operation, left: &str) -> Option<String> {
     }
     (at == left.len()).then_some(out)
 }
-
