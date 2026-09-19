@@ -2833,10 +2833,8 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // Identical sides: the initial diff is the identity.
     let body = "hello\nworld\n";
-    let old =
-        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
-    let new =
-        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
+    let old = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
+    let new = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
     let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let file = himark::diff_canvas::CanvasFile {
@@ -2889,7 +2887,11 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     let op_of = |app: &Application| {
         himark::OpenDocuments::document_ref(app.store(), target_id)
-            .and_then(|document| document.diff(diff_id).map(|entry| entry.operation().clone()))
+            .and_then(|document| {
+                document
+                    .diff(diff_id)
+                    .map(|entry| entry.operation().clone())
+            })
             .expect("the row's diff is tracked on the registered document")
     };
     let has_edit =
