@@ -3009,3 +3009,252 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
         "the row's registered pair survives a sync tick"
     );
 }
+
+/// Sticky headers ride the File key's COVER span (header + diff
+/// child). The working-copy canvas reconciles on every host touch,
+/// and its header resplice must re-assert the full cover — the bug
+/// where it covered only itself killed sticky headers in the changes
+/// view while the (never-reconciling) commit view kept them.
+#[test]
+fn reconcile_keeps_the_sticky_cover() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let (view, key, built2) = seeded_working_canvas(&mut app);
+    assert_eq!(
+        view.probe_cover(&app.store(), &key),
+        Some(2),
+        "a built expanded row: the File cover spans header + diff"
+    );
+
+    // A host touch: the stamp moves, reconcile resplices the header
+    // (fresh stats) and relaunches the build.
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), vec![canvas_file(&key, 2)]);
+    assert_eq!(launched, 1, "the stale row relaunches");
+    assert_eq!(
+        view.probe_cover(&app.store(), &key),
+        Some(2),
+        "the header resplice must keep the full sticky cover"
+    );
+
+    // The rebuild lands: still covered.
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, key.clone(), built2);
+    }
+    assert_eq!(
+        view.probe_cover(&app.store(), &key),
+        Some(2),
+        "a landed rebuild keeps the cover too"
+    );
+}
+
+/// The after-commit state reaches the canvas as `CanvasListing::Empty`
+/// (Ready status, zero files) — a populated canvas must retire its
+/// rows and show the note, not hold the committed change set. The bug:
+/// empty-as-`Pending` made a populated canvas ignore it entirely.
+#[test]
+fn a_committed_change_set_empties_the_canvas() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let (view, key, _built2) = seeded_working_canvas(&mut app);
+    assert_eq!(view.probe_rows(&app.store()).len(), 1);
+
+    // The commit: the host clears the set — READY and empty.
+    view.adopt_for_tests(
+        &mut app.store_mut(),
+        7,
+        himark::diff_canvas::CanvasListing::Empty("no changes".to_owned()),
+    );
+    assert!(
+        view.probe_rows(&app.store()).is_empty(),
+        "the committed rows retire"
+    );
+    // Non-vacuous: the LIST rows are actually gone, not just `files`.
+    assert!(
+        view.probe_row_keys(&app.store()).is_empty(),
+        "no list row survives the commit: {:?}",
+        view.probe_row_keys(&app.store())
+    );
+    assert_eq!(
+        view.probe_note(&app.store()).as_deref(),
+        Some("no changes"),
+        "…and the canvas says why it is empty"
+    );
+
+    // A transient computing state must NOT clear anything…
+    view.adopt_for_tests(
+        &mut app.store_mut(),
+        8,
+        himark::diff_canvas::CanvasListing::Ready(vec![canvas_file(&key, 3)]),
+    );
+    assert_eq!(view.probe_rows(&app.store()).len(), 1, "fresh change arrives");
+    view.adopt_for_tests(
+        &mut app.store_mut(),
+        9,
+        himark::diff_canvas::CanvasListing::Pending("computing…".to_owned()),
+    );
+    assert_eq!(
+        view.probe_rows(&app.store()).len(),
+        1,
+        "a refetch's computing flicker holds the rows"
+    );
+}
+
+fn canvas_file(key: &himark::ResourceLocation, updated: u64) -> himark::diff_canvas::CanvasFile {
+    himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: himark::ResourceLocation::new(
+            himark::ResourceType::document(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), "a.md.old".to_owned()],
+        ),
+        new: key.clone(),
+        added: Some(1),
+        removed: Some(1),
+        updated,
+    }
+}
+
+fn seeded_working_canvas(
+    app: &mut Application,
+) -> (
+    DiffCanvasView,
+    himark::ResourceLocation,
+    himark::BuiltFileDiff,
+) {
+    let key = himark::ResourceLocation::new(
+        himark::ResourceType::document(),
+        himark::Authority::new("test"),
+        vec!["proj".to_owned(), "a.md".to_owned()],
+    );
+    let make = |body: &str| {
+        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new())
+    };
+    let built = |old_body: &str, new_body: &str| {
+        let old = make(old_body);
+        let new = make(new_body);
+        let operation = myersdiff::diff(old.text(), new.text());
+        let marks = himark::prepare_marks(&operation, old.text());
+        himark::BuiltFileDiff {
+            old,
+            new,
+            operation,
+            marks,
+            width: 1100.0,
+            failed: None,
+        }
+    };
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: himark::ResourceLocation::new(
+                    himark::ResourceType::directory(),
+                    himark::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+            },
+            canvas_file(&key, 1),
+            built("one\n", "ONE\n"),
+        )
+    };
+    (view, key, built("one\n", "ONE!\n"))
+}
+
+/// Retiring a file that was RESTAMPED (so its header was respliced by
+/// `refresh_header`) must remove BOTH its rows — the header and the
+/// diff child. The cover-shrinking bug orphaned the diff row: `retire`
+/// spliced only the header the corrupted cover pointed at, `files`
+/// dropped the key, and the diff row lingered forever — "stale files
+/// not removed."
+#[test]
+fn a_retired_file_leaves_no_orphan_row() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let loc = |name: &str| {
+        himark::ResourceLocation::new(
+            himark::ResourceType::document(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = |name: &str, updated: u64| himark::diff_canvas::CanvasFile {
+        title: name.to_owned(),
+        old: loc(&format!("{name}.old")),
+        new: loc(name),
+        added: Some(1),
+        removed: Some(1),
+        updated,
+    };
+    let make = |b: &str| {
+        himark::Document::new(himark::Text::from_string_exact(b), himark::Markup::new())
+    };
+    let built = |o: &str, n: &str| {
+        let (old, new) = (make(o), make(n));
+        let operation = myersdiff::diff(old.text(), new.text());
+        let marks = himark::prepare_marks(&operation, old.text());
+        himark::BuiltFileDiff { old, new, operation, marks, width: 1100.0, failed: None }
+    };
+
+    // Seed a.md built, then reconcile in b.md and build it too.
+    let view = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: himark::ResourceLocation::new(
+                    himark::ResourceType::directory(),
+                    himark::Authority::new("test"),
+                    vec!["proj".to_owned()],
+                ),
+                    },
+            file("a.md", 1),
+            built("a\n", "A\n"),
+        )
+    };
+    view.reconcile_for_tests(&mut app.store_mut(), vec![file("a.md", 1), file("b.md", 1)]);
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, loc("b.md"), built("b\n", "B\n"));
+    }
+
+    // RESTAMP a.md — this runs `refresh_header(a.md)` (the cover
+    // resplice), then relaunches; the relaunch lands.
+    view.reconcile_for_tests(&mut app.store_mut(), vec![file("a.md", 2), file("b.md", 1)]);
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, loc("a.md"), built("a\n", "AA\n"));
+    }
+    assert_eq!(
+        view.probe_cover(&app.store(), &loc("a.md")),
+        Some(2),
+        "the restamped file keeps its two-row cover"
+    );
+
+    // Now RETIRE a.md (it left the change set). Both its rows must go.
+    view.reconcile_for_tests(&mut app.store_mut(), vec![file("b.md", 1)]);
+    let keys = view.probe_row_keys(&app.store());
+    assert!(
+        !keys.iter().any(|k| k.contains("a.md")),
+        "no a.md row of any kind survives: {keys:?}"
+    );
+    assert_eq!(
+        keys,
+        vec!["File:b.md".to_owned(), "Diff:b.md".to_owned()],
+        "exactly b.md's header + diff remain: {keys:?}"
+    );
+}

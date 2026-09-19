@@ -235,6 +235,30 @@ impl Canvas {
         }
     }
 
+    /// TEST SUPPORT: every list row's key, in order — catches an
+    /// orphaned Diff row a per-file probe would miss.
+    #[doc(hidden)]
+    pub fn probe_row_keys(&self) -> Vec<String> {
+        let rows = self.rows.content();
+        (0..rows.len())
+            .filter_map(|index| match rows.key_at(index)? {
+                CanvasKey::Banner => Some("Banner".to_owned()),
+                CanvasKey::File(loc) => Some(format!("File:{}", loc.name())),
+                CanvasKey::Diff(loc) => Some(format!("Diff:{}", loc.name())),
+            })
+            .collect()
+    }
+
+    /// TEST SUPPORT: the File key's cover span — the sticky
+    /// machinery's input (2 rows expanded, 1 collapsed).
+    #[doc(hidden)]
+    pub fn probe_cover(&self, key: &ResourceLocation) -> Option<usize> {
+        self.rows
+            .content()
+            .row_range(&CanvasKey::File(key.clone()))
+            .map(|range| range.len())
+    }
+
     /// TEST SUPPORT: the registered `DiffViewId` backing a built row.
     #[doc(hidden)]
     pub fn probe_pair(&self, key: &ResourceLocation) -> Option<himark::DiffViewId> {
@@ -384,12 +408,32 @@ impl Canvas {
 
     fn refresh(&mut self, store: &mut Store, fx: &mut Effects<'_, CanvasCommand>) {
         let (generation, listing) = canvas_files(store, &self.source);
+        self.adopt(store, generation, listing, fx);
+    }
+
+    fn adopt(
+        &mut self,
+        store: &mut Store,
+        generation: u64,
+        listing: CanvasListing,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
         self.seen = Some(generation);
         match listing {
             CanvasListing::Pending(text) => {
                 if !self.populated {
                     self.note = Some(text);
                 }
+            }
+            CanvasListing::Empty(text) => {
+                // The after-commit state: the set is READY and empty.
+                // A populated canvas retires every row (the committed
+                // change set is gone — holding it was the bug) and
+                // shows the note; an unpopulated one just notes.
+                if self.populated {
+                    self.reconcile(store, Vec::new(), fx);
+                }
+                self.note = Some(text);
             }
             CanvasListing::Ready(files) => {
                 if self.populated {
@@ -600,33 +644,63 @@ impl Canvas {
     }
 
     /// Resplices one header row in place — same band, fresh stats.
+    /// The File key's structure interval is the COVER (header + diff
+    /// child when expanded) and it is what the sticky machinery
+    /// reads; a header-only resplice must re-assert the FULL cover,
+    /// or the file loses its sticky header (the working-copy canvas
+    /// reconciles on every host touch — the commit canvas never does,
+    /// which is how this once shipped asymmetrically broken).
     fn refresh_header(&mut self, key: &ResourceLocation, file: &CanvasFile, band: f32) {
         let Some(header) = self.rows.content().row_range(&CanvasKey::File(key.clone())) else {
             return;
         };
-        let collapsed = self
-            .rows
-            .content()
-            .row_range(&CanvasKey::Diff(key.clone()))
-            .is_none();
         let built = matches!(
             self.phases.get(key),
             Some(RowPhase::Built) | Some(RowPhase::Failed)
         );
-        let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-        slice.push_keyed_sized(
-            CanvasKey::File(key.clone()),
-            CanvasRow::Header(HeaderRow {
-                file: file.clone(),
-                collapsed,
-                built,
-            }),
-            band,
-        );
-        slice.cover(CanvasKey::File(key.clone()), 0..1);
-        self.rows
-            .content_mut()
-            .splice_slice(header.start..header.start + 1, slice);
+        match self.rows.content().row_range(&CanvasKey::Diff(key.clone())) {
+            Some(diff_range) => {
+                let Some(diff_row) = self.rows.content().view_at(diff_range.start) else {
+                    return;
+                };
+                let diff_height = self
+                    .rows
+                    .content()
+                    .height_at(diff_range.start)
+                    .unwrap_or(0.0);
+                let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                slice.push_keyed_sized(
+                    CanvasKey::File(key.clone()),
+                    CanvasRow::Header(HeaderRow {
+                        file: file.clone(),
+                        collapsed: false,
+                        built,
+                    }),
+                    band,
+                );
+                slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff_row, diff_height);
+                slice.cover(CanvasKey::File(key.clone()), 0..2);
+                self.rows
+                    .content_mut()
+                    .splice_slice(header.start..header.start + 2, slice);
+            }
+            None => {
+                let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+                slice.push_keyed_sized(
+                    CanvasKey::File(key.clone()),
+                    CanvasRow::Header(HeaderRow {
+                        file: file.clone(),
+                        collapsed: true,
+                        built,
+                    }),
+                    band,
+                );
+                slice.cover(CanvasKey::File(key.clone()), 0..1);
+                self.rows
+                    .content_mut()
+                    .splice_slice(header.start..header.start + 1, slice);
+            }
+        }
     }
 
     /// Relaunch a stale row's build at its standing width. A row that
@@ -1402,6 +1476,32 @@ impl DiffCanvasView {
         key: &himark::ResourceLocation,
     ) -> Option<himark::DiffViewId> {
         self.canvas(store)?.probe_pair(key)
+    }
+
+    #[doc(hidden)]
+    pub fn probe_cover(&self, store: &Store, key: &himark::ResourceLocation) -> Option<usize> {
+        self.canvas(store)?.probe_cover(key)
+    }
+
+    #[doc(hidden)]
+    pub fn probe_row_keys(&self, store: &Store) -> Vec<String> {
+        self.canvas(store).map(|c| c.probe_row_keys()).unwrap_or_default()
+    }
+
+    /// TEST SUPPORT: drive the REAL listing adoption (the branch the
+    /// paint probe and `Canvases::sync` reach through `refresh`).
+    #[doc(hidden)]
+    pub fn adopt_for_tests(
+        &self,
+        store: &mut Store,
+        generation: u64,
+        listing: himark::diff_canvas::CanvasListing,
+    ) {
+        if let Some(mut canvas) = Canvases::take(store, self.id) {
+            let mut batch = imba::effect::Batch::new();
+            canvas.adopt(store, generation, listing, &mut batch.effects());
+            Canvases::put(store, self.id, canvas);
+        }
     }
 
     /// TEST SUPPORT: feed a fresh listing straight into the reconcile

@@ -74,7 +74,13 @@ pub struct CanvasFile {
 #[derive(Clone, PartialEq, Debug)]
 pub enum CanvasListing {
     /// Nothing to lay rows for yet — the note tells the user why.
+    /// TRANSIENT (computing, error, no source): a populated canvas
+    /// holds its rows through it.
     Pending(String),
+    /// The set is genuinely empty (Ready status, zero files — the
+    /// after-commit state): a populated canvas must reconcile to
+    /// empty, not hold stale rows.
+    Empty(String),
     Ready(Vec<CanvasFile>),
 }
 
@@ -172,7 +178,7 @@ fn listing_of<'a>(
     match (status, files.len() == 0) {
         (ChangesStatus::Error(message), _) => CanvasListing::Pending(message.clone()),
         (ChangesStatus::Computing, true) => CanvasListing::Pending("computing…".to_owned()),
-        (ChangesStatus::Ready, true) => CanvasListing::Pending("no changes".to_owned()),
+        (ChangesStatus::Ready, true) => CanvasListing::Empty("no changes".to_owned()),
         _ => CanvasListing::Ready(
             files
                 .map(|entry| {
