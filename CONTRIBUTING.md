@@ -362,3 +362,37 @@ xattr -dr com.apple.quarantine himark-macOS.app
 
 Signing with a Developer ID and notarizing are not wired up yet; the
 `macos` job is the place to add them.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `HIMARK_AGENT_HOST_BIN` | Path of the host binary a shell should autostart |
+| `HIMARK_HOST_HOME` | Directory for the host lockfile and socket (default `~/.himark/agent-host`) |
+| `HIMARK_HOST_AUTOSTART` | `1` or a binary path: lets the AHP client itself spawn a host when discovery finds none |
+| `HIMARK_AHP_URL` | Connect to an agent host at this URL instead of discovering one |
+| `HIMARK_WEB_ROOT` | Directory the host serves as the web app |
+| `HIMARK_HTTP_BIND` | Bind address for `debug-web.sh` (default `127.0.0.1:4312`) |
+| `HIMARK_CLAUDE_BIN`, `HIMARK_CODEX_BIN`, `HIMARK_RUST_ANALYZER` | Pin the external tools |
+| `HIMARK_LOG_DIR` | Log directory (default `~/Library/Logs/Himark`) |
+| `HIHOST_TRACE` | Mirror host logs to stderr |
+| `RUST_LOG` | Log filter for host and app logs |
+
+## Troubleshooting
+
+- **"no himark agent host running"**: the shell could not find or start the
+  backend. Build it with `cargo build -p agent-host` so it sits next to the
+  shell binary, or start it by hand and try again.
+- **"a live host from another build holds ~/.himark/agent-host"**: a host
+  from an older build was running; the shell replaces it automatically. If a
+  stale lockfile blocks startup, stop the old process and delete
+  `~/.himark/agent-host/host.lock`.
+- **Skia download fails**: the first build needs access to GitHub releases.
+  Set `SKIA_LIBRARY_SEARCH_PATH` to a directory with prebuilt Skia libraries
+  to build offline, or `FORCE_SKIA_BUILD=1` to compile Skia from source.
+- **Linker errors mentioning `__std_min_f` on Windows**: update the MSVC
+  toolset to 14.40 or newer.
+- **iOS build fails in `bindgen` with `stdio.h not found`**: run through
+  `build.sh`, which sets the SDK sysroots, rather than invoking cargo directly.
+- **Web build cannot find `emcc`**: set `EMSDK` to your emsdk checkout, or
+  install Emscripten with Homebrew.

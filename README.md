@@ -23,6 +23,35 @@ coding agents (Claude Code and Codex).
   <img src="readme-screenshots/tables.png" width="49%" alt="Tables" />
 </p>
 
+## Philosophy
+
+- **Performance above everything.** Any frame — not just a cached
+  one — must render inside the budget: everything the UI thread asks
+  is answered in logarithmic time by measured persistent trees, so a
+  gigabyte document, a million-row list, and a working tree full of
+  diffs all scroll and type at the same latency. The discipline and
+  the data structures behind it are the core of the design
+  ([Design.md](docs/Design.md)).
+- **Optimized for reading.** Most editor time is spent reading —
+  code, diffs, documentation, specs — so the reading surface comes
+  first: markdown and rich text render typographically, as documents,
+  not as syntax-highlighted source. And it is ONE editor: code and
+  markdown share the same engine with the exact same capabilities —
+  multiple carets, diffs (mixed side-by-side and inline), search,
+  folding, history — whether the buffer is a Rust file or a design
+  doc, with code presented brightly inside prose and prose inside
+  code.
+- **Chat is an input, not the destination.** The chat floats over the
+  surface; the real collaboration with an agent happens in markdown —
+  plans and designs go in, walkthroughs and a persistent paper trail
+  of changes come out, as documents you keep.
+- **An absent interface.** Completely flat, TUI-like but beautiful:
+  thin hairlines, almost no backgrounds, the pixels spent on text and
+  typography instead of chrome.
+- **Code from anywhere.** The same engine runs on a phone, a tablet,
+  a laptop, a large display, and in the browser, and the layout
+  adapts to the surface instead of assuming a desktop window.
+
 ## Repository layout
 
 ```
@@ -54,69 +83,6 @@ The design docs are the map of the codebase; start here:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, per-platform
 build instructions, the agent host, releases, and troubleshooting.
-
-## Keyboard shortcuts
-
-The default keymap lives in `frontend/himark/assets/keymap.json`. `cmd` is
-the Command key on macOS and Control on Linux and Windows.
-
-| Shortcut | Action |
-|---|---|
-| `cmd-n` | New document |
-| `cmd-o` | Open (macOS app) |
-| `cmd-s` | Save |
-| `cmd-w` / `cmd-shift-w` | Close document / close pane |
-| `cmd-shift-d` | Split pane |
-| `cmd-p` | Peeker (file switcher) |
-| `cmd-shift-p` | Command palette |
-| `cmd-f`, `cmd-g`, `cmd-shift-g` | Find, next, previous |
-| `cmd-shift-f` | Search in files |
-| `cmd-t` | Table of contents |
-| `cmd-e` | Files tree |
-| `cmd-i` | Chat composer |
-| `cmd-r` | Changes view |
-| `cmd-shift-c` | Comments view |
-| `cmd-shift-u` | Switch session |
-| `cmd-[` / `cmd-]` | Navigate back / forward |
-| `cmd-d` / `cmd-shift-l` | Select next / all occurrences |
-| `cmd-alt-up` / `cmd-alt-down` | Add caret above / below |
-| `alt-z` | Toggle soft wrap |
-| `ctrl-space` | Trigger completion |
-| `cmd-enter` | Open in full |
-
-## Environment variables
-
-| Variable | Effect |
-|---|---|
-| `HIMARK_AGENT_HOST_BIN` | Path of the host binary a shell should autostart |
-| `HIMARK_HOST_HOME` | Directory for the host lockfile and socket (default `~/.himark/agent-host`) |
-| `HIMARK_HOST_AUTOSTART` | `1` or a binary path: lets the AHP client itself spawn a host when discovery finds none |
-| `HIMARK_AHP_URL` | Connect to an agent host at this URL instead of discovering one |
-| `HIMARK_WEB_ROOT` | Directory the host serves as the web app |
-| `HIMARK_HTTP_BIND` | Bind address for `debug-web.sh` (default `127.0.0.1:4312`) |
-| `HIMARK_CLAUDE_BIN`, `HIMARK_CODEX_BIN`, `HIMARK_RUST_ANALYZER` | Pin the external tools |
-| `HIMARK_LOG_DIR` | Log directory (default `~/Library/Logs/Himark`) |
-| `HIHOST_TRACE` | Mirror host logs to stderr |
-| `RUST_LOG` | Log filter for host and app logs |
-
-## Troubleshooting
-
-- **"no himark agent host running"**: the shell could not find or start the
-  backend. Build it with `cargo build -p agent-host` so it sits next to the
-  shell binary, or start it by hand and try again.
-- **"a live host from another build holds ~/.himark/agent-host"**: a host
-  from an older build was running; the shell replaces it automatically. If a
-  stale lockfile blocks startup, stop the old process and delete
-  `~/.himark/agent-host/host.lock`.
-- **Skia download fails**: the first build needs access to GitHub releases.
-  Set `SKIA_LIBRARY_SEARCH_PATH` to a directory with prebuilt Skia libraries
-  to build offline, or `FORCE_SKIA_BUILD=1` to compile Skia from source.
-- **Linker errors mentioning `__std_min_f` on Windows**: update the MSVC
-  toolset to 14.40 or newer.
-- **iOS build fails in `bindgen` with `stdio.h not found`**: run through
-  `build.sh`, which sets the SDK sysroots, rather than invoking cargo directly.
-- **Web build cannot find `emcc`**: set `EMSDK` to your emsdk checkout, or
-  install Emscripten with Homebrew.
 
 ## License
 

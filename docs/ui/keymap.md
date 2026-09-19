@@ -169,3 +169,32 @@ conditional OFFERING, not conditional handling:
 `editor.collapse-carets` is on the list only while multiple carets or
 a selection exist, so the chord stays unconsumed otherwise and bubbles
 outward.
+
+## The default keymap
+
+The default keymap lives in `frontend/himark/assets/keymap.json`. `cmd` is
+the Command key on macOS and Control on Linux and Windows.
+
+| Shortcut | Action |
+|---|---|
+| `cmd-n` | New document |
+| `cmd-o` | Open (macOS app) |
+| `cmd-s` | Save |
+| `cmd-w` / `cmd-shift-w` | Close document / close pane |
+| `cmd-shift-d` | Split pane |
+| `cmd-p` | Peeker (file switcher) |
+| `cmd-shift-p` | Command palette |
+| `cmd-f`, `cmd-g`, `cmd-shift-g` | Find, next, previous |
+| `cmd-shift-f` | Search in files |
+| `cmd-t` | Table of contents |
+| `cmd-e` | Files tree |
+| `cmd-i` | Chat composer |
+| `cmd-r` | Changes view |
+| `cmd-shift-c` | Comments view |
+| `cmd-shift-u` | Switch session |
+| `cmd-[` / `cmd-]` | Navigate back / forward |
+| `cmd-d` / `cmd-shift-l` | Select next / all occurrences |
+| `cmd-alt-up` / `cmd-alt-down` | Add caret above / below |
+| `alt-z` | Toggle soft wrap |
+| `ctrl-space` | Trigger completion |
+| `cmd-enter` | Open in full |
