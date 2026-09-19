@@ -50,7 +50,7 @@ pub struct Application {
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
     /// viewport corrections land in the SAME frame
-    /// (docs/viewport-preservation.md §3.2).
+    /// (docs/editor/viewport-preservation.md §3.2).
     settle_requested: bool,
     settling: bool,
 }
@@ -339,7 +339,7 @@ impl Application {
 
         crate::commands::register_builtins(&mut store);
         // The baseline diff policy; outer edges override via
-        // `register_diff_policy` (docs/structural-diff.md).
+        // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
         crate::Navigators::register(&mut store, crate::navigation::EditorNavigator);
 
@@ -982,7 +982,7 @@ impl Application {
         // scroll batch pulses BEFORE any later batch performs, so a
         // door never anchors on a top older than the last move; a
         // door batch pulses before its frame, so no wrong frame
-        // paints (docs/viewport-preservation.md §3.2). Bounded; the
+        // paints (docs/editor/viewport-preservation.md §3.2). Bounded; the
         // guard keeps the pulse's own performs from recursing.
         if !self.settling {
             self.settling = true;

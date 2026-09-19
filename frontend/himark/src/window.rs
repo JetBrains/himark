@@ -1981,7 +1981,7 @@ fn same_editor_location(a: &crate::NavigationLocation, b: &crate::NavigationLoca
     }
 }
 
-/// The window WIREFRAME, reified (docs/UI.md stage 2): toolbar band,
+/// The window WIREFRAME, reified (docs/ui/UI.md stage 2): toolbar band,
 /// base workbench, side/dock/bottom layers — geometry cut per
 /// constraints, composed into the focus-routing `LayersWidget`.
 /// Captures the store/ui borrows the `laid` closure used to hide;

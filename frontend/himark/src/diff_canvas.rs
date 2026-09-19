@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The diff canvas feed (docs/diff-canvas.md): what a canvas panel
+//! The diff canvas feed (docs/editor/diff-canvas.md): what a canvas panel
 //! renders is what the changes/history stores ALREADY adopt — this
 //! module only shapes it. The panel itself lives in `plugins/hidiff`
 //! (the workbench face rule) and is minted through `FamilyRow`.

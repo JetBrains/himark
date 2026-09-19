@@ -82,7 +82,7 @@ pub trait View {
         fx: &mut effect::Effects<'_, Self::Command>,
     );
 
-    /// Read the state, name the structure (docs/UI.md, revision 3) —
+    /// Read the state, name the structure (docs/ui/UI.md, revision 3) —
     /// the ONLY stage with the store in scope; borrows from it and
     /// from the view ride the returned layout for the frame.
     fn display<'a>(

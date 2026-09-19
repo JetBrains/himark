@@ -87,7 +87,7 @@ pub struct Editor {
     pub(crate) scroll_stripes: crate::scroll_stripe::StripeSlot,
 
     /// Where the viewport's anchored content sits AFTER a height
-    /// mutation above it (docs/viewport-preservation.md §3): set by
+    /// mutation above it (docs/editor/viewport-preservation.md §3): set by
     /// the mutation doors from the RETAINED `viewport` report, read
     /// by the settle pulse, cleared when the next Viewport report
     /// lands. Absolute, so repeated pulses converge.

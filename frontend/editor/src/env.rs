@@ -26,7 +26,7 @@ impl Parsers {
     }
 }
 
-/// The diff policy the edge installed (docs/structural-diff.md): every
+/// The diff policy the edge installed (docs/editor/structural-diff.md): every
 /// place that computes an `Operation` from two texts reads it from
 /// here. Absent only in bare-store unit tests — then the exact but
 /// content-blind [`crate::diff::ReplaceAll`] stands in.

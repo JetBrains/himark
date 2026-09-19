@@ -828,7 +828,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
         start..start + "added right line 480".len() as u32
     };
     // Line washes are THE diff markup's now — whole-document from
-    // birth, no window to chase (docs/scroll-stripe.md §7). The deep
+    // birth, no window to chase (docs/editor/scroll-stripe.md §7). The deep
     // change is washed before any scroll; the scroll still proves the
     // pair aligns all the way down.
     let right_marks = |app: &Application| -> Vec<std::ops::Range<u32>> {
@@ -2685,7 +2685,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     );
 }
 
-/// The unified-gate reconcile (docs/diff-canvas.md §7): a populated
+/// The unified-gate reconcile (docs/editor/diff-canvas.md §7): a populated
 /// canvas follows the change set — stale rows rebuild IN PLACE (the
 /// old build keeps showing until the fresh one lands), additions
 /// splice in as lazy placeholders, removals retire, untouched rows
@@ -2813,7 +2813,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
     assert!(view.probe_rows(&app.store()).is_empty());
 }
 
-/// The registered-document fix (docs/registered-document-identity):
+/// The registered-document fix (docs/editor/diff-canvas.md §7):
 /// a canvas row's target is the registered `OpenDocuments` document
 /// for its location, and TYPING into it updates the row's tracked
 /// diff — the bug that motivated moving rows off throwaway snapshots.

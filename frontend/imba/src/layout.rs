@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The LAYOUT stage (docs/UI.md, revision 3): the structure of a
+//! The LAYOUT stage (docs/ui/UI.md, revision 3): the structure of a
 //! subtree with the state already read — every store-derived fact
 //! captured, no geometry yet. `View::display` answers one; sizing it
 //! (`layout(constraints)`) answers the thunk. Placement arithmetic
@@ -15,7 +15,7 @@ use crate::{Thunk, ThunkBox};
 /// A structured, unsized subtree: state read, geometry pending.
 /// Consumed by sizing (single-shot, like every frame artifact). The
 /// erased return keeps one method surface for static and boxed
-/// children alike — the measured default (docs/UI.md: the perf gate
+/// children alike — the measured default (docs/ui/UI.md: the perf gate
 /// decides whether the RPITIT form replaces it).
 pub trait Layout<'a, Command> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command>
@@ -57,7 +57,7 @@ impl<'a, Command: 'a, L: Layout<'a, Command>> DynLayout<'a, Command> for Slot<L>
     }
 }
 
-/// The migration shim (docs/UI.md): lifts a sizing closure — an old
+/// The migration shim (docs/ui/UI.md): lifts a sizing closure — an old
 /// `View::layout` body, verbatim — into a `Layout`. Stage-2 views
 /// return stock layouts instead; a `laid` at a call site marks
 /// placement arithmetic not yet extracted.
@@ -77,7 +77,7 @@ where
     }
 }
 
-// ---- primitives (docs/UI.md stage 2) --------------------------------
+// ---- primitives (docs/ui/UI.md stage 2) --------------------------------
 //
 // Jetpack-Compose-shaped, deliberately: `Column`/`Row` with
 // `Arrangement`-style gaps, cross-axis `CrossAlign`, per-child

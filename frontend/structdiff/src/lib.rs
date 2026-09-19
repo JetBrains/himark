@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Structural diff over the vendored difftastic engine
-//! (docs/structural-diff.md). `diff` upgrades to syntax-node alignment
+//! (docs/editor/structural-diff.md). `diff` upgrades to syntax-node alignment
 //! when the caller supplies trees, and degrades to the line/char Myers
 //! pass (`myersdiff::diff`) on any structural failure: no trees,
 //! size cap, error-heavy trees, graph-limit blowup, or a failed
@@ -37,7 +37,7 @@ pub struct SyntaxInput<'t> {
 }
 
 /// Dijkstra cost grows much faster than Myers; past this size the
-/// structural path is not worth attempting (docs/structural-diff.md,
+/// structural path is not worth attempting (docs/editor/structural-diff.md,
 /// "Fallback to similar").
 const MAX_STRUCTURAL_BYTES: usize = 1024 * 1024;
 

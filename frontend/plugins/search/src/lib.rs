@@ -860,7 +860,7 @@ impl<'a> Widget<'a, SearchCommand> for SearchWidget<'a> {
             }
             // Settle is a BROADCAST like paint: every scroll host
             // re-observes its viewport top on the pulse
-            // (docs/viewport-preservation.md §3.1) — routing it to
+            // (docs/editor/viewport-preservation.md §3.1) — routing it to
             // the focused area only would leave the other list
             // reporting drift on every later paint.
             Event::Scroll { .. }

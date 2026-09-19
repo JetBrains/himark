@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Scroll-bar stripes (docs/scroll-stripe.md): flagged feature markups
+//! Scroll-bar stripes (docs/editor/scroll-stripe.md): flagged feature markups
 //! projected onto the pane's scroll track. The projection is one
 //! linear background pass over (flagged markups × the editor's layout
 //! rope), quantized onto a fixed grid; it runs as an effect on a

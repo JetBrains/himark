@@ -5,7 +5,7 @@
 //! refined per-`Replace` block by a char-level pass. Moved verbatim
 //! out of `editor::diff` so core crates carry no diff-engine
 //! dependency — they call whatever `editor::diff::DiffPolicy` the
-//! edge installed (docs/structural-diff.md, "Fallback to similar").
+//! edge installed (docs/editor/structural-diff.md, "Fallback to similar").
 //! This crate is that baseline policy; `structdiff` layers the
 //! difftastic engine on top and falls back here.
 

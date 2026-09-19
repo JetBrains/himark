@@ -275,7 +275,7 @@ pub struct TextAttributes {
 
     pub alignment: Option<TextAlignment>,
 
-    /// The scroll-bar stripe color (docs/scroll-stripe.md): a style
+    /// The scroll-bar stripe color (docs/editor/scroll-stripe.md): a style
     /// with one contributes marks to the scroll track; a style whose
     /// ONLY policy is a stripe color paints nothing in the text.
     pub stripe: Option<Color>,

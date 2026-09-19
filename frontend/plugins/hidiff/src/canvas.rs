@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The diff canvas (docs/diff-canvas.md): one huge TREE-shaped list —
+//! The diff canvas (docs/editor/diff-canvas.md): one huge TREE-shaped list —
 //! per changed file a Header-1 parent row (name, counts, the header
 //! buttons) and the file's diff as its child row. Diffs build lazily
 //! when their row paints, entirely off-thread, and land atomically:
@@ -463,7 +463,7 @@ impl Canvas {
     }
 
     /// Reconcile a populated canvas with a fresh listing — the unified
-    /// gate's second half (docs/diff-canvas.md §7). Removed pairs
+    /// gate's second half (docs/editor/diff-canvas.md §7). Removed pairs
     /// retire, added pairs splice in as lazy placeholders, and a pair
     /// the host stamped newer than the row's build relaunches its
     /// build at the standing width — the old view keeps showing until
@@ -581,7 +581,7 @@ impl Canvas {
     /// Untrack a row's diff and drop its editors from the (shared)
     /// registered documents — the rows no longer die with the canvas
     /// now that they ARE registered documents
-    /// ([[registered-document-identity]]). Covers the live row and a
+    /// (docs/editor/diff-canvas.md §7). Covers the live row and a
     /// collapsed row parked in the stash.
     fn teardown_row(&self, store: &mut Store, key: &ResourceLocation) {
         let pane = self
@@ -741,7 +741,7 @@ impl Canvas {
         };
         // A relaunch (a stale row rebuilding) replaces a Built row:
         // untrack the standing diff before the fresh mount, or it
-        // leaks a tracked pair + editors ([[registered-document-identity]]).
+        // leaks a tracked pair + editors (docs/editor/diff-canvas.md §7).
         self.teardown_row(store, &key);
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
@@ -812,7 +812,7 @@ impl Canvas {
             }
             // The swap is a height mutation like any other: the door
             // noted the anchor, the pulse re-aims before this frame
-            // paints. Zero wrong frames (docs/diff-canvas.md §4).
+            // paints. Zero wrong frames (docs/editor/diff-canvas.md §4).
             fx.settle();
         }
     }
@@ -977,7 +977,7 @@ fn row_ask(command: &RowsCommand) -> Option<(usize, &RowCommand)> {
 }
 
 /// Mount a row's diff over REGISTERED documents tracked by the Diffs
-/// subsystem ([[registered-document-identity]]): reuse the open
+/// subsystem (docs/editor/diff-canvas.md §7): reuse the open
 /// document for each side's location — or register the freshly-fetched
 /// build — then `build_diff_view` tracks the pair (so the normalize
 /// lane runs and edits compose) and mints a store-held `DiffView`. The
@@ -1030,7 +1030,7 @@ fn mounted(
 }
 
 /// A document keyed to a `ResourceLocation` must BE the registered
-/// `OpenDocuments` document for it ([[registered-document-identity]]).
+/// `OpenDocuments` document for it (docs/editor/diff-canvas.md §7).
 fn register_side(
     store: &mut Store,
     location: &ResourceLocation,
@@ -1311,7 +1311,7 @@ impl Canvases {
     /// canvas's file list stays current even when no panel is painting
     /// it. This is why `Canvases` is store state: clicking a file in
     /// the changes view reveals it because the row is already there
-    /// ([[registered-document-identity]]).
+    /// (docs/editor/diff-canvas.md §7).
     pub fn sync(store: &mut Store) {
         let ids: Vec<CanvasId> = match store.get::<Canvases>() {
             Some(canvases) => canvases.0.keys().copied().collect(),
@@ -1631,7 +1631,7 @@ pub(crate) enum CanvasRow {
     Diff(DiffRow),
 }
 
-/// The canvas's first row (docs/diff-canvas.md): the commit's message
+/// The canvas's first row (docs/editor/diff-canvas.md): the commit's message
 /// and author on a commit canvas, the commit composer on the
 /// working-copy canvas.
 #[derive(Clone)]

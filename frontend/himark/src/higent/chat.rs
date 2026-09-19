@@ -686,7 +686,7 @@ impl ChatPanel {
                 self.has_loader = self.cursor.is_some();
                 // The prepend landed above the viewport: the settle
                 // pulse re-aims the scroll at the anchored row before
-                // this frame paints (docs/viewport-preservation.md).
+                // this frame paints (docs/editor/viewport-preservation.md).
                 fx.settle();
             }
             Err(error) => {

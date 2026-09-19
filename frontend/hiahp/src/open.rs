@@ -60,7 +60,7 @@ pub fn install_open_handlers(
     app.register_navigator(DiffNavigator);
 }
 
-/// The diff canvas's per-item build (docs/diff-canvas.md §4): both
+/// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
 /// fetches, both documents, the Myers pass and the mark prep all run
 /// here, off the UI thread; the landing only mounts editors.
 pub struct BuildFileDiffHandler {

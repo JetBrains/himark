@@ -1161,7 +1161,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     }
 
     // The file row reveals into the DIFF CANVAS now
-    // (docs/diff-canvas.md §6): rows populate from the adopted
+    // (docs/editor/diff-canvas.md §6): rows populate from the adopted
     // changeset, the visible placeholder arms its off-thread build,
     // and the landing swaps in atomically.
     let canvas_probe = |engine: &HimarkEngine| {

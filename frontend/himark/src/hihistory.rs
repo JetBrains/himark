@@ -723,7 +723,7 @@ impl DirSink for CommitSink<'_> {
 
     fn file(&mut self, entry: &ChangeEntry, key: &ResourceLocation) {
         // The canvas row key for this entry — the pair's new side,
-        // exactly what `canvas_files` mints (docs/diff-canvas.md §6).
+        // exactly what `canvas_files` mints (docs/editor/diff-canvas.md §6).
         let new = entry
             .after
             .clone()

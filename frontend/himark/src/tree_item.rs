@@ -248,7 +248,7 @@ where
     }
 }
 
-/// The tree item's indent-and-disclosure frame, REIFIED (docs/UI.md
+/// The tree item's indent-and-disclosure frame, REIFIED (docs/ui/UI.md
 /// stage 2, the `WindowFrame` shape): a layout STRUCT because the
 /// indent offset, the toggle zone and the inner's width are all cut
 /// from the incoming constraints. The compositor WIDGET underneath

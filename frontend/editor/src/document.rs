@@ -60,7 +60,7 @@ pub struct Document {
 
     /// Bumped by every FLAGGED-entry lifecycle event (the flag set, a
     /// flagged entry's replace/remove, a pick joining) — the stripe
-    /// sweep's whole input from the markup side (docs/scroll-stripe.md).
+    /// sweep's whole input from the markup side (docs/editor/scroll-stripe.md).
     scroll_stripe_generation: u64,
 
     markups: rpds::HashTrieMapSync<MarkupId, Markup>,
@@ -2060,7 +2060,7 @@ impl Document {
 
     /// Where the settle pulse should re-aim this editor's viewport,
     /// if a height mutation above it left a correction pending
-    /// (docs/viewport-preservation.md §3).
+    /// (docs/editor/viewport-preservation.md §3).
     pub fn settle_target(&self, editor: EditorId) -> Option<f32> {
         self.editors.get(&editor)?.settle_to
     }
@@ -2068,7 +2068,7 @@ impl Document {
     /// A traversal re-observed the viewport top: keep the retained
     /// viewport honest (the full paint report stays throttled) and
     /// drop any pending correction — the observed move supersedes it
-    /// (docs/viewport-preservation.md §3.1).
+    /// (docs/editor/viewport-preservation.md §3.1).
     pub fn note_viewport_top(&mut self, editor: EditorId, top: f32) {
         let Some(state) = self.editors.get_mut(&editor) else {
             return;
@@ -2162,7 +2162,7 @@ impl Document {
     /// `apply_repair` with the viewport door around it: capture the
     /// anchored byte against the OLD layout, land the repair, note
     /// where the anchor went. Returns whether a correction is now
-    /// pending (docs/viewport-preservation.md §5).
+    /// pending (docs/editor/viewport-preservation.md §5).
     pub fn apply_repair_anchored(&mut self, repaired: RepairedLayout) -> bool {
         let id = repaired.editor;
         let door = self.editors.get(&id).and_then(|editor| {
@@ -2267,7 +2267,7 @@ impl Document {
         }
         // A rewrap moves EVERY height: capture the viewport anchor
         // against the old wrap, resolve against the new one
-        // (docs/viewport-preservation.md §5).
+        // (docs/editor/viewport-preservation.md §5).
         let door = state
             .viewport
             .as_ref()
@@ -2599,7 +2599,7 @@ impl Document {
     }
 
     /// Lands a normalize run's freshly derived diff markup
-    /// (docs/scroll-stripe.md §7): the worker derived it against
+    /// (docs/editor/scroll-stripe.md §7): the worker derived it against
     /// `derived_at`; edits since then shift it home, and the swap
     /// damages exactly old ∪ new — the pane halves showing it repair,
     /// nobody else notices, and the flagged-entry bump wakes the
@@ -2785,7 +2785,7 @@ impl Document {
     }
 
     /// Registers an entry as a scroll-stripe contributor for ONE
-    /// editor's track (docs/scroll-stripe.md) — the find-bar shape:
+    /// editor's track (docs/editor/scroll-stripe.md) — the find-bar shape:
     /// beside the feature's own `show_markup` pick. THE stripes
     /// diff's markup registers the same way (the documents layer does
     /// it at track/enable time); a diff some other view holds — a

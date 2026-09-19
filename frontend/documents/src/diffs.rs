@@ -692,7 +692,7 @@ pub struct DiffNormalizeEffect {
     /// The standing diff markup at capture (O(1) persistent clone) —
     /// the worker set-diffs the fresh derivation against it, so the
     /// changed set is the producer's and the landing never walks a
-    /// markup (docs/scroll-stripe.md §7).
+    /// markup (docs/editor/scroll-stripe.md §7).
     pub(crate) previous: Option<editor::Markup>,
     pub(crate) base_revision: u64,
     pub(crate) target_revision: u64,
@@ -724,7 +724,7 @@ pub struct Normalized {
     /// THE diff markup, derived FROM the fresh operation
     /// (`diff::hunk_markup`) — hunks against
     /// `target_text`@`target_revision`; the landing shifts it home
-    /// (docs/scroll-stripe.md §7).
+    /// (docs/editor/scroll-stripe.md §7).
     pub markup: editor::Markup,
     /// The damage the swap owes, worker-computed: the set difference
     /// against the markup standing at capture.

@@ -1337,7 +1337,7 @@ impl crate::PanelView for ListPanel {
     }
 }
 
-/// One search-result GROUP, reified (docs/UI.md stage 2): the header
+/// One search-result GROUP, reified (docs/ui/UI.md stage 2): the header
 /// band — fill, hairlines, name, and the OPEN action — over the
 /// occurrence rows, stacked in a `Column`.
 struct GroupFrame<'a> {

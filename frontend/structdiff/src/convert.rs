@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! tree-sitter tree → difftastic `Syntax` tree (docs/structural-diff.md).
+//! tree-sitter tree → difftastic `Syntax` tree (docs/editor/structural-diff.md).
 //!
 //! Leaves become atoms, interior nodes become delimiter-less lists.
 //! Whitespace between tokens is not represented; the derivation's gap

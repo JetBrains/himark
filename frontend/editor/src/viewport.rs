@@ -51,7 +51,7 @@ pub(crate) enum DiffLineKind {
 }
 
 /// Classifies visible rows against THE diff markup — the hunk entry
-/// every tracked diff maintains (docs/scroll-stripe.md §7): one
+/// every tracked diff maintains (docs/editor/scroll-stripe.md §7): one
 /// `Diff*`-styled interval per hunk, target coordinates, shifted at
 /// the edit door. The pane's washes and the scroll track read the
 /// same entry; the three faces can never disagree.

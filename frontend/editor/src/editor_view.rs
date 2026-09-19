@@ -142,7 +142,7 @@ pub enum EditorCommand {
     },
 
     /// The widget re-observed its viewport top on a traversal — the
-    /// settle pulse, or paint (docs/viewport-preservation.md §3.1).
+    /// settle pulse, or paint (docs/editor/viewport-preservation.md §3.1).
     /// Refreshes the retained viewport and supersedes any pending
     /// correction; the full `Viewport` report stays throttled.
     ViewportTop(f32),
@@ -1360,7 +1360,7 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 if drifted {
                     return EventResult::Command(EditorCommand::ViewportTop(viewport.top));
                 }
-                // The settle pulse (docs/viewport-preservation.md
+                // The settle pulse (docs/editor/viewport-preservation.md
                 // §3.2): if this editor holds the viewport's corner
                 // (its top is clipped from above) and a door left a
                 // pending correction, re-aim the owning scroll —

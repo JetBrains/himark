@@ -5,7 +5,7 @@ The language-agnostic structural-diff engine of
 upstream tag **0.71.0**, commit
 `b7d119e90ac9f972f03f69508da765dacd302c0c`. MIT licensed — see
 `LICENSE` (copied verbatim from upstream). Consumed by
-`frontend/structdiff`; see docs/structural-diff.md for the design.
+`frontend/structdiff`; see docs/editor/structural-diff.md for the design.
 
 Contains only the diff core: the `Syntax` tree representation
 (`src/parse/syntax.rs`), the diff algorithm (`src/diff/*`: unchanged

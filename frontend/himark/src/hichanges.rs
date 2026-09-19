@@ -1231,7 +1231,7 @@ impl ChangesView {
         match self.items.get(key).cloned() {
             Some(RowItem::Branch) => {
                 // The workspace folder ROOT opens the diff canvas
-                // (docs/diff-canvas.md §6); inner directories keep
+                // (docs/editor/diff-canvas.md §6); inner directories keep
                 // toggling. The chevron expands either way.
                 if crate::higent::session_folders(store, &self.workspace).contains(key) {
                     self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(

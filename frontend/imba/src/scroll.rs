@@ -185,7 +185,7 @@ impl<Content> ScrollView<Content> {
     /// Programmatic placement (constructor restores, tail pins,
     /// navigation). Content that anchors its viewport re-observes
     /// the top on its next traversal — Paint, or the settle pulse a
-    /// mutating command raises (docs/viewport-preservation.md §3.1).
+    /// mutating command raises (docs/editor/viewport-preservation.md §3.1).
     pub fn set_scroll_y(&mut self, scroll_y: f32) {
         self.scroll_y = scroll_y.max(0.0);
         self.glide = None;

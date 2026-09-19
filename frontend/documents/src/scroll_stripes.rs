@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The scroll-stripe batch-tail sweep (docs/scroll-stripe.md §4): one
+//! The scroll-stripe batch-tail sweep (docs/editor/scroll-stripe.md §4): one
 //! choke covering every path that can move the projection — typing,
 //! flagged markup swaps, repair landings, theme switches. O(1) when
 //! nothing is flagged; per flagged document, a fingerprint compare per

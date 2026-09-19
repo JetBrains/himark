@@ -133,7 +133,7 @@ impl DiffState {
         self.right_marks
     }
 
-    /// THE diff markup on the target document (docs/scroll-stripe.md
+    /// THE diff markup on the target document (docs/editor/scroll-stripe.md
     /// §7) — the hunk washes the halves show; maintained by the diff
     /// machinery, never by this pane.
     pub(crate) fn hunk_markup(&self) -> crate::markup::MarkupId {
@@ -730,7 +730,7 @@ fn derive_wash_markups(
     let mut right_markup = crate::markup::Markup::new();
 
     // The RIGHT half's line washes are THE diff markup's now
-    // (docs/scroll-stripe.md §7 — maintained by the diff machinery,
+    // (docs/editor/scroll-stripe.md §7 — maintained by the diff machinery,
     // whole-document); this pane derives only what stays its own:
     // the base side's washes and the windowed word tints.
     for fragment in crate::diff::fragments_at(diff, left_text, window.start).take(MARK_FRAGMENT_CAP)

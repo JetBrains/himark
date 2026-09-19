@@ -343,7 +343,7 @@ impl imba::View for FoldStrip {
     }
 }
 
-/// The strip, REIFIED (docs/UI.md stage 2): the label `Text` padded
+/// The strip, REIFIED (docs/ui/UI.md stage 2): the label `Text` padded
 /// down to the chrome's computed baseline, a weighted `Fill` gap, and
 /// the five right-anchored glyph buttons — each a `fixed` painted
 /// leaf whose click zone is its own rect. A layout STRUCT because the

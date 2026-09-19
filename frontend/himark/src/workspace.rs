@@ -132,7 +132,7 @@ impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-/// One diff-canvas item's whole off-thread half (docs/diff-canvas.md
+/// One diff-canvas item's whole off-thread half (docs/editor/diff-canvas.md
 /// §4): fetch both sides, build language-aware documents, diff,
 /// prepare the marks. The landing only mounts.
 pub struct BuildFileDiffEffect {

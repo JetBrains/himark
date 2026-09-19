@@ -506,7 +506,7 @@ impl View for Cell {
                 }
 
                 // A patch, not a picture: the minimal exact edit
-                // (docs/structural-diff.md, decision 3).
+                // (docs/editor/structural-diff.md, decision 3).
                 let operation = myersdiff::diff(editor.document.text(), &text);
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
@@ -736,7 +736,7 @@ impl<'a, Inner: Widget<'a, CellCommand>> Widget<'a, CellCommand> for CellWidget<
 #[cfg(test)]
 mod tests;
 
-/// The chat cell CARD, reified (docs/UI.md stage 2): an exact-extent
+/// The chat cell CARD, reified (docs/ui/UI.md stage 2): an exact-extent
 /// spacer pins the card's box (the same arithmetic the hand-rolled
 /// container used), a match-parent backdrop paints beneath it, the
 /// body sits padded inside, and the kind's adornments — the user

@@ -832,7 +832,7 @@ impl ModalView for OutlineView {
     }
 }
 
-/// The drawer panel, REIFIED (docs/UI.md stage 2): panel chrome
+/// The drawer panel, REIFIED (docs/ui/UI.md stage 2): panel chrome
 /// painted behind a shielded `DRAWER_WIDTH` surface, the content
 /// padded inside it, a full-size key surface underneath. The content
 /// pad depends on the incoming height, which is exactly why this is

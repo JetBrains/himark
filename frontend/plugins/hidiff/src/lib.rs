@@ -106,7 +106,7 @@ pub fn teardown_diff_view(store: &mut Store, id: himark::DiffViewId) {
 }
 
 /// Re-wrap the inline face of a tracked pair to `width` (the row-level
-/// rewrap, docs/diff-canvas.md §4): gather, resize the half + inline
+/// rewrap, docs/editor/diff-canvas.md §4): gather, resize the half + inline
 /// editors on the registered documents, resync, write back. The split
 /// face owns its half widths and is left alone.
 pub fn rewrap_pair(
@@ -604,7 +604,7 @@ pub fn diff_panel(
 /// `DiffState`. Returns the `DiffViewId` for a `PairPane` to render.
 /// The reusable core of `diff_panel`; the diff canvas drives it per
 /// row so its rows are registered documents, not throwaway snapshots
-/// (docs/diff-canvas.md §7, [[registered-document-identity]]).
+/// (docs/editor/diff-canvas.md §7, docs/editor/diff-canvas.md §7).
 pub fn build_diff_view(
     store: &mut Store,
     left: himark::DocumentId,

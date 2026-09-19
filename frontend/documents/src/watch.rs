@@ -60,7 +60,7 @@ pub struct RefetchDiffEffect {
     /// The edge-installed policy (`editor::env::Differ`), captured at
     /// launch. The merge path passes no syntax — it wants the minimal
     /// exact edit, so any policy degrades to its text pass here
-    /// (docs/structural-diff.md, decision 3).
+    /// (docs/editor/structural-diff.md, decision 3).
     pub policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 

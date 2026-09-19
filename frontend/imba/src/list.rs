@@ -318,7 +318,7 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
 
     /// The viewport's top edge — the enclosing scroll's own
     /// `scroll_y`, pushed in via `View::scrolled` from the scroll's
-    /// perform (docs/viewport-preservation.md §3.1). Height mutations
+    /// perform (docs/editor/viewport-preservation.md §3.1). Height mutations
     /// read it to anchor what the user was looking at.
     viewport_top: f32,
 
@@ -349,7 +349,7 @@ pub enum ListCommand<C> {
     Focus(usize, Option<Box<ListCommand<C>>>),
 
     /// The widget re-observed its viewport top on a traversal
-    /// (docs/viewport-preservation.md §3.1): the retained copy
+    /// (docs/editor/viewport-preservation.md §3.1): the retained copy
     /// refreshes, and any pending correction is superseded — the
     /// scroll that moved the top knows better than the door did.
     ViewportTop(f32),
@@ -912,7 +912,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
 
     /// The viewport anchor, captured BEFORE a height mutation: the
     /// keyed row under the reported viewport top, the offset into it
-    /// and the top itself (docs/viewport-preservation.md §3).
+    /// and the top itself (docs/editor/viewport-preservation.md §3).
     fn door_anchor(&self) -> Option<(K, f32, f32)> {
         let top = self.viewport_top;
         if top <= 0.5 || self.items.is_empty() {

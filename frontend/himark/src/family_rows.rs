@@ -25,7 +25,7 @@ pub type RowMinter =
 /// plugin keep its own store-held collection current in step with the
 /// document/diff/changeset state — e.g. hidiff reconciling its
 /// `Canvases` when the change set moves, independent of any panel
-/// painting ([[registered-document-identity]]).
+/// painting (docs/editor/diff-canvas.md §7).
 pub type SyncObserver = dyn Fn(&mut Store) + Send + Sync;
 
 #[derive(Clone, Default)]

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Exactness and shape of the structural diff over real markdown trees
-//! (docs/structural-diff.md, phase 1).
+//! (docs/editor/structural-diff.md, phase 1).
 
 use operation::{Op, Operation};
 use structdiff::{apply, diff, SyntaxInput};

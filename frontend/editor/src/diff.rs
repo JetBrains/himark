@@ -22,7 +22,7 @@ impl DiffId {
 pub struct Diff {
     pub(crate) operation: Operation,
     pub(crate) base_revision: u64,
-    /// THE diff markup (docs/scroll-stripe.md §7): one styled interval
+    /// THE diff markup (docs/editor/scroll-stripe.md §7): one styled interval
     /// per hunk over the whole document, target coordinates — the
     /// split pane's washes, the gutter's classification and the
     /// scroll track's marks all read this one entry. Seeded at birth,
@@ -75,7 +75,7 @@ pub struct DiffSyntax<'a> {
 /// documents registry depend only on this trait; the concrete engine
 /// (Myers via the myersdiff crate, difftastic via structdiff) is
 /// chosen at the edge and installed in the store as [`crate::env::Differ`]
-/// (docs/structural-diff.md). The contract: the returned operation
+/// (docs/editor/structural-diff.md). The contract: the returned operation
 /// must be EXACT — applying it to `base` yields `target`, always;
 /// policies may differ only in alignment quality and cost.
 pub trait DiffPolicy: Send + Sync {
