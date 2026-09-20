@@ -77,7 +77,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut imba::effect::Batch::new().effects(),
     );
     let mut store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
 
     let wrapped_height = document.content_height(editor);
     assert_eq!(document.layout_width(editor), 600.0);
@@ -1651,7 +1651,7 @@ fn popup_overlays_carry_projected_inlays() {
         base: None,
     };
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
@@ -2806,7 +2806,7 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     let document = plain_document("foo bar foo");
     let mut view = crate::EditorView::complete(document, 600.0, &test_fonts(), &test_theme());
     let store = imba::store::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
 
     let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui)
         .iter()
@@ -3017,7 +3017,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
         crate::EditorView::complete(plain_document(source), 400.0, &test_fonts(), &test_theme());
     view.gutter_width = chrome_width;
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -3107,7 +3107,7 @@ fn gutter_numbers_share_the_text_baseline() {
         crate::EditorView::complete(plain_document(source), 400.0, &test_fonts(), &test_theme());
     view.gutter_width = chrome.width;
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -3185,7 +3185,7 @@ mod folding {
             .fold_matching(editor, range)
             .expect("a standing fold");
         let mut store = imba::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         for millis in [0.0, 10_000.0] {
             document.perform(
                 &mut store,
@@ -3425,7 +3425,7 @@ mod folding {
         let key = document.fold_matching(editor, &interior()).expect("folded");
 
         let mut store = imba::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         document.perform(
             &mut store,
             &ui,
@@ -3457,7 +3457,7 @@ mod folding {
         view.gutter_width = chrome_width;
         let editor = view.editor;
         let store = imba::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         ui.set(crate::env::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
@@ -3743,7 +3743,7 @@ mod before_inlay {
     fn toggle(view: &mut crate::EditorView, at: u32) {
         use imba::View;
         let mut store = imba::store::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         view.perform(
             &mut store,
             &ui,
@@ -3936,7 +3936,7 @@ mod before_inlay_presentation {
     fn perform(view: &mut crate::EditorView, command: crate::EditorCommand) {
         use imba::View;
         let mut store = imba::store::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         view.perform(&mut store, &ui, command, fx!());
     }
 
@@ -4264,7 +4264,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
     );
 
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -4403,7 +4403,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     assert!(view.document.outline_enclosing(line_start(5)).is_empty());
 
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -4938,7 +4938,7 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
 #[test]
 fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
     let mut store = imba::store::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let mut document = crate::test_document::plain_document(
         "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n",
     );
@@ -5022,7 +5022,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
 fn a_rewrap_keeps_the_viewport_anchor_in_view() {
     use imba::effect::{block_on, Batch, EffectHandler, Message};
     let mut store = imba::store::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let long = "a long enough line that will wrap once the pane narrows down a lot\n";
     let mut document =
         crate::test_document::plain_document(&format!("{}{}", long.repeat(8), "short tail\n"));

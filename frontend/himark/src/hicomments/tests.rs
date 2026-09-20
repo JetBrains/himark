@@ -184,7 +184,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
     };
 
     let mut store = app.store().clone();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let comments = doc

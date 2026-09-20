@@ -803,7 +803,7 @@ mod tests {
     #[test]
     fn the_master_groups_by_file_and_navigates_on_pick() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         let feed = feed(
             &mut store,
             &[
@@ -846,7 +846,7 @@ mod tests {
     #[test]
     fn a_single_settled_result_navigates_without_a_card() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         let feed = feed(&mut store, &[found("a.rs", 3, "only")], true);
         let mut view = PeekView::new(&store, None, 600.0, feed);
         let mut batch = imba::effect::Batch::new();

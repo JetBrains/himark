@@ -2250,7 +2250,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         let _ = imba::View::perform(
             &mut view,
             &mut *engine.app.store_mut(),
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             himark::EditorCommand::Inlay {
                 key: inlay_key,
                 command: Box::new(himark::EditorCommand::Viewport {

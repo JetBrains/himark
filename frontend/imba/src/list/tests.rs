@@ -57,7 +57,7 @@ fn probe_unroll_is_monotone() {
 
     rows.splice_animated(1..2, (0..5).map(|_| (Stub, 30.0)));
     let store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let heights = |rows: &ListView<Stub>| -> Vec<f32> {
         rows.items.iter().map(|element| element.height).collect()
     };
@@ -137,7 +137,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
 
     let arena = crate::arena::Arena::default();
     let store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let viewport = Rect::from_wh(200.0, 90.0);
     let widget = crate::Thunk::realize(
         crate::Layout::layout(

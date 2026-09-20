@@ -31,7 +31,7 @@ fn dummy_command() -> AppCommand {
 fn palette_of(names: &[&str]) -> PaletteView {
     PaletteView::new(
         &Store::new(),
-        &UiCtx::cold(),
+        &UiCtx::dont_use_too_slow(),
         names
             .iter()
             .map(|name| PresentableCommand::new("test.command", *name, dummy_command()))
@@ -42,7 +42,7 @@ fn palette_of(names: &[&str]) -> PaletteView {
 #[test]
 fn typing_filters_selection_moves_and_a_pick_hands_the_command_back() {
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let mut palette = palette_of(&["Toggle Checkbox", "Table: Insert Row Below"]);
     assert_eq!(
         palette.labels().len(),
@@ -79,7 +79,7 @@ fn typing_filters_selection_moves_and_a_pick_hands_the_command_back() {
 #[test]
 fn escape_asks_to_close() {
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let mut palette = palette_of(&["Anything"]);
     palette.perform(
         &mut store,

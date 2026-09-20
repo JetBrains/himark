@@ -153,7 +153,7 @@ mod tests {
         use imba::View;
         let theme = Theme::embedded();
         let mut store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let mut checkbox = CheckboxView::new(false, &theme);
         checkbox.set_range(2..5);
 
@@ -179,7 +179,7 @@ mod tests {
         use imba::View;
         let theme = Theme::embedded();
         let mut store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let mut checkbox = CheckboxView::new(false, &theme);
         checkbox.set_range(2..5);
         checkbox.perform(

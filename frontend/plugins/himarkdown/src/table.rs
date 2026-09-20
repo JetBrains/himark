@@ -1531,7 +1531,7 @@ mod hitbox {
 
         let arena = Arena::default();
         let store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let constraints = Constraints {
             min: Size::default(),
             max: Size::new(600.0, f32::MAX),
@@ -1599,7 +1599,7 @@ mod hitbox {
 
         let arena = Arena::default();
         let store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let constraints = Constraints {
             min: Size::default(),
             max: Size::new(600.0, f32::MAX),

@@ -13,7 +13,7 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let canvas = surface.canvas();
     canvas.clear(skia_safe::Color::WHITE);
     let store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let arena = imba::arena::Arena::default();
     let widget = imba::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),

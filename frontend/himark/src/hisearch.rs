@@ -791,7 +791,7 @@ mod tests {
     #[test]
     fn the_feed_renders_and_survives_rebuilds() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         feed(
             &mut store,
             &[
@@ -849,7 +849,7 @@ mod tests {
     #[test]
     fn picking_routes_through_the_navigation_door() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         feed(&mut store, &[found(&["work", "a.rs"], 3, 2, "alpha")], true);
         let mut view = view(&mut store, &ui);
 

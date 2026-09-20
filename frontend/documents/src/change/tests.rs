@@ -74,7 +74,7 @@ impl Pane {
         let mut batch = imba::effect::Batch::new();
         self.view.perform(
             &mut self.store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut batch.effects(),
         );

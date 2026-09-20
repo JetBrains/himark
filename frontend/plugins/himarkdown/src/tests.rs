@@ -97,7 +97,7 @@ fn resize_entity(
 
 fn perform_pumped(store: &mut Store, view: EditorIdView, command: EditorCommand) {
     let cx = test_cx();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let mut node = view;
     let mut batch = imba::effect::Batch::new();
     let _ = node.perform(store, &ui, command, &mut batch.effects());
@@ -129,7 +129,7 @@ fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: Re
     };
     let mut node = EditorIdView::new(document_id, editor);
     let cx = test_cx();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(batch)
         .into_iter()
         .map(|effect| himark::test_support::handle_effect(effect, &cx))
@@ -163,7 +163,7 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     let top = height * 0.7;
     let bottom = top + 800.0;
     let mut node = entity_id;
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let anchor = himark::OpenDocuments::document_ref(&store, document_id)
         .expect("document")
         .first_visible_byte(editor, top);
@@ -225,7 +225,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
     );
 
     let mut node = entity_id;
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let anchor = himark::OpenDocuments::document_ref(&store, document_id)
         .expect("document")
         .first_visible_byte(editor, top);
@@ -285,7 +285,7 @@ fn resize_repair_timing_probe() {
         );
         node.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -329,7 +329,7 @@ fn content_only_edits_rebuild_inline_markup() {
         let mut view = editor;
         let _ = view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Move {
                 motion: himark::Motion::Right,
                 select: false,
@@ -340,7 +340,7 @@ fn content_only_edits_rebuild_inline_markup() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::Backspace,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -393,7 +393,7 @@ fn a_focused_table_cell_presents_structural_commands() {
         .key;
 
     let view = entity;
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     assert!(
         imba::focus::frame_commands(&view, &store, &ui)
             .iter()
@@ -531,7 +531,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(command) as himark::InlayCommand,
@@ -611,7 +611,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::Inlay {
             key,
             command: Box::new(table::TableCommand::InsertRow(2)) as himark::InlayCommand,
@@ -684,7 +684,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -731,7 +731,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
                 let mut view = editor;
                 let _ = view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     EditorCommand::ApplyReparse(outcome),
                     &mut imba::effect::Batch::new().effects(),
                 );
@@ -774,7 +774,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -818,7 +818,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::ApplyReparse(in_flight),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -857,7 +857,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -914,7 +914,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         let mut view = editor;
         view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -952,7 +952,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         .run_reparse();
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::ApplyReparse(outcome),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -970,7 +970,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         let mut view = editor;
         view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1112,7 +1112,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     let mut cell = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1162,7 +1162,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     .run_reparse();
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::ApplyReparse(outcome),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1197,7 +1197,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
     let mut cell = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1359,7 +1359,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     let mut send = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1449,7 +1449,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
     let mut send = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1559,7 +1559,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::InsertText {
             text: "# ".to_owned(),
         },
@@ -1574,7 +1574,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
 
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::InsertText {
             text: "big ".to_owned(),
         },
@@ -1635,7 +1635,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let mut view = entity_id;
     view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         command,
         &mut batch.effects(),
     );
@@ -1647,7 +1647,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         let command = himark::test_support::handle_effect(effect, &test_cx());
         view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut batch.effects(),
         );
@@ -1705,7 +1705,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     while let Some(command) = pending.pop() {
         view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut batch.effects(),
         );
@@ -1762,7 +1762,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
         let mut batch = imba::effect::Batch::new();
         view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             EditorCommand::InsertText {
                 text: "x".to_owned(),
             },
@@ -1774,7 +1774,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
             let mut followup_batch = imba::effect::Batch::new();
             view.perform(
                 &mut store,
-                &imba::UiCtx::cold(),
+                &imba::UiCtx::dont_use_too_slow(),
                 command,
                 &mut followup_batch.effects(),
             );
@@ -1783,7 +1783,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
                 let command = himark::test_support::handle_effect(effect, &test_cx());
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     command,
                     &mut imba::effect::Batch::new().effects(),
                 );
@@ -1867,7 +1867,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 };
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     command,
                     &mut batch.effects(),
                 );
@@ -1876,7 +1876,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let mut view = editor;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     EditorCommand::Backspace,
                     &mut batch.effects(),
                 );
@@ -1886,7 +1886,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let y = (rand() % 4000) as f32;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     EditorCommand::Click {
                         kind: himark::ClickKind::Set,
                         point: skia_safe::Point::new((rand() % 300) as f32, y),
@@ -1928,7 +1928,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let mut view = editor;
                     view.perform(
                         &mut store,
-                        &imba::UiCtx::cold(),
+                        &imba::UiCtx::dont_use_too_slow(),
                         command,
                         &mut batch.effects(),
                     );
@@ -1959,7 +1959,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         EditorCommand::InsertText {
             text: "# ".to_owned(),
         },
@@ -2050,7 +2050,7 @@ fn enter_and_tab_assist_through_the_command_path() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let perform = |document: &mut Document, store: &mut Store, command: EditorCommand| {
         document.perform(
             store,
@@ -2125,7 +2125,7 @@ fn multi_caret_enter_continues_every_item() {
         editor,
         himark::MultiCaret::normalized(vec![himark::Caret::at(3), himark::Caret::at(7)], 0),
     );
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     document.perform(
         &mut store,
         &ui,

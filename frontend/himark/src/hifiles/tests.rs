@@ -31,7 +31,7 @@ fn listings_grow_and_fold_the_tree() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -39,10 +39,10 @@ fn listings_grow_and_fold_the_tree() {
     assert_eq!(view.row_count(), 1, "the folder itself is the root row");
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::cold(), &mut batch.effects());
+    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
     assert_eq!(batch.len(), 1, "expansion fetches");
     let mut again = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::cold(), &mut again.effects());
+    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut again.effects());
     assert!(again.is_empty(), "a mashed triangle asks once");
     view.tree.splice_listing(
         directory(&["project"]),
@@ -51,12 +51,12 @@ fn listings_grow_and_fold_the_tree() {
             document(&["project", "README.md"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(view.row_count(), 3);
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::cold(), &mut batch.effects());
+    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
     assert_eq!(batch.len(), 1, "src expansion fetches");
     view.tree.splice_listing(
         directory(&["project", "src"]),
@@ -65,17 +65,17 @@ fn listings_grow_and_fold_the_tree() {
             document(&["project", "src", "main.rs"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(view.row_count(), 5, "children spliced under src");
 
     let mut collapse = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::cold(), &mut collapse.effects());
+    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut collapse.effects());
     assert!(collapse.is_empty(), "collapse is local surgery");
     assert_eq!(view.row_count(), 3, "folded back; nothing cached");
 
     let mut reexpand = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::cold(), &mut reexpand.effects());
+    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut reexpand.effects());
     assert_eq!(reexpand.len(), 1, "re-expansion re-fetches");
 }
 
@@ -85,7 +85,7 @@ fn a_document_click_requests_the_open() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -93,17 +93,17 @@ fn a_document_click_requests_the_open() {
     view.activate(
         0,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.tree.splice_listing(
         directory(&["project"]),
         Some(vec![document(&["project", "README.md"])]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     let mut click = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::cold(), &mut click.effects());
+    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut click.effects());
     assert!(click.is_empty());
     let Some(ModalRequest::OpenLocations(locations)) = view.take_request() else {
         panic!("the click filed an open request");
@@ -115,11 +115,11 @@ fn a_document_click_requests_the_open() {
 #[test]
 fn expansion_survives_reopen_and_new_folders_join() {
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -127,7 +127,7 @@ fn expansion_survives_reopen_and_new_folders_join() {
     view.activate(
         0,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.perform(
@@ -148,7 +148,7 @@ fn expansion_survives_reopen_and_new_folders_join() {
     crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
     let reopened = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -164,7 +164,7 @@ fn expansion_survives_reopen_and_new_folders_join() {
         crate::test_support::seed_session_folders(&mut store, &[directory(&["elsewhere"])]);
     let other_tree = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         second,
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -173,7 +173,7 @@ fn expansion_survives_reopen_and_new_folders_join() {
     store.put(stashed);
     let first_again = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -188,11 +188,11 @@ fn expansion_survives_reopen_and_new_folders_join() {
 #[test]
 fn dismissal_files_the_close() {
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -215,7 +215,7 @@ fn a_stale_listing_drops() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -223,40 +223,40 @@ fn a_stale_listing_drops() {
     view.activate(
         0,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.tree.splice_listing(
         directory(&["project"]),
         Some(vec![directory(&["project", "src"])]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     view.activate(
         1,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.tree.splice_listing(
         directory(&["project", "src"]),
         Some(vec![directory(&["project", "src", "deep"])]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(view.row_count(), 3);
 
     view.activate(
         0,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.tree.splice_listing(
         directory(&["project", "src", "deep"]),
         Some(vec![document(&["project", "src", "deep", "a.md"])]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(view.row_count(), 1, "the stale landing changed nothing");
 }
@@ -285,12 +285,12 @@ fn expanded_folders_watch_and_events_relist() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
     );
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
 
     let mut batch = imba::effect::Batch::new();
     imba::View::perform(
@@ -354,7 +354,7 @@ fn expanded_folders_watch_and_events_relist() {
     assert_eq!(view.row_count(), 2, "the re-list replaced the children");
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::cold(), &mut batch.effects());
+    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
     let launches = crate::test_support::surviving_launches(batch);
     assert!(
         launches
@@ -368,11 +368,11 @@ fn expanded_folders_watch_and_events_relist() {
 #[test]
 fn cursor_walks_and_enter_opens() {
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -380,7 +380,7 @@ fn cursor_walks_and_enter_opens() {
     view.activate(
         0,
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         &mut imba::effect::Batch::new().effects(),
     );
     view.tree.splice_listing(
@@ -390,7 +390,7 @@ fn cursor_walks_and_enter_opens() {
             document(&["project", "README.md"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     let mut drive = |view: &mut SessionTreeView, command| {
         view.perform(
@@ -422,7 +422,7 @@ fn a_relist_keeps_expanded_subtrees() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -434,13 +434,13 @@ fn a_relist_keeps_expanded_subtrees() {
             document(&["project", "README.md"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     view.tree.splice_listing(
         directory(&["project", "src"]),
         Some(vec![document(&["project", "src", "lib.rs"])]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(view.row_count(), 4, "root, src/, lib.rs, README");
     view.tree
@@ -457,7 +457,7 @@ fn a_relist_keeps_expanded_subtrees() {
             document(&["project", "fresh.txt"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert!(removed.is_empty(), "nothing left");
     assert_eq!(view.row_count(), 5, "the fresh file joined");
@@ -485,7 +485,7 @@ fn a_relist_keeps_expanded_subtrees() {
             document(&["project", "fresh.txt"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert!(removed.is_empty());
     assert_eq!(
@@ -501,7 +501,7 @@ fn a_relist_keeps_expanded_subtrees() {
             document(&["project", "fresh.txt"]),
         ]),
         &store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
     );
     assert_eq!(removed, vec![directory(&["project", "src"])]);
     assert_eq!(view.row_count(), 3, "root, README, fresh");
@@ -516,7 +516,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = SessionTreeView::open(
         &mut store,
-        &imba::UiCtx::cold(),
+        &imba::UiCtx::dont_use_too_slow(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -539,7 +539,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
 
     let commands = {
         let arena = imba::arena::Arena::default();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         let size = skia_safe::Size::new(400.0, 600.0);
         let widget = imba::Layout::layout(
             imba::View::display(&view, &arena, &store, &ui),
@@ -567,7 +567,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
     for command in commands {
         view.perform(
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );

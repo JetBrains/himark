@@ -299,10 +299,10 @@ mod tests {
     #[test]
     fn selection_reveal_glides_the_scroll_until_visible() {
         let mut store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let mut list = RowList::new();
         let labels: Vec<String> = (0..300).map(|index| format!("row {index}")).collect();
-        list.set(&store, &imba::UiCtx::cold(), &labels, None, 0);
+        list.set(&store, &imba::UiCtx::dont_use_too_slow(), &labels, None, 0);
         list.select(250);
         assert_eq!(list.scroll_y(), 0.0);
 

@@ -373,7 +373,7 @@ mod tests {
     }
 
     fn drive(view: &mut TooltipView<Body, Tip>, event: Event<'_>) {
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let commands = {
             let arena = Arena::default();
             let store = Store::new();
@@ -399,7 +399,7 @@ mod tests {
     fn overlay_count(view: &TooltipView<Body, Tip>) -> usize {
         let arena = Arena::default();
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut widget = crate::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
@@ -465,7 +465,7 @@ mod tests {
 
         let arena = Arena::default();
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let widget = crate::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,

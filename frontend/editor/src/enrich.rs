@@ -513,7 +513,7 @@ mod tests {
         use imba::effect::EffectHandler;
         let workshop = workshop();
         let mut store = imba::store::Store::new();
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         let mut pending = batch.surviving_launches();
         let mut rounds = 0;
         while let Some(effect) = pending.pop() {
@@ -607,7 +607,7 @@ mod tests {
 
         {
             let mut store = imba::store::Store::new();
-            let ui = imba::UiCtx::cold();
+            let ui = imba::UiCtx::dont_use_too_slow();
             document.perform(
                 &mut store,
                 &ui,
@@ -741,7 +741,7 @@ mod tests {
         let second = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         let mut batch = imba::effect::Batch::new();
         document.perform(
             &mut store,
@@ -842,7 +842,7 @@ mod tests {
         let editor = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = imba::UiCtx::cold();
+        let ui = imba::UiCtx::dont_use_too_slow();
         for _ in 0..2 {
             let mut batch = imba::effect::Batch::new();
             document.perform(

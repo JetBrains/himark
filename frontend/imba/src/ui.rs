@@ -12,9 +12,13 @@ impl UiCtx {
     /// A COLD context: every env slot downstream (typefaces, font
     /// collections, shapers) starts empty and pays its full
     /// resolution cost on first use. Mint one per UI thread or effect
-    /// handler and KEEP it — a ctx minted per row or per frame is the
-    /// classic cold-cache bug.
-    pub fn cold() -> Self {
+    /// handler and KEEP it — a ctx minted per row, per frame, or per
+    /// measure is the classic cold-cache bug (it made Inlay::size
+    /// resolve typefaces on every scroll tick once, 2026-09-20). The
+    /// name is the warning: if you are reaching for this outside a
+    /// test or a once-per-handler init, you are handed a warm ctx
+    /// somewhere — thread it.
+    pub fn dont_use_too_slow() -> Self {
         Self {
             slots: RefCell::new(Vec::new()),
         }

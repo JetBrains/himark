@@ -2067,7 +2067,7 @@ impl Inlay {
         let arena = Arena::default();
         let store = Store::new();
 
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let widget = self.layout(&arena, &store, &ui, constraints);
         widget.size()
     }

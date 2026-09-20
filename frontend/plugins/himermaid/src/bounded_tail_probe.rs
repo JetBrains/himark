@@ -43,7 +43,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         base: None,
     };
     let mut store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
 
     let outcome = himark::ReparseHandler(himark::test_support::test_workshop(theme()))
         .reparse(himark::ReparseWork::capture(&view.document, registry.clone()).expect("parse"));

@@ -98,7 +98,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 };
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     command,
                     &mut batch.effects(),
                 );
@@ -107,7 +107,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let mut view = editor;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     EditorCommand::Backspace,
                     &mut batch.effects(),
                 );
@@ -117,7 +117,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let y = (rand() % 12_000) as f32;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::cold(),
+                    &imba::UiCtx::dont_use_too_slow(),
                     EditorCommand::Click {
                         kind: himark::ClickKind::Set,
                         point: skia_safe::Point::new((rand() % 500) as f32, y),
@@ -159,7 +159,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let mut view = editor;
                     view.perform(
                         &mut store,
-                        &imba::UiCtx::cold(),
+                        &imba::UiCtx::dont_use_too_slow(),
                         command,
                         &mut batch.effects(),
                     );
@@ -225,7 +225,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         imba::View::perform(
             &mut view,
             &mut store,
-            &imba::UiCtx::cold(),
+            &imba::UiCtx::dont_use_too_slow(),
             command,
             &mut batch.effects(),
         );

@@ -260,7 +260,7 @@ fn scroll_view_clamps_wheel_commands_to_content_bounds() {
     });
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
@@ -378,7 +378,7 @@ fn scrolled(
 ) -> EventResult<ScrollCommand<f32>> {
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
@@ -468,7 +468,7 @@ fn a_fitted_view_never_claims() {
     let view = ScrollView::new(Short);
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
@@ -498,7 +498,7 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
         size: Size::new(100.0, 500.0),
     });
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     perform_into(&mut view, &mut store, &ui, ScrollCommand::SetScrollY(75.0));
     let arena = Arena::default();
     let widget = crate::Layout::layout(
@@ -713,7 +713,7 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
 
     let arena = Arena::default();
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let command = {
         let widget = crate::Layout::layout(
             view.display(&arena, &store, &ui),
@@ -750,7 +750,7 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
     );
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
@@ -808,7 +808,7 @@ fn split_view_divides_the_main_axis_by_ratio() {
     .with_ratio(0.25);
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
@@ -855,7 +855,7 @@ fn split_view_perform_routes_to_the_addressed_pane() {
         }),
     );
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
 
     perform_into(
         &mut view,
@@ -879,7 +879,7 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
         }),
     );
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
 
     {
@@ -1053,7 +1053,7 @@ fn an_absurd_row_height_cannot_wrap_the_lists_offsets() {
 #[test]
 fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
     let mut list = row_list();
 
@@ -1098,7 +1098,7 @@ fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
 #[test]
 fn list_routes_position_less_events_to_the_focused_row() {
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
     let mut list = row_list();
 
@@ -1138,7 +1138,7 @@ fn list_routes_position_less_events_to_the_focused_row() {
 #[test]
 fn list_drops_commands_addressed_to_missing_rows() {
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let mut list = row_list();
     let mut batch = crate::effect::Batch::new();
     list.perform(
@@ -1228,7 +1228,7 @@ fn paint_broadcasts_and_merges_every_mismatch() {
 fn list_paint_reconciles_stale_row_heights() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((100, 60)).expect("surface");
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let arena = Arena::default();
 
     let mut list: ListView<Row> = ListView::from_rope(crate::list::measured([
@@ -1294,7 +1294,7 @@ fn list_scroll_benchmark() {
     };
 
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let built_started = std::time::Instant::now();
     let mut view = ScrollView::new(ListView::from_rope(crate::list::measured(
         (0..ROWS).map(|_| (Row { height: ROW_HEIGHT }, ROW_HEIGHT)),
@@ -1384,7 +1384,7 @@ fn focus_commands_of<V: View>(
 #[test]
 fn commands_follow_focus_and_map_up_the_tree() {
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
 
     let mut view = ScrollView::new(row_list());
     assert!(focus_commands_of(&view, &store, &ui).is_empty());
@@ -1420,7 +1420,7 @@ fn commands_follow_focus_and_map_up_the_tree() {
 #[test]
 fn split_and_dyn_views_carry_commands() {
     let mut store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     let mut focused_list = row_list();
     perform_into(
         &mut focused_list,
@@ -1701,7 +1701,7 @@ mod list_sticky {
     #[test]
     fn a_scrolled_family_plants_its_parent_and_the_boundary_hands_off() {
         let mut store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let _ = &mut store;
         let arena = Arena::default();
         let list = family();
@@ -1729,7 +1729,7 @@ mod list_sticky {
     #[test]
     fn without_the_option_nothing_plants() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let arena = Arena::default();
         let mut slice: ListSlice<Row, u64> = ListSlice::new();
         slice.push_keyed_sized(1, Row { height: 10.0 }, 10.0);
@@ -1743,7 +1743,7 @@ mod list_sticky {
     #[test]
     fn nested_parents_stack_and_stop_at_the_chain_break() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let arena = Arena::default();
         // 0:P1 [ 1:A [ 2:a1 3:a2 ] 4:b ] 5:P2 6:c
         let mut slice: ListSlice<Row, u64> = ListSlice::new();
@@ -1774,7 +1774,7 @@ mod list_sticky {
     #[test]
     fn a_planted_line_routes_presses_as_the_real_row() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let arena = Arena::default();
         let list = family();
 
@@ -1827,7 +1827,7 @@ mod animated_splice {
         perform_into(
             list,
             store,
-            &crate::ui::UiCtx::cold(),
+            &crate::ui::UiCtx::dont_use_too_slow(),
             ListCommand::Animate(AnimationClock::from_millis(at_ms)),
         );
     }
@@ -1879,7 +1879,7 @@ mod animated_splice {
     #[test]
     fn paint_does_not_snap_animating_rows() {
         let mut store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = ListView::from_rope(crate::list::measured([(Row { height: 20.0 }, 20.0)]));
         list.splice_animated(0..1, (0..4).map(|_| (Row { height: 20.0 }, 20.0)));
         let entering = cached_total(&list);
@@ -2047,7 +2047,7 @@ fn knob_event(
 ) -> EventResult<ScrollCommand<ContentCommand>> {
     let arena = Arena::default();
     let store = Store::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     ui.set(scrollbar_style());
     let widget = crate::Layout::layout(
         view.display(&arena, &store, &ui),
@@ -2060,7 +2060,7 @@ fn knob_event(
 
 fn knob_perform(view: &mut ScrollView<FixedContent>, command: ScrollCommand<ContentCommand>) {
     let mut batch = crate::effect::Batch::new();
-    let ui = crate::ui::UiCtx::cold();
+    let ui = crate::ui::UiCtx::dont_use_too_slow();
     view.perform(&mut Store::new(), &ui, command, &mut batch.effects());
 }
 
@@ -2205,7 +2205,7 @@ mod viewport_preservation {
     }
 
     fn observe_top(list: &mut ListView<Row, u64>, store: &mut Store, top: f32) {
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut batch: crate::effect::Batch<ListCommand<RowCommand>> = crate::effect::Batch::new();
         list.perform(
             store,
@@ -2238,7 +2238,7 @@ mod viewport_preservation {
     #[test]
     fn a_splice_above_the_viewport_re_aims_the_anchor_exactly() {
         let mut store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         // Ten rows of 20px; the viewport's top edge cuts 5px into the
         // third row (key 3, offset 40). The enclosing scroll pushes
         // the top in through the `scrolled` hook — retained state,
@@ -2281,7 +2281,7 @@ mod viewport_preservation {
     #[test]
     fn a_splice_below_the_viewport_disturbs_nothing() {
         let mut store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         observe_top(&mut list, &mut store, 45.0);
         let viewport = Rect::from_xywh(0.0, 45.0, 100.0, 60.0);
@@ -2300,7 +2300,7 @@ mod viewport_preservation {
     #[test]
     fn the_scroll_view_jumps_to_the_settled_anchor() {
         let mut store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut scroll = ScrollView::new(keyed_rows(
             &(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>(),
         ));
@@ -2401,7 +2401,7 @@ mod row_reveal {
     #[test]
     fn a_top_left_reveal_aims_the_row_exactly_and_disarms_on_landing() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::TopLeftAt);
 
@@ -2439,7 +2439,7 @@ mod row_reveal {
     #[test]
     fn a_tail_reveal_settles_at_the_clamp() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         // 10 rows x 20px = 200px; a 60px viewport clamps at 140.
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(10, Placement::TopLeftAt);
@@ -2466,7 +2466,7 @@ mod row_reveal {
     #[test]
     fn a_reveal_survives_a_splice_between_arming_and_the_clock() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::TopLeftAt);
 
@@ -2485,7 +2485,7 @@ mod row_reveal {
     #[test]
     fn a_lost_key_disarms_instead_of_arming_forever() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::TopLeftAt);
         list.splice(6..7, std::iter::empty::<(Row, f32)>());
@@ -2504,7 +2504,7 @@ mod row_reveal {
     #[test]
     fn an_ensure_visible_reveal_keeps_the_golden_section_road() {
         let store = Store::new();
-        let ui = crate::ui::UiCtx::cold();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let mut list = keyed_rows(&(1..=10).map(|key| (key, 20.0)).collect::<Vec<_>>());
         list.reveal_row(7, Placement::EnsureVisible);
 

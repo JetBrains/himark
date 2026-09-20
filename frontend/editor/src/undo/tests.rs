@@ -35,7 +35,7 @@ impl Pane {
         );
         Self {
             store: Store::new(),
-            ui: imba::UiCtx::cold(),
+            ui: imba::UiCtx::dont_use_too_slow(),
             document,
             editor,
         }

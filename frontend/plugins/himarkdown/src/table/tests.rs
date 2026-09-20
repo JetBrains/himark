@@ -146,7 +146,7 @@ fn resize_relayout_round_trips_through_the_effect() {
     );
 
     let mut store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let mut batch = imba::effect::Batch::new();
     imba::View::perform(
         &mut editor,
@@ -228,7 +228,7 @@ fn a_relaid_landing_over_moved_content_discards_itself() {
     imba::View::perform(
         &mut editor,
         &mut store,
-        &UiCtx::cold(),
+        &UiCtx::dont_use_too_slow(),
         TableCommand::Relaid(Box::new(stale)),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -256,7 +256,7 @@ fn paint_reports_relayout_while_the_width_lags() {
 
     let arena = Arena::default();
     let store = Store::new();
-    let ui = UiCtx::cold();
+    let ui = UiCtx::dont_use_too_slow();
     let constraints = Constraints {
         min: Size::default(),
         max: Size::new(900.0, f32::MAX),

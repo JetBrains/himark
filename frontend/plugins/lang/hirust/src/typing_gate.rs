@@ -55,7 +55,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         base: None,
     };
     let mut store = imba::Store::new();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     ui.set(editor::env::UiFonts(fonts.clone()));
     let drain = |view: &mut editor::EditorView,
                  store: &mut imba::Store,

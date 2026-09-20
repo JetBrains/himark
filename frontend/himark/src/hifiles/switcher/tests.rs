@@ -53,7 +53,7 @@ fn the_switcher_lists_workspaces_with_the_current_selected() {
 #[test]
 fn picks_file_the_switch_requests() {
     let (app, window) = app_with_folder();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
 
     let mut scratch = Store::new();
     let mut view = SessionSwitcherView::open(app.store(), window);
@@ -85,7 +85,7 @@ fn picks_file_the_switch_requests() {
 #[test]
 fn selection_moves_and_clamps() {
     let (app, window) = app_with_folder();
-    let ui = imba::UiCtx::cold();
+    let ui = imba::UiCtx::dont_use_too_slow();
     let mut scratch = Store::new();
     let mut view = SessionSwitcherView::open(app.store(), window);
     view.perform(

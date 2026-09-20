@@ -345,7 +345,7 @@ mod tests {
     #[ignore = "a timing probe, run with --nocapture to read it"]
     fn timing_probe_pushes() {
         let store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         // Warm the ctx the way the app's long-lived one is warm: the
         // first typeface resolution is a boot cost, not a push cost.
         let mut warmup: imba::list::ListSlice<crate::TreeRow, u64> = imba::list::ListSlice::new();
@@ -388,7 +388,7 @@ mod tests {
         // height, so the baseline group hugged the row's TOP — tree
         // labels floated above their disclosure glyphs.
         let store = Store::new();
-        let ui = UiCtx::cold();
+        let ui = UiCtx::dont_use_too_slow();
         let arena = Arena::default();
         let style = RowStyle::drawer(&store, &ui);
         let metrics = style.label.font.metrics().1;
