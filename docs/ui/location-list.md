@@ -244,11 +244,13 @@ level down so every location is its own leaf:
   trees; `TreeItemView` disclosure, collapse folds the subtree.
 - **File rows** (branches under their directory): name plus an
   occurrence-count badge.
-- **Occurrence rows** (leaves, children of their file): `line:col`
-  gutter + the `context` text as a cheap styled label — **not an
-  editor** — with the match span tinted (`StyleId::Match` colors) at
-  `column - contextColumnStart`, for `length` bytes, clamped to the
-  context.
+- **Occurrence rows** (leaves, children of their file): the `context`
+  text as a cheap styled label — **not an editor** — with a trailing
+  `line:col` position chip. The match-span tint inside the label
+  (`StyleId::Match` colors at `column - contextColumnStart`, for
+  `length` bytes) is a follow-up: `imba::Text` is single-run today,
+  so the tint needs a run-capable label or a measured wash in
+  `TreeLabel` — deliberately deferred behind the working tree.
 
 ```rust
 enum LocationKey {
@@ -260,16 +262,15 @@ enum LocationKey {
 Domain keys, no id minting (unlike the TOC's minted `u64` + targets
 side-map — the location is the key, the list-tree.md rule). The forest
 is the `himark::Forest` consumer pattern (docs/ui/list-tree.md §7):
-`Forest` holds the fold memory; each landing **rebuilds the forest
-off the UI thread** — the batch handler folds the accumulated feed
-into the trie, shapes the `ListSlice` (rows, spans, context labels)
-on the worker, passing the collapsed set in — and the UI-thread
-`splice_slice` is the O(log n) graft (the no-linear-UI-work rule).
-Fold state and selection survive relandings by key. Search emission
-order is unspecified (the host's walk is parallel); the trie build
-sorts, so the tree is always path-ordered whatever order batches
-land in — rebuilds coalesce to one relanding per landed batch,
-throttled while the stream runs hot.
+`Forest` holds the fold memory; each landed batch rebuilds the trie
+and re-`set`s the forest — the hichanges refresh shape, UI-thread but
+bounded by the stream's total-location cap; fold state and the cursor
+survive relandings by key (`Forest` keeps its collapsed set across
+`set`, the view re-selects the cursor key). Moving the trie +
+`ListSlice` shaping onto a worker is an open optimization if the cap
+ever rises. Search emission order is unspecified (the host's walk is
+parallel); the trie build sorts, so the tree is always path-ordered
+whatever order batches land in.
 
 Keyboard is the unified list's, configured once: `with_selection`,
 cursor on arrows, Enter activates, reveal keeps it on screen;
@@ -308,12 +309,14 @@ Layout, top to bottom:
   truncation note.
 
 Focus areas mirror today's `SearchArea::{Input, Results}`: Tab and
-Down from the input enter the tree, typing printable keys from the
-tree refocuses the input (the speed-search reflex), Escape rolls the
-dock away (results survive; the stream keeps landing into the feed
-row). shift-cmd-F opens the tab focused on the input; the toolbar
-`%` well re-points its `set_query` here (the modal search overlay
-retires with the old panel, §9).
+Down from the input enter the tree; typing in the tree is
+speed-search; Escape rolls the dock away. **Closing the surface IS
+the cancel**: the live channel rides the view and unsubscribes on
+destroy — accumulated results survive in the feed row (marked cut
+off when the stream was still running) and reopening shows what
+stood. This trades the plan's original stream-past-close for one
+owner of the subscription and no orphaned polling. shift-cmd-F and
+the toolbar `%` well re-point here when the old panel retires (§9).
 
 ## 7. The UI: references and implementations
 
