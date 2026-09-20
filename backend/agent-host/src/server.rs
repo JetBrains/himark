@@ -2376,23 +2376,26 @@ impl Host {
         rpc::success(id, serde_json::json!({ "channel": channel }))
     }
 
-    async fn search(&self, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
-        const DEFAULT_LIMIT: usize = 128;
-        const LIMIT_CAP: usize = 1024;
-        let params: himark_ahp_ext_types::SearchParams = match serde_json::from_value(params) {
-            Ok(params) => params,
-            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
-        };
-        let roots: Vec<PathBuf> = if params.channel == host_discovery::LOCAL_FS_SESSION {
+    /// Resolve a search's folders against the session's roots — the
+    /// scope rules shared by `search` and `searchLocations`
+    /// (docs/ahp/ahp-search.md §2.2): every folder a `file:` URI
+    /// under a working directory; no folders means all of them.
+    fn search_folders(
+        &self,
+        id: u64,
+        channel: &str,
+        folders: Option<&Vec<Uri>>,
+    ) -> Result<Vec<PathBuf>, JsonRpcMessage> {
+        let roots: Vec<PathBuf> = if channel == host_discovery::LOCAL_FS_SESSION {
             vec![PathBuf::from("/")]
         } else {
             let state = self.snapshot();
-            let Some(entry) = state.sessions.get(&params.channel) else {
-                return rpc::failure(
+            let Some(entry) = state.sessions.get(channel) else {
+                return Err(rpc::failure(
                     id,
                     NO_SUCH_CHANNEL,
-                    format!("no session {}", params.channel),
-                );
+                    format!("no session {channel}"),
+                ));
             };
             entry
                 .manifest
@@ -2401,28 +2404,42 @@ impl Host {
                 .map(local_path)
                 .collect()
         };
-        let folders: Vec<PathBuf> = match &params.folders {
+        let folders: Vec<PathBuf> = match folders {
             Some(entries) => {
-                let mut folders = Vec::new();
+                let mut resolved = Vec::new();
                 for entry in entries {
                     let Some(path) = crate::uris::file_path(entry) else {
-                        return rpc::failure(id, INVALID_PARAMS, "folders must be file uris");
+                        return Err(rpc::failure(id, INVALID_PARAMS, "folders must be file uris"));
                     };
-                    folders.push(path);
+                    resolved.push(path);
                 }
-                folders
+                resolved
             }
             None => roots.clone(),
         };
         for folder in &folders {
             if !roots.iter().any(|root| folder.starts_with(root)) {
-                return rpc::failure(
+                return Err(rpc::failure(
                     id,
                     INVALID_PARAMS,
                     format!("folder outside the session: {}", folder.display()),
-                );
+                ));
             }
         }
+        Ok(folders)
+    }
+
+    async fn search(&self, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
+        const DEFAULT_LIMIT: usize = 128;
+        const LIMIT_CAP: usize = 1024;
+        let params: himark_ahp_ext_types::SearchParams = match serde_json::from_value(params) {
+            Ok(params) => params,
+            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+        };
+        let folders = match self.search_folders(id, &params.channel, params.folders.as_ref()) {
+            Ok(folders) => folders,
+            Err(refusal) => return refusal,
+        };
         let query = hifind::SearchQuery {
             term: params.query,
             kind: params.kind,
