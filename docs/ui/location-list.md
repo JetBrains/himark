@@ -301,13 +301,16 @@ substance — reopening the tab shows the standing results).
 
 Layout, top to bottom:
 
-- **Query input** — the `EditorView::input` recipe the current panel
-  uses, with a trailing **cancel/stop affordance** shown while the
-  feed is not `done` (click = unsubscribe, partial results stay,
-  `truncated` note shows). Typing requeries: unsubscribe the old
-  channel, `searchLocations` the new one, the tree drains and
-  restreams. The `MIN_QUERY = 2` guard and the too-short → clear
-  behavior carry over from `plugins/search`.
+- **Query input** — the CHAT COMPOSER's dress (the commit box's
+  copy of it): the bare input band over a hairline-ruled toolbar
+  row, with the accent cell flush right — **SEARCH ⏎** (enters the
+  results), turning **STOP** in the stop color while the feed
+  streams (click = unsubscribe, partial results stay, `truncated`
+  note shows). The box reads as an input even when the caret is
+  elsewhere. Typing requeries: unsubscribe the old channel,
+  `searchLocations` the new one, the tree drains and restreams. The
+  `MIN_QUERY = 2` guard (the cell dims below it) and the too-short →
+  clear behavior carry over from `plugins/search`.
 - **The locations tree** (§5).
 - A **status band**: running spinner / `N results in M files` /
   truncation note.

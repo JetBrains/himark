@@ -469,38 +469,159 @@ impl View for SearchView {
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
-            let chrome = crate::env::Themes::of(store).ui().search.clone();
+            let theme = crate::env::Themes::of(store);
+            let ui_theme = theme.ui();
+            // The CHAT COMPOSER's dress, the commit box's copy of it:
+            // the bare input band, a hairline, and the toolbar row
+            // with the accent cell flush right — the box reads as an
+            // input even when the caret is elsewhere.
+            let chrome = ui_theme.chat.clone();
             let pad = chrome.pad;
-            let input_height = chrome.input_height;
+            let box_pad = pad * 0.75;
+            let editor_h = chrome.title_size * 1.6;
+            let toolbar_h = ui_theme.toolbar.height;
+            let input_band = editor_h + box_pad * 2.0;
             let mut panel = imba::container::container(arena, size);
 
-            let inner_height = (input_height - chrome.input_pad_y * 2.0).max(1.0);
+            let feed = self.feed(store);
+            let row = feed.and_then(|feed| LocationsFeeds::row_ref(store, feed));
+            let (hits, done, truncated, generation) = row
+                .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
+                .unwrap_or((0, true, false, 0));
+            let running = feed.is_some() && !done;
+
+            // Bottom-most: a press anywhere on the input band focuses
+            // the box (the editor sits on top).
             panel.place(
-                pad + chrome.input_pad_x,
-                pad + chrome.input_pad_y,
+                0.0,
+                0.0,
+                imba::leaf::leaf::<SearchCommand>(size.width, input_band).event(
+                    |_arena, event, _size| match event {
+                        Event::MouseDown {
+                            button: imba::event::MouseButton::Left,
+                            ..
+                        } => EventResult::Command(SearchCommand::Focus(SearchArea::Input, None)),
+                        _ => EventResult::Ignored,
+                    },
+                ),
+            );
+            let editor_w = (size.width - pad * 2.0).max(120.0);
+            panel.place(
+                pad,
+                box_pad,
                 imba::Layout::layout(
                     self.input.display(arena, store, ui),
                     arena,
                     Constraints {
-                        min: Size::new(0.0, inner_height),
-                        max: Size::new(
-                            (size.width - (pad + chrome.input_pad_x) * 2.0).max(1.0),
-                            inner_height,
-                        ),
+                        min: Size::new(editor_w, editor_h),
+                        max: Size::new(editor_w, editor_h),
                     },
                 )
                 .map(SearchCommand::Input)
                 .focus_scope(self.focus == SearchArea::Input),
             );
 
+            // The toolbar row: ruled off above, the SEARCH cell flush
+            // right — STOP while the stream runs, in the stop color.
+            let rule = ui_theme.toolbar.rule.0;
+            panel.place(
+                0.0,
+                input_band,
+                imba::leaf::leaf::<SearchCommand>(size.width, 1.0).paint_instead(
+                    move |_arena, canvas, rect| {
+                        let mut paint = skia_safe::Paint::default();
+                        paint.set_anti_alias(false);
+                        paint.set_color(rule);
+                        canvas.draw_rect(rect, &paint);
+                    },
+                ),
+            );
+            {
+                let combo = ui_theme.combo.clone();
+                let caps_font = crate::fonts::ui_font(ui, combo.label_size * 1.1);
+                let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                let label = if running { "STOP" } else { "SEARCH" };
+                let cell_width = label
+                    .chars()
+                    .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                    .sum::<f32>()
+                    + if running {
+                        0.0
+                    } else {
+                        key_font.measure_str("⏎", None).0 + combo.gap
+                    }
+                    + combo.pad * 2.0;
+                let sendable = self.query().trim().len() >= MIN_QUERY;
+                let accent = if running {
+                    chrome.stop_color.0
+                } else {
+                    chrome.accent.0
+                };
+                let on_accent = chrome.on_accent.0;
+                let accent_soft = ui_theme.peeker.dim_text.0;
+                let cell_h = toolbar_h - 1.0;
+                let mid = cell_h * 0.5;
+                let caps_ascent = -caps_font.metrics().1.ascent;
+                let key_ascent = -key_font.metrics().1.ascent;
+                let mut cell = imba::Row::new(arena).gap(combo.gap).child(
+                    imba::text(label, caps_font.clone(), on_accent)
+                        .tracking(1.5)
+                        .pad_insets(imba::Insets {
+                            left: 0.0,
+                            top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
+                            right: 0.0,
+                            bottom: 0.0,
+                        }),
+                );
+                if !running {
+                    cell = cell.child(imba::text("⏎", key_font.clone(), accent_soft).pad_insets(
+                        imba::Insets {
+                            left: 0.0,
+                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                            right: 0.0,
+                            bottom: 0.0,
+                        },
+                    ));
+                }
+                let cell = cell
+                    .pad_insets(imba::Insets {
+                        left: combo.pad,
+                        top: 0.0,
+                        right: 0.0,
+                        bottom: 0.0,
+                    })
+                    .sized(cell_width, cell_h)
+                    .backdrop(
+                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            let mut fill = accent;
+                            if !sendable && !running {
+                                fill = fill.with_a(0x50);
+                            }
+                            paint.set_color(fill.with_a(fill.a() / 3));
+                            canvas.draw_rect(rect, &paint);
+                            paint.set_anti_alias(false);
+                            paint.set_color(fill);
+                            canvas.draw_rect(
+                                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                                &paint,
+                            );
+                        },
+                    )
+                    .on_click(move || match running {
+                        true => SearchCommand::Cancel,
+                        false => SearchCommand::Focus(SearchArea::Results, None),
+                    });
+                panel.place_boxed(
+                    size.width - cell_width,
+                    input_band + 1.0,
+                    cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                );
+            }
+
             // The status band: counts while streaming and after; a
             // click while running stops the stream. Per-frame reads
             // go through row_ref — no row clone per paint.
-            let feed = self.feed(store);
-            let row = feed.and_then(|feed| LocationsFeeds::row_ref(store, feed));
-            let (hits, done, truncated, generation) = row
-                .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
-                .unwrap_or((0, true, false, 0));
             let status = match (feed.is_some(), done, truncated) {
                 (false, _, _) => "type to search the session".to_owned(),
                 (true, false, _) => format!("{hits} results — searching… (click stops)"),
@@ -510,7 +631,6 @@ impl View for SearchView {
                 },
                 (true, true, true) => format!("{hits} results (cut off)"),
             };
-            let running = feed.is_some() && !done;
             let band = crate::ui::ListRow::new(arena, crate::ui::RowStyle::header(store, ui))
                 .label(status)
                 .on_event(move |_arena: &Arena, event: &Event<'_>, _size| match event {
@@ -527,7 +647,7 @@ impl View for SearchView {
                 },
             );
             let band_height = imba::Thunk::size(&band).height;
-            let input_bottom = pad + input_height + pad;
+            let input_bottom = input_band + toolbar_h;
             panel.place_boxed(0.0, input_bottom, band);
 
             let tree_top = input_bottom + band_height;

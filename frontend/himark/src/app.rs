@@ -728,7 +728,6 @@ impl Application {
         }
     }
 
-    #[cfg(any(test, feature = "test-support"))]
     /// TEST SUPPORT: the fronting dock's owner id, if any.
     #[doc(hidden)]
     pub fn dock_owner_for_tests(&self, window: WindowId) -> Option<&'static str> {
@@ -736,6 +735,7 @@ impl Application {
         crate::Windows::window_ref(&store, window).and_then(|entity| entity.dock_owner())
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub fn store_mut(&mut self) -> StoreMut<'_> {
         StoreMut { app: self }
     }
