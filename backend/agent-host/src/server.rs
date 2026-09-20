@@ -497,11 +497,12 @@ struct HistoryEntry {
 }
 
 /// One `ahp-locations:/…` channel: a per-request result stream
-/// (docs/ahp/ahp-locations.md). The folded state rides PERSISTENT
-/// collections — the entry clones with every copy-on-write `State`
-/// swap, so an accumulating `Vec` here would make every emit O(all
-/// results so far). The cancel token is the producer's leash,
-/// flipped when the last subscriber leaves.
+/// (docs/ahp/ahp-locations.md). A PURE VALUE, like everything in
+/// `State`: persistent collections and scalars, no live objects —
+/// the entry clones with every copy-on-write swap. The entry's
+/// PRESENCE is the channel's liveness: disposal is removal, and
+/// producers derive their leash from presence (`locations_live`)
+/// out of their own tasks, beside the state.
 #[derive(Clone)]
 struct LocationsEntry {
     /// The connection that minted the channel — a never-subscribed
@@ -510,7 +511,6 @@ struct LocationsEntry {
     locations: rpds::VectorSync<himark_ahp_ext_types::Location>,
     done: bool,
     truncated: bool,
-    cancel: Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -904,7 +904,7 @@ impl Host {
     }
 
     pub(crate) fn close_connection(&self, connection: u64) {
-        let (search, cancelled) = self.update(|state| {
+        let search = self.update(|state| {
             let channels: Vec<Uri> = state.subscribers.keys().cloned().collect();
             let mut touched: Vec<Uri> = Vec::new();
             for channel in channels {
@@ -933,24 +933,17 @@ impl Host {
                 })
                 .map(|(channel, _)| channel.clone())
                 .collect();
-            let mut cancelled = Vec::new();
             for channel in dead {
-                if let Some(entry) = state.locations.get(&channel) {
-                    cancelled.push(entry.cancel.clone());
-                }
                 state.locations.remove_mut(&channel);
                 state.subscribers.remove_mut(&channel);
             }
 
             let search = state.searches.get(&connection).cloned();
             state.searches.remove_mut(&connection);
-            (search, cancelled)
+            search
         });
         if let Some(search) = search {
             search.store(true, std::sync::atomic::Ordering::Relaxed);
-        }
-        for cancel in cancelled {
-            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -1309,13 +1302,10 @@ impl Host {
                 state.watches.remove_mut(channel);
                 state.changesets.remove_mut(channel);
 
-                // A locations channel dies with its audience: cancel
-                // the producer, drop the entry
-                // (docs/ahp/ahp-locations.md §2.3).
-                if let Some(entry) = state.locations.get(channel) {
-                    entry
-                        .cancel
-                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                // A locations channel dies with its audience: the
+                // entry's REMOVAL is the cancel — producers leash on
+                // its presence (docs/ahp/ahp-locations.md §2.3).
+                if state.locations.contains_key(channel) {
                     state.locations.remove_mut(channel);
                     state.subscribers.remove_mut(channel);
                 }
@@ -2536,7 +2526,11 @@ impl Host {
             .unwrap_or(DEFAULT_LIMIT)
             .min(LIMIT_CAP);
 
-        let (channel, cancel) = self.mint_locations(connection);
+        let channel = self.mint_locations(connection);
+        // The leash lives with the producer TASK, beside the state:
+        // a watcher flips it when the channel's entry leaves.
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let watcher = self.leash_locations(channel.clone(), Arc::clone(&cancel));
         let host = Arc::clone(self);
         let fan_out = channel.clone();
         tokio::task::spawn_blocking(move || {
@@ -2574,6 +2568,7 @@ impl Host {
                     truncated,
                 },
             );
+            watcher.abort();
         });
         rpc::success(id, serde_json::json!({ "channel": channel }))
     }
@@ -3398,7 +3393,7 @@ impl Host {
             }
         }
 
-        let (channel, cancel) = self.mint_locations(connection);
+        let channel = self.mint_locations(connection);
         let host = Arc::clone(self);
         let fan_out = channel.clone();
         let method = params.method;
@@ -3413,11 +3408,14 @@ impl Host {
                 return;
             }
             let (ls_id, answer) = server.request(&method, forwarded);
+            // The leash derives from the channel entry's presence —
+            // disposal maps to $/cancelRequest, no cell anywhere.
             let leash = tokio::spawn({
                 let server = Arc::clone(&server);
-                let cancel = Arc::clone(&cancel);
+                let host = Arc::clone(&host);
+                let channel = fan_out.clone();
                 async move {
-                    while !cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                    while host.locations_live(&channel) {
                         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     }
                     server.forward_notification(
@@ -3548,11 +3546,10 @@ impl Host {
 
     /// Mint a fresh per-request locations channel
     /// (docs/ahp/ahp-locations.md §2.3). The caller has already
-    /// validated the session; the answered token is the producer's
-    /// leash, flipped by the last unsubscribe.
-    fn mint_locations(&self, connection: u64) -> (Uri, Arc<std::sync::atomic::AtomicBool>) {
+    /// validated the session. Disposal is the entry's REMOVAL; a
+    /// producer leashes itself to the entry's presence.
+    fn mint_locations(&self, connection: u64) -> Uri {
         let channel = format!("{LOCATIONS_PREFIX}{}", crate::uuid_v4());
-        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         self.update(|state| {
             state.locations.insert_mut(
                 channel.clone(),
@@ -3561,11 +3558,32 @@ impl Host {
                     locations: rpds::VectorSync::new_sync(),
                     done: false,
                     truncated: false,
-                    cancel: Arc::clone(&cancel),
                 },
             );
         });
-        (channel, cancel)
+        channel
+    }
+
+    /// A locations channel lives exactly as long as its entry.
+    fn locations_live(&self, channel: &Uri) -> bool {
+        self.snapshot().locations.contains_key(channel)
+    }
+
+    /// A producer's leash, run beside the state: flip `leash` when
+    /// the channel's entry leaves. The producer aborts the watcher
+    /// when it finishes first.
+    fn leash_locations(
+        self: &Arc<Self>,
+        channel: Uri,
+        leash: Arc<std::sync::atomic::AtomicBool>,
+    ) -> tokio::task::JoinHandle<()> {
+        let host = Arc::clone(self);
+        tokio::spawn(async move {
+            while host.locations_live(&channel) {
+                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            leash.store(true, std::sync::atomic::Ordering::Relaxed);
+        })
     }
 
     /// Fold a batch into a locations channel and fan it out as one
