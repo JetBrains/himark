@@ -178,11 +178,12 @@ one `locations/extend` per distinct result URI, then the `done`
 action. Channel cancellation maps to `$/cancelRequest` toward the
 language server through the in-flight map.
 
-An LSP error, `NoLanguageServer`, or a null result after the channel
-was minted resolves the channel with `{done: true, truncated: true}`
-(empty on error, the converted results otherwise); the request
-itself errors only when it fails before minting (unknown session,
-excluded method).
+An LSP error or a language server dying after the channel was minted
+resolves the channel with `{done: true, truncated: true}` and an
+empty list; a `null` LSP result is an empty result and resolves
+`{done: true}`. The request itself errors only when it fails before
+minting (unknown session, non-whitelisted method, no language
+server).
 
 ## 4. Errors
 

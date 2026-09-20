@@ -3242,6 +3242,9 @@ impl Host {
         if bare == "diagnostics" {
             return self.lsp_diagnostics_channel(id, params);
         }
+        if bare == "locations" {
+            return self.lsp_locations_channel(connection, id, params);
+        }
         if LSP_EXCLUDED.contains(&bare) {
             return rpc::failure(
                 id,
@@ -3330,6 +3333,135 @@ impl Host {
             Some(result) => rpc::success(id, result.clone()),
             None => rpc::failure(id, LSP_NO_LANGUAGE_SERVER, "the language server died"),
         }
+    }
+
+    /// `lsp/locations` (docs/ahp/ahp-locations.md §3.2): the
+    /// location-answering LSP asks, streamed over a locations
+    /// channel. Routing mirrors `handle_lsp`; everything after the
+    /// mint runs detached, leashed by the channel's token — a flip
+    /// maps to `$/cancelRequest` toward the language server.
+    fn lsp_locations_channel(
+        self: &Arc<Self>,
+        connection: u64,
+        id: u64,
+        params: Value,
+    ) -> JsonRpcMessage {
+        const METHODS: &[&str] = &["textDocument/references", "textDocument/implementation"];
+        let params: himark_ahp_ext_types::LspLocationsParams = match serde_json::from_value(params)
+        {
+            Ok(params) => params,
+            Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+        };
+        if !METHODS.contains(&params.method.as_str()) {
+            return rpc::failure(
+                id,
+                INVALID_PARAMS,
+                format!("{} is not a locations method", params.method),
+            );
+        }
+        let Some(dirs) = self.session_dirs(&params.channel) else {
+            return rpc::failure(id, INVALID_PARAMS, format!("no session {}", params.channel));
+        };
+        let forwarded = params.params;
+        let target = forwarded
+            .pointer("/textDocument/uri")
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+            .or_else(|| dirs.first().map(|dir| format!("{dir}/_")));
+        let Some(target) = target else {
+            return rpc::failure(id, LSP_NO_LANGUAGE_SERVER, "no routable target");
+        };
+        let Some((root, command)) = self.lsp_route(&dirs, &target) else {
+            return rpc::failure(
+                id,
+                LSP_NO_LANGUAGE_SERVER,
+                format!("no language server serves {target}"),
+            );
+        };
+        let Some(server) = self.lsp.ensure(&root, &command) else {
+            return rpc::failure(
+                id,
+                LSP_NO_LANGUAGE_SERVER,
+                format!("the language server for {} is dead", root.display()),
+            );
+        };
+        if let Some(uri) = forwarded
+            .pointer("/textDocument/uri")
+            .and_then(Value::as_str)
+        {
+            if let Some(path) = crate::uris::file_path(uri) {
+                server.ensure_open_from_disk(uri, &path);
+            }
+        }
+
+        let (channel, cancel) = self.mint_locations(connection);
+        let host = Arc::clone(self);
+        let fan_out = channel.clone();
+        let method = params.method;
+        tokio::spawn(async move {
+            let resolved = |truncated: bool| himark_ahp_ext_types::LocationList {
+                locations: Vec::new(),
+                done: true,
+                truncated,
+            };
+            if !server.ready().await {
+                host.emit_locations(&fan_out, resolved(true));
+                return;
+            }
+            let (ls_id, answer) = server.request(&method, forwarded);
+            let leash = tokio::spawn({
+                let server = Arc::clone(&server);
+                let cancel = Arc::clone(&cancel);
+                async move {
+                    while !cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    }
+                    server.forward_notification(
+                        "$/cancelRequest",
+                        serde_json::json!({ "id": ls_id }),
+                    );
+                }
+            });
+            let response = answer.await;
+            leash.abort();
+            if response.get("error").is_some() {
+                host.emit_locations(&fan_out, resolved(true));
+                return;
+            }
+            // A null result is an empty result: the loop below emits
+            // nothing and the story resolves complete.
+            let result = response.get("result").cloned().unwrap_or(Value::Null);
+            for (uri, targets) in lsp_location_groups(&result) {
+                let text = host.mirrored_text(&uri).or_else(|| stored_text(&uri));
+                let locations = contextualize(&uri, targets, text.as_deref());
+                host.emit_locations(
+                    &fan_out,
+                    himark_ahp_ext_types::LocationList {
+                        locations,
+                        done: false,
+                        truncated: false,
+                    },
+                );
+            }
+            host.emit_locations(&fan_out, resolved(false));
+        });
+        rpc::success(id, serde_json::json!({ "channel": channel }))
+    }
+
+    /// The text truth for a resource (docs/ahp/ahp-lsp.md §3): the
+    /// synchronized document channel when a session mirrors it —
+    /// unflushed edits observed — else nothing, and the caller falls
+    /// back to the stored file.
+    fn mirrored_text(&self, uri: &str) -> Option<String> {
+        let state = self.snapshot();
+        for (_, session) in state.sessions.iter() {
+            if let Some(channel) = session.mirrors.get(uri) {
+                if let Some(document) = session.documents.get(channel) {
+                    return Some(himark_ahp_ext_types::text::materialize(document.text()));
+                }
+            }
+        }
+        None
     }
 
     fn lsp_capabilities(&self, id: u64, params: Value) -> JsonRpcMessage {
@@ -4153,6 +4285,118 @@ const LSP_NO_LANGUAGE_SERVER: i32 = -33002;
 const LSP_DIAGNOSTICS_PREFIX: &str = "ahp-lsp-diagnostics:/";
 
 const LOCATIONS_PREFIX: &str = "ahp-locations:/";
+
+/// Files read only to derive result context stay bounded.
+const CONTEXT_READ_CAP: u64 = 8 * 1024 * 1024;
+
+fn stored_text(uri: &str) -> Option<String> {
+    let path = crate::uris::file_path(uri)?;
+    if std::fs::metadata(&path).ok()?.len() > CONTEXT_READ_CAP {
+        return None;
+    }
+    std::fs::read_to_string(&path).ok()
+}
+
+/// (start line, start column, end line, end column) — positions are
+/// utf-8 code units by negotiation (docs/ahp/ahp-lsp.md §4).
+type LspRange = (u32, u32, u32, u32);
+
+/// Group a verbatim LSP `Location[] | LocationLink[]` answer per
+/// result URI, first-seen order; a `LocationLink` contributes its
+/// `targetSelectionRange` (docs/ahp/ahp-locations.md §3.2).
+fn lsp_location_groups(result: &Value) -> Vec<(String, Vec<LspRange>)> {
+    let entries: Vec<&Value> = match result {
+        Value::Array(entries) => entries.iter().collect(),
+        Value::Object(_) => vec![result],
+        _ => Vec::new(),
+    };
+    let mut order: Vec<String> = Vec::new();
+    let mut groups: HashMap<String, Vec<LspRange>> = HashMap::new();
+    for entry in entries {
+        let uri = entry["uri"].as_str().or_else(|| entry["targetUri"].as_str());
+        let range = ["range", "targetSelectionRange", "targetRange"]
+            .iter()
+            .map(|key| &entry[*key])
+            .find(|range| !range.is_null());
+        let (Some(uri), Some(range)) = (uri, range) else {
+            continue;
+        };
+        let Some(line) = range.pointer("/start/line").and_then(Value::as_u64) else {
+            continue;
+        };
+        let column = range
+            .pointer("/start/character")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let end_line = range
+            .pointer("/end/line")
+            .and_then(Value::as_u64)
+            .unwrap_or(line);
+        let end_column = range
+            .pointer("/end/character")
+            .and_then(Value::as_u64)
+            .unwrap_or(column);
+        if !groups.contains_key(uri) {
+            order.push(uri.to_owned());
+        }
+        groups.entry(uri.to_owned()).or_default().push((
+            line as u32,
+            column as u32,
+            end_line as u32,
+            end_column as u32,
+        ));
+    }
+    order
+        .into_iter()
+        .map(|uri| {
+            let targets = groups.remove(&uri).unwrap_or_default();
+            (uri, targets)
+        })
+        .collect()
+}
+
+/// Positioned targets → `Location`s with context sliced from `text`.
+/// `None` text (unreadable, oversized) degrades to an empty context;
+/// the positions stay navigable.
+fn contextualize(
+    uri: &str,
+    targets: Vec<LspRange>,
+    text: Option<&str>,
+) -> Vec<himark_ahp_ext_types::Location> {
+    let lines: Option<Vec<&str>> = text.map(|text| text.lines().collect());
+    targets
+        .into_iter()
+        .map(|(line, column, end_line, end_column)| {
+            let row = lines
+                .as_ref()
+                .and_then(|lines| lines.get(line as usize).copied());
+            let (context, context_column_start, column, length) = match row {
+                Some(row) => {
+                    let column = (column as usize).min(row.len());
+                    // A multi-line range clamps to its start line —
+                    // the line is what a result leaf renders.
+                    let length = match end_line == line {
+                        true => (end_column as usize)
+                            .saturating_sub(column)
+                            .min(row.len() - column),
+                        false => row.len() - column,
+                    };
+                    let (context, start) = hifind::context_window(row, column);
+                    (context, start as u32, column as u32, length as u32)
+                }
+                None => (String::new(), 0, column, 0),
+            };
+            himark_ahp_ext_types::Location {
+                uri: uri.to_owned(),
+                line,
+                column,
+                length,
+                context,
+                context_column_start,
+            }
+        })
+        .collect()
+}
 
 const LSP_EXCLUDED: &[&str] = &[
     "initialize",

@@ -1429,6 +1429,154 @@ async fn unsubscribing_disposes_a_locations_channel() {
 }
 
 #[tokio::test]
+async fn lsp_locations_stream_contextualized_targets() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
+
+    let minted = client
+        .request(
+            "lsp/locations",
+            json!({"channel": session, "method": "textDocument/implementation", "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": 0, "character": 4},
+            }}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    let locations = state["locations"].as_array().expect("locations");
+    assert_eq!(locations.len(), 2, "{state}");
+    for location in locations {
+        assert_eq!(location["uri"], uri.as_str());
+        assert_eq!(location["line"], 0);
+        assert_eq!(location["context"], "fn answer() -> u32 { 42 }");
+        assert_eq!(location["contextColumnStart"], 0);
+    }
+    assert_eq!((locations[0]["column"].clone(), locations[0]["length"].clone()), (json!(3), json!(6)));
+    assert_eq!((locations[1]["column"].clone(), locations[1]["length"].clone()), (json!(21), json!(2)));
+}
+
+#[tokio::test]
+async fn lsp_locations_context_prefers_the_mirror() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
+
+    let opened = client
+        .request("openDocument", json!({"channel": session, "uri": uri}))
+        .await;
+    let document = opened["document"].as_str().expect("channel").to_owned();
+    let v0 = opened["version"].as_str().expect("uid").to_owned();
+    client
+        .request("subscribe", json!({"channel": document}))
+        .await;
+    dispatch_applied(
+        &mut client,
+        &document,
+        &v0,
+        uid(0x10c5),
+        insert_at(0, 0, "// hot\n"),
+    )
+    .await;
+    let echo = client.next_action(&document).await;
+    assert_eq!(echo["id"], uid(0x10c5).as_str());
+
+    let minted = client
+        .request(
+            "lsp/locations",
+            json!({"channel": session, "method": "textDocument/implementation", "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": 1, "character": 4},
+            }}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+
+    // The fake still answers line 0 — which the UNFLUSHED edit made
+    // "// hot"; a disk read would answer "fn answer() -> u32 { 42 }".
+    let first = &state["locations"][0];
+    assert_eq!(first["context"], "// hot", "{state}");
+    assert_eq!(first["length"], 3, "the range clamps to the live line");
+}
+
+#[tokio::test]
+async fn lsp_locations_refuses_foreign_methods() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
+
+    for method in ["textDocument/definition", "textDocument/didOpen", "shutdown"] {
+        let refused = client
+            .request_any(
+                "lsp/locations",
+                json!({"channel": session, "method": method, "params": {
+                    "textDocument": {"uri": uri},
+                }}),
+            )
+            .await;
+        assert_eq!(refused["error"]["code"], json!(-32602), "{method}: {refused}");
+    }
+
+    let refused = client
+        .request_any(
+            "lsp/locations",
+            json!({"channel": "ahp-session:/nope", "method": "textDocument/references", "params": {}}),
+        )
+        .await;
+    assert_eq!(refused["error"]["code"], json!(-32602), "{refused}");
+}
+
+#[tokio::test]
+async fn unsubscribing_a_lsp_locations_channel_cancels_the_ask() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
+
+    let diagnostics = client
+        .request("lsp/diagnostics", json!({"channel": session}))
+        .await;
+    let diagnostics_channel = diagnostics["channel"].as_str().expect("channel").to_owned();
+    client
+        .request("subscribe", json!({"channel": diagnostics_channel}))
+        .await;
+
+    // The fake parks references until cancelled, then publishes a
+    // "cancelled" marker diagnostic — the observable proof the
+    // channel's disposal reached the language server.
+    let minted = client
+        .request(
+            "lsp/locations",
+            json!({"channel": session, "method": "textDocument/references", "params": {
+                "textDocument": {"uri": uri},
+                "position": {"line": 0, "character": 4},
+                "context": {"includeDeclaration": true},
+            }}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    client
+        .request("unsubscribe", json!({"channel": channel}))
+        .await;
+
+    loop {
+        let action = client.next_action(&diagnostics_channel).await;
+        let message = action["diagnostics"][0]["message"].as_str().unwrap_or("");
+        if message.starts_with("cancelled") {
+            break;
+        }
+    }
+}
+
+#[tokio::test]
 async fn a_dying_connection_reaps_its_unsubscribed_locations_channels() {
     let dir = tempfile::tempdir().expect("tempdir");
     let root = locations_tree(dir.path());

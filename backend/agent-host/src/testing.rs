@@ -287,14 +287,32 @@ while True:
             "uri": uri,
             "range": {"start": {"line": 1, "character": 2}, "end": {"line": 1, "character": 5}},
         }})
+    elif method == "textDocument/implementation":
+        uri = (params.get("textDocument") or {}).get("uri")
+        send({"jsonrpc": "2.0", "id": ident, "result": [
+            {"targetUri": uri, "targetSelectionRange": {
+                "start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 9}}},
+            {"targetUri": uri, "targetSelectionRange": {
+                "start": {"line": 0, "character": 21}, "end": {"line": 0, "character": 23}}},
+        ]})
     elif method == "textDocument/references":
-        parked.append(ident)  # parked until cancelled
+        uri = (params.get("textDocument") or {}).get("uri")
+        parked.append((ident, uri))  # parked until cancelled
     elif method == "$/cancelRequest":
         target = params.get("id")
-        if target in parked:
-            parked.remove(target)
+        held = next((entry for entry in parked if entry[0] == target), None)
+        if held is not None:
+            parked.remove(held)
             send({"jsonrpc": "2.0", "id": target,
                   "error": {"code": -32800, "message": "request cancelled"}})
+            # a cancel marker the tests can observe on the diagnostics channel
+            send({"jsonrpc": "2.0", "method": "textDocument/publishDiagnostics", "params": {
+                "uri": held[1],
+                "diagnostics": [{
+                    "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                    "message": "cancelled %s" % target,
+                }],
+            }})
     elif method == "shutdown":
         send({"jsonrpc": "2.0", "id": ident, "result": None})
     elif method == "exit":

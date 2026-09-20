@@ -50,7 +50,9 @@ lsp/{LSP method name}
 e.g. `lsp/textDocument/definition`, `lsp/textDocument/completion`,
 `lsp/textDocument/hover`, `lsp/textDocument/references`. The names
 `lsp/capabilities` and `lsp/diagnostics` are reserved by this
-extension (§5, §6) and are not LSP methods.
+extension (§5, §6) and are not LSP methods; `lsp/locations` is
+reserved by the Location Lists extension
+(docs/ahp/ahp-locations.md §3.2).
 
 ### 2.2 Envelope
 
