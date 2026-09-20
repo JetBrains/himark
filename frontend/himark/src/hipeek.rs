@@ -31,9 +31,6 @@ use crate::{
 
 const PEEK_HEIGHT: f32 = 280.0;
 
-/// The detail fragment: lines around the match the preview shows.
-const PREVIEW_LINES: u32 = 8;
-
 const FALLBACK_WIDTH: f32 = 600.0;
 
 pub enum PeekCommand {
@@ -42,7 +39,7 @@ pub enum PeekCommand {
     Pick,
     Close,
     Nothing,
-    Preview(EditorCommand),
+    Preview(imba::scroll::ScrollCommand<EditorCommand>),
     Snapshot {
         outcome: Result<himark_ahp_ext_types::LocationList, String>,
     },
@@ -76,7 +73,7 @@ pub struct PeekView {
     truncated: bool,
 
     list: RowList,
-    preview: Option<EditorView>,
+    preview: Option<imba::scroll::ScrollView<EditorView>>,
     preview_for: Option<usize>,
 }
 
@@ -177,8 +174,10 @@ impl PeekView {
         );
     }
 
-    /// The detail pane: a blurred bounded editor over the fragment
-    /// around the match, the match washed `StyleId::Match`.
+    /// The detail pane, VSCode/Fleet style: the WHOLE document in
+    /// its own scrollable editor, scrolled to the match, the match
+    /// washed `StyleId::Match`. Nested scrolls are fine; the card's
+    /// fixed height clips.
     fn install_preview(
         &mut self,
         store: &Store,
@@ -193,37 +192,26 @@ impl PeekView {
         let theme = crate::env::Themes::of(store);
         let mut document = built.document;
 
-        let (fragment, target) = {
+        let (hit, target) = {
             let mut view = document.text().view();
-            let from = crate::LineCol {
-                line: found.line.saturating_sub(PREVIEW_LINES / 2),
-                col: 0,
-            };
-            let to = crate::LineCol {
-                line: found.line + PREVIEW_LINES,
-                col: 0,
-            };
-            let start = crate::offset_at(&mut view, from) as u32;
-            let end = (crate::offset_at(&mut view, to) as u32).max(start + 1);
             let hit = crate::offset_at(&mut view, found.target().start) as u32;
-            (start..end, hit..hit + found.length.max(1))
+            (hit, hit..hit + found.length.max(1))
         };
 
         let markup = document.add_markup();
         let mut tints = crate::Markup::new();
         tints.push_styled(target.clone(), crate::theme::StyleId::Match);
-        fx.scope(PeekCommand::Preview, |fx| {
+        let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
+        fx.scope(scoped, |fx| {
             document.replace_markup(markup, tints, &[target], &fonts, &theme, fx)
         });
 
-        let set = document.add_fragment_set();
-        let bounded = document.add_fragment(set, fragment);
         let detail = (self.width * 0.6 - 1.0).max(120.0);
-        let editor = fx.scope(PeekCommand::Preview, |fx| {
+        let editor = fx.scope(scoped, |fx| {
             document.add_editor(
                 detail,
-                Some(bounded),
-                ::editor::EditorBuild::Bounded,
+                None,
+                ::editor::EditorBuild::Complete,
                 &[],
                 &fonts,
                 &theme,
@@ -231,7 +219,11 @@ impl PeekView {
             )
         });
         document.show_markup(editor, markup);
-        let mut preview = EditorView {
+        let reveal = document
+            .caret_content_rect(editor, hit, &fonts, &theme)
+            .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0))
+            .unwrap_or(0.0);
+        let mut view = EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -239,7 +231,10 @@ impl PeekView {
             gutter_width: 0.0,
             base: None,
         };
-        preview.blur();
+        view.set_caret(hit);
+        view.blur();
+        let mut preview = imba::scroll::ScrollView::new(view);
+        preview.set_scroll_y(reveal);
         self.preview = Some(preview);
     }
 
@@ -603,5 +598,47 @@ impl crate::DynamicEditorCommand for GoToReference {
                 command: Box::new(PeekCommand::Snapshot { outcome }),
             }),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found(name: &str, line: u32, context: &str) -> FoundLocation {
+        FoundLocation {
+            location: crate::ResourceLocation::new(
+                crate::ResourceType::document(),
+                crate::Authority::new("local"),
+                vec!["work".to_owned(), name.to_owned()],
+            ),
+            line,
+            column: 2,
+            length: 3,
+            context: context.to_owned(),
+            context_column_start: 0,
+        }
+    }
+
+    #[test]
+    fn master_rows_carry_context_position_and_stream_state() {
+        let rows = [found("a.rs", 4, "  let x = y;"), found("b.rs", 0, "fn b()")];
+
+        let (labels, trails, note) = master_rows(rows.iter(), false, false);
+        assert_eq!(labels, ["let x = y;", "fn b()"], "contexts trimmed");
+        assert_eq!(
+            trails,
+            [Some("a.rs:5".to_owned()), Some("b.rs:1".to_owned())],
+            "1-based positions"
+        );
+        assert_eq!(note.as_deref(), Some("searching…"));
+
+        let (_, _, note) = master_rows(rows.iter(), true, false);
+        assert_eq!(note, None, "a settled stream needs no note");
+        let (_, _, note) = master_rows(rows.iter(), true, true);
+        assert_eq!(note.as_deref(), Some("cut off"));
+        let (labels, _, note) = master_rows([].iter(), true, false);
+        assert!(labels.is_empty());
+        assert_eq!(note.as_deref(), Some("no references"));
     }
 }

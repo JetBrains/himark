@@ -19,6 +19,7 @@ pub mod hicomments;
 pub mod hifiles;
 pub mod higent;
 pub mod hihistory;
+pub mod hipeek;
 pub mod hisearch;
 pub mod hover;
 mod keymap;
