@@ -1781,12 +1781,8 @@ fn registered_commands_dispatch_by_id() {
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
 
     assert!(!engine.perform_command(window, "no.such.command"));
-    assert!(engine.perform_command(window, "search.open"));
-    let search_open = engine
-        .app
-        .plugin_modal()
-        .is_some_and(|modal| modal.as_any().is::<search::SearchView>());
-    assert!(search_open, "search.open showed the search modal");
+    // search.view is capability-gated (it needs a seat serving
+    // searchLocations); hicode's references e2e covers its dock.
 
     assert!(engine.perform_command(window, "palette.toggle"));
     assert!(

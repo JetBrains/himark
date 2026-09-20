@@ -18,4 +18,3 @@ operation = { path = "../../operation" }
 himark = { path = "../../himark", features = ["test-support"] }
 peeker = { path = "../peeker" }
 
-search = { path = "../search" }

@@ -58,8 +58,6 @@ fn attach_bare_host() -> (Application, TestHost) {
     let _ = app.add_window();
 
     app.register_command(Arc::new(peeker::TogglePeeker));
-    search::register_handlers(&mut app);
-    app.register_overlay_surface(search::overlay_surface());
     let mut languages = himark::SyntaxLanguages::new();
     hirust::register(&mut languages);
     app.register_syntax_languages(himarkdown::markdown_languages(languages));
@@ -308,15 +306,6 @@ fn dump_workbench_screenshots() {
     app.perform_registered(app.sole_window(), "peeker.toggle");
     settle(&mut app, &arriving);
 
-    app.perform_registered(app.sole_window(), "peeker.toggle");
-
-    settle(&mut app, &arriving);
-    for ch in "%the".chars() {
-        himark::test_driver::type_text(&mut app, &ch.to_string());
-    }
-    settle(&mut app, &arriving);
-    settle(&mut app, &arriving);
-    shoot(&mut app, "search.png");
 }
 
 #[test]
@@ -1045,86 +1034,6 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         position += step;
     }
     eprintln!("[sweep] {tested} positions typed and reparsed without panic");
-}
-
-#[test]
-fn scrolling_monster_search_results_probe() {
-    let _serialized = heavy();
-    let (mut app, arriving) = boot();
-    drain_until_quiet(&mut app, &arriving);
-    let size = skia_safe::Size::new(1280.0, 900.0);
-    let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
-
-    for _ in 0..6 {
-        std::thread::sleep(Duration::from_millis(250));
-        while let Ok(command) = arriving.try_recv() {
-            app.perform_batch(vec![command]);
-        }
-        himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    }
-
-    assert!(app.open_panel(app.sole_window(), Box::new(search::SearchView::new())));
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
-
-    assert!(himark::test_driver::type_text(&mut app, "the"));
-    for _ in 0..8 {
-        std::thread::sleep(Duration::from_millis(150));
-        while let Ok(command) = arriving.try_recv() {
-            let started = Instant::now();
-            app.perform_batch(vec![command]);
-            let took = started.elapsed();
-            if took > Duration::from_millis(5) {
-                eprintln!("[probe] slow command apply: {took:?}");
-            }
-        }
-        himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    }
-
-    let mut unsettled = 0;
-    for _ in 0..30 {
-        if himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size) {
-            unsettled += 1;
-        }
-    }
-    eprintln!("[probe] unsettled reconcile frames at rest: {unsettled}/30");
-
-    let mut scrolls = Vec::new();
-    let mut paints = Vec::new();
-    for _ in 0..400 {
-        let started = Instant::now();
-        if !himark::test_driver::scroll(&mut app, 64.0) {
-            break;
-        }
-        scrolls.push(started.elapsed());
-        paints.push(himark::Window::draw_profiled(
-            app.sole_window(),
-            &mut app,
-            surface.canvas(),
-            size,
-        ));
-    }
-    let p = |mut samples: Vec<Duration>| {
-        if samples.is_empty() {
-            return (0.0, 0.0, 0.0);
-        }
-        samples.sort();
-        (
-            samples[samples.len() / 2].as_secs_f64() * 1000.0,
-            samples[samples.len() * 95 / 100].as_secs_f64() * 1000.0,
-            samples[samples.len() - 1].as_secs_f64() * 1000.0,
-        )
-    };
-    let frames = scrolls.len();
-    let (s50, s95, smax) = p(scrolls);
-    let (p50, p95, pmax) = p(paints);
-    eprintln!(
-        "[probe] monster search scroll: frames={frames} \
-         scroll p50={s50:.3} p95={s95:.3} max={smax:.3} | \
-         paint p50={p50:.3} p95={p95:.3} max={pmax:.3}"
-    );
-    imba::perf::record("monster-search-scroll", "paint_p50_ms", p50);
-    imba::perf::record("monster-search-scroll", "paint_max_ms", pmax);
 }
 
 #[test]

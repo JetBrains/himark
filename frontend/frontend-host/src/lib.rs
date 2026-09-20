@@ -363,15 +363,11 @@ impl HimarkEngine {
             syntax_languages(),
         ))));
         app.register_enrichers(enrichment_passes());
-        search::register_handlers(&mut app);
-
-        app.register_command(Arc::new(search::OpenSearch));
-        app.register_command(Arc::new(palette::TogglePalette));
+                app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
 
         app.register_overlay_surface(peeker::overlay_surface());
         app.register_overlay_surface(palette::overlay_surface());
-        app.register_overlay_surface(search::overlay_surface());
 
         app.register_command(Arc::new(himark::hifiles::ToggleSessionSwitcher));
         app.register_command(Arc::new(hidiff::OpenDiff));

@@ -297,9 +297,7 @@ mod app {
             let mut state = Application::new(app_fonts());
             state.register_syntax_languages(web_languages());
 
-            search::register_handlers(&mut state);
             himarkdown::register_handlers(&mut state);
-            state.register_command(std::sync::Arc::new(search::OpenSearch));
             state.register_command(std::sync::Arc::new(palette::TogglePalette));
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
             state.register_command(std::sync::Arc::new(himark::hifiles::ToggleSessionSwitcher));
@@ -311,7 +309,6 @@ mod app {
 
             state.register_overlay_surface(peeker::overlay_surface());
             state.register_overlay_surface(palette::overlay_surface());
-            state.register_overlay_surface(search::overlay_surface());
 
             let change_refs = himark::hichanges::ChangeRefs::default();
             himark::hichanges::Changes::install(&mut state.store_mut(), change_refs.clone());
@@ -713,7 +710,7 @@ mod app {
                     );
                 }
                 "search" => {
-                    let _ = app.state.perform_registered(app.window, "search.open");
+                    let _ = app.state.perform_registered(app.window, "search.view");
                 }
                 "peeker" => {
                     let _ = app.state.perform_registered(app.window, "peeker.toggle");

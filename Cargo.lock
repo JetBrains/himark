@@ -870,7 +870,6 @@ dependencies = [
  "imba",
  "operation",
  "peeker",
- "search",
  "skia-safe",
  "text",
 ]
@@ -1435,7 +1434,6 @@ dependencies = [
  "palette 0.1.0",
  "peeker",
  "rebase",
- "search",
  "serde",
  "serde_json",
  "skia-safe",
@@ -1806,7 +1804,9 @@ name = "hicode"
 version = "0.1.0"
 dependencies = [
  "himark",
+ "himark-ahp-ext-types",
  "imba",
+ "serde_json",
  "skia-safe",
  "text",
 ]
@@ -4443,18 +4443,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "search"
-version = "0.1.0"
-dependencies = [
- "himark",
- "himarkdown",
- "imba",
- "regex",
- "skia-safe",
- "text",
-]
-
-[[package]]
 name = "security-framework"
 version = "3.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6437,7 +6425,6 @@ dependencies = [
  "myersdiff",
  "palette 0.1.0",
  "peeker",
- "search",
  "serde_json",
  "skia-safe",
  "tokio",

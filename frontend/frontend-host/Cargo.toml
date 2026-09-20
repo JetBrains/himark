@@ -16,7 +16,6 @@ hiahp = { path = "../hiahp" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }
 hiscript = { path = "../hiscript" }
-search = { path = "../plugins/search" }
 palette = { path = "../plugins/palette" }
 peeker = { path = "../plugins/peeker" }
 hidiff = { path = "../plugins/hidiff" }
