@@ -92,10 +92,10 @@ runs the drawer's session-open flow minus the chat panel
 ([app-state.md §8](app-state.md) 5b). Adding a directory to a session is a
 `session/workingDirectorySet` dispatch, never a local list write. The
 tree (`files.tree`) shows the current session's folders; the peeker's
-path-find receives them from its toggle; a search panel STAMPS its
-window's current session at open and searches those folders for its
-lifetime (a peeker-remounted panel keeps its birth stamp). A session
-with no folders launches no Find — the hostless story unchanged.
+path-find receives them from its toggle; the Search dock tab stamps
+its window's current session at open and searches those folders
+(docs/ui/location-list.md). A session with no folders launches no
+Find — the hostless story unchanged.
 
 ## The file tree (cmd-E)
 
@@ -151,12 +151,15 @@ The search primitive runs over the session's folders:
 ```rust
 pub struct FindEffect {
     pub folders: Vec<ResourceLocation>,
-    pub term: String,
-    pub target: FindTarget,   // Text (content) | Path (name navigation)
+    pub term: String,         // fuzzy over names — the quick-open lane
 }
 // Result = Vec<ResourceLocation>   — document locations only
 // ask-answer: fire-and-forget — every launch runs and lands
 ```
+
+Content search is NOT a Find target: it streams over
+`ahp-locations:/…` channels into the Search dock tab
+(docs/ui/location-list.md, docs/ahp/ahp-locations.md).
 
 Find answers LOCATIONS; what to do with them is the asker's business.
 The handler is host-side: himark-api registers a NATIVE one beside the
@@ -170,10 +173,10 @@ site guards on a non-empty folder list, which is the whole hostless
 story: with no session folders no Find ever launches, so no handler
 is owed.
 
-Both consumers surface never-opened documents with **full preview
+The peeker surfaces never-opened documents with **full preview
 parity**:
 
-- **The peeker** (target Path) merges found rows under the open
+- **The peeker** merges found rows under the open
   matches — same rendering, no second class. Selecting a found row
   fetches its text ONCE and builds a TEMPORARY document (the app's
   registered languages route it; never registered in `OpenDocuments`)
@@ -183,16 +186,6 @@ parity**:
   the fetch falls back to `ModalRequest::OpenLocations` (the modal
   mirror of the panel request) and the standard open flow. Closing
   without picking removes every temp document.
-- **Search** (target Text) launches Find beside its open-document scan
-  under one serial. The scanned open documents are the SESSION's —
-  documents are per-session state ([app-state.md §5](app-state.md)). Found
-  locations (already-open ones dropped, capped) each fetch; each
-  landing scans the text with the live query's matcher, builds a temp
-  document, and installs a `ResultGroup` — tint markup, fragments,
-  bounded row editors — indistinguishable from an open document's
-  group (the header shows the location's path). The install records
-  own their temp documents and remove them on the next query's drain
-  and on dismantle.
 
 The install-ownership lesson this surfaced: the app clones the window
 entity on every content command and puts the clone back, so a panel's

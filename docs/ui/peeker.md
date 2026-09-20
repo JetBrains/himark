@@ -2,8 +2,7 @@
 
 Emacs semantics, modeled properly: a stateful panel's SUBSTANCE is a
 session-family row ([app-state.md §2](app-state.md)) — a terminal's PTY in
-`terminal::Terminals`, a search/references list in `himark::Lists`, a
-diff pair in the diff registry's pane rows
+`terminal::Terminals`, a diff pair in the diff registry's pane rows
 (`OpenDocuments::pair_ref`), a chat in `higent::Chats` — and the
 mounted panel is a cheap HANDLE over that row (the ChatPane recipe).
 There is no shelf of displaced widgets: displacement just drops the

@@ -1,9 +1,8 @@
 # Location lists: streaming search and LSP navigation
 
-Status: **PLAN**. This reworks the search experience and the
-location-facing half of LSP navigation. Once step 1 lands, the wire
-truth moves to a normative `docs/ahp/ahp-locations.md`; this file is
-the himark-side design and the execution plan.
+Status: **LANDED** (all ten steps, 2026-09-20). The wire truth is
+`docs/ahp/ahp-locations.md`; this file is the himark-side design
+record. §10's steps read as the change log of the landing.
 
 ## 1. What is wrong today
 

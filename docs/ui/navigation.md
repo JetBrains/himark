@@ -249,11 +249,10 @@ a hit on both sides rebuilds the pane (`hidiff::diff_panel`), a
 reaped side re-fetches through `OpenDiffByLocationsEffect` and the
 landing re-opens the pane.
 
-There is no `SearchPlace` — the search panel's place type is
-`NoPlace`, deliberately: restoring a search means RELAUNCHING its
-scan, and a navigator has no pane-scoped effect path to do that (the
-panel would need an inward command channel); a displaced search
-survives on the unmounted list with its results meanwhile. Also
+There is no `SearchPlace` — search is a DOCK TAB over the session's
+standing feed row (docs/ui/location-list.md), not a pane panel:
+navigation history never holds it, and its results survive in the
+feed row rather than on any shelf. Also
 absent by choice: history caps (persistent stacks make deep ones
 cheap), cross-pane history (a global "recent places" list), mouse
 buttons 4/5. The keymap binds cmd-[ / cmd-] to

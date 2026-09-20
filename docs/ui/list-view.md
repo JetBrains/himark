@@ -3,9 +3,9 @@
 `ListView` — a Rope-backed list of child views — plus what it takes
 to fill one with editors: editors bounded to a *fragment* of a
 document, list resize as a background repair, and a workbench leaf
-that hosts something other than an editor. Search (`docs/ahp/search.md`) was
-the first consumer — matches grouped by document — but nothing here
-is search-specific. Tree structure, keys and selection live in
+that hosts something other than an editor. The retired search panel
+was the first consumer (its successor is docs/ui/location-list.md);
+nothing here is search-specific. Tree structure, keys and selection live in
 `docs/ui/list-tree.md` (one `ListView<V, K>` with structure and selection as
 interval data); this document covers the rope backing, bounded
 editors, and the repair composition.
