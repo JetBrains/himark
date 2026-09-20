@@ -19,6 +19,47 @@ pub enum FamilyRow {
 pub type RowMinter =
     dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;
 
+/// A plugin-owned store value held with a SESSION's family: gathered
+/// into every store scoped to that session and taken back out on
+/// scatter, exactly like the himark-owned members in
+/// higent/session/state.rs. This is how a plugin collection derived
+/// from session state (hidiff's `Canvases` over the `Changes` feed)
+/// stays in ITS session — a batch gathered for another session simply
+/// does not see it, so its staleness counters can never be compared
+/// against a foreign session's.
+pub type SessionFamilyValue = Arc<dyn std::any::Any + Send + Sync>;
+
+pub struct SessionFamilyMember {
+    /// Stable identity inside the per-session family map.
+    pub key: &'static str,
+    /// Put the held value back into a store gathered for its session.
+    pub gather: fn(&SessionFamilyValue, &mut Store),
+    /// Take the value out of a scattering store; `None` when empty,
+    /// so an empty member leaves no residue in the family.
+    pub take: fn(&mut Store) -> Option<SessionFamilyValue>,
+}
+
+/// The registry of plugin session-family members — GLOBAL state (it
+/// seeds every gather), registered once at the edge beside the row
+/// minter and sync observer.
+#[derive(Clone, Default)]
+pub struct SessionFamilies(rpds::VectorSync<Arc<SessionFamilyMember>>);
+
+impl SessionFamilies {
+    pub fn register(store: &mut Store, member: Arc<SessionFamilyMember>) {
+        store.update::<SessionFamilies>(|families| {
+            families.0.push_back_mut(member);
+        });
+    }
+
+    pub(crate) fn members(store: &Store) -> Vec<Arc<SessionFamilyMember>> {
+        store
+            .get::<SessionFamilies>()
+            .map(|families| families.0.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+}
+
 /// A store-state sync callback, invoked on the app's sync tick. Lets a
 /// plugin keep its own store-held collection current in step with the
 /// document/diff/changeset state — e.g. hidiff reconciling its

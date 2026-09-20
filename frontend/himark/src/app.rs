@@ -627,6 +627,13 @@ impl Application {
         self.setup(|store| crate::family_rows::SyncObservers::register(store, observer));
     }
 
+    pub fn register_session_family(
+        &mut self,
+        member: std::sync::Arc<crate::SessionFamilyMember>,
+    ) {
+        self.setup(|store| crate::family_rows::SessionFamilies::register(store, member));
+    }
+
     pub fn workshop(&self) -> &Arc<::editor::Workshop> {
         &self.workshop
     }

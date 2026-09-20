@@ -61,10 +61,19 @@ pub(crate) struct SessionState {
     documents: crate::OpenDocuments,
 
     scratch_names: documents::ScratchMint,
+
+    /// Plugin-owned family members (crate::SessionFamilies), keyed by
+    /// their registered identity — e.g. hidiff's `Canvases`.
+    plugins: rpds::HashTrieMapSync<&'static str, crate::family_rows::SessionFamilyValue>,
 }
 
 impl SessionState {
     fn gather_into(&self, store: &mut Store) {
+        for member in crate::family_rows::SessionFamilies::members(store) {
+            if let Some(value) = self.plugins.get(member.key) {
+                (member.gather)(value, store);
+            }
+        }
         store.put(self.trees.clone());
         store.put(self.recents.clone());
         store.put(self.chats.clone());
@@ -77,7 +86,14 @@ impl SessionState {
     }
 
     fn take_from(store: &mut Store) -> Self {
+        let mut plugins = rpds::HashTrieMapSync::new_sync();
+        for member in crate::family_rows::SessionFamilies::members(store) {
+            if let Some(value) = (member.take)(store) {
+                plugins.insert_mut(member.key, value);
+            }
+        }
         Self {
+            plugins,
             trees: store.take().unwrap_or_default(),
             recents: store.take().unwrap_or_default(),
             chats: store.take().unwrap_or_default(),
@@ -100,6 +116,7 @@ impl SessionState {
             && self.terminals.is_empty()
             && self.documents.is_empty()
             && self.scratch_names.is_empty()
+            && self.plugins.is_empty()
     }
 }
 

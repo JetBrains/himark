@@ -65,7 +65,8 @@ pub use crate::diffs::{
     DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
 };
 pub use crate::family_rows::{
-    mint_unfronted, FamilyRow, RowMinter, RowMinters, SyncObserver, SyncObservers,
+    mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,
+    SessionFamilyValue, SyncObserver, SyncObservers,
 };
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuildFileDiffEffect,
