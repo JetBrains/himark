@@ -68,7 +68,8 @@ pub use crate::family_rows::{
 pub use crate::workspace::{
     open_by_location_effect, open_locations, prebuild_group, prepare_built, BuildDocumentEffect,
     BuildFileDiffEffect, BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect,
-    OpenByLocationEffect, OpenDiffByLocationsEffect, PickSaveEffect, RowPrep, ScratchSpaces,
+    LocationsChannel, LspLocationsEffect, LspLocationsKind, OpenByLocationEffect,
+    OpenDiffByLocationsEffect, PickSaveEffect, RowPrep, ScratchSpaces, SearchLocationsEffect,
     SessionId, StoreDocumentEffect,
 };
 pub use ::editor::*;

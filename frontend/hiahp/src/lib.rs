@@ -5,6 +5,7 @@ pub mod docsync;
 pub mod find;
 pub mod fs;
 pub mod fsroute;
+pub mod locations;
 pub mod lsproute;
 pub mod open;
 pub mod registry;

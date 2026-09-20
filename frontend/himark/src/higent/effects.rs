@@ -176,6 +176,35 @@ impl Effect for PollChatActionsEffect {
     type Result = Vec<StateAction>;
 }
 
+pub struct SubscribeLocationsEffect {
+    pub seat: Arc<dyn AhpServer>,
+    pub channel: Uri,
+}
+
+impl Effect for SubscribeLocationsEffect {
+    type Result = Result<himark_ahp_ext_types::LocationList, String>;
+}
+
+pub struct PollLocationsEffect {
+    pub seat: Arc<dyn AhpServer>,
+    pub channel: Uri,
+}
+
+impl Effect for PollLocationsEffect {
+    type Result = Vec<himark_ahp_ext_types::LocationList>;
+}
+
+/// The cancel: the last unsubscribe disposes the channel and stops
+/// its producer host-side.
+pub struct UnsubscribeLocationsEffect {
+    pub seat: Arc<dyn AhpServer>,
+    pub channel: Uri,
+}
+
+impl Effect for UnsubscribeLocationsEffect {
+    type Result = ();
+}
+
 pub struct SubscribeAnnotationsEffect {
     pub seat: Arc<dyn AhpServer>,
     pub session: Uri,

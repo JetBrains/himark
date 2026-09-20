@@ -459,6 +459,18 @@ mod app {
                         },
                     );
 
+                    state.register_handler::<himark::SearchLocationsEffect>(
+                        hiahp::locations::RouteSearchLocations {
+                            directory: Arc::clone(&seats),
+                        },
+                    );
+                    state.register_handler::<himark::LspLocationsEffect>(
+                        hiahp::locations::RouteLspLocations {
+                            directory: Arc::clone(&seats),
+                            uris: Arc::clone(&resource_uris),
+                        },
+                    );
+
                     state.register_handler::<himark::FetchBaseEffect>(hiahp::fsroute::RouteBase {
                         refs: change_refs.clone(),
                     });

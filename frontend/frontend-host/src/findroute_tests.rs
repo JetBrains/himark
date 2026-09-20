@@ -171,6 +171,98 @@ fn local_folders_ask_the_designated_backend() {
 }
 
 #[test]
+fn search_locations_route_streams_and_cancels_over_the_wire() {
+    let (dir, seat) = wire_backend();
+    std::fs::create_dir_all(dir.path().join("notes")).expect("mkdir");
+    let files = dir.path().join("notes").canonicalize().expect("canonical");
+    std::fs::write(files.join("a.md"), "plain\nconflation is delivery\n").expect("write");
+    std::fs::write(files.join("b.md"), "conflation twice, conflation\n").expect("write");
+
+    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
+    let (server, _) = ahp::parse(&ahp::authority(
+        {
+            let (server, _) = ahp::parse("ahp:1:x").expect("id");
+            server
+        },
+        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+    ))
+    .expect("parses");
+    directory.record(server, Arc::clone(&seat));
+    directory.set_local(server);
+
+    let handler = crate::hiahp::locations::RouteSearchLocations {
+        directory: Arc::clone(&directory),
+    };
+    let effect = himark::SearchLocationsEffect {
+        folders: vec![located("local", &files)],
+        query: "conflation".to_owned(),
+        regex: false,
+        case_sensitive: false,
+        limit: 100,
+    };
+    let channel = block_on(Box::pin(async move { handler.handle(effect).await })).expect("channel");
+
+    let mut state = {
+        let seat = Arc::clone(&channel.seat);
+        let subscribed = channel.channel.clone();
+        block_on(Box::pin(
+            async move { seat.subscribe_locations(subscribed).await },
+        ))
+        .expect("snapshot")
+    };
+    while !state.done {
+        let seat = Arc::clone(&channel.seat);
+        let polled = channel.channel.clone();
+        let batches = block_on(Box::pin(async move { seat.poll_locations(polled).await }));
+        for batch in batches {
+            state.concat(batch);
+        }
+    }
+    assert!(!state.truncated, "{state:?}");
+    assert_eq!(state.locations.len(), 3, "{state:?}");
+    let resolved = (channel.resolve)(&state.locations[0].uri).expect("resolves");
+    assert_eq!(resolved.authority().as_str(), "local", "identity kept");
+    assert!(resolved.kind().is_document());
+    let contexts: Vec<&str> = state
+        .locations
+        .iter()
+        .map(|location| location.context.as_str())
+        .collect();
+    assert!(
+        contexts.contains(&"conflation is delivery"),
+        "{contexts:?}"
+    );
+
+    // The cancel: dropping the one subscription disposes the channel —
+    // a fresh subscribe finds nothing behind the URI.
+    channel.seat.unsubscribe_locations(&channel.channel);
+    let refused = {
+        let seat = Arc::clone(&channel.seat);
+        let gone = channel.channel.clone();
+        block_on(Box::pin(async move {
+            let mut waited = 0;
+            loop {
+                match seat.subscribe_locations(gone.clone()).await {
+                    Err(error) => return error,
+                    Ok(_) => {
+                        // the unsubscribe notification races this
+                        // subscribe; drop the row and retry
+                        seat.unsubscribe_locations(&gone);
+                        waited += 1;
+                        assert!(waited < 100, "the channel never disposed");
+                        // no reactor on this thread — the harness
+                        // polls by parking, so a thread sleep is the
+                        // honest wait here
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                    }
+                }
+            }
+        }))
+    };
+    assert!(refused.contains("subscribe"), "{refused}");
+}
+
+#[test]
 fn undesignated_and_foreign_folders_answer_nothing() {
     let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
     let local = ResourceLocation::new(

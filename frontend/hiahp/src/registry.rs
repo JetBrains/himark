@@ -132,6 +132,36 @@ impl EffectHandler<himark::higent::SubscribeChangesetEffect> for HandleSubscribe
     }
 }
 
+pub struct HandleSubscribeLocations;
+
+impl EffectHandler<himark::higent::SubscribeLocationsEffect> for HandleSubscribeLocations {
+    async fn handle(
+        &self,
+        effect: himark::higent::SubscribeLocationsEffect,
+    ) -> Result<himark_ahp_ext_types::LocationList, String> {
+        effect.seat.subscribe_locations(effect.channel).await
+    }
+}
+
+pub struct HandlePollLocations;
+
+impl EffectHandler<himark::higent::PollLocationsEffect> for HandlePollLocations {
+    async fn handle(
+        &self,
+        effect: himark::higent::PollLocationsEffect,
+    ) -> Vec<himark_ahp_ext_types::LocationList> {
+        effect.seat.poll_locations(effect.channel).await
+    }
+}
+
+pub struct HandleUnsubscribeLocations;
+
+impl EffectHandler<himark::higent::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
+    async fn handle(&self, effect: himark::higent::UnsubscribeLocationsEffect) {
+        effect.seat.unsubscribe_locations(&effect.channel);
+    }
+}
+
 pub struct HandleSubscribeHistory;
 
 impl EffectHandler<himark::higent::SubscribeHistoryEffect> for HandleSubscribeHistory {
@@ -234,6 +264,9 @@ pub fn register_all(app: &mut himark::Application) {
     app.register_handler::<himark::higent::SubscribeChangesetEffect>(HandleSubscribeChangeset);
     app.register_handler::<himark::higent::PollChangesetEffect>(HandlePollChangeset);
     app.register_handler::<himark::higent::SubscribeHistoryEffect>(HandleSubscribeHistory);
+    app.register_handler::<himark::higent::SubscribeLocationsEffect>(HandleSubscribeLocations);
+    app.register_handler::<himark::higent::PollLocationsEffect>(HandlePollLocations);
+    app.register_handler::<himark::higent::UnsubscribeLocationsEffect>(HandleUnsubscribeLocations);
     app.register_handler::<himark::higent::SubscribeAnnotationsEffect>(HandleSubscribeAnnotations);
     app.register_handler::<himark::higent::PollAnnotationsEffect>(HandlePollAnnotations);
 }

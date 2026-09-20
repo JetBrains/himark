@@ -279,3 +279,48 @@ pub struct FindEffect {
 impl Effect for FindEffect {
     type Result = Vec<ResourceLocation>;
 }
+
+/// A live `ahp-locations:/…` result stream, as the ask effects
+/// answer it: the seat and channel to subscribe/poll/unsubscribe
+/// (docs/ahp/ahp-locations.md), plus the route's way back from the
+/// stream's resource URIs to locations — himark never parses URIs.
+#[derive(Clone)]
+pub struct LocationsChannel {
+    pub seat: std::sync::Arc<dyn crate::higent::AhpServer>,
+    pub channel: String,
+    pub resolve:
+        std::sync::Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync>,
+}
+
+/// The streaming content search ask. Answers the channel; results
+/// stream as `LocationList` batches; unsubscribing cancels the walk.
+pub struct SearchLocationsEffect {
+    pub folders: Vec<ResourceLocation>,
+    pub query: String,
+    /// Literal by default; the query as a regular expression when set.
+    pub regex: bool,
+    pub case_sensitive: bool,
+    pub limit: usize,
+}
+
+impl Effect for SearchLocationsEffect {
+    type Result = Result<LocationsChannel, String>;
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LspLocationsKind {
+    References,
+    Implementations,
+}
+
+/// The location-answering LSP asks, streamed over the same channel
+/// shape as the content search.
+pub struct LspLocationsEffect {
+    pub location: ResourceLocation,
+    pub position: crate::LineCol,
+    pub kind: LspLocationsKind,
+}
+
+impl Effect for LspLocationsEffect {
+    type Result = Result<LocationsChannel, String>;
+}

@@ -943,6 +943,12 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.seats),
                     uris: Arc::clone(&self.resource_uris),
                 });
+            self.app.register_handler::<himark::LspLocationsEffect>(
+                hiahp::locations::RouteLspLocations {
+                    directory: Arc::clone(&self.seats),
+                    uris: Arc::clone(&self.resource_uris),
+                },
+            );
 
             himark::InstalledChangeSink::install(
                 &mut self.app.store_mut(),
@@ -978,6 +984,11 @@ impl HimarkEngine {
                 .register_handler::<himark::FindEffect>(find::NativeFindHandler {
                     directory: Arc::clone(&self.seats),
                 });
+            self.app.register_handler::<himark::SearchLocationsEffect>(
+                hiahp::locations::RouteSearchLocations {
+                    directory: Arc::clone(&self.seats),
+                },
+            );
         }
 
         self.agent_host_filesystem.include(capabilities);
