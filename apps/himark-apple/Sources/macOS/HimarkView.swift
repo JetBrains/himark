@@ -304,7 +304,7 @@ final class HimarkView: NSView, NSTextInputClient {
     }
 
     @objc func openSearch(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "search.open") { request() }
+        if engine.perform(window: windowId, command: "search.focus") { request() }
     }
 
     @objc func openFind(_ sender: Any?) {
