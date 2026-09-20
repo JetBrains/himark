@@ -496,6 +496,19 @@ struct HistoryEntry {
     _watch: Option<Arc<notify::PollWatcher>>,
 }
 
+/// One `ahp-locations:/…` channel: a per-request result stream
+/// (docs/ahp/ahp-locations.md). The state is the folded
+/// `LocationList`; the cancel token is the producer's leash, flipped
+/// when the last subscriber leaves.
+#[derive(Clone)]
+struct LocationsEntry {
+    /// The connection that minted the channel — a never-subscribed
+    /// channel is reaped when it closes.
+    connection: u64,
+    state: himark_ahp_ext_types::LocationList,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+}
+
 #[derive(Clone)]
 struct State {
     server_seq: i64,
@@ -511,6 +524,8 @@ struct State {
     document_seq: u64,
 
     lsp_diagnostics: rpds::HashTrieMapSync<Uri, LspDiagnostics>,
+
+    locations: rpds::HashTrieMapSync<Uri, LocationsEntry>,
 
     watches: rpds::HashTrieMapSync<Uri, WatchEntry>,
 
@@ -674,6 +689,7 @@ impl Host {
                     histories: rpds::HashTrieMapSync::new_sync(),
                     document_seq: 0,
                     lsp_diagnostics: rpds::HashTrieMapSync::new_sync(),
+                    locations: rpds::HashTrieMapSync::new_sync(),
                     watches: rpds::HashTrieMapSync::new_sync(),
                     mirror_watches: rpds::HashTrieMapSync::new_sync(),
                     contents: rpds::HashTrieMapSync::new_sync(),
@@ -884,18 +900,53 @@ impl Host {
     }
 
     pub(crate) fn close_connection(&self, connection: u64) {
-        let search = self.update(|state| {
+        let (search, cancelled) = self.update(|state| {
             let channels: Vec<Uri> = state.subscribers.keys().cloned().collect();
+            let mut touched: Vec<Uri> = Vec::new();
             for channel in channels {
-                let kept = drop_subscriber(&state.subscribers[&channel], connection);
+                let rows = &state.subscribers[&channel];
+                let kept = drop_subscriber(rows, connection);
+                if kept.len() != rows.len() {
+                    touched.push(channel.clone());
+                }
                 state.subscribers.insert_mut(channel, kept);
             }
+
+            // Locations channels die with their audience: reap every
+            // one now subscriber-less whose minting connection or
+            // last subscriber this was (docs/ahp/ahp-locations.md
+            // §2.3) — `unsubscribe` handles the live-connection case.
+            let dead: Vec<Uri> = state
+                .locations
+                .iter()
+                .filter(|(channel, entry)| {
+                    let unsubscribed = state
+                        .subscribers
+                        .get(*channel)
+                        .is_none_or(|rows| rows.is_empty());
+                    unsubscribed
+                        && (entry.connection == connection || touched.contains(channel))
+                })
+                .map(|(channel, _)| channel.clone())
+                .collect();
+            let mut cancelled = Vec::new();
+            for channel in dead {
+                if let Some(entry) = state.locations.get(&channel) {
+                    cancelled.push(entry.cancel.clone());
+                }
+                state.locations.remove_mut(&channel);
+                state.subscribers.remove_mut(&channel);
+            }
+
             let search = state.searches.get(&connection).cloned();
             state.searches.remove_mut(&connection);
-            search
+            (search, cancelled)
         });
         if let Some(search) = search {
             search.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        for cancel in cancelled {
+            cancel.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -1130,6 +1181,7 @@ impl Host {
                         || state.changesets.contains_key(channel)
                         || state.histories.contains_key(channel)
                         || state.lsp_diagnostics.contains_key(channel)
+                        || state.locations.contains_key(channel)
                         || state.watches.contains_key(channel)
                         || state
                             .sessions
@@ -1176,6 +1228,8 @@ impl Host {
                 let _ = self.subscribe_history(connection, outbox, id, channel);
             } else if channel.starts_with(LSP_DIAGNOSTICS_PREFIX) {
                 let _ = self.subscribe_diagnostics(connection, outbox, id, channel);
+            } else if channel.starts_with(LOCATIONS_PREFIX) {
+                let _ = self.subscribe_locations(connection, outbox, id, channel);
             } else if let Some(snapshot) = self.subscribe_channel(connection, outbox, channel) {
                 snapshots.push(snapshot);
             }
@@ -1207,6 +1261,9 @@ impl Host {
         }
         if channel.starts_with(LSP_DIAGNOSTICS_PREFIX) {
             return self.subscribe_diagnostics(connection, outbox, id, channel);
+        }
+        if channel.starts_with(LOCATIONS_PREFIX) {
+            return self.subscribe_locations(connection, outbox, id, channel);
         }
         let answered = self.subscribe_channel(connection, outbox, channel);
 
@@ -1246,6 +1303,17 @@ impl Host {
             if empty {
                 state.watches.remove_mut(channel);
                 state.changesets.remove_mut(channel);
+
+                // A locations channel dies with its audience: cancel
+                // the producer, drop the entry
+                // (docs/ahp/ahp-locations.md §2.3).
+                if let Some(entry) = state.locations.get(channel) {
+                    entry
+                        .cancel
+                        .store(true, std::sync::atomic::Ordering::Relaxed);
+                    state.locations.remove_mut(channel);
+                    state.subscribers.remove_mut(channel);
+                }
 
                 let owners: Vec<Uri> = state
                     .sessions
@@ -3246,6 +3314,29 @@ impl Host {
         }
     }
 
+    fn subscribe_locations(
+        &self,
+        connection: u64,
+        outbox: &Outbox,
+        id: u64,
+        channel: &Uri,
+    ) -> JsonRpcMessage {
+        let snapshot = self.update(|state| {
+            let entry = state.locations.get(channel)?;
+            let snapshot = serde_json::json!({
+                "resource": channel,
+                "state": entry.state,
+                "fromSeq": state.server_seq,
+            });
+            subscribe_outbox(state, channel, connection, outbox);
+            Some(snapshot)
+        });
+        match snapshot {
+            Some(snapshot) => rpc::success(id, serde_json::json!({ "snapshot": snapshot })),
+            None => rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {channel}")),
+        }
+    }
+
     fn lsp_cancel(&self, connection: u64, params: &Value) {
         let Some(id) = params["id"].as_u64() else {
             return;
@@ -3906,6 +3997,8 @@ fn empty_chat(chat: &Uri, title: &str) -> ChatState {
 const LSP_METHOD_NOT_ALLOWED: i32 = -33001;
 const LSP_NO_LANGUAGE_SERVER: i32 = -33002;
 const LSP_DIAGNOSTICS_PREFIX: &str = "ahp-lsp-diagnostics:/";
+
+const LOCATIONS_PREFIX: &str = "ahp-locations:/";
 
 const LSP_EXCLUDED: &[&str] = &[
     "initialize",

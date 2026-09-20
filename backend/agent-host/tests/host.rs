@@ -1242,6 +1242,17 @@ async fn a_terminal_echoes_resizes_and_exits() {
 }
 
 #[tokio::test]
+async fn an_unknown_locations_channel_answers_no_such_channel() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let refused = client
+        .request_any("subscribe", json!({"channel": "ahp-locations:/nope"}))
+        .await;
+    assert_eq!(refused["error"]["code"], json!(-32001), "{refused}");
+}
+
+#[tokio::test]
 async fn a_changeset_channel_serves_the_folders_changes() {
     let dir = tempfile::tempdir().expect("tempdir");
     let root = dir.path().join("repo");
