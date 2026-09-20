@@ -23,7 +23,6 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod hover;
 mod keymap;
-mod location_list;
 pub mod locations;
 mod modal;
 mod navigation;
@@ -69,11 +68,10 @@ pub use crate::family_rows::{
     mint_unfronted, FamilyRow, RowMinter, RowMinters, SyncObserver, SyncObservers,
 };
 pub use crate::workspace::{
-    open_by_location_effect, open_locations, prebuild_group, prepare_built, BuildDocumentEffect,
-    BuildFileDiffEffect, BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect,
-    LocationsChannel, LspLocationsEffect, LspLocationsKind, OpenByLocationEffect,
-    OpenDiffByLocationsEffect, PickSaveEffect, RowPrep, ScratchSpaces, SearchLocationsEffect,
-    SessionId, StoreDocumentEffect,
+    open_by_location_effect, open_locations, BuildDocumentEffect, BuildFileDiffEffect,
+    BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect, LocationsChannel,
+    LspLocationsEffect, LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect,
+    PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId, StoreDocumentEffect,
 };
 pub use ::editor::*;
 pub use app::*;
@@ -93,11 +91,6 @@ pub use find::{FindBar, FindCommand};
 pub use imba::ImeClient;
 pub use imba::{ClipboardClient, ClipboardContent};
 pub use keymap::{Keymap, Keymaps};
-pub use location_list::{
-    snap_ranges, sort_locations, GroupCommand, GroupSpans, InstallGroup, ListEntry, ListId,
-    ListPanel, ListPanelCommand, LocationList, LocationListCommand, LocationLists, PrebuiltRows,
-    ResultGroup, ResultGroups, ResultRows, ResultsCommand, SpanSource,
-};
 pub use modal::{dock_scope, modal_scope, side_scope, ModalRequest, ModalView, RequestSlot};
 pub use navigation::{
     EditorPlace, NavigationLocation, Navigator, Navigators, NoPlace, Place, RecentLocations,

@@ -47,8 +47,6 @@ impl EffectHandler<BuildDocumentEffect> for StubBuild {
     async fn handle(&self, effect: BuildDocumentEffect) -> himark::BuiltDocument {
         himark::BuiltDocument {
             document: plain_document(&effect.text),
-            spans: None,
-            prebuilt: None,
         }
     }
 }

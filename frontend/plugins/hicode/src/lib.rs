@@ -6,7 +6,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use himark::{
-    line_col_at, offset_at, AppFx, Application, Document, DynamicCommand, LineCol, OpenDocuments,
+    line_col_at, AppFx, Application, Document, DynamicCommand, LineCol, OpenDocuments,
     ResourceLocation,
 };
 use imba::{effect::Effect, store::Store};
@@ -91,7 +91,6 @@ impl himark::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
                     .call(himark::BuildDocumentEffect {
                         location: location.clone(),
                         text,
-                        prep: None,
                     })
                     .await
                 {

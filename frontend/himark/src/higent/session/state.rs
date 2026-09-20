@@ -61,8 +61,6 @@ pub(crate) struct SessionState {
     documents: crate::OpenDocuments,
 
     scratch_names: documents::ScratchMint,
-
-    location_lists: crate::location_list::LocationLists,
 }
 
 impl SessionState {
@@ -76,7 +74,6 @@ impl SessionState {
         store.put(self.terminals.clone());
         store.put(self.documents.clone());
         store.put(self.scratch_names.clone());
-        store.put(self.location_lists.clone());
     }
 
     fn take_from(store: &mut Store) -> Self {
@@ -90,7 +87,6 @@ impl SessionState {
             terminals: store.take().unwrap_or_default(),
             documents: store.take().unwrap_or_default(),
             scratch_names: store.take().unwrap_or_default(),
-            location_lists: store.take().unwrap_or_default(),
         }
     }
 
@@ -104,7 +100,6 @@ impl SessionState {
             && self.terminals.is_empty()
             && self.documents.is_empty()
             && self.scratch_names.is_empty()
-            && self.location_lists.is_empty()
     }
 }
 

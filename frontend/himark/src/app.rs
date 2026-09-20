@@ -1438,7 +1438,6 @@ impl Application {
                     imba::effect::AnyEffect::new(crate::BuildDocumentEffect {
                         location: base.clone(),
                         text,
-                        prep: None,
                     })
                     .map(move |built| AppCommand::BaseBuilt {
                         document,

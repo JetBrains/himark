@@ -257,13 +257,7 @@ impl EffectHandler<himark::BuildDocumentEffect> for BuildDocumentHandler {
             &theme,
         );
 
-        himark::prepare_built(
-            &effect.location,
-            document,
-            effect.prep.as_ref(),
-            &fonts,
-            &theme,
-        )
+        himark::BuiltDocument { document }
     }
 }
 

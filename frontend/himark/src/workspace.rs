@@ -35,79 +35,14 @@ impl Effect for PickSaveEffect {
 pub struct BuildDocumentEffect {
     pub location: ResourceLocation,
     pub text: String,
-    pub prep: Option<RowPrep>,
 }
 
 impl Effect for BuildDocumentEffect {
     type Result = BuiltDocument;
 }
 
-pub struct RowPrep {
-    pub spans: crate::SpanSource,
-
-    pub width: f32,
-}
-
 pub struct BuiltDocument {
     pub document: crate::Document,
-    pub spans: Option<crate::GroupSpans>,
-    pub prebuilt: Option<crate::PrebuiltRows>,
-}
-
-pub fn prepare_built(
-    location: &ResourceLocation,
-    document: crate::Document,
-    prep: Option<&RowPrep>,
-    fonts: &skia_safe::textlayout::FontCollection,
-    theme: &crate::Theme,
-) -> BuiltDocument {
-    let Some(prep) = prep else {
-        return BuiltDocument {
-            document,
-            spans: None,
-            prebuilt: None,
-        };
-    };
-    let spans = (prep.spans)(location, &document);
-    let prebuilt = prebuild_group(&document, &spans, prep.width, fonts, theme);
-    BuiltDocument {
-        document,
-        spans: Some(spans),
-        prebuilt: Some(prebuilt),
-    }
-}
-
-pub fn prebuild_group(
-    document: &crate::Document,
-    spans: &crate::GroupSpans,
-    width: f32,
-    fonts: &skia_safe::textlayout::FontCollection,
-    theme: &crate::Theme,
-) -> crate::PrebuiltRows {
-    let revision = document.revision();
-    let markup_generation = document.markup_generation();
-
-    let mut composed = document.clone();
-    let tint = composed.add_markup();
-    let mut markup = crate::Markup::new();
-    for range in &spans.marks {
-        markup.push_styled(range.clone(), crate::StyleId::Match);
-    }
-    composed.replace_markup(
-        tint,
-        markup,
-        &[],
-        fonts,
-        theme,
-        &mut imba::effect::Batch::new().effects(),
-    );
-    let snapped = crate::snap_ranges(&composed, &spans.ranges);
-    let rows = composed.prebuild_row_layouts(&[tint], &snapped, width, fonts, theme);
-    crate::PrebuiltRows {
-        revision,
-        markup_generation,
-        rows,
-    }
 }
 
 pub struct OpenByLocationEffect {

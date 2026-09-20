@@ -3862,95 +3862,6 @@ mod toc {
 }
 
 #[test]
-fn installed_result_rows_paint_their_match_tints() {
-    use imba::constraints::Constraints;
-    use imba::event::Event;
-    use imba::Widget as _;
-    let fonts = ::editor::embedded_fonts::source()();
-
-    let width = EditorIdView::editor_width(0.0, &::editor::theme::Theme::embedded().ui().window);
-    let paint_rows = |marks: Vec<std::ops::Range<u32>>| -> Vec<u8> {
-        let mut store = Store::new();
-        let document = ::editor::test_document::plain_document("alpha needle beta\n");
-        let id =
-            crate::OpenDocuments::register(&mut store, document, None, "tint-test".to_owned(), 0);
-        let mut list = crate::LocationList::new();
-        let ui = imba::UiCtx::cold();
-        let workshop = crate::test_support::test_workshop(::editor::theme::Theme::embedded());
-        let mut batch = imba::effect::Batch::new();
-        list.install(
-            &mut store,
-            &imba::UiCtx::cold(),
-            &fonts,
-            vec![crate::InstallGroup::open(
-                id,
-                crate::GroupSpans {
-                    ranges: vec![0..18],
-                    marks,
-                },
-            )],
-            None,
-            &mut batch.effects(),
-        );
-
-        let mut rounds = 0;
-        loop {
-            let pending = crate::test_support::surviving_launches(std::mem::replace(
-                &mut batch,
-                imba::effect::Batch::new(),
-            ));
-            if pending.is_empty() {
-                break;
-            }
-            for effect in pending {
-                rounds += 1;
-                assert!(rounds < 100, "the repair lane must converge");
-                let command = crate::test_support::handle_effect(effect, &workshop);
-                imba::View::perform(&mut list, &mut store, &ui, command, &mut batch.effects());
-            }
-        }
-        let document = crate::OpenDocuments::document_ref(&store, id).expect("document stands");
-        let row_editor = document
-            .editor_ids()
-            .next()
-            .expect("the install mounted one row editor");
-
-        let arena = imba::arena::Arena::default();
-        let view = EditorIdView::new(id, row_editor);
-        let widget = imba::Layout::layout(
-            View::display(&view, &arena, &store, &ui),
-            &arena,
-            Constraints {
-                min: skia_safe::Size::default(),
-                max: skia_safe::Size::new(width, f32::MAX),
-            },
-        );
-        let mut surface =
-            skia_safe::surfaces::raster_n32_premul((width.ceil() as i32, 80)).expect("a surface");
-        surface.canvas().clear(skia_safe::Color::WHITE);
-        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(width, 80.0));
-        let _ = widget.handle_event(
-            &arena,
-            &Event::Paint {
-                canvas: surface.canvas(),
-                focused: false,
-            },
-            skia_safe::Rect::from_wh(width, 80.0),
-        );
-        let image = surface.image_snapshot();
-        let pixmap = image.peek_pixels().expect("raster pixels");
-        pixmap.bytes().expect("pixel bytes").to_vec()
-    };
-
-    let tinted = paint_rows(vec![6..12]);
-    let plain = paint_rows(Vec::new());
-    assert_ne!(
-        tinted, plain,
-        "the match tint must reach the row's shaped pixels"
-    );
-}
-
-#[test]
 fn keymap_chords_resolve_through_the_palette_surface() {
     use crate::{AppFonts, Application};
     use imba::event::{Key, Modifiers};
@@ -4793,15 +4704,16 @@ mod dock_tests {
 
         show_dock(&mut app, "changes", "test.owner");
         settle(&mut app, &mut surface);
-        let hidden = crate::location_list::ListId::mint();
-        crate::location_list::LocationLists::put(
-            &mut app.store_mut(),
-            hidden,
-            crate::location_list::ListEntry {
-                title: "hidden results".to_owned(),
-                list: imba::scroll::ScrollView::new(crate::location_list::LocationList::new()),
-            },
-        );
+        struct NullBackend;
+        impl crate::terminal::TerminalBackend for NullBackend {
+            fn write(&self, _bytes: &[u8]) {}
+            fn resize(&self, _cols: u16, _rows: u16, _w: f32, _h: f32) {}
+            fn hangup(&self) {}
+        }
+        let hidden = "test-terminal:1".to_owned();
+        let session = crate::terminal::Session::new(Box::new(NullBackend));
+        session.set_channel(hidden.clone());
+        crate::terminal::Terminals::put(&mut app.store_mut(), hidden.clone(), session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
                 .expect("the window entity")
@@ -4809,7 +4721,7 @@ mod dock_tests {
         };
         assert!(entity(&app).has_dock());
         assert!(
-            crate::location_list::LocationLists::entry_ref(app.store(), hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_some(),
             "the family row is in the session"
         );
 
@@ -4847,7 +4759,7 @@ mod dock_tests {
             "a fresh session has no dock"
         );
         assert!(
-            crate::location_list::LocationLists::entry_ref(app.store(), hidden).is_none(),
+            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_none(),
             "and no foreign family rows"
         );
 
@@ -4860,7 +4772,7 @@ mod dock_tests {
             "and reads open, not closing"
         );
         assert!(
-            crate::location_list::LocationLists::entry_ref(app.store(), hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_some(),
             "the family row rode along"
         );
 

@@ -378,7 +378,6 @@ impl View for PeekView {
                     AnyEffect::new(crate::BuildDocumentEffect {
                         location,
                         text,
-                        prep: None,
                     })
                     .map(move |built| PeekCommand::Built { index, built }),
                 );

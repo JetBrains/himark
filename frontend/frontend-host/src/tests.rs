@@ -1631,7 +1631,7 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
 
     assert!(engine.app.open_panel(
         engine.app.sole_window(),
-        Box::new(himark::ListPanel::new(himark::ListId::mint()))
+        Box::new(himark::higent::ChatPane::new("test-chat:displacer".to_owned()))
     ));
     settle(&mut engine);
     let mut mounted = false;

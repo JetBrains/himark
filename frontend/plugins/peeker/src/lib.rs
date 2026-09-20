@@ -526,7 +526,6 @@ impl View for Peeker {
                     imba::effect::AnyEffect::new(BuildDocumentEffect {
                         location,
                         text,
-                        prep: None,
                     })
                     .map(move |built| PeekerCommand::BuiltPreview {
                         location: landing,
