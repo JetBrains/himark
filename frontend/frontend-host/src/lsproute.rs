@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::hiahp::fs::SeatDirectory;
-use hicode::{CodeTarget, FindDefinitionEffect, FindReferencesEffect};
+use hicode::{CodeTarget, FindDefinitionEffect};
 use himark::{LineCol, ResourceLocation};
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
@@ -22,26 +22,6 @@ impl EffectHandler<FindDefinitionEffect> for DefinitionRoute {
             &effect.location,
             effect.position,
             "textDocument/definition",
-            false,
-        )
-        .await
-    }
-}
-
-pub(crate) struct ReferencesRoute {
-    pub(crate) directory: Arc<SeatDirectory>,
-    pub(crate) uris: Arc<dyn himark::higent::ResourceUriMap>,
-}
-
-impl EffectHandler<FindReferencesEffect> for ReferencesRoute {
-    async fn handle(&self, effect: FindReferencesEffect) -> Option<Vec<CodeTarget>> {
-        locate(
-            &self.directory,
-            &*self.uris,
-            &effect.location,
-            effect.position,
-            "textDocument/references",
-            true,
         )
         .await
     }
@@ -53,17 +33,13 @@ async fn locate(
     location: &ResourceLocation,
     position: LineCol,
     method: &str,
-    references: bool,
 ) -> Option<Vec<CodeTarget>> {
     let (seat, session) = crate::fsroute::seat_of(directory, location)?;
     let uri = uris.uri_of(location).into_string();
-    let mut params = json!({
+    let params = json!({
         "textDocument": { "uri": uri },
         "position": { "line": position.line, "character": position.col },
     });
-    if references {
-        params["context"] = json!({ "includeDeclaration": true });
-    }
     let result = seat.lsp(session, method.to_owned(), params).await.ok()?;
     Some(parse_targets(&result, uris, location))
 }

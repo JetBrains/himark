@@ -20,23 +20,6 @@ fn lc(line: u32, col: u32) -> LineCol {
 }
 
 #[test]
-fn preview_spans_expand_context_and_merge_overlaps() {
-    let text = text::Text::from_string(&"a\n".repeat(12));
-    let mut view = text.view();
-
-    let spans = preview_spans(
-        &mut view,
-        &[lc(2, 0)..lc(2, 1), lc(3, 0)..lc(3, 1), lc(10, 0)..lc(10, 1)],
-    );
-    assert_eq!(spans.marks, vec![4..5, 6..7, 20..21]);
-    assert_eq!(
-        spans.ranges,
-        vec![0..12, 16..24],
-        "context 2 lines each way, overlapping windows merged"
-    );
-}
-
-#[test]
 fn identifier_at_clips_the_word_under_the_caret() {
     let text = text::Text::from_string("let frob_nicate2 = 7;");
     let mut view = text.view();

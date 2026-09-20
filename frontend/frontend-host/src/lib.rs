@@ -938,11 +938,6 @@ impl HimarkEngine {
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
-            self.app
-                .register_handler::<hicode::FindReferencesEffect>(lsproute::ReferencesRoute {
-                    directory: Arc::clone(&self.seats),
-                    uris: Arc::clone(&self.resource_uris),
-                });
             self.app.register_handler::<himark::LspLocationsEffect>(
                 hiahp::locations::RouteLspLocations {
                     directory: Arc::clone(&self.seats),

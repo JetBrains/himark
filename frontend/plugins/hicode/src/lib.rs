@@ -6,13 +6,11 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use himark::{
-    line_col_at, offset_at, AppCommand, AppFx, Application, Document, DynamicCommand, GroupSpans,
-    InstallGroup, LineCol, LocationList, LocationListCommand, OpenDocuments, ResourceLocation,
+    line_col_at, offset_at, AppFx, Application, Document, DynamicCommand, LineCol, OpenDocuments,
+    ResourceLocation,
 };
-use imba::{effect::Effect, list::ListCommand, scroll::ScrollView, store::Store};
+use imba::{effect::Effect, store::Store};
 use text::TextView;
-
-const CONTEXT_LINES: usize = 2;
 
 const MAX_FETCHED_TARGETS: usize = 50;
 
@@ -32,24 +30,7 @@ impl Effect for FindDefinitionEffect {
     type Result = Option<Vec<CodeTarget>>;
 }
 
-pub struct FindReferencesEffect {
-    pub folders: Vec<ResourceLocation>,
-    pub location: ResourceLocation,
-    pub position: LineCol,
-}
-
-impl Effect for FindReferencesEffect {
-    type Result = Option<Vec<CodeTarget>>;
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub enum NavigationKind {
-    Definition,
-    References,
-}
-
 pub struct CodeNavigationEffect {
-    pub kind: NavigationKind,
     pub folders: Vec<ResourceLocation>,
     pub location: ResourceLocation,
     pub position: LineCol,
@@ -75,27 +56,15 @@ pub struct CodeNavigationHandler {
 
 impl himark::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
     async fn handle(&self, effect: CodeNavigationEffect) -> NavigationOutcome {
-        let targets = match effect.kind {
-            NavigationKind::Definition => {
-                self.caller
-                    .call(FindDefinitionEffect {
-                        folders: effect.folders.clone(),
-                        location: effect.location.clone(),
-                        position: effect.position,
-                    })
-                    .await
-            }
-            NavigationKind::References => {
-                self.caller
-                    .call(FindReferencesEffect {
-                        folders: effect.folders.clone(),
-                        location: effect.location.clone(),
-                        position: effect.position,
-                    })
-                    .await
-            }
-        }
-        .flatten();
+        let targets = self
+            .caller
+            .call(FindDefinitionEffect {
+                folders: effect.folders.clone(),
+                location: effect.location.clone(),
+                position: effect.position,
+            })
+            .await
+            .flatten();
 
         let mut built = Vec::new();
         if let Some(targets) = &targets {
@@ -160,19 +129,13 @@ impl DynamicCommand for ApplyNavigation {
         let Some(targets) = &self.outcome.targets else {
             return;
         };
-        match targets.as_slice() {
-            [] => {}
-            [target] => navigate(store, window, target, &self.outcome.built, fx),
-            targets => open_references(
-                store,
-                &_app.ui_ctx(),
-                window,
-                &self.outcome.title,
-                targets,
-                &self.outcome.built,
-                fx,
-            ),
-        }
+        // A definition ask answering several targets is rare; the
+        // first wins. Fanning results out belongs to the peek/dock
+        // surfaces (docs/ui/location-list.md), not a fetched panel.
+        let Some(target) = targets.first() else {
+            return;
+        };
+        navigate(store, window, target, &self.outcome.built, fx);
     }
 }
 
@@ -210,143 +173,6 @@ fn navigate(
     himark::sync_document_watches(store, fx);
 }
 
-fn open_references(
-    store: &mut Store,
-    ui: &imba::UiCtx,
-    window: himark::WindowId,
-    title: &str,
-    targets: &[CodeTarget],
-    built: &[(ResourceLocation, Document)],
-    fx: &mut AppFx<'_>,
-) {
-    let mut grouped: Vec<(ResourceLocation, Vec<Range<LineCol>>)> = Vec::new();
-    let mut group_at: std::collections::HashMap<&ResourceLocation, usize> =
-        std::collections::HashMap::new();
-    for target in targets {
-        match group_at.get(&target.location) {
-            Some(at) => grouped[*at].1.push(target.range.clone()),
-            None => {
-                group_at.insert(&target.location, grouped.len());
-                grouped.push((target.location.clone(), vec![target.range.clone()]));
-            }
-        }
-    }
-    let built_at: std::collections::HashMap<&ResourceLocation, &Document> = built
-        .iter()
-        .map(|(location, document)| (location, document))
-        .collect();
-
-    let mut groups: Vec<InstallGroup> = Vec::new();
-    let mut group_documents: Vec<himark::DocumentId> = Vec::new();
-    for (location, ranges) in grouped {
-        if let Some(open_id) = OpenDocuments::by_location(store, &location) {
-            if let Some(document) = OpenDocuments::document_ref(store, open_id) {
-                let spans = preview_spans(&mut document.text().view(), &ranges);
-                groups.push(InstallGroup::open(open_id, spans));
-                group_documents.push(open_id);
-            }
-            continue;
-        }
-        let Some(document) = built_at.get(&location).copied() else {
-            continue;
-        };
-        let spans = preview_spans(&mut document.text().view(), &ranges);
-        let revision = document.revision();
-        let id = OpenDocuments::register(
-            store,
-            document.clone(),
-            Some(location.clone()),
-            location.name().to_owned(),
-            revision,
-        );
-        groups.push(InstallGroup::open(id, spans));
-        group_documents.push(id);
-    }
-    if groups.is_empty() {
-        return;
-    }
-
-    himark::sync_document_watches(store, fx);
-
-    let mut list = LocationList::new();
-    let fonts = himark::env::Fonts::of(store)();
-    fx.scope(identity_routed(window, group_documents), |fx| {
-        list.install(store, ui, &fonts, groups, None, fx)
-    });
-
-    let id = himark::ListId::mint();
-    himark::LocationLists::put(
-        store,
-        id,
-        himark::ListEntry {
-            title: title.to_owned(),
-            list: ScrollView::new(list),
-        },
-    );
-    let panel = himark::ListPanel::new(id);
-    let Some(mut window_entity) = himark::Windows::window(store, window) else {
-        return;
-    };
-    window_entity.open_panel(store, Box::new(panel), fx);
-    himark::Windows::put(store, window, window_entity);
-}
-
-fn identity_routed(
-    window: himark::WindowId,
-    group_documents: Vec<himark::DocumentId>,
-) -> impl Fn(LocationListCommand) -> AppCommand + Send + Clone + 'static {
-    move |command| match command {
-        LocationListCommand::Reshape {
-            document, command, ..
-        } => AppCommand::Entity(document, command),
-        LocationListCommand::Results(ListCommand::Child(
-            group,
-            himark::GroupCommand::Rows(ListCommand::Child(_, command)),
-        )) => match group_documents.get(group).copied() {
-            Some(document) => AppCommand::Entity(document, command),
-            None => AppCommand::Dynamic(window, Arc::new(NothingLanding)),
-        },
-
-        _ => AppCommand::Dynamic(window, Arc::new(NothingLanding)),
-    }
-}
-
-struct NothingLanding;
-
-impl DynamicCommand for NothingLanding {
-    fn id(&self) -> &'static str {
-        "code.nothing"
-    }
-    fn name(&self) -> String {
-        String::new()
-    }
-    fn perform(&self, _: &mut Application, _: &mut Store, _: himark::WindowId, _: &mut AppFx<'_>) {}
-}
-
-fn preview_spans(view: &mut TextView, targets: &[Range<LineCol>]) -> GroupSpans {
-    let mut marks: Vec<Range<u32>> = targets
-        .iter()
-        .map(|range| offset_at(view, range.start) as u32..offset_at(view, range.end) as u32)
-        .collect();
-    marks.sort_by_key(|range| range.start);
-    let last_line = view.line_count().0 - 1;
-    let mut ranges: Vec<Range<u32>> = Vec::new();
-    for mark in &marks {
-        let first = view
-            .line_at(mark.start as usize)
-            .0
-            .saturating_sub(CONTEXT_LINES);
-        let last = (view.line_at(mark.end as usize).0 + CONTEXT_LINES).min(last_line);
-        let start = view.line_start_offset(text::LineNumber(first)) as u32;
-        let end = view.line_end_offset(text::LineNumber(last)) as u32;
-        match ranges.last_mut() {
-            Some(previous) if start <= previous.end => previous.end = previous.end.max(end),
-            _ => ranges.push(start..end),
-        }
-    }
-    GroupSpans { ranges, marks }
-}
-
 pub struct GoDefinition;
 
 impl himark::DynamicEditorCommand for GoDefinition {
@@ -366,7 +192,6 @@ impl himark::DynamicEditorCommand for GoDefinition {
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
         navigation(
-            NavigationKind::Definition,
             self.id(),
             store,
             document,
@@ -554,7 +379,6 @@ impl himark::DynamicCommand for ApplyLocationsStream {
 
 #[allow(clippy::too_many_arguments)]
 fn navigation(
-    kind: NavigationKind,
     id: &'static str,
     store: &mut Store,
     document: &mut Document,
@@ -568,11 +392,9 @@ fn navigation(
         let mut view = document.text().view();
         let position = line_col_at(&mut view, caret);
         let ident = identifier_at(&mut view, caret);
-        let title = match (kind, ident.is_empty()) {
-            (NavigationKind::References, false) => format!("References to `{ident}`"),
-            (NavigationKind::References, true) => "References".to_owned(),
-            (NavigationKind::Definition, false) => format!("Definitions of `{ident}`"),
-            (NavigationKind::Definition, true) => "Definitions".to_owned(),
+        let title = match ident.is_empty() {
+            false => format!("Definitions of `{ident}`"),
+            true => "Definitions".to_owned(),
         };
         let open = OpenDocuments::list(store)
             .into_iter()
@@ -580,7 +402,6 @@ fn navigation(
             .collect();
         let _ = fx.push(
             imba::effect::AnyEffect::new(CodeNavigationEffect {
-                kind,
                 folders: workspace_folders(store),
                 location: location.clone(),
                 position,
