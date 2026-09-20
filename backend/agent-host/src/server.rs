@@ -497,15 +497,19 @@ struct HistoryEntry {
 }
 
 /// One `ahp-locations:/…` channel: a per-request result stream
-/// (docs/ahp/ahp-locations.md). The state is the folded
-/// `LocationList`; the cancel token is the producer's leash, flipped
-/// when the last subscriber leaves.
+/// (docs/ahp/ahp-locations.md). The folded state rides PERSISTENT
+/// collections — the entry clones with every copy-on-write `State`
+/// swap, so an accumulating `Vec` here would make every emit O(all
+/// results so far). The cancel token is the producer's leash,
+/// flipped when the last subscriber leaves.
 #[derive(Clone)]
 struct LocationsEntry {
     /// The connection that minted the channel — a never-subscribed
     /// channel is reaped when it closes.
     connection: u64,
-    state: himark_ahp_ext_types::LocationList,
+    locations: rpds::VectorSync<himark_ahp_ext_types::Location>,
+    done: bool,
+    truncated: bool,
     cancel: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -3554,7 +3558,9 @@ impl Host {
                 channel.clone(),
                 LocationsEntry {
                     connection,
-                    state: himark_ahp_ext_types::LocationList::default(),
+                    locations: rpds::VectorSync::new_sync(),
+                    done: false,
+                    truncated: false,
                     cancel: Arc::clone(&cancel),
                 },
             );
@@ -3571,8 +3577,14 @@ impl Host {
             let Some(entry) = state.locations.get(channel) else {
                 return;
             };
+            // The entry clone is O(1): persistent vector, scalar
+            // flags; the batch's locations graft in one by one.
             let mut entry = entry.clone();
-            entry.state.concat(batch.clone());
+            for location in &batch.locations {
+                entry.locations.push_back_mut(location.clone());
+            }
+            entry.done |= batch.done;
+            entry.truncated |= batch.truncated;
             state.locations.insert_mut(channel.clone(), entry);
 
             let action = himark_ahp_ext_types::locations::action_value(
@@ -3609,9 +3621,14 @@ impl Host {
     ) -> JsonRpcMessage {
         let snapshot = self.update(|state| {
             let entry = state.locations.get(channel)?;
+            let materialized = himark_ahp_ext_types::LocationList {
+                locations: entry.locations.iter().cloned().collect(),
+                done: entry.done,
+                truncated: entry.truncated,
+            };
             let snapshot = serde_json::json!({
                 "resource": channel,
-                "state": entry.state,
+                "state": materialized,
                 "fromSeq": state.server_seq,
             });
             subscribe_outbox(state, channel, connection, outbox);

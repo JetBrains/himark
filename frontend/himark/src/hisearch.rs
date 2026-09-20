@@ -155,12 +155,11 @@ impl SearchView {
     /// cursor and fold state survive by key.
     fn rebuild(&mut self, store: &Store, ui: &UiCtx) {
         let row = self.row(store);
-        let locations: Vec<FoundLocation> = row.locations.iter().cloned().collect();
-        let forest = locations_forest(store, &locations);
+        let forest = locations_forest(store, row.locations.iter());
 
         let mut targets = rpds::HashTrieMapSync::new_sync();
         let mut files = 0usize;
-        for found in &locations {
+        for found in row.locations.iter() {
             let hit = LocationKey::Hit(found.location.clone(), found.line, found.column);
             targets.insert_mut(hit, found.clone());
             let file = LocationKey::Node(found.location.clone());
@@ -382,9 +381,9 @@ impl SearchView {
     }
 }
 
-struct OpenFoundLocation {
-    location: crate::ResourceLocation,
-    target: std::ops::Range<crate::LineCol>,
+pub(crate) struct OpenFoundLocation {
+    pub(crate) location: crate::ResourceLocation,
+    pub(crate) target: std::ops::Range<crate::LineCol>,
 }
 
 impl crate::DynamicCommand for OpenFoundLocation {

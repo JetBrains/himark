@@ -120,15 +120,15 @@ impl LocationsFeeds {
 /// Sorted by (authority, path, line, column) whatever order batches
 /// landed in; single-child directory chains join into one row (the
 /// TOC recipe); every occurrence is its own pickable leaf.
-pub fn locations_forest(
+pub fn locations_forest<'a>(
     store: &Store,
-    rows: &[FoundLocation],
+    rows: impl IntoIterator<Item = &'a FoundLocation>,
 ) -> Vec<ForestNode<LocationKey>> {
     let tree = crate::env::Themes::of(store).ui().tree.clone();
     let position_color = tree.directory.0;
     let count_color = tree.directory.0;
 
-    let mut sorted: Vec<&FoundLocation> = rows.iter().collect();
+    let mut sorted: Vec<&FoundLocation> = rows.into_iter().collect();
     sorted.sort_by(|a, b| {
         (a.location.authority().as_str(), a.location.path(), a.line, a.column).cmp(&(
             b.location.authority().as_str(),
