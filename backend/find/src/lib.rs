@@ -285,7 +285,7 @@ fn located_matches(matcher: &grep_regex::RegexMatcher, path: &Path) -> Vec<LineM
                     Ok(Some(found)) => found,
                     _ => break,
                 };
-                let (context, context_column_start) = window(line, found.start());
+                let (context, context_column_start) = context_window(line, found.start());
                 self.out.push(LineMatch {
                     line: line_number.saturating_sub(1) as u32,
                     column: found.start() as u32,
@@ -316,7 +316,12 @@ fn trim_newline(bytes: &[u8]) -> &[u8] {
     bytes.strip_suffix(b"\r").unwrap_or(bytes)
 }
 
-fn window(line: &str, start: usize) -> (String, usize) {
+/// The context slice a `Location` ships for a match at byte `start`
+/// of `line`: the whole line up to MAX_CONTEXT bytes, else a window
+/// beginning shortly before the match. Answers (context,
+/// context_column_start). Shared by every locations producer so
+/// windows look the same whatever produced them.
+pub fn context_window(line: &str, start: usize) -> (String, usize) {
     if line.len() <= MAX_CONTEXT {
         return (line.to_owned(), 0);
     }
