@@ -129,8 +129,9 @@ State model:
   `ahp-chat:/<id>` per chat; `<session>/annotations`;
   `ahp-terminal:/<id>`; `hihost-changes:/<folder>` (and
   `?commit=<sha>`); `hihost-history:/<folder>`; `ahp-document:/…`;
-  `ahp-lsp-diagnostics:/<id>`. Subscribe answers a snapshot; actions
-  stream after it; `serverSeq` orders everything per connection.
+  `ahp-lsp-diagnostics:/<id>`; `ahp-locations:/<id>`. Subscribe
+  answers a snapshot; actions stream after it; `serverSeq` orders
+  everything per connection.
 - **Reducers**: the host maintains authoritative state with the
   OFFICIAL pure reducers published in the `ahp` crate
   (`apply_action_to_root/session/chat/terminal/changeset/annotations`

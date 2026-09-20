@@ -2,7 +2,8 @@
 
 > **Wire truth lives elsewhere.** The normative protocol
 > specifications are **docs/ahp/ahp-documents.md**, **docs/ahp/ahp-search.md**,
-> **docs/ahp/ahp-lsp.md**, **docs/ahp/ahp-history.md** — self-contained,
+> **docs/ahp/ahp-lsp.md**, **docs/ahp/ahp-history.md**,
+> **docs/ahp/ahp-locations.md** — self-contained,
 > spec-style, and authoritative. This document is the himark-side
 > design rationale: which seams route where, and why.
 
@@ -89,18 +90,21 @@ The load-bearing decisions, up front:
 
 - **Methods are flat names in the host's dispatch table**, beside the
   base protocol's: `openDocument`, `storeDocument`, `search`,
-  `httpServe`, and the `lsp/` prefix family (`lsp/<method>` envelopes
-  plus the reserved `lsp/capabilities`, `lsp/diagnostics`, and the
-  `lsp/$/cancelRequest` notification). An unknown method answers
-  method-not-found.
+  `searchLocations`, `httpServe`, and the `lsp/` prefix family
+  (`lsp/<method>` envelopes plus the reserved `lsp/capabilities`,
+  `lsp/diagnostics`, `lsp/locations`, and the `lsp/$/cancelRequest`
+  notification). An unknown method answers method-not-found.
 - **Actions ride the base protocol's untagged escape hatch**
   (`StateAction::Unknown`) with a `type` string beside the body:
   `document/applied`, `history/reset`, `history/appended`,
-  `history/grow`, `history/commit`, `lspDiagnostics/published`.
+  `history/grow`, `history/commit`, `lspDiagnostics/published`,
+  `locations/extend`.
   Reducing them is the channel owner's business on each end.
 - **Channels are host-minted URI schemes**, routed by prefix at
   subscribe and dispatch: `ahp-document:/…`, `hihost-history:/…`,
-  `ahp-lsp-diagnostics:/…`, `hihost-changes:/<folder>` (and
+  `ahp-lsp-diagnostics:/…`, `ahp-locations:/…` (per-request result
+  streams; last unsubscribe cancels the producer,
+  docs/ahp/ahp-locations.md), `hihost-changes:/<folder>` (and
   `?commit=<sha>`), plus the content-ref schemes `hihost-git:/…`
   (git blobs) and `ahp-content:/…` (stashed in-memory content), both
   served by `resourceRead`.
