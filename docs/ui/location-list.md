@@ -220,12 +220,17 @@ the asked location's authority (the `fsroute::seat_of` precedent,
 `frontend/hiahp/src/find.rs:39`); a multi-folder session asks each
 folder's seat and merges the streams client-side under one feed.
 
-Results land **by identity, not tree path** (the docs/ahp/search.md §4
-rule): a session-scoped `LocationsFeed` store row — the substance, in
-the peeker's sense — accumulates the reduced `LocationList` plus the
-live subscription bookkeeping; the dock view and the peek inlay are
-faces over feed rows. Batches arriving for an unmounted face keep
-landing into the row.
+Results land **by identity, not tree path**: every result set (a
+query, a references ask) is a FEED — `locations::LocationsFeeds`,
+keyed by minted `FeedId`, the family-row pattern. A feed owns its
+channel and its own app-level pump (`AttachFeedStream` starts it;
+the `FeedBatch` landing folds and re-polls through
+`AppCommand::Landing`), so it outlives any face: the dock tab and
+the peek are FACES that refresh paint-driven off the feed's
+generation, `SessionSearchFeeds` names which feed fronts the tab,
+and the peek's promote chip fronts its feed in the dock without
+asking again. Disposal (`DisposeFeed`) unsubscribes — the host-side
+cancel; `StopFeed` keeps what landed.
 
 ## 5. The UI: locations tree
 
@@ -307,21 +312,22 @@ Layout, top to bottom:
 - A **status band**: running spinner / `N results in M files` /
   truncation note.
 
-Focus areas mirror today's `SearchArea::{Input, Results}`: Tab and
-Down from the input enter the tree; typing in the tree is
-speed-search; Escape rolls the dock away. **Closing the surface IS
-the cancel**: the live channel rides the view and unsubscribes on
-destroy — accumulated results survive in the feed row (marked cut
-off when the stream was still running) and reopening shows what
-stood. This trades the plan's original stream-past-close for one
-owner of the subscription and no orphaned polling. shift-cmd-F and
-the toolbar `%` well re-point here when the old panel retires (§9).
+Focus areas mirror `SearchArea::{Input, Results}`: Tab and Down
+from the input enter the tree; a CLICK moves the keyboard to the
+clicked area before landing (the face's widget shell routes it);
+typing in the tree is speed-search; Escape rolls the dock away. The
+feed keeps streaming past a closed face — the pump is app-level; a
+requery or the stop affordance cancels (`DisposeFeed`/`StopFeed`),
+never mere displacement. shift-cmd-F re-points here (the old panel
+is retired).
 
 ## 7. The UI: references and implementations
 
 `code.references` reworked, `code.implementations` added (same shape,
-`textDocument/implementation`; gate the command's palette presence on
-`lsp/capabilities`.implementationProvider when available):
+`textDocument/implementation`): the ask mints a feed and fronts it in
+the dock AT ASK TIME — the tab opens saying "searching…" before the
+channel lands, so a failing ask resolves cut-off in plain sight,
+never a silent no-op. The steps:
 
 1. Build the LSP params from the caret (the existing
    `line_col_at`/`identifier_at` code in `plugins/hicode`), title
@@ -352,9 +358,12 @@ The quick random-access interface, per VSCode/Fleet: a command (id
 in a feature markup on the document, shifting with edits — containing
 a master–detail pair:
 
-- **Master (left)**: a compact `LocationsTree` over its own feed row
-  (independent of the Search tab's), streaming in as the channel
-  answers; cursor row synced to the detail.
+- **Master (left)**: a tree of locations GROUPED BY FILE (no
+  directory nesting — the card is compact) over the card's own feed,
+  streaming in as the channel answers; cursor row synced to the
+  detail. The header carries the feed's title, the stream state, and
+  the promote chip — "open in Search" fronts the SAME feed in the
+  dock tab, results moving without a re-ask.
 - **Detail (right)**: a preview `EditorView` over the selected
   location's document — resolved through the peeker's exact recipe
   (docs/ui/peeker.md, docs/ui/navigation.md): an open document
