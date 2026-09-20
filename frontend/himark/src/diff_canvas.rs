@@ -179,21 +179,51 @@ fn listing_of<'a>(
         (ChangesStatus::Error(message), _) => CanvasListing::Pending(message.clone()),
         (ChangesStatus::Computing, true) => CanvasListing::Pending("computing…".to_owned()),
         (ChangesStatus::Ready, true) => CanvasListing::Empty("no changes".to_owned()),
-        _ => CanvasListing::Ready(
-            files
-                .map(|entry| {
-                    let (old, new) = pair(entry);
-                    CanvasFile {
-                        title: entry.rel.join("/"),
-                        old: old.unwrap_or_else(|| empty_side(&new)),
-                        new,
-                        added: entry.added,
-                        removed: entry.removed,
-                        updated: entry.updated,
-                    }
-                })
-                .collect(),
-        ),
+        _ => {
+            // TREE order — the changes view's `dir_forest` walk
+            // (subdirectories first, alphabetical, then files): the
+            // canvas must list files in the exact order the tree
+            // shows them. Sorting here also makes the listing STABLE
+            // across host touches (the feed re-appends on every
+            // touch), which is what lets the canvas keep row order
+            // without rows jumping.
+            let mut entries: Vec<&ChangeEntry> = files.collect();
+            entries.sort_by(|a, b| tree_order(&a.rel, &b.rel));
+            CanvasListing::Ready(
+                entries
+                    .into_iter()
+                    .map(|entry| {
+                        let (old, new) = pair(entry);
+                        CanvasFile {
+                            title: entry.rel.join("/"),
+                            old: old.unwrap_or_else(|| empty_side(&new)),
+                            new,
+                            added: entry.added,
+                            removed: entry.removed,
+                            updated: entry.updated,
+                        }
+                    })
+                    .collect(),
+            )
+        }
+    }
+}
+
+/// The changes tree's traversal order over two relative paths:
+/// at each level, entries descending into a subdirectory come before
+/// files of that directory, and siblings sort alphabetically.
+fn tree_order(a: &[String], b: &[String]) -> std::cmp::Ordering {
+    let mut level = 0;
+    loop {
+        match (level + 1 == a.len(), level + 1 == b.len()) {
+            (true, true) => return a[level].cmp(&b[level]),
+            (true, false) => return std::cmp::Ordering::Greater,
+            (false, true) => return std::cmp::Ordering::Less,
+            (false, false) => match a[level].cmp(&b[level]) {
+                std::cmp::Ordering::Equal => level += 1,
+                other => return other,
+            },
+        }
     }
 }
 

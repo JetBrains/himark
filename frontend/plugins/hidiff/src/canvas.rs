@@ -51,6 +51,11 @@ pub enum CanvasCommand {
     /// canvas (a reuse navigation delivered it).
     PickupReveal,
 
+    /// The paint probe saw owed relaunches — builds the reconcile
+    /// marked (possibly on the headless sync tick) that need a REAL
+    /// effects sink to launch.
+    RelaunchOwed,
+
     Landed {
         key: ResourceLocation,
         built: himark::BuiltFileDiff,
@@ -94,6 +99,13 @@ pub struct Canvas {
     /// views stay alive (a built diff keeps its editors), the list
     /// just stops holding their rows.
     stash: rpds::HashTrieMapSync<ResourceLocation, (CanvasRow, f32)>,
+
+    /// Built rows whose pair moved under them since their build — the
+    /// relaunch is OWED, issued by the panel's paint probe through a
+    /// real effects sink. The sync tick only marks; it has no landing
+    /// road of its own (its batch is discarded), and pushing builds
+    /// there was how refreshed rows silently kept their stale diff.
+    owed: rpds::HashTrieSetSync<ResourceLocation>,
 }
 
 /// A row's lifecycle, panel-tracked — the test oracle.
@@ -129,6 +141,7 @@ impl Canvas {
             reveal: None,
             refs: 0,
             stash: rpds::HashTrieMapSync::new_sync(),
+            owed: rpds::HashTrieSetSync::new_sync(),
         }
     }
 
@@ -424,14 +437,18 @@ impl Canvas {
         listing: CanvasListing,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        self.seen = Some(generation);
         match listing {
+            // A pending listing is NOT adopted: the stamp stays put, so
+            // the canvas keeps probing until the source answers. Stamping
+            // here was the desync — a read that saw nothing recorded a
+            // generation it never consumed.
             CanvasListing::Pending(text) => {
                 if !self.populated {
                     self.note = Some(text);
                 }
             }
             CanvasListing::Empty(text) => {
+                self.seen = Some(generation);
                 // The after-commit state: the set is READY and empty.
                 // A populated canvas retires every row (the committed
                 // change set is gone — holding it was the bug) and
@@ -442,6 +459,7 @@ impl Canvas {
                 self.note = Some(text);
             }
             CanvasListing::Ready(files) => {
+                self.seen = Some(generation);
                 if self.populated {
                     self.reconcile(store, files, fx);
                     return;
@@ -563,7 +581,7 @@ impl Canvas {
                     if file.updated > known.updated {
                         self.files.insert_mut(key.clone(), file.clone());
                         self.refresh_header(&key, &file, band);
-                        self.relaunch(&key, &file, fx);
+                        self.owed.insert_mut(key.clone());
                         moved = true;
                     } else if file != known {
                         // A value change without a stamp move should
@@ -623,6 +641,7 @@ impl Canvas {
         self.files.remove_mut(key);
         self.phases.remove_mut(key);
         self.stash.remove_mut(key);
+        self.owed.remove_mut(key);
         if self.reveal.as_ref() == Some(key) {
             self.reveal = None;
         }
@@ -1200,6 +1219,15 @@ impl Canvas {
                     fx.settle();
                 }
             }
+            CanvasCommand::RelaunchOwed => {
+                let owed: Vec<ResourceLocation> = self.owed.iter().cloned().collect();
+                self.owed = rpds::HashTrieSetSync::new_sync();
+                for key in owed {
+                    if let Some(file) = self.files.get(&key).cloned() {
+                        self.relaunch(&key, &file, fx);
+                    }
+                }
+            }
             CanvasCommand::Landed { key, built } => self.land(store, ui, key, built, fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
             CanvasCommand::Rows(command) => {
@@ -1250,6 +1278,7 @@ impl Canvas {
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
             let refresh = self.seen != Some(canvas_generation(store, &self.source));
             let reveal = self.populated && self.reveal.is_some();
+            let owed = self.populated && !self.owed.is_empty();
             let inner: imba::ThunkBox<'a, CanvasCommand> = match &self.note {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
@@ -1291,6 +1320,7 @@ impl Canvas {
                 inner: widget,
                 refresh,
                 reveal,
+                owed,
             })
         })
     }
@@ -1303,6 +1333,7 @@ struct CanvasProbe<Inner> {
     inner: Inner,
     refresh: bool,
     reveal: bool,
+    owed: bool,
 }
 
 impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasProbe<Inner> {
@@ -1327,6 +1358,9 @@ impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasP
             }
             if self.reveal {
                 result = result.merge(EventResult::Command(CanvasCommand::PickupReveal));
+            }
+            if self.owed {
+                result = result.merge(EventResult::Command(CanvasCommand::RelaunchOwed));
             }
         }
         result
@@ -1450,9 +1484,9 @@ impl Canvases {
             }
             if let Some(mut canvas) = Self::take(store, id) {
                 // A headless sync: the row-list membership (placeholders
-                // for new files, retirement of removed) is pure state.
-                // Any builds relaunched here land when the panel next
-                // paints; the throwaway effects are dropped.
+                // for new files, retirement of removed) is pure state,
+                // and stamp-moved rows are marked OWED — the panel's
+                // paint probe issues their builds through a real sink.
                 let mut batch = imba::effect::Batch::new();
                 canvas.refresh(store, ui, &mut batch.effects());
                 Self::put(store, id, canvas);
@@ -1465,6 +1499,28 @@ impl Canvases {
 /// tick. Registered at the edge alongside the row minter and navigator.
 pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
     std::sync::Arc::new(|store: &mut Store, ui: &imba::UiCtx| Canvases::sync(store, ui))
+}
+
+/// `Canvases` is SESSION state — it mirrors the session's `Changes` /
+/// `History` feeds, so it gathers and scatters with them. A batch
+/// scoped to another session (or to none) never sees these canvases,
+/// which is what makes the staleness stamp sound: `seen` is only ever
+/// compared against the counters of the session that produced it.
+pub fn canvases_session_family() -> std::sync::Arc<himark::SessionFamilyMember> {
+    std::sync::Arc::new(himark::SessionFamilyMember {
+        key: "hidiff.canvases",
+        gather: |value, store| {
+            if let Some(canvases) = value.downcast_ref::<Canvases>() {
+                store.put(canvases.clone());
+            }
+        },
+        take: |store| {
+            store
+                .take::<Canvases>()
+                .filter(|canvases| !canvases.0.is_empty())
+                .map(|canvases| std::sync::Arc::new(canvases) as himark::SessionFamilyValue)
+        },
+    })
 }
 
 /// The canvas PANEL — a REFERENCE view over the store-held canvas,
@@ -1557,8 +1613,9 @@ impl DiffCanvasView {
     }
 
     /// TEST SUPPORT: feed a fresh listing straight into the reconcile
-    /// (bypassing the Changes feed); returns how many builds it
-    /// relaunched.
+    /// (bypassing the Changes feed), then drain the owed relaunches the
+    /// way the panel's paint probe would; returns how many builds the
+    /// touch owed.
     #[doc(hidden)]
     pub fn reconcile_for_tests(&self, store: &mut Store, files: Vec<CanvasFile>) -> usize {
         let mut launched = 0;
@@ -1567,6 +1624,13 @@ impl DiffCanvasView {
             {
                 let mut fx = batch.effects();
                 canvas.reconcile(store, files, &mut fx);
+                let owed: Vec<ResourceLocation> = canvas.owed.iter().cloned().collect();
+                canvas.owed = rpds::HashTrieSetSync::new_sync();
+                for key in owed {
+                    if let Some(file) = canvas.files.get(&key).cloned() {
+                        canvas.relaunch(&key, &file, &mut fx);
+                    }
+                }
             }
             // The settle pulse rides the same channel — strip it, count
             // only real builds.

@@ -12,7 +12,9 @@ use imba::{
 const OPEN_HALF_WIDTH: f32 = 420.0;
 
 pub mod canvas;
-pub use canvas::{canvas_sync_observer, CanvasNavigator, Canvases, DiffCanvasView};
+pub use canvas::{
+    canvas_sync_observer, canvases_session_family, CanvasNavigator, Canvases, DiffCanvasView,
+};
 
 #[derive(Clone, Copy)]
 pub struct PairPane {

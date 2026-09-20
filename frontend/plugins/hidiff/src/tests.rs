@@ -3349,3 +3349,157 @@ fn a_retired_file_leaves_no_orphan_row() {
         "exactly b.md's header + diff remain: {keys:?}"
     );
 }
+
+/// The membership invariant behind the staleness gate: whenever the
+/// canvas's stamp equals the feed's generation, its File rows must be
+/// exactly the last adopted READY listing. A deterministic random walk
+/// over adopt (Ready/Pending/Empty) following the probe discipline —
+/// adopt only when stale — with the model checked after every step.
+#[test]
+fn membership_follows_every_adopted_listing() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+
+    let pool: Vec<himark::ResourceLocation> = (0..8)
+        .map(|index| {
+            himark::ResourceLocation::new(
+                himark::ResourceType::document(),
+                himark::Authority::new("test"),
+                vec!["proj".to_owned(), format!("f{index}.md")],
+            )
+        })
+        .collect();
+    let source = himark::diff_canvas::CanvasSource::WorkingCopy {
+        folder: himark::ResourceLocation::new(
+            himark::ResourceType::directory(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned()],
+        ),
+    };
+    let view = {
+        let mut store = app.store_mut();
+        DiffCanvasView::over(&mut store, source)
+    };
+
+    let mut lcg: u64 = 0x5eed_cafe;
+    let mut rand = move || {
+        lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        lcg >> 33
+    };
+
+    let mut generation: u64 = 1;
+    let mut seen: Option<u64> = None;
+    let mut expected: Option<Vec<String>> = None; // None = never populated
+    let ui = imba::UiCtx::dont_use_too_slow();
+
+    for step in 0..400 {
+        let roll = rand() % 10;
+        let listing = match roll {
+            0 => himark::diff_canvas::CanvasListing::Pending("computing…".to_owned()),
+            1 => himark::diff_canvas::CanvasListing::Empty("no changes".to_owned()),
+            _ => {
+                let mut files: Vec<himark::diff_canvas::CanvasFile> = pool
+                    .iter()
+                    .filter(|_| rand() % 2 == 0)
+                    .map(|key| canvas_file(key, generation))
+                    .collect();
+                if files.is_empty() {
+                    files.push(canvas_file(&pool[0], generation));
+                }
+                files.sort_by(|a, b| a.new.name().cmp(b.new.name()));
+                himark::diff_canvas::CanvasListing::Ready(files)
+            }
+        };
+
+        // The probe discipline: refresh only when stale.
+        if seen == Some(generation) {
+            generation += 1; // the feed always bumps before the next look
+            continue;
+        }
+        // Mirror adopt's stamping rules (stamp only on a consumed listing).
+        match &listing {
+            himark::diff_canvas::CanvasListing::Pending(_) => {}
+            himark::diff_canvas::CanvasListing::Empty(_) => {
+                seen = Some(generation);
+                if expected.is_some() {
+                    expected = Some(Vec::new());
+                }
+            }
+            himark::diff_canvas::CanvasListing::Ready(files) => {
+                seen = Some(generation);
+                expected = Some(
+                    files
+                        .iter()
+                        .map(|file| format!("File:{}", file.new.name()))
+                        .collect(),
+                );
+            }
+        }
+        view.adopt_for_tests(&mut app.store_mut(), &ui, generation, listing);
+
+        let rows: Vec<String> = view
+            .probe_row_keys(&app.store())
+            .into_iter()
+            .filter(|key| key.starts_with("File:"))
+            .collect();
+        if let Some(expected) = &expected {
+            assert_eq!(
+                &rows, expected,
+                "step {step}: rows diverged from the adopted listing (gen {generation})"
+            );
+        }
+        generation += 1;
+    }
+}
+
+#[test]
+fn membership_minimal_repro() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    let key = |name: &str| {
+        himark::ResourceLocation::new(
+            himark::ResourceType::document(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let source = himark::diff_canvas::CanvasSource::WorkingCopy {
+        folder: himark::ResourceLocation::new(
+            himark::ResourceType::directory(),
+            himark::Authority::new("test"),
+            vec!["proj".to_owned()],
+        ),
+    };
+    let view = {
+        let mut store = app.store_mut();
+        DiffCanvasView::over(&mut store, source)
+    };
+    let ui = imba::UiCtx::dont_use_too_slow();
+    let ready = |names: &[&str], gen: u64| {
+        himark::diff_canvas::CanvasListing::Ready(
+            names.iter().map(|name| canvas_file(&key(name), gen)).collect(),
+        )
+    };
+
+    view.adopt_for_tests(&mut app.store_mut(), &ui, 1, ready(&["f0.md", "f1.md"], 1));
+    eprintln!("after populate: {:?}", view.probe_row_keys(&app.store()));
+
+    view.adopt_for_tests(&mut app.store_mut(), &ui, 2, ready(&["f6.md"], 2));
+    eprintln!("after swap to f6: {:?}", view.probe_row_keys(&app.store()));
+
+    view.adopt_for_tests(&mut app.store_mut(), &ui, 3, ready(&["f0.md", "f6.md"], 3));
+    let keys = view.probe_row_keys(&app.store());
+    eprintln!("after f0+f6: {keys:?}");
+    assert_eq!(
+        keys,
+        vec![
+            "Banner".to_owned(),
+            "File:f0.md".to_owned(),
+            "Diff:f0.md".to_owned(),
+            "File:f6.md".to_owned(),
+            "Diff:f6.md".to_owned(),
+        ],
+    );
+}
