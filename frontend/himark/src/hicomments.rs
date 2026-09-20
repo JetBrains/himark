@@ -42,6 +42,7 @@ impl crate::DynamicEditorCommand for AddComment {
     fn perform(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: &mut Document,
         editor: crate::EditorId,
         location: &crate::ResourceLocation,
@@ -68,13 +69,15 @@ impl crate::DynamicEditorCommand for AddComment {
             sync::Comments::created(store, location, range)
         };
 
-        let view = CommentView::new(host, width, &fonts, &theme, annotation.clone());
+        let view = CommentView::new(host, width,
+                store, ui, &fonts, &theme, annotation.clone());
         let markup = comments_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
             markup,
             selection.clone(),
             Inlay::new(InlayMode::Under, view.clone()),
+                store, ui,
             &fonts,
             &theme,
             fx,
@@ -142,11 +145,12 @@ impl crate::DynamicCommand for RemoveComment {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = app.ui_ctx();
         if let Some(annotation) = &self.annotation {
             sync::Comments::removed(store, annotation);
         }
@@ -158,7 +162,7 @@ impl crate::DynamicCommand for RemoveComment {
         let document = self.document;
         fx.scope(
             move |command| crate::AppCommand::Entity(document, command),
-            |fx| doc.remove_inlay(self.key, &fonts, &theme, fx),
+            |fx| doc.remove_inlay(self.key, store, &ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, self.document, doc);
     }
@@ -228,6 +232,8 @@ impl CommentView {
     fn new(
         host: Option<crate::DocumentId>,
         width: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::Theme,
         annotation: Option<AnnotationId>,
@@ -236,6 +242,7 @@ impl CommentView {
         let mut editor = EditorView::of_document(
             markdown_comment_document(crate::Text::from_string_exact("")),
             (width - chrome.pad * 2.0).max(120.0),
+                store, ui,
             fonts,
             theme,
         );
@@ -256,6 +263,8 @@ impl CommentView {
     pub(crate) fn materialized(
         host: Option<crate::DocumentId>,
         width: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::Theme,
         annotation: AnnotationId,
@@ -270,13 +279,15 @@ impl CommentView {
                 own_text.unwrap_or_else(|| crate::Text::from_string_exact("")),
             ),
             inner,
+                store, ui,
             fonts,
             theme,
         );
         let foreign = foreign_texts
             .into_iter()
             .map(|text| {
-                EditorView::of_document(markdown_comment_document(text), inner, fonts, theme)
+                EditorView::of_document(markdown_comment_document(text), inner,
+                store, ui, fonts, theme)
             })
             .collect();
         let reported_revision = editor.document.revision();
@@ -464,7 +475,8 @@ impl View for CommentView {
                 fx.scope(CommentCommand::Editor, |fx| {
                     self.editor
                         .document
-                        .resize(self.editor.editor, width, 0, &fonts, &theme, fx)
+                        .resize(self.editor.editor, width, 0,
+                store, ui, &fonts, &theme, fx)
                 });
             }
             CommentCommand::Remove => {

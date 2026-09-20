@@ -70,11 +70,12 @@ impl DynamicCommand for OpenCreatedChat {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let chat = match &self.created {
             Ok(chat) => chat.clone(),
             Err(error) => {
@@ -87,13 +88,13 @@ impl DynamicCommand for OpenCreatedChat {
             .expect("the window entity")
             .current_session()
             .session;
-        let pane = crate::higent::Chats::open(store, self.server, session, chat);
+        let pane = crate::higent::Chats::open(store, ui, self.server, session, chat);
         let mut entity = Windows::window(store, window).expect("the window entity");
 
         if crate::FloatingChat::on(store) {
             entity.open_bottom(pane);
         } else {
-            let _ = entity.open_panel(store, pane, fx);
+            let _ = entity.open_panel(store, ui, pane, fx);
         }
         Windows::put(store, window, entity);
     }

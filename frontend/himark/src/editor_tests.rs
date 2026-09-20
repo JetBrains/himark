@@ -22,12 +22,14 @@ struct TestPane {
 
 impl TestPane {
     fn new(mut document: Document, width: f32) -> Self {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut store = Store::new();
         let editor = document.add_editor(
             width,
             None,
             ::editor::EditorBuild::Complete,
             &[],
+            &store, ui,
             &::editor::embedded_fonts::source()(),
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
@@ -49,6 +51,7 @@ impl TestPane {
     }
 
     fn resize(&mut self, width: f32, anchor: u32) -> imba::effect::Batch<EditorCommand> {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let entity = self.view;
         let mut document =
             crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
@@ -57,6 +60,7 @@ impl TestPane {
             entity.editor(),
             width,
             anchor,
+            &self.store, ui,
             &::editor::embedded_fonts::source()(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
@@ -111,6 +115,7 @@ impl TestPane {
     }
 
     fn replace_inlay(&mut self, key: editor::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let entity = self.view;
         let mut document =
             crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
@@ -119,6 +124,7 @@ impl TestPane {
             key,
             range,
             inlay,
+            &self.store, ui,
             &::editor::embedded_fonts::source()(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
@@ -169,6 +175,7 @@ fn view_refresh_matches_committed_store() {
 
 #[test]
 fn editors_sharing_a_document_see_each_others_edits() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let mut document = plain_document("shared alpha beta gamma delta epsilon");
     let left_editor = document.add_editor(
@@ -176,6 +183,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         None,
         ::editor::EditorBuild::Complete,
         &[],
+            &store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
@@ -185,6 +193,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         None,
         ::editor::EditorBuild::Complete,
         &[],
+            &store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
@@ -218,6 +227,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
     let fresh = EditorView::complete(
         right_view.document.clone(),
         200.0,
+            &store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
     );
@@ -412,6 +422,7 @@ fn deleting_all_text_leaves_nothing_pending() {
 
 #[test]
 fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "word ".repeat(12_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
     pane.set_caret((source.len() / 2) as u32);
@@ -428,6 +439,7 @@ fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
     let fresh = EditorView::complete(
         view.document.clone(),
         200.0,
+            &pane.store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
     );
@@ -465,6 +477,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     crate::close_editor(&mut pane.store, pane.view.document(), pane.view.editor());
     let new_editor = crate::mount_editor(
         &pane.store,
+        &imba::UiCtx::dont_use_too_slow(),
         &mut document_b,
         200.0,
         None,
@@ -505,6 +518,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
 
 #[test]
 fn stale_repairs_discard_and_the_fresh_one_converges() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "word ".repeat(4_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
 
@@ -573,6 +587,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
     let fresh = EditorView::complete(
         view.document.clone(),
         200.0,
+            &pane.store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
     );
@@ -878,12 +893,14 @@ impl View for FocusProbe {
 
 #[test]
 fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "word ".repeat(4_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
 
     let reference = EditorView::complete(
         plain_document(&source),
         420.0,
+            &pane.store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
     );
@@ -949,6 +966,7 @@ fn a_repair_from_before_a_resize_discards_itself() {
 
 #[test]
 fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "word ".repeat(4_000);
     let mut document = plain_document(&source);
     let mut store = Store::new();
@@ -956,7 +974,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         crate::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
     let mut open_batch = imba::effect::Batch::new();
     let editor_id = crate::mount_editor(
-        &store,
+        &store, &ui,
         &mut document,
         200.0,
         None,
@@ -968,6 +986,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     let reference = EditorView::complete(
         document.clone(),
         200.0,
+            &store, ui,
         &::editor::embedded_fonts::source()(),
         &::editor::theme::Theme::embedded(),
     );
@@ -1374,6 +1393,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
 
 #[test]
 fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use ::editor::theme::Theme;
 
     let source: String = (0..2500)
@@ -1436,7 +1456,8 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         "the reshape is BOUNDED: work past the viewport stays pending"
     );
 
-    let fresh_light = EditorView::complete(document.clone(), 420.0, &fonts, &light);
+    let fresh_light = EditorView::complete(document.clone(), 420.0,
+            &pane.store, ui, &fonts, &light);
     let switched_band = band(document.document_layout(entity.editor()).unwrap(), &visible);
     let fresh_band = band(fresh_light.document_layout(), &visible);
     assert!(
@@ -1479,6 +1500,8 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
 
 #[test]
 fn a_stale_theme_repair_landing_discards_itself() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use ::editor::theme::Theme;
     let source: String = (0..2000)
         .map(|index| {
@@ -1568,7 +1591,8 @@ fn a_stale_theme_repair_landing_discards_itself() {
     let layout = converged.document_layout(entity.editor()).unwrap();
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
-    let fresh = ::editor::EditorView::complete(converged.clone(), 420.0, &fonts, &light);
+    let fresh = ::editor::EditorView::complete(converged.clone(), 420.0,
+                &store, ui, &fonts, &light);
     assert!(
         (layout.height() - fresh.document_layout().height()).abs() < 0.5,
         "the repaired document IS the fresh light layout: {} vs {}",
@@ -2496,6 +2520,8 @@ fn navigation_back_and_forward_walk_pane_history() {
 
 #[test]
 fn double_and_triple_click_select_word_and_line() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use editor::ClickKind;
     use imba::{
         arena::Arena,
@@ -2512,7 +2538,8 @@ fn double_and_triple_click_select_word_and_line() {
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();
         let (x, y, _, h) = document
-            .caret_content_rect(pane.view.editor(), byte, &fonts, &theme)
+            .caret_content_rect(pane.view.editor(), byte,
+                &store, ui, &fonts, &theme)
             .expect("a caret rect for the byte");
         Point::new(x + 1.0, y + h / 2.0)
     };
@@ -2594,6 +2621,8 @@ fn double_and_triple_click_select_word_and_line() {
 
 #[test]
 fn drag_extends_selection_by_the_press_unit() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use editor::ClickKind;
     use skia_safe::Point;
     let text = "alpha  beta gamma\nsecond line\n";
@@ -2603,7 +2632,8 @@ fn drag_extends_selection_by_the_press_unit() {
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();
         let (x, y, _, h) = document
-            .caret_content_rect(pane.view.editor(), byte, &fonts, &theme)
+            .caret_content_rect(pane.view.editor(), byte,
+                &store, ui, &fonts, &theme)
             .expect("a caret rect for the byte");
         Point::new(x + 1.0, y + h / 2.0)
     };
@@ -4275,15 +4305,14 @@ mod dock_tests {
         ));
 
         let uri = "ahp-chat:/x".to_owned();
-        crate::higent::Chats::put(
-            &mut app.store_mut(),
-            uri.clone().into(),
-            crate::higent::ChatPanel::new(
-                crate::higent::HostId::LOCAL,
-                "ahp-session:/x",
-                uri.clone(),
-            ),
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/x",
+            uri.clone(),
         );
+        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
         {
             let window = app.sole_window();
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
@@ -4317,15 +4346,14 @@ mod dock_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
 
         let uri = "ahp-chat:/esc".to_owned();
-        crate::higent::Chats::put(
-            &mut app.store_mut(),
-            uri.clone().into(),
-            crate::higent::ChatPanel::new(
-                crate::higent::HostId::LOCAL,
-                "ahp-session:/esc",
-                uri.clone(),
-            ),
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/esc",
+            uri.clone(),
         );
+        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
         {
             let window = app.sole_window();
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
@@ -4405,15 +4433,14 @@ mod dock_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
 
         let uri = "ahp-chat:/volatile".to_owned();
-        crate::higent::Chats::put(
-            &mut app.store_mut(),
-            uri.clone().into(),
-            crate::higent::ChatPanel::new(
-                crate::higent::HostId::LOCAL,
-                "ahp-session:/volatile",
-                uri.clone(),
-            ),
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            uri.clone(),
         );
+        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
         let window = app.sole_window();
         {
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
@@ -4492,15 +4519,14 @@ mod dock_tests {
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
         let uri = "ahp-chat:/live".to_owned();
-        crate::higent::Chats::put(
-            &mut app.store_mut(),
-            uri.clone().into(),
-            crate::higent::ChatPanel::new(
-                crate::higent::HostId::LOCAL,
-                "ahp-session:/live",
-                uri.clone(),
-            ),
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/live",
+            uri.clone(),
         );
+        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
         {
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
             entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri)));
@@ -5021,6 +5047,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     let markup = document.add_markup();
     let editor = document.editor_ids().next().expect("the pane's editor");
     document.show_markup(editor, markup);
+    let ui = &imba::UiCtx::dont_use_too_slow();
     document.push_inlay(
         markup,
         12..16,
@@ -5035,7 +5062,9 @@ fn a_pane_documents_popup_paints_in_the_window() {
             }),
             MagentaPopup,
         ),
-        &crate::env::ui_collection(app.store(), &imba::UiCtx::dont_use_too_slow()),
+        app.store(),
+        ui,
+        &crate::env::ui_collection(app.store(), ui),
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5068,10 +5097,13 @@ fn a_pane_documents_popup_paints_in_the_window() {
         .find(|(_, held)| held.name() == "popup.md")
         .expect("still open");
     let mut document = held.document().clone();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     document.remove_markup(
         markup,
         &[],
-        &crate::env::ui_collection(app.store(), &imba::UiCtx::dont_use_too_slow()),
+        app.store(),
+        ui,
+        &crate::env::ui_collection(app.store(), ui),
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -5126,11 +5158,14 @@ fn the_at_completion_opens_finds_and_picks() {
     );
 
     let uri = "ahp-chat:/completion".to_owned();
-    crate::higent::Chats::put(
-        &mut app.store_mut(),
-        uri.clone().into(),
-        crate::higent::ChatPanel::new(session.host, session.session.clone(), uri.clone()),
+    let panel = crate::higent::ChatPanel::new(
+        app.store(),
+        &app.ui_ctx(),
+        session.host,
+        session.session.clone(),
+        uri.clone(),
     );
+    crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
     {
         let mut entity = crate::Windows::window(app.store(), window).expect("window");
         entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
@@ -5651,6 +5686,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
 
 #[test]
 fn scroll_stripes_follow_the_diff_through_the_app() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use crate::{AppFonts, Application};
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();
@@ -5719,6 +5755,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let mut document = crate::OpenDocuments::document(&store, target).expect("open");
         document.edit(
             &::editor::Operation::insert_at(0, "zero\n"),
+            &store, ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
@@ -5754,6 +5791,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         );
         document.edit(
             &catch_up,
+            &store, ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
@@ -5778,6 +5816,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let mut document = crate::OpenDocuments::document(&store, base).expect("open");
         document.edit(
             &::editor::Operation::insert_at(0, "gone\n"),
+            &store, ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),

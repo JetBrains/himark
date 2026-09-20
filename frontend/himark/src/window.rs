@@ -1127,13 +1127,14 @@ impl Window {
     pub(crate) fn toolbar_start_session(
         &mut self,
         store: &Store,
+        ui: &imba::UiCtx,
         class: Option<char>,
         text: &str,
         width: f32,
     ) {
         self.content
             .toolbar
-            .start_session(store, class, text, width);
+            .start_session(store, ui, class, text, width);
         self.content.focus = LayerFocus::Toolbar;
     }
 
@@ -1475,13 +1476,14 @@ impl Window {
     pub fn open_panel<R: 'static>(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         panel: Box<dyn crate::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
         if self.has_modal() {
             return false;
         }
-        self.install_panel(store, Panel::Plugin(panel), fx);
+        self.install_panel(store, ui, Panel::Plugin(panel), fx);
         true
     }
 
@@ -1505,7 +1507,12 @@ impl Window {
         }
     }
 
-    pub(crate) fn split_current(&mut self, store: &mut Store, fx: &mut AppFx<'_>) {
+    pub(crate) fn split_current(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut AppFx<'_>,
+    ) {
         if self.has_modal() {
             return;
         }
@@ -1533,6 +1540,7 @@ impl Window {
                 None,
                 ::editor::EditorBuild::Bounded,
                 &[],
+                store, ui,
                 &fonts,
                 &theme,
                 fx,
@@ -1568,13 +1576,14 @@ impl Window {
     pub fn navigate(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         target: &crate::NavigationLocation,
         fx: &mut AppFx<'_>,
     ) -> bool {
         if let Some(walk) = self.workbench_mut().root.focused_slot_mut().pending.take() {
             if same_editor_location(&walk.target, target)
-                && self.complete_walk(store, window, &walk.target, walk.step, fx)
+                && self.complete_walk(store, ui, window, &walk.target, walk.step, fx)
             {
                 return true;
             }
@@ -1582,7 +1591,7 @@ impl Window {
         {
             let slot = self.workbench_mut().root.focused_slot_mut();
             let outgoing = slot.panel.navigation_location(store);
-            if slot.panel.navigate_to(store, target, fx) {
+            if slot.panel.navigate_to(store, ui, target, fx) {
                 if let Some(place) = outgoing {
                     if !place.same(target) {
                         slot.back.push_back_mut(place);
@@ -1593,10 +1602,10 @@ impl Window {
                 return true;
             }
         }
-        let Some(panel) = crate::Navigators::navigate(store, window, target, fx) else {
+        let Some(panel) = crate::Navigators::navigate(store, ui, window, target, fx) else {
             return false;
         };
-        self.install_panel(store, panel, fx);
+        self.install_panel(store, ui, panel, fx);
         Self::touch_recent(store, target);
         true
     }
@@ -1604,6 +1613,7 @@ impl Window {
     fn complete_walk(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         target: &crate::NavigationLocation,
         step: crate::workbench_node::WalkStep,
@@ -1613,11 +1623,11 @@ impl Window {
         let (outgoing, taken_in_place) = {
             let slot = self.workbench_mut().root.focused_slot_mut();
             let outgoing = slot.panel.navigation_location(store);
-            (outgoing, slot.panel.navigate_to(store, target, fx))
+            (outgoing, slot.panel.navigate_to(store, ui, target, fx))
         };
         let panel = match taken_in_place {
             true => None,
-            false => match crate::Navigators::navigate(store, window, target, fx) {
+            false => match crate::Navigators::navigate(store, ui, window, target, fx) {
                 Some(panel) => Some(panel),
                 None => return false,
             },
@@ -1644,7 +1654,7 @@ impl Window {
         }
         if let Some(panel) = panel {
             let displaced = std::mem::replace(&mut slot.panel, panel);
-            self.retire_displaced(store, displaced, fx);
+            self.retire_displaced(store, ui, displaced, fx);
         }
         Self::touch_recent(store, target);
         true
@@ -1653,6 +1663,7 @@ impl Window {
     pub fn close_focused_widget(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
@@ -1667,7 +1678,7 @@ impl Window {
             Panel::Editor(pane) => {
                 let view = *pane.content();
                 crate::close_editor(store, view.document(), view.editor());
-                crate::OpenDocuments::remove_on_close(store, view.document(), fx);
+                crate::OpenDocuments::remove_on_close(store, ui, view.document(), fx);
             }
             Panel::Plugin(mut view) => {
                 if !view.as_any().is::<crate::workbench_node::ClosedPanel>() {
@@ -1686,7 +1697,7 @@ impl Window {
         };
         if let Some(target) = target {
             use crate::workbench_node::{PendingWalk, WalkStep};
-            if !self.complete_walk(store, window, &target, WalkStep::Replace, fx)
+            if !self.complete_walk(store, ui, window, &target, WalkStep::Replace, fx)
                 && target.place::<crate::EditorPlace>().is_some()
             {
                 let slot = self.workbench_mut().root.focused_slot_mut();
@@ -1713,6 +1724,7 @@ impl Window {
     fn install_panel<R: 'static>(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         panel: Panel,
         fx: &mut Effects<'_, R>,
     ) {
@@ -1722,30 +1734,33 @@ impl Window {
             slot.forward = rpds::VectorSync::new_sync();
         }
         let displaced = std::mem::replace(&mut slot.panel, panel);
-        self.retire_displaced(store, displaced, fx);
+        self.retire_displaced(store, ui, displaced, fx);
     }
 
     pub fn navigate_back(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
-        self.navigate_history(store, window, fx, true)
+        self.navigate_history(store, ui, window, fx, true)
     }
 
     pub fn navigate_forward(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
-        self.navigate_history(store, window, fx, false)
+        self.navigate_history(store, ui, window, fx, false)
     }
 
     fn navigate_history(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
         back: bool,
@@ -1764,7 +1779,7 @@ impl Window {
         } else {
             WalkStep::Forward
         };
-        if self.complete_walk(store, window, &target, step, fx) {
+        if self.complete_walk(store, ui, window, &target, step, fx) {
             return true;
         }
 
@@ -1781,13 +1796,14 @@ impl Window {
     fn retire_displaced<R: 'static>(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         displaced: Panel,
         fx: &mut Effects<'_, R>,
     ) {
         if let Panel::Editor(pane) = &displaced {
             let view = *pane.content();
             crate::close_editor(store, view.document(), view.editor());
-            crate::OpenDocuments::remove_if_editorless(store, view.document(), fx);
+            crate::OpenDocuments::remove_if_editorless(store, ui, view.document(), fx);
         }
         self.stash_displaced(displaced);
     }
@@ -1795,6 +1811,7 @@ impl Window {
     pub fn show_document(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         document_id: crate::DocumentId,
         target: Option<std::ops::Range<crate::LineCol>>,
@@ -1842,7 +1859,7 @@ impl Window {
                 caret,
                 scroll_y: 0.0,
             };
-            if self.navigate(store, window, &crate::NavigationLocation::new(place), fx) {
+            if self.navigate(store, ui, window, &crate::NavigationLocation::new(place), fx) {
                 return;
             }
             let Some(document_again) = crate::OpenDocuments::document(store, document_id) else {
@@ -1853,7 +1870,7 @@ impl Window {
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
         let editor_id = crate::app::entity_scope(document_id, fx, |fx| {
-            crate::mount_editor(store, &mut document, width, target, fx)
+            crate::mount_editor(store, ui, &mut document, width, target, fx)
         });
         documents::scroll_stripes::enable_scroll_stripes(
             store,

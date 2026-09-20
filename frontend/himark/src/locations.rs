@@ -377,11 +377,12 @@ impl crate::DynamicCommand for WashDocument {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
             return;
         };
@@ -425,7 +426,8 @@ impl crate::DynamicCommand for WashDocument {
         let entity = self.document;
         fx.scope(
             move |command| crate::AppCommand::Entity(entity, command),
-            |fx| document.replace_markup(markup, tints, &ranges, &fonts, &theme, fx),
+            |fx| document.replace_markup(markup, tints, &ranges,
+                store, ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, self.document, document);
 
@@ -445,6 +447,7 @@ impl crate::DynamicCommand for WashDocument {
 
 fn remove_washes(
     store: &mut Store,
+    ui: &imba::UiCtx,
     row: &LocationsFeedRow,
     fx: &mut crate::app::AppFx<'_>,
 ) {
@@ -459,7 +462,8 @@ fn remove_washes(
         let entity = *id;
         fx.scope(
             move |command| crate::AppCommand::Entity(entity, command),
-            |fx| document.remove_markup(*markup, &changed, &fonts, &theme, fx),
+            |fx| document.remove_markup(*markup, &changed,
+                store, ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, *id, document);
     }
@@ -528,15 +532,16 @@ impl crate::DynamicCommand for DisposeFeed {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(row) = LocationsFeeds::row(store, self.feed) else {
             return;
         };
-        remove_washes(store, &row, fx);
+        remove_washes(store, ui, &row, fx);
         PendingWashes::sweep(store, self.feed);
         if let Some(token) = row.poll {
             fx.cancel(token);

@@ -706,7 +706,9 @@ mod app {
                         name.clone(),
                         true,
                         None,
-                        move |fonts, theme| web_document(&name, &source, fonts, theme),
+                        move |store, ui, fonts, theme| {
+                            web_document(&name, &source, store, ui, fonts, theme)
+                        },
                     );
                 }
                 "search" => {

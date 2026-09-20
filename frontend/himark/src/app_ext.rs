@@ -26,7 +26,12 @@ pub trait AppExt {
         name: String,
         primary: bool,
         location: Option<crate::ResourceLocation>,
-        build: impl FnOnce(&skia_safe::textlayout::FontCollection, &::editor::theme::Theme) -> Document
+        build: impl FnOnce(
+                &imba::store::Store,
+                &imba::UiCtx,
+                &skia_safe::textlayout::FontCollection,
+                &::editor::theme::Theme,
+            ) -> Document
             + Send
             + Sync
             + 'static,
@@ -102,7 +107,12 @@ impl AppExt for Application {
         name: String,
         primary: bool,
         location: Option<crate::ResourceLocation>,
-        build: impl FnOnce(&skia_safe::textlayout::FontCollection, &::editor::theme::Theme) -> Document
+        build: impl FnOnce(
+                &imba::store::Store,
+                &imba::UiCtx,
+                &skia_safe::textlayout::FontCollection,
+                &::editor::theme::Theme,
+            ) -> Document
             + Send
             + Sync
             + 'static,

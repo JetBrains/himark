@@ -83,6 +83,9 @@ pub fn gathered_view(store: &Store, id: himark::DiffViewId) -> Option<UnifiedDif
 /// documents — they may be open elsewhere. Shared by `DiffPanelView`
 /// and the diff canvas.
 pub fn teardown_diff_view(store: &mut Store, id: himark::DiffViewId) {
+    // Teardown-only road (dismantle/destroy/retire carry no UiCtx);
+    // the release may reshape a surviving base document's markup once.
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let Some(pair) = himark::OpenDocuments::take_diff_view(store, id) else {
         return;
     };
@@ -99,7 +102,7 @@ pub fn teardown_diff_view(store: &mut Store, id: himark::DiffViewId) {
         }
     }
     himark::OpenDocuments::untrack_diff(
-        store,
+        store, ui,
         pair.diff,
         &mut imba::effect::Batch::<UnifiedDiffCommand>::new().effects(),
     );
@@ -138,7 +141,8 @@ pub fn rewrap_pair(
             view.split
                 .left
                 .document
-                .resize(left_editor, width, 0, &fonts, &theme, fx)
+                .resize(left_editor, width, 0,
+                store, ui, &fonts, &theme, fx)
         },
     );
     fx.scope(
@@ -147,7 +151,8 @@ pub fn rewrap_pair(
             view.split
                 .right
                 .document
-                .resize(right_editor, width, 0, &fonts, &theme, fx)
+                .resize(right_editor, width, 0,
+                store, ui, &fonts, &theme, fx)
         },
     );
     if let Some(inline) = inline {
@@ -157,7 +162,8 @@ pub fn rewrap_pair(
                 view.split
                     .right
                     .document
-                    .resize(inline, width, 0, &fonts, &theme, fx)
+                    .resize(inline, width, 0,
+                store, ui, &fonts, &theme, fx)
             },
         );
     }
@@ -579,17 +585,18 @@ impl himark::PanelView for DiffPanelView {
 
 pub fn open_diff_documents(
     store: &mut Store,
+    ui: &imba::UiCtx,
     window: himark::WindowId,
     left: himark::DocumentId,
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
     fx: &mut himark::AppFx<'_>,
 ) -> bool {
-    let Some(panel) = diff_panel(store, left, right, prep) else {
+    let Some(panel) = diff_panel(store, ui, left, right, prep) else {
         return false;
     };
     let mut entity = himark::Windows::window(store, window).expect("the window entity");
-    let opened = entity.open_panel(store, Box::new(panel), fx);
+    let opened = entity.open_panel(store, ui, Box::new(panel), fx);
     himark::Windows::put(store, window, entity);
     opened
 }
@@ -602,11 +609,12 @@ pub struct DiffPrep {
 
 pub fn diff_panel(
     store: &mut Store,
+    ui: &imba::UiCtx,
     left: himark::DocumentId,
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
 ) -> Option<DiffPanelView> {
-    let id = build_diff_view(store, left, right, prep, OPEN_HALF_WIDTH)?;
+    let id = build_diff_view(store, ui, left, right, prep, OPEN_HALF_WIDTH)?;
     Some(DiffPanelView::over(id))
 }
 
@@ -620,6 +628,7 @@ pub fn diff_panel(
 /// (docs/editor/diff-canvas.md §7, docs/editor/diff-canvas.md §7).
 pub fn build_diff_view(
     store: &mut Store,
+    ui: &imba::UiCtx,
     left: himark::DocumentId,
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
@@ -652,6 +661,7 @@ pub fn build_diff_view(
 
     fn seed(
         store: &mut Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &himark::Theme,
         document_id: himark::DocumentId,
@@ -665,6 +675,7 @@ pub fn build_diff_view(
             marks,
             markup.clone(),
             &[],
+                store, ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -673,7 +684,7 @@ pub fn build_diff_view(
     }
     if let Some(prep) = &prep {
         seed(
-            store,
+            store, ui,
             &fonts,
             &theme,
             left,
@@ -690,6 +701,7 @@ pub fn build_diff_view(
                 None,
                 himark::EditorBuild::Bounded,
                 &[marks],
+                store, ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -716,7 +728,7 @@ pub fn build_diff_view(
     };
     if let Some(prep) = &prep {
         seed(
-            store,
+            store, ui,
             &fonts,
             &theme,
             right,
@@ -775,16 +787,17 @@ impl himark::DynamicCommand for OpenDiff {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: himark::WindowId,
         _fx: &mut himark::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let recent = OpenDocuments::list_recent(store);
         let (Some(newest), Some(older)) = (recent.first(), recent.get(1)) else {
             return;
         };
-        let _ = open_diff_documents(store, window, older.0, newest.0, None, _fx);
+        let _ = open_diff_documents(store, ui, window, older.0, newest.0, None, _fx);
     }
 }
 

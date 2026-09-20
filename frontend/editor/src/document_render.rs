@@ -18,6 +18,8 @@ impl crate::document::Document {
         canvas: &Canvas,
         visible: Rect,
         focused: bool,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -28,10 +30,12 @@ impl crate::document::Document {
             focused,
             false,
             None,
+                store, ui,
             fonts,
             theme,
         );
-        self.paint_with(editor, &viewport, canvas, focused, fonts, theme);
+        self.paint_with(editor, &viewport, canvas, focused,
+                store, ui, fonts, theme);
     }
 
     pub(crate) fn paint_with(
@@ -40,6 +44,8 @@ impl crate::document::Document {
         viewport: &EditorViewport,
         canvas: &Canvas,
         focused: bool,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -49,7 +55,8 @@ impl crate::document::Document {
         }
         let text_focused = focused && self.focus(editor) == crate::EditorFocus::Text;
         if text_focused {
-            self.paint_carets(editor, canvas, fonts, theme);
+            self.paint_carets(editor, canvas,
+                store, ui, fonts, theme);
         }
     }
 
@@ -78,6 +85,8 @@ impl crate::document::Document {
         &self,
         editor: crate::editor::EditorId,
         canvas: &Canvas,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -93,7 +102,8 @@ impl crate::document::Document {
         let mut shaped_line: Option<(u32, ShapedLine)> = None;
 
         if let Some((caret_x, caret_top, caret_height)) =
-            self.empty_caret_geometry(editor, fonts, theme)
+            self.empty_caret_geometry(editor,
+                store, ui, fonts, theme)
         {
             canvas.draw_rect(
                 Rect::from_xywh(
@@ -119,7 +129,10 @@ impl crate::document::Document {
             }
             let item_top = document_y + item.spacer_above;
             let byte_end = byte_start.saturating_add(item.byte_size);
-            let inlays = overlaid.inlay_metrics_in(byte_start..byte_end, layout.layout_width());
+            let inlays = {
+                let measure = crate::markup::InlayMeasure { width: layout.layout_width(), store, ui };
+                overlaid.inlay_metrics_in(byte_start..byte_end, measure)
+            };
             let text_top = item_top + inlays.above_height;
             let text_height = inlays.content_height_from_total(item.height);
             if inlays.has_instead() {
@@ -129,7 +142,8 @@ impl crate::document::Document {
             if shaped_line.as_ref().map(|(start, _)| *start) != Some(byte_start) {
                 shaped_line = Some((
                     byte_start,
-                    self.shape_line(editor, byte_start..byte_end, 0.0, true, fonts, theme),
+                    self.shape_line(editor, byte_start..byte_end, 0.0, true,
+                store, ui, fonts, theme),
                 ));
             }
 
@@ -154,6 +168,8 @@ impl crate::document::Document {
     fn empty_caret_geometry(
         &self,
         editor: crate::editor::EditorId,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32)> {
@@ -161,7 +177,8 @@ impl crate::document::Document {
             return None;
         }
         Some(
-            self.shape_line(editor, 0..0, 0.0, true, fonts, theme)
+            self.shape_line(editor, 0..0, 0.0, true,
+                store, ui, fonts, theme)
                 .caret_geometry(0),
         )
     }
@@ -172,6 +189,8 @@ impl crate::document::Document {
         offset: u32,
         goal_x: Option<f32>,
         down: bool,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(u32, f32)> {
@@ -180,7 +199,8 @@ impl crate::document::Document {
         let item = cursor.element();
         let byte_end = byte_start.saturating_add(item.byte_size);
         let x = goal_x.unwrap_or_else(|| {
-            self.shape_line(editor, byte_start..byte_end, 0.0, true, fonts, theme)
+            self.shape_line(editor, byte_start..byte_end, 0.0, true,
+                store, ui, fonts, theme)
                 .x_at_byte(offset)
         });
 
@@ -202,7 +222,8 @@ impl crate::document::Document {
         if target_start == byte_start {
             return None;
         }
-        let target = self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, fonts, theme)?;
+        let target = self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0,
+                store, ui, fonts, theme)?;
         Some((target, x))
     }
 
@@ -210,11 +231,14 @@ impl crate::document::Document {
         &self,
         editor: crate::editor::EditorId,
         byte: u32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32, f32)> {
         let layout = &self.editor(editor).layout;
-        if let Some((x, top, height)) = self.empty_caret_geometry(editor, fonts, theme) {
+        if let Some((x, top, height)) = self.empty_caret_geometry(editor,
+                store, ui, fonts, theme) {
             return Some((x, top, 2.0, height.max(18.0)));
         }
         let (cursor, document_y, byte_start) = layout.cursor_at_caret(byte)?;
@@ -229,13 +253,17 @@ impl crate::document::Document {
         }
         let byte_end = byte_start.saturating_add(item.byte_size).min(text_len);
         let extras = self.extras_keyed(editor);
-        let inlays = crate::markup::OverlaidMarkup::new(self.markup(), &extras)
-            .inlay_metrics_in(byte_start..byte_end, layout.layout_width());
+        let inlays = {
+            let measure = crate::markup::InlayMeasure { width: layout.layout_width(), store, ui };
+            crate::markup::OverlaidMarkup::new(self.markup(), &extras)
+                .inlay_metrics_in(byte_start..byte_end, measure)
+        };
         if inlays.has_instead() {
             return None;
         }
         let text_top = document_y + item.spacer_above + inlays.above_height;
-        let shaped = self.shape_line(editor, byte_start..byte_end, 0.0, true, fonts, theme);
+        let shaped = self.shape_line(editor, byte_start..byte_end, 0.0, true,
+                store, ui, fonts, theme);
 
         let (x, top, height) = shaped.caret_geometry(byte);
         Some((x, text_top + top, 2.0, height.max(18.0)))
@@ -245,6 +273,8 @@ impl crate::document::Document {
         &self,
         editor: crate::editor::EditorId,
         range: Range<u32>,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<(f32, f32, f32, f32)> {
@@ -286,13 +316,17 @@ impl crate::document::Document {
                 .as_ref()
                 .is_none_or(|band| bottom >= band.start && document_y <= band.end);
             if item.height > 0.0 && visible && byte_start < text_len {
-                let inlays = overlaid.inlay_metrics_in(byte_start..byte_end, layout.layout_width());
+                let inlays = {
+                    let measure = crate::markup::InlayMeasure { width: layout.layout_width(), store, ui };
+                    overlaid.inlay_metrics_in(byte_start..byte_end, measure)
+                };
                 if !inlays.has_instead() {
                     let text_top = document_y + item.spacer_above + inlays.above_height;
                     let line = byte_start..byte_end.min(text_len);
                     let clamped = line.start.max(start)..line.end.min(end);
                     if clamped.start < clamped.end {
-                        let shaped = self.shape_line(editor, line, 0.0, true, fonts, theme);
+                        let shaped = self.shape_line(editor, line, 0.0, true,
+                store, ui, fonts, theme);
                         for rect in shaped.rects_for_range(clamped) {
                             rects.push((
                                 rect.left,
@@ -321,6 +355,8 @@ impl crate::document::Document {
         document_x: f32,
         document_top: f32,
         scroll_y: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<u32> {
@@ -344,12 +380,10 @@ impl crate::document::Document {
         let overlaid = crate::markup::OverlaidMarkup::new(self.markup(), &extras);
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
-        let (marks, inlays) = overlaid.line_marks_in(
-            byte_start..byte_end,
-            Some(layout.layout_width()),
-            &mut inline,
-            &mut hidden,
-        );
+        let (marks, inlays) = {
+            let measure = crate::markup::InlayMeasure { width: layout.layout_width(), store, ui };
+            overlaid.line_marks_in(byte_start..byte_end, Some(measure), &mut inline, &mut hidden)
+        };
         if marks.resolved(theme).rule.is_some() || inlays.has_instead() {
             return Some(byte_start);
         }
@@ -364,7 +398,7 @@ impl crate::document::Document {
             &hidden,
             fonts,
             theme,
-            layout.layout_width(),
+            crate::markup::InlayMeasure { width: layout.layout_width(), store, ui },
             document_x,
             true,
         );
@@ -389,6 +423,8 @@ impl crate::document::Document {
         line_range: Range<u32>,
         document_x: f32,
         map_utf16: bool,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ShapedLine {
@@ -407,7 +443,7 @@ impl crate::document::Document {
             &hidden,
             fonts,
             theme,
-            self.editor(editor).layout.layout_width(),
+            crate::markup::InlayMeasure { width: self.editor(editor).layout.layout_width(), store, ui },
             document_x,
             map_utf16,
         )
@@ -418,6 +454,8 @@ impl crate::document::Document {
 mod tests {
     #[test]
     fn placeholder_line_exists_only_while_document_is_empty() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let fonts = crate::embedded_fonts::collection();
         let theme = crate::theme::Theme::embedded();
         let mut document = crate::Document::new(
@@ -429,6 +467,7 @@ mod tests {
             None,
             crate::EditorBuild::Complete,
             &[],
+                store, ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
@@ -442,6 +481,7 @@ mod tests {
         document.insert(
             editor,
             "M",
+                store, ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),

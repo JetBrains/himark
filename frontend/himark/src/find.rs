@@ -109,8 +109,8 @@ impl FindBar {
         own.merge_under(self.input.focus_data(store, ui).map(FindCommand::Input))
     }
 
-    pub fn new() -> Self {
-        let mut input = EditorView::input(600.0, crate::fonts::source());
+    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+        let mut input = EditorView::input(600.0, store, ui, crate::fonts::source());
         input.focus_text();
         Self {
             input,
@@ -126,13 +126,15 @@ impl FindBar {
         }
     }
 
-    pub fn seed(&mut self, query: &str) {
+    pub fn seed(&mut self, store: &imba::store::Store, ui: &imba::UiCtx, query: &str) {
         let mut markup = editor::Markup::new();
         markup.push_styled_covering(0..query.len() as u32, editor::theme::StyleId::Input);
         let document = editor::Document::new(text::Text::from_string_exact(query), markup);
         let mut input = EditorView::of_document(
             document,
             600.0,
+            store,
+            ui,
             &crate::fonts::source()(),
             &editor::theme::Theme::embedded(),
         );
@@ -185,13 +187,14 @@ impl FindBar {
         &mut self,
         store: &mut Store,
         target: Option<(DocumentId, EditorId)>,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
     ) {
         if let Some((old_document, _, _)) = self.installed {
             if target.map(|(document, _)| document) != Some(old_document) {
-                self.uninstall(store, fonts, theme, fx);
+                self.uninstall(store, ui, fonts, theme, fx);
                 self.scanned = None;
                 self.launched = None;
             }
@@ -202,7 +205,7 @@ impl FindBar {
         let query = self.query();
         if query.is_empty() {
             if self.installed.is_some() {
-                self.uninstall(store, fonts, theme, fx);
+                self.uninstall(store, ui, fonts, theme, fx);
             }
             self.matches.clear();
             self.scanned = None;
@@ -251,6 +254,7 @@ impl FindBar {
         store: &mut Store,
         target: Option<(DocumentId, EditorId)>,
         landed: &Scan,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -285,7 +289,8 @@ impl FindBar {
                 markup
             }
         };
-        document.replace_markup(markup, tints, &changed, fonts, theme, fx);
+        document.replace_markup(markup, tints, &changed,
+                store, ui, fonts, theme, fx);
         self.scanned = Some((landed.revision, landed.query.clone()));
 
         self.current = self.current.min(matches.len().saturating_sub(1));
@@ -297,6 +302,7 @@ impl FindBar {
         &mut self,
         store: &mut Store,
         forward: bool,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -322,13 +328,15 @@ impl FindBar {
         let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
             return;
         };
-        document.reveal_selecting(editor, found, fonts, theme, fx);
+        document.reveal_selecting(editor, found,
+                store, ui, fonts, theme, fx);
         crate::OpenDocuments::put_document(store, document_id, document);
     }
 
     pub fn uninstall(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -339,7 +347,8 @@ impl FindBar {
         let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
             return;
         };
-        document.remove_markup(markup, &self.matches, fonts, theme, fx);
+        document.remove_markup(markup, &self.matches,
+                store, ui, fonts, theme, fx);
         crate::OpenDocuments::put_document(store, document_id, document);
     }
 

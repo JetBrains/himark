@@ -1115,9 +1115,15 @@ impl HimarkEngine {
         let source = source.into();
         let document_name = name.clone();
         self.app
-            .open_async(wid(window), name, primary, None, move |fonts, theme| {
-                document_for(&document_name, &source, fonts, theme)
-            });
+            .open_async(
+                wid(window),
+                name,
+                primary,
+                None,
+                move |store, ui, fonts, theme| {
+                    document_for(&document_name, &source, store, ui, fonts, theme)
+                },
+            );
         true
     }
 
@@ -1752,10 +1758,13 @@ pub unsafe extern "C" fn himark_open_document(
 fn document_for(
     name: &str,
     source: &str,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> himark::Document {
-    hiahp::open::document_for(&syntax_languages(), name, source, fonts, theme)
+    hiahp::open::document_for(&syntax_languages(), name, source,
+                store, ui, fonts, theme)
 }
 
 #[no_mangle]

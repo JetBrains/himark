@@ -99,11 +99,13 @@ impl UnifiedDiffView {
                     None,
                     EditorBuild::Bounded,
                     &shown,
+                store, ui,
                     &fonts,
                     &theme,
                     fx,
                 );
-                right.expand_before_inlays(editor, &base, diff, &fonts, &theme, fx);
+                right.expand_before_inlays(editor, &base, diff,
+                store, ui, &fonts, &theme, fx);
                 editor
             });
             self.inline_editor = Some(editor);

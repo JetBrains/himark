@@ -111,10 +111,11 @@ impl SearchView {
         let mut view = Self {
             window,
             session,
-            input: seeded_input(&row.query),
+            input: seeded_input(store, ui, &row.query),
             search: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
+                store, ui,
                 crate::env::Fonts::of(store),
             ),
             focus: SearchArea::Input,
@@ -588,7 +589,7 @@ impl crate::ModalView for SearchView {
         query: &str,
         fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
     ) {
-        self.input = seeded_input(query);
+        self.input = seeded_input(store, ui, query);
         self.focus = SearchArea::Input;
         fx.scope(
             |command: SearchCommand| Box::new(command) as imba::DynCommand,
@@ -728,13 +729,13 @@ pub fn toolbar_button() -> crate::ToolbarButton {
     }
 }
 
-fn seeded_input(text: &str) -> EditorView {
+fn seeded_input(store: &imba::store::Store, ui: &imba::UiCtx, text: &str) -> EditorView {
     let mut markup = crate::Markup::new();
     markup.push_styled_covering(0..text.len() as u32, crate::theme::StyleId::Input);
     let document = crate::Document::new(crate::Text::from_string_exact(text), markup);
     let fonts = crate::fonts::source();
     let mut input =
-        EditorView::of_document(document, 600.0, &fonts(), &crate::theme::Theme::embedded());
+        EditorView::of_document(document, 600.0, store, ui, &fonts(), &crate::theme::Theme::embedded());
     input.set_caret(text.len() as u32);
     input.focus_text();
     input

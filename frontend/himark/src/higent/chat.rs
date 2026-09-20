@@ -420,6 +420,8 @@ impl Clone for ChatPanel {
 
 impl ChatPanel {
     pub fn new(
+        store: &imba::store::Store,
+        ui: &UiCtx,
         server: crate::higent::HostId,
         session: impl Into<ahp_types::common::Uri>,
         chat: impl Into<ahp_types::common::Uri>,
@@ -431,7 +433,7 @@ impl ChatPanel {
             state: Link::Idle,
             title: "Agent Chat".to_owned(),
             rows: ScrollView::new(ListView::empty()),
-            composer: Composer::new(),
+            composer: Composer::new(store, ui),
             stack: WidgetStack::new(),
             completion: crate::completion::Completion::new(),
             picked: rpds::VectorSync::new_sync(),
@@ -443,7 +445,7 @@ impl ChatPanel {
             has_loader: false,
             pending: None,
             initial_prompt: None,
-            toolbar: super::session_toolbar::SessionToolbar::default(),
+            toolbar: super::session_toolbar::SessionToolbar::new(store, ui),
             minted: 0,
             panel_width: AtomicU32::new(800.0_f32.to_bits()),
             rows_height: AtomicU32::new(600.0_f32.to_bits()),
@@ -1398,7 +1400,7 @@ impl ChatPanel {
                 Some(id),
                 fx,
             );
-            self.composer.clear();
+            self.composer.clear(store, ui);
             return;
         }
         self.minted += 1;
@@ -1428,7 +1430,7 @@ impl ChatPanel {
                 result,
             }),
         );
-        self.composer.clear();
+        self.composer.clear(store, ui);
         self.reveal_tail(store);
     }
 

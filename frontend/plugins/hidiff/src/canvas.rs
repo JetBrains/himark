@@ -406,14 +406,20 @@ impl Canvas {
             .collect()
     }
 
-    fn refresh(&mut self, store: &mut Store, fx: &mut Effects<'_, CanvasCommand>) {
+    fn refresh(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
         let (generation, listing) = canvas_files(store, &self.source);
-        self.adopt(store, generation, listing, fx);
+        self.adopt(store, ui, generation, listing, fx);
     }
 
     fn adopt(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         generation: u64,
         listing: CanvasListing,
         fx: &mut Effects<'_, CanvasCommand>,
@@ -447,7 +453,7 @@ impl Canvas {
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
                 match himark::diff_canvas::canvas_banner(store, &self.source) {
                     Some(himark::diff_canvas::CanvasBanner::Composer { .. }) => {
-                        let message = fresh_composer_box(store);
+                        let message = fresh_composer_box(store, ui);
                         let height = composer_band(&theme, Some(&message));
                         slice.push_keyed_sized(
                             CanvasKey::Banner,
@@ -1118,7 +1124,7 @@ fn mounted(
         operation: built.operation,
         marks: built.marks,
     };
-    let id = crate::build_diff_view(store, old_id, new_id, Some(prep), editor_width)?;
+    let id = crate::build_diff_view(store, ui, old_id, new_id, Some(prep), editor_width)?;
     let mut pane = crate::PairPane::over(id);
 
     // Default to the inline face.
@@ -1185,7 +1191,7 @@ impl Canvas {
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         match command {
-            CanvasCommand::Refresh => self.refresh(store, fx),
+            CanvasCommand::Refresh => self.refresh(store, ui, fx),
             CanvasCommand::PickupReveal => {
                 if let Some(key) = self.reveal.take() {
                     self.rows
@@ -1429,7 +1435,7 @@ impl Canvases {
     /// it. This is why `Canvases` is store state: clicking a file in
     /// the changes view reveals it because the row is already there
     /// (docs/editor/diff-canvas.md §7).
-    pub fn sync(store: &mut Store) {
+    pub fn sync(store: &mut Store, ui: &imba::UiCtx) {
         let ids: Vec<CanvasId> = match store.get::<Canvases>() {
             Some(canvases) => canvases.0.keys().copied().collect(),
             None => return,
@@ -1448,7 +1454,7 @@ impl Canvases {
                 // Any builds relaunched here land when the panel next
                 // paints; the throwaway effects are dropped.
                 let mut batch = imba::effect::Batch::new();
-                canvas.refresh(store, &mut batch.effects());
+                canvas.refresh(store, ui, &mut batch.effects());
                 Self::put(store, id, canvas);
             }
         }
@@ -1458,7 +1464,7 @@ impl Canvases {
 /// The `himark::SyncObserver` that keeps `Canvases` current on the sync
 /// tick. Registered at the edge alongside the row minter and navigator.
 pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
-    std::sync::Arc::new(|store: &mut Store| Canvases::sync(store))
+    std::sync::Arc::new(|store: &mut Store, ui: &imba::UiCtx| Canvases::sync(store, ui))
 }
 
 /// The canvas PANEL — a REFERENCE view over the store-held canvas,
@@ -1539,12 +1545,13 @@ impl DiffCanvasView {
     pub fn adopt_for_tests(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         generation: u64,
         listing: himark::diff_canvas::CanvasListing,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.id) {
             let mut batch = imba::effect::Batch::new();
-            canvas.adopt(store, generation, listing, &mut batch.effects());
+            canvas.adopt(store, ui, generation, listing, &mut batch.effects());
             Canvases::put(store, self.id, canvas);
         }
     }
@@ -1842,7 +1849,7 @@ fn composer_band(theme: &himark::Theme, message: Option<&himark::EditorView>) ->
 /// A fresh commit box — the CHAT composer's input recipe
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
-fn fresh_composer_box(store: &Store) -> himark::EditorView {
+fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> himark::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
     let document =
@@ -1851,7 +1858,7 @@ fn fresh_composer_box(store: &Store) -> himark::EditorView {
                 himark::Syntax::new("markdown", None, himark::Markup::new()),
                 &[],
             );
-    let mut view = himark::EditorView::of_document(document, 600.0, &fonts, &theme);
+    let mut view = himark::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
 }
@@ -1981,7 +1988,7 @@ impl View for CanvasRow {
                     // The canvas already posted the ask (reading the
                     // text first) — the row just resets its box.
                     RowCommand::Composer(ComposerCommand::Commit) => {
-                        *message = fresh_composer_box(store);
+                        *message = fresh_composer_box(store, ui);
                         *focused = false;
                     }
                     // The paint probe saw the box wrapped at the
@@ -1995,7 +2002,8 @@ impl View for CanvasRow {
                             |fx| {
                                 message
                                     .document
-                                    .resize(editor, width, 0, &fonts, &theme, fx)
+                                    .resize(editor, width, 0,
+                store, ui, &fonts, &theme, fx)
                             },
                         );
                     }
@@ -2732,6 +2740,7 @@ impl himark::Navigator for CanvasNavigator {
     fn navigate(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         _window: himark::WindowId,
         place: &CanvasPlace,
         _fx: &mut himark::AppFx<'_>,

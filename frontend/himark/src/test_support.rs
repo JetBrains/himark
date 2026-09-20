@@ -160,14 +160,19 @@ impl Application {
             crate::OpenDocuments::document_ref(self.store(), entity.document()).expect("document");
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut fresh = crate::EditorView::complete(
             document.clone(),
             width,
+            self.store(),
+            ui,
             &::editor::embedded_fonts::source()(),
             &::editor::env::Themes::of(self.store()),
         );
         fresh.reveal_caret(
             document.caret_byte(entity.editor()),
+            self.store(),
+            ui,
             &::editor::embedded_fonts::source()(),
             &::editor::env::Themes::of(self.store()),
         );
@@ -195,6 +200,7 @@ impl Application {
     }
 
     pub fn unconverged_panes(&self) -> Vec<(usize, f32, f32)> {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut offenders = Vec::new();
         let mut index = 0usize;
         let store = self.store();
@@ -209,9 +215,11 @@ impl Application {
                 let fonts = ::editor::embedded_fonts::source()();
                 let theme = ::editor::theme::Theme::embedded();
                 let mut reference =
-                    crate::EditorView::complete(document.clone(), width, &fonts, &theme);
+                    crate::EditorView::complete(document.clone(), width,
+                store, ui, &fonts, &theme);
 
-                reference.reveal_caret(document.caret_byte(entity.editor()), &fonts, &theme);
+                reference.reveal_caret(document.caret_byte(entity.editor()),
+                store, ui, &fonts, &theme);
                 let actual = document.content_height(entity.editor());
                 let expected = reference.content_height();
                 if (actual - expected).abs() > 0.5 {

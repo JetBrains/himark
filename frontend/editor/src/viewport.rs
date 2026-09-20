@@ -168,6 +168,7 @@ impl EditorViewport {
         &self.selections[from..to]
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn build(
         document: &crate::document::Document,
         editor: crate::editor::EditorId,
@@ -175,6 +176,8 @@ impl EditorViewport {
         focused: bool,
         gutter: bool,
         stripes: Option<crate::diff::DiffId>,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -183,6 +186,11 @@ impl EditorViewport {
         let extras = document.extras_keyed(editor);
         let overlaid = crate::markup::OverlaidMarkup::new(document.markup(), &extras);
         let layout_width = layout.layout_width();
+        let measure = crate::markup::InlayMeasure {
+            width: layout_width,
+            store,
+            ui,
+        };
 
         let text_focused = focused && state.focus == crate::EditorFocus::Text;
         let selections: Vec<Range<u32>> = match text_focused {
@@ -282,7 +290,7 @@ impl EditorViewport {
             }
             let line_range = byte_start..byte_end;
             let (marks, inlays) = marks_sweep
-                .get_or_insert_with(|| overlaid.line_marks_sweep(byte_start, Some(layout_width)))
+                .get_or_insert_with(|| overlaid.line_marks_sweep(byte_start, Some(measure)))
                 .line(line_range.clone(), &mut inline_scratch, &mut hidden_scratch);
 
             if gutter
@@ -354,7 +362,7 @@ impl EditorViewport {
                             &viewport.hidden[hidden_start..hidden_end],
                             fonts,
                             theme,
-                            layout_width,
+                            crate::markup::InlayMeasure { width: layout_width, store, ui },
                             0.0,
                             selected,
                         )

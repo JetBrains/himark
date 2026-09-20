@@ -142,11 +142,12 @@ impl DynamicCommand for EnterSessionWork {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let key = SessionId {
             host: self.server,
             session: self.session.clone(),
@@ -162,7 +163,7 @@ impl DynamicCommand for EnterSessionWork {
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty());
             let pane = crate::higent::Chats::open_with(
-                store,
+                store, ui,
                 self.server,
                 self.session.clone(),
                 chat,
@@ -173,7 +174,7 @@ impl DynamicCommand for EnterSessionWork {
             if crate::FloatingChat::on(store) {
                 entity.open_bottom(pane);
             } else {
-                let _ = entity.open_panel(store, pane, fx);
+                let _ = entity.open_panel(store, ui, pane, fx);
             }
             Windows::put(store, window, entity);
         }

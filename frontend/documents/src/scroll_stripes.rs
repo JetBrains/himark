@@ -95,6 +95,7 @@ mod tests {
         );
         let fonts = editor::env::Fonts::of(&store)();
         let theme = editor::env::Themes::of(&store);
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut sink = imba::effect::Batch::new();
         let quiet = &mut sink.effects();
 
@@ -104,6 +105,8 @@ mod tests {
             None,
             editor::EditorBuild::Complete,
             &[],
+            &store,
+            ui,
             &fonts,
             &theme,
             quiet,
@@ -114,7 +117,8 @@ mod tests {
         document.mark_scroll_stripes(editor_id, markup);
         let mut tints = editor::Markup::new();
         tints.push_styled(90..95, editor::ThemeStyleId::Match);
-        document.replace_markup(markup, tints, &[], &fonts, &theme, quiet);
+        document.replace_markup(markup, tints, &[],
+            &store, ui, &fonts, &theme, quiet);
         OpenDocuments::put_document(&mut store, id, document);
 
         let mut batch = imba::effect::Batch::new();

@@ -4,11 +4,11 @@
 use std::time::{Duration, Instant};
 
 use skia_safe::textlayout::{
-    FontCollection, Paragraph, ParagraphBuilder, ParagraphStyle, RectHeightStyle, RectWidthStyle,
+    Paragraph, ParagraphBuilder, ParagraphStyle, RectHeightStyle, RectWidthStyle,
     TextStyle,
 };
 
-fn build(fonts: &FontCollection, text: &str, width: f32) -> Paragraph {
+fn build(fonts: &skia_safe::textlayout::FontCollection, text: &str, width: f32) -> Paragraph {
     let mut text_style = TextStyle::new();
     text_style.set_font_families(&[crate::embedded_fonts::FAMILY]);
     text_style.set_font_size(16.0);

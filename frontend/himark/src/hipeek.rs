@@ -168,7 +168,7 @@ impl PeekView {
                 self.tree.list_mut().select_only(cursor);
             }
         }
-        self.ensure_preview(store, fx);
+        self.ensure_preview(store, ui, fx);
     }
 
     /// Ensure the detail shows the SELECTED location. Same file:
@@ -177,7 +177,12 @@ impl PeekView {
     /// the build runs off-thread and the mount is BUDGETED (the
     /// mount_editor discipline), never a whole-document layout on
     /// the UI thread.
-    fn ensure_preview(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, PeekCommand>) {
+    fn ensure_preview(
+        &mut self,
+        store: &Store,
+        ui: &imba::UiCtx,
+        fx: &mut imba::effect::Effects<'_, PeekCommand>,
+    ) {
         let Some(key) = self.tree.list().cursor().cloned() else {
             return;
         };
@@ -191,7 +196,7 @@ impl PeekView {
             return;
         };
         if self.preview_for.as_ref() == Some(&found.location) {
-            self.retarget_preview(store, &found, fx);
+            self.retarget_preview(store, ui, &found, fx);
             return;
         }
         self.preview_for = Some(found.location.clone());
@@ -212,6 +217,7 @@ impl PeekView {
     fn retarget_preview(
         &mut self,
         store: &Store,
+        ui: &imba::UiCtx,
         found: &FoundLocation,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
@@ -241,17 +247,20 @@ impl PeekView {
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
             view.document
-                .replace_markup(markup, tints, &changed, &fonts, &theme, fx)
+                .replace_markup(markup, tints, &changed,
+                store, ui, &fonts, &theme, fx)
         });
         view.set_caret(hit);
         let editor = view.editor;
         fx.scope(scoped, |fx| {
             view.document
-                .reveal_at_instant(editor, hit, &fonts, &theme, fx)
+                .reveal_at_instant(editor, hit,
+                store, ui, &fonts, &theme, fx)
         });
         let reveal = view
             .document
-            .caret_content_rect(editor, hit, &fonts, &theme)
+            .caret_content_rect(editor, hit,
+                store, ui, &fonts, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0));
         if let Some(reveal) = reveal {
             preview.set_scroll_y(reveal);
@@ -267,6 +276,7 @@ impl PeekView {
     fn install_preview(
         &mut self,
         store: &Store,
+        ui: &imba::UiCtx,
         built: crate::BuiltDocument,
         index: usize,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
@@ -295,7 +305,8 @@ impl PeekView {
         tints.push_styled(target.clone(), crate::theme::StyleId::Match);
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
-            document.replace_markup(markup, tints, &[target.clone()], &fonts, &theme, fx)
+            document.replace_markup(markup, tints, &[target.clone()],
+                store, ui, &fonts, &theme, fx)
         });
 
         let detail = (self.width * 0.6 - 1.0).max(120.0);
@@ -305,6 +316,7 @@ impl PeekView {
                 None,
                 ::editor::EditorBuild::Bounded,
                 &[],
+                store, ui,
                 &fonts,
                 &theme,
                 fx,
@@ -312,10 +324,12 @@ impl PeekView {
         });
         document.show_markup(editor, markup);
         fx.scope(scoped, |fx| {
-            document.reveal_at_instant(editor, hit, &fonts, &theme, fx)
+            document.reveal_at_instant(editor, hit,
+                store, ui, &fonts, &theme, fx)
         });
         let reveal = document
-            .caret_content_rect(editor, hit, &fonts, &theme)
+            .caret_content_rect(editor, hit,
+                store, ui, &fonts, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0))
             .unwrap_or(0.0);
         let mut view = EditorView {
@@ -413,7 +427,7 @@ impl View for PeekView {
                             }
                         }
                     }
-                    self.ensure_preview(store, fx);
+                    self.ensure_preview(store, ui, fx);
                     return;
                 }
                 fx.scope(PeekCommand::Tree, |fx| {
@@ -422,7 +436,7 @@ impl View for PeekView {
             }
             PeekCommand::Select(delta) => {
                 self.tree.list_mut().cursor_step(delta);
-                self.ensure_preview(store, fx);
+                self.ensure_preview(store, ui, fx);
             }
             PeekCommand::Fold(expand) => self.tree.fold_cursor(expand, store, ui),
             PeekCommand::Pick => {
@@ -475,7 +489,7 @@ impl View for PeekView {
                 );
             }
             PeekCommand::Built { index, built } => {
-                self.install_preview(store, built, index, fx);
+                self.install_preview(store, ui, built, index, fx);
             }
         }
     }
@@ -643,11 +657,12 @@ impl crate::DynamicCommand for RemovePeek {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(mut doc) = crate::OpenDocuments::document(store, self.document) else {
             return;
         };
@@ -656,7 +671,7 @@ impl crate::DynamicCommand for RemovePeek {
         let document = self.document;
         fx.scope(
             move |command| crate::AppCommand::Entity(document, command),
-            |fx| doc.remove_inlay(self.key, &fonts, &theme, fx),
+            |fx| doc.remove_inlay(self.key, store, ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, self.document, doc);
     }
@@ -681,6 +696,7 @@ impl crate::DynamicEditorCommand for GoToReference {
     fn perform(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: &mut Document,
         editor: crate::EditorId,
         location: &crate::ResourceLocation,
@@ -726,6 +742,7 @@ impl crate::DynamicEditorCommand for GoToReference {
             markup,
             anchor.clone(),
             Inlay::new(InlayMode::Under, view.clone()),
+                store, ui,
             &fonts,
             &theme,
             fx,
@@ -858,6 +875,8 @@ mod tests {
 
     #[test]
     fn the_peek_anchor_reserves_height() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
         let fonts = ::editor::embedded_fonts::source()();
         let theme = crate::theme::Theme::embedded();
@@ -867,6 +886,7 @@ mod tests {
             None,
             ::editor::EditorBuild::Complete,
             &[],
+                store, ui,
             &fonts,
             &theme,
             &mut batch.effects(),
@@ -885,6 +905,7 @@ mod tests {
                 markup,
                 anchor,
                 crate::Inlay::new(crate::InlayMode::Under, ProbeCard),
+                store, ui,
                 &fonts,
                 &theme,
                 &mut batch.effects(),
@@ -894,7 +915,8 @@ mod tests {
                 with_card > bare,
                 "the anchored card reserves height: {with_card} vs {bare}"
             );
-            document.remove_inlay(key, &fonts, &theme, &mut batch.effects());
+            document.remove_inlay(key,
+                store, ui, &fonts, &theme, &mut batch.effects());
         }
     }
 

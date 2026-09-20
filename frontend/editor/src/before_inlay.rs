@@ -6,7 +6,6 @@ use std::ops::Range;
 use imba::anim::{Animation, AnimationClock, Easing, Motion};
 use imba::constraints::Constraints;
 use operation::Bias;
-use skia_safe::textlayout::FontCollection;
 use skia_safe::Size;
 
 use crate::document::Document;
@@ -26,7 +25,9 @@ impl Document {
         // settled — animation announces a change the user caused,
         // not one the pane was born with.
         animate: bool,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -103,7 +104,8 @@ impl Document {
                 .unwrap_or_default();
             if !standing.is_empty() {
                 for key in standing {
-                    self.remove_inlay(key, fonts, theme, fx);
+                    self.remove_inlay(key,
+                store, ui, fonts, theme, fx);
                 }
                 return;
             }
@@ -125,6 +127,7 @@ impl Document {
             wash_id,
             wash,
             &[],
+                store, ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -136,6 +139,7 @@ impl Document {
             Some(fragment_key),
             crate::document::EditorBuild::Complete,
             &[wash_id],
+                store, ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -164,6 +168,7 @@ impl Document {
             markup_id,
             anchor,
             Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST),
+                store, ui,
             fonts,
             theme,
             fx,
@@ -175,7 +180,9 @@ impl Document {
         editor: EditorId,
         base: &Document,
         diff: crate::diff::DiffId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -221,7 +228,8 @@ impl Document {
         }
         complete(block.take(), &mut anchors);
         for at in anchors {
-            self.toggle_before_inlay(editor, at, base, diff, false, fonts, theme, fx);
+            self.toggle_before_inlay(editor, at, base, diff, false,
+                store, ui, fonts, theme, fx);
         }
     }
 
@@ -439,7 +447,8 @@ impl imba::View for BeforeInlay {
                 fx.scope(BeforeCommand::Editor, |fx| {
                     self.view
                         .document
-                        .resize(self.view.editor, width, 0, &fonts, &theme, fx)
+                        .resize(self.view.editor, width, 0,
+                store, ui, &fonts, &theme, fx)
                 });
             }
             BeforeCommand::Tick(now) => self.grow.advance(now),

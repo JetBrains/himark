@@ -10,7 +10,6 @@ use std::{
 };
 
 use imba::effect::Effects;
-use skia_safe::textlayout::FontCollection;
 
 use crate::{
     caret::MultiCaret,
@@ -115,7 +114,9 @@ impl Editor {
         markups: Vec<MarkupId>,
         owned_markups: Vec<MarkupId>,
         width: f32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         bounds: Option<FragmentKey>,
         build: crate::document::EditorBuild,
@@ -136,11 +137,12 @@ impl Editor {
             .collect();
 
         let window = bounds.and_then(|key| content.fragment_range(key));
+        let measure = crate::markup::InlayMeasure { width, store, ui };
         let layout = match build {
             crate::document::EditorBuild::Complete => DocumentLayout::build_complete(
                 content.text(),
                 crate::markup::OverlaidMarkup::new(content.markup(), &globals),
-                width,
+                measure,
                 fonts,
                 theme,
                 window,
@@ -148,7 +150,7 @@ impl Editor {
             crate::document::EditorBuild::Bounded => DocumentLayout::build(
                 content.text(),
                 crate::markup::OverlaidMarkup::new(content.markup(), &globals),
-                width,
+                measure,
                 fonts,
                 theme,
                 window,

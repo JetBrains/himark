@@ -999,12 +999,13 @@ fn the_docked_tree_follows_the_focused_document() {
         }
         fn perform(
             &self,
-            _app: &mut himark::Application,
+            app: &mut himark::Application,
             store: &mut imba::store::Store,
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
-            himark::open_locations(store, window, &[self.0.clone()], fx);
+        let ui = &app.ui_ctx();
+            himark::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
 
@@ -2183,6 +2184,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
 
 #[test]
 fn an_addressed_fence_embeds_a_sibling_file() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 800)).expect("surface");
 
@@ -2290,6 +2292,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
             .document()
             .clone(),
         720.0,
+                store, &ui,
         &himark::embedded_fonts::source()(),
         &himark::env::Themes::of(store),
     )
@@ -2413,6 +2416,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
 
 #[test]
 fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let body = "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\nfn five() {}\n";
@@ -2472,6 +2476,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
         himark::EditorView::complete(
             target.1.document().clone(),
             720.0,
+                store, &ui,
             &himark::embedded_fonts::source()(),
             &himark::env::Themes::of(store),
         )
@@ -7832,12 +7837,13 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         }
         fn perform(
             &self,
-            _app: &mut himark::Application,
+            app: &mut himark::Application,
             store: &mut imba::store::Store,
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
-            himark::open_locations(store, window, &[self.0.clone()], fx);
+        let ui = &app.ui_ctx();
+            himark::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
     assert!(engine.app.perform_command(himark::AppCommand::Dynamic(

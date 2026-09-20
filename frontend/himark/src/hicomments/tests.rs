@@ -28,6 +28,7 @@ impl crate::DynamicEditorCommand for SelectRange {
     fn perform(
         &self,
         _store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut Document,
         editor: crate::EditorId,
         _location: &crate::ResourceLocation,

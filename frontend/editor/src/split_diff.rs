@@ -518,11 +518,13 @@ impl SplitDiffView {
         if matches!(command, fold::FoldCommand::Remove) {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
-                left.document.remove_inlay(left_key, &fonts, &theme, fx)
+                left.document.remove_inlay(left_key,
+                store, ui, &fonts, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
-                right.document.remove_inlay(right_key, &fonts, &theme, fx)
+                right.document.remove_inlay(right_key,
+                store, ui, &fonts, &theme, fx)
             });
             self.settle_after(Some(left_range), None);
             return self.pair_lane(fx);
@@ -609,22 +611,24 @@ impl SplitDiffView {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
-                    .replace_inlay(left_key, start..end, spacer, &fonts, &theme, fx)
+                    .replace_inlay(left_key, start..end, spacer, store, ui, &fonts, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
                 right
                     .document
-                    .replace_inlay(right_key, right_range, strip, &fonts, &theme, fx)
+                    .replace_inlay(right_key, right_range, strip, store, ui, &fonts, &theme, fx)
             });
         } else {
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
-                left.document.remove_inlay(left_key, &fonts, &theme, fx)
+                left.document.remove_inlay(left_key,
+                store, ui, &fonts, &theme, fx)
             });
             let right = &mut self.right;
             Self::half_scope(fx, SplitDiffCommand::Right, |fx| {
-                right.document.remove_inlay(right_key, &fonts, &theme, fx)
+                right.document.remove_inlay(right_key,
+                store, ui, &fonts, &theme, fx)
             });
         }
 
@@ -918,6 +922,7 @@ impl View for SplitDiffView {
                                     left_marks,
                                     marks.left_markup,
                                     &marks.left_changed,
+                store, ui,
                                     &fonts,
                                     &theme,
                                     fx,
@@ -930,6 +935,7 @@ impl View for SplitDiffView {
                                     right_marks,
                                     marks.right_markup,
                                     &marks.right_changed,
+                store, ui,
                                     &fonts,
                                     &theme,
                                     fx,

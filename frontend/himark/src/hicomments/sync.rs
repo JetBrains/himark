@@ -466,11 +466,12 @@ impl crate::DynamicCommand for SnapshotLanded {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(feed) = store
             .get::<Comments>()
             .and_then(|comments| comments.channel_for(&self.session).cloned())
@@ -507,7 +508,7 @@ impl crate::DynamicCommand for SnapshotLanded {
             }
             comments.generation += 1;
         });
-        settle(store, &self.session, fx);
+        settle(store, ui, &self.session, fx);
         relaunch_poll(window, &self.session, &feed, fx);
     }
 }
@@ -526,11 +527,12 @@ impl crate::DynamicCommand for Polled {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(feed) = store
             .get::<Comments>()
             .and_then(|comments| comments.channel_for(&self.session).cloned())
@@ -643,14 +645,14 @@ impl crate::DynamicCommand for Polled {
         });
 
         for (document, key) in dead_cards {
-            remove_card(store, document, key, fx);
+            remove_card(store, ui, document, key, fx);
         }
-        settle(store, &self.session, fx);
+        settle(store, ui, &self.session, fx);
         relaunch_poll(window, &self.session, &feed, fx);
     }
 }
 
-fn settle(store: &mut Store, session: &Uri, fx: &mut AppFx<'_>) {
+fn settle(store: &mut Store, ui: &imba::UiCtx, session: &Uri, fx: &mut AppFx<'_>) {
     let feed = store
         .get::<Comments>()
         .and_then(|comments| comments.channel_for(session).cloned());
@@ -666,10 +668,10 @@ fn settle(store: &mut Store, session: &Uri, fx: &mut AppFx<'_>) {
             }
         }
         match Comments::card(store, &id) {
-            Some(_) => refresh_card(store, &id, &record),
+            Some(_) => refresh_card(store, ui, &id, &record),
             None => {
                 if let Some(document) = crate::OpenDocuments::by_location(store, &record.location) {
-                    materialize(store, &id, &record, document, fx);
+                    materialize(store, ui, &id, &record, document, fx);
                 }
             }
         }
@@ -715,11 +717,12 @@ impl crate::DynamicCommand for Sent {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         if let Err(error) = &self.result {
             eprintln!("[comments] send failed, comments kept: {error}");
             for id in &self.ids {
@@ -740,7 +743,7 @@ impl crate::DynamicCommand for Sent {
             let theme = crate::env::Themes::of(store);
             fx.scope(
                 move |command| AppCommand::Entity(document, command),
-                |fx| doc.remove_inlay(key, &fonts, &theme, fx),
+                |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
             );
             crate::OpenDocuments::put_document(store, document, doc);
         }
@@ -812,7 +815,13 @@ fn fold_set(
     comments.records.insert_mut(annotation.id.clone(), record);
 }
 
-fn remove_card(store: &mut Store, document: DocumentId, key: InlayKey, fx: &mut AppFx<'_>) {
+fn remove_card(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    document: DocumentId,
+    key: InlayKey,
+    fx: &mut AppFx<'_>,
+) {
     let Some(mut doc) = crate::OpenDocuments::document(store, document) else {
         return;
     };
@@ -820,7 +829,7 @@ fn remove_card(store: &mut Store, document: DocumentId, key: InlayKey, fx: &mut 
     let theme = crate::env::Themes::of(store);
     fx.scope(
         move |command| AppCommand::Entity(document, command),
-        |fx| doc.remove_inlay(key, &fonts, &theme, fx),
+        |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
     );
     crate::OpenDocuments::put_document(store, document, doc);
 }
@@ -881,11 +890,12 @@ impl crate::DynamicCommand for MaterializeFor {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(location) = crate::OpenDocuments::location(store, self.document) else {
             return;
         };
@@ -896,7 +906,7 @@ impl crate::DynamicCommand for MaterializeFor {
             })
             .collect();
         for (id, record) in owed {
-            materialize(store, &id, &record, self.document, fx);
+            materialize(store, ui, &id, &record, self.document, fx);
         }
     }
 }
@@ -915,6 +925,7 @@ fn live_card_range(store: &Store, document: DocumentId, key: InlayKey) -> Option
 
 fn materialize(
     store: &mut Store,
+    ui: &imba::UiCtx,
     id: &AnnotationId,
     record: &CommentRecord,
     document: DocumentId,
@@ -938,6 +949,7 @@ fn materialize(
     let view = CommentView::materialized(
         Some(document),
         crate::hicomments::FALLBACK_WIDTH,
+                store, ui,
         &fonts,
         &theme,
         id.clone(),
@@ -955,6 +967,7 @@ fn materialize(
                 markup,
                 range.clone(),
                 crate::Inlay::new(crate::InlayMode::Under, view.clone()),
+                store, ui,
                 &fonts,
                 &theme,
                 fx,
@@ -973,7 +986,7 @@ fn materialize(
     }
 }
 
-fn refresh_card(store: &mut Store, id: &AnnotationId, record: &CommentRecord) {
+fn refresh_card(store: &mut Store, ui: &imba::UiCtx, id: &AnnotationId, record: &CommentRecord) {
     let Some((document, key)) = Comments::card(store, id) else {
         return;
     };
@@ -998,6 +1011,7 @@ fn refresh_card(store: &mut Store, id: &AnnotationId, record: &CommentRecord) {
     let rebuilt = CommentView::materialized(
         Some(document),
         crate::hicomments::FALLBACK_WIDTH,
+                store, ui,
         &fonts,
         &theme,
         id.clone(),

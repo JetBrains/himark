@@ -74,6 +74,7 @@ pub trait Navigator: Send + Sync + 'static {
     fn navigate(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         place: &Self::Place,
         fx: &mut AppFx<'_>,
@@ -81,7 +82,13 @@ pub trait Navigator: Send + Sync + 'static {
 }
 
 type ErasedNavigate = Arc<
-    dyn Fn(&mut Store, crate::WindowId, &NavigationLocation, &mut AppFx<'_>) -> Option<Panel>
+    dyn Fn(
+            &mut Store,
+            &imba::UiCtx,
+            crate::WindowId,
+            &NavigationLocation,
+            &mut AppFx<'_>,
+        ) -> Option<Panel>
         + Send
         + Sync,
 >;
@@ -92,9 +99,9 @@ pub struct Navigators(rpds::HashTrieMapSync<TypeId, ErasedNavigate>);
 impl Navigators {
     pub fn register<N: Navigator>(store: &mut Store, navigator: N) {
         let navigator = Arc::new(navigator);
-        let erased: ErasedNavigate = Arc::new(move |store, window, location, fx| {
+        let erased: ErasedNavigate = Arc::new(move |store, ui, window, location, fx| {
             let place = location.place::<N::Place>()?;
-            navigator.navigate(store, window, place, fx)
+            navigator.navigate(store, ui, window, place, fx)
         });
         store.update::<Navigators>(|navigators| {
             navigators.0.insert_mut(TypeId::of::<N::Place>(), erased);
@@ -103,6 +110,7 @@ impl Navigators {
 
     pub fn navigate(
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         location: &NavigationLocation,
         fx: &mut AppFx<'_>,
@@ -112,7 +120,7 @@ impl Navigators {
             .0
             .get(&location.place_type)
             .cloned()?;
-        entry(store, window, location, fx)
+        entry(store, ui, window, location, fx)
     }
 }
 
@@ -162,6 +170,7 @@ impl Navigator for EditorNavigator {
     fn navigate(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         place: &EditorPlace,
         fx: &mut AppFx<'_>,
@@ -182,12 +191,13 @@ impl Navigator for EditorNavigator {
             })
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
         let editor = crate::app::entity_scope(id, fx, |fx| {
-            let editor = crate::mount_editor(store, &mut document, width, None, fx);
+            let editor = crate::mount_editor(store, ui, &mut document, width, None, fx);
 
             if place.caret > 0 {
                 let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
-                document.reveal_at_instant(editor, place.caret, &fonts, &theme, fx);
+                document.reveal_at_instant(editor, place.caret,
+                store, ui, &fonts, &theme, fx);
             }
             editor
         });

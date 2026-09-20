@@ -120,11 +120,12 @@ impl DynamicCommand for ApplyNavigation {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(targets) = &self.outcome.targets else {
             return;
         };
@@ -134,12 +135,13 @@ impl DynamicCommand for ApplyNavigation {
         let Some(target) = targets.first() else {
             return;
         };
-        navigate(store, window, target, &self.outcome.built, fx);
+        navigate(store, ui, window, target, &self.outcome.built, fx);
     }
 }
 
 fn navigate(
     store: &mut Store,
+    ui: &imba::UiCtx,
     window: himark::WindowId,
     target: &CodeTarget,
     built: &[(ResourceLocation, Document)],
@@ -166,7 +168,7 @@ fn navigate(
     let Some(mut window_entity) = himark::Windows::window(store, window) else {
         return;
     };
-    window_entity.show_document(store, window, document_id, Some(target.range.clone()), fx);
+    window_entity.show_document(store, ui, window, document_id, Some(target.range.clone()), fx);
     himark::Windows::put(store, window, window_entity);
 
     himark::sync_document_watches(store, fx);
@@ -184,6 +186,7 @@ impl himark::DynamicEditorCommand for GoDefinition {
     fn perform(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -214,6 +217,7 @@ impl himark::DynamicEditorCommand for GoReferences {
     fn perform(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -245,6 +249,7 @@ impl himark::DynamicEditorCommand for GoImplementations {
     fn perform(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,

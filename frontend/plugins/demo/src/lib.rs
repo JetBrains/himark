@@ -13,17 +13,23 @@ const SAMPLE: &str = include_str!("../sample.md");
 const SAMPLE_REPETITIONS: usize = 1_409;
 
 pub fn monster_document(
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
     let (mut document, blocks) =
-        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), fonts, theme);
+        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS),
+                store, ui, fonts, theme);
 
-    add_badges(&mut document, &blocks, fonts, theme);
+    add_badges(&mut document, &blocks,
+                store, ui, fonts, theme);
     document
 }
 
 pub fn wall_of_text_document(
+    _store: &imba::store::Store,
+    _ui: &imba::UiCtx,
     _fonts: &skia_safe::textlayout::FontCollection,
     _theme: &himark::Theme,
 ) -> Document {

@@ -485,6 +485,8 @@ pub(crate) trait InlayView: Send + Sync {
     fn adopt_from(
         &mut self,
         previous: &dyn std::any::Any,
+        store: &Store,
+        ui: &UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     );
@@ -505,6 +507,8 @@ pub trait InlayEditing {
     fn adopt_from(
         &mut self,
         previous: &Self,
+        store: &Store,
+        ui: &UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> bool;
@@ -562,6 +566,8 @@ where
     fn adopt_from(
         &mut self,
         _previous: &dyn std::any::Any,
+        _store: &Store,
+        _ui: &UiCtx,
         _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &crate::theme::Theme,
     ) {
@@ -640,11 +646,14 @@ where
     fn adopt_from(
         &mut self,
         previous: &dyn std::any::Any,
+        store: &Store,
+        ui: &UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         if let Some(previous) = previous.downcast_ref::<V>() {
-            self.carry_live = InlayEditing::adopt_from(&mut self.view, previous, fonts, theme);
+            self.carry_live =
+                InlayEditing::adopt_from(&mut self.view, previous, store, ui, fonts, theme);
         }
     }
 
@@ -964,17 +973,17 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
     pub(crate) fn line_marks_in(
         &self,
         range: Range<u32>,
-        width: Option<f32>,
+        measure: Option<InlayMeasure<'_>>,
         inline: &mut Vec<TextDecorationInterval>,
         hidden: &mut Vec<Range<u32>>,
     ) -> (BlockStyle, InlayMetrics) {
-        self.line_marks_foldables_in(range, width, inline, hidden)
+        self.line_marks_foldables_in(range, measure, inline, hidden)
     }
 
     pub(crate) fn line_marks_foldables_in(
         &self,
         range: Range<u32>,
-        width: Option<f32>,
+        measure: Option<InlayMeasure<'_>>,
         inline: &mut Vec<TextDecorationInterval>,
         hidden: &mut Vec<Range<u32>>,
     ) -> (BlockStyle, InlayMetrics) {
@@ -982,24 +991,41 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
             self.query(range.clone(), Order::Ascending)
                 .map(|decoration| (decoration.range, decoration.value)),
             &range,
-            width,
+            measure,
             inline,
             hidden,
         )
     }
 
-    pub(crate) fn line_marks_sweep(&self, from: u32, width: Option<f32>) -> LineMarksSweep<'a> {
+    pub(crate) fn line_marks_sweep(
+        &self,
+        from: u32,
+        measure: Option<InlayMeasure<'a>>,
+    ) -> LineMarksSweep<'a> {
         let mut iter = self.query(from..u32::MAX, Order::Ascending);
         let peeked = iter.next();
         LineMarksSweep {
             iter,
             peeked,
             active: Vec::new(),
-            width,
+            measure,
             pulls: 0,
             active_peak: 0,
         }
     }
+}
+
+/// The context an inlay MEASURE runs with: the real store and a
+/// WARM UiCtx, threaded from whoever is handed them — the view layer
+/// on the UI thread, the Workshop on effect workers. Minting a cold
+/// ctx per measure was the classic cold-cache bug: every probe
+/// re-resolved typefaces (docs/ui/location-list.md postmortem,
+/// 2026-09-20).
+#[derive(Clone, Copy)]
+pub struct InlayMeasure<'a> {
+    pub width: f32,
+    pub store: &'a imba::store::Store,
+    pub ui: &'a UiCtx,
 }
 
 pub(crate) struct LineMarksSweep<'a> {
@@ -1007,7 +1033,7 @@ pub(crate) struct LineMarksSweep<'a> {
     peeked: Option<intervals::IntervalRef<'a, IntervalId, Decoration>>,
 
     active: Vec<intervals::IntervalRef<'a, IntervalId, Decoration>>,
-    width: Option<f32>,
+    measure: Option<InlayMeasure<'a>>,
 
     pub(crate) pulls: usize,
     pub(crate) active_peak: usize,
@@ -1035,26 +1061,26 @@ impl<'a> LineMarksSweep<'a> {
         classify_line_marks(
             self.active.iter().map(|hit| (hit.range.clone(), hit.value)),
             &range,
-            self.width,
+            self.measure,
             inline,
             hidden,
         )
     }
 }
 
-fn classify_line_marks<'a>(
+fn classify_line_marks<'a, 'm>(
     hits: impl Iterator<Item = (Range<u32>, &'a Decoration)>,
     range: &Range<u32>,
-    width: Option<f32>,
+    measure: Option<InlayMeasure<'m>>,
     inline: &mut Vec<TextDecorationInterval>,
     hidden: &mut Vec<Range<u32>>,
 ) -> (BlockStyle, InlayMetrics) {
     {
         let mut marks = BlockStyle::default();
         let mut metrics = InlayMetrics::default();
-        let constraints = width.map(|width| Constraints {
+        let constraints = measure.map(|measure| Constraints {
             min: Size::default(),
-            max: Size::new(width.max(1.0), f32::MAX),
+            max: Size::new(measure.width.max(1.0), f32::MAX),
         });
         inline.clear();
         hidden.clear();
@@ -1089,7 +1115,7 @@ fn classify_line_marks<'a>(
                 Decoration::Unhide => unhide.push(hit_range.clone()),
                 Decoration::Alignment(alignment) => marks.alignment = Some(*alignment),
                 Decoration::Inlay(inlay) => {
-                    let Some(constraints) = constraints else {
+                    let (Some(constraints), Some(measure)) = (constraints, measure) else {
                         continue;
                     };
                     if !inlay_anchors_line(inlay.mode, &hit_range, range) {
@@ -1098,7 +1124,11 @@ fn classify_line_marks<'a>(
                         }
                         continue;
                     }
-                    let size = inlay.size(instead_constraints(inlay.mode, constraints));
+                    let size = inlay.size(
+                        measure.store,
+                        measure.ui,
+                        instead_constraints(inlay.mode, constraints),
+                    );
                     match inlay.mode {
                         InlayMode::Left
                         | InlayMode::Right
@@ -1174,22 +1204,22 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         widest
     }
 
-    pub(crate) fn inlay_metrics_in(&self, range: Range<u32>, width: f32) -> InlayMetrics {
+    pub(crate) fn inlay_metrics_in(&self, range: Range<u32>, measure: InlayMeasure<'_>) -> InlayMetrics {
         if !self.has_inlays() || range.start >= range.end {
             return InlayMetrics::default();
         }
-        Self::metrics_from(&self.all_inlays_in(range.clone()), &range, width)
+        Self::metrics_from(&self.all_inlays_in(range.clone()), &range, measure)
     }
 
     pub(crate) fn metrics_from(
         hits: &[InlayInterval<'_>],
         range: &Range<u32>,
-        width: f32,
+        measure: InlayMeasure<'_>,
     ) -> InlayMetrics {
         let range = range.clone();
         let constraints = Constraints {
             min: Size::default(),
-            max: Size::new(width.max(1.0), f32::MAX),
+            max: Size::new(measure.width.max(1.0), f32::MAX),
         };
         let mut metrics = InlayMetrics::default();
         for interval in hits {
@@ -1202,9 +1232,11 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
                 }
                 continue;
             }
-            let size = interval
-                .inlay
-                .size(instead_constraints(interval.inlay.mode, constraints));
+            let size = interval.inlay.size(
+                measure.store,
+                measure.ui,
+                instead_constraints(interval.inlay.mode, constraints),
+            );
             match interval.inlay.mode {
                 InlayMode::Left | InlayMode::Right | InlayMode::Instead(InsteadKind::Inline) => {
                     metrics.inline_height = metrics.inline_height.max(size.height.max(0.0));
@@ -1224,14 +1256,14 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
     pub(crate) fn inline_placeholders_in(
         &self,
         range: Range<u32>,
-        width: f32,
+        measure: InlayMeasure<'_>,
     ) -> Vec<InlayPlaceholder> {
         if !self.has_inlays() || range.start >= range.end {
             return Vec::new();
         }
         let constraints = Constraints {
             min: Size::default(),
-            max: Size::new(width.max(1.0), f32::MAX),
+            max: Size::new(measure.width.max(1.0), f32::MAX),
         };
         let mut placeholders = Vec::new();
         for interval in self.all_inlays_in(range.clone()) {
@@ -1245,7 +1277,9 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
             if byte < range.start || byte > range.end {
                 continue;
             }
-            let size = interval.inlay.size(constraints);
+            let size = interval
+                .inlay
+                .size(measure.store, measure.ui, constraints);
             placeholders.push(InlayPlaceholder {
                 byte,
                 width: size.width.max(0.0),
@@ -1765,6 +1799,8 @@ impl Markup {
         &mut self,
         invalidated: &[Range<u32>],
         replacement: MarkupBuilder,
+        store: &imba::store::Store,
+        ui: &UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -1797,7 +1833,7 @@ impl Markup {
                     });
                     if let Some((key, _, prior)) = previous {
                         let mut view = inlay.view.clone_view();
-                        view.adopt_from(prior.view.as_any(), fonts, theme);
+                        view.adopt_from(prior.view.as_any(), store, ui, fonts, theme);
                         inlay.view = Arc::from(view);
                         interval.key = *key;
                         return interval;
@@ -2063,12 +2099,18 @@ impl Inlay {
         self.view.layout_view(arena, store, ui, constraints)
     }
 
-    pub(crate) fn size(&self, constraints: Constraints) -> Size {
+    /// Measure with the HANDED context — the caller's warm store
+    /// and UiCtx (the view layer's on the UI thread, the Workshop's
+    /// on effect workers). Never mint one here: a per-measure cold
+    /// ctx re-resolves typefaces on every probe.
+    pub(crate) fn size(
+        &self,
+        store: &imba::store::Store,
+        ui: &UiCtx,
+        constraints: Constraints,
+    ) -> Size {
         let arena = Arena::default();
-        let store = Store::new();
-
-        let ui = UiCtx::dont_use_too_slow();
-        let widget = self.layout(&arena, &store, &ui, constraints);
+        let widget = self.layout(&arena, store, ui, constraints);
         widget.size()
     }
 

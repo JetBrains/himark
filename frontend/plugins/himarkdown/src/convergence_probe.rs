@@ -14,6 +14,8 @@ fn theme() -> himark::Theme {
 
 #[test]
 fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
     let mut document = himark::Document::new(Text::from_string_exact(""), himark::Markup::new())
@@ -26,6 +28,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         None,
         himark::EditorBuild::Bounded,
         &[],
+                store, ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -33,6 +36,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let _ = editor;
     document.edit(
         &operation::Operation::insert_at(0, "# hi"),
+                store, ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -44,6 +48,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
+                store, ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -66,14 +71,18 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
 
 #[test]
 fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = himark::embedded_fonts::source()();
     let source = "intro\n\n```rust\nfn main() { let x = 1; }\nfn other() {}\n```\n\noutro\n";
-    let mut document = document_from_markdown(source, &fonts, &theme());
+    let mut document = document_from_markdown(source,
+                store, ui, &fonts, &theme());
     let editor = document.add_editor(
         700.0,
         None,
         himark::EditorBuild::Complete,
         &[],
+                store, ui,
         &fonts,
         &theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -87,7 +96,8 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         .expect("parse")
         .run_reparse();
     let mut batch = imba::effect::Batch::new();
-    document.apply_reparse_outcome(outcome, &fonts, &theme(), &mut batch.effects());
+    document.apply_reparse_outcome(outcome,
+                store, ui, &fonts, &theme(), &mut batch.effects());
 
     let cx = test_cx_for_probe();
     for effect in himark::test_support::surviving_launches(batch) {
@@ -100,7 +110,8 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     }
 
     let live = document.element_heights(editor);
-    let fresh_view = himark::EditorView::complete(document.clone(), 700.0, &fonts, &theme());
+    let fresh_view = himark::EditorView::complete(document.clone(), 700.0,
+                store, ui, &fonts, &theme());
     let fresh = fresh_view.element_heights();
     assert_eq!(live, fresh, "incremental layout diverged from from-scratch");
 }

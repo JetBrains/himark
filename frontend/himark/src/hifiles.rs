@@ -73,11 +73,13 @@ struct LocationTree {
 }
 
 impl LocationTree {
-    fn new(store: &Store) -> Self {
+    fn new(store: &Store, ui: &imba::UiCtx) -> Self {
         Self {
             list: SpeedSearchView::new(
                 ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
                 LocationSearcher,
+                store,
+                ui,
                 crate::env::Fonts::of(store),
             ),
             pending: rpds::HashTrieSetSync::new_sync(),
@@ -339,11 +341,11 @@ impl SessionTree {
         self.0.is_none()
     }
 
-    fn find_or_create(store: &mut Store) -> LocationTree {
+    fn find_or_create(store: &mut Store, ui: &imba::UiCtx) -> LocationTree {
         store
             .get::<SessionTree>()
             .and_then(|tree| tree.0.clone())
-            .unwrap_or_else(|| LocationTree::new(store))
+            .unwrap_or_else(|| LocationTree::new(store, ui))
     }
 
     fn persist(store: &mut Store, tree: &LocationTree) {
@@ -417,7 +419,7 @@ impl SessionTreeView {
         reveal: Option<ResourceLocation>,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) -> Self {
-        let mut tree = SessionTree::find_or_create(store);
+        let mut tree = SessionTree::find_or_create(store, ui);
         tree.ensure_roots(
             &crate::higent::session_folders(store, &workspace),
             store,
@@ -573,7 +575,9 @@ impl View for SessionTreeView {
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        fx.scope(TreeCommand::Rows, |fx| self.tree.list.clear(fx));
+        // Teardown-only: `View::destroy` carries no UiCtx.
+        let ui = &imba::UiCtx::dont_use_too_slow();
+        fx.scope(TreeCommand::Rows, |fx| self.tree.list.clear(store, ui, fx));
         self.persist(store);
     }
 

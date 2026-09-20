@@ -86,6 +86,8 @@ impl StickyViewport {
         editor: EditorId,
         viewport: Rect,
         origin_x: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Rc<StickyViewport> {
@@ -131,6 +133,7 @@ impl StickyViewport {
                 editor,
                 viewport,
                 origin_x,
+                store, ui,
                 fonts,
                 theme,
                 previous
@@ -162,6 +165,8 @@ impl StickyViewport {
         editor: EditorId,
         viewport: Rect,
         origin_x: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         previous: Option<(&StickyViewport, Option<u64>)>,
@@ -180,10 +185,11 @@ impl StickyViewport {
                 return (row.number, Rc::clone(&row.shaped));
             }
             let number = view.line_at(line_start as usize).0 as u32 + 1;
-            let shaped = Rc::new(document.shape_line(editor, line, origin_x, false, fonts, theme));
+            let shaped = Rc::new(document.shape_line(editor, line, origin_x, false,
+                store, ui, fonts, theme));
             (number, shaped)
         };
-        let rows = sticky_rows(document, editor, viewport, &mut row_for);
+        let rows = sticky_rows(document, editor, store, ui, viewport, &mut row_for);
         let height = rows.iter().map(|row| row.height).sum();
         Self { rows, height }
     }
@@ -200,9 +206,12 @@ impl StickyViewport {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn sticky_overlays<'a>(
     document: &Document,
     editor: EditorId,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::theme::Theme,
     arena: &'a Arena,
@@ -214,7 +223,8 @@ pub(crate) fn sticky_overlays<'a>(
     if viewport.top <= 0.0 || viewport.height() <= 0.0 {
         return Vec::new();
     }
-    let sticky = StickyViewport::shared(document, editor, viewport, origin_x, fonts, theme);
+    let sticky = StickyViewport::shared(document, editor, viewport, origin_x,
+                store, ui, fonts, theme);
     if sticky.rows.is_empty() {
         return Vec::new();
     }
@@ -236,6 +246,8 @@ pub(crate) fn sticky_overlays<'a>(
 fn sticky_rows(
     document: &Document,
     editor: EditorId,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     viewport: Rect,
     row_for: &mut dyn FnMut(u32, std::ops::Range<u32>) -> (u32, Rc<ShapedLine>),
 ) -> Vec<StickyRow> {
@@ -282,8 +294,15 @@ fn sticky_rows(
             break;
         }
         let byte_end = byte_start.saturating_add(item.byte_size).min(text_len);
-        let inlays = crate::markup::OverlaidMarkup::new(document.markup(), &extras)
-            .inlay_metrics_in(byte_start..byte_end, state.layout.layout_width());
+        let inlays = {
+            let measure = crate::markup::InlayMeasure {
+                width: state.layout.layout_width(),
+                store,
+                ui,
+            };
+            crate::markup::OverlaidMarkup::new(document.markup(), &extras)
+                .inlay_metrics_in(byte_start..byte_end, measure)
+        };
         if inlays.has_instead() {
             break;
         }

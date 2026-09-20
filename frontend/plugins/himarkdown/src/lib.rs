@@ -24,12 +24,15 @@ use tree_sitter::{Node, Tree};
 
 pub fn document_from_markdown(
     source: &str,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
-    document_from_tree_text(text, tree, fonts, theme)
+    document_from_tree_text(text, tree,
+                store, ui, fonts, theme)
 }
 
 pub fn markdown_languages(mut languages: himark::SyntaxLanguages) -> himark::SyntaxLanguages {
@@ -87,7 +90,15 @@ impl himark::Enricher for TableEnricher {
                             block.range.clone(),
                             himark::Inlay::editing(
                                 himark::InlayMode::Instead(himark::InsteadKind::FullLine),
-                                table::TableEditor::new(source.clone(), cx.fonts, cx.theme),
+                                cx.measure.with_ctx(|store, ui| {
+                                    table::TableEditor::new(
+                                        source.clone(),
+                                        store,
+                                        ui,
+                                        cx.fonts,
+                                        cx.theme,
+                                    )
+                                }),
                             ),
                         );
                         if !changed.contains(&block.range) {
@@ -107,28 +118,36 @@ impl himark::Enricher for TableEnricher {
 
 pub fn markdown_document(
     source: &str,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> (Document, Vec<MarkdownBlock>) {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
     let blocks = markdown_blocks(&text, &tree);
-    let document = document_from_tree_text(text, tree, fonts, theme);
+    let document = document_from_tree_text(text, tree,
+                store, ui, fonts, theme);
     (document, blocks)
 }
 
 pub fn document_from_tree(
     source: &str,
     tree: &Tree,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
-    document_from_tree_text(Text::from_string_exact(source), tree.clone(), fonts, theme)
+    document_from_tree_text(Text::from_string_exact(source), tree.clone(),
+                store, ui, fonts, theme)
 }
 
 fn document_from_tree_text(
     text: Text,
     tree: Tree,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
@@ -150,7 +169,8 @@ fn document_from_tree_text(
     }
     let mut document = Document::new(text, Markup::new()).with_syntax(syntax, &sites);
 
-    document.enrich_now(&builder_enrichers(), fonts, theme);
+    document.enrich_now(&builder_enrichers(),
+                store, ui, fonts, theme);
     document
 }
 

@@ -241,6 +241,8 @@ macro_rules! fx {
 
 #[test]
 fn the_edit_door_keeps_live_diffs_valid() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = crate::embedded_fonts::collection();
     let theme = crate::theme::Theme::embedded();
     let base = "one\ntwo\nthree\n";
@@ -258,7 +260,8 @@ fn the_edit_door_keeps_live_diffs_valid() {
         ]),
     ];
     for edit in edits {
-        target.edit(&edit, &fonts, &theme, fx!());
+        target.edit(&edit,
+                store, ui, &fonts, &theme, fx!());
         let live = target.diff(id).expect("the entry rides the document");
         assert_eq!(
             apply(live.operation(), base),
@@ -275,6 +278,8 @@ fn the_edit_door_keeps_live_diffs_valid() {
 
 #[test]
 fn apply_base_edits_brings_the_old_side_current_idempotently() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = crate::embedded_fonts::collection();
     let theme = crate::theme::Theme::embedded();
     let mut base = crate::test_document::plain_document("one\ntwo\nthree\n");
@@ -282,9 +287,12 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
     let operation = diff(base.text(), target.text());
     let id = target.add_diff(operation, base.revision());
 
-    base.edit(&Operation::insert_at(4, "1.5\n"), &fonts, &theme, fx!());
-    target.edit(&Operation::insert_at(0, "zero\n"), &fonts, &theme, fx!());
-    base.edit(&Operation::delete_at(0, "one\n"), &fonts, &theme, fx!());
+    base.edit(&Operation::insert_at(4, "1.5\n"),
+                store, ui, &fonts, &theme, fx!());
+    target.edit(&Operation::insert_at(0, "zero\n"),
+                store, ui, &fonts, &theme, fx!());
+    base.edit(&Operation::delete_at(0, "one\n"),
+                store, ui, &fonts, &theme, fx!());
 
     assert!(target.apply_diff_base_edits(id, base.log()));
     let live = target.diff(id).expect("tracked");
@@ -333,6 +341,8 @@ fn install_normalized_diff_bumps_the_generation_and_guards_lengths() {
 
 #[test]
 fn remove_diff_takes_its_markup_with_it() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let base = crate::test_document::plain_document("a\n");
     let mut target = crate::test_document::plain_document("b\n");
     let fonts = crate::embedded_fonts::collection();
@@ -341,7 +351,8 @@ fn remove_diff_takes_its_markup_with_it() {
     let id = target.add_diff(operation, 0);
     let markup = target.diff(id).expect("tracked").markup();
     assert!(target.feature_markup(markup).is_some());
-    target.remove_diff(id, &[], &fonts, &theme, fx!());
+    target.remove_diff(id, &[],
+                store, ui, &fonts, &theme, fx!());
     assert!(target.diff(id).is_none());
     assert!(
         target.feature_markup(markup).is_none(),

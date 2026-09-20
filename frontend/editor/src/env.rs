@@ -99,10 +99,17 @@ pub fn ui_typeface(
     skia_safe::FontMgr::new().legacy_make_typeface(None, style)
 }
 
+
 pub struct Workshop {
     source: crate::FontSource,
     fonts: std::sync::Mutex<Option<skia_safe::textlayout::FontCollection>>,
     theme: std::sync::Mutex<crate::theme::Theme>,
+    /// The effect handler's OWN measure ctx — a store seeded with
+    /// the current theme plus a warm `UiCtx`, kept for the
+    /// handler's lifetime (ui.rs's doctrine) and handed into every
+    /// background layout pass that can meet an inlay. The UI thread
+    /// passes its real store/ui instead; nothing is static.
+    measure: std::sync::Mutex<(imba::store::Store, imba::UiCtx)>,
 }
 
 unsafe impl Send for Workshop {}
@@ -110,11 +117,35 @@ unsafe impl Sync for Workshop {}
 
 impl Workshop {
     pub fn new(source: crate::FontSource, theme: crate::theme::Theme) -> Self {
+        let mut seeded = imba::store::Store::new();
+        Themes::set(&mut seeded, theme.clone());
         Self {
             source,
             fonts: std::sync::Mutex::new(None),
             theme: std::sync::Mutex::new(theme),
+            measure: std::sync::Mutex::new((seeded, imba::UiCtx::dont_use_too_slow())),
         }
+    }
+
+    /// Run `f` with this handler's measure ctx.
+    pub fn measure<R>(
+        &self,
+        width: f32,
+        f: impl FnOnce(crate::markup::InlayMeasure<'_>) -> R,
+    ) -> R {
+        let kept = self.measure.lock().expect("workshop measure");
+        let (store, ui) = &*kept;
+        f(crate::markup::InlayMeasure { width, store, ui })
+    }
+
+    /// Run `f` with this handler's kept (store, ui) pair directly —
+    /// for callees that take the pair rather than a ready measure.
+    pub fn with_ctx<R>(
+        &self,
+        f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R,
+    ) -> R {
+        let kept = self.measure.lock().expect("workshop measure");
+        f(&kept.0, &kept.1)
     }
 
     pub fn fonts(&self) -> skia_safe::textlayout::FontCollection {
@@ -127,6 +158,9 @@ impl Workshop {
     }
 
     pub fn set_theme(&self, theme: crate::theme::Theme) {
+        let mut seeded = imba::store::Store::new();
+        Themes::set(&mut seeded, theme.clone());
+        self.measure.lock().expect("workshop measure").0 = seeded;
         *self.theme.lock().expect("workshop theme") = theme;
     }
 }

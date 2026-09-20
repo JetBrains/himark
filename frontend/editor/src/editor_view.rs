@@ -212,6 +212,8 @@ pub(crate) struct SharedViewport<'a> {
     editor: crate::editor::EditorId,
     fonts: WidgetFonts,
     theme: crate::theme::Theme,
+    store: &'a Store,
+    ui: &'a UiCtx,
 
     number_lines: bool,
 
@@ -242,6 +244,8 @@ impl<'a> SharedViewport<'a> {
                 self.focused,
                 self.number_lines,
                 self.stripes,
+                self.store,
+                self.ui,
                 &self.fonts.collection(),
                 &self.theme,
             ));
@@ -448,6 +452,8 @@ impl EditorView {
     pub fn of_document(
         mut document: Document,
         width: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -457,6 +463,7 @@ impl EditorView {
             None,
             crate::document::EditorBuild::Bounded,
             &[],
+                store, ui,
             fonts,
             theme,
             &mut discarded.effects(),
@@ -474,6 +481,8 @@ impl EditorView {
     pub fn complete(
         mut document: Document,
         width: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -483,6 +492,7 @@ impl EditorView {
             None,
             crate::document::EditorBuild::Complete,
             &[],
+                store, ui,
             fonts,
             theme,
             &mut discarded.effects(),
@@ -497,13 +507,19 @@ impl EditorView {
         }
     }
 
-    pub fn input(width: f32, fonts: crate::FontSource) -> Self {
+    pub fn input(
+        width: f32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: crate::FontSource,
+    ) -> Self {
         let mut markup = crate::markup::Markup::new();
         markup.push_styled_covering(0..0, crate::theme::StyleId::Input);
 
         Self::of_document(
             Document::new(text::Text::from_string_exact(""), markup),
             width,
+                store, ui,
             &fonts(),
             &crate::theme::Theme::embedded(),
         )
@@ -561,11 +577,14 @@ impl EditorView {
     pub fn reveal_caret(
         &mut self,
         byte: u32,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         self.document.set_caret(self.editor, byte);
-        self.document.refresh_unhide(self.editor, fonts, theme);
+        self.document.refresh_unhide(self.editor,
+                store, ui, fonts, theme);
     }
 
     pub fn find_misaligned_boundary(&self) -> Option<u32> {
@@ -634,6 +653,7 @@ impl EditorView {
                                 line_range.clone(),
                                 0.0,
                                 true,
+                store, ui,
                                 &fonts,
                                 theme,
                             )
@@ -660,6 +680,7 @@ impl EditorView {
                                 line_range.clone(),
                                 0.0,
                                 true,
+                store, ui,
                                 &fonts,
                                 theme,
                             )
@@ -812,6 +833,7 @@ impl View for EditorView {
                     base,
                     *diff,
                     true,
+                store, ui,
                     &fonts,
                     &theme,
                     fx,
@@ -829,6 +851,7 @@ impl View for EditorView {
             };
             return entry.perform(
                 store,
+                ui,
                 &mut self.document,
                 self.editor,
                 &location,
@@ -841,7 +864,7 @@ impl View for EditorView {
             let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
             self.document
-                .land_reparse(outcome, self.location.clone(), store, &fonts, &theme, fx);
+                .land_reparse(outcome, self.location.clone(), store, ui, &fonts, &theme, fx);
             return;
         }
         let base_revision = self.document.revision();
@@ -907,6 +930,8 @@ impl View for EditorView {
                     editor: editor_id,
                     fonts: fonts.clone(),
                     theme: crate::env::Themes::of(store),
+                    store,
+                    ui,
                     number_lines: gutter > 0.0,
                     stripes,
                     focused,
@@ -987,6 +1012,7 @@ impl View for EditorView {
                     popups.extend(crate::sticky::sticky_overlays(
                         &document,
                         editor_id,
+                store, ui,
                         &fonts.collection(),
                         &crate::env::Themes::of(store),
                         arena,
@@ -1001,6 +1027,8 @@ impl View for EditorView {
                     view: self,
                     fonts: fonts.clone(),
                     theme: crate::env::Themes::of(store),
+                    store,
+                    ui,
                     popups,
                 }
             })
@@ -1225,6 +1253,8 @@ struct EditorChain<'a> {
     view: &'a EditorView,
     fonts: WidgetFonts,
     theme: crate::theme::Theme,
+    store: &'a Store,
+    ui: &'a UiCtx,
 
     popups: Vec<imba::overlay::Overlay<'a, EditorCommand>>,
 }
@@ -1269,6 +1299,8 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
             true => {
                 let fonts = &self.fonts;
                 let theme = &self.theme;
+                let store = self.store;
+                let ui = self.ui;
                 LayoutData {
                     ime: Some(imba::focus::ImeSeat {
                         origin: skia_safe::Point::new(view.gutter_width.max(0.0), 0.0),
@@ -1279,6 +1311,8 @@ impl<'a> imba::Widget<'a, EditorCommand> for EditorChain<'a> {
                                 editor: view.editor,
                                 fonts: fonts.collection(),
                                 theme,
+                                store,
+                                ui,
                                 origin: skia_safe::Point::new(-origin.x, -origin.y),
                                 clip,
 
@@ -1390,6 +1424,8 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                         &data,
                         canvas,
                         *focused,
+                        self.shared.store,
+                        self.shared.ui,
                         &self.shared.fonts.collection(),
                         &self.shared.theme,
                     );
@@ -1481,6 +1517,8 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
                 let (x, y, w, h) = match self.document().caret_content_rect(
                     self.editor(),
                     caret,
+                    self.shared.store,
+                    self.shared.ui,
                     &self.shared.fonts.collection(),
                     &self.shared.theme,
                 ) {
@@ -1553,6 +1591,8 @@ struct EditorImeClient<'a> {
     editor: crate::editor::EditorId,
     fonts: skia_safe::textlayout::FontCollection,
     theme: &'a crate::theme::Theme,
+    store: &'a Store,
+    ui: &'a UiCtx,
     origin: skia_safe::Point,
 
     bounds: Size,
@@ -1606,7 +1646,8 @@ impl imba::ImeClient for EditorImeClient<'_> {
         let byte = self.document.text().view().utf16_to_byte(start);
         let (x, y, w, h) =
             self.document
-                .caret_content_rect(self.editor, byte, &self.fonts, self.theme)?;
+                .caret_content_rect(self.editor, byte,
+                self.store, self.ui, &self.fonts, self.theme)?;
         Some((x - self.origin.x, y - self.origin.y, w, h))
     }
 
@@ -1619,7 +1660,8 @@ impl imba::ImeClient for EditorImeClient<'_> {
             )
         };
         self.document
-            .selection_content_rects(self.editor, from..to, &self.fonts, self.theme)
+            .selection_content_rects(self.editor, from..to,
+                self.store, self.ui, &self.fonts, self.theme)
             .into_iter()
             .map(|(x, y, w, h)| (x - self.origin.x, y - self.origin.y, w, h))
             .collect()
@@ -1649,7 +1691,8 @@ impl imba::ImeClient for EditorImeClient<'_> {
 
         let byte = match self
             .document
-            .byte_at_point(self.editor, cx, cy, &self.fonts, self.theme)
+            .byte_at_point(self.editor, cx, cy,
+                self.store, self.ui, &self.fonts, self.theme)
         {
             Some(byte) => byte,
             None => self.document.text().byte_count().min(u32::MAX as usize) as u32,

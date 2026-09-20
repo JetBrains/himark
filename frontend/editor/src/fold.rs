@@ -4,7 +4,6 @@
 use std::ops::Range;
 
 use imba::anim::{Animation, AnimationClock, Easing, Motion};
-use skia_safe::textlayout::FontCollection;
 
 use crate::document::Document;
 use crate::editor::{EditorEffects, EditorId};
@@ -21,13 +20,16 @@ impl Document {
         &mut self,
         editor: EditorId,
         range: Range<u32>,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
         if let Some(key) = self.fold_matching(editor, &range) {
             let departing = self.fold_chip_at(key).is_some_and(FoldChip::is_departing);
-            return self.set_fold_departure(key, !departing, fonts, theme, fx);
+            return self.set_fold_departure(key, !departing,
+                store, ui, fonts, theme, fx);
         }
         let offered = self
             .foldables_in(range.start..range.start.saturating_add(1))
@@ -49,7 +51,8 @@ impl Document {
             InlayMode::Instead(InsteadKind::Inline),
             FoldChip::appearing(born, theme.ui().fold_chip.height),
         );
-        self.push_inlay(id, range, chip, fonts, theme, fx);
+        self.push_inlay(id, range, chip,
+                store, ui, fonts, theme, fx);
     }
 
     pub(crate) fn fold_matching(&self, editor: EditorId, range: &Range<u32>) -> Option<InlayKey> {
@@ -77,7 +80,9 @@ impl Document {
         &mut self,
         key: InlayKey,
         departing: bool,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -97,9 +102,11 @@ impl Document {
             false => chip.revive(theme.ui().fold_chip.height),
         }
         if chip.departed() {
-            return self.remove_inlay(key, fonts, theme, fx);
+            return self.remove_inlay(key,
+                store, ui, fonts, theme, fx);
         }
-        self.replace_inlay(key, range, Inlay::new(mode, chip), fonts, theme, fx);
+        self.replace_inlay(key, range, Inlay::new(mode, chip),
+                store, ui, fonts, theme, fx);
     }
 
     fn fold_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {

@@ -1178,6 +1178,7 @@ impl ChangesView {
             list: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
+                store, ui,
                 crate::env::Fonts::of(store),
             ),
             items: rpds::HashTrieMapSync::new_sync(),
@@ -1303,8 +1304,10 @@ impl View for ChangesView {
         own.merge_under(self.list.focus_data(store, ui).map(ChangesCommand::Rows))
     }
 
-    fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        fx.scope(ChangesCommand::Rows, |fx| self.list.clear(fx));
+    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
+        // Teardown-only: `View::destroy` carries no UiCtx.
+        let ui = &imba::UiCtx::dont_use_too_slow();
+        fx.scope(ChangesCommand::Rows, |fx| self.list.clear(store, ui, fx));
     }
 
     fn perform(

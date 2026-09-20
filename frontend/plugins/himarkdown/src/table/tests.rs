@@ -89,33 +89,41 @@ fn apply(source: &str, operation: &Operation) -> String {
 }
 
 fn editor_over(source: &str) -> TableEditor {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use himark::InlayEditing;
     let fonts = himark::embedded_fonts::collection();
     let theme = himark::Theme::embedded();
-    let mut editor = TableEditor::new(parse_table(source).expect("a table"), &fonts, &theme);
+    let mut editor = TableEditor::new(parse_table(source).expect("a table"),
+                store, ui, &fonts, &theme);
     editor.set_range(0..source.len() as u32);
     editor
 }
 
 #[test]
 fn structural_edits_write_correct_markdown() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use himark::InlayEditing;
     let source = "| a | b |\n| --- | :-: |\n| 1 | 2 |\n| 3 | 4 |";
     let fonts = himark::embedded_fonts::collection();
     let theme = himark::Theme::embedded();
 
     let mut editor = editor_over(source);
-    editor.insert_row(3, &fonts, &theme);
+    editor.insert_row(3,
+                store, ui, &fonts, &theme);
     let appended = apply(source, &editor.take_edit().expect("an op"));
     assert_eq!(appended, format!("{source}\n|   |   |"));
 
     let mut editor = editor_over(source);
-    editor.remove_row(1, &fonts, &theme);
+    editor.remove_row(1,
+                store, ui, &fonts, &theme);
     let removed = apply(source, &editor.take_edit().expect("an op"));
     assert_eq!(removed, "| a | b |\n| --- | :-: |\n| 3 | 4 |");
 
     let mut editor = editor_over(source);
-    editor.insert_column(0, &fonts, &theme);
+    editor.insert_column(0,
+                store, ui, &fonts, &theme);
     let widened = apply(source, &editor.take_edit().expect("an op"));
     assert_eq!(
         widened,
@@ -124,7 +132,8 @@ fn structural_edits_write_correct_markdown() {
     assert!(parse_table(&widened).is_some(), "still a table");
 
     let mut editor = editor_over(source);
-    editor.remove_column(0, &fonts, &theme);
+    editor.remove_column(0,
+                store, ui, &fonts, &theme);
     let narrowed = apply(source, &editor.take_edit().expect("an op"));
     assert_eq!(narrowed, "| b |\n| :-: |\n| 2 |\n| 4 |");
     assert!(parse_table(&narrowed).is_some(), "still a table");
@@ -132,13 +141,16 @@ fn structural_edits_write_correct_markdown() {
 
 #[test]
 fn resize_relayout_round_trips_through_the_effect() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use imba::effect::{block_on, EffectHandler};
 
     let fonts = himark::embedded_fonts::collection();
     let theme = himark::Theme::embedded();
     let source = "| title | body |\n| --- | --- |\n| a | some long prose that wraps at narrow widths and keeps wrapping |";
     let mut editor = editor_over(source);
-    editor.relay_all(600.0, &fonts, &theme);
+    editor.relay_all(600.0,
+                store, ui, &fonts, &theme);
     assert!(!editor.needs_relay(600.0), "just laid — nothing to report");
     assert!(
         editor.needs_relay(280.0),
@@ -188,7 +200,7 @@ fn resize_relayout_round_trips_through_the_effect() {
     let relaid = block_on(Box::pin(async move { handler.handle(*effect).await }));
 
     let mut expected = editor.clone();
-    expected.relay_all(280.0, &fonts, &theme);
+    expected.relay_all(280.0, &store, &ui, &fonts, &theme);
     imba::View::perform(
         &mut editor,
         &mut store,
@@ -206,6 +218,8 @@ fn resize_relayout_round_trips_through_the_effect() {
 
 #[test]
 fn a_relaid_landing_over_moved_content_discards_itself() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use himark::InlayEditing;
 
     let fonts = himark::embedded_fonts::collection();
@@ -213,11 +227,13 @@ fn a_relaid_landing_over_moved_content_discards_itself() {
     let source =
         "| a | b |\n| --- | --- |\n| one | a very long cell that wraps when squeezed hard |";
     let mut editor = editor_over(source);
-    editor.relay_all(600.0, &fonts, &theme);
+    editor.relay_all(600.0,
+                store, ui, &fonts, &theme);
 
     let stale = {
         let mut clone = editor.clone();
-        clone.relay_all(300.0, &fonts, &theme);
+        clone.relay_all(300.0,
+                store, ui, &fonts, &theme);
         clone
     };
     editor.write_through_insert(0, 0, "typed");
@@ -246,13 +262,16 @@ fn a_relaid_landing_over_moved_content_discards_itself() {
 
 #[test]
 fn paint_reports_relayout_while_the_width_lags() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     use imba::event::{Event, EventResult};
 
     let fonts = himark::embedded_fonts::collection();
     let theme = himark::Theme::embedded();
     let source = "| a | b |\n| --- | --- |\n| x | prose long enough that no pane fits it unwrapped, and then some more of it |";
     let mut editor = editor_over(source);
-    editor.relay_all(600.0, &fonts, &theme);
+    editor.relay_all(600.0,
+                store, ui, &fonts, &theme);
 
     let arena = Arena::default();
     let store = Store::new();
@@ -299,7 +318,7 @@ fn paint_reports_relayout_while_the_width_lags() {
         "a painted frame at a lagging width reports the relayout"
     );
 
-    editor.relay_all(expected, &fonts, &theme);
+    editor.relay_all(expected, &store, &ui, &fonts, &theme);
     assert!(
         !paint_commands(&editor, &mut surface)
             .iter()

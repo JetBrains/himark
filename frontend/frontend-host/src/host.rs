@@ -386,11 +386,12 @@ impl DynamicCommand for OpenPicked {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let (folders, documents): (Vec<_>, Vec<_>) = self
             .locations
             .iter()
@@ -418,7 +419,7 @@ impl DynamicCommand for OpenPicked {
             }
         }
         if !documents.is_empty() {
-            open_locations(store, window, &documents, fx);
+            open_locations(store, ui, window, &documents, fx);
         }
     }
 }
@@ -458,6 +459,7 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
     fn perform(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut himark::Document,
         editor: himark::EditorId,
         location: &himark::ResourceLocation,
@@ -492,17 +494,18 @@ impl himark::DynamicCommand for ShowWorkingCopy {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         match himark::OpenDocuments::by_location(store, &self.location) {
             Some(document_id) => {
                 let Some(mut entity) = himark::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(store, window, document_id, Some(self.target.clone()), fx);
+                entity.show_document(store, ui, window, document_id, Some(self.target.clone()), fx);
                 himark::Windows::put(store, window, entity);
             }
             None => {
@@ -689,11 +692,12 @@ impl DynamicCommand for ShowTerminal {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(session) = &self.session else {
             return;
         };
@@ -705,7 +709,7 @@ impl DynamicCommand for ShowTerminal {
 
         himark::terminal::Terminals::put(store, channel.clone(), session.clone());
         if !entity.open_panel(
-            store,
+            store, ui,
             Box::new(himark::terminal::TerminalView::new(channel.clone())),
             fx,
         ) {

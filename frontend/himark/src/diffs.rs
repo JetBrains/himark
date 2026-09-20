@@ -31,11 +31,12 @@ pub fn sync_stripe_bases(store: &mut Store, fx: &mut AppFx<'_>) {
 
 pub(crate) fn land_base_located(
     store: &mut Store,
+    ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: Option<crate::ResourceLocation>,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(base) = adopt_base_location(store, document, base, fx) else {
+    let Some(base) = adopt_base_location(store, ui, document, base, fx) else {
         return;
     };
     let _ = fx.push(

@@ -556,6 +556,7 @@ impl Completion {
                     }),
                     view,
                 ),
+                store, ui,
                 &fonts,
                 &theme,
                 fx,
@@ -747,7 +748,8 @@ impl Completion {
         let fonts = crate::env::ui_collection(store, ui);
         let theme = crate::env::Themes::of(store);
         fx.scope(to_editor.clone(), |fx| {
-            document.edit(&operation, &fonts, &theme, fx);
+            document.edit(&operation,
+                store, ui, &fonts, &theme, fx);
         });
         document.set_caret(editor, range.start + inserted.len() as u32);
     }
@@ -770,7 +772,8 @@ impl Completion {
             let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
             fx.scope(to_editor, |fx| {
-                document.remove_markup(markup, &[], &fonts, &theme, fx);
+                document.remove_markup(markup, &[],
+                store, ui, &fonts, &theme, fx);
             });
         }
         self.clear();

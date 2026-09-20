@@ -87,7 +87,10 @@ impl View for EditorIdView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         crate::close_editor(store, self.document, self.editor);
-        crate::OpenDocuments::remove_if_editorless(store, self.document, fx);
+        // Teardown-only: `View::destroy` carries no UiCtx, and the
+        // release may reshape a surviving base document's markup once.
+        let ui = &imba::UiCtx::dont_use_too_slow();
+        crate::OpenDocuments::remove_if_editorless(store, ui, self.document, fx);
     }
 
     fn perform(

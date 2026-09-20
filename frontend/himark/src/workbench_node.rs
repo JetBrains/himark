@@ -315,7 +315,7 @@ impl Panel {
                     return None;
                 }
                 Some(Box::new(crate::toc::OutlineView::new(
-                    store,
+                    store, ui,
                     window,
                     view.document(),
                     location,
@@ -349,6 +349,7 @@ impl Panel {
     pub(crate) fn navigate_to(
         &mut self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         target: &crate::NavigationLocation,
         fx: &mut crate::AppFx<'_>,
     ) -> bool {
@@ -370,7 +371,8 @@ impl Panel {
                 let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
                 crate::app::entity_scope(view.document(), fx, |fx| {
-                    document.reveal_at(view.editor(), place.caret, &fonts, &theme, fx)
+                    document.reveal_at(view.editor(), place.caret,
+                store, ui, &fonts, &theme, fx)
                 });
                 crate::OpenDocuments::put_document(store, view.document(), document);
                 pane.set_scroll_y(place.scroll_y);
@@ -597,7 +599,7 @@ impl PaneSlot {
         let theme = ::editor::env::Themes::of(store);
         fx.scope(
             |command| PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command)),
-            |fx| find.sync(store, target, &fonts, &theme, fx),
+            |fx| find.sync(store, target, ui, &fonts, &theme, fx),
         );
 
         let Some(find) = &mut self.find else {
@@ -840,7 +842,8 @@ impl PaneSlot {
         };
         let fonts = ::editor::env::ui_collection(store, ui);
         let theme = ::editor::env::Themes::of(store);
-        let byte = document.byte_at_point(editor, point.x, point.y, &fonts, &theme);
+        let byte = document.byte_at_point(editor, point.x, point.y,
+                store, ui, &fonts, &theme);
         self.hover.sync(
             store,
             ui,
@@ -925,7 +928,7 @@ impl PaneSlot {
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.step(store, forward, &fonts, &theme, fx),
+                        |fx| find.step(store, forward, ui, &fonts, &theme, fx),
                     );
                 }
             }
@@ -935,7 +938,7 @@ impl PaneSlot {
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.uninstall(store, &fonts, &theme, fx),
+                        |fx| find.uninstall(store, ui, &fonts, &theme, fx),
                     );
                 }
             }
@@ -946,7 +949,7 @@ impl PaneSlot {
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.adopt(store, target, &landed, &fonts, &theme, fx),
+                        |fx| find.adopt(store, target, &landed, ui, &fonts, &theme, fx),
                     );
                 }
             }

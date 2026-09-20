@@ -4,7 +4,6 @@
 use std::ops::Range;
 
 use operation::{Operation, OperationBuilder};
-use skia_safe::textlayout::FontCollection;
 use text::Text;
 
 use crate::caret::{Caret, DragOrigin, MultiCaret};
@@ -18,7 +17,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         text: &str,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -31,13 +32,16 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, text, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, text,
+                store, ui, fonts, theme, fx)
     }
 
     pub fn delete_selections(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -47,14 +51,17 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "", fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "",
+                store, ui, fonts, theme, fx)
     }
 
     pub fn delete_at_carets(
         &mut self,
         editor: EditorId,
         motion: Motion,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -93,7 +100,8 @@ impl Document {
                 target.min(offset)..target.max(offset)
             })
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "", fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "",
+                store, ui, fonts, theme, fx)
     }
 
     pub fn replace_at_carets(
@@ -102,7 +110,9 @@ impl Document {
         carets: MultiCaret,
         ranges: Vec<Range<u32>>,
         insert: &str,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -110,7 +120,8 @@ impl Document {
         if operation.is_empty() {
             return;
         }
-        self.edit(&operation, fonts, theme, fx);
+        self.edit(&operation,
+                store, ui, fonts, theme, fx);
         self.set_carets(editor, after);
     }
 
@@ -119,7 +130,9 @@ impl Document {
         editor: EditorId,
         motion: Motion,
         select: bool,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         if matches!(motion, Motion::Up | Motion::Down) {
@@ -127,6 +140,7 @@ impl Document {
                 editor,
                 matches!(motion, Motion::Down),
                 select,
+                store, ui,
                 fonts,
                 theme,
             );
@@ -166,7 +180,9 @@ impl Document {
         editor: EditorId,
         down: bool,
         select: bool,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let window = self.window(editor);
@@ -180,6 +196,7 @@ impl Document {
                 caret.offset(),
                 goal,
                 down,
+                store, ui,
                 fonts,
                 theme,
             ) {
@@ -202,7 +219,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         above: bool,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let carets = self.carets(editor).clamped(&self.window(editor));
@@ -215,7 +234,8 @@ impl Document {
             return;
         };
         let Some((target, x)) =
-            self.vertical_caret_target(editor, edge.offset(), edge.goal_x(), !above, fonts, theme)
+            self.vertical_caret_target(editor, edge.offset(), edge.goal_x(), !above,
+                store, ui, fonts, theme)
         else {
             return;
         };
@@ -306,10 +326,13 @@ impl Document {
         editor: EditorId,
         point: skia_safe::Point,
         kind: ClickKind,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, fonts, theme) else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y,
+                store, ui, fonts, theme) else {
             return;
         };
         let window = self.window(editor);
@@ -362,7 +385,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         point: skia_safe::Point,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let Some(origin) = self
@@ -372,7 +397,8 @@ impl Document {
         else {
             return;
         };
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y, fonts, theme) else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y,
+                store, ui, fonts, theme) else {
             return;
         };
         let window = self.window(editor);

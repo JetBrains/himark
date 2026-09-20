@@ -139,6 +139,8 @@ impl himark::InlayEditing for EmbedView {
     fn adopt_from(
         &mut self,
         previous: &Self,
+        _store: &imba::store::Store,
+        _ui: &imba::UiCtx,
         _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &himark::Theme,
     ) -> bool {
@@ -174,12 +176,13 @@ impl Enricher for FenceEmbedEnricher {
     fn install(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         replacement: &mut Markup,
         changed: &[Range<u32>],
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &himark::Theme,
     ) {
-        install(store, replacement, changed, fonts, theme);
+        install(store, ui, replacement, changed, fonts, theme);
     }
 }
 
@@ -212,27 +215,33 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
             _ => continue,
         };
 
-        let document = build_document(
-            &content,
-            &fence.language,
-            cx.languages.as_deref(),
-            cx.fonts,
-            cx.theme,
-        );
+        let document = cx.measure.with_ctx(|store, ui| {
+            build_document(
+                &content,
+                &fence.language,
+                cx.languages.as_deref(),
+                store,
+                ui,
+                cx.fonts,
+                cx.theme,
+            )
+        });
         let window = fence
             .lines
             .and_then(|(from, to)| line_window(document.text(), from, to));
         let layout = {
             let globals: Vec<(himark::MarkupId, &Markup)> =
                 document.document_scoped_markups().collect();
-            himark::DocumentLayout::build_complete(
-                document.text(),
-                himark::OverlaidMarkup::new(document.markup(), &globals),
-                EMBED_WIDTH,
-                cx.fonts,
-                cx.theme,
-                window.clone(),
-            )
+            cx.measure.measure(EMBED_WIDTH, |measure| {
+                himark::DocumentLayout::build_complete(
+                    document.text(),
+                    himark::OverlaidMarkup::new(document.markup(), &globals),
+                    measure,
+                    cx.fonts,
+                    cx.theme,
+                    window.clone(),
+                )
+            })
         };
         builder.push_inlay(
             fence.block.clone(),
@@ -264,6 +273,7 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
 
 fn install(
     store: &mut Store,
+    ui: &imba::UiCtx,
     replacement: &mut Markup,
     changed: &[Range<u32>],
     fonts: &skia_safe::textlayout::FontCollection,
@@ -306,6 +316,7 @@ fn install(
                                 &embed.content,
                                 &embed.language,
                                 languages.as_deref(),
+                store, ui,
                                 fonts,
                                 theme,
                             );
@@ -350,6 +361,7 @@ fn install(
             bounds,
             build,
             &[],
+                store, ui,
             fonts,
             theme,
             &mut batch.effects(),
@@ -483,13 +495,16 @@ fn build_document(
     content: &str,
     language: &str,
     languages: Option<&SyntaxLanguages>,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
     let text = Text::from_string_exact(content);
     if let Some(languages) = languages {
         if languages.knows(language) {
-            return Document::from_language(text, language, languages, fonts, theme);
+            return Document::from_language(text, language, languages,
+                store, ui, fonts, theme);
         }
     }
 

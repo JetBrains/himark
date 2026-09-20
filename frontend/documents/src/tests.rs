@@ -6,6 +6,7 @@ use editor::test_document::plain_document;
 
 #[test]
 fn the_retraction_rule_spares_dirty_documents() {
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let mut batch = imba::effect::Batch::<()>::new();
 
@@ -24,8 +25,8 @@ fn the_retraction_rule_spares_dirty_documents() {
     let dirty_id =
         OpenDocuments::register(&mut store, dirty, None, "dirty.md".to_owned(), stale_stamp);
 
-    OpenDocuments::remove_if_editorless(&mut store, clean_id, &mut batch.effects());
-    OpenDocuments::remove_if_editorless(&mut store, dirty_id, &mut batch.effects());
+    OpenDocuments::remove_if_editorless(&mut store, ui, clean_id, &mut batch.effects());
+    OpenDocuments::remove_if_editorless(&mut store, ui, dirty_id, &mut batch.effects());
     assert!(
         !OpenDocuments::contains(&store, clean_id),
         "editorless and clean: released"
@@ -81,18 +82,19 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
         "the entry covers the target text"
     );
 
-    OpenDocuments::remove_if_editorless(&mut store, base_id, &mut batch.effects());
+    let ui = &imba::UiCtx::dont_use_too_slow();
+    OpenDocuments::remove_if_editorless(&mut store, ui, base_id, &mut batch.effects());
     assert!(
         OpenDocuments::contains(&store, base_id),
         "a tracked base is kept — a stripes base is editorless by nature"
     );
 
-    OpenDocuments::untrack_diff(&mut store, stripes, &mut batch.effects());
+    OpenDocuments::untrack_diff(&mut store, ui, stripes, &mut batch.effects());
     assert!(
         OpenDocuments::diff_handle(&store, stripes).is_some(),
         "the pane still holds the diff"
     );
-    OpenDocuments::untrack_diff(&mut store, stripes, &mut batch.effects());
+    OpenDocuments::untrack_diff(&mut store, ui, stripes, &mut batch.effects());
     assert!(OpenDocuments::diff_handle(&store, stripes).is_none());
     assert!(
         !OpenDocuments::contains(&store, base_id),
@@ -107,6 +109,7 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
 
 #[test]
 fn a_moved_base_retires_the_stale_stripes_track() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let mut batch = imba::effect::Batch::<()>::new();
     let location = |authority: &str, name: &str| {
@@ -133,6 +136,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
 
     diffs::land_base_built(
         &mut store,
+        ui,
         target_id,
         base_a.clone(),
         plain_document("one\ntwo\n"),
@@ -146,6 +150,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
 
     assert!(diffs::adopt_base_location(
         &mut store,
+        ui,
         target_id,
         Some(base_a.clone()),
         &mut batch.effects()
@@ -167,6 +172,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
     assert_eq!(
         diffs::adopt_base_location(
             &mut store,
+            ui,
             target_id,
             Some(base_b.clone()),
             &mut batch.effects()
@@ -180,6 +186,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
     );
     diffs::land_base_built(
         &mut store,
+        ui,
         target_id,
         base_b.clone(),
         plain_document("one\ntwo\nthree\n"),
@@ -193,6 +200,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
 
     diffs::land_base_built(
         &mut store,
+        ui,
         target_id,
         base_a.clone(),
         plain_document("one\ntwo\n"),
@@ -206,7 +214,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
     );
 
     assert!(
-        diffs::adopt_base_location(&mut store, target_id, None, &mut batch.effects()).is_none()
+        diffs::adopt_base_location(&mut store, ui, target_id, None, &mut batch.effects()).is_none()
     );
     assert!(
         OpenDocuments::stripe_diff(&store, target_id).is_none(),

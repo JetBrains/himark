@@ -32,12 +32,14 @@ pub(crate) fn visible_popups<'a>(
     let mut overlays = Vec::new();
     for (key, range, inlay, spec) in document.popups_in(editor, band) {
         let Some((x, y, width, height)) =
-            document.caret_content_rect(editor, range.start, fonts, theme)
+            document.caret_content_rect(editor, range.start,
+                store, ui, fonts, theme)
         else {
             continue;
         };
         let width = document
-            .caret_content_rect(editor, range.end, fonts, theme)
+            .caret_content_rect(editor, range.end,
+                store, ui, fonts, theme)
             .filter(|(_, end_y, _, _)| *end_y == y)
             .map(|(end_x, _, _, _)| (end_x - x).max(width))
             .unwrap_or(width);

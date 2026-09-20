@@ -192,6 +192,8 @@ impl SyntaxLanguages {
         range: Range<u32>,
         old: Option<&Syntax>,
         edited: &[Range<u32>],
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(Syntax, Vec<Range<u32>>, Vec<SyntaxSite>)> {
@@ -231,7 +233,7 @@ impl SyntaxLanguages {
 
         let (fold_pushes, outline_pushes) = replacement.take_channels();
         let mut markup = old.map(|old| old.markup.clone()).unwrap_or_default();
-        markup.splice(&invalidated, replacement, fonts, theme);
+        markup.splice(&invalidated, replacement, store, ui, fonts, theme);
         let mut folds = old
             .map(|old| old.folds.clone())
             .unwrap_or_else(intervals::Intervals::new);
@@ -349,13 +351,17 @@ impl imba::effect::EffectHandler<ReparseEffect> for ReparseHandler {
 
 impl ReparseHandler {
     pub fn reparse(&self, work: ReparseWork) -> ReparseOutcome {
-        work.run(&self.0.fonts(), &self.0.theme())
+        let fonts = self.0.fonts();
+        let theme = self.0.theme();
+        self.0.with_ctx(|store, ui| work.run(store, ui, &fonts, &theme))
     }
 }
 
 impl ReparseWork {
     pub fn run(
         self,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ReparseOutcome {
@@ -368,6 +374,8 @@ impl ReparseWork {
                 0..byte_count,
                 Some(&work.root),
                 &work.edited,
+                store,
+                ui,
                 fonts,
                 theme,
             ) else {
@@ -437,6 +445,8 @@ impl ReparseWork {
                     marker.clone(),
                     Some(&old).filter(|old| old.tree.is_some()),
                     &edited,
+                    store,
+                    ui,
                     fonts,
                     theme,
                 ) {

@@ -106,15 +106,17 @@ impl RepairHandler {
                             .document_scoped_markups()
                             .filter(|(id, _)| !editor.markups.contains(id)),
                     );
-                    editor.layout.repair_layout_bounded(
-                        document.text(),
-                        crate::markup::OverlaidMarkup::new(document.markup(), &extras),
-                        editor.width,
-                        &fonts,
-                        &theme,
-                        pending,
-                        WORKER_REPAIR_BUDGET,
-                    );
+                    self.0.measure(editor.width, |measure| {
+                        editor.layout.repair_layout_bounded(
+                            document.text(),
+                            crate::markup::OverlaidMarkup::new(document.markup(), &extras),
+                            measure,
+                            &fonts,
+                            &theme,
+                            pending,
+                            WORKER_REPAIR_BUDGET,
+                        )
+                    });
                 }
                 RepairedLayout {
                     editor: editor.editor,

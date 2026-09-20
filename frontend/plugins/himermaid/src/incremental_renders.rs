@@ -15,12 +15,15 @@ fn marked_renders(marker: &str) -> usize {
 
 #[test]
 fn the_parse_never_renders_a_diagram() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "```mermaid\nflowchart TD\n    ParseGateQx --> Nothing\n```\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
         "markdown",
         &registry,
+                store, ui,
         &fonts(),
         &theme(),
     );
@@ -30,6 +33,7 @@ fn the_parse_never_renders_a_diagram() {
     let invalidated = document
         .apply_reparse_outcome(
             outcome,
+                store, ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -41,12 +45,15 @@ fn the_parse_never_renders_a_diagram() {
         "the parse pipeline billed a render — the enrichment migration's whole point"
     );
 
-    document.enrich_sync(&enrichers(), &invalidated, &fonts(), &theme());
+    document.enrich_sync(&enrichers(), &invalidated,
+                store, ui, &fonts(), &theme());
     assert_eq!(marked_renders("ParseGateQx"), 1, "the pass rendered it");
 }
 
 #[test]
 fn typing_rerenders_only_the_touched_fence() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "\
 ```mermaid\nflowchart TD\n    AlphaQx --> BetaQx\n```\n\n\
 middle paragraph between the fences with plain words.\n\n\
@@ -56,6 +63,7 @@ middle paragraph between the fences with plain words.\n\n\
         himark::Text::from_string_exact(source),
         "markdown",
         &registry,
+                store, ui,
         &fonts(),
         &theme(),
     );
@@ -74,6 +82,7 @@ middle paragraph between the fences with plain words.\n\n\
     let at = source.find("AlphaQx --> BetaQx").expect("edge") as u32;
     document.edit(
         &operation::Operation::insert_at(at, "X"),
+                store, ui,
         &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -89,6 +98,7 @@ middle paragraph between the fences with plain words.\n\n\
     let at = source.find("middle").expect("paragraph") as u32 + 1;
     document.edit(
         &operation::Operation::insert_at(at, "y"),
+                store, ui,
         &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),

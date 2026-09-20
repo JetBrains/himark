@@ -8,6 +8,7 @@ use crate::{DocumentId, OpenDocuments};
 
 pub fn mount_editor(
     store: &Store,
+    ui: &imba::UiCtx,
     document: &mut Document,
     width: f32,
     target: Option<std::ops::Range<crate::LineCol>>,
@@ -20,13 +21,15 @@ pub fn mount_editor(
         None,
         ::editor::EditorBuild::Bounded,
         &[],
+                store, ui,
         &fonts,
         &theme,
         fx,
     );
     if let Some(target) = target {
         let byte = crate::offset_at(&mut document.text().view(), target.start) as u32;
-        document.reveal_at_instant(editor, byte, &fonts, &theme, fx);
+        document.reveal_at_instant(editor, byte,
+                store, ui, &fonts, &theme, fx);
     }
 
     if let Some(parsers) = editor::env::Parsers::of(store) {
@@ -59,7 +62,7 @@ pub fn deliver(
         let Some(mut document) = OpenDocuments::document(store, document_id) else {
             return;
         };
-        document.land_reparse(outcome, location, store, &fonts, &theme, fx);
+        document.land_reparse(outcome, location, store, ui, &fonts, &theme, fx);
         OpenDocuments::put_document(store, document_id, document);
         return;
     }

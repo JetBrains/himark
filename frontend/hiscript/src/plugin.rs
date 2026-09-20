@@ -135,12 +135,13 @@ impl himark::DynamicCommand for ShowDocuments {
 
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut imba::store::Store,
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
-        himark::open_locations(store, window, &self.locations, fx);
+        let ui = &app.ui_ctx();
+        himark::open_locations(store, ui, window, &self.locations, fx);
     }
 }
 
@@ -333,6 +334,7 @@ impl himark::DynamicEditorCommand for RunScript {
     fn perform(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: &mut himark::Document,
         _editor: himark::EditorId,
         location: &ResourceLocation,
@@ -341,7 +343,7 @@ impl himark::DynamicEditorCommand for RunScript {
     ) {
         if let Some(payload) = payload {
             let payload = match payload.downcast::<ScriptLanding>() {
-                Ok(landing) => return land(store, *landing, fx),
+                Ok(landing) => return land(store, ui, *landing, fx),
                 Err(payload) => payload,
             };
             if let Ok(stored) = payload.downcast::<ScriptStored>() {
@@ -419,7 +421,12 @@ impl himark::DynamicEditorCommand for RunScript {
     }
 }
 
-fn land(store: &mut Store, landing: ScriptLanding, fx: &mut himark::EditorEffects<'_>) {
+fn land(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    landing: ScriptLanding,
+    fx: &mut himark::EditorEffects<'_>,
+) {
     let mut log = landing.log;
     let mut shows = landing.shows;
     for edit in landing.edits {
@@ -446,7 +453,8 @@ fn land(store: &mut Store, landing: ScriptLanding, fx: &mut himark::EditorEffect
                 let text_before = document.text().clone();
                 let fonts = himark::env::Fonts::of(store)();
                 let theme = himark::env::Themes::of(store);
-                document.edit(&operation, &fonts, &theme, fx);
+                document.edit(&operation,
+                store, ui, &fonts, &theme, fx);
                 if let Some(parsers) = himark::env::Parsers::of(store) {
                     document.launch_reparse(parsers, fx);
                 }

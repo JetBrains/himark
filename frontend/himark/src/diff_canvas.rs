@@ -235,11 +235,12 @@ impl crate::DynamicCommand for OpenDiffCanvas {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
@@ -248,7 +249,7 @@ impl crate::DynamicCommand for OpenDiffCanvas {
                     folder: folder.clone(),
                     commit: id.clone(),
                 },
-                _app,
+                app,
                 store,
                 window,
                 fx,
@@ -261,7 +262,7 @@ impl crate::DynamicCommand for OpenDiffCanvas {
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };
-        if !entity.navigate(store, window, &crate::NavigationLocation::new(place), fx) {
+        if !entity.navigate(store, ui, window, &crate::NavigationLocation::new(place), fx) {
             eprintln!("[himark] no canvas navigator registered");
         }
         crate::Windows::put(store, window, entity);
@@ -287,15 +288,16 @@ impl crate::DynamicCommand for OpenCanvasFile {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(target) = self.target.clone() else {
             // No caret to honor — the plain open, dedup + authority
             // remap included.
-            crate::workspace::open_locations(store, window, &[self.location.clone()], fx);
+            crate::workspace::open_locations(store, ui, window, &[self.location.clone()], fx);
             return;
         };
         // Honor the caret: the canvas row's document is registered
@@ -304,7 +306,7 @@ impl crate::DynamicCommand for OpenCanvasFile {
         match crate::OpenDocuments::by_location(store, &self.location) {
             Some(document_id) => {
                 if let Some(mut entity) = crate::Windows::window(store, window) {
-                    entity.show_document(store, window, document_id, Some(target), fx);
+                    entity.show_document(store, ui, window, document_id, Some(target), fx);
                     crate::Windows::put(store, window, entity);
                 }
             }

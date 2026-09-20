@@ -54,7 +54,7 @@ pub use editor::{Editor, EditorEffects, EditorId};
 pub use editor_view::{ClickKind, EditorCommand, EditorFocus, EditorView, Motion};
 pub use enrich::{
     ready as enrich_ready, CaretContext, EnrichCx, EnrichEffect, EnrichFuture, EnrichHandler,
-    EnrichInput, EnrichOutcome, Enricher, EnricherId, Enrichers, Enrichment, Interest,
+    EnrichInput, EnrichOutcome, Enricher, EnricherId, Enrichers, Enrichment, Interest, MeasureCtx,
 };
 pub use env::Workshop;
 pub use markup::{

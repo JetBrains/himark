@@ -250,6 +250,7 @@ impl CommentsView {
             list: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
+                store, ui,
                 crate::env::Fonts::of(store),
             ),
             items: rpds::HashTrieMapSync::new_sync(),
@@ -350,8 +351,10 @@ impl View for CommentsView {
         own.merge_under(self.list.focus_data(store, ui).map(CommentsCommand::Rows))
     }
 
-    fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        fx.scope(CommentsCommand::Rows, |fx| self.list.clear(fx));
+    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
+        // Teardown-only: `View::destroy` carries no UiCtx.
+        let ui = &imba::UiCtx::dont_use_too_slow();
+        fx.scope(CommentsCommand::Rows, |fx| self.list.clear(store, ui, fx));
     }
 
     fn perform(
@@ -574,11 +577,12 @@ impl crate::DynamicCommand for NavigateToComment {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(record) = Comments::record(store, &self.annotation) else {
             return;
         };
@@ -590,7 +594,7 @@ impl crate::DynamicCommand for NavigateToComment {
                 let Some(mut entity) = crate::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(store, window, document, Some(target), fx);
+                entity.show_document(store, ui, window, document, Some(target), fx);
                 crate::Windows::put(store, window, entity);
             }
             None => {

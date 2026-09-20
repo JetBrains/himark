@@ -110,6 +110,7 @@ pub fn open_by_location_effect(
 
 pub fn open_locations(
     store: &mut Store,
+    ui: &imba::UiCtx,
     window: crate::WindowId,
     locations: &[ResourceLocation],
     fx: &mut AppFx<'_>,
@@ -141,7 +142,7 @@ pub fn open_locations(
         if let Some(document) = crate::OpenDocuments::by_location(store, location) {
             if primary {
                 if let Some(mut window_entity) = crate::Windows::window(store, window) {
-                    window_entity.show_document(store, window, document, None, fx);
+                    window_entity.show_document(store, ui, window, document, None, fx);
                     crate::Windows::put(store, window, window_entity);
                 }
             }

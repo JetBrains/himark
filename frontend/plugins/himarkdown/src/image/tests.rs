@@ -95,7 +95,10 @@ impl Fetches {
 }
 
 fn md(source: &str) -> himark::Document {
-    crate::document_from_markdown(source, &fonts(), &theme())
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
+    crate::document_from_markdown(source,
+                store, ui, &fonts(), &theme())
 }
 
 fn input(document: &himark::Document, source: &str, previous: Markup) -> EnrichInput {
@@ -125,6 +128,8 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 }
 
 fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = fonts();
     let theme = theme();
     let fresh = {
@@ -133,12 +138,14 @@ fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
             theme: &theme,
             caller,
             languages: None,
+            measure: himark::MeasureCtx::Handed { store, ui },
         };
         poll(ImageEnricher.derive(over, &cx))
     };
     let mut entry = over.previous.clone();
     if !fresh.changed.is_empty() {
-        entry.splice(&fresh.changed, fresh.replacement, &fonts, &theme);
+        entry.splice(&fresh.changed, fresh.replacement,
+                store, ui, &fonts, &theme);
     }
     entry
 }

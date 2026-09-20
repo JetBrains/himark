@@ -134,7 +134,7 @@ impl DynamicCommand for NewScratch {
             location.name().to_owned(),
             true,
             Some(location),
-            Box::new(|_, _| crate::app::markdown_scratch()),
+            Box::new(|_, _, _, _| crate::app::markdown_scratch()),
         ));
     }
 }
@@ -150,13 +150,14 @@ impl DynamicCommand for SplitPane {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        entity.split_current(store, fx);
+        entity.split_current(store, ui, fx);
         crate::Windows::put(store, window, entity);
     }
 }
@@ -172,13 +173,14 @@ impl DynamicCommand for CloseFocused {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        let _ = entity.close_focused_widget(store, window, fx);
+        let _ = entity.close_focused_widget(store, ui, window, fx);
         crate::Windows::put(store, window, entity);
     }
 }
@@ -216,13 +218,14 @@ impl DynamicCommand for NavigateBack {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        let _ = entity.navigate_back(store, window, fx);
+        let _ = entity.navigate_back(store, ui, window, fx);
         crate::Windows::put(store, window, entity);
     }
 }
@@ -238,13 +241,14 @@ impl DynamicCommand for NavigateForward {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        let _ = entity.navigate_forward(store, window, fx);
+        let _ = entity.navigate_forward(store, ui, window, fx);
         crate::Windows::put(store, window, entity);
     }
 }
@@ -394,13 +398,14 @@ impl DynamicCommand for FindOpen {
                     let text = document.text().view().substring(selection);
                     (!text.contains('\n')).then_some(text)
                 });
+                let ui = &app.ui_ctx();
                 match (&mut slot.find, seed) {
-                    (Some(find), Some(seed)) => find.seed(&seed),
+                    (Some(find), Some(seed)) => find.seed(store, ui, &seed),
                     (Some(find), None) => find.refocus(),
                     (None, seed) => {
-                        let mut find = crate::find::FindBar::new();
+                        let mut find = crate::find::FindBar::new(store, ui);
                         if let Some(seed) = &seed {
-                            find.seed(seed);
+                            find.seed(store, ui, seed);
                         }
                         slot.find = Some(find);
                     }
@@ -445,8 +450,8 @@ impl DynamicCommand for FindStep {
                 let theme = ::editor::env::Themes::of(store);
                 let forward = self.0;
                 crate::app::entity_scope(document, fx, |fx| {
-                    find.sync(store, target, &fonts, &theme, fx);
-                    find.step(store, forward, &fonts, &theme, fx);
+                    find.sync(store, target, &ui, &fonts, &theme, fx);
+                    find.step(store, forward, &ui, &fonts, &theme, fx);
                 });
             }
         }
@@ -472,7 +477,7 @@ fn find_sync_slot(
     let fonts = ::editor::env::ui_collection(store, &ui);
     let theme = ::editor::env::Themes::of(store);
     crate::app::entity_scope(document, fx, |fx| {
-        find.sync(store, target, &fonts, &theme, fx)
+        find.sync(store, target, &ui, &fonts, &theme, fx)
     });
 
     find.launch(store, target, fx, move |scan| {
@@ -511,7 +516,7 @@ impl DynamicCommand for FindScanLanded {
                 return;
             };
             crate::app::entity_scope(document, fx, |fx| {
-                find.adopt(store, target, &self.0, &fonts, &theme, fx)
+                find.adopt(store, target, &self.0, &ui, &fonts, &theme, fx)
             });
         });
         crate::Windows::put(store, window, entity);

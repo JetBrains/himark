@@ -671,11 +671,12 @@ impl himark::DynamicCommand for AdoptSnapshot {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         _window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some((stop, since)) = SyncSeats::connecting(store, &self.location) else {
             return;
         };
@@ -753,7 +754,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
                 SyncSeats::expect(store, &self.location, identity);
                 let applied = himark::entity_scope(document_id, fx, |fx| {
                     himark::OpenDocuments::edit_shared(
-                        store,
+                        store, ui,
                         document_id,
                         identity,
                         base_revision,
@@ -818,11 +819,12 @@ impl himark::DynamicCommand for ApplyOffer {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         _window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(seat) = SyncSeats::seat(store, &self.location) else {
             return;
         };
@@ -855,7 +857,7 @@ impl himark::DynamicCommand for ApplyOffer {
         SyncSeats::expect(store, &self.location, identity);
         let applied = himark::entity_scope(document_id, fx, |fx| {
             himark::OpenDocuments::edit_shared(
-                store,
+                store, ui,
                 document_id,
                 identity,
                 base_revision,

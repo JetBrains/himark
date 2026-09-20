@@ -503,6 +503,7 @@ impl OpenDocuments {
 
     pub fn edit_external(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
         operation: &operation::Operation,
@@ -523,7 +524,8 @@ impl OpenDocuments {
         let text_before = document.text().clone();
         let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        document.edit(operation, &fonts, &theme, fx);
+        document.edit(operation,
+                store, ui, &fonts, &theme, fx);
         if let Some(parsers) = ::editor::env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
@@ -542,6 +544,7 @@ impl OpenDocuments {
 
     pub fn edit_shared(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document_id: DocumentId,
         identity: ::editor::EditIdentity,
         base_revision: u64,
@@ -563,7 +566,8 @@ impl OpenDocuments {
         let text_before = document.text().clone();
         let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        document.edit_shared(identity, operation, &fonts, &theme, fx);
+        document.edit_shared(identity, operation,
+                store, ui, &fonts, &theme, fx);
         if let Some(parsers) = ::editor::env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
@@ -595,6 +599,7 @@ impl OpenDocuments {
     #[must_use]
     pub fn absorb_refetched(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
         serial: u64,
@@ -625,7 +630,8 @@ impl OpenDocuments {
             let text_before = document.text().clone();
             let fonts = ::editor::env::Fonts::of(store)();
             let theme = ::editor::env::Themes::of(store);
-            document.edit(operation, &fonts, &theme, fx);
+            document.edit(operation,
+                store, ui, &fonts, &theme, fx);
             if let Some(parsers) = ::editor::env::Parsers::of(store) {
                 document.launch_reparse(parsers, fx);
             }
@@ -651,22 +657,25 @@ impl OpenDocuments {
 
     pub fn remove_if_editorless<R: 'static>(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        Self::release_editorless(store, document, fx, true)
+        Self::release_editorless(store, ui, document, fx, true)
     }
 
     pub fn remove_on_close<R: 'static>(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        Self::release_editorless(store, document, fx, false)
+        Self::release_editorless(store, ui, document, fx, false)
     }
 
     fn release_editorless<R: 'static>(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
         spare_scratch: bool,
@@ -684,7 +693,7 @@ impl OpenDocuments {
             return;
         }
 
-        if Self::untrack_stripes(store, document, fx) {
+        if Self::untrack_stripes(store, ui, document, fx) {
             return;
         }
 

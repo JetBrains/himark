@@ -125,6 +125,8 @@ impl himark::InlayEditing for CheckboxView {
     fn adopt_from(
         &mut self,
         previous: &Self,
+        _store: &imba::store::Store,
+        _ui: &imba::UiCtx,
         _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &Theme,
     ) -> bool {

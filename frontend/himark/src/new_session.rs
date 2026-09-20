@@ -208,7 +208,7 @@ pub struct NewSessionView {
     cell_spans: Arc<Vec<std::sync::atomic::AtomicU64>>,
 }
 
-fn fresh_input() -> ScrollView<EditorView> {
+fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<EditorView> {
     let document = crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
         .with_syntax(
             crate::Syntax::new("markdown", None, crate::Markup::new()),
@@ -216,7 +216,7 @@ fn fresh_input() -> ScrollView<EditorView> {
         );
     let fonts = crate::fonts::source()();
     let theme = crate::Theme::embedded();
-    let mut view = EditorView::of_document(document, 600.0, &fonts, &theme);
+    let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("What are you building?", &fonts, &theme);
     view.gutter_width = theme.ui().editor_gutter.width;
     let mut input = ScrollView::new(view);
@@ -225,20 +225,20 @@ fn fresh_input() -> ScrollView<EditorView> {
 }
 
 impl NewSessionView {
-    pub fn new() -> Self {
-        Self::for_host(None)
+    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+        Self::for_host(store, ui, None)
     }
 
-    pub fn for_host(host: Option<HostId>) -> Self {
+    pub fn for_host(store: &imba::store::Store, ui: &imba::UiCtx, host: Option<HostId>) -> Self {
         Self {
-            input: fresh_input(),
-            host: Combo::new("HOST"),
+            input: fresh_input(store, ui),
+            host: Combo::new(store, ui, "HOST"),
             hosts: Arc::new(Vec::new()),
-            dir: Combo::new("DIR"),
-            mode: Combo::new("MODE"),
-            model: Combo::new("MODEL"),
-            effort: Combo::new("EFFORT"),
-            edits: Combo::new("EDITS"),
+            dir: Combo::new(store, ui, "DIR"),
+            mode: Combo::new(store, ui, "MODE"),
+            model: Combo::new(store, ui, "MODEL"),
+            effort: Combo::new(store, ui, "EFFORT"),
+            edits: Combo::new(store, ui, "EDITS"),
             worktree: false,
             host_hint: host,
             synced: u64::MAX,
@@ -791,7 +791,8 @@ impl View for NewSessionView {
                         self.input
                             .content_mut()
                             .document
-                            .resize(editor, width, 0, &fonts, &theme, fx);
+                            .resize(editor, width, 0,
+                store, ui, &fonts, &theme, fx);
                     })
                 });
             }
@@ -1388,18 +1389,19 @@ impl crate::DynamicCommand for StartComposedSession {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(seat) = Servers::seat(store, self.server) else {
             eprintln!("[new-session] start: unregistered host {:?}", self.server);
             return;
         };
 
         if let Some(mut entity) = crate::Windows::window(store, window) {
-            let _ = entity.close_focused_widget(store, window, fx);
+            let _ = entity.close_focused_widget(store, ui, window, fx);
             crate::Windows::put(store, window, entity);
         }
         let server = self.server;
@@ -2055,11 +2057,12 @@ impl crate::DynamicCommand for OpenNewSession {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(entity) = crate::Windows::window_ref(store, window) else {
             return;
         };
@@ -2085,7 +2088,7 @@ impl crate::DynamicCommand for OpenNewSession {
         store.update::<Placeholders>(|rows| {
             rows.0.remove_mut(&window);
         });
-        Composers::put(store, window, NewSessionView::for_host(self.host));
+        Composers::put(store, window, NewSessionView::for_host(store, ui, self.host));
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
             crate::switch_session(store, window, scratch, fx);
@@ -2095,7 +2098,7 @@ impl crate::DynamicCommand for OpenNewSession {
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let _ = entity.open_panel(store, Box::new(ComposerPane::new(window)), fx);
+        let _ = entity.open_panel(store, ui, Box::new(ComposerPane::new(window)), fx);
         crate::Windows::put(store, window, entity);
     }
 }
@@ -2113,15 +2116,16 @@ impl crate::DynamicCommand for MountComposer {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let _ = entity.open_panel(store, Box::new(ComposerPane::new(window)), fx);
+        let _ = entity.open_panel(store, ui, Box::new(ComposerPane::new(window)), fx);
         crate::Windows::put(store, window, entity);
     }
 }

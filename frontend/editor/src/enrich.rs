@@ -77,6 +77,44 @@ pub struct EnrichCx<'a> {
     pub caller: imba::effect::EffectCaller,
 
     pub languages: Option<Arc<crate::reparse::SyntaxLanguages>>,
+
+    pub measure: MeasureCtx<'a>,
+}
+
+/// Where a derive gets its inlay-measure ctx: the UI thread hands
+/// its own pair in; the effect handler lends its kept Workshop pair.
+/// Never minted per call — see `UiCtx::dont_use_too_slow`.
+pub enum MeasureCtx<'a> {
+    Handed {
+        store: &'a imba::store::Store,
+        ui: &'a imba::UiCtx,
+    },
+    Kept(Arc<crate::env::Workshop>),
+}
+
+impl MeasureCtx<'_> {
+    pub fn measure<R>(
+        &self,
+        width: f32,
+        f: impl FnOnce(crate::markup::InlayMeasure<'_>) -> R,
+    ) -> R {
+        match self {
+            MeasureCtx::Handed { store, ui } => {
+                f(crate::markup::InlayMeasure { width, store, ui })
+            }
+            MeasureCtx::Kept(workshop) => workshop.measure(width, f),
+        }
+    }
+
+    pub fn with_ctx<R>(
+        &self,
+        f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R,
+    ) -> R {
+        match self {
+            MeasureCtx::Handed { store, ui } => f(store, ui),
+            MeasureCtx::Kept(workshop) => workshop.with_ctx(f),
+        }
+    }
 }
 
 pub trait Enricher: Send + Sync {
@@ -103,6 +141,7 @@ pub trait Enricher: Send + Sync {
     fn install(
         &self,
         _store: &mut imba::store::Store,
+        _ui: &imba::UiCtx,
         _replacement: &mut Markup,
         _changed: &[Range<u32>],
         _fonts: &skia_safe::textlayout::FontCollection,
@@ -206,7 +245,14 @@ impl EnrichHandler {
     pub async fn run(&self, work: EnrichWork) -> EnrichOutcome {
         let fonts = self.workshop.fonts();
         let theme = self.workshop.theme();
-        run_work(work, &fonts, &theme, self.caller.clone()).await
+        run_work(
+            work,
+            &fonts,
+            &theme,
+            MeasureCtx::Kept(self.workshop.clone()),
+            self.caller.clone(),
+        )
+        .await
     }
 }
 
@@ -214,6 +260,7 @@ pub(crate) async fn run_work(
     work: EnrichWork,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::theme::Theme,
+    measure: MeasureCtx<'_>,
     caller: imba::effect::EffectCaller,
 ) -> EnrichOutcome {
     let cx = EnrichCx {
@@ -221,11 +268,14 @@ pub(crate) async fn run_work(
         theme,
         caller,
         languages: work.languages.clone(),
+        measure,
     };
     let fresh = work.enricher.derive(&work.input, &cx).await;
     let mut replacement = work.input.previous.clone();
     if !fresh.changed.is_empty() {
-        replacement.splice(&fresh.changed, fresh.replacement, fonts, theme);
+        cx.measure.with_ctx(|store, ui| {
+            replacement.splice(&fresh.changed, fresh.replacement, store, ui, fonts, theme)
+        });
     }
     EnrichOutcome {
         token: work.token,
@@ -391,9 +441,11 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         {
             let mut store = imba::store::Store::new();
+            let ui = &imba::UiCtx::dont_use_too_slow();
             document.apply_enrichment(
                 outcome,
                 &mut store,
+                ui,
                 &fonts(),
                 &theme(),
                 &mut batch.effects(),
@@ -461,6 +513,8 @@ mod tests {
 
     #[test]
     fn a_landing_rebases_over_edits_since_capture() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut document = document("abc @@ def\n");
@@ -469,6 +523,7 @@ mod tests {
 
         document.edit(
             &operation::Operation::insert_at(0, "XXXX"),
+                store, ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -494,9 +549,11 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         {
             let mut store = imba::store::Store::new();
+            let ui = &imba::UiCtx::dont_use_too_slow();
             document.apply_enrichment(
                 outcome,
                 &mut store,
+                ui,
                 &fonts(),
                 &theme(),
                 &mut batch.effects(),
@@ -513,7 +570,7 @@ mod tests {
         use imba::effect::EffectHandler;
         let workshop = workshop();
         let mut store = imba::store::Store::new();
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut pending = batch.surviving_launches();
         let mut rounds = 0;
         while let Some(effect) = pending.pop() {
@@ -548,6 +605,8 @@ mod tests {
 
     #[test]
     fn a_landing_damages_and_repairs_the_shown_layout() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut document = document("alpha beta\ngamma @@ delta\ntail line\n");
@@ -556,6 +615,7 @@ mod tests {
             None,
             crate::document::EditorBuild::Complete,
             &[],
+                store, ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -577,7 +637,8 @@ mod tests {
             "the subject's element grew by the badge height: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::EditorView::complete(document.clone(), 400.0, &fonts(), &theme())
+        let reference = crate::EditorView::complete(document.clone(), 400.0,
+                store, ui, &fonts(), &theme())
             .element_heights();
         assert_eq!(
             live, reference,
@@ -588,6 +649,8 @@ mod tests {
 
     #[test]
     fn a_landing_beyond_the_sync_budget_repairs_through_effects() {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut source = String::new();
@@ -600,6 +663,7 @@ mod tests {
             None,
             crate::document::EditorBuild::Complete,
             &[],
+                store, ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -607,7 +671,7 @@ mod tests {
 
         {
             let mut store = imba::store::Store::new();
-            let ui = imba::UiCtx::dont_use_too_slow();
+            let ui = &imba::UiCtx::dont_use_too_slow();
             document.perform(
                 &mut store,
                 &ui,
@@ -638,7 +702,8 @@ mod tests {
             "the drained repairs laid the deep badge in: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::EditorView::complete(document.clone(), 400.0, &fonts(), &theme())
+        let reference = crate::EditorView::complete(document.clone(), 400.0,
+                store, ui, &fonts(), &theme())
             .element_heights();
         assert_eq!(
             live, reference,
@@ -706,11 +771,14 @@ mod tests {
     }
 
     fn editor_for(document: &mut crate::Document) -> crate::editor::EditorId {
+        let store = &imba::store::Store::new();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         document.add_editor(
             400.0,
             None,
             crate::document::EditorBuild::Complete,
             &[],
+                store, ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -741,7 +809,7 @@ mod tests {
         let second = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut batch = imba::effect::Batch::new();
         document.perform(
             &mut store,
@@ -842,7 +910,7 @@ mod tests {
         let editor = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::UiCtx::dont_use_too_slow();
         for _ in 0..2 {
             let mut batch = imba::effect::Batch::new();
             document.perform(

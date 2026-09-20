@@ -49,12 +49,12 @@ pub enum ToolbarAsk {
     AddFolder,
 }
 
-impl Default for SessionToolbar {
-    fn default() -> Self {
+impl SessionToolbar {
+    pub(crate) fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
         Self {
-            model: Combo::new("MODEL"),
-            effort: Combo::new("EFFORT"),
-            edits: Combo::new("EDITS"),
+            model: Combo::new(store, ui, "MODEL"),
+            effort: Combo::new(store, ui, "EFFORT"),
+            edits: Combo::new(store, ui, "EDITS"),
             synced: 0,
             cell_spans: Arc::new((0..4).map(|_| AtomicU64::new(0)).collect()),
             strip_origin: Arc::new(AtomicU64::new(0)),

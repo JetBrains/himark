@@ -60,7 +60,7 @@ impl Clone for Composer {
 
 const EDITOR_CHILD: usize = 1;
 
-fn fresh_input() -> ScrollView<EditorView> {
+fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<EditorView> {
     let document = crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
         .with_syntax(
             crate::Syntax::new("markdown", None, crate::Markup::new()),
@@ -68,7 +68,7 @@ fn fresh_input() -> ScrollView<EditorView> {
         );
     let fonts = crate::fonts::source()();
     let theme = crate::Theme::embedded();
-    let mut view = EditorView::of_document(document, 600.0, &fonts, &theme);
+    let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Message the agent", &fonts, &theme);
     ScrollView::new(view)
 }
@@ -86,8 +86,8 @@ impl Composer {
         self.input.content().editor
     }
 
-    pub(crate) fn new() -> Self {
-        let mut input = fresh_input();
+    pub(crate) fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+        let mut input = fresh_input(store, ui);
         input.content_mut().focus_text();
         Self {
             input,
@@ -119,8 +119,8 @@ impl Composer {
         self.expanded
     }
 
-    pub(crate) fn clear(&mut self) {
-        self.input = fresh_input();
+    pub(crate) fn clear(&mut self, store: &imba::store::Store, ui: &imba::UiCtx) {
+        self.input = fresh_input(store, ui);
         self.input.content_mut().focus_text();
     }
 
@@ -167,7 +167,8 @@ impl Composer {
                         self.input
                             .content_mut()
                             .document
-                            .resize(editor, width, 0, &fonts, &theme, fx);
+                            .resize(editor, width, 0,
+                store, ui, &fonts, &theme, fx);
                     })
                 });
             }

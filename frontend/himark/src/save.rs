@@ -32,6 +32,7 @@ impl crate::DynamicEditorCommand for SaveDocument {
     fn perform(
         &self,
         store: &mut Store,
+        _ui: &imba::UiCtx,
         document: &mut crate::Document,
         _editor: crate::EditorId,
         location: &crate::ResourceLocation,

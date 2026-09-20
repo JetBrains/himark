@@ -71,7 +71,12 @@ pub struct AppFonts {
 }
 
 pub type DocumentBuild = Box<
-    dyn FnOnce(&skia_safe::textlayout::FontCollection, &::editor::theme::Theme) -> Document
+    dyn FnOnce(
+            &imba::store::Store,
+            &UiCtx,
+            &skia_safe::textlayout::FontCollection,
+            &::editor::theme::Theme,
+        ) -> Document
         + Send
         + Sync,
 >;
@@ -231,7 +236,11 @@ impl AppFonts {
 
 pub struct ChromeClearance(pub f32);
 
-pub(crate) fn fresh_workbench_root(store: &mut Store, fx: &mut AppFx<'_>) -> WorkbenchNode {
+pub(crate) fn fresh_workbench_root(
+    store: &mut Store,
+    ui: &UiCtx,
+    fx: &mut AppFx<'_>,
+) -> WorkbenchNode {
     let mut scratch = markdown_scratch();
 
     let location = crate::next_scratch_location(store);
@@ -240,7 +249,7 @@ pub(crate) fn fresh_workbench_root(store: &mut Store, fx: &mut AppFx<'_>) -> Wor
     let scratch_id = OpenDocuments::register(store, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
     let editor_id = entity_scope(scratch_id, fx, |fx| {
-        mount_editor(store, &mut scratch, width, None, fx)
+        mount_editor(store, ui, &mut scratch, width, None, fx)
     });
     documents::scroll_stripes::enable_scroll_stripes(store, scratch_id, &mut scratch, editor_id);
     OpenDocuments::put_document(store, scratch_id, scratch);
@@ -294,15 +303,16 @@ impl crate::DynamicCommand for EnterFreshSession {
     }
     fn perform(
         &self,
-        _app: &mut Application,
+        app: &mut Application,
         store: &mut Store,
         window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let root = fresh_workbench_root(store, fx);
+        let root = fresh_workbench_root(store, ui, fx);
         entity.install_fresh(self.previous.clone(), Workbench::new(root));
         crate::Windows::put(store, window, entity);
     }
@@ -539,8 +549,9 @@ impl Application {
         let workspace = crate::SessionId::local_default(&self.state.gather_seatless(None));
         let mut store = self.state.gather(None, Some(&workspace), &self.seats);
 
+        let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let editors = fresh_workbench_root(&mut store, &mut discarded.effects());
+        let editors = fresh_workbench_root(&mut store, &ui, &mut discarded.effects());
         let window = Windows::add(&mut store, Window::new(editors, workspace));
         self.commit(store);
         window
@@ -923,7 +934,7 @@ impl Application {
         // Plugin store-state observers (e.g. hidiff's Canvases) sync
         // against the fresh document/diff/changeset state — so a
         // collection stays current without a panel painting it.
-        crate::family_rows::SyncObservers::run(&mut store);
+        crate::family_rows::SyncObservers::run(&mut store, &self.ui_ctx());
         let probe_perform = probe.elapsed();
         self.commit(store);
         if validate_enabled() {
@@ -1094,11 +1105,7 @@ pub(crate) struct OpenEffect {
     primary: bool,
     location: Option<crate::ResourceLocation>,
 
-    build: Box<
-        dyn FnOnce(&skia_safe::textlayout::FontCollection, &::editor::theme::Theme) -> Document
-            + Sync
-            + Send,
-    >,
+    build: DocumentBuild,
 }
 
 impl Effect for OpenEffect {
@@ -1109,7 +1116,11 @@ pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::Workshop>);
 
 impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
     async fn handle(&self, effect: OpenEffect) -> AppCommand {
-        let document = (effect.build)(&self.0.fonts(), &self.0.theme());
+        let fonts = self.0.fonts();
+        let theme = self.0.theme();
+        let document = self
+            .0
+            .with_ctx(|store, ui| (effect.build)(store, ui, &fonts, &theme));
         AppCommand::Opened(
             effect.window,
             OpenedDocument {
@@ -1291,7 +1302,7 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        entity.show_document(store, window, document, None, fx);
+                        entity.show_document(store, ui, window, document, None, fx);
                         crate::Windows::put(store, window, entity);
 
                         crate::watch::sync_document_watches(store, fx);
@@ -1303,7 +1314,7 @@ impl Application {
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         crate::Windows::put(store, window, entity);
-                        crate::open_locations(store, window, &locations, fx);
+                        crate::open_locations(store, ui, window, &locations, fx);
                     }
                     Some(ModalRequest::SelectWidget(widget)) => {
                         fx.scope(
@@ -1333,7 +1344,7 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                         ModalRequest::ShowDocument(document) => {
-                            entity.show_document(store, window, document, None, fx);
+                            entity.show_document(store, ui, window, document, None, fx);
                             crate::Windows::put(store, window, entity);
 
                             crate::watch::sync_document_watches(store, fx);
@@ -1341,7 +1352,7 @@ impl Application {
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
-                            crate::open_locations(store, window, &locations, fx);
+                            crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
                             entity.mount_focused(widget);
@@ -1365,14 +1376,14 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                         ModalRequest::ShowDocument(document) => {
-                            entity.show_document(store, window, document, None, fx);
+                            entity.show_document(store, ui, window, document, None, fx);
                             crate::Windows::put(store, window, entity);
                             crate::watch::sync_document_watches(store, fx);
                             crate::diffs::sync_stripe_bases(store, fx);
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
-                            crate::open_locations(store, window, &locations, fx);
+                            crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
                             entity.mount_focused(widget);
@@ -1382,7 +1393,7 @@ impl Application {
                 }
                 match panel_request {
                     Some(crate::PanelRequest::OpenLocations(locations)) => {
-                        crate::open_locations(store, window, &locations, fx);
+                        crate::open_locations(store, ui, window, &locations, fx);
                     }
                     Some(crate::PanelRequest::Perform(command)) => {
                         self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
@@ -1425,7 +1436,7 @@ impl Application {
                 crate::commands::Commands::register(store, command);
             }
             AppCommand::BaseLocated { document, base } => {
-                crate::diffs::land_base_located(store, document, base, fx);
+                crate::diffs::land_base_located(store, ui, document, base, fx);
             }
             AppCommand::BaseFetched {
                 document,
@@ -1455,7 +1466,7 @@ impl Application {
                 base,
                 built,
             } => {
-                crate::diffs::land_base_built(store, document, base, built, fx);
+                crate::diffs::land_base_built(store, ui, document, base, built, fx);
             }
             AppCommand::DiffNormalized {
                 diff,
@@ -1476,6 +1487,7 @@ impl Application {
                         entity_scope(handle.target, fx, |fx| {
                             documents::diffs::land_diff_markup(
                                 store,
+                                ui,
                                 diff,
                                 markup,
                                 changed,
@@ -1538,6 +1550,7 @@ impl Application {
                 let retry = entity_scope(document, fx, |fx| {
                     crate::OpenDocuments::absorb_refetched(
                         store,
+                        ui,
                         document,
                         base_revision,
                         serial,
@@ -1587,7 +1600,7 @@ impl Application {
 
                 if opened.primary {
                     if let Some(mut entity) = crate::Windows::window(store, window) {
-                        entity.show_document(store, window, document_id, opened.target, fx);
+                        entity.show_document(store, ui, window, document_id, opened.target, fx);
                         crate::Windows::put(store, window, entity);
                     }
                 }
@@ -1603,7 +1616,7 @@ impl Application {
             }
             AppCommand::OpenPanel(window, panel) => {
                 let mut entity = crate::Windows::window(store, window).expect("the window entity");
-                entity.open_panel(store, panel, fx);
+                entity.open_panel(store, ui, panel, fx);
                 crate::Windows::put(store, window, entity);
             }
             AppCommand::OpenModal(window, modal) => {

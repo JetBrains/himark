@@ -189,7 +189,7 @@ impl<T: ComboItem> Combo<T>
 where
     T::Command: Send + 'static,
 {
-    pub fn new(label: &'static str) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, label: &'static str) -> Self {
         Self {
             label,
             picked: 0,
@@ -199,6 +199,7 @@ where
                     ListView::empty().with_selection(imba::list::SelectionStyle::default()),
                 ),
                 OptionSearcher::default(),
+                store, ui,
                 crate::embedded_fonts::source(),
             ),
         }
@@ -443,7 +444,7 @@ where
 
                 fx.scope(
                     |command| ComboCommand::Menu(Box::new(command)),
-                    |fx| self.menu.clear(fx),
+                    |fx| self.menu.clear(store, ui, fx),
                 );
                 if let Some(key) = self.list().key_at(self.picked).cloned() {
                     self.list_mut().select_only(key);
@@ -705,7 +706,7 @@ mod tests {
     }
 
     fn stacked(store: &Store, ui: &UiCtx, count: usize) -> Combo {
-        let mut combo = Combo::new("DIR");
+        let mut combo = Combo::new(store, ui, "DIR");
         combo.set_options(
             store,
             ui,

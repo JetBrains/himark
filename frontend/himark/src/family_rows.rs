@@ -24,7 +24,7 @@ pub type RowMinter =
 /// document/diff/changeset state — e.g. hidiff reconciling its
 /// `Canvases` when the change set moves, independent of any panel
 /// painting (docs/editor/diff-canvas.md §7).
-pub type SyncObserver = dyn Fn(&mut Store) + Send + Sync;
+pub type SyncObserver = dyn Fn(&mut Store, &imba::UiCtx) + Send + Sync;
 
 #[derive(Clone, Default)]
 pub struct SyncObservers(rpds::VectorSync<Arc<SyncObserver>>);
@@ -38,13 +38,13 @@ impl SyncObservers {
 
     /// Run every registered observer against the store. Called once per
     /// sync tick, after the diff/stripe lanes.
-    pub fn run(store: &mut Store) {
+    pub fn run(store: &mut Store, ui: &imba::UiCtx) {
         let observers: Vec<Arc<SyncObserver>> = match store.get::<SyncObservers>() {
             Some(observers) => observers.0.iter().cloned().collect(),
             None => return,
         };
         for observer in observers {
-            observer(store);
+            observer(store, ui);
         }
     }
 }

@@ -13,6 +13,8 @@ pub fn document_for(
     languages: &himark::SyntaxLanguages,
     name: &str,
     source: &str,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> himark::Document {
@@ -22,11 +24,13 @@ pub fn document_for(
             himark::Text::from_string_exact(source),
             &extension,
             languages,
+                store, ui,
             fonts,
             theme,
         );
     }
-    himarkdown::document_from_markdown(source, fonts, theme)
+    himarkdown::document_from_markdown(source,
+                store, ui, fonts, theme)
 }
 
 pub fn install_open_handlers(
@@ -78,13 +82,17 @@ impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
         let failed = (old_text.is_none() && new_text.is_none())
             .then(|| format!("contents unavailable: {}", effect.new.name()));
         let build = |location: &ResourceLocation, text: &str| {
-            document_for(
-                &self.languages,
-                location.name(),
-                text,
-                &self.workshop.fonts(),
-                &self.workshop.theme(),
-            )
+            self.workshop.with_ctx(|store, ui| {
+                document_for(
+                    &self.languages,
+                    location.name(),
+                    text,
+                    store,
+                    ui,
+                    &self.workshop.fonts(),
+                    &self.workshop.theme(),
+                )
+            })
         };
         let old = build(&effect.old, old_text.as_deref().unwrap_or(""));
         let new = build(&effect.new, new_text.as_deref().unwrap_or(""));
@@ -129,13 +137,17 @@ impl OpenDiffByLocationsHandler {
             );
         }
         let build = |location: &ResourceLocation, text: &str| {
-            document_for(
-                &self.languages,
-                location.name(),
-                text,
-                &self.workshop.fonts(),
-                &self.workshop.theme(),
-            )
+            self.workshop.with_ctx(|store, ui| {
+                document_for(
+                    &self.languages,
+                    location.name(),
+                    text,
+                    store,
+                    ui,
+                    &self.workshop.fonts(),
+                    &self.workshop.theme(),
+                )
+            })
         };
         let old = build(&old_location, old_text.as_deref().unwrap_or(""));
         let new = build(&new_location, new_text.as_deref().unwrap_or(""));
@@ -171,6 +183,7 @@ impl himark::Navigator for DiffNavigator {
     fn navigate(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         window: himark::WindowId,
         place: &hidiff::DiffPlace,
         fx: &mut AppFx<'_>,
@@ -186,7 +199,7 @@ impl himark::Navigator for DiffNavigator {
             return None;
         };
 
-        let panel = hidiff::diff_panel(store, old, new, None)?;
+        let panel = hidiff::diff_panel(store, ui, old, new, None)?;
         Some(himark::Panel::Plugin(Box::new(panel)))
     }
 }
@@ -209,11 +222,12 @@ impl DynamicCommand for OpenDiffPair {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut side = |location: &ResourceLocation, document: &himark::Document| {
             match himark::OpenDocuments::by_location(store, location) {
                 Some(open_id) => (open_id, false),
@@ -233,7 +247,7 @@ impl DynamicCommand for OpenDiffPair {
         let (new_id, new_fresh) = side(&self.new_location, &self.new);
 
         let prep = (old_fresh && new_fresh).then(|| self.prep.clone());
-        let _ = hidiff::open_diff_documents(store, window, old_id, new_id, prep, fx);
+        let _ = hidiff::open_diff_documents(store, ui, window, old_id, new_id, prep, fx);
 
         himark::sync_document_watches(store, fx);
         himark::sync_stripe_bases(store, fx);
@@ -249,13 +263,17 @@ impl EffectHandler<himark::BuildDocumentEffect> for BuildDocumentHandler {
     async fn handle(&self, effect: himark::BuildDocumentEffect) -> himark::BuiltDocument {
         let fonts = self.0.fonts();
         let theme = self.0.theme();
-        let document = document_for(
-            &self.1,
-            effect.location.name(),
-            &effect.text,
-            &fonts,
-            &theme,
-        );
+        let document = self.0.with_ctx(|store, ui| {
+            document_for(
+                &self.1,
+                effect.location.name(),
+                &effect.text,
+                store,
+                ui,
+                &fonts,
+                &theme,
+            )
+        });
 
         himark::BuiltDocument { document }
     }
@@ -277,13 +295,17 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
             .await;
         match fetched.flatten() {
             Some(text) => {
-                let document = document_for(
-                    &self.languages,
-                    effect.location.name(),
-                    &text,
-                    &self.workshop.fonts(),
-                    &self.workshop.theme(),
-                );
+                let document = self.workshop.with_ctx(|store, ui| {
+                    document_for(
+                        &self.languages,
+                        effect.location.name(),
+                        &text,
+                        store,
+                        ui,
+                        &self.workshop.fonts(),
+                        &self.workshop.theme(),
+                    )
+                });
                 AppCommand::Opened(
                     effect.window,
                     himark::OpenedDocument {

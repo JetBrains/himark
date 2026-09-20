@@ -305,13 +305,14 @@ impl himark::DynamicCommand for OpenTreeDemo {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        app: &mut himark::Application,
         store: &mut Store,
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
-        let _ = entity.open_panel(store, Box::new(TreeDemoView::new()), fx);
+        let _ = entity.open_panel(store, ui, Box::new(TreeDemoView::new()), fx);
         himark::Windows::put(store, window, entity);
     }
 }

@@ -115,8 +115,14 @@ where
     T: View + SearchableList<S::Key>,
     S: Searcher<View = T>,
 {
-    pub fn new(inner: T, searcher: S, fonts: crate::FontSource) -> Self {
-        let mut input = EditorView::input(PILL_INPUT_WIDTH, fonts);
+    pub fn new(
+        inner: T,
+        searcher: S,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: crate::FontSource,
+    ) -> Self {
+        let mut input = EditorView::input(PILL_INPUT_WIDTH, store, ui, fonts);
         input.focus_text();
         Self {
             inner,
@@ -139,11 +145,15 @@ where
         !self.query().is_empty()
     }
 
-    pub fn clear(&mut self, fx: &mut Effects<'_, SpeedSearchCommand<T::Command>>)
-    where
+    pub fn clear(
+        &mut self,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fx: &mut Effects<'_, SpeedSearchCommand<T::Command>>,
+    ) where
         T::Command: Send + 'static,
     {
-        self.input = EditorView::input(PILL_INPUT_WIDTH, crate::embedded_fonts::source());
+        self.input = EditorView::input(PILL_INPUT_WIDTH, store, ui, crate::embedded_fonts::source());
         self.input.focus_text();
         self.launched = None;
         if let Some(token) = self.lane.take() {
@@ -248,7 +258,9 @@ where
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        self.clear(fx);
+        // Teardown-only: `View::destroy` carries no UiCtx.
+        let ui = &imba::UiCtx::dont_use_too_slow();
+        self.clear(store, ui, fx);
         fx.scope(SpeedSearchCommand::Inner, |fx| {
             self.inner.destroy(store, fx)
         });
@@ -284,7 +296,7 @@ where
                 self.inner.step_matched(0);
             }
             SpeedSearchCommand::Step(delta) => self.inner.step_matched(delta),
-            SpeedSearchCommand::Clear => self.clear(fx),
+            SpeedSearchCommand::Clear => self.clear(store, ui, fx),
             SpeedSearchCommand::Refresh => self.relaunch(fx),
         }
     }

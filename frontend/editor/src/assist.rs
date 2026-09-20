@@ -5,7 +5,6 @@ use std::ops::Range;
 
 use imba::store::Store;
 use operation::{Op, Operation, OperationBuilder};
-use skia_safe::textlayout::FontCollection;
 
 use crate::caret::{Caret, MultiCaret};
 use crate::document::Document;
@@ -46,7 +45,8 @@ impl Document {
         store: &Store,
         editor: EditorId,
         kind: AssistKind,
-        fonts: &FontCollection,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> bool {
@@ -119,7 +119,8 @@ impl Document {
         }
         let operation = builder.finish();
         if !operation.is_empty() {
-            self.edit(&operation, fonts, theme, fx);
+            self.edit(&operation,
+                store, ui, fonts, theme, fx);
         }
         self.set_carets(
             editor,

@@ -69,7 +69,11 @@ fn placeholder_geometry_is_identical_to_typed_text() {
         &[],
         &fonts,
         &theme,
-        500.0,
+        crate::markup::InlayMeasure {
+            width: 500.0,
+            store: &imba::store::Store::new(),
+            ui: &imba::UiCtx::dont_use_too_slow(),
+        },
         0.0,
         true,
     );

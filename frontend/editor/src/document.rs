@@ -3,7 +3,6 @@
 
 use imba::store::Store;
 use operation::{Op, Operation};
-use skia_safe::textlayout::FontCollection;
 use text::Text;
 
 use crate::edit_log::EditLog;
@@ -163,12 +162,14 @@ impl Document {
         text: Text,
         language: &str,
         languages: &SyntaxLanguages,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
         let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
-        let Some((root, _, sites)) =
-            languages.parse_syntax(language, &text, 0..byte_count, None, &[], fonts, theme)
+        let Some((root, _, sites)) = languages.parse_syntax(
+            language, &text, 0..byte_count, None, &[], store, ui, fonts, theme)
         else {
             return Self::new(text, Markup::new());
         };
@@ -198,15 +199,23 @@ impl Document {
     pub fn fresh_layout_heights(
         &self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<(u32, f32)> {
         let state = self.editor(editor);
         let extras = Self::view_extras(&self.markups, state);
-        let layout = crate::DocumentLayout::build_complete(
+        let measure = crate::markup::InlayMeasure {
+            width: state.layout.layout_width(),
+            store,
+            ui,
+        };
+        let layout = {
+            crate::DocumentLayout::build_complete(
             &self.text,
             crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-            state.layout.layout_width(),
+            measure,
             fonts,
             theme,
             state.bounds.and_then(|key| {
@@ -218,7 +227,8 @@ impl Document {
                         .clone(),
                 )
             }),
-        );
+            )
+        };
         layout.element_heights()
     }
 
@@ -277,7 +287,9 @@ impl Document {
     pub fn refresh_unhide(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> bool {
         let Some(state) = self.editors.get(&editor) else {
@@ -314,15 +326,18 @@ impl Document {
         }
         let extras = Self::view_extras(&self.markups, state);
         let width = state.layout.layout_width();
-        state.layout.repair_layout_bounded(
-            &self.text,
-            crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-            width,
-            fonts,
-            theme,
-            from,
-            state.sync_budget(),
-        );
+        {
+            let measure = crate::markup::InlayMeasure { width, store, ui };
+            state.layout.repair_layout_bounded(
+                &self.text,
+                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                measure,
+                fonts,
+                theme,
+                from,
+                state.sync_budget(),
+            );
+        }
         true
     }
 
@@ -646,11 +661,13 @@ impl Document {
         outcome: ReparseOutcome,
         base: Option<crate::ResourceLocation>,
         store: &Store,
-        fonts: &FontCollection,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        let invalidated = self.apply_reparse_outcome(outcome, fonts, theme, fx);
+        let invalidated = self.apply_reparse_outcome(outcome,
+                store, ui, fonts, theme, fx);
 
         let fresh_base = base.is_some() && self.enrich_base != base;
         let ranges = match (invalidated, fresh_base) {
@@ -669,7 +686,8 @@ impl Document {
         &mut self,
         outcome: crate::enrich::EnrichOutcome,
         store: &mut Store,
-        fonts: &FontCollection,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -712,8 +730,9 @@ impl Document {
 
         outcome
             .enricher
-            .install(store, &mut replacement, &changed, fonts, theme);
-        self.replace_markup(slot.markup, replacement, &changed, fonts, theme, fx);
+            .install(store, ui, &mut replacement, &changed, fonts, theme);
+        self.replace_markup(slot.markup, replacement, &changed,
+                store, ui, fonts, theme, fx);
     }
 
     pub fn release_enrichment(&mut self, store: &mut Store) {
@@ -728,25 +747,30 @@ impl Document {
     pub fn enrich_now(
         &mut self,
         enrichers: &crate::enrich::Enrichers,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let byte_count = self.text.byte_count().min(u32::MAX as usize) as u32;
-        self.enrich_sync(enrichers, &[0..byte_count], fonts, theme);
+        self.enrich_sync(enrichers, &[0..byte_count],
+                store, ui, fonts, theme);
     }
 
     pub fn enrich_sync(
         &mut self,
         enrichers: &crate::enrich::Enrichers,
         changed: &[Range<u32>],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         if self.syntax.is_none() || changed.is_empty() {
             return;
         }
 
-        let mut store = Store::new();
+        let mut landing = Store::new();
         for enricher in enrichers.entries() {
             if !enricher.interest().syntax {
                 continue;
@@ -784,11 +808,12 @@ impl Document {
                 work,
                 fonts,
                 theme,
+                crate::enrich::MeasureCtx::Handed { store, ui },
                 imba::effect::EffectCaller::disconnected(),
             )));
             if let Some(outcome) = outcome {
                 let mut batch = imba::effect::Batch::new();
-                self.apply_enrichment(outcome, &mut store, fonts, theme, &mut batch.effects());
+                self.apply_enrichment(outcome, &mut landing, ui, fonts, theme, &mut batch.effects());
             }
         }
     }
@@ -1008,7 +1033,9 @@ impl Document {
         &mut self,
         id: MarkupId,
         changed: &[Range<u32>],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1033,7 +1060,8 @@ impl Document {
             }
         }
         self.note_markup_change(Some(changed));
-        self.repair_damaged_viewports(fonts, theme, fx)
+        self.repair_damaged_viewports(
+                store, ui,fonts, theme, fx)
     }
 
     pub fn ensure_document_markup(&mut self, id: MarkupId) {
@@ -1047,7 +1075,9 @@ impl Document {
         markup_id: MarkupId,
         range: Range<u32>,
         inlay: Inlay,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> InlayKey {
@@ -1057,14 +1087,17 @@ impl Document {
             layer: MarkupLayer::Markup(markup_id),
             key: markup.push_inlay(range, inlay),
         });
-        self.repair_editors(span, fonts, theme, fx);
+        self.repair_editors(span,
+                store, ui, fonts, theme, fx);
         key
     }
 
     pub fn remove_inlay(
         &mut self,
         key: InlayKey,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1090,6 +1123,7 @@ impl Document {
         }
         self.repair_editors(
             crate::markup::inlay_repair_span(mode, &range),
+                store, ui,
             fonts,
             theme,
             fx,
@@ -1141,7 +1175,9 @@ impl Document {
         bounds: Option<FragmentKey>,
         build: EditorBuild,
         shown: &[MarkupId],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> EditorId {
@@ -1157,13 +1193,15 @@ impl Document {
             markups,
             vec![overlay],
             width,
+                store, ui,
             fonts,
             theme,
             bounds,
             build,
         );
         self.editors.insert_mut(id, editor);
-        self.refresh_unhide(id, fonts, theme);
+        self.refresh_unhide(id,
+                store, ui, fonts, theme);
 
         if !complete {
             self.pending_repairs(fx);
@@ -1290,58 +1328,73 @@ impl Document {
                             store,
                             editor,
                             crate::reparse::AssistKind::Typed(ch),
+                            ui,
                             &fonts,
                             theme,
                             fx,
                         ) => {}
-                    _ => self.insert(editor, &text, &fonts, theme, fx),
+                    _ => self.insert(editor, &text,
+                store, ui, &fonts, theme, fx),
                 }
             }
             EditorCommand::Enter { soft } => {
                 let kind = crate::reparse::AssistKind::Enter { soft };
                 if self.marked_of(editor).is_some()
-                    || !self.assist_at_carets(store, editor, kind, &fonts, theme, fx)
+                    || !self.assist_at_carets(store, editor, kind, ui, &fonts, theme, fx)
                 {
-                    self.insert(editor, "\n", &fonts, theme, fx);
+                    self.insert(editor, "\n",
+                store, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::Indent => {
                 let kind = crate::reparse::AssistKind::Indent;
                 if self.marked_of(editor).is_none()
-                    && !self.assist_at_carets(store, editor, kind, &fonts, theme, fx)
+                    && !self.assist_at_carets(store, editor, kind, ui, &fonts, theme, fx)
                 {
-                    self.insert(editor, crate::assist::INDENT_UNIT, &fonts, theme, fx);
+                    self.insert(editor, crate::assist::INDENT_UNIT,
+                store, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::Outdent => {
                 let kind = crate::reparse::AssistKind::Outdent;
                 if self.marked_of(editor).is_none() {
-                    let _ = self.assist_at_carets(store, editor, kind, &fonts, theme, fx);
+                    let _ = self.assist_at_carets(store, editor, kind, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::Backspace => {
-                self.delete_at_carets(editor, Motion::Left, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::Left,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteForward => {
-                self.delete_at_carets(editor, Motion::Right, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::Right,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteWordBack => {
-                self.delete_at_carets(editor, Motion::WordLeft, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::WordLeft,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteWordForward => {
-                self.delete_at_carets(editor, Motion::WordRight, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::WordRight,
+                store, ui, &fonts, theme, fx)
             }
-            EditorCommand::DeleteSelections => self.delete_selections(editor, &fonts, theme, fx),
-            EditorCommand::Undo => self.undo(editor, &fonts, theme, fx),
-            EditorCommand::Redo => self.redo(editor, &fonts, theme, fx),
-            EditorCommand::Paste { text } => self.insert(editor, &text, &fonts, theme, fx),
+            EditorCommand::DeleteSelections => self.delete_selections(editor,
+                store, ui, &fonts, theme, fx),
+            EditorCommand::Undo => self.undo(editor,
+                store, ui, &fonts, theme, fx),
+            EditorCommand::Redo => self.redo(editor,
+                store, ui, &fonts, theme, fx),
+            EditorCommand::Paste { text } => self.insert(editor, &text,
+                store, ui, &fonts, theme, fx),
             EditorCommand::Move { motion, select } => {
-                self.move_carets(editor, motion, select, &fonts, theme);
+                self.move_carets(editor, motion, select,
+                store, ui, &fonts, theme);
             }
             EditorCommand::SelectAll => self.select_all(editor),
             EditorCommand::CollapseCarets => self.collapse_carets(editor),
-            EditorCommand::AddCaretAbove => self.add_caret_vertically(editor, true, &fonts, theme),
-            EditorCommand::AddCaretBelow => self.add_caret_vertically(editor, false, &fonts, theme),
+            EditorCommand::AddCaretAbove => self.add_caret_vertically(editor, true,
+                store, ui, &fonts, theme),
+            EditorCommand::AddCaretBelow => self.add_caret_vertically(editor, false,
+                store, ui, &fonts, theme),
             EditorCommand::SelectNextOccurrence => self.select_next_occurrence(editor),
             EditorCommand::SelectAllOccurrences => self.select_all_occurrences(editor),
             EditorCommand::RevealSettled => {
@@ -1351,20 +1404,24 @@ impl Document {
                 }
             }
 
-            EditorCommand::RevealAt { byte } => self.reveal_at(editor, byte, &fonts, theme, fx),
+            EditorCommand::RevealAt { byte } => self.reveal_at(editor, byte,
+                store, ui, &fonts, theme, fx),
             EditorCommand::Click { point, kind } => {
-                self.click_carets(editor, point, kind, &fonts, theme);
+                self.click_carets(editor, point, kind,
+                store, ui, &fonts, theme);
 
                 self.set_focus(editor, EditorFocus::Text);
             }
-            EditorCommand::Drag { point } => self.drag_carets(editor, point, &fonts, theme),
+            EditorCommand::Drag { point } => self.drag_carets(editor, point,
+                store, ui, &fonts, theme),
             EditorCommand::DragEnd => {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.drag = None;
                 }
             }
             EditorCommand::ToggleFold { range } => {
-                self.toggle_fold(editor, range, &fonts, theme, fx)
+                self.toggle_fold(editor, range,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::ToggleBeforeInlay { .. } => {}
             EditorCommand::Inlay { key, command } => {
@@ -1372,7 +1429,8 @@ impl Document {
                     command.downcast_ref::<crate::fold::FoldCommand>(),
                     Some(crate::fold::FoldCommand::Unfold)
                 ) {
-                    self.set_fold_departure(key, true, &fonts, theme, fx);
+                    self.set_fold_departure(key, true,
+                store, ui, &fonts, theme, fx);
                 } else {
                     let fold_tick = matches!(
                         command.downcast_ref::<crate::fold::FoldCommand>(),
@@ -1394,7 +1452,8 @@ impl Document {
                             .fold_chip_at(key)
                             .is_some_and(crate::fold::FoldChip::departed)
                     {
-                        self.remove_inlay(key, &fonts, theme, fx);
+                        self.remove_inlay(key,
+                store, ui, &fonts, theme, fx);
                     }
                 }
             }
@@ -1425,11 +1484,13 @@ impl Document {
                     // settled position — the correction has landed.
                     state.settle_to = None;
                 }
-                if self.resize(editor, width, anchor, &fonts, theme, fx) {
+                if self.resize(editor, width, anchor,
+                store, ui, &fonts, theme, fx) {
                     return;
                 }
 
-                self.repair_visible_damage(editor, &fonts, theme, fx)
+                self.repair_visible_damage(editor,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::ToggleSoftwrap => {
                 let Some(state) = self.editors.get_mut(&editor) else {
@@ -1443,7 +1504,8 @@ impl Document {
                     .map_or(0, |viewport| state.layout.byte_at_y(viewport.start));
                 let target = state.target_width;
                 if target > 0.0 {
-                    self.resize(editor, target, anchor, &fonts, theme, fx);
+                    self.resize(editor, target, anchor,
+                store, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::HorizontalScroll(delta) => {
@@ -1461,13 +1523,14 @@ impl Document {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.viewport = Some(top..bottom);
                 }
-                self.retheme_editor(editor, anchor, &fonts, theme, fx)
+                self.retheme_editor(editor, anchor,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::ApplyReparse(outcome) => {
-                self.land_reparse(outcome, None, store, &fonts, theme, fx);
+                self.land_reparse(outcome, None, store, ui, &fonts, theme, fx);
             }
             EditorCommand::ApplyEnrichment(outcome) => {
-                self.apply_enrichment(outcome, store, &fonts, theme, fx)
+                self.apply_enrichment(outcome, store, ui, &fonts, theme, fx)
             }
             EditorCommand::ApplyScrollStripes(outcome) => self.apply_scroll_stripes(outcome),
             EditorCommand::InsertTextReplacing { text, replacement } => {
@@ -1475,7 +1538,8 @@ impl Document {
                 let repl = view.utf16_to_byte(replacement.0)
                     ..view.utf16_to_byte(replacement.0.saturating_add(replacement.1));
                 let end = text.len().min(u32::MAX as usize) as u32;
-                self.set_marked_text(editor, &text, end..end, Some(repl), &fonts, theme, fx);
+                self.set_marked_text(editor, &text, end..end, Some(repl),
+                store, ui, &fonts, theme, fx);
                 self.unmark_text(editor);
             }
             EditorCommand::SetMarkedText {
@@ -1489,7 +1553,8 @@ impl Document {
                     let mut view = self.text.view();
                     view.utf16_to_byte(start)..view.utf16_to_byte(start.saturating_add(len))
                 });
-                self.set_marked_text(editor, &text, sel, repl, &fonts, theme, fx)
+                self.set_marked_text(editor, &text, sel, repl,
+                store, ui, &fonts, theme, fx)
             }
             EditorCommand::UnmarkText => {
                 self.unmark_text(editor);
@@ -1507,7 +1572,8 @@ impl Document {
                         range.end,
                     )),
                 );
-                if self.refresh_unhide(editor, &fonts, theme) {
+                if self.refresh_unhide(editor,
+                store, ui, &fonts, theme) {
                     self.pending_repairs(fx);
                 }
             }
@@ -1522,7 +1588,8 @@ impl Document {
             }
         }
 
-        if self.refresh_unhide(editor, &fonts, theme) {
+        if self.refresh_unhide(editor,
+                store, ui, &fonts, theme) {
             self.pending_repairs(fx);
         }
 
@@ -1539,7 +1606,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         text: &str,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1548,10 +1617,12 @@ impl Document {
         }
 
         if let Some(range) = self.marked_of(editor) {
-            return self.replace_marked(editor, fonts, theme, range, text, None, fx);
+            return self.replace_marked(editor,
+                store, ui, fonts, theme, range, text, None, fx);
         }
 
-        self.insert_at_carets(editor, text, fonts, theme, fx)
+        self.insert_at_carets(editor, text,
+                store, ui, fonts, theme, fx)
     }
 
     pub fn set_marked_text(
@@ -1560,7 +1631,9 @@ impl Document {
         text: &str,
         selected: Range<u32>,
         replacement: Option<Range<u32>>,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1570,7 +1643,8 @@ impl Document {
         let Some(range) = range else {
             return;
         };
-        self.replace_marked(editor, fonts, theme, range, text, Some(selected), fx)
+        self.replace_marked(editor,
+                store, ui, fonts, theme, range, text, Some(selected), fx)
     }
 
     pub fn unmark_text(&mut self, editor: EditorId) {
@@ -1590,7 +1664,9 @@ impl Document {
     fn replace_marked(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         range: Range<u32>,
         text: &str,
@@ -1618,7 +1694,8 @@ impl Document {
             None => start.saturating_add(text_len),
         };
 
-        self.edit(&Operation::from_ops(ops), fonts, theme, fx);
+        self.edit(&Operation::from_ops(ops),
+                store, ui, fonts, theme, fx);
 
         self.set_caret(editor, caret_after);
 
@@ -1630,7 +1707,9 @@ impl Document {
     pub fn undo(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1642,7 +1721,8 @@ impl Document {
         };
         let inverse = entry.operation.invert();
         self.undo.replaying = true;
-        self.edit(&inverse, fonts, theme, fx);
+        self.edit(&inverse,
+                store, ui, fonts, theme, fx);
         self.undo.replaying = false;
         self.restore_snapshot(editor, &entry.snapshot, true);
         self.undo.park_redo(entry);
@@ -1651,7 +1731,9 @@ impl Document {
     pub fn redo(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1662,7 +1744,8 @@ impl Document {
             return;
         };
         self.undo.replaying = true;
-        self.edit(&entry.operation.clone(), fonts, theme, fx);
+        self.edit(&entry.operation.clone(),
+                store, ui, fonts, theme, fx);
         self.undo.replaying = false;
         self.restore_snapshot(editor, &entry.snapshot, false);
         self.undo.restore_undo(entry);
@@ -1695,33 +1778,42 @@ impl Document {
     pub fn edit(
         &mut self,
         operation: &Operation,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_as(crate::EditIdentity::mint(), operation, fonts, theme, fx)
+        self.edit_as(crate::EditIdentity::mint(), operation,
+                store, ui, fonts, theme, fx)
     }
 
     pub fn edit_as(
         &mut self,
         identity: crate::EditIdentity,
         operation: &Operation,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_with(identity, Provenance::Ours, operation, fonts, theme, fx)
+        self.edit_with(identity, Provenance::Ours, operation,
+                store, ui, fonts, theme, fx)
     }
 
     pub fn edit_shared(
         &mut self,
         identity: crate::EditIdentity,
         operation: &Operation,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_with(identity, Provenance::Shared, operation, fonts, theme, fx)
+        self.edit_with(identity, Provenance::Shared, operation,
+                store, ui, fonts, theme, fx)
     }
 
     fn edit_with(
@@ -1729,7 +1821,9 @@ impl Document {
         identity: crate::EditIdentity,
         provenance: Provenance,
         operation: &Operation,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1776,15 +1870,18 @@ impl Document {
             }
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
-            editor.layout.repair_layout_bounded(
-                &self.text,
-                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-                width,
-                &collection,
-                theme,
-                repair_start,
-                editor.sync_budget(),
-            );
+            {
+                let measure = crate::markup::InlayMeasure { width, store, ui };
+                editor.layout.repair_layout_bounded(
+                    &self.text,
+                    crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                    measure,
+                    &collection,
+                    theme,
+                    repair_start,
+                    editor.sync_budget(),
+                );
+            }
             if let Some((byte, dy, was)) = door {
                 let byte = EditLog::transform_range(byte..byte, &operation)
                     .start
@@ -1835,7 +1932,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         byte: u32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1843,7 +1942,8 @@ impl Document {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal = true;
         }
-        if self.refresh_unhide(editor, fonts, theme) {
+        if self.refresh_unhide(editor,
+                store, ui, fonts, theme) {
             self.pending_repairs(fx);
         }
     }
@@ -1852,7 +1952,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         range: Range<u32>,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -1863,7 +1965,8 @@ impl Document {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal = true;
         }
-        if self.refresh_unhide(editor, fonts, theme) {
+        if self.refresh_unhide(editor,
+                store, ui, fonts, theme) {
             self.pending_repairs(fx);
         }
     }
@@ -1875,11 +1978,14 @@ impl Document {
         &mut self,
         editor: EditorId,
         byte: u32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.reveal_at(editor, byte, fonts, theme, fx);
+        self.reveal_at(editor, byte,
+                store, ui, fonts, theme, fx);
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal_jump = true;
         }
@@ -1977,7 +2083,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         placeholder: impl Into<Arc<str>>,
-        fonts: &FontCollection,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
         let text = placeholder.into();
@@ -2122,7 +2228,9 @@ impl Document {
         &mut self,
         root: Syntax,
         sites: &[SyntaxSite],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2134,13 +2242,16 @@ impl Document {
             };
             editor.layout.mark_modified_in(0..byte_count);
         }
-        self.repair_damaged_viewports(fonts, theme, fx)
+        self.repair_damaged_viewports(
+                store, ui,fonts, theme, fx)
     }
 
     pub fn apply_reparse_outcome(
         &mut self,
         outcome: ReparseOutcome,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> Option<Vec<Range<u32>>> {
@@ -2158,7 +2269,8 @@ impl Document {
                 }
             }
             let marked = started.elapsed();
-            self.repair_damaged_viewports(fonts, theme, fx);
+            self.repair_damaged_viewports(
+                store, ui,fonts, theme, fx);
             if probe {
                 eprintln!(
                     "[landing] splice={:.2}ms mark={:.2}ms repair={:.2}ms ranges={}",
@@ -2265,7 +2377,9 @@ impl Document {
         editor: EditorId,
         width: f32,
         anchor_byte: u32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) -> bool {
@@ -2305,15 +2419,18 @@ impl Document {
             });
         state.layout.mark_modified_in(0..byte_count);
         let extras = Self::view_extras(&self.markups, state);
-        state.layout.repair_layout_bounded(
-            &self.text,
-            crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-            width,
-            &collection,
-            theme,
-            anchor_byte.min(byte_count),
-            state.sync_budget(),
-        );
+        {
+            let measure = crate::markup::InlayMeasure { width, store, ui };
+            state.layout.repair_layout_bounded(
+                &self.text,
+                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                measure,
+                &collection,
+                theme,
+                anchor_byte.min(byte_count),
+                state.sync_budget(),
+            );
+        }
         if let Some((byte, dy, was)) = door {
             let fresh = state.layout.height_before(byte) + dy;
             if (fresh - was).abs() > 0.5 {
@@ -2329,7 +2446,9 @@ impl Document {
         &mut self,
         editor: EditorId,
         anchor: u32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2350,15 +2469,18 @@ impl Document {
             state.layout.mark_modified_in(0..byte_count);
             let extras = Self::view_extras(&self.markups, state);
             let width = state.layout.layout_width();
-            state.layout.repair_layout_bounded(
-                &self.text,
-                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-                width,
-                &collection,
-                theme,
-                anchor.min(byte_count),
-                state.sync_budget(),
-            );
+            {
+                let measure = crate::markup::InlayMeasure { width, store, ui };
+                state.layout.repair_layout_bounded(
+                    &self.text,
+                    crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                    measure,
+                    &collection,
+                    theme,
+                    anchor.min(byte_count),
+                    state.sync_budget(),
+                );
+            }
             if let Some((byte, dy, was)) = door {
                 let fresh = state.layout.height_before(byte) + dy;
                 if (fresh - was).abs() > 0.5 {
@@ -2407,7 +2529,8 @@ impl Document {
         );
 
         if let Some(operation) = edit {
-            self.edit(&operation, &fonts, theme, fx);
+            self.edit(&operation,
+                store, ui, &fonts, theme, fx);
             if take_focus {
                 self.set_focus(editor, EditorFocus::Inlay(key));
             }
@@ -2415,6 +2538,7 @@ impl Document {
         if let Some((range, mode)) = performed {
             self.repair_editors(
                 crate::markup::inlay_repair_span(mode, &range),
+                store, ui,
                 &fonts,
                 theme,
                 fx,
@@ -2435,7 +2559,9 @@ impl Document {
         key: InlayKey,
         range: Range<u32>,
         inlay: Inlay,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2451,13 +2577,16 @@ impl Document {
             }
         }
         self.swap_inlay(key, range, inlay);
-        self.repair_editors(span, fonts, theme, fx)
+        self.repair_editors(span,
+                store, ui, fonts, theme, fx)
     }
 
     pub(crate) fn repair_visible_damage(
         &mut self,
         editor: EditorId,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2478,21 +2607,26 @@ impl Document {
         };
         let extras = Self::view_extras(&self.markups, state);
         let width = state.layout.layout_width();
-        state.layout.repair_layout_bounded(
-            &self.text,
-            crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-            width,
-            &collection,
-            theme,
-            start,
-            state.sync_budget(),
-        );
+        {
+            let measure = crate::markup::InlayMeasure { width, store, ui };
+            state.layout.repair_layout_bounded(
+                &self.text,
+                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                measure,
+                &collection,
+                theme,
+                start,
+                state.sync_budget(),
+            );
+        }
         self.pending_repairs(fx)
     }
 
     fn repair_damaged_viewports(
         &mut self,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2516,15 +2650,18 @@ impl Document {
             };
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
-            editor.layout.repair_layout_bounded(
-                &self.text,
-                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-                width,
-                &collection,
-                theme,
-                pending,
-                editor.sync_budget(),
-            );
+            {
+                let measure = crate::markup::InlayMeasure { width, store, ui };
+                editor.layout.repair_layout_bounded(
+                    &self.text,
+                    crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                    measure,
+                    &collection,
+                    theme,
+                    pending,
+                    editor.sync_budget(),
+                );
+            }
         }
         self.pending_repairs(fx)
     }
@@ -2532,7 +2669,9 @@ impl Document {
     fn repair_editors(
         &mut self,
         span: Range<u32>,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2544,15 +2683,18 @@ impl Document {
             let repair_start = editor.layout.mark_modified_in(span.clone());
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
-            editor.layout.repair_layout_bounded(
-                &self.text,
-                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-                width,
-                &collection,
-                theme,
-                repair_start,
-                editor.sync_budget(),
-            );
+            {
+                let measure = crate::markup::InlayMeasure { width, store, ui };
+                editor.layout.repair_layout_bounded(
+                    &self.text,
+                    crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                    measure,
+                    &collection,
+                    theme,
+                    repair_start,
+                    editor.sync_budget(),
+                );
+            }
         }
         self.pending_repairs(fx)
     }
@@ -2635,7 +2777,9 @@ impl Document {
         fresh: Markup,
         changed: Vec<Range<u32>>,
         derived_at: u64,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2654,14 +2798,17 @@ impl Document {
         }
         changed.retain(|range| range.start < range.end);
         EditLog::coalesce(&mut changed);
-        self.replace_markup(markup, fresh, &changed, fonts, theme, fx);
+        self.replace_markup(markup, fresh, &changed,
+                store, ui, fonts, theme, fx);
     }
 
     pub fn remove_diff(
         &mut self,
         id: crate::diff::DiffId,
         changed: &[Range<u32>],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2672,7 +2819,8 @@ impl Document {
         // The markup leaves FIRST: `remove_markup`'s stripe-membership
         // check still sees the diff, so the generation bumps and the
         // track owes a clearing relaunch.
-        self.remove_markup(markup, changed, fonts, theme, fx);
+        self.remove_markup(markup, changed,
+                store, ui, fonts, theme, fx);
         self.diffs.remove_mut(&id);
     }
 
@@ -2742,7 +2890,9 @@ impl Document {
         id: MarkupId,
         replacement: Markup,
         changed: &[Range<u32>],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2760,14 +2910,17 @@ impl Document {
         if changed.is_empty() {
             return;
         }
-        self.reshape_markup_change(id, changed, fonts, theme, fx)
+        self.reshape_markup_change(id, changed,
+                store, ui, fonts, theme, fx)
     }
 
     pub fn remove_markup(
         &mut self,
         id: MarkupId,
         changed: &[Range<u32>],
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
@@ -2775,7 +2928,8 @@ impl Document {
             return;
         }
         if !changed.is_empty() {
-            self.reshape_markup_change(id, changed, fonts, theme, fx);
+            self.reshape_markup_change(id, changed,
+                store, ui, fonts, theme, fx);
         }
         if self.stripes_markup(id) {
             self.scroll_stripe_generation += 1;
@@ -2995,7 +3149,9 @@ impl Document {
         shown: &[MarkupId],
         rows: &[Range<u32>],
         width: f32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<crate::document_layout::DocumentLayout> {
         let globals: Vec<(MarkupId, &Markup)> = shown
@@ -3006,12 +3162,13 @@ impl Document {
                     .filter(|(id, _)| !shown.contains(id)),
             )
             .collect();
+        let measure = crate::markup::InlayMeasure { width, store, ui };
         rows.iter()
             .map(|range| {
                 crate::document_layout::DocumentLayout::build(
                     &self.text,
                     crate::markup::OverlaidMarkup::new(self.markup(), &globals),
-                    width,
+                    measure,
                     fonts,
                     theme,
                     Some(range.clone()),
@@ -3043,13 +3200,16 @@ impl Document {
         editor: EditorId,
         x: f32,
         y: f32,
-        fonts: &FontCollection,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<u32> {
         if !self.editors.contains_key(&editor) {
             return None;
         }
-        self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, fonts, theme)
+        self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0,
+                store, ui, fonts, theme)
     }
 }
 

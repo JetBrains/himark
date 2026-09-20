@@ -155,9 +155,9 @@ impl DisplayText {
         &mut self,
         markup: OverlaidMarkup<'_, '_>,
         range: Range<u32>,
-        width: f32,
+        measure: crate::markup::InlayMeasure<'_>,
     ) {
-        for placeholder in markup.inline_placeholders_in(range.clone(), width) {
+        for placeholder in markup.inline_placeholders_in(range.clone(), measure) {
             self.insert_placeholder(range.start, placeholder);
         }
     }
@@ -307,12 +307,13 @@ impl ShapedLine {
         marks: &BlockStyle,
         inline: &[TextDecorationInterval],
         hidden: &[Range<u32>],
-        fonts: &FontCollection,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
-        layout_width: f32,
+        measure: crate::markup::InlayMeasure<'_>,
         document_x: f32,
         map_utf16: bool,
     ) -> Self {
+        let layout_width = measure.width;
         debug_assert!(
             line_range.end as usize <= view.byte_count(),
             "shaped line {line_range:?} beyond text ({} bytes)",
@@ -351,7 +352,7 @@ impl ShapedLine {
             map_utf16,
             byte_size as usize,
         );
-        display.add_inline_placeholders(markup, line_range.clone(), layout_width);
+        display.add_inline_placeholders(markup, line_range.clone(), measure);
 
         let inline = display.map_decorations(inline);
 
@@ -419,7 +420,7 @@ impl ShapedLine {
     pub(crate) fn placeholder(
         text: &str,
         color: skia_safe::Color,
-        fonts: &FontCollection,
+        fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         layout_width: f32,
         document_x: f32,

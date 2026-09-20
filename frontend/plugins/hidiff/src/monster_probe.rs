@@ -86,13 +86,25 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     let markdown_fonts = himark::embedded_fonts::source()();
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&left, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(
+            &left,
+            app.store(),
+            &app.ui_ctx(),
+            &markdown_fonts,
+            &theme
+        ),
         "left.md".to_owned(),
         false
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&right, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(
+            &right,
+            app.store(),
+            &app.ui_ctx(),
+            &markdown_fonts,
+            &theme
+        ),
         "right.md".to_owned(),
         false
     ));
@@ -177,13 +189,25 @@ fn probe_pair(left: String, right: String) {
     let started = Instant::now();
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&left, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(
+            &left,
+            app.store(),
+            &app.ui_ctx(),
+            &markdown_fonts,
+            &theme
+        ),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&right, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(
+            &right,
+            app.store(),
+            &app.ui_ctx(),
+            &markdown_fonts,
+            &theme
+        ),
         "right.md".to_owned(),
         false,
     ));
@@ -452,10 +476,13 @@ fn scroll_soak_for_profiling() {
     let theme = himark::Theme::embedded();
     let markdown_fonts = himark::embedded_fonts::source()();
     let (left, right) = monster_pair(1409);
-    let (mut ldoc, lblocks) = himarkdown::markdown_document(&left, &markdown_fonts, &theme);
-    demo::add_badges(&mut ldoc, &lblocks, &markdown_fonts, &theme);
-    let (mut rdoc, rblocks) = himarkdown::markdown_document(&right, &markdown_fonts, &theme);
-    demo::add_badges(&mut rdoc, &rblocks, &markdown_fonts, &theme);
+    let ui = &app.ui_ctx();
+    let (mut ldoc, lblocks) =
+        himarkdown::markdown_document(&left, app.store(), ui, &markdown_fonts, &theme);
+    demo::add_badges(&mut ldoc, &lblocks, app.store(), ui, &markdown_fonts, &theme);
+    let (mut rdoc, rblocks) =
+        himarkdown::markdown_document(&right, app.store(), ui, &markdown_fonts, &theme);
+    demo::add_badges(&mut rdoc, &rblocks, app.store(), ui, &markdown_fonts, &theme);
     assert!(app.add_document(app.sole_window(), ldoc, "left.md".to_owned(), false));
     assert!(app.add_document(app.sole_window(), rdoc, "right.md".to_owned(), false));
 

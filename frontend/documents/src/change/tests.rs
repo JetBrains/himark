@@ -31,11 +31,14 @@ impl Pane {
     }
 
     fn with_store(mut store: Store, mut document: ::editor::Document, located: bool) -> Self {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let editor = document.add_editor(
             400.0,
             None,
             ::editor::EditorBuild::Complete,
             &[],
+            &store,
+            ui,
             &::editor::embedded_fonts::source()(),
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),

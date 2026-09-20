@@ -37,15 +37,17 @@ impl Chats {
 
     pub fn open(
         store: &mut Store,
+        ui: &imba::UiCtx,
         server: crate::higent::HostId,
         session: Uri,
         chat: Uri,
     ) -> Box<dyn crate::DynPanelView> {
-        Self::open_with(store, server, session, chat, None)
+        Self::open_with(store, ui, server, session, chat, None)
     }
 
     pub fn open_with(
         store: &mut Store,
+        ui: &imba::UiCtx,
         server: crate::higent::HostId,
         session: Uri,
         chat: Uri,
@@ -55,7 +57,7 @@ impl Chats {
             .get::<Chats>()
             .is_some_and(|chats| chats.chats.contains_key(&chat));
         if !known {
-            let mut panel = ChatPanel::new(server, session, chat.clone());
+            let mut panel = ChatPanel::new(store, ui, server, session, chat.clone());
             if let Some(prompt) = initial_prompt {
                 panel = panel.with_initial_prompt(prompt);
             }

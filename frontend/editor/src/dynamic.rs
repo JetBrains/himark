@@ -20,6 +20,7 @@ pub trait DynamicEditorCommand: Send + Sync + 'static {
     fn perform(
         &self,
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: &mut Document,
         editor: EditorId,
         location: &crate::ResourceLocation,

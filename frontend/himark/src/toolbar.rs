@@ -140,6 +140,7 @@ impl Toolbar {
     pub(crate) fn start_session(
         &mut self,
         store: &Store,
+        ui: &imba::UiCtx,
         class: Option<char>,
         text: &str,
         width: f32,
@@ -150,7 +151,8 @@ impl Toolbar {
         let document = crate::Document::new(text::Text::from_string_exact(text), markup);
         let fonts = ::editor::env::Fonts::of(store);
         let theme = ::editor::env::Themes::of(store);
-        let mut input = EditorView::of_document(document, width.max(1.0), &fonts(), &theme);
+        let mut input = EditorView::of_document(document, width.max(1.0),
+                store, ui, &fonts(), &theme);
         input.set_caret(text.len() as u32);
         input.focus_text();
         self.session = Some(Session { class, input });
@@ -471,7 +473,7 @@ pub fn toggle_toolbar_session(
     }
 
     let width = session_input_width(store, &entity);
-    entity.toolbar_start_session(store, surface.prefix, seed, width);
+    entity.toolbar_start_session(store, ui, surface.prefix, seed, width);
     crate::Windows::put(store, window, entity);
     let payload = match surface.prefix {
         Some(prefix) => seed.strip_prefix(prefix).unwrap_or(seed).to_owned(),
@@ -501,7 +503,7 @@ pub(crate) fn toolbar_query(
     match entity.toolbar_session_class() {
         None => {
             let width = session_input_width(store, &entity);
-            entity.toolbar_start_session(store, class, raw, width);
+            entity.toolbar_start_session(store, ui, class, raw, width);
         }
 
         Some(_) => entity.toolbar_set_session_class(class),

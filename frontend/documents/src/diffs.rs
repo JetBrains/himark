@@ -298,6 +298,7 @@ impl OpenDocuments {
 
     pub fn untrack_diff<R: 'static>(
         store: &mut Store,
+        ui: &imba::UiCtx,
         id: DiffId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
@@ -326,6 +327,7 @@ impl OpenDocuments {
             document.remove_diff(
                 id,
                 &[],
+                store, ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -336,14 +338,15 @@ impl OpenDocuments {
             document.remove_markup(
                 record.base_markup,
                 &[],
+                store, ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             );
             Self::put_document(store, record.base, document);
         }
-        Self::remove_if_editorless(store, record.base, fx);
-        Self::remove_if_editorless(store, record.target, fx);
+        Self::remove_if_editorless(store, ui, record.base, fx);
+        Self::remove_if_editorless(store, ui, record.target, fx);
     }
 
     pub fn diff_handle(store: &Store, id: DiffId) -> Option<DiffHandle> {
@@ -364,6 +367,7 @@ impl OpenDocuments {
 
     pub(crate) fn untrack_stripes<R: 'static>(
         store: &mut Store,
+        ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) -> bool {
@@ -390,7 +394,7 @@ impl OpenDocuments {
                 }
             }
         });
-        Self::untrack_diff(store, id, fx);
+        Self::untrack_diff(store, ui, id, fx);
         true
     }
 
@@ -532,6 +536,7 @@ pub fn land_normalized(
 /// repair tails route home like any landing's.
 pub fn land_diff_markup(
     store: &mut Store,
+    ui: &imba::UiCtx,
     id: DiffId,
     markup: editor::Markup,
     changed: Vec<std::ops::Range<u32>>,
@@ -549,7 +554,8 @@ pub fn land_diff_markup(
     let Some(mut document) = OpenDocuments::document(store, record.target) else {
         return;
     };
-    document.install_diff_markup(id, markup, changed, derived_at, &fonts, &theme, fx);
+    document.install_diff_markup(id, markup, changed, derived_at,
+                store, ui, &fonts, &theme, fx);
     OpenDocuments::put_document(store, record.target, document);
 }
 
@@ -623,6 +629,7 @@ pub fn rearm_base_asks(store: &mut Store, matches: &dyn Fn(&editor::ResourceLoca
 
 pub fn adopt_base_location<R: 'static>(
     store: &mut Store,
+    ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: Option<editor::ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, R>,
@@ -635,7 +642,7 @@ pub fn adopt_base_location<R: 'static>(
         if OpenDocuments::location(store, handle.base).as_ref() == base.as_ref() {
             return None;
         }
-        OpenDocuments::untrack_stripes(store, document, fx);
+        OpenDocuments::untrack_stripes(store, ui, document, fx);
 
         if !OpenDocuments::contains(store, document) {
             return None;
@@ -651,6 +658,7 @@ pub fn adopt_base_location<R: 'static>(
 
 pub fn land_base_built<R: 'static>(
     store: &mut Store,
+    ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: editor::ResourceLocation,
     built: editor::Document,
@@ -663,7 +671,7 @@ pub fn land_base_built<R: 'static>(
         if OpenDocuments::location(store, handle.base).as_ref() == Some(&base) {
             return;
         }
-        OpenDocuments::untrack_stripes(store, document, fx);
+        OpenDocuments::untrack_stripes(store, ui, document, fx);
         if !OpenDocuments::contains(store, document) {
             return;
         }
@@ -799,6 +807,7 @@ mod tests {
 
     #[test]
     fn the_base_chain_tracks_and_the_release_unwinds() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut store = Store::new();
         let target = OpenDocuments::register(
             &mut store,
@@ -823,6 +832,7 @@ mod tests {
         assert_eq!(
             adopt_base_location(
                 &mut store,
+                ui,
                 target,
                 Some(base_location.clone()),
                 &mut imba::effect::Batch::<()>::new().effects()
@@ -833,6 +843,7 @@ mod tests {
 
         land_base_built(
             &mut store,
+            ui,
             target,
             base_location.clone(),
             plain_document("one\ntwo\n"),
@@ -864,6 +875,7 @@ mod tests {
         assert_eq!(
             adopt_base_location(
                 &mut store,
+                ui,
                 target,
                 Some(base_location.clone()),
                 &mut imba::effect::Batch::<()>::new().effects()
@@ -879,6 +891,7 @@ mod tests {
 
         OpenDocuments::remove_if_editorless(
             &mut store,
+            ui,
             target,
             &mut imba::effect::Batch::<()>::new().effects(),
         );
@@ -895,6 +908,7 @@ mod tests {
 
     #[test]
     fn a_prepared_track_is_normalized_at_birth() {
+        let ui = &imba::UiCtx::dont_use_too_slow();
         let mut store = Store::new();
         let base_id = OpenDocuments::register(
             &mut store,
@@ -935,6 +949,8 @@ mod tests {
             None,
             ::editor::EditorBuild::Complete,
             &[],
+            &store,
+            ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
@@ -942,6 +958,8 @@ mod tests {
         document.insert(
             editor,
             "typed",
+            &store,
+            ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),

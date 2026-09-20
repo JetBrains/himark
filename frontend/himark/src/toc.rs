@@ -168,6 +168,7 @@ impl TocView {
             search: SpeedSearchView::new(
                 forest,
                 ForestSearcher::default(),
+                store, ui,
                 crate::env::Fonts::of(store),
             ),
             targets,
@@ -351,16 +352,17 @@ impl crate::DynamicCommand for NavigateToPlace {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        let ui = &app.ui_ctx();
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
         let _ = entity.navigate(
-            store,
+            store, ui,
             window,
             &crate::NavigationLocation::new(self.place.clone()),
             fx,
@@ -552,6 +554,7 @@ impl Clone for OutlineView {
 impl OutlineView {
     pub fn new(
         store: &Store,
+        ui: &imba::UiCtx,
         window: crate::WindowId,
         document: crate::DocumentId,
         location: crate::ResourceLocation,
@@ -567,6 +570,7 @@ impl OutlineView {
             search: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
+                store, ui,
                 crate::env::Fonts::of(store),
             ),
             request: None,
