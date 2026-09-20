@@ -22,6 +22,7 @@ pub mod hihistory;
 pub mod hover;
 mod keymap;
 mod location_list;
+pub mod locations;
 mod modal;
 mod navigation;
 pub mod new_session;
