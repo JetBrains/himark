@@ -464,6 +464,8 @@ mod app {
                             directory: Arc::clone(&seats),
                         },
                     );
+                    state.register_command(Arc::new(himark::hisearch::ToggleSearchView));
+                    state.register_toolbar_button(himark::hisearch::toolbar_button());
                     state.register_handler::<himark::LspLocationsEffect>(
                         hiahp::locations::RouteLspLocations {
                             directory: Arc::clone(&seats),

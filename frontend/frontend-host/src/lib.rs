@@ -989,6 +989,10 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.seats),
                 },
             );
+            self.app
+                .register_command(Arc::new(himark::hisearch::ToggleSearchView));
+            self.app
+                .register_toolbar_button(himark::hisearch::toolbar_button());
         }
 
         self.agent_host_filesystem.include(capabilities);
