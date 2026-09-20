@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The Search dock tab (docs/ui/location-list.md §6): a query input
-//! over the locations tree, streaming from an `ahp-locations:/…`
-//! channel. The session's feed row is the substance — results
-//! survive the surface; the live channel rides the view and dies
-//! with it (closing the surface IS the cancel).
+//! over the locations tree. The tab is a FACE over a store-level
+//! feed (`locations::LocationsFeeds`, addressed by id): the feed and
+//! its pump outlive the face, results keep landing while the dock is
+//! closed, and a peek promotes its feed here without asking again.
 
 use std::sync::Arc;
 
@@ -22,12 +22,13 @@ use skia_safe::Size;
 
 use crate::forest::{ForestList, ForestSearcher};
 use crate::locations::{
-    locations_forest, resolve_batch, FoundLocation, LocationKey, LocationsFeedRow, LocationsFeeds,
+    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation,
+    LocationKey, LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
 };
 use crate::modal::RequestSlot;
 use crate::speedsearch::{SpeedSearchCommand, SpeedSearchView};
 use crate::tree_item::{tree_interaction, TreeListCommand};
-use crate::{EditorCommand, EditorView, LocationsChannel, ModalRequest, SessionId, WindowId};
+use crate::{AppRequests, EditorCommand, EditorView, ModalRequest, SessionId, WindowId};
 
 /// The dock owner id — the toggle command's, shared by everything
 /// that lands content into this tab.
@@ -50,23 +51,18 @@ pub enum SearchCommand {
     Select(isize),
     Fold(bool),
     Pick,
-    Focus(SearchArea),
+    /// A click landed: move the keyboard to the clicked area, then
+    /// forward the click itself.
+    Focus(SearchArea, Option<Box<SearchCommand>>),
     /// The stop affordance: cancel the running stream, keep what
     /// landed.
     Cancel,
     Dismiss,
-    Nothing,
+    /// The face noticed the feed moved (paint-driven).
+    Refresh,
     Asked {
-        generation: u64,
-        outcome: Result<LocationsChannel, String>,
-    },
-    Snapshot {
-        generation: u64,
-        outcome: Result<himark_ahp_ext_types::LocationList, String>,
-    },
-    Polled {
-        generation: u64,
-        batches: Vec<himark_ahp_ext_types::LocationList>,
+        feed: FeedId,
+        outcome: Result<crate::LocationsChannel, String>,
     },
 }
 
@@ -78,15 +74,11 @@ pub struct SearchView {
     focus: SearchArea,
     last_query: String,
 
-    /// The live stream — the view's own; dies with it.
-    channel: Option<LocationsChannel>,
-    ask_token: Option<imba::effect::CancellationToken>,
-    poll_token: Option<imba::effect::CancellationToken>,
-
     /// Pick lookup: a hit key answers its own location; a file key
     /// its first occurrence.
     targets: rpds::HashTrieMapSync<LocationKey, FoundLocation>,
     files: usize,
+    shown: Option<(FeedId, u64)>,
 
     request: RequestSlot<ModalRequest>,
 }
@@ -100,21 +92,21 @@ impl Clone for SearchView {
             search: self.search.clone(),
             focus: self.focus,
             last_query: self.last_query.clone(),
-            channel: self.channel.clone(),
-            ask_token: self.ask_token,
-            poll_token: self.poll_token,
             targets: self.targets.clone(),
             files: self.files,
+            shown: self.shown,
             request: RequestSlot::default(),
         }
     }
 }
 
 impl SearchView {
-    /// The face over the session's standing feed: reopening seeds
-    /// the input with the last query and shows what stood.
+    /// The face over the session's fronting feed: reopening seeds
+    /// the input with the feed's query and shows what stands.
     pub fn open(store: &Store, ui: &UiCtx, window: WindowId, session: SessionId) -> Self {
-        let row = LocationsFeeds::row(store, &session).unwrap_or_default();
+        let row = SessionSearchFeeds::feed(store, &session)
+            .and_then(|feed| LocationsFeeds::row(store, feed))
+            .unwrap_or_default();
         let mut view = Self {
             window,
             session,
@@ -126,11 +118,9 @@ impl SearchView {
             ),
             focus: SearchArea::Input,
             last_query: row.query.clone(),
-            channel: None,
-            ask_token: None,
-            poll_token: None,
             targets: rpds::HashTrieMapSync::new_sync(),
             files: 0,
+            shown: None,
             request: RequestSlot::default(),
         };
         view.rebuild(store, ui);
@@ -147,19 +137,27 @@ impl SearchView {
         self.input.document.text().view().substring(0..end)
     }
 
-    fn row(&self, store: &Store) -> LocationsFeedRow {
-        LocationsFeeds::row(store, &self.session).unwrap_or_default()
+    fn feed(&self, store: &Store) -> Option<FeedId> {
+        SessionSearchFeeds::feed(store, &self.session)
     }
 
-    /// Rebuild the tree and the pick table from the feed row —
-    /// cursor and fold state survive by key.
+    fn row(&self, store: &Store) -> LocationsFeedRow {
+        self.feed(store)
+            .and_then(|feed| LocationsFeeds::row(store, feed))
+            .unwrap_or_default()
+    }
+
+    /// Rebuild the tree and the pick table from the feed — cursor
+    /// and fold state survive by key.
     fn rebuild(&mut self, store: &Store, ui: &UiCtx) {
+        let feed = self.feed(store);
         let row = self.row(store);
-        let forest = locations_forest(store, row.locations.iter());
+        let locations: Vec<FoundLocation> = row.locations.iter().cloned().collect();
+        let forest = locations_forest(store, &locations);
 
         let mut targets = rpds::HashTrieMapSync::new_sync();
         let mut files = 0usize;
-        for found in row.locations.iter() {
+        for found in &locations {
             let hit = LocationKey::Hit(found.location.clone(), found.line, found.column);
             targets.insert_mut(hit, found.clone());
             let file = LocationKey::Node(found.location.clone());
@@ -170,6 +168,7 @@ impl SearchView {
         }
         self.targets = targets;
         self.files = files;
+        self.shown = feed.map(|feed| (feed, row.generation));
 
         let cursor = self.search.inner().list().cursor().cloned();
         self.search.inner_mut().set(&forest, store, ui);
@@ -177,84 +176,6 @@ impl SearchView {
             if self.search.inner().forest.contains(&cursor) {
                 self.search.inner_mut().list_mut().select_only(cursor);
             }
-        }
-    }
-
-    /// Adopt an externally minted stream (find-references,
-    /// find-implementations): displace whatever the tab held — the
-    /// old channel unsubscribes, the input clears to the result
-    /// set's title — and subscribe. Master–detail (several result
-    /// sets side by side) is future work; displacement makes room
-    /// for it (docs/ui/location-list.md §7).
-    pub fn attach_stream(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        title: String,
-        channel: LocationsChannel,
-        fx: &mut imba::effect::Effects<'_, SearchCommand>,
-    ) {
-        self.drop_stream(fx);
-        let mut row = self.row(store);
-        row.generation += 1;
-        row.title = title;
-        row.query = String::new();
-        row.locations = rpds::VectorSync::new_sync();
-        row.done = false;
-        row.truncated = false;
-        let generation = row.generation;
-        LocationsFeeds::put(store, self.session.clone(), row);
-        self.last_query = String::new();
-        self.input = seeded_input("");
-        self.focus = SearchArea::Results;
-        self.rebuild(store, ui);
-
-        self.channel = Some(channel.clone());
-        fx.relaunch_erased(
-            &mut self.poll_token,
-            AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                seat: channel.seat,
-                channel: channel.channel,
-            })
-            .map(move |outcome| SearchCommand::Snapshot {
-                generation,
-                outcome,
-            }),
-        );
-    }
-
-    /// The attach's error half: nothing to stream, the tab reports.
-    pub fn attach_failed(&mut self, store: &mut Store, ui: &UiCtx, title: String) {
-        let mut row = self.row(store);
-        row.generation += 1;
-        row.title = title;
-        row.query = String::new();
-        row.locations = rpds::VectorSync::new_sync();
-        row.done = true;
-        row.truncated = true;
-        LocationsFeeds::put(store, self.session.clone(), row);
-        self.last_query = String::new();
-        self.input = seeded_input("");
-        self.rebuild(store, ui);
-    }
-
-    /// Drop the live stream: unsubscribe (the host-side cancel) and
-    /// forget the in-flight landings.
-    fn drop_stream(&mut self, fx: &mut imba::effect::Effects<'_, SearchCommand>) {
-        if let Some(token) = self.ask_token.take() {
-            fx.cancel(token);
-        }
-        if let Some(token) = self.poll_token.take() {
-            fx.cancel(token);
-        }
-        if let Some(channel) = self.channel.take() {
-            let _ = fx.push(
-                AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
-                    seat: channel.seat,
-                    channel: channel.channel,
-                })
-                .map(|()| SearchCommand::Nothing),
-            );
         }
     }
 
@@ -269,26 +190,25 @@ impl SearchView {
             return;
         }
         self.last_query = query.clone();
-        self.drop_stream(fx);
 
-        let mut row = self.row(store);
-        row.generation += 1;
-        row.query = query.clone();
-        row.title = format!("Search: {query}");
-        row.locations = rpds::VectorSync::new_sync();
-        row.truncated = false;
-        let generation = row.generation;
+        if let Some(previous) = self.feed(store) {
+            AppRequests::push(store, Arc::new(DisposeFeed { feed: previous }));
+        }
+        let feed = FeedId::mint();
+        open_feed(store, feed, format!("Search: {query}"), query.clone());
+        SessionSearchFeeds::put(store, self.session.clone(), feed);
 
         let folders = crate::higent::session_folders(store, &self.session);
         let launches = query.trim().len() >= MIN_QUERY && !folders.is_empty();
-        row.done = !launches;
-        LocationsFeeds::put(store, self.session.clone(), row);
-        self.rebuild(store, ui);
         if !launches {
+            let mut row = LocationsFeeds::row(store, feed).unwrap_or_default();
+            row.done = true;
+            LocationsFeeds::put(store, feed, row);
+            self.rebuild(store, ui);
             return;
         }
-        fx.relaunch_erased(
-            &mut self.ask_token,
+        self.rebuild(store, ui);
+        let _ = fx.push(
             AnyEffect::new(crate::SearchLocationsEffect {
                 folders,
                 query,
@@ -296,74 +216,8 @@ impl SearchView {
                 case_sensitive: false,
                 limit: QUERY_LIMIT,
             })
-            .map(move |outcome| SearchCommand::Asked {
-                generation,
-                outcome,
-            }),
+            .map(move |outcome| SearchCommand::Asked { feed, outcome }),
         );
-    }
-
-    /// Fold a landed wire batch into the feed row; answers whether
-    /// the stream still runs.
-    fn land(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        generation: u64,
-        batches: Vec<himark_ahp_ext_types::LocationList>,
-    ) -> bool {
-        let mut row = self.row(store);
-        if generation != row.generation {
-            return false;
-        }
-        let Some(channel) = &self.channel else {
-            return false;
-        };
-        for batch in batches {
-            row.done |= batch.done;
-            row.truncated |= batch.truncated;
-            for found in resolve_batch(channel, batch) {
-                row.locations.push_back_mut(found);
-            }
-        }
-        let running = !row.done;
-        LocationsFeeds::put(store, self.session.clone(), row);
-        self.rebuild(store, ui);
-        running
-    }
-
-    fn relaunch_poll(
-        &mut self,
-        generation: u64,
-        fx: &mut imba::effect::Effects<'_, SearchCommand>,
-    ) {
-        let Some(channel) = &self.channel else {
-            return;
-        };
-        fx.relaunch_erased(
-            &mut self.poll_token,
-            AnyEffect::new(crate::higent::PollLocationsEffect {
-                seat: Arc::clone(&channel.seat),
-                channel: channel.channel.clone(),
-            })
-            .map(move |batches| SearchCommand::Polled {
-                generation,
-                batches,
-            }),
-        );
-    }
-
-    /// Resolve the channel's story locally after an error or a stop:
-    /// what landed stays, marked cut off.
-    fn resolve_cut(&mut self, store: &mut Store, ui: &UiCtx, generation: u64) {
-        let mut row = self.row(store);
-        if generation != row.generation || row.done {
-            return;
-        }
-        row.done = true;
-        row.truncated = true;
-        LocationsFeeds::put(store, self.session.clone(), row);
-        self.rebuild(store, ui);
     }
 
     fn pick(&mut self, key: LocationKey) {
@@ -431,13 +285,13 @@ impl View for SearchView {
                 (SearchArea::Input, InputKey::Down) | (SearchArea::Input, InputKey::Tab)
                     if rows > 0 =>
                 {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Results))
+                    EventResult::Command(SearchCommand::Focus(SearchArea::Results, None))
                 }
                 (SearchArea::Input, InputKey::Enter) if rows > 0 => {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Results))
+                    EventResult::Command(SearchCommand::Focus(SearchArea::Results, None))
                 }
                 (SearchArea::Results, InputKey::Tab) => {
-                    EventResult::Command(SearchCommand::Focus(SearchArea::Input))
+                    EventResult::Command(SearchCommand::Focus(SearchArea::Input, None))
                 }
                 (SearchArea::Results, InputKey::Up) if !searching => {
                     EventResult::Command(SearchCommand::Select(-1))
@@ -465,18 +319,6 @@ impl View for SearchView {
         own.merge_under(area)
     }
 
-    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        self.drop_stream(fx);
-        // The stream ends with the surface; what landed stays in the
-        // feed row for the next open, honestly marked cut off.
-        let mut row = self.row(store);
-        if !row.done {
-            row.done = true;
-            row.truncated = true;
-            LocationsFeeds::put(store, self.session.clone(), row);
-        }
-    }
-
     fn perform(
         &mut self,
         store: &mut Store,
@@ -498,7 +340,6 @@ impl View for SearchView {
                         let Some(key) = self.search.inner().list().key_at(index).cloned() else {
                             return;
                         };
-                        self.focus = SearchArea::Results;
                         self.search.inner_mut().list_mut().select_only(key.clone());
                         let branch = matches!(&key, LocationKey::Node(location)
                             if location.kind().is_directory());
@@ -522,57 +363,25 @@ impl View for SearchView {
                     self.pick(key);
                 }
             }
-            SearchCommand::Focus(area) => self.focus = area,
+            SearchCommand::Focus(area, then) => {
+                self.focus = area;
+                match area {
+                    SearchArea::Input => self.input.focus_text(),
+                    SearchArea::Results => self.input.blur(),
+                }
+                if let Some(command) = then {
+                    self.perform(store, ui, *command, fx);
+                }
+            }
             SearchCommand::Cancel => {
-                let generation = self.row(store).generation;
-                self.drop_stream(fx);
-                self.resolve_cut(store, ui, generation);
+                if let Some(feed) = self.feed(store) {
+                    AppRequests::push(store, Arc::new(StopFeed { feed }));
+                }
             }
             SearchCommand::Dismiss => self.request.file(ModalRequest::Close),
-            SearchCommand::Nothing => {}
-            SearchCommand::Asked {
-                generation,
-                outcome,
-            } => {
-                if generation != self.row(store).generation {
-                    return;
-                }
-                match outcome {
-                    Ok(channel) => {
-                        self.channel = Some(channel.clone());
-                        fx.relaunch_erased(
-                            &mut self.poll_token,
-                            AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                                seat: channel.seat,
-                                channel: channel.channel,
-                            })
-                            .map(move |outcome| SearchCommand::Snapshot {
-                                generation,
-                                outcome,
-                            }),
-                        );
-                    }
-                    Err(_) => self.resolve_cut(store, ui, generation),
-                }
-            }
-            SearchCommand::Snapshot {
-                generation,
-                outcome,
-            } => match outcome {
-                Ok(snapshot) => {
-                    if self.land(store, ui, generation, vec![snapshot]) {
-                        self.relaunch_poll(generation, fx);
-                    }
-                }
-                Err(_) => self.resolve_cut(store, ui, generation),
-            },
-            SearchCommand::Polled {
-                generation,
-                batches,
-            } => {
-                if self.land(store, ui, generation, batches) {
-                    self.relaunch_poll(generation, fx);
-                }
+            SearchCommand::Refresh => self.rebuild(store, ui),
+            SearchCommand::Asked { feed, outcome } => {
+                AppRequests::push(store, Arc::new(AttachFeedStream { feed, outcome }));
             }
         }
     }
@@ -611,17 +420,19 @@ impl View for SearchView {
 
             // The status band: counts while streaming and after; a
             // click while running stops the stream.
+            let feed = self.feed(store);
             let row = self.row(store);
             let hits = row.locations.len();
-            let status = match (row.done, row.truncated) {
-                (false, _) => format!("{hits} results — searching… (click stops)"),
-                (true, false) => match hits {
+            let status = match (feed.is_some(), row.done, row.truncated) {
+                (false, _, _) => "type to search the session".to_owned(),
+                (true, false, _) => format!("{hits} results — searching… (click stops)"),
+                (true, true, false) => match hits {
                     0 => "no results".to_owned(),
                     _ => format!("{hits} results in {} files", self.files),
                 },
-                (true, true) => format!("{hits} results (cut off)"),
+                (true, true, true) => format!("{hits} results (cut off)"),
             };
-            let running = !row.done;
+            let running = feed.is_some() && !row.done;
             let band = crate::ui::ListRow::new(arena, crate::ui::RowStyle::header(store, ui))
                 .label(status)
                 .on_event(move |_arena: &Arena, event: &Event<'_>, _size| match event {
@@ -653,8 +464,73 @@ impl View for SearchView {
                 .map(SearchCommand::List)
                 .focus_scope(self.focus == SearchArea::Results),
             );
-            panel
+            let stale = self.shown != feed.map(|feed| (feed, row.generation));
+            panel.wrap_realized(move |panel| SearchPanelWidget {
+                panel,
+                size,
+                input_bottom,
+                stale,
+            })
         })
+    }
+}
+
+/// The face's widget shell: clicks move the keyboard to the clicked
+/// area before landing (the input is focusable by click again), and
+/// a paint over a moved feed refreshes the tree.
+struct SearchPanelWidget<'a> {
+    panel: imba::container::RealizedContainer<'a, SearchCommand>,
+    size: Size,
+    input_bottom: f32,
+    stale: bool,
+}
+
+impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, SearchCommand>> {
+        self.panel.overlays()
+    }
+
+    fn size(&self) -> Size {
+        self.size
+    }
+
+    fn handle_event(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: skia_safe::Rect,
+    ) -> EventResult<SearchCommand> {
+        match event {
+            Event::Paint { .. } if self.stale => {
+                // The feed moved under the face — refresh, then let
+                // the paint proceed on the refreshed tree next frame.
+                EventResult::Command(SearchCommand::Refresh)
+            }
+            Event::MouseDown { point, .. } => {
+                let area = match point.y < self.input_bottom {
+                    true => SearchArea::Input,
+                    false => SearchArea::Results,
+                };
+                match self.panel.handle_event(arena, event, viewport) {
+                    EventResult::Command(command) => EventResult::Command(SearchCommand::Focus(
+                        area,
+                        Some(Box::new(command)),
+                    )),
+                    _ => EventResult::Command(SearchCommand::Focus(area, None)),
+                }
+            }
+            _ => self.panel.handle_event(arena, event, viewport),
+        }
+    }
+
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, SearchCommand>
+    where
+        'a: 'w,
+    {
+        self.panel.layout_data(target)
     }
 }
 
@@ -684,6 +560,54 @@ impl crate::ModalView for SearchView {
 
     fn clone_modal(&self) -> Box<dyn crate::ModalView> {
         Box::new(self.clone())
+    }
+}
+
+/// Front a feed in the Search dock tab — the one door every producer
+/// uses: a references ask opening the tab at ASK time, and the
+/// peek's promote button, which reuses the standing feed instead of
+/// asking again.
+pub struct ShowFeedInDock {
+    pub feed: FeedId,
+}
+
+impl crate::DynamicCommand for ShowFeedInDock {
+    fn id(&self) -> &'static str {
+        "search.show-feed"
+    }
+
+    fn name(&self) -> String {
+        "Show Locations in Search".to_owned()
+    }
+
+    fn perform(
+        &self,
+        app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(mut entity) = crate::Windows::window(store, window) else {
+            return;
+        };
+        let session = entity.current_session();
+        if let Some(previous) = SessionSearchFeeds::feed(store, &session) {
+            if previous != self.feed {
+                AppRequests::push(store, Arc::new(DisposeFeed { feed: previous }));
+            }
+        }
+        SessionSearchFeeds::put(store, session.clone(), self.feed);
+
+        fx.scope(
+            move |command| crate::AppCommand::Content(window, command),
+            |fx| entity.dismiss_modal(store, fx),
+        );
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session);
+        fx.scope(
+            move |command| crate::AppCommand::Content(window, command),
+            |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
+        );
+        crate::Windows::put(store, window, entity);
     }
 }
 
@@ -752,7 +676,10 @@ pub fn toolbar_button() -> crate::ToolbarButton {
             );
             canvas.draw_line(
                 start,
-                skia_safe::Point::new(rect.right - rect.width() * 0.08, rect.bottom - rect.height() * 0.08),
+                skia_safe::Point::new(
+                    rect.right - rect.width() * 0.08,
+                    rect.bottom - rect.height() * 0.08,
+                ),
                 &paint,
             );
         }),
@@ -799,12 +726,18 @@ mod tests {
         }
     }
 
-    fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) {
-        let mut row = LocationsFeeds::row(store, &session()).unwrap_or_default();
+    fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) -> FeedId {
+        let feed = SessionSearchFeeds::feed(store, &session()).unwrap_or_else(|| {
+            let minted = FeedId::mint();
+            SessionSearchFeeds::put(store, session(), minted);
+            minted
+        });
+        let mut row = LocationsFeeds::row(store, feed).unwrap_or_default();
         row.generation += 1;
         row.locations = rows.iter().cloned().collect();
         row.done = done;
-        LocationsFeeds::put(store, session(), row);
+        LocationsFeeds::put(store, feed, row);
+        feed
     }
 
     fn view(store: &mut Store, ui: &UiCtx) -> SearchView {
@@ -813,7 +746,7 @@ mod tests {
     }
 
     #[test]
-    fn the_feed_row_renders_and_survives_rebuilds() {
+    fn the_feed_renders_and_survives_rebuilds() {
         let mut store = Store::new();
         let ui = imba::UiCtx::cold();
         feed(
@@ -840,10 +773,12 @@ mod tests {
         );
 
         // Fold a file, land more results: the fold and the cursor
-        // survive the rebuild by key.
+        // survive the rebuild by key — the Refresh the paint-driven
+        // shell files when the feed's generation moves.
         let a = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
         view.search.inner_mut().toggle(&a, &store, &ui);
         view.search.inner_mut().list_mut().select_only(a.clone());
+        let shown = view.shown;
         feed(
             &mut store,
             &[
@@ -852,6 +787,12 @@ mod tests {
                 found(&["work", "b.rs"], 4, 0, "gamma"),
             ],
             true,
+        );
+        assert_ne!(
+            shown,
+            view.feed(&store)
+                .map(|feed| (feed, view.row(&store).generation)),
+            "the shell would see the staleness"
         );
         view.rebuild(&store, &ui);
         assert!(view.search.inner().forest.is_collapsed(&a), "fold kept");
@@ -873,7 +814,10 @@ mod tests {
         view.pick(hit);
         let request = crate::ModalView::take_request(&mut view);
         assert!(
-            matches!(request, Some(ModalRequest::Perform(crate::AppCommand::Dynamic(_, _)))),
+            matches!(
+                request,
+                Some(ModalRequest::Perform(crate::AppCommand::Dynamic(_, _)))
+            ),
             "a hit pick performs the located open"
         );
 

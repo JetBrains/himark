@@ -1554,7 +1554,7 @@ async fn unsubscribing_a_lsp_locations_channel_cancels_the_ask() {
             "lsp/locations",
             json!({"channel": session, "method": "textDocument/references", "params": {
                 "textDocument": {"uri": uri},
-                "position": {"line": 0, "character": 4},
+                "position": {"line": 99, "character": 4},
                 "context": {"includeDeclaration": true},
             }}),
         )
@@ -2595,7 +2595,7 @@ async fn lsp_cancellation_reaches_the_language_server() {
             "jsonrpc": "2.0", "id": parked_id, "method": "lsp/textDocument/references",
             "params": {"channel": session, "params": {
                 "textDocument": {"uri": uri},
-                "position": {"line": 0, "character": 3},
+                "position": {"line": 99, "character": 3},
                 "context": {"includeDeclaration": true},
             }},
         }))

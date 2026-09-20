@@ -77,43 +77,365 @@ pub enum LocationKey {
     Hit(ResourceLocation, u32, u32),
 }
 
-/// The session's standing search feed — the SUBSTANCE in the
-/// peeker's sense: accumulated results survive the surface. The
-/// live channel and its poll loop ride the surface and die with it
-/// (closing the surface IS the cancel); reopening shows what stood.
+/// A location list's identity — every result set (a search query, a
+/// references ask) is one feed, minted here and addressed by id, the
+/// family-row pattern: surfaces (the Search dock tab, the go-to
+/// peek) are FACES over a feed; the feed and its stream outlive any
+/// face, so promoting a peek into the dock reuses the feed instead
+/// of asking again.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct FeedId(u64);
+
+impl FeedId {
+    pub fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// One feed: the accumulated results plus the live stream end (the
+/// channel rides behind Arcs, the Terminals precedent; the poll
+/// token is a Copy id for cancellation). `generation` bumps on every
+/// fold so faces refresh on paint.
 #[derive(Clone, Default)]
 pub struct LocationsFeedRow {
     pub title: String,
-    /// Seeds the query input on reopen. Empty for LSP result sets.
+    /// Seeds the query input. Empty for LSP result sets.
     pub query: String,
-    /// The stream epoch — landings carry it and stale ones discard.
     pub generation: u64,
     pub locations: rpds::VectorSync<FoundLocation>,
     pub done: bool,
     pub truncated: bool,
+    pub channel: Option<crate::LocationsChannel>,
+    pub poll: Option<imba::effect::CancellationToken>,
 }
 
 #[derive(Clone, Default)]
-pub struct LocationsFeeds(rpds::HashTrieMapSync<crate::SessionId, LocationsFeedRow>);
+pub struct LocationsFeeds(rpds::HashTrieMapSync<FeedId, LocationsFeedRow>);
 
 impl LocationsFeeds {
-    pub fn row(store: &Store, session: &crate::SessionId) -> Option<LocationsFeedRow> {
+    pub fn row(store: &Store, feed: FeedId) -> Option<LocationsFeedRow> {
         store
             .get::<LocationsFeeds>()
-            .and_then(|feeds| feeds.0.get(session).cloned())
+            .and_then(|feeds| feeds.0.get(&feed).cloned())
     }
 
-    pub fn put(store: &mut Store, session: crate::SessionId, row: LocationsFeedRow) {
+    pub fn row_ref(store: &Store, feed: FeedId) -> Option<&LocationsFeedRow> {
+        store
+            .get::<LocationsFeeds>()
+            .and_then(|feeds| feeds.0.get(&feed))
+    }
+
+    pub fn put(store: &mut Store, feed: FeedId, row: LocationsFeedRow) {
         store.update::<LocationsFeeds>(|feeds| {
-            feeds.0.insert_mut(session, row);
+            feeds.0.insert_mut(feed, row);
         });
     }
 
-    pub fn remove(store: &mut Store, session: &crate::SessionId) {
+    pub fn remove(store: &mut Store, feed: FeedId) {
         store.update::<LocationsFeeds>(|feeds| {
-            feeds.0.remove_mut(session);
+            feeds.0.remove_mut(&feed);
         });
     }
+}
+
+/// Which feed fronts the Search dock tab, per session.
+#[derive(Clone, Default)]
+pub struct SessionSearchFeeds(rpds::HashTrieMapSync<crate::SessionId, FeedId>);
+
+impl SessionSearchFeeds {
+    pub fn feed(store: &Store, session: &crate::SessionId) -> Option<FeedId> {
+        store
+            .get::<SessionSearchFeeds>()
+            .and_then(|feeds| feeds.0.get(session).copied())
+    }
+
+    pub fn put(store: &mut Store, session: crate::SessionId, feed: FeedId) {
+        store.update::<SessionSearchFeeds>(|feeds| {
+            feeds.0.insert_mut(session, feed);
+        });
+    }
+}
+
+/// Open a feed row in "searching…" state — the surface shows
+/// IMMEDIATELY; the stream attaches when the ask lands
+/// (`AttachFeedStream`). A failed ask resolves the row cut-off in
+/// plain sight instead of a silent no-op.
+pub fn open_feed(store: &mut Store, feed: FeedId, title: String, query: String) {
+    LocationsFeeds::put(
+        store,
+        feed,
+        LocationsFeedRow {
+            title,
+            query,
+            generation: 1,
+            ..LocationsFeedRow::default()
+        },
+    );
+}
+
+/// Phase two of every ask: the channel landed — subscribe and start
+/// the feed's own pump, view-independent. Pushed through
+/// `AppRequests` by whichever surface asked.
+pub struct AttachFeedStream {
+    pub feed: FeedId,
+    pub outcome: Result<crate::LocationsChannel, String>,
+}
+
+impl crate::DynamicCommand for AttachFeedStream {
+    fn id(&self) -> &'static str {
+        "locations.attach-stream"
+    }
+
+    fn name(&self) -> String {
+        "Attach Location Stream".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+            return;
+        };
+        match self.outcome.clone() {
+            Err(_) => {
+                row.done = true;
+                row.truncated = true;
+                row.generation += 1;
+                LocationsFeeds::put(store, self.feed, row);
+            }
+            Ok(channel) => {
+                row.channel = Some(channel.clone());
+                LocationsFeeds::put(store, self.feed, row);
+                let feed = self.feed;
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(crate::higent::SubscribeLocationsEffect {
+                        seat: channel.seat,
+                        channel: channel.channel,
+                    })
+                    .map(move |outcome| {
+                        crate::AppCommand::Landing(
+                            window,
+                            Box::new(FeedBatch {
+                                feed,
+                                batches: outcome.map(|snapshot| vec![snapshot]),
+                            }),
+                        )
+                    }),
+                );
+            }
+        }
+    }
+}
+
+/// The pump's landing: fold, then poll again while the stream runs.
+struct FeedBatch {
+    feed: FeedId,
+    batches: Result<Vec<himark_ahp_ext_types::LocationList>, String>,
+}
+
+impl crate::LandingCommand for FeedBatch {
+    fn perform(
+        self: Box<Self>,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+            return; // disposed while in flight — the unsubscribe ran
+        };
+        let Some(channel) = row.channel.clone() else {
+            return;
+        };
+        match self.batches {
+            Err(_) => {
+                row.done = true;
+                row.truncated = true;
+            }
+            Ok(batches) => {
+                for batch in batches {
+                    row.done |= batch.done;
+                    row.truncated |= batch.truncated;
+                    for found in resolve_batch(&channel, batch) {
+                        row.locations.push_back_mut(found);
+                    }
+                }
+            }
+        }
+        row.generation += 1;
+        let running = !row.done;
+        let feed = self.feed;
+        if running {
+            let token = fx.push(
+                imba::effect::AnyEffect::new(crate::higent::PollLocationsEffect {
+                    seat: std::sync::Arc::clone(&channel.seat),
+                    channel: channel.channel.clone(),
+                })
+                .map(move |batches| {
+                    crate::AppCommand::Landing(
+                        window,
+                        Box::new(FeedBatch {
+                            feed,
+                            batches: Ok(batches),
+                        }),
+                    )
+                }),
+            );
+            row.poll = Some(token);
+        } else {
+            row.poll = None;
+        }
+        LocationsFeeds::put(store, self.feed, row);
+    }
+}
+
+/// Stop a feed's stream, keeping what landed: cancel the pump,
+/// unsubscribe (the host-side cancel), resolve the row cut-off.
+pub struct StopFeed {
+    pub feed: FeedId,
+}
+
+impl crate::DynamicCommand for StopFeed {
+    fn id(&self) -> &'static str {
+        "locations.stop-feed"
+    }
+
+    fn name(&self) -> String {
+        "Stop Location Stream".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+            return;
+        };
+        if let Some(token) = row.poll.take() {
+            fx.cancel(token);
+        }
+        if let Some(channel) = row.channel.take() {
+            let _ = fx.push(
+                imba::effect::AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
+                    seat: channel.seat,
+                    channel: channel.channel,
+                })
+                .map(move |()| crate::AppCommand::Landing(window, Box::new(NothingLanded))),
+            );
+        }
+        if !row.done {
+            row.done = true;
+            row.truncated = true;
+        }
+        row.generation += 1;
+        LocationsFeeds::put(store, self.feed, row);
+    }
+}
+
+/// Dispose a feed: cancel its pump, unsubscribe its channel (the
+/// host-side cancel), drop the row. Pushed through `AppRequests`.
+pub struct DisposeFeed {
+    pub feed: FeedId,
+}
+
+impl crate::DynamicCommand for DisposeFeed {
+    fn id(&self) -> &'static str {
+        "locations.dispose-feed"
+    }
+
+    fn name(&self) -> String {
+        "Dispose Location Feed".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(row) = LocationsFeeds::row(store, self.feed) else {
+            return;
+        };
+        if let Some(token) = row.poll {
+            fx.cancel(token);
+        }
+        if let Some(channel) = row.channel {
+            let _ = fx.push(
+                imba::effect::AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
+                    seat: channel.seat,
+                    channel: channel.channel,
+                })
+                .map(move |()| crate::AppCommand::Landing(window, Box::new(NothingLanded))),
+            );
+        }
+        LocationsFeeds::remove(store, self.feed);
+    }
+}
+
+struct NothingLanded;
+
+impl crate::LandingCommand for NothingLanded {
+    fn perform(
+        self: Box<Self>,
+        _app: &mut crate::Application,
+        _store: &mut Store,
+        _window: crate::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) {
+    }
+}
+
+/// The peek's master forest: locations grouped by FILE (no directory
+/// nesting — the card is compact), every occurrence a pickable leaf.
+pub fn files_forest(store: &Store, rows: &[FoundLocation]) -> Vec<ForestNode<LocationKey>> {
+    let tree = crate::env::Themes::of(store).ui().tree.clone();
+    let chip = tree.directory.0;
+    let mut order: Vec<ResourceLocation> = Vec::new();
+    let mut grouped: std::collections::HashMap<ResourceLocation, Vec<&FoundLocation>> =
+        std::collections::HashMap::new();
+    for found in rows {
+        if !grouped.contains_key(&found.location) {
+            order.push(found.location.clone());
+        }
+        grouped.entry(found.location.clone()).or_default().push(found);
+    }
+    order
+        .into_iter()
+        .map(|location| {
+            let hits = grouped.remove(&location).unwrap_or_default();
+            ForestNode {
+                key: LocationKey::Node(location.clone()),
+                label: location.name().to_owned(),
+                pick: true,
+                dim: false,
+                trail: vec![(format!("{}", hits.len()), chip)],
+                tint: crate::TreeTint::File,
+                action: None,
+                children: hits
+                    .into_iter()
+                    .map(|found| ForestNode {
+                        key: LocationKey::Hit(found.location.clone(), found.line, found.column),
+                        label: found.context.trim().to_owned(),
+                        pick: true,
+                        dim: false,
+                        trail: vec![(format!("{}", found.line + 1), chip)],
+                        tint: crate::TreeTint::Label,
+                        action: None,
+                        children: Vec::new(),
+                    })
+                    .collect(),
+            }
+        })
+        .collect()
 }
 
 /// Fold a location list into the dirs → files → occurrences forest.

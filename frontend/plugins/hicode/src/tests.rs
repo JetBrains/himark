@@ -511,8 +511,9 @@ fn references_stream_into_the_search_dock() {
         "the Search tab activated"
     );
     let session = entity.current_session();
-    let row =
-        himark::locations::LocationsFeeds::row(app.store(), &session).expect("the feed row");
+    let feed = himark::locations::SessionSearchFeeds::feed(app.store(), &session)
+        .expect("the session fronts the feed");
+    let row = himark::locations::LocationsFeeds::row(app.store(), feed).expect("the feed row");
     assert_eq!(row.title, "References to `line`");
     assert!(row.done && !row.truncated);
     assert_eq!(row.locations.len(), 3, "the stream landed, resolved");

@@ -297,7 +297,16 @@ while True:
         ]})
     elif method == "textDocument/references":
         uri = (params.get("textDocument") or {}).get("uri")
-        parked.append((ident, uri))  # parked until cancelled
+        position = params.get("position") or {}
+        if position.get("line") == 99:
+            parked.append((ident, uri))  # parked until cancelled
+        else:
+            send({"jsonrpc": "2.0", "id": ident, "result": [
+                {"uri": uri, "range": {
+                    "start": {"line": 0, "character": 3}, "end": {"line": 0, "character": 9}}},
+                {"uri": uri, "range": {
+                    "start": {"line": 0, "character": 21}, "end": {"line": 0, "character": 23}}},
+            ]})
     elif method == "$/cancelRequest":
         target = params.get("id")
         held = next((entry for entry in parked if entry[0] == target), None)

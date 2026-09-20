@@ -3,11 +3,13 @@
 
 //! Go-to reference peek (docs/ui/location-list.md §8): an
 //! `InlayMode::Under` master–detail card under the caret's line —
-//! the quick random-access interface. The master streams from an
-//! `ahp-locations:/…` channel; the detail lazily fetches ONLY the
-//! selected location's document and shows a bounded fragment around
-//! the match. Enter navigates and dismisses; Escape dismisses; a
-//! single-result stream navigates directly without showing the card.
+//! the quick random-access interface. The card is a FACE over a
+//! store-level feed (`locations::LocationsFeeds`): the master is a
+//! tree of locations grouped by file; the detail lazily fetches ONLY
+//! the selected location's document and shows it whole in its own
+//! scrollable editor. Enter navigates and dismisses; Escape
+//! dismisses; the header's promote chip fronts the SAME feed in the
+//! Search dock tab — no re-ask.
 
 use std::sync::Arc;
 
@@ -15,15 +17,19 @@ use imba::{
     arena::Arena,
     constraints::Constraints,
     effect::AnyEffect,
-    event::{EventResult, Key as InputKey},
+    event::{Event, EventResult, Key as InputKey},
     store::Store,
     thunk_ext::ThunkExt,
-    UiCtx, View,
+    Layout as _, UiCtx, View,
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::locations::{resolve_batch, FoundLocation};
-use crate::rows::{RowList, RowListCommand};
+use crate::forest::ForestList;
+use crate::locations::{
+    files_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation, LocationKey,
+    LocationsFeeds,
+};
+use crate::tree_item::{tree_interaction, TreeListCommand};
 use crate::{
     AppRequests, Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayKey, InlayMode,
     LocationsChannel,
@@ -31,21 +37,21 @@ use crate::{
 
 const PEEK_HEIGHT: f32 = 280.0;
 
+const HEADER_HEIGHT: f32 = 24.0;
+
 const FALLBACK_WIDTH: f32 = 600.0;
 
 pub enum PeekCommand {
-    Rows(RowListCommand),
+    Tree(TreeListCommand),
     Select(isize),
+    Fold(bool),
     Pick,
     Close,
-    Nothing,
+    /// The header chip: front this feed in the Search dock tab —
+    /// the standing results move, nothing re-asks.
+    Promote,
+    Refresh,
     Preview(imba::scroll::ScrollCommand<EditorCommand>),
-    Snapshot {
-        outcome: Result<himark_ahp_ext_types::LocationList, String>,
-    },
-    Polled {
-        batches: Vec<himark_ahp_ext_types::LocationList>,
-    },
     Fetched {
         index: usize,
         text: Option<String>,
@@ -63,50 +69,34 @@ pub struct PeekView {
     host: Option<crate::DocumentId>,
     key: Option<InlayKey>,
     width: f32,
+    feed: FeedId,
 
-    channel: Option<LocationsChannel>,
-    poll_token: Option<imba::effect::CancellationToken>,
-    fetch_token: Option<imba::effect::CancellationToken>,
+    tree: ForestList<LocationKey>,
+    /// A hit key answers (its index into the feed, the location); a
+    /// file key its first occurrence.
+    targets: rpds::HashTrieMapSync<LocationKey, (usize, FoundLocation)>,
+    shown: u64,
+    navigated: bool,
 
-    locations: rpds::VectorSync<FoundLocation>,
-    done: bool,
-    truncated: bool,
-
-    list: RowList,
     preview: Option<imba::scroll::ScrollView<EditorView>>,
     preview_for: Option<usize>,
+    fetch_token: Option<imba::effect::CancellationToken>,
 }
 
 impl PeekView {
-    fn new(host: Option<crate::DocumentId>, width: f32, channel: LocationsChannel) -> Self {
-        Self::seeded(host, width, Some(channel), false)
-    }
-
-    /// The ask itself failed: the card mounts resolved cut-off, so
-    /// the failure is visible instead of a silent no-op.
-    fn failed(host: Option<crate::DocumentId>, width: f32) -> Self {
-        Self::seeded(host, width, None, true)
-    }
-
-    fn seeded(
-        host: Option<crate::DocumentId>,
-        width: f32,
-        channel: Option<LocationsChannel>,
-        cut: bool,
-    ) -> Self {
+    fn new(store: &Store, host: Option<crate::DocumentId>, width: f32, feed: FeedId) -> Self {
         Self {
             host,
             key: None,
             width,
-            done: cut,
-            truncated: cut,
-            channel,
-            poll_token: None,
-            fetch_token: None,
-            locations: rpds::VectorSync::new_sync(),
-            list: RowList::new(),
+            feed,
+            tree: ForestList::new(store),
+            targets: rpds::HashTrieMapSync::new_sync(),
+            shown: 0,
+            navigated: false,
             preview: None,
             preview_for: None,
+            fetch_token: None,
         }
     }
 
@@ -115,73 +105,69 @@ impl PeekView {
         self
     }
 
-    /// Fold landed batches; answers whether the stream still runs.
-    fn land(
+    fn row(&self, store: &Store) -> crate::locations::LocationsFeedRow {
+        LocationsFeeds::row(store, self.feed).unwrap_or_default()
+    }
+
+    /// Rebuild the file-grouped master from the feed; fold state and
+    /// the cursor survive by key. The trivial case leaves no card:
+    /// exactly one known result navigates directly.
+    fn rebuild(
         &mut self,
-        store: &Store,
+        store: &mut Store,
         ui: &UiCtx,
-        batches: Vec<himark_ahp_ext_types::LocationList>,
-    ) -> bool {
-        let Some(channel) = &self.channel else {
-            return false;
-        };
-        for batch in batches {
-            self.done |= batch.done;
-            self.truncated |= batch.truncated;
-            for found in resolve_batch(channel, batch) {
-                self.locations.push_back_mut(found);
+        fx: &mut imba::effect::Effects<'_, PeekCommand>,
+    ) {
+        let row = self.row(store);
+        self.shown = row.generation;
+        let locations: Vec<FoundLocation> = row.locations.iter().cloned().collect();
+
+        if row.done && locations.len() == 1 && !self.navigated {
+            self.navigated = true;
+            self.navigate(store, &locations[0]);
+            self.close(store, false);
+            return;
+        }
+
+        let mut targets = rpds::HashTrieMapSync::new_sync();
+        for (index, found) in locations.iter().enumerate() {
+            targets.insert_mut(
+                LocationKey::Hit(found.location.clone(), found.line, found.column),
+                (index, found.clone()),
+            );
+            let file = LocationKey::Node(found.location.clone());
+            if !targets.contains_key(&file) {
+                targets.insert_mut(file, (index, found.clone()));
             }
         }
-        let (labels, trails, note) = master_rows(self.locations.iter(), self.done, self.truncated);
-        let selected = self.list.selected();
-        self.list.set_with_trails(store, ui, &labels, &trails, note, selected);
-        !self.done
+        self.targets = targets;
+
+        let forest = files_forest(store, &locations);
+        let cursor = self.tree.list().cursor().cloned();
+        self.tree.set(&forest, store, ui);
+        if let Some(cursor) = cursor {
+            if self.tree.forest.contains(&cursor) {
+                self.tree.list_mut().select_only(cursor);
+            }
+        }
+        self.ensure_preview(fx);
     }
 
-    fn relaunch_poll(&mut self, fx: &mut imba::effect::Effects<'_, PeekCommand>) {
-        let Some(channel) = &self.channel else {
-            return;
-        };
-        fx.relaunch_erased(
-            &mut self.poll_token,
-            AnyEffect::new(crate::higent::PollLocationsEffect {
-                seat: Arc::clone(&channel.seat),
-                channel: channel.channel.clone(),
-            })
-            .map(|batches| PeekCommand::Polled { batches }),
-        );
-    }
-
-    fn drop_stream(&mut self, fx: &mut imba::effect::Effects<'_, PeekCommand>) {
-        if let Some(token) = self.poll_token.take() {
-            fx.cancel(token);
-        }
-        if let Some(token) = self.fetch_token.take() {
-            fx.cancel(token);
-        }
-        if let Some(channel) = self.channel.take() {
-            let _ = fx.push(
-                AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
-                    seat: channel.seat,
-                    channel: channel.channel,
-                })
-                .map(|()| PeekCommand::Nothing),
-            );
-        }
-    }
-
-    /// Lazily fetch the selected location's document — the ONE fetch
+    /// Lazily fetch the SELECTED location's document — the one fetch
     /// this surface ever makes before navigation.
     fn ensure_preview(&mut self, fx: &mut imba::effect::Effects<'_, PeekCommand>) {
-        let index = self.list.selected();
-        if self.preview_for == Some(index) || index >= self.locations.len() {
+        let Some(key) = self.tree.list().cursor().cloned() else {
+            return;
+        };
+        let Some((index, found)) = self.targets.get(&key).cloned() else {
+            return;
+        };
+        if self.preview_for == Some(index) {
             return;
         }
         self.preview_for = Some(index);
         self.preview = None;
-        let Some(location) = self.locations.get(index).map(|found| found.location.clone()) else {
-            return;
-        };
+        let location = found.location;
         fx.relaunch_erased(
             &mut self.fetch_token,
             AnyEffect::new(crate::FetchDocumentEffect { location })
@@ -191,8 +177,7 @@ impl PeekView {
 
     /// The detail pane, VSCode/Fleet style: the WHOLE document in
     /// its own scrollable editor, scrolled to the match, the match
-    /// washed `StyleId::Match`. Nested scrolls are fine; the card's
-    /// fixed height clips.
+    /// washed `StyleId::Match`.
     fn install_preview(
         &mut self,
         store: &Store,
@@ -200,7 +185,8 @@ impl PeekView {
         index: usize,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
-        let Some(found) = self.locations.get(index) else {
+        let row = self.row(store);
+        let Some(found) = row.locations.get(index).cloned() else {
             return;
         };
         let fonts = crate::env::Fonts::of(store)();
@@ -253,10 +239,7 @@ impl PeekView {
         self.preview = Some(preview);
     }
 
-    fn navigate(&mut self, store: &mut Store, index: usize) {
-        let Some(found) = self.locations.get(index) else {
-            return;
-        };
+    fn navigate(&mut self, store: &mut Store, found: &FoundLocation) {
         AppRequests::push(
             store,
             Arc::new(crate::hisearch::OpenFoundLocation {
@@ -266,8 +249,12 @@ impl PeekView {
         );
     }
 
-    fn close(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, PeekCommand>) {
-        self.drop_stream(fx);
+    /// Dismiss the card. The feed dies with it unless it was handed
+    /// on (the promote path fronts it in the dock instead).
+    fn close(&mut self, store: &mut Store, keep_feed: bool) {
+        if !keep_feed {
+            AppRequests::push(store, Arc::new(DisposeFeed { feed: self.feed }));
+        }
         if let (Some(host), Some(key)) = (self.host, self.key) {
             AppRequests::push(store, Arc::new(RemovePeek { document: host, key }));
         }
@@ -283,11 +270,13 @@ impl View for PeekView {
         _ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, PeekCommand> {
         use imba::focus::FocusData;
-        let rows = self.list.len();
+        let rows = self.tree.list().len();
         FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Up => EventResult::Command(PeekCommand::Select(-1)),
                 InputKey::Down => EventResult::Command(PeekCommand::Select(1)),
+                InputKey::Left => EventResult::Command(PeekCommand::Fold(false)),
+                InputKey::Right => EventResult::Command(PeekCommand::Fold(true)),
                 InputKey::Enter if rows > 0 => EventResult::Command(PeekCommand::Pick),
                 InputKey::Escape => EventResult::Command(PeekCommand::Close),
                 _ => EventResult::Ignored,
@@ -297,7 +286,9 @@ impl View for PeekView {
     }
 
     fn destroy(&mut self, _store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        self.drop_stream(fx);
+        if let Some(token) = self.fetch_token.take() {
+            fx.cancel(token);
+        }
     }
 
     fn perform(
@@ -308,74 +299,64 @@ impl View for PeekView {
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
         match command {
-            PeekCommand::Rows(command) => {
-                if let Some(index) = self.list.picked(&command) {
-                    self.list.select(index);
-                    self.navigate(store, index);
-                    self.close(store, fx);
+            PeekCommand::Tree(command) => {
+                if let Some((index, toggle)) = tree_interaction(&command) {
+                    let Some(key) = self.tree.list().key_at(index).cloned() else {
+                        return;
+                    };
+                    self.tree.list_mut().select_only(key.clone());
+                    let file = matches!(&key, LocationKey::Node(_));
+                    match toggle || file {
+                        true => self.tree.toggle(&key, store, ui),
+                        false => {
+                            if let Some((_, found)) = self.targets.get(&key).cloned() {
+                                self.navigate(store, &found);
+                                self.close(store, false);
+                                return;
+                            }
+                        }
+                    }
+                    self.ensure_preview(fx);
                     return;
                 }
-                fx.scope(PeekCommand::Rows, |fx| {
-                    self.list.perform(store, ui, command, fx)
+                fx.scope(PeekCommand::Tree, |fx| {
+                    self.tree.perform(store, ui, command, fx)
                 });
-                self.ensure_preview(fx);
             }
             PeekCommand::Select(delta) => {
-                let index = self.list.selected();
-                let stepped = match delta < 0 {
-                    true => index.saturating_sub(delta.unsigned_abs()),
-                    false => index.saturating_add(delta as usize),
-                };
-                self.list.select(stepped);
+                self.tree.list_mut().cursor_step(delta);
                 self.ensure_preview(fx);
             }
+            PeekCommand::Fold(expand) => self.tree.fold_cursor(expand, store, ui),
             PeekCommand::Pick => {
-                let index = self.list.selected();
-                self.navigate(store, index);
-                self.close(store, fx);
+                let Some(key) = self.tree.list().cursor().cloned() else {
+                    return;
+                };
+                match &key {
+                    LocationKey::Node(_) => self.tree.toggle(&key, store, ui),
+                    LocationKey::Hit(..) => {
+                        if let Some((_, found)) = self.targets.get(&key).cloned() {
+                            self.navigate(store, &found);
+                            self.close(store, false);
+                        }
+                    }
+                }
             }
-            PeekCommand::Close => self.close(store, fx),
-            PeekCommand::Nothing => {}
+            PeekCommand::Close => self.close(store, false),
+            PeekCommand::Promote => {
+                AppRequests::push(
+                    store,
+                    Arc::new(crate::hisearch::ShowFeedInDock { feed: self.feed }),
+                );
+                self.close(store, true);
+            }
+            PeekCommand::Refresh => self.rebuild(store, ui, fx),
             PeekCommand::Preview(command) => {
                 if let Some(preview) = &mut self.preview {
                     fx.scope(PeekCommand::Preview, |fx| {
                         View::perform(preview, store, ui, command, fx)
                     });
                 }
-            }
-            PeekCommand::Snapshot { outcome } => match outcome {
-                Ok(snapshot) => {
-                    let running = self.land(store, ui, vec![snapshot]);
-                    // The trivial case shows no card: one known
-                    // result navigates directly.
-                    if self.done && self.locations.len() == 1 {
-                        self.navigate(store, 0);
-                        self.close(store, fx);
-                        return;
-                    }
-                    if running {
-                        self.relaunch_poll(fx);
-                    }
-                    self.ensure_preview(fx);
-                }
-                Err(_) => {
-                    self.done = true;
-                    self.truncated = true;
-                    let _ = self.land(store, ui, Vec::new());
-                }
-            },
-            PeekCommand::Polled { batches } => {
-                let had = self.locations.len();
-                let running = self.land(store, ui, batches);
-                if self.done && self.locations.len() == 1 && had <= 1 {
-                    self.navigate(store, 0);
-                    self.close(store, fx);
-                    return;
-                }
-                if running {
-                    self.relaunch_poll(fx);
-                }
-                self.ensure_preview(fx);
             }
             PeekCommand::Fetched { index, text } => {
                 if self.preview_for != Some(index) {
@@ -384,17 +365,15 @@ impl View for PeekView {
                 let Some(text) = text else {
                     return;
                 };
-                let Some(found) = self.locations.get(index) else {
+                let row = self.row(store);
+                let Some(found) = row.locations.get(index) else {
                     return;
                 };
                 let location = found.location.clone();
                 fx.relaunch_erased(
                     &mut self.fetch_token,
-                    AnyEffect::new(crate::BuildDocumentEffect {
-                        location,
-                        text,
-                    })
-                    .map(move |built| PeekCommand::Built { index, built }),
+                    AnyEffect::new(crate::BuildDocumentEffect { location, text })
+                        .map(move |built| PeekCommand::Built { index, built }),
                 );
             }
             PeekCommand::Built { index, built } => {
@@ -427,70 +406,116 @@ impl View for PeekView {
                     paint.set_color(fill);
                     canvas.draw_rect(rect, &paint);
                     paint.set_color(rule);
-                    for y in [rect.top, rect.bottom - 1.0] {
+                    for y in [rect.top, rect.top + HEADER_HEIGHT, rect.bottom - 1.0] {
                         canvas.draw_rect(Rect::from_xywh(rect.left, y, rect.width(), 1.0), &paint);
                     }
                     canvas.draw_rect(
-                        Rect::from_xywh(rect.left + master, rect.top, 1.0, rect.height()),
+                        Rect::from_xywh(
+                            rect.left + master,
+                            rect.top + HEADER_HEIGHT,
+                            1.0,
+                            rect.height() - HEADER_HEIGHT,
+                        ),
                         &paint,
                     );
                 },
             );
             card.place(0.0, 0.0, backdrop);
+
+            // The header: the feed's title and stream state, plus the
+            // promote chip fronting the SAME feed in the Search tab.
+            let row = self.row(store);
+            let hits = row.locations.len();
+            let state = match (row.done, row.truncated) {
+                (false, _) => format!("{hits} — searching…"),
+                (true, true) => format!("{hits} (cut off)"),
+                (true, false) => format!("{hits}"),
+            };
+            let header = crate::ui::ListRow::new(arena, crate::ui::RowStyle::header(store, ui))
+                .label(format!("{} · {state}", row.title))
+                .action("OPEN IN SEARCH", || PeekCommand::Promote)
+                .layout(
+                    arena,
+                    Constraints {
+                        min: Size::new(width, HEADER_HEIGHT),
+                        max: Size::new(width, HEADER_HEIGHT),
+                    },
+                );
+            card.place_boxed(0.0, 0.0, header);
+
             card.place(
                 0.0,
-                1.0,
+                HEADER_HEIGHT + 1.0,
                 imba::Layout::layout(
-                    self.list.display(arena, store, ui),
+                    self.tree.display(arena, store, ui),
                     arena,
-                    Constraints::tight(Size::new(master, PEEK_HEIGHT - 2.0)),
+                    Constraints::tight(Size::new(master, PEEK_HEIGHT - HEADER_HEIGHT - 2.0)),
                 )
-                .map(PeekCommand::Rows),
+                .map(PeekCommand::Tree),
             );
             if let Some(preview) = &self.preview {
                 card.place(
                     master + 1.0,
-                    1.0,
+                    HEADER_HEIGHT + 1.0,
                     imba::Layout::layout(
                         preview.display(arena, store, ui),
                         arena,
                         Constraints {
                             min: Size::default(),
-                            max: Size::new((width - master - 1.0).max(1.0), PEEK_HEIGHT - 2.0),
+                            max: Size::new(
+                                (width - master - 1.0).max(1.0),
+                                PEEK_HEIGHT - HEADER_HEIGHT - 2.0,
+                            ),
                         },
                     )
                     .map(PeekCommand::Preview),
                 );
             }
-            card
+            let stale = self.shown != row.generation;
+            card.wrap_realized(move |card| PeekWidget { card, size, stale })
         })
     }
 }
 
-/// The master list's rows: the context as the label, `name:line` as
-/// the trail chip, and the stream's state as the trailing note.
-fn master_rows<'a>(
-    locations: impl Iterator<Item = &'a FoundLocation>,
-    done: bool,
-    truncated: bool,
-) -> (Vec<String>, Vec<Option<String>>, Option<String>) {
-    let mut labels: Vec<String> = Vec::new();
-    let mut trails: Vec<Option<String>> = Vec::new();
-    for found in locations {
-        labels.push(found.context.trim().to_owned());
-        trails.push(Some(format!(
-            "{}:{}",
-            found.location.name(),
-            found.line + 1
-        )));
+/// The card's widget shell: a paint over a moved feed refreshes the
+/// master (the pump is app-level; the face notices on the frame the
+/// landing scheduled).
+struct PeekWidget<'a> {
+    card: imba::container::RealizedContainer<'a, PeekCommand>,
+    size: Size,
+    stale: bool,
+}
+
+impl<'a> imba::Widget<'a, PeekCommand> for PeekWidget<'a> {
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, PeekCommand>> {
+        self.card.overlays()
     }
-    let note = match (done, truncated, labels.is_empty()) {
-        (false, _, _) => Some("searching…".to_owned()),
-        (true, true, _) => Some("cut off".to_owned()),
-        (true, false, true) => Some("no references".to_owned()),
-        _ => None,
-    };
-    (labels, trails, note)
+
+    fn size(&self) -> Size {
+        self.size
+    }
+
+    fn handle_event(
+        &self,
+        arena: &Arena,
+        event: &Event<'_>,
+        viewport: skia_safe::Rect,
+    ) -> EventResult<PeekCommand> {
+        match event {
+            Event::Paint { .. } if self.stale => EventResult::Command(PeekCommand::Refresh),
+            _ => self.card.handle_event(arena, event, viewport),
+        }
+    }
+
+    fn layout_data<'w>(
+        &'w mut self,
+        target: imba::focus::SeatKey,
+    ) -> imba::focus::LayoutData<'w, PeekCommand>
+    where
+        'a: 'w,
+    {
+        self.card.layout_data(target)
+    }
 }
 
 struct RemovePeek {
@@ -553,26 +578,30 @@ impl crate::DynamicEditorCommand for GoToReference {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, EditorCommand>,
     ) {
-        let Some(payload) = payload else {
-            let caret = document.caret_byte(editor) as usize;
+        // Phase two: the channel landed — attach it to the feed the
+        // card already fronts.
+        if let Some(payload) = payload {
+            let Ok(landed) = payload.downcast::<(FeedId, Result<LocationsChannel, String>)>()
+            else {
+                return;
+            };
+            let (feed, outcome) = *landed;
+            AppRequests::push(store, Arc::new(AttachFeedStream { feed, outcome }));
+            return;
+        }
+
+        // Phase one: mint the feed, mount the card NOW — the ask's
+        // outcome lands into the visible card, never into silence.
+        let caret = document.caret_byte(editor);
+        let Some(anchor) = caret_anchor(document, caret) else {
+            return;
+        };
+        let position = {
             let mut view = document.text().view();
-            let position = crate::line_col_at(&mut view, caret);
-            let _ = fx.push(
-                AnyEffect::new(crate::LspLocationsEffect {
-                    location: location.clone(),
-                    position,
-                    kind: crate::LspLocationsKind::References,
-                })
-                .map(move |outcome| EditorCommand::Dynamic {
-                    id: "code.go-to-reference",
-                    payload: Some(Box::new(outcome)),
-                }),
-            );
-            return;
+            crate::line_col_at(&mut view, caret as usize)
         };
-        let Ok(outcome) = payload.downcast::<Result<LocationsChannel, String>>() else {
-            return;
-        };
+        let feed = FeedId::mint();
+        open_feed(store, feed, "References".to_owned(), String::new());
 
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
@@ -581,20 +610,7 @@ impl crate::DynamicEditorCommand for GoToReference {
             _ => FALLBACK_WIDTH,
         };
         let host = crate::OpenDocuments::by_location(store, location);
-        // An EMPTY anchor renders nothing — an Under inlay's line
-        // anchoring needs a real span (the caret's character,
-        // boundary-snapped; the one before it at the text's end).
-        let Some(anchor) = caret_anchor(document, document.caret_byte(editor)) else {
-            return;
-        };
-
-        // An errored ask still shows the card — resolved cut-off —
-        // instead of silently doing nothing.
-        let view = match *outcome {
-            Ok(channel) => PeekView::new(host, width, channel),
-            Err(_) => PeekView::failed(host, width),
-        };
-        let streams = view.channel.clone();
+        let view = PeekView::new(store, host, width, feed);
         let markup = peek_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -608,25 +624,24 @@ impl crate::DynamicEditorCommand for GoToReference {
         document.swap_inlay(key, anchor, Inlay::new(InlayMode::Under, view.keyed(key)));
         document.set_focus(editor, EditorFocus::Inlay(key));
 
-        // The stream lands into the card by its key.
-        if let Some(channel) = streams {
-            let _ = fx.push(
-                AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                    seat: channel.seat,
-                    channel: channel.channel,
-                })
-                .map(move |outcome| EditorCommand::Inlay {
-                    key,
-                    command: Box::new(PeekCommand::Snapshot { outcome }),
-                }),
-            );
-        }
+        let _ = fx.push(
+            AnyEffect::new(crate::LspLocationsEffect {
+                location: location.clone(),
+                position,
+                kind: crate::LspLocationsKind::References,
+            })
+            .map(move |outcome| EditorCommand::Dynamic {
+                id: "code.go-to-reference",
+                payload: Some(Box::new((feed, outcome))),
+            }),
+        );
     }
 }
 
 /// The caret's character as a non-empty anchor span, char-boundary
 /// snapped; the character before it at the text's end; `None` on an
-/// empty document.
+/// empty document. An EMPTY anchor renders nothing — an Under
+/// inlay's line anchoring needs a real span.
 fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>> {
     let len = document.text().byte_count().min(u32::MAX as usize) as u32;
     if len == 0 {
@@ -647,6 +662,90 @@ fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn found(name: &str, line: u32, context: &str) -> FoundLocation {
+        FoundLocation {
+            location: crate::ResourceLocation::new(
+                crate::ResourceType::document(),
+                crate::Authority::new("local"),
+                vec!["work".to_owned(), name.to_owned()],
+            ),
+            line,
+            column: 2,
+            length: 3,
+            context: context.to_owned(),
+            context_column_start: 0,
+        }
+    }
+
+    fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) -> FeedId {
+        let feed = FeedId::mint();
+        let mut row = crate::locations::LocationsFeedRow {
+            title: "References".to_owned(),
+            generation: 1,
+            done,
+            ..Default::default()
+        };
+        row.locations = rows.iter().cloned().collect();
+        LocationsFeeds::put(store, feed, row);
+        feed
+    }
+
+    #[test]
+    fn the_master_groups_by_file_and_navigates_on_pick() {
+        let mut store = Store::new();
+        let ui = imba::UiCtx::cold();
+        let feed = feed(
+            &mut store,
+            &[
+                found("a.rs", 1, "  let x = y;"),
+                found("a.rs", 7, "x + 1"),
+                found("b.rs", 0, "fn b()"),
+            ],
+            true,
+        );
+        let mut view = PeekView::new(&store, None, 600.0, feed);
+        let mut batch = imba::effect::Batch::new();
+        view.rebuild(&mut store, &ui, &mut batch.effects());
+
+        let rows = view.tree.forest.rows();
+        assert_eq!(
+            rows.iter()
+                .map(|(depth, label, _)| (*depth, label.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (0, "a.rs"),
+                (1, "let x = y;"),
+                (1, "x + 1"),
+                (0, "b.rs"),
+                (1, "fn b()"),
+            ],
+            "files as groups, occurrences as leaves, contexts trimmed"
+        );
+
+        let hit = LocationKey::Hit(found("b.rs", 0, "").location, 0, 2);
+        view.tree.list_mut().select_only(hit);
+        view.perform(&mut store, &ui, PeekCommand::Pick, &mut batch.effects());
+        let requests = store.get::<crate::AppRequests>().expect("requests");
+        assert!(!requests.is_empty(), "the pick navigated through the door");
+        assert!(
+            LocationsFeeds::row(&store, feed).is_some(),
+            "disposal rides AppRequests, not the view"
+        );
+    }
+
+    #[test]
+    fn a_single_settled_result_navigates_without_a_card() {
+        let mut store = Store::new();
+        let ui = imba::UiCtx::cold();
+        let feed = feed(&mut store, &[found("a.rs", 3, "only")], true);
+        let mut view = PeekView::new(&store, None, 600.0, feed);
+        let mut batch = imba::effect::Batch::new();
+        view.rebuild(&mut store, &ui, &mut batch.effects());
+        assert!(view.navigated, "the trivial case went straight through");
+        let requests = store.get::<crate::AppRequests>().expect("requests");
+        assert!(!requests.is_empty());
+    }
 
     #[test]
     fn the_peek_anchor_reserves_height() {
@@ -713,42 +812,5 @@ mod tests {
                 imba::ThunkBox::new(arena, imba::leaf::leaf::<()>(200.0, 111.0))
             })
         }
-    }
-
-    fn found(name: &str, line: u32, context: &str) -> FoundLocation {
-        FoundLocation {
-            location: crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("local"),
-                vec!["work".to_owned(), name.to_owned()],
-            ),
-            line,
-            column: 2,
-            length: 3,
-            context: context.to_owned(),
-            context_column_start: 0,
-        }
-    }
-
-    #[test]
-    fn master_rows_carry_context_position_and_stream_state() {
-        let rows = [found("a.rs", 4, "  let x = y;"), found("b.rs", 0, "fn b()")];
-
-        let (labels, trails, note) = master_rows(rows.iter(), false, false);
-        assert_eq!(labels, ["let x = y;", "fn b()"], "contexts trimmed");
-        assert_eq!(
-            trails,
-            [Some("a.rs:5".to_owned()), Some("b.rs:1".to_owned())],
-            "1-based positions"
-        );
-        assert_eq!(note.as_deref(), Some("searching…"));
-
-        let (_, _, note) = master_rows(rows.iter(), true, false);
-        assert_eq!(note, None, "a settled stream needs no note");
-        let (_, _, note) = master_rows(rows.iter(), true, true);
-        assert_eq!(note.as_deref(), Some("cut off"));
-        let (labels, _, note) = master_rows([].iter(), true, false);
-        assert!(labels.is_empty());
-        assert_eq!(note.as_deref(), Some("no references"));
     }
 }

@@ -7856,10 +7856,13 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     assert!(engine.app.perform_command(command));
 
     settle_until(&mut engine, "the stream resolved into the feed", |engine| {
-        himark::locations::LocationsFeeds::row(engine.app.store(), &session)
+        himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+            .and_then(|feed| himark::locations::LocationsFeeds::row(engine.app.store(), feed))
             .is_some_and(|row| row.done)
     });
-    let row = himark::locations::LocationsFeeds::row(engine.app.store(), &session)
+    let feed = himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+        .expect("the session fronts the feed");
+    let row = himark::locations::LocationsFeeds::row(engine.app.store(), feed)
         .expect("the feed row");
     assert!(!row.truncated, "the ask answered whole");
     assert_eq!(
@@ -7879,4 +7882,29 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         Some(himark::hisearch::OWNER),
         "the Search tab activated"
     );
+
+    // The references leg: same wire, the fake answers two plain
+    // Locations; the fresh feed DISPLACES the implementations one
+    // (the supersession rule), and the old feed disposes.
+    let command = himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
+        .into_iter()
+        .find(|presentable| presentable.id == "code.references")
+        .expect("the located editor offers references")
+        .command;
+    assert!(engine.app.perform_command(command));
+    settle_until(&mut engine, "the references resolved", |engine| {
+        himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+            .and_then(|next| himark::locations::LocationsFeeds::row(engine.app.store(), next))
+            .is_some_and(|row| row.done && row.title.starts_with("References"))
+    });
+    let referenced = himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
+        .expect("the session fronts the references feed");
+    assert_ne!(referenced, feed, "a fresh feed displaced the old one");
+    let row = himark::locations::LocationsFeeds::row(engine.app.store(), referenced)
+        .expect("the references feed row");
+    assert!(!row.truncated, "the references ask answered whole");
+    assert_eq!(row.locations.len(), 2, "the fake's two references landed");
+    settle_until(&mut engine, "the displaced feed disposed", |engine| {
+        himark::locations::LocationsFeeds::row(engine.app.store(), feed).is_none()
+    });
 }
