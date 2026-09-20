@@ -1443,6 +1443,112 @@ impl AhpServer for WireHost {
         Box::pin(async move { asked.await.ok() })
     }
 
+    fn search_locations(
+        &self,
+        session: Uri,
+        ask: himark::higent::LocationsAsk,
+    ) -> SeatFuture<Result<Uri, String>> {
+        Box::pin(self.run_ask(move |active| async move {
+            let params = himark_ahp_ext_types::SearchLocationsParams {
+                channel: session,
+                folders: Some(ask.folders),
+                query: ask.query,
+                kind: ask.kind,
+                case_sensitive: ask.case_sensitive,
+                limit: Some(ask.limit as u64),
+            };
+            let result: himark_ahp_ext_types::LocationsChannelResult = active
+                .client
+                .request("searchLocations", params)
+                .await
+                .map_err(|error| format!("searchLocations: {error}"))?;
+            Ok(result.channel)
+        }))
+    }
+
+    fn lsp_locations(
+        &self,
+        session: Uri,
+        method: String,
+        params: serde_json::Value,
+    ) -> SeatFuture<Result<Uri, String>> {
+        Box::pin(self.run_ask(move |active| async move {
+            let params = himark_ahp_ext_types::LspLocationsParams {
+                channel: session,
+                method,
+                params,
+            };
+            let result: himark_ahp_ext_types::LocationsChannelResult = active
+                .client
+                .request("lsp/locations", params)
+                .await
+                .map_err(|error| format!("lsp/locations: {error}"))?;
+            Ok(result.channel)
+        }))
+    }
+
+    fn subscribe_locations(
+        &self,
+        channel: Uri,
+    ) -> SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+        let last_seen = Arc::clone(&self.last_seen);
+        let tag = self.tag.clone();
+        Box::pin(self.run_ask(move |active| async move {
+            // Attach BEFORE the request so no action slips between
+            // the snapshot and the pump (the docsync lesson), and
+            // pump through the shared path so `last_seen` advances
+            // (unlike the history pump).
+            let sub = active.client.attach_subscription(&channel).await;
+            let feed = Arc::new(Feed::default());
+            active
+                .feeds
+                .lock()
+                .expect("wire feeds")
+                .insert(channel.clone(), Arc::clone(&feed));
+            pump_channel(sub, feed, last_seen, tag);
+            let result: serde_json::Value = active
+                .client
+                .request("subscribe", serde_json::json!({ "channel": channel }))
+                .await
+                .map_err(|error| format!("subscribe {channel}: {error}"))?;
+            serde_json::from_value(result["snapshot"]["state"].clone())
+                .map_err(|error| format!("locations snapshot: {error}"))
+        }))
+    }
+
+    fn poll_locations(
+        &self,
+        channel: Uri,
+    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+        let polled = self.poll_channel(channel);
+        Box::pin(async move {
+            polled
+                .await
+                .into_iter()
+                .filter_map(|action| match action {
+                    StateAction::Unknown(value)
+                        if value["type"] == himark_ahp_ext_types::LOCATIONS_EXTEND =>
+                    {
+                        serde_json::from_value(value).ok()
+                    }
+                    _ => None,
+                })
+                .collect()
+        })
+    }
+
+    fn unsubscribe_locations(&self, channel: &Uri) {
+        let channel = channel.clone();
+        let _ = self.run_ask(move |active| async move {
+            active.feeds.lock().expect("wire feeds").remove(&channel);
+            active
+                .client
+                .unsubscribe(channel.clone())
+                .await
+                .map_err(|error| format!("unsubscribe {channel}: {error}"))
+        });
+    }
+
     fn terminal_open(
         &self,
         _session: Uri,

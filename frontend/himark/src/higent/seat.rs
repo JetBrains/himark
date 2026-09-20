@@ -143,6 +143,57 @@ pub trait AhpServer: Send + Sync + 'static {
 
     fn search(&self, session: Uri, ask: SearchAsk) -> SeatFuture<Option<SearchResult>>;
 
+    /// locations@1 `searchLocations`: answers the minted
+    /// `ahp-locations:/…` channel; results stream as channel actions;
+    /// unsubscribing cancels the walk (docs/ahp/ahp-locations.md).
+    fn search_locations(&self, session: Uri, ask: LocationsAsk) -> SeatFuture<Result<Uri, String>> {
+        let _ = (session, ask);
+        Box::pin(std::future::ready(Err(
+            "locations@1 searchLocations not served".to_owned(),
+        )))
+    }
+
+    /// locations@1 `lsp/locations`: the location-answering LSP asks
+    /// (references, implementations), streamed the same way.
+    fn lsp_locations(
+        &self,
+        session: Uri,
+        method: String,
+        params: serde_json::Value,
+    ) -> SeatFuture<Result<Uri, String>> {
+        let _ = (session, method, params);
+        Box::pin(std::future::ready(Err(
+            "locations@1 lsp/locations not served".to_owned(),
+        )))
+    }
+
+    fn subscribe_locations(
+        &self,
+        channel: Uri,
+    ) -> SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+        let _ = channel;
+        Box::pin(std::future::ready(Err(
+            "locations@1 not served".to_owned(),
+        )))
+    }
+
+    /// Typed poll: only `locations/extend` bodies come back, in
+    /// arrival order. A seat that never served the subscribe is
+    /// never polled.
+    fn poll_locations(
+        &self,
+        channel: Uri,
+    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+        let _ = channel;
+        Box::pin(std::future::pending())
+    }
+
+    /// The cancel: dropping the last subscription disposes the
+    /// channel and stops its producer host-side.
+    fn unsubscribe_locations(&self, channel: &Uri) {
+        let _ = channel;
+    }
+
     fn terminal_open(
         &self,
         session: Uri,
@@ -244,6 +295,17 @@ pub struct SearchAsk {
     pub kind: SearchKind,
     pub case_sensitive: bool,
     pub target: SearchTarget,
+    pub limit: usize,
+}
+
+/// The `searchLocations` ask — content search only, so no target;
+/// `kind` is text or regex (a fuzzy ask is refused by the host).
+#[derive(Clone, Debug)]
+pub struct LocationsAsk {
+    pub folders: Vec<Uri>,
+    pub query: String,
+    pub kind: SearchKind,
+    pub case_sensitive: bool,
     pub limit: usize,
 }
 
