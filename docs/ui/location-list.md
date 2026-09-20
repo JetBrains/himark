@@ -315,7 +315,16 @@ Layout, top to bottom:
 Focus areas mirror `SearchArea::{Input, Results}`: Tab and Down
 from the input enter the tree; a CLICK moves the keyboard to the
 clicked area before landing (the face's widget shell routes it);
-typing in the tree is speed-search; Escape rolls the dock away. The
+typing in the tree is speed-search; Escape rolls the dock away.
+**Selection IS navigation**: the keyboard cursor landing on a file
+or hit row opens it in the pane through the same door a click uses
+(`navigate_selection` → `pick`), deduped by the last-navigated key
+so feed rebuilds re-asserting the cursor never re-open. The door
+carries a **focus preference** (`OpenFoundLocation.focus`, threaded
+to `Window::show_document`): a deliberate jump — click or Enter —
+moves the keyboard to the editor (`LayerFocus::Content`); a
+selection move just shows the location and the keyboard stays in
+the dock, so arrowing on continues. The
 feed keeps streaming past a closed face — the pump is app-level; a
 requery or the stop affordance cancels (`DisposeFeed`/`StopFeed`),
 never mere displacement. shift-cmd-F re-points here (the old panel

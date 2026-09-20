@@ -594,7 +594,7 @@ impl crate::DynamicCommand for NavigateToComment {
                 let Some(mut entity) = crate::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(store, ui, window, document, Some(target), fx);
+                entity.show_document(store, ui, window, document, Some(target), false, fx);
                 crate::Windows::put(store, window, entity);
             }
             None => {
@@ -602,6 +602,7 @@ impl crate::DynamicCommand for NavigateToComment {
                     window,
                     record.location.clone(),
                     true,
+                    false,
                     Some(target),
                 ));
             }

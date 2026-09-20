@@ -2317,6 +2317,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
             location: None,
             primary: true,
             target: Some(target),
+            focus: false,
         },
     )));
 
@@ -2345,6 +2346,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
             location: None,
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     assert_eq!(app.focused_caret_byte(), Some(0));
@@ -2450,6 +2452,7 @@ fn navigation_back_and_forward_walk_pane_history() {
                 location: Some(located(name)),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
     };
@@ -2506,6 +2509,7 @@ fn navigation_back_and_forward_walk_pane_history() {
             location: Some(located("b.md")),
             primary: true,
             target: Some(crate::LineCol { line: 0, col: 3 }..crate::LineCol { line: 0, col: 4 }),
+            focus: false,
         },
     )));
     assert_eq!(app.focused_document_text().as_deref(), Some("ybeta\n"));
@@ -2735,6 +2739,7 @@ fn close_widget_walks_the_pane_history() {
                 location: Some(located(name)),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
     };
@@ -3044,6 +3049,7 @@ mod navigation_history {
                         col: col + 1,
                     }
                 }),
+                focus: false,
             },
         )));
     }
@@ -3356,6 +3362,7 @@ mod toc {
                 location: Some(located("toc.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
 
@@ -3628,6 +3635,7 @@ mod toc {
                 location: Some(located("toc.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
         assert!(app.perform_registered(window, "toc.toggle"));
@@ -3726,6 +3734,7 @@ mod toc {
                 location: Some(located("toc.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
         assert!(app.perform_registered(window, "toc.toggle"));
@@ -3848,6 +3857,7 @@ mod toc {
                 location: Some(located("toc.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
         assert!(app.perform_registered(window, "toc.toggle"));
@@ -5035,6 +5045,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
             location: None,
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     crate::Window::draw(window, &mut app, surface.canvas());
@@ -5330,6 +5341,7 @@ fn the_at_completion_serves_markdown_panes() {
             )),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
@@ -5425,6 +5437,7 @@ fn the_at_completion_serves_markdown_panes() {
             )),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     crate::Window::draw(window, &mut app, surface.canvas());
@@ -5502,6 +5515,7 @@ fn lsp_completion_serves_code_panes() {
             )),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
@@ -5981,6 +5995,7 @@ mod wash_tests {
                 location: Some(located("hit.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
         let feed = seeded_feed(&mut app, "hit.md");
@@ -5993,6 +6008,7 @@ mod wash_tests {
                 location: located("hit.md"),
                 target: crate::LineCol { line: 1, col: 4 }..crate::LineCol { line: 1, col: 10 },
                 feed: Some(feed),
+                focus: true,
             }),
         )));
         // Requests drain on the next content tick, as in the live app.
@@ -6039,6 +6055,7 @@ mod wash_tests {
                 location: Some(located("late.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
         assert!(app.perform_command(AppCommand::Content(

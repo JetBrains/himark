@@ -505,7 +505,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
                 let Some(mut entity) = himark::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(store, ui, window, document_id, Some(self.target.clone()), fx);
+                entity.show_document(store, ui, window, document_id, Some(self.target.clone()), false, fx);
                 himark::Windows::put(store, window, entity);
             }
             None => {
@@ -513,6 +513,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
                     window,
                     self.location.clone(),
                     true,
+                    false,
                     Some(self.target.clone()),
                 ));
             }

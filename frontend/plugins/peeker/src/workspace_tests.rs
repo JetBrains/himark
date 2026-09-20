@@ -63,6 +63,7 @@ impl EffectHandler<himark::OpenByLocationEffect> for StubOpenByLocation {
                 location: Some(effect.location),
                 primary: effect.primary,
                 target: effect.target,
+                focus: false,
             },
         )
     }

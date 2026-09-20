@@ -58,6 +58,7 @@ fn app_with_located_document(source: &str) -> (Application, himark::WindowId) {
             location: Some(document_location("a.rs")),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     (app, window)
@@ -91,6 +92,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
             location: Some(document_location("a.rs")),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     assert!(listed(&app), "the located editor offers it");

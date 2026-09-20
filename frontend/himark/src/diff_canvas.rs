@@ -336,7 +336,7 @@ impl crate::DynamicCommand for OpenCanvasFile {
         match crate::OpenDocuments::by_location(store, &self.location) {
             Some(document_id) => {
                 if let Some(mut entity) = crate::Windows::window(store, window) {
-                    entity.show_document(store, ui, window, document_id, Some(target), fx);
+                    entity.show_document(store, ui, window, document_id, Some(target), false, fx);
                     crate::Windows::put(store, window, entity);
                 }
             }
@@ -345,6 +345,7 @@ impl crate::DynamicCommand for OpenCanvasFile {
                     window,
                     self.location.clone(),
                     true,
+                    false,
                     Some(target),
                 ));
             }

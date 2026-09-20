@@ -1403,6 +1403,31 @@ impl Window {
         request
     }
 
+    /// The keyboard follows a deliberate jump: the same transition
+    /// `WindowCommand::Focus(LayerFocus::Content)` performs, reachable
+    /// from the app road (`show_document` with `focus`).
+    fn focus_content_layer(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        window: crate::WindowId,
+        fx: &mut AppFx<'_>,
+    ) {
+        let was = self.content.focus;
+        self.content.focus = LayerFocus::Content;
+        if was == LayerFocus::Bottom {
+            fx.scope(
+                move |command| {
+                    crate::AppCommand::Content(
+                        window,
+                        WindowCommand::Bottom(Box::new(command)),
+                    )
+                },
+                |fx| self.content.workbench.sheet_focus_changed(store, ui, false, fx),
+            );
+        }
+    }
+
     pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
         let _ = store;
         let displaced = std::mem::replace(self.workbench_mut().root.focused_pane_mut(), panel);
@@ -1815,8 +1840,12 @@ impl Window {
         window: crate::WindowId,
         document_id: crate::DocumentId,
         target: Option<std::ops::Range<crate::LineCol>>,
+        focus: bool,
         fx: &mut AppFx<'_>,
     ) {
+        if focus {
+            self.focus_content_layer(store, ui, window, fx);
+        }
         let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
             return;
         };

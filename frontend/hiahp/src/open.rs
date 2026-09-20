@@ -314,6 +314,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                         location: Some(effect.location),
                         primary: effect.primary,
                         target: effect.target,
+                        focus: effect.focus,
                     },
                 )
             }

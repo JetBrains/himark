@@ -64,6 +64,11 @@ pub struct OpenedDocument {
     pub primary: bool,
 
     pub target: Option<std::ops::Range<crate::LineCol>>,
+
+    /// Move the keyboard to the opened editor (a deliberate jump —
+    /// a click or Enter) — or just show it, leaving the keyboard
+    /// where it stands (a selection move browsing results).
+    pub focus: bool,
 }
 
 pub struct AppFonts {
@@ -1136,6 +1141,7 @@ impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
                 location: effect.location,
                 primary: effect.primary,
                 target: None,
+                focus: false,
             },
         )
     }
@@ -1309,7 +1315,7 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        entity.show_document(store, ui, window, document, None, fx);
+                        entity.show_document(store, ui, window, document, None, false, fx);
                         crate::Windows::put(store, window, entity);
 
                         crate::watch::sync_document_watches(store, fx);
@@ -1351,7 +1357,7 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                         ModalRequest::ShowDocument(document) => {
-                            entity.show_document(store, ui, window, document, None, fx);
+                            entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
 
                             crate::watch::sync_document_watches(store, fx);
@@ -1383,7 +1389,7 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                         ModalRequest::ShowDocument(document) => {
-                            entity.show_document(store, ui, window, document, None, fx);
+                            entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
                             crate::watch::sync_document_watches(store, fx);
                             crate::diffs::sync_stripe_bases(store, fx);
@@ -1607,7 +1613,15 @@ impl Application {
 
                 if opened.primary {
                     if let Some(mut entity) = crate::Windows::window(store, window) {
-                        entity.show_document(store, ui, window, document_id, opened.target, fx);
+                        entity.show_document(
+                            store,
+                            ui,
+                            window,
+                            document_id,
+                            opened.target,
+                            opened.focus,
+                            fx,
+                        );
                         crate::Windows::put(store, window, entity);
                     }
                 }

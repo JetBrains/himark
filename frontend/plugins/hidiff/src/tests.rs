@@ -1613,6 +1613,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
                 location: Some(located(name)),
                 primary: false,
                 target: None,
+                focus: false,
             },
         )));
     }

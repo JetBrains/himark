@@ -356,6 +356,7 @@ impl PeekView {
                 location: found.location.clone(),
                 target: found.target(),
                 feed: None,
+                focus: true,
             }),
         );
     }

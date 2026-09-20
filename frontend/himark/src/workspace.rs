@@ -51,6 +51,9 @@ pub struct OpenByLocationEffect {
     pub primary: bool,
 
     pub target: Option<std::ops::Range<crate::LineCol>>,
+
+    /// Focus the opened editor (a deliberate jump) or just show it.
+    pub focus: bool,
 }
 
 impl Effect for OpenByLocationEffect {
@@ -98,6 +101,7 @@ pub fn open_by_location_effect(
     window: crate::WindowId,
     location: ResourceLocation,
     primary: bool,
+    focus: bool,
     target: Option<std::ops::Range<crate::LineCol>>,
 ) -> crate::AppEffect {
     AnyEffect::new(OpenByLocationEffect {
@@ -105,6 +109,7 @@ pub fn open_by_location_effect(
         location,
         primary,
         target,
+        focus,
     })
 }
 
@@ -142,7 +147,7 @@ pub fn open_locations(
         if let Some(document) = crate::OpenDocuments::by_location(store, location) {
             if primary {
                 if let Some(mut window_entity) = crate::Windows::window(store, window) {
-                    window_entity.show_document(store, ui, window, document, None, fx);
+                    window_entity.show_document(store, ui, window, document, None, false, fx);
                     crate::Windows::put(store, window, window_entity);
                 }
             }
@@ -153,6 +158,7 @@ pub fn open_locations(
             window,
             location.clone(),
             primary,
+            false,
             None,
         ));
         primary = false;

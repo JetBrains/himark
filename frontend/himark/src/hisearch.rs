@@ -81,6 +81,12 @@ pub struct SearchView {
     files: usize,
     shown: Option<(FeedId, u64)>,
 
+    /// The last key SELECTION navigated to — moving the keyboard
+    /// cursor over results opens them (the click door), and this is
+    /// the dedup: feed rebuilds re-assert the cursor without
+    /// re-opening, and standing still never re-navigates.
+    navigated: Option<LocationKey>,
+
     request: RequestSlot<ModalRequest>,
 }
 
@@ -96,6 +102,7 @@ impl Clone for SearchView {
             targets: self.targets.clone(),
             files: self.files,
             shown: self.shown,
+            navigated: self.navigated.clone(),
             request: RequestSlot::default(),
         }
     }
@@ -123,6 +130,7 @@ impl SearchView {
             targets: rpds::HashTrieMapSync::new_sync(),
             files: 0,
             shown: None,
+            navigated: None,
             request: RequestSlot::default(),
         };
         view.rebuild(store, ui);
@@ -222,7 +230,7 @@ impl SearchView {
         );
     }
 
-    fn pick(&mut self, store: &Store, key: LocationKey) {
+    fn pick(&mut self, store: &Store, key: LocationKey, focus: bool) {
         let Some(found) = self
             .targets
             .get(&key)
@@ -236,6 +244,7 @@ impl SearchView {
         else {
             return;
         };
+        self.navigated = Some(key);
         let target = found.target();
         self.request.file(ModalRequest::Perform(crate::AppCommand::Dynamic(
             self.window,
@@ -243,8 +252,26 @@ impl SearchView {
                 location: found.location,
                 target,
                 feed: self.feed(store),
+                focus,
             }),
         )));
+    }
+
+    /// Selection IS navigation: the keyboard cursor landing on a file
+    /// or a hit opens it through the same door a click uses — the
+    /// keyboard stays in the dock (nothing moves the layer focus).
+    /// Directories only fold; standing still is deduped.
+    fn navigate_selection(&mut self, store: &Store) {
+        let Some(key) = self.search.inner().list().cursor().cloned() else {
+            return;
+        };
+        if matches!(&key, LocationKey::Node(location) if location.kind().is_directory()) {
+            return;
+        }
+        if self.navigated.as_ref() == Some(&key) {
+            return;
+        }
+        self.pick(store, key, false);
     }
 }
 
@@ -254,6 +281,9 @@ pub(crate) struct OpenFoundLocation {
     /// Set for search-view picks: the opened editor gets the feed's
     /// find-results wash — every occurrence in the file highlighted.
     pub(crate) feed: Option<FeedId>,
+    /// A deliberate jump (click, Enter) moves the keyboard to the
+    /// editor; a selection move browsing results just shows it.
+    pub(crate) focus: bool,
 }
 
 impl crate::DynamicCommand for OpenFoundLocation {
@@ -289,6 +319,7 @@ impl crate::DynamicCommand for OpenFoundLocation {
             window,
             self.location.clone(),
             true,
+            self.focus,
             Some(self.target.clone()),
         ));
     }
@@ -374,22 +405,30 @@ impl View for SearchView {
                             if location.kind().is_directory());
                         match toggle || branch {
                             true => self.search.inner_mut().toggle(&key, store, ui),
-                            false => self.pick(store, key),
+                            false => self.pick(store, key, true),
                         }
                         return;
                     }
                 }
+                let before = self.search.inner().list().cursor().cloned();
                 fx.scope(SearchCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
+                if self.search.inner().list().cursor().cloned() != before {
+                    self.navigate_selection(store);
+                }
             }
             SearchCommand::Select(delta) => {
-                self.search.inner_mut().list_mut().cursor_step(delta)
+                self.search.inner_mut().list_mut().cursor_step(delta);
+                self.navigate_selection(store);
             }
-            SearchCommand::Fold(expand) => self.search.inner_mut().fold_cursor(expand, store, ui),
+            SearchCommand::Fold(expand) => {
+                self.search.inner_mut().fold_cursor(expand, store, ui);
+                self.navigate_selection(store);
+            }
             SearchCommand::Pick => {
                 if let Some(key) = self.search.inner().list().cursor().cloned() {
-                    self.pick(store, key);
+                    self.pick(store, key, true);
                 }
             }
             SearchCommand::Focus(area, then) => {
@@ -398,8 +437,13 @@ impl View for SearchView {
                     SearchArea::Input => self.input.focus_text(),
                     SearchArea::Results => self.input.blur(),
                 }
-                if let Some(command) = then {
-                    self.perform(store, ui, *command, fx);
+                match then {
+                    Some(command) => self.perform(store, ui, *command, fx),
+                    // A pure keyboard entry (Down/Enter from the
+                    // input): the cursor's row is now the selection —
+                    // open it like any other selection move.
+                    None if area == SearchArea::Results => self.navigate_selection(store),
+                    None => {}
                 }
             }
             SearchCommand::Cancel => {
@@ -855,7 +899,7 @@ mod tests {
         let mut view = view(&mut store, &ui);
 
         let hit = LocationKey::Hit(found(&["work", "a.rs"], 3, 2, "").location, 3, 2);
-        view.pick(&store, hit);
+        view.pick(&store, hit, true);
         let request = crate::ModalView::take_request(&mut view);
         assert!(
             matches!(
@@ -867,7 +911,7 @@ mod tests {
 
         // A file pick answers its first occurrence.
         let file = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
-        view.pick(&store, file);
+        view.pick(&store, file, true);
         assert!(crate::ModalView::take_request(&mut view).is_some());
 
         // A directory key has no target: no request.
@@ -876,7 +920,69 @@ mod tests {
             crate::Authority::new("local"),
             vec!["work".to_owned()],
         ));
-        view.pick(&store, dir);
+        view.pick(&store, dir, true);
         assert!(crate::ModalView::take_request(&mut view).is_none());
+    }
+
+    /// Selection IS navigation: keyboard cursor moves open the row
+    /// they land on; standing still (and feed rebuilds re-asserting
+    /// the cursor) never re-open; directories only fold.
+    #[test]
+    fn moving_the_selection_navigates_and_dedups() {
+        let mut store = Store::new();
+        let ui = imba::UiCtx::dont_use_too_slow();
+        feed(
+            &mut store,
+            &[
+                found(&["work", "a.rs"], 0, 0, "alpha"),
+                found(&["work", "b.rs"], 2, 1, "beta"),
+            ],
+            true,
+        );
+        let mut view = view(&mut store, &ui);
+        let mut batch = imba::effect::Batch::new();
+
+        // Entering the results lands the cursor on the first FILE row
+        // (the list skips the branch): the landing already navigates.
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Focus(SearchArea::Results, None),
+            &mut batch.effects(),
+        );
+        assert!(
+            crate::ModalView::take_request(&mut view).is_some(),
+            "entering the results opens the row the cursor lands on"
+        );
+
+        // Down onto the hit under a.rs: a fresh key, a fresh open.
+        view.perform(&mut store, &ui, SearchCommand::Select(1), &mut batch.effects());
+        assert!(
+            crate::ModalView::take_request(&mut view).is_some(),
+            "the selection move navigated"
+        );
+
+        // A rebuild re-asserts the cursor: no re-open.
+        view.rebuild(&store, &ui);
+        view.perform(&mut store, &ui, SearchCommand::Refresh, &mut batch.effects());
+        assert!(
+            crate::ModalView::take_request(&mut view).is_none(),
+            "standing still never re-navigates"
+        );
+
+        // Down again onto b.rs: navigates too.
+        view.perform(&mut store, &ui, SearchCommand::Select(1), &mut batch.effects());
+        assert!(
+            crate::ModalView::take_request(&mut view).is_some(),
+            "the next row navigates too"
+        );
+
+        // Enter on the same row still opens (the deliberate, focusing
+        // jump — dedup never swallows an explicit pick).
+        view.perform(&mut store, &ui, SearchCommand::Pick, &mut batch.effects());
+        assert!(
+            crate::ModalView::take_request(&mut view).is_some(),
+            "an explicit pick always opens"
+        );
     }
 }

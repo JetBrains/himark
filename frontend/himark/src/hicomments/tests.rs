@@ -56,6 +56,7 @@ fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
             location: Some(document_location("notes.md")),
             primary: true,
             target: None,
+            focus: false,
         },
     )));
     (app, window)

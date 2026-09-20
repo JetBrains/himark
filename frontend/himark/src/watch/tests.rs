@@ -718,6 +718,7 @@ fn opens_watch_and_events_refetch() {
                 location: Some(located("a.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )
     ));
@@ -782,6 +783,7 @@ fn the_palette_reload_follows_the_disk() {
                 location: Some(located("a.md")),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )
     ));

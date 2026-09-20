@@ -70,6 +70,7 @@ fn open_file(app: &mut Application) -> crate::DocumentId {
             location: Some(location()),
             primary: true,
             target: None,
+            focus: false,
         },
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
@@ -186,6 +187,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
                 location: Some(named(name)),
                 primary: true,
                 target: None,
+                focus: false,
             },
         ));
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();

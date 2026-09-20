@@ -1381,6 +1381,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 target: Some(
                     himark::LineCol { line: 1830, col: 0 }..himark::LineCol { line: 1830, col: 4 },
                 ),
+                focus: false,
             },
         )]);
         let mut quiet_streak = 0;

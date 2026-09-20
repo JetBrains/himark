@@ -88,6 +88,7 @@ impl AppExt for Application {
                 location: None,
                 primary,
                 target: None,
+                focus: false,
             },
         ))
     }

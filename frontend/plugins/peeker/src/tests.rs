@@ -33,6 +33,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
                 location: Some(located(name)),
                 primary: true,
                 target: None,
+                focus: false,
             },
         )));
     };

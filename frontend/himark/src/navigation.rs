@@ -180,6 +180,7 @@ impl Navigator for EditorNavigator {
                 window,
                 place.location.clone(),
                 true,
+                false,
                 None,
             ));
             return None;
