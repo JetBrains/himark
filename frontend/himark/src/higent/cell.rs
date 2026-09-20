@@ -109,8 +109,7 @@ pub(crate) fn side_document(
         } else {
             "markdown"
         };
-        return crate::Document::from_language(text, language, &parsers,
-                store, ui, fonts, theme);
+        return crate::Document::from_language(text, language, &parsers, store, ui, fonts, theme);
     }
     markdown_document(text)
 }
@@ -167,7 +166,8 @@ impl Cell {
             None,
             ::editor::EditorBuild::Bounded,
             &[],
-                store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             fx,
@@ -269,7 +269,8 @@ impl Cell {
                 let extension = header.title.rsplit('.').next().unwrap_or("").to_lowercase();
                 let mut before_doc =
                     side_document(before_text.clone(), &extension, store, ui, &fonts, &theme);
-                let mut after_doc = side_document(after_text, &extension, store, ui, &fonts, &theme);
+                let mut after_doc =
+                    side_document(after_text, &extension, store, ui, &fonts, &theme);
 
                 // The seeded pair road (the hidiff recipe, cell-owned
                 // documents): operation, THE diff markup, and the
@@ -298,7 +299,8 @@ impl Cell {
                     left_marks,
                     prepared.left.clone(),
                     &[],
-                store, ui,
+                    store,
+                    ui,
                     &fonts,
                     &theme,
                     quiet,
@@ -308,7 +310,8 @@ impl Cell {
                     None,
                     ::editor::EditorBuild::Bounded,
                     &[left_marks],
-                store, ui,
+                    store,
+                    ui,
                     &fonts,
                     &theme,
                     quiet,
@@ -320,7 +323,8 @@ impl Cell {
                     None,
                     ::editor::EditorBuild::Bounded,
                     &[hunks],
-                store, ui,
+                    store,
+                    ui,
                     &fonts,
                     &theme,
                     quiet,
@@ -331,7 +335,8 @@ impl Cell {
                     right_extras,
                     prepared.right.clone(),
                     &[],
-                store, ui,
+                    store,
+                    ui,
                     &fonts,
                     &theme,
                     quiet,
@@ -518,8 +523,9 @@ impl View for Cell {
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor.document.edit(&operation,
-                store, ui, &fonts, &theme, fx);
+                    editor
+                        .document
+                        .edit(&operation, store, ui, &fonts, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }
@@ -552,7 +558,8 @@ impl View for Cell {
                                 left_editor,
                                 width,
                                 0,
-                store, ui,
+                                store,
+                                ui,
                                 &fonts,
                                 &theme,
                                 fx,
@@ -570,7 +577,8 @@ impl View for Cell {
                                 right_editor,
                                 width,
                                 0,
-                store, ui,
+                                store,
+                                ui,
                                 &fonts,
                                 &theme,
                                 fx,
@@ -586,8 +594,7 @@ impl View for Cell {
                                 view.split
                                     .right
                                     .document
-                                    .resize(inline, width, 0,
-                store, ui, &fonts, &theme, fx)
+                                    .resize(inline, width, 0, store, ui, &fonts, &theme, fx)
                             },
                         );
                     }
@@ -606,8 +613,9 @@ impl View for Cell {
                 };
                 let id = editor.editor;
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor.document.resize(id, width, 0,
-                store, ui, &fonts, &theme, fx);
+                    editor
+                        .document
+                        .resize(id, width, 0, store, ui, &fonts, &theme, fx);
                 });
             }
             CellCommand::Append(chunk) => {
@@ -619,8 +627,9 @@ impl View for Cell {
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
-                    editor.document.edit(&operation,
-                store, ui, &fonts, &theme, fx);
+                    editor
+                        .document
+                        .edit(&operation, store, ui, &fonts, &theme, fx);
                     if let Some(parsers) = env::Parsers::of(store) {
                         editor.document.launch_reparse(parsers, fx);
                     }

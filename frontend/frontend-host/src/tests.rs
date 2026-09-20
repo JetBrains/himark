@@ -1004,7 +1004,7 @@ fn the_docked_tree_follows_the_focused_document() {
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
-        let ui = &app.ui_ctx();
+            let ui = &app.ui_ctx();
             himark::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
@@ -1638,7 +1638,9 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
 
     assert!(engine.app.open_panel(
         engine.app.sole_window(),
-        Box::new(himark::higent::ChatPane::new("test-chat:displacer".to_owned()))
+        Box::new(himark::higent::ChatPane::new(
+            "test-chat:displacer".to_owned()
+        ))
     ));
     settle(&mut engine);
     let mut mounted = false;
@@ -2184,7 +2186,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
 
 #[test]
 fn an_addressed_fence_embeds_a_sibling_file() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 800)).expect("surface");
 
@@ -2292,7 +2294,8 @@ fn an_addressed_fence_embeds_a_sibling_file() {
             .document()
             .clone(),
         720.0,
-                store, &ui,
+        store,
+        &ui,
         &himark::embedded_fonts::source()(),
         &himark::env::Themes::of(store),
     )
@@ -2416,7 +2419,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
 
 #[test]
 fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let body = "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\nfn five() {}\n";
@@ -2476,7 +2479,8 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
         himark::EditorView::complete(
             target.1.document().clone(),
             720.0,
-                store, &ui,
+            store,
+            &ui,
             &himark::embedded_fonts::source()(),
             &himark::env::Themes::of(store),
         )
@@ -7842,7 +7846,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
-        let ui = &app.ui_ctx();
+            let ui = &app.ui_ctx();
             himark::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
@@ -7854,11 +7858,12 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         himark::OpenDocuments::by_location(engine.app.store(), &file).is_some()
     });
 
-    let command = himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
-        .into_iter()
-        .find(|presentable| presentable.id == "code.implementations")
-        .expect("the located editor offers implementations")
-        .command;
+    let command =
+        himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
+            .into_iter()
+            .find(|presentable| presentable.id == "code.implementations")
+            .expect("the located editor offers implementations")
+            .command;
     assert!(engine.app.perform_command(command));
 
     settle_until(&mut engine, "the stream resolved into the feed", |engine| {
@@ -7868,8 +7873,8 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     });
     let feed = himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)
         .expect("the session fronts the feed");
-    let row = himark::locations::LocationsFeeds::row(engine.app.store(), feed)
-        .expect("the feed row");
+    let row =
+        himark::locations::LocationsFeeds::row(engine.app.store(), feed).expect("the feed row");
     assert!(!row.truncated, "the ask answered whole");
     assert_eq!(
         row.locations.len(),
@@ -7892,11 +7897,12 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     // The references leg: same wire, the fake answers two plain
     // Locations; the fresh feed DISPLACES the implementations one
     // (the supersession rule), and the old feed disposes.
-    let command = himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
-        .into_iter()
-        .find(|presentable| presentable.id == "code.references")
-        .expect("the located editor offers references")
-        .command;
+    let command =
+        himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
+            .into_iter()
+            .find(|presentable| presentable.id == "code.references")
+            .expect("the located editor offers references")
+            .command;
     assert!(engine.app.perform_command(command));
     settle_until(&mut engine, "the references resolved", |engine| {
         himark::locations::SessionSearchFeeds::feed(engine.app.store(), &session)

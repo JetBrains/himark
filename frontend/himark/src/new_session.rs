@@ -791,8 +791,7 @@ impl View for NewSessionView {
                         self.input
                             .content_mut()
                             .document
-                            .resize(editor, width, 0,
-                store, ui, &fonts, &theme, fx);
+                            .resize(editor, width, 0, store, ui, &fonts, &theme, fx);
                     })
                 });
             }
@@ -2088,7 +2087,11 @@ impl crate::DynamicCommand for OpenNewSession {
         store.update::<Placeholders>(|rows| {
             rows.0.remove_mut(&window);
         });
-        Composers::put(store, window, NewSessionView::for_host(store, ui, self.host));
+        Composers::put(
+            store,
+            window,
+            NewSessionView::for_host(store, ui, self.host),
+        );
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
             crate::switch_session(store, window, scratch, fx);

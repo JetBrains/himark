@@ -316,7 +316,8 @@ fn install(
                                 &embed.content,
                                 &embed.language,
                                 languages.as_deref(),
-                store, ui,
+                                store,
+                                ui,
                                 fonts,
                                 theme,
                             );
@@ -361,7 +362,8 @@ fn install(
             bounds,
             build,
             &[],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut batch.effects(),
@@ -503,8 +505,7 @@ fn build_document(
     let text = Text::from_string_exact(content);
     if let Some(languages) = languages {
         if languages.knows(language) {
-            return Document::from_language(text, language, languages,
-                store, ui, fonts, theme);
+            return Document::from_language(text, language, languages, store, ui, fonts, theme);
         }
     }
 

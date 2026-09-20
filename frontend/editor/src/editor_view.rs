@@ -463,7 +463,8 @@ impl EditorView {
             None,
             crate::document::EditorBuild::Bounded,
             &[],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut discarded.effects(),
@@ -492,7 +493,8 @@ impl EditorView {
             None,
             crate::document::EditorBuild::Complete,
             &[],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut discarded.effects(),
@@ -519,7 +521,8 @@ impl EditorView {
         Self::of_document(
             Document::new(text::Text::from_string_exact(""), markup),
             width,
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &crate::theme::Theme::embedded(),
         )
@@ -583,8 +586,8 @@ impl EditorView {
         theme: &crate::theme::Theme,
     ) {
         self.document.set_caret(self.editor, byte);
-        self.document.refresh_unhide(self.editor,
-                store, ui, fonts, theme);
+        self.document
+            .refresh_unhide(self.editor, store, ui, fonts, theme);
     }
 
     pub fn find_misaligned_boundary(&self) -> Option<u32> {
@@ -653,7 +656,8 @@ impl EditorView {
                                 line_range.clone(),
                                 0.0,
                                 true,
-                store, ui,
+                                store,
+                                ui,
                                 &fonts,
                                 theme,
                             )
@@ -680,7 +684,8 @@ impl EditorView {
                                 line_range.clone(),
                                 0.0,
                                 true,
-                store, ui,
+                                store,
+                                ui,
                                 &fonts,
                                 theme,
                             )
@@ -833,7 +838,8 @@ impl View for EditorView {
                     base,
                     *diff,
                     true,
-                store, ui,
+                    store,
+                    ui,
                     &fonts,
                     &theme,
                     fx,
@@ -863,8 +869,15 @@ impl View for EditorView {
         if let EditorCommand::ApplyReparse(outcome) = command {
             let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
-            self.document
-                .land_reparse(outcome, self.location.clone(), store, ui, &fonts, &theme, fx);
+            self.document.land_reparse(
+                outcome,
+                self.location.clone(),
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            );
             return;
         }
         let base_revision = self.document.revision();
@@ -1012,7 +1025,8 @@ impl View for EditorView {
                     popups.extend(crate::sticky::sticky_overlays(
                         &document,
                         editor_id,
-                store, ui,
+                        store,
+                        ui,
                         &fonts.collection(),
                         &crate::env::Themes::of(store),
                         arena,
@@ -1644,10 +1658,14 @@ impl imba::ImeClient for EditorImeClient<'_> {
 
     fn first_rect(&self, start: u32, _len: u32) -> Option<(f32, f32, f32, f32)> {
         let byte = self.document.text().view().utf16_to_byte(start);
-        let (x, y, w, h) =
-            self.document
-                .caret_content_rect(self.editor, byte,
-                self.store, self.ui, &self.fonts, self.theme)?;
+        let (x, y, w, h) = self.document.caret_content_rect(
+            self.editor,
+            byte,
+            self.store,
+            self.ui,
+            &self.fonts,
+            self.theme,
+        )?;
         Some((x - self.origin.x, y - self.origin.y, w, h))
     }
 
@@ -1660,8 +1678,14 @@ impl imba::ImeClient for EditorImeClient<'_> {
             )
         };
         self.document
-            .selection_content_rects(self.editor, from..to,
-                self.store, self.ui, &self.fonts, self.theme)
+            .selection_content_rects(
+                self.editor,
+                from..to,
+                self.store,
+                self.ui,
+                &self.fonts,
+                self.theme,
+            )
             .into_iter()
             .map(|(x, y, w, h)| (x - self.origin.x, y - self.origin.y, w, h))
             .collect()
@@ -1689,11 +1713,15 @@ impl imba::ImeClient for EditorImeClient<'_> {
             return None;
         }
 
-        let byte = match self
-            .document
-            .byte_at_point(self.editor, cx, cy,
-                self.store, self.ui, &self.fonts, self.theme)
-        {
+        let byte = match self.document.byte_at_point(
+            self.editor,
+            cx,
+            cy,
+            self.store,
+            self.ui,
+            &self.fonts,
+            self.theme,
+        ) {
             Some(byte) => byte,
             None => self.document.text().byte_count().min(u32::MAX as usize) as u32,
         };

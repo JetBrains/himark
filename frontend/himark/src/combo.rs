@@ -199,7 +199,8 @@ where
                     ListView::empty().with_selection(imba::list::SelectionStyle::default()),
                 ),
                 OptionSearcher::default(),
-                store, ui,
+                store,
+                ui,
                 crate::embedded_fonts::source(),
             ),
         }

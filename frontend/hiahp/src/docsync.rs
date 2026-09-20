@@ -754,7 +754,8 @@ impl himark::DynamicCommand for AdoptSnapshot {
                 SyncSeats::expect(store, &self.location, identity);
                 let applied = himark::entity_scope(document_id, fx, |fx| {
                     himark::OpenDocuments::edit_shared(
-                        store, ui,
+                        store,
+                        ui,
                         document_id,
                         identity,
                         base_revision,
@@ -857,7 +858,8 @@ impl himark::DynamicCommand for ApplyOffer {
         SyncSeats::expect(store, &self.location, identity);
         let applied = himark::entity_scope(document_id, fx, |fx| {
             himark::OpenDocuments::edit_shared(
-                store, ui,
+                store,
+                ui,
                 document_id,
                 identity,
                 base_revision,

@@ -99,7 +99,6 @@ pub fn ui_typeface(
     skia_safe::FontMgr::new().legacy_make_typeface(None, style)
 }
 
-
 pub struct Workshop {
     source: crate::FontSource,
     fonts: std::sync::Mutex<Option<skia_safe::textlayout::FontCollection>>,
@@ -140,10 +139,7 @@ impl Workshop {
 
     /// Run `f` with this handler's kept (store, ui) pair directly —
     /// for callees that take the pair rather than a ready measure.
-    pub fn with_ctx<R>(
-        &self,
-        f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R,
-    ) -> R {
+    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R) -> R {
         let kept = self.measure.lock().expect("workshop measure");
         f(&kept.0, &kept.1)
     }

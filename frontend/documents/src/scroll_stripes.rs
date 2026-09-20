@@ -117,8 +117,7 @@ mod tests {
         document.mark_scroll_stripes(editor_id, markup);
         let mut tints = editor::Markup::new();
         tints.push_styled(90..95, editor::ThemeStyleId::Match);
-        document.replace_markup(markup, tints, &[],
-            &store, ui, &fonts, &theme, quiet);
+        document.replace_markup(markup, tints, &[], &store, ui, &fonts, &theme, quiet);
         OpenDocuments::put_document(&mut store, id, document);
 
         let mut batch = imba::effect::Batch::new();

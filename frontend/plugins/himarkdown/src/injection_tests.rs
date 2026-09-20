@@ -61,22 +61,22 @@ fn keyword_spans(document: &Document, line: std::ops::Range<u32>) -> Vec<std::op
 
 #[test]
 fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "title\n\n```toy\nabc def\n```\n";
     let content_start = source.find("abc").unwrap() as u32;
     let content_end = content_start + "abc def\n".len() as u32;
     let mut languages = himark::SyntaxLanguages::new();
     languages.register(&["toy"], Arc::new(Toy));
     let toy_languages = std::sync::Arc::new(markdown_languages(languages));
-    let mut document = document_from_markdown(source,
-                store, ui, &test_fonts(), &test_theme());
+    let mut document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
     let _editor = document.add_editor(
         400.0,
         None,
         himark::EditorBuild::Bounded,
         &[],
-                store, ui,
+        store,
+        ui,
         &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -91,7 +91,8 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
-                store, ui,
+        store,
+        ui,
         &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -104,7 +105,8 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
 
     document.edit(
         &operation::Operation::insert_at(content_start + 3, "zz"),
-                store, ui,
+        store,
+        ui,
         &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -114,7 +116,8 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
-                store, ui,
+        store,
+        ui,
         &test_fonts(),
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -131,7 +134,8 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
     let mut recheck_batch = imba::effect::Batch::new();
     document.apply_reparse_outcome(
         recheck,
-                store, ui,
+        store,
+        ui,
         &test_fonts(),
         &test_theme(),
         &mut recheck_batch.effects(),

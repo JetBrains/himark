@@ -315,7 +315,8 @@ impl Panel {
                     return None;
                 }
                 Some(Box::new(crate::toc::OutlineView::new(
-                    store, ui,
+                    store,
+                    ui,
                     window,
                     view.document(),
                     location,
@@ -371,8 +372,7 @@ impl Panel {
                 let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
                 crate::app::entity_scope(view.document(), fx, |fx| {
-                    document.reveal_at(view.editor(), place.caret,
-                store, ui, &fonts, &theme, fx)
+                    document.reveal_at(view.editor(), place.caret, store, ui, &fonts, &theme, fx)
                 });
                 crate::OpenDocuments::put_document(store, view.document(), document);
                 pane.set_scroll_y(place.scroll_y);
@@ -842,8 +842,7 @@ impl PaneSlot {
         };
         let fonts = ::editor::env::ui_collection(store, ui);
         let theme = ::editor::env::Themes::of(store);
-        let byte = document.byte_at_point(editor, point.x, point.y,
-                store, ui, &fonts, &theme);
+        let byte = document.byte_at_point(editor, point.x, point.y, store, ui, &fonts, &theme);
         self.hover.sync(
             store,
             ui,

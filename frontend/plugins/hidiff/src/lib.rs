@@ -104,7 +104,8 @@ pub fn teardown_diff_view(store: &mut Store, id: himark::DiffViewId) {
         }
     }
     himark::OpenDocuments::untrack_diff(
-        store, ui,
+        store,
+        ui,
         pair.diff,
         &mut imba::effect::Batch::<UnifiedDiffCommand>::new().effects(),
     );
@@ -143,8 +144,7 @@ pub fn rewrap_pair(
             view.split
                 .left
                 .document
-                .resize(left_editor, width, 0,
-                store, ui, &fonts, &theme, fx)
+                .resize(left_editor, width, 0, store, ui, &fonts, &theme, fx)
         },
     );
     fx.scope(
@@ -153,8 +153,7 @@ pub fn rewrap_pair(
             view.split
                 .right
                 .document
-                .resize(right_editor, width, 0,
-                store, ui, &fonts, &theme, fx)
+                .resize(right_editor, width, 0, store, ui, &fonts, &theme, fx)
         },
     );
     if let Some(inline) = inline {
@@ -164,8 +163,7 @@ pub fn rewrap_pair(
                 view.split
                     .right
                     .document
-                    .resize(inline, width, 0,
-                store, ui, &fonts, &theme, fx)
+                    .resize(inline, width, 0, store, ui, &fonts, &theme, fx)
             },
         );
     }
@@ -677,7 +675,8 @@ pub fn build_diff_view(
             marks,
             markup.clone(),
             &[],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -686,7 +685,8 @@ pub fn build_diff_view(
     }
     if let Some(prep) = &prep {
         seed(
-            store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             left,
@@ -703,7 +703,8 @@ pub fn build_diff_view(
                 None,
                 himark::EditorBuild::Bounded,
                 &[marks],
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -730,7 +731,8 @@ pub fn build_diff_view(
     };
     if let Some(prep) = &prep {
         seed(
-            store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             right,

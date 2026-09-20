@@ -215,11 +215,15 @@ impl Application {
                 let fonts = ::editor::embedded_fonts::source()();
                 let theme = ::editor::theme::Theme::embedded();
                 let mut reference =
-                    crate::EditorView::complete(document.clone(), width,
-                store, ui, &fonts, &theme);
+                    crate::EditorView::complete(document.clone(), width, store, ui, &fonts, &theme);
 
-                reference.reveal_caret(document.caret_byte(entity.editor()),
-                store, ui, &fonts, &theme);
+                reference.reveal_caret(
+                    document.caret_byte(entity.editor()),
+                    store,
+                    ui,
+                    &fonts,
+                    &theme,
+                );
                 let actual = document.content_height(entity.editor());
                 let expected = reference.content_height();
                 if (actual - expected).abs() > 0.5 {

@@ -1204,7 +1204,11 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
         widest
     }
 
-    pub(crate) fn inlay_metrics_in(&self, range: Range<u32>, measure: InlayMeasure<'_>) -> InlayMetrics {
+    pub(crate) fn inlay_metrics_in(
+        &self,
+        range: Range<u32>,
+        measure: InlayMeasure<'_>,
+    ) -> InlayMetrics {
         if !self.has_inlays() || range.start >= range.end {
             return InlayMetrics::default();
         }
@@ -1277,9 +1281,7 @@ impl<'e, 'a> OverlaidMarkup<'e, 'a> {
             if byte < range.start || byte > range.end {
                 continue;
             }
-            let size = interval
-                .inlay
-                .size(measure.store, measure.ui, constraints);
+            let size = interval.inlay.size(measure.store, measure.ui, constraints);
             placeholders.push(InlayPlaceholder {
                 byte,
                 width: size.width.max(0.0),

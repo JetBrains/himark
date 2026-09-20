@@ -169,8 +169,16 @@ impl Document {
     ) -> Self {
         let byte_count = text.byte_count().min(u32::MAX as usize) as u32;
         let Some((root, _, sites)) = languages.parse_syntax(
-            language, &text, 0..byte_count, None, &[], store, ui, fonts, theme)
-        else {
+            language,
+            &text,
+            0..byte_count,
+            None,
+            &[],
+            store,
+            ui,
+            fonts,
+            theme,
+        ) else {
             return Self::new(text, Markup::new());
         };
         let mut markup = Markup::new();
@@ -213,20 +221,20 @@ impl Document {
         };
         let layout = {
             crate::DocumentLayout::build_complete(
-            &self.text,
-            crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
-            measure,
-            fonts,
-            theme,
-            state.bounds.and_then(|key| {
-                Some(
-                    self.fragments
-                        .get(&key.set)?
-                        .find_by_id(&key.key)?
-                        .range
-                        .clone(),
-                )
-            }),
+                &self.text,
+                crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
+                measure,
+                fonts,
+                theme,
+                state.bounds.and_then(|key| {
+                    Some(
+                        self.fragments
+                            .get(&key.set)?
+                            .find_by_id(&key.key)?
+                            .range
+                            .clone(),
+                    )
+                }),
             )
         };
         layout.element_heights()
@@ -666,8 +674,7 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        let invalidated = self.apply_reparse_outcome(outcome,
-                store, ui, fonts, theme, fx);
+        let invalidated = self.apply_reparse_outcome(outcome, store, ui, fonts, theme, fx);
 
         let fresh_base = base.is_some() && self.enrich_base != base;
         let ranges = match (invalidated, fresh_base) {
@@ -731,8 +738,16 @@ impl Document {
         outcome
             .enricher
             .install(store, ui, &mut replacement, &changed, fonts, theme);
-        self.replace_markup(slot.markup, replacement, &changed,
-                store, ui, fonts, theme, fx);
+        self.replace_markup(
+            slot.markup,
+            replacement,
+            &changed,
+            store,
+            ui,
+            fonts,
+            theme,
+            fx,
+        );
     }
 
     pub fn release_enrichment(&mut self, store: &mut Store) {
@@ -753,8 +768,7 @@ impl Document {
         theme: &crate::theme::Theme,
     ) {
         let byte_count = self.text.byte_count().min(u32::MAX as usize) as u32;
-        self.enrich_sync(enrichers, &[0..byte_count],
-                store, ui, fonts, theme);
+        self.enrich_sync(enrichers, &[0..byte_count], store, ui, fonts, theme);
     }
 
     pub fn enrich_sync(
@@ -813,7 +827,14 @@ impl Document {
             )));
             if let Some(outcome) = outcome {
                 let mut batch = imba::effect::Batch::new();
-                self.apply_enrichment(outcome, &mut landing, ui, fonts, theme, &mut batch.effects());
+                self.apply_enrichment(
+                    outcome,
+                    &mut landing,
+                    ui,
+                    fonts,
+                    theme,
+                    &mut batch.effects(),
+                );
             }
         }
     }
@@ -1060,8 +1081,7 @@ impl Document {
             }
         }
         self.note_markup_change(Some(changed));
-        self.repair_damaged_viewports(
-                store, ui,fonts, theme, fx)
+        self.repair_damaged_viewports(store, ui, fonts, theme, fx)
     }
 
     pub fn ensure_document_markup(&mut self, id: MarkupId) {
@@ -1087,8 +1107,7 @@ impl Document {
             layer: MarkupLayer::Markup(markup_id),
             key: markup.push_inlay(range, inlay),
         });
-        self.repair_editors(span,
-                store, ui, fonts, theme, fx);
+        self.repair_editors(span, store, ui, fonts, theme, fx);
         key
     }
 
@@ -1123,7 +1142,8 @@ impl Document {
         }
         self.repair_editors(
             crate::markup::inlay_repair_span(mode, &range),
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             fx,
@@ -1193,15 +1213,15 @@ impl Document {
             markups,
             vec![overlay],
             width,
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             bounds,
             build,
         );
         self.editors.insert_mut(id, editor);
-        self.refresh_unhide(id,
-                store, ui, fonts, theme);
+        self.refresh_unhide(id, store, ui, fonts, theme);
 
         if !complete {
             self.pending_repairs(fx);
@@ -1333,8 +1353,7 @@ impl Document {
                             theme,
                             fx,
                         ) => {}
-                    _ => self.insert(editor, &text,
-                store, ui, &fonts, theme, fx),
+                    _ => self.insert(editor, &text, store, ui, &fonts, theme, fx),
                 }
             }
             EditorCommand::Enter { soft } => {
@@ -1342,8 +1361,7 @@ impl Document {
                 if self.marked_of(editor).is_some()
                     || !self.assist_at_carets(store, editor, kind, ui, &fonts, theme, fx)
                 {
-                    self.insert(editor, "\n",
-                store, ui, &fonts, theme, fx);
+                    self.insert(editor, "\n", store, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::Indent => {
@@ -1351,8 +1369,15 @@ impl Document {
                 if self.marked_of(editor).is_none()
                     && !self.assist_at_carets(store, editor, kind, ui, &fonts, theme, fx)
                 {
-                    self.insert(editor, crate::assist::INDENT_UNIT,
-                store, ui, &fonts, theme, fx);
+                    self.insert(
+                        editor,
+                        crate::assist::INDENT_UNIT,
+                        store,
+                        ui,
+                        &fonts,
+                        theme,
+                        fx,
+                    );
                 }
             }
             EditorCommand::Outdent => {
@@ -1362,39 +1387,36 @@ impl Document {
                 }
             }
             EditorCommand::Backspace => {
-                self.delete_at_carets(editor, Motion::Left,
-                store, ui, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::Left, store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteForward => {
-                self.delete_at_carets(editor, Motion::Right,
-                store, ui, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::Right, store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteWordBack => {
-                self.delete_at_carets(editor, Motion::WordLeft,
-                store, ui, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::WordLeft, store, ui, &fonts, theme, fx)
             }
             EditorCommand::DeleteWordForward => {
-                self.delete_at_carets(editor, Motion::WordRight,
-                store, ui, &fonts, theme, fx)
+                self.delete_at_carets(editor, Motion::WordRight, store, ui, &fonts, theme, fx)
             }
-            EditorCommand::DeleteSelections => self.delete_selections(editor,
-                store, ui, &fonts, theme, fx),
-            EditorCommand::Undo => self.undo(editor,
-                store, ui, &fonts, theme, fx),
-            EditorCommand::Redo => self.redo(editor,
-                store, ui, &fonts, theme, fx),
-            EditorCommand::Paste { text } => self.insert(editor, &text,
-                store, ui, &fonts, theme, fx),
+            EditorCommand::DeleteSelections => {
+                self.delete_selections(editor, store, ui, &fonts, theme, fx)
+            }
+            EditorCommand::Undo => self.undo(editor, store, ui, &fonts, theme, fx),
+            EditorCommand::Redo => self.redo(editor, store, ui, &fonts, theme, fx),
+            EditorCommand::Paste { text } => {
+                self.insert(editor, &text, store, ui, &fonts, theme, fx)
+            }
             EditorCommand::Move { motion, select } => {
-                self.move_carets(editor, motion, select,
-                store, ui, &fonts, theme);
+                self.move_carets(editor, motion, select, store, ui, &fonts, theme);
             }
             EditorCommand::SelectAll => self.select_all(editor),
             EditorCommand::CollapseCarets => self.collapse_carets(editor),
-            EditorCommand::AddCaretAbove => self.add_caret_vertically(editor, true,
-                store, ui, &fonts, theme),
-            EditorCommand::AddCaretBelow => self.add_caret_vertically(editor, false,
-                store, ui, &fonts, theme),
+            EditorCommand::AddCaretAbove => {
+                self.add_caret_vertically(editor, true, store, ui, &fonts, theme)
+            }
+            EditorCommand::AddCaretBelow => {
+                self.add_caret_vertically(editor, false, store, ui, &fonts, theme)
+            }
             EditorCommand::SelectNextOccurrence => self.select_next_occurrence(editor),
             EditorCommand::SelectAllOccurrences => self.select_all_occurrences(editor),
             EditorCommand::RevealSettled => {
@@ -1404,24 +1426,24 @@ impl Document {
                 }
             }
 
-            EditorCommand::RevealAt { byte } => self.reveal_at(editor, byte,
-                store, ui, &fonts, theme, fx),
+            EditorCommand::RevealAt { byte } => {
+                self.reveal_at(editor, byte, store, ui, &fonts, theme, fx)
+            }
             EditorCommand::Click { point, kind } => {
-                self.click_carets(editor, point, kind,
-                store, ui, &fonts, theme);
+                self.click_carets(editor, point, kind, store, ui, &fonts, theme);
 
                 self.set_focus(editor, EditorFocus::Text);
             }
-            EditorCommand::Drag { point } => self.drag_carets(editor, point,
-                store, ui, &fonts, theme),
+            EditorCommand::Drag { point } => {
+                self.drag_carets(editor, point, store, ui, &fonts, theme)
+            }
             EditorCommand::DragEnd => {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.drag = None;
                 }
             }
             EditorCommand::ToggleFold { range } => {
-                self.toggle_fold(editor, range,
-                store, ui, &fonts, theme, fx)
+                self.toggle_fold(editor, range, store, ui, &fonts, theme, fx)
             }
             EditorCommand::ToggleBeforeInlay { .. } => {}
             EditorCommand::Inlay { key, command } => {
@@ -1429,8 +1451,7 @@ impl Document {
                     command.downcast_ref::<crate::fold::FoldCommand>(),
                     Some(crate::fold::FoldCommand::Unfold)
                 ) {
-                    self.set_fold_departure(key, true,
-                store, ui, &fonts, theme, fx);
+                    self.set_fold_departure(key, true, store, ui, &fonts, theme, fx);
                 } else {
                     let fold_tick = matches!(
                         command.downcast_ref::<crate::fold::FoldCommand>(),
@@ -1452,8 +1473,7 @@ impl Document {
                             .fold_chip_at(key)
                             .is_some_and(crate::fold::FoldChip::departed)
                     {
-                        self.remove_inlay(key,
-                store, ui, &fonts, theme, fx);
+                        self.remove_inlay(key, store, ui, &fonts, theme, fx);
                     }
                 }
             }
@@ -1484,13 +1504,11 @@ impl Document {
                     // settled position — the correction has landed.
                     state.settle_to = None;
                 }
-                if self.resize(editor, width, anchor,
-                store, ui, &fonts, theme, fx) {
+                if self.resize(editor, width, anchor, store, ui, &fonts, theme, fx) {
                     return;
                 }
 
-                self.repair_visible_damage(editor,
-                store, ui, &fonts, theme, fx)
+                self.repair_visible_damage(editor, store, ui, &fonts, theme, fx)
             }
             EditorCommand::ToggleSoftwrap => {
                 let Some(state) = self.editors.get_mut(&editor) else {
@@ -1504,8 +1522,7 @@ impl Document {
                     .map_or(0, |viewport| state.layout.byte_at_y(viewport.start));
                 let target = state.target_width;
                 if target > 0.0 {
-                    self.resize(editor, target, anchor,
-                store, ui, &fonts, theme, fx);
+                    self.resize(editor, target, anchor, store, ui, &fonts, theme, fx);
                 }
             }
             EditorCommand::HorizontalScroll(delta) => {
@@ -1523,8 +1540,7 @@ impl Document {
                 if let Some(state) = self.editors.get_mut(&editor) {
                     state.viewport = Some(top..bottom);
                 }
-                self.retheme_editor(editor, anchor,
-                store, ui, &fonts, theme, fx)
+                self.retheme_editor(editor, anchor, store, ui, &fonts, theme, fx)
             }
             EditorCommand::ApplyReparse(outcome) => {
                 self.land_reparse(outcome, None, store, ui, &fonts, theme, fx);
@@ -1538,8 +1554,17 @@ impl Document {
                 let repl = view.utf16_to_byte(replacement.0)
                     ..view.utf16_to_byte(replacement.0.saturating_add(replacement.1));
                 let end = text.len().min(u32::MAX as usize) as u32;
-                self.set_marked_text(editor, &text, end..end, Some(repl),
-                store, ui, &fonts, theme, fx);
+                self.set_marked_text(
+                    editor,
+                    &text,
+                    end..end,
+                    Some(repl),
+                    store,
+                    ui,
+                    &fonts,
+                    theme,
+                    fx,
+                );
                 self.unmark_text(editor);
             }
             EditorCommand::SetMarkedText {
@@ -1553,8 +1578,7 @@ impl Document {
                     let mut view = self.text.view();
                     view.utf16_to_byte(start)..view.utf16_to_byte(start.saturating_add(len))
                 });
-                self.set_marked_text(editor, &text, sel, repl,
-                store, ui, &fonts, theme, fx)
+                self.set_marked_text(editor, &text, sel, repl, store, ui, &fonts, theme, fx)
             }
             EditorCommand::UnmarkText => {
                 self.unmark_text(editor);
@@ -1572,8 +1596,7 @@ impl Document {
                         range.end,
                     )),
                 );
-                if self.refresh_unhide(editor,
-                store, ui, &fonts, theme) {
+                if self.refresh_unhide(editor, store, ui, &fonts, theme) {
                     self.pending_repairs(fx);
                 }
             }
@@ -1588,8 +1611,7 @@ impl Document {
             }
         }
 
-        if self.refresh_unhide(editor,
-                store, ui, &fonts, theme) {
+        if self.refresh_unhide(editor, store, ui, &fonts, theme) {
             self.pending_repairs(fx);
         }
 
@@ -1617,12 +1639,10 @@ impl Document {
         }
 
         if let Some(range) = self.marked_of(editor) {
-            return self.replace_marked(editor,
-                store, ui, fonts, theme, range, text, None, fx);
+            return self.replace_marked(editor, store, ui, fonts, theme, range, text, None, fx);
         }
 
-        self.insert_at_carets(editor, text,
-                store, ui, fonts, theme, fx)
+        self.insert_at_carets(editor, text, store, ui, fonts, theme, fx)
     }
 
     pub fn set_marked_text(
@@ -1643,8 +1663,17 @@ impl Document {
         let Some(range) = range else {
             return;
         };
-        self.replace_marked(editor,
-                store, ui, fonts, theme, range, text, Some(selected), fx)
+        self.replace_marked(
+            editor,
+            store,
+            ui,
+            fonts,
+            theme,
+            range,
+            text,
+            Some(selected),
+            fx,
+        )
     }
 
     pub fn unmark_text(&mut self, editor: EditorId) {
@@ -1694,8 +1723,7 @@ impl Document {
             None => start.saturating_add(text_len),
         };
 
-        self.edit(&Operation::from_ops(ops),
-                store, ui, fonts, theme, fx);
+        self.edit(&Operation::from_ops(ops), store, ui, fonts, theme, fx);
 
         self.set_caret(editor, caret_after);
 
@@ -1721,8 +1749,7 @@ impl Document {
         };
         let inverse = entry.operation.invert();
         self.undo.replaying = true;
-        self.edit(&inverse,
-                store, ui, fonts, theme, fx);
+        self.edit(&inverse, store, ui, fonts, theme, fx);
         self.undo.replaying = false;
         self.restore_snapshot(editor, &entry.snapshot, true);
         self.undo.park_redo(entry);
@@ -1744,8 +1771,7 @@ impl Document {
             return;
         };
         self.undo.replaying = true;
-        self.edit(&entry.operation.clone(),
-                store, ui, fonts, theme, fx);
+        self.edit(&entry.operation.clone(), store, ui, fonts, theme, fx);
         self.undo.replaying = false;
         self.restore_snapshot(editor, &entry.snapshot, false);
         self.undo.restore_undo(entry);
@@ -1784,8 +1810,15 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_as(crate::EditIdentity::mint(), operation,
-                store, ui, fonts, theme, fx)
+        self.edit_as(
+            crate::EditIdentity::mint(),
+            operation,
+            store,
+            ui,
+            fonts,
+            theme,
+            fx,
+        )
     }
 
     pub fn edit_as(
@@ -1798,8 +1831,16 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_with(identity, Provenance::Ours, operation,
-                store, ui, fonts, theme, fx)
+        self.edit_with(
+            identity,
+            Provenance::Ours,
+            operation,
+            store,
+            ui,
+            fonts,
+            theme,
+            fx,
+        )
     }
 
     pub fn edit_shared(
@@ -1812,8 +1853,16 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.edit_with(identity, Provenance::Shared, operation,
-                store, ui, fonts, theme, fx)
+        self.edit_with(
+            identity,
+            Provenance::Shared,
+            operation,
+            store,
+            ui,
+            fonts,
+            theme,
+            fx,
+        )
     }
 
     fn edit_with(
@@ -1942,8 +1991,7 @@ impl Document {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal = true;
         }
-        if self.refresh_unhide(editor,
-                store, ui, fonts, theme) {
+        if self.refresh_unhide(editor, store, ui, fonts, theme) {
             self.pending_repairs(fx);
         }
     }
@@ -1965,8 +2013,7 @@ impl Document {
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal = true;
         }
-        if self.refresh_unhide(editor,
-                store, ui, fonts, theme) {
+        if self.refresh_unhide(editor, store, ui, fonts, theme) {
             self.pending_repairs(fx);
         }
     }
@@ -1984,8 +2031,7 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
-        self.reveal_at(editor, byte,
-                store, ui, fonts, theme, fx);
+        self.reveal_at(editor, byte, store, ui, fonts, theme, fx);
         if let Some(state) = self.editors.get_mut(&editor) {
             state.reveal_jump = true;
         }
@@ -2242,8 +2288,7 @@ impl Document {
             };
             editor.layout.mark_modified_in(0..byte_count);
         }
-        self.repair_damaged_viewports(
-                store, ui,fonts, theme, fx)
+        self.repair_damaged_viewports(store, ui, fonts, theme, fx)
     }
 
     pub fn apply_reparse_outcome(
@@ -2269,8 +2314,7 @@ impl Document {
                 }
             }
             let marked = started.elapsed();
-            self.repair_damaged_viewports(
-                store, ui,fonts, theme, fx);
+            self.repair_damaged_viewports(store, ui, fonts, theme, fx);
             if probe {
                 eprintln!(
                     "[landing] splice={:.2}ms mark={:.2}ms repair={:.2}ms ranges={}",
@@ -2529,8 +2573,7 @@ impl Document {
         );
 
         if let Some(operation) = edit {
-            self.edit(&operation,
-                store, ui, &fonts, theme, fx);
+            self.edit(&operation, store, ui, &fonts, theme, fx);
             if take_focus {
                 self.set_focus(editor, EditorFocus::Inlay(key));
             }
@@ -2538,7 +2581,8 @@ impl Document {
         if let Some((range, mode)) = performed {
             self.repair_editors(
                 crate::markup::inlay_repair_span(mode, &range),
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 theme,
                 fx,
@@ -2577,8 +2621,7 @@ impl Document {
             }
         }
         self.swap_inlay(key, range, inlay);
-        self.repair_editors(span,
-                store, ui, fonts, theme, fx)
+        self.repair_editors(span, store, ui, fonts, theme, fx)
     }
 
     pub(crate) fn repair_visible_damage(
@@ -2798,8 +2841,7 @@ impl Document {
         }
         changed.retain(|range| range.start < range.end);
         EditLog::coalesce(&mut changed);
-        self.replace_markup(markup, fresh, &changed,
-                store, ui, fonts, theme, fx);
+        self.replace_markup(markup, fresh, &changed, store, ui, fonts, theme, fx);
     }
 
     pub fn remove_diff(
@@ -2819,8 +2861,7 @@ impl Document {
         // The markup leaves FIRST: `remove_markup`'s stripe-membership
         // check still sees the diff, so the generation bumps and the
         // track owes a clearing relaunch.
-        self.remove_markup(markup, changed,
-                store, ui, fonts, theme, fx);
+        self.remove_markup(markup, changed, store, ui, fonts, theme, fx);
         self.diffs.remove_mut(&id);
     }
 
@@ -2910,8 +2951,7 @@ impl Document {
         if changed.is_empty() {
             return;
         }
-        self.reshape_markup_change(id, changed,
-                store, ui, fonts, theme, fx)
+        self.reshape_markup_change(id, changed, store, ui, fonts, theme, fx)
     }
 
     pub fn remove_markup(
@@ -2928,8 +2968,7 @@ impl Document {
             return;
         }
         if !changed.is_empty() {
-            self.reshape_markup_change(id, changed,
-                store, ui, fonts, theme, fx);
+            self.reshape_markup_change(id, changed, store, ui, fonts, theme, fx);
         }
         if self.stripes_markup(id) {
             self.scroll_stripe_generation += 1;
@@ -3208,8 +3247,7 @@ impl Document {
         if !self.editors.contains_key(&editor) {
             return None;
         }
-        self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0,
-                store, ui, fonts, theme)
+        self.caret_at_point_in(editor, x, y, 0.0, 0.0, 0.0, store, ui, fonts, theme)
     }
 }
 

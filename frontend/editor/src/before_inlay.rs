@@ -104,8 +104,7 @@ impl Document {
                 .unwrap_or_default();
             if !standing.is_empty() {
                 for key in standing {
-                    self.remove_inlay(key,
-                store, ui, fonts, theme, fx);
+                    self.remove_inlay(key, store, ui, fonts, theme, fx);
                 }
                 return;
             }
@@ -127,7 +126,8 @@ impl Document {
             wash_id,
             wash,
             &[],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -139,7 +139,8 @@ impl Document {
             Some(fragment_key),
             crate::document::EditorBuild::Complete,
             &[wash_id],
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             &mut imba::effect::Batch::new().effects(),
@@ -168,7 +169,8 @@ impl Document {
             markup_id,
             anchor,
             Inlay::new(InlayMode::Above, card).over_aligned(crate::markup::INLAY_HOST),
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
             fx,
@@ -228,8 +230,7 @@ impl Document {
         }
         complete(block.take(), &mut anchors);
         for at in anchors {
-            self.toggle_before_inlay(editor, at, base, diff, false,
-                store, ui, fonts, theme, fx);
+            self.toggle_before_inlay(editor, at, base, diff, false, store, ui, fonts, theme, fx);
         }
     }
 
@@ -445,10 +446,16 @@ impl imba::View for BeforeInlay {
                 let fonts = crate::env::ui_collection(store, ui);
                 let theme = crate::env::Themes::of(store);
                 fx.scope(BeforeCommand::Editor, |fx| {
-                    self.view
-                        .document
-                        .resize(self.view.editor, width, 0,
-                store, ui, &fonts, &theme, fx)
+                    self.view.document.resize(
+                        self.view.editor,
+                        width,
+                        0,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    )
                 });
             }
             BeforeCommand::Tick(now) => self.grow.advance(now),

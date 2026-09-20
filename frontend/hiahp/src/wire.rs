@@ -1516,10 +1516,7 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_locations(
-        &self,
-        channel: Uri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    fn poll_locations(&self, channel: Uri) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let polled = self.poll_channel(channel);
         Box::pin(async move {
             polled

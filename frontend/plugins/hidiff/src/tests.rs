@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn the_diff_panel_opens_edits_and_dismantles() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -27,7 +27,8 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         app.sole_window(),
         himarkdown::document_from_markdown(
             "# Shared\n\nleft body line\n\ntail\n",
-            app.store(), ui,
+            app.store(),
+            ui,
             &markdown_fonts,
             &theme
         ),
@@ -38,7 +39,8 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         app.sole_window(),
         himarkdown::document_from_markdown(
             "# Shared\n\nright body line — changed\n\ntail\nappended\n",
-            app.store(), ui,
+            app.store(),
+            ui,
             &markdown_fonts,
             &theme
         ),
@@ -114,7 +116,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 
 #[test]
 fn the_optimizer_landing_cancels_matching_edits() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -134,7 +136,8 @@ fn the_optimizer_landing_cancels_matching_edits() {
             app.sole_window(),
             himarkdown::document_from_markdown(
                 "# Shared\n\nbody line\n\ntail\n",
-            app.store(), ui,
+                app.store(),
+                ui,
                 &markdown_fonts,
                 &theme
             ),
@@ -207,8 +210,8 @@ fn the_optimizer_landing_cancels_matching_edits() {
 
 #[test]
 fn identical_documents_settle_spacer_free() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -227,8 +230,7 @@ fn identical_documents_settle_spacer_free() {
     for name in ["one.md", "two.md"] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body,
-                &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
             name.to_owned(),
             false,
         ));
@@ -280,8 +282,8 @@ fn identical_documents_settle_spacer_free() {
 
 #[test]
 fn every_keystroke_and_landing_keeps_the_pair_aligned() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -298,10 +300,9 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let markdown_fonts = himark::embedded_fonts::source()();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
-        let (mut document, blocks) = himarkdown::markdown_document(body,
-                &store, ui, &markdown_fonts, &theme);
-        demo::add_badges(&mut document, &blocks,
-                &store, ui, &markdown_fonts, &theme);
+        let (mut document, blocks) =
+            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
+        demo::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_owned(), false,));
     }
 
@@ -355,8 +356,8 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
 
 #[test]
 fn typed_insertions_paint_washes() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -375,8 +376,7 @@ fn typed_insertions_paint_washes() {
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body,
-                &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
             name.to_owned(),
             false,
         ));
@@ -481,10 +481,9 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         )
         .replace("- [ ] Paint real inline spans\n", "");
     for (name, body) in [("left.md", left_body), ("right.md", right_body.as_str())] {
-        let (mut document, blocks) = himarkdown::markdown_document(body,
-                &store, ui, &markdown_fonts, &theme);
-        demo::add_badges(&mut document, &blocks,
-                &store, ui, &markdown_fonts, &theme);
+        let (mut document, blocks) =
+            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
+        demo::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -548,8 +547,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(),
-                &store, ui, &markdown_fonts, &light)
+                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &light)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -565,8 +563,8 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
 
 #[test]
 fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -588,10 +586,9 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         ("left.md", left_body.as_str()),
         ("right.md", right_body.as_str()),
     ] {
-        let (mut document, blocks) = himarkdown::markdown_document(body,
-                &store, ui, &markdown_fonts, &theme);
-        demo::add_badges(&mut document, &blocks,
-                &store, ui, &markdown_fonts, &theme);
+        let (mut document, blocks) =
+            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
+        demo::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false));
     }
 
@@ -749,8 +746,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(),
-                &store, ui, &markdown_fonts, &theme)
+                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &theme)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -792,8 +788,8 @@ fn dump_pair(app: &Application) {
 
 #[test]
 fn washes_follow_the_scroll_into_deep_documents() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -828,8 +824,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     for (name, body) in [("left.md", &left_body), ("right.md", &right_body)] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body,
-                &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
             name.to_string(),
             false,
         ));
@@ -907,8 +902,8 @@ fn washes_follow_the_scroll_into_deep_documents() {
 
 #[test]
 fn scrolling_after_a_theme_toggle_converges() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -940,10 +935,9 @@ fn scrolling_after_a_theme_toggle_converges() {
 ",
     );
     for (name, body) in [("left.md", &left_body), ("right.md", &right_body)] {
-        let (mut document, blocks) = himarkdown::markdown_document(body,
-                &store, ui, &markdown_fonts, &theme);
-        demo::add_badges(&mut document, &blocks,
-                &store, ui, &markdown_fonts, &theme);
+        let (mut document, blocks) =
+            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
+        demo::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -1046,8 +1040,7 @@ fn scrolling_after_a_theme_toggle_converges() {
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
             let fresh_heights: Vec<(u32, i64)> = document
-                .fresh_layout_heights(entity.editor(),
-                &store, ui, &markdown_fonts, &light)
+                .fresh_layout_heights(entity.editor(), &store, ui, &markdown_fonts, &light)
                 .into_iter()
                 .map(|(byte, height)| (byte, height as i64))
                 .collect();
@@ -1063,8 +1056,8 @@ fn scrolling_after_a_theme_toggle_converges() {
 
 #[test]
 fn a_repair_captured_before_a_caret_move_discards_itself() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
 
@@ -1075,14 +1068,14 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
             )
         })
         .collect();
-    let (mut document, _) = himarkdown::markdown_document(&body,
-                &store, &ui, &fonts, &theme);
+    let (mut document, _) = himarkdown::markdown_document(&body, &store, &ui, &fonts, &theme);
     let editor = document.add_editor(
         360.0,
         None,
         ::editor::EditorBuild::Complete,
         &[],
-                &store, &ui,
+        &store,
+        &ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -1166,8 +1159,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 
 #[test]
 fn typing_into_a_table_cell_keeps_the_pair_aligned() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1184,10 +1177,9 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let markdown_fonts = himark::embedded_fonts::source()();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
-        let (mut document, blocks) = himarkdown::markdown_document(body,
-                &store, ui, &markdown_fonts, &theme);
-        demo::add_badges(&mut document, &blocks,
-                &store, ui, &markdown_fonts, &theme);
+        let (mut document, blocks) =
+            himarkdown::markdown_document(body, &store, ui, &markdown_fonts, &theme);
+        demo::add_badges(&mut document, &blocks, &store, ui, &markdown_fonts, &theme);
         assert!(app.add_document(app.sole_window(), document, name.to_string(), false,));
     }
 
@@ -1406,8 +1398,8 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
 
 #[test]
 fn an_edited_markdown_pair_settles_aligned() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1440,15 +1432,13 @@ fn an_edited_markdown_pair_settles_aligned() {
         + "\n## Appended Section\n\nA whole section that only exists on the right side of the pair.\n";
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&left_body,
-                &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&left_body, &store, ui, &markdown_fonts, &theme),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&right_body,
-                &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&right_body, &store, ui, &markdown_fonts, &theme),
         "right.md".to_owned(),
         false,
     ));
@@ -1494,20 +1484,20 @@ fn document_text(app: &Application, name: &str) -> String {
 
 #[test]
 fn dismantle_retracts_editors_and_removes_the_editorless_side() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
     let mut open = |body: &str, extra_editor: bool| {
-        let mut document = himarkdown::document_from_markdown(body,
-                &store, ui, &fonts, &theme);
+        let mut document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         let pane = extra_editor.then(|| {
             document.add_editor(
                 600.0,
                 None,
                 ::editor::EditorBuild::Bounded,
                 &[],
-            &store, ui,
+                &store,
+                ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -1518,7 +1508,8 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             None,
             ::editor::EditorBuild::Bounded,
             &[],
-            &store, ui,
+            &store,
+            ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
@@ -1642,7 +1633,7 @@ fn policy_store() -> imba::store::Store {
 
 #[test]
 fn the_panel_opens_dressed_with_no_effects_run() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
@@ -1651,8 +1642,7 @@ fn the_panel_opens_dressed_with_no_effects_run() {
         middle.push_str(&format!("line {line}: the quiet unchanged middle\n"));
     }
     let mut register = |body: &str, name: &str| {
-        let document = himarkdown::document_from_markdown(body,
-                &store, ui, &fonts, &theme);
+        let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         himark::OpenDocuments::register(&mut store, document, None, name.to_owned(), 0)
     };
     let old = register(&format!("{middle}old tail\n"), "old");
@@ -1693,13 +1683,12 @@ fn the_panel_opens_dressed_with_no_effects_run() {
 
 #[test]
 fn a_shared_pair_ignores_a_handed_prep() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
     let mut register = |body: &str, name: &str| {
-        let document = himarkdown::document_from_markdown(body,
-                &store, ui, &fonts, &theme);
+        let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         himark::OpenDocuments::register(&mut store, document, None, name.to_owned(), 0)
     };
     let old = register("one\ntwo\n", "old");
@@ -1711,8 +1700,14 @@ fn a_shared_pair_ignores_a_handed_prep() {
     let foreign_right = himark::Text::from_string_exact("something\nELSE\n".to_owned());
     let operation = myersdiff::diff(&foreign_left, &foreign_right);
     let marks = himark::prepare_marks(&operation, &foreign_left);
-    let panel = diff_panel(&mut store, &ui, old, new, Some(DiffPrep { operation, marks }))
-        .expect("the shared pair still opens");
+    let panel = diff_panel(
+        &mut store,
+        &ui,
+        old,
+        new,
+        Some(DiffPrep { operation, marks }),
+    )
+    .expect("the shared pair still opens");
 
     let state = panel.diff_state(&store).expect("attached");
     let entry_len = himark::OpenDocuments::document_ref(&store, new)
@@ -1735,8 +1730,8 @@ fn a_shared_pair_ignores_a_handed_prep() {
 
 #[test]
 fn a_settled_diff_pane_goes_quiet() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = himark::AppFonts::embedded();
     let mut app = himark::Application::new(fonts);
     let _ = app.add_window();
@@ -1759,8 +1754,7 @@ fn a_settled_diff_pane_goes_quiet() {
     ] {
         assert!(app.add_document(
             app.sole_window(),
-            himarkdown::document_from_markdown(body,
-                &store, ui, &markdown_fonts, &theme),
+            himarkdown::document_from_markdown(body, &store, ui, &markdown_fonts, &theme),
             name.to_owned(),
             false,
         ));
@@ -1799,7 +1793,7 @@ fn a_settled_diff_pane_goes_quiet() {
 
 #[test]
 fn the_unified_view_switches_between_split_and_inline() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1820,7 +1814,8 @@ fn the_unified_view_switches_between_split_and_inline() {
         app.sole_window(),
         himarkdown::document_from_markdown(
             &format!("old head\n\n{unchanged}\nold tail\n"),
-            app.store(), ui,
+            app.store(),
+            ui,
             &markdown_fonts,
             &theme
         ),
@@ -1831,7 +1826,8 @@ fn the_unified_view_switches_between_split_and_inline() {
         app.sole_window(),
         himarkdown::document_from_markdown(
             &format!("new head\n\n{unchanged}\nnew tail\n"),
-            app.store(), ui,
+            app.store(),
+            ui,
             &markdown_fonts,
             &theme
         ),
@@ -1959,8 +1955,8 @@ fn the_unified_view_switches_between_split_and_inline() {
 /// tens; the assert allows generous noise, never linearity.
 #[test]
 fn inline_diff_paint_cost_is_flat_across_the_document() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1990,15 +1986,13 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
     }
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&old_body,
-                &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme),
         "left.md".to_owned(),
         false,
     ));
     assert!(app.add_document(
         app.sole_window(),
-        himarkdown::document_from_markdown(&new_body,
-                &store, ui, &markdown_fonts, &theme),
+        himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme),
         "right.md".to_owned(),
         false,
     ));
@@ -2307,8 +2301,8 @@ fn folded_squash_paint_cost_is_size_independent() {
 
 #[test]
 fn a_full_click_on_host_text_keeps_host_focus() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2327,10 +2321,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
     let markdown_fonts = himark::embedded_fonts::source()();
-    let old = himarkdown::document_from_markdown(&old_body,
-                &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body,
-                &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
@@ -2428,8 +2420,8 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 
 #[test]
 fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2446,10 +2438,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
     let markdown_fonts = himark::embedded_fonts::source()();
-    let old = himarkdown::document_from_markdown(&old_body,
-                &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body,
-                &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
@@ -2610,8 +2600,8 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 // the half-pane width, and heal through the pair lane.
 #[test]
 fn the_split_face_folds_and_wraps_to_its_halves() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2628,10 +2618,8 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
     let markdown_fonts = himark::embedded_fonts::source()();
-    let old = himarkdown::document_from_markdown(&old_body,
-                &store, ui, &markdown_fonts, &theme);
-    let new = himarkdown::document_from_markdown(&new_body,
-                &store, ui, &markdown_fonts, &theme);
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());
     let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
@@ -2896,7 +2884,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 /// diff — the bug that motivated moving rows off throwaway snapshots.
 #[test]
 fn typing_in_a_canvas_row_updates_its_diff() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2991,7 +2979,8 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         let mut batch = imba::effect::Batch::new();
         document.edit(
             &operation::Operation::insert_at(5, "X"),
-            &store, ui,
+            &store,
+            ui,
             &fonts,
             &theme,
             &mut batch.effects(),
@@ -3385,7 +3374,9 @@ fn membership_follows_every_adopted_listing() {
 
     let mut lcg: u64 = 0x5eed_cafe;
     let mut rand = move || {
-        lcg = lcg.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        lcg = lcg
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         lcg >> 33
     };
 
@@ -3480,7 +3471,10 @@ fn membership_minimal_repro() {
     let ui = imba::UiCtx::dont_use_too_slow();
     let ready = |names: &[&str], gen: u64| {
         himark::diff_canvas::CanvasListing::Ready(
-            names.iter().map(|name| canvas_file(&key(name), gen)).collect(),
+            names
+                .iter()
+                .map(|name| canvas_file(&key(name), gen))
+                .collect(),
         )
     };
 

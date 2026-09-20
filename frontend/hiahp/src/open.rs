@@ -24,13 +24,13 @@ pub fn document_for(
             himark::Text::from_string_exact(source),
             &extension,
             languages,
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
         );
     }
-    himarkdown::document_from_markdown(source,
-                store, ui, fonts, theme)
+    himarkdown::document_from_markdown(source, store, ui, fonts, theme)
 }
 
 pub fn install_open_handlers(

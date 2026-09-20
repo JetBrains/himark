@@ -195,8 +195,9 @@ impl himark::higent::AhpServer for StreamSeat {
         &self,
         _working_directory: Option<String>,
         _config: Option<serde_json::Map<String, serde_json::Value>>,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>
-    {
+    ) -> himark::higent::SeatFuture<
+        Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>,
+    > {
         unreachable!()
     }
     fn dispose_session(&self, _session: String) -> himark::higent::SeatFuture<Result<(), String>> {
@@ -205,7 +206,8 @@ impl himark::higent::AhpServer for StreamSeat {
     fn subscribe_session(
         &self,
         _session: String,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::SessionState, String>> {
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::SessionState, String>>
+    {
         unreachable!()
     }
     fn poll_session(
@@ -220,7 +222,8 @@ impl himark::higent::AhpServer for StreamSeat {
     fn subscribe_chat(
         &self,
         _chat: String,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChatState, String>> {
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChatState, String>>
+    {
         unreachable!()
     }
     fn fetch_turns(
@@ -328,7 +331,8 @@ impl himark::higent::AhpServer for StreamSeat {
     fn subscribe_changeset(
         &self,
         _channel: String,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChangesetState, String>> {
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChangesetState, String>>
+    {
         unreachable!()
     }
     fn poll_changeset(
@@ -343,7 +347,9 @@ impl himark::higent::AhpServer for StreamSeat {
     fn subscribe_annotations(
         &self,
         _session: String,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::AnnotationsState, String>> {
+    ) -> himark::higent::SeatFuture<
+        Result<himark::higent::ahp_types::state::AnnotationsState, String>,
+    > {
         unreachable!()
     }
     fn poll_annotations(
@@ -352,7 +358,11 @@ impl himark::higent::AhpServer for StreamSeat {
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn dispatch_annotations(&self, _session: &String, _action: himark::higent::ahp_types::actions::StateAction) {
+    fn dispatch_annotations(
+        &self,
+        _session: &String,
+        _action: himark::higent::ahp_types::actions::StateAction,
+    ) {
         unreachable!()
     }
     fn unsubscribe_annotations(&self, _session: &String) {
@@ -430,7 +440,9 @@ impl himark::EffectHandler<himark::higent::PollLocationsEffect> for SeatPollLoca
 
 struct SeatUnsubscribeLocations;
 
-impl himark::EffectHandler<himark::higent::UnsubscribeLocationsEffect> for SeatUnsubscribeLocations {
+impl himark::EffectHandler<himark::higent::UnsubscribeLocationsEffect>
+    for SeatUnsubscribeLocations
+{
     async fn handle(&self, effect: himark::higent::UnsubscribeLocationsEffect) {
         effect.seat.unsubscribe_locations(&effect.channel);
     }
@@ -458,7 +470,12 @@ impl himark::EffectHandler<himark::LspLocationsEffect> for StubLspLocations {
     }
 }
 
-fn wire_location(uri: &str, line: u32, column: u32, context: &str) -> himark_ahp_ext_types::Location {
+fn wire_location(
+    uri: &str,
+    line: u32,
+    column: u32,
+    context: &str,
+) -> himark_ahp_ext_types::Location {
     himark_ahp_ext_types::Location {
         uri: uri.to_owned(),
         line,
@@ -520,10 +537,10 @@ fn references_stream_into_the_search_dock() {
     assert!(row.done && !row.truncated);
     assert_eq!(row.locations.len(), 3, "the stream landed, resolved");
     assert_eq!(
-        row.locations.iter().filter(|found| found
-            .location
-            .name()
-            .ends_with("far.rs")).count(),
+        row.locations
+            .iter()
+            .filter(|found| found.location.name().ends_with("far.rs"))
+            .count(),
         1
     );
     assert_eq!(

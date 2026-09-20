@@ -459,15 +459,22 @@ mod tests {
     #[test]
     fn locations_stream_per_file_with_positions() {
         let dir = tempfile::tempdir().expect("tempdir");
-        std::fs::write(dir.path().join("a.md"), "needle one needle\nplain\nneedle\n")
-            .expect("write");
+        std::fs::write(
+            dir.path().join("a.md"),
+            "needle one needle\nplain\nneedle\n",
+        )
+        .expect("write");
         std::fs::write(dir.path().join("b.md"), "tail Needle\n").expect("write");
         std::fs::write(dir.path().join("c.md"), "nothing here\n").expect("write");
         let folders = vec![dir.path().to_path_buf()];
 
         let leash = AtomicBool::new(false);
-        let (emitted, truncated) =
-            collect_locations(&folders, &content_query("needle", SearchKind::Text), 100, &leash);
+        let (emitted, truncated) = collect_locations(
+            &folders,
+            &content_query("needle", SearchKind::Text),
+            100,
+            &leash,
+        );
         assert!(!truncated);
         assert_eq!(emitted.len(), 2, "one emission per matched file");
 
@@ -495,8 +502,12 @@ mod tests {
         let folders = vec![dir.path().to_path_buf()];
 
         let leash = AtomicBool::new(false);
-        let (emitted, _) =
-            collect_locations(&folders, &content_query("needle", SearchKind::Text), 100, &leash);
+        let (emitted, _) = collect_locations(
+            &folders,
+            &content_query("needle", SearchKind::Text),
+            100,
+            &leash,
+        );
         let found = &emitted[0].matches[0];
         assert_eq!(found.column, 500);
         assert_eq!(found.context.len(), MAX_CONTEXT);
@@ -526,8 +537,12 @@ mod tests {
         let folders = vec![dir.path().to_path_buf()];
 
         let leash = AtomicBool::new(true);
-        let (emitted, truncated) =
-            collect_locations(&folders, &content_query("needle", SearchKind::Text), 100, &leash);
+        let (emitted, truncated) = collect_locations(
+            &folders,
+            &content_query("needle", SearchKind::Text),
+            100,
+            &leash,
+        );
         assert!(emitted.is_empty());
         assert!(truncated, "a cancelled scan reports the cut");
 

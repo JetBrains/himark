@@ -32,8 +32,7 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, text,
-                store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, text, store, ui, fonts, theme, fx)
     }
 
     pub fn delete_selections(
@@ -51,8 +50,7 @@ impl Document {
             .iter()
             .map(|caret| caret.selection())
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "",
-                store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
     }
 
     pub fn delete_at_carets(
@@ -100,8 +98,7 @@ impl Document {
                 target.min(offset)..target.max(offset)
             })
             .collect();
-        self.replace_at_carets(editor, carets, ranges, "",
-                store, ui, fonts, theme, fx)
+        self.replace_at_carets(editor, carets, ranges, "", store, ui, fonts, theme, fx)
     }
 
     pub fn replace_at_carets(
@@ -120,8 +117,7 @@ impl Document {
         if operation.is_empty() {
             return;
         }
-        self.edit(&operation,
-                store, ui, fonts, theme, fx);
+        self.edit(&operation, store, ui, fonts, theme, fx);
         self.set_carets(editor, after);
     }
 
@@ -140,7 +136,8 @@ impl Document {
                 editor,
                 matches!(motion, Motion::Down),
                 select,
-                store, ui,
+                store,
+                ui,
                 fonts,
                 theme,
             );
@@ -196,7 +193,8 @@ impl Document {
                 caret.offset(),
                 goal,
                 down,
-                store, ui,
+                store,
+                ui,
                 fonts,
                 theme,
             ) {
@@ -233,10 +231,16 @@ impl Document {
         let Some(edge) = edge else {
             return;
         };
-        let Some((target, x)) =
-            self.vertical_caret_target(editor, edge.offset(), edge.goal_x(), !above,
-                store, ui, fonts, theme)
-        else {
+        let Some((target, x)) = self.vertical_caret_target(
+            editor,
+            edge.offset(),
+            edge.goal_x(),
+            !above,
+            store,
+            ui,
+            fonts,
+            theme,
+        ) else {
             return;
         };
         self.set_carets(editor, carets.with_added(Caret::at(target).with_goal(x)));
@@ -331,8 +335,8 @@ impl Document {
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y,
-                store, ui, fonts, theme) else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, fonts, theme)
+        else {
             return;
         };
         let window = self.window(editor);
@@ -397,8 +401,8 @@ impl Document {
         else {
             return;
         };
-        let Some(byte) = self.byte_at_point(editor, point.x, point.y,
-                store, ui, fonts, theme) else {
+        let Some(byte) = self.byte_at_point(editor, point.x, point.y, store, ui, fonts, theme)
+        else {
             return;
         };
         let window = self.window(editor);

@@ -34,14 +34,14 @@ mod helpers {
             .run_reparse();
         let invalidated = document.apply_reparse_outcome(
             outcome,
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
         if let Some(invalidated) = invalidated {
-            document.enrich_sync(&enrichers(), &invalidated,
-                store, ui, &fonts(), &theme());
+            document.enrich_sync(&enrichers(), &invalidated, store, ui, &fonts(), &theme());
         }
     }
 
@@ -78,15 +78,16 @@ fn diagram_inlay(
 
 #[test]
 fn a_mermaid_fence_carries_the_diagram_under_it() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "# Title\n\n```mermaid\nflowchart TD\n    Start --> Finish\n```\n\ntail\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
         "markdown",
         &registry,
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
     );
@@ -118,15 +119,16 @@ fn a_mermaid_fence_carries_the_diagram_under_it() {
 
 #[test]
 fn typing_in_the_fence_rerenders_the_diagram() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "```mermaid\nflowchart TD\n    Start --> Middle\n```\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
         "markdown",
         &registry,
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
     );
@@ -136,7 +138,8 @@ fn typing_in_the_fence_rerenders_the_diagram() {
     let at = source.find("\n```").expect("closing fence") as u32;
     document.edit(
         &operation::Operation::insert_at(at, "\n    Middle --> Finish"),
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -159,20 +162,20 @@ fn typing_in_the_fence_rerenders_the_diagram() {
 
 #[test]
 fn a_pure_mermaid_file_renders_source_plus_diagram() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "flowchart LR\n    A --> B\n    B --> C\n";
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
         "mmd",
         &languages(),
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
     );
 
-    document.enrich_now(&enrichers(),
-                store, ui, &fonts(), &theme());
+    document.enrich_now(&enrichers(), store, ui, &fonts(), &theme());
     let (_, mode, is_diagram, _) =
         diagram_inlay(&document).expect("the whole file renders a diagram");
     assert_eq!(mode, InlayMode::Under);
@@ -187,15 +190,16 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
 
 #[test]
 fn broken_source_shows_the_error_strip_until_it_parses() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "```mermaid\nnot a diagram at all\n```\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
         "markdown",
         &registry,
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
     );
@@ -210,7 +214,8 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
             operation::Op::Delete("not a diagram at all".into()),
             operation::Op::Insert("flowchart TD\n    A --> B".into()),
         ]),
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
         &mut imba::effect::Batch::new().effects(),

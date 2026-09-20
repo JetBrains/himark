@@ -353,7 +353,8 @@ impl ReparseHandler {
     pub fn reparse(&self, work: ReparseWork) -> ReparseOutcome {
         let fonts = self.0.fonts();
         let theme = self.0.theme();
-        self.0.with_ctx(|store, ui| work.run(store, ui, &fonts, &theme))
+        self.0
+            .with_ctx(|store, ui| work.run(store, ui, &fonts, &theme))
     }
 }
 

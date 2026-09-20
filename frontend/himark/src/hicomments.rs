@@ -69,15 +69,15 @@ impl crate::DynamicEditorCommand for AddComment {
             sync::Comments::created(store, location, range)
         };
 
-        let view = CommentView::new(host, width,
-                store, ui, &fonts, &theme, annotation.clone());
+        let view = CommentView::new(host, width, store, ui, &fonts, &theme, annotation.clone());
         let markup = comments_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
             markup,
             selection.clone(),
             Inlay::new(InlayMode::Under, view.clone()),
-                store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             fx,
@@ -242,7 +242,8 @@ impl CommentView {
         let mut editor = EditorView::of_document(
             markdown_comment_document(crate::Text::from_string_exact("")),
             (width - chrome.pad * 2.0).max(120.0),
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
         );
@@ -279,15 +280,22 @@ impl CommentView {
                 own_text.unwrap_or_else(|| crate::Text::from_string_exact("")),
             ),
             inner,
-                store, ui,
+            store,
+            ui,
             fonts,
             theme,
         );
         let foreign = foreign_texts
             .into_iter()
             .map(|text| {
-                EditorView::of_document(markdown_comment_document(text), inner,
-                store, ui, fonts, theme)
+                EditorView::of_document(
+                    markdown_comment_document(text),
+                    inner,
+                    store,
+                    ui,
+                    fonts,
+                    theme,
+                )
             })
             .collect();
         let reported_revision = editor.document.revision();
@@ -473,10 +481,16 @@ impl View for CommentView {
                 let fonts = crate::env::ui_collection(store, ui);
                 let theme = crate::env::Themes::of(store);
                 fx.scope(CommentCommand::Editor, |fx| {
-                    self.editor
-                        .document
-                        .resize(self.editor.editor, width, 0,
-                store, ui, &fonts, &theme, fx)
+                    self.editor.document.resize(
+                        self.editor.editor,
+                        width,
+                        0,
+                        store,
+                        ui,
+                        &fonts,
+                        &theme,
+                        fx,
+                    )
                 });
             }
             CommentCommand::Remove => {

@@ -247,20 +247,17 @@ impl PeekView {
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
             view.document
-                .replace_markup(markup, tints, &changed,
-                store, ui, &fonts, &theme, fx)
+                .replace_markup(markup, tints, &changed, store, ui, &fonts, &theme, fx)
         });
         view.set_caret(hit);
         let editor = view.editor;
         fx.scope(scoped, |fx| {
             view.document
-                .reveal_at_instant(editor, hit,
-                store, ui, &fonts, &theme, fx)
+                .reveal_at_instant(editor, hit, store, ui, &fonts, &theme, fx)
         });
         let reveal = view
             .document
-            .caret_content_rect(editor, hit,
-                store, ui, &fonts, &theme)
+            .caret_content_rect(editor, hit, store, ui, &fonts, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0));
         if let Some(reveal) = reveal {
             preview.set_scroll_y(reveal);
@@ -305,8 +302,16 @@ impl PeekView {
         tints.push_styled(target.clone(), crate::theme::StyleId::Match);
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
-            document.replace_markup(markup, tints, &[target.clone()],
-                store, ui, &fonts, &theme, fx)
+            document.replace_markup(
+                markup,
+                tints,
+                &[target.clone()],
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            )
         });
 
         let detail = (self.width * 0.6 - 1.0).max(120.0);
@@ -316,7 +321,8 @@ impl PeekView {
                 None,
                 ::editor::EditorBuild::Bounded,
                 &[],
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 fx,
@@ -324,12 +330,10 @@ impl PeekView {
         });
         document.show_markup(editor, markup);
         fx.scope(scoped, |fx| {
-            document.reveal_at_instant(editor, hit,
-                store, ui, &fonts, &theme, fx)
+            document.reveal_at_instant(editor, hit, store, ui, &fonts, &theme, fx)
         });
         let reveal = document
-            .caret_content_rect(editor, hit,
-                store, ui, &fonts, &theme)
+            .caret_content_rect(editor, hit, store, ui, &fonts, &theme)
             .map(|(_, y, _, _)| (y - PEEK_HEIGHT / 3.0).max(0.0))
             .unwrap_or(0.0);
         let mut view = EditorView {
@@ -368,7 +372,13 @@ impl PeekView {
             AppRequests::push(store, Arc::new(DisposeFeed { feed: self.feed }));
         }
         if let (Some(host), Some(key)) = (self.host, self.key) {
-            AppRequests::push(store, Arc::new(RemovePeek { document: host, key }));
+            AppRequests::push(
+                store,
+                Arc::new(RemovePeek {
+                    document: host,
+                    key,
+                }),
+            );
         }
     }
 }
@@ -536,7 +546,14 @@ impl View for PeekView {
             // promote chip fronting the SAME feed in the Search tab.
             let row = LocationsFeeds::row_ref(store, self.feed);
             let (hits, done, truncated, title) = row
-                .map(|row| (row.locations.len(), row.done, row.truncated, row.title.as_str()))
+                .map(|row| {
+                    (
+                        row.locations.len(),
+                        row.done,
+                        row.truncated,
+                        row.title.as_str(),
+                    )
+                })
                 .unwrap_or((0, true, true, ""));
             let state = match (done, truncated) {
                 (false, _) => format!("{hits} — searching…"),
@@ -592,12 +609,12 @@ impl View for PeekView {
                 card.place(
                     0.0,
                     0.0,
-                    imba::leaf::leaf::<PeekCommand>(1.0, 1.0).event(
-                        move |_arena, event, _size| match event {
+                    imba::leaf::leaf::<PeekCommand>(1.0, 1.0).event(move |_arena, event, _size| {
+                        match event {
                             Event::Paint { .. } => EventResult::Command(PeekCommand::Refresh),
                             _ => EventResult::Ignored,
-                        },
-                    ),
+                        }
+                    }),
                 );
             }
             card.wrap_realized(move |card| PeekWidget { card, size })
@@ -743,7 +760,8 @@ impl crate::DynamicEditorCommand for GoToReference {
             markup,
             anchor.clone(),
             Inlay::new(InlayMode::Under, view.clone()),
-                store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             fx,
@@ -777,11 +795,19 @@ fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>>
     let mut view = document.text().view();
     if caret < len {
         let head = view.substring(caret..(caret + 4).min(len));
-        let step = head.chars().next().map(|ch| ch.len_utf8() as u32).unwrap_or(1);
+        let step = head
+            .chars()
+            .next()
+            .map(|ch| ch.len_utf8() as u32)
+            .unwrap_or(1);
         Some(caret..(caret + step).min(len))
     } else {
         let tail = view.substring(len.saturating_sub(4)..len);
-        let step = tail.chars().last().map(|ch| ch.len_utf8() as u32).unwrap_or(1);
+        let step = tail
+            .chars()
+            .last()
+            .map(|ch| ch.len_utf8() as u32)
+            .unwrap_or(1);
         Some(len.saturating_sub(step)..len)
     }
 }
@@ -887,7 +913,8 @@ mod tests {
             None,
             ::editor::EditorBuild::Complete,
             &[],
-                store, ui,
+            store,
+            ui,
             &fonts,
             &theme,
             &mut batch.effects(),
@@ -906,7 +933,8 @@ mod tests {
                 markup,
                 anchor,
                 crate::Inlay::new(crate::InlayMode::Under, ProbeCard),
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 &mut batch.effects(),
@@ -916,8 +944,7 @@ mod tests {
                 with_card > bare,
                 "the anchored card reserves height: {with_card} vs {bare}"
             );
-            document.remove_inlay(key,
-                store, ui, &fonts, &theme, &mut batch.effects());
+            document.remove_inlay(key, store, ui, &fonts, &theme, &mut batch.effects());
         }
     }
 

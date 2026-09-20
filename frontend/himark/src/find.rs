@@ -289,8 +289,7 @@ impl FindBar {
                 markup
             }
         };
-        document.replace_markup(markup, tints, &changed,
-                store, ui, fonts, theme, fx);
+        document.replace_markup(markup, tints, &changed, store, ui, fonts, theme, fx);
         self.scanned = Some((landed.revision, landed.query.clone()));
 
         self.current = self.current.min(matches.len().saturating_sub(1));
@@ -328,8 +327,7 @@ impl FindBar {
         let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
             return;
         };
-        document.reveal_selecting(editor, found,
-                store, ui, fonts, theme, fx);
+        document.reveal_selecting(editor, found, store, ui, fonts, theme, fx);
         crate::OpenDocuments::put_document(store, document_id, document);
     }
 
@@ -347,8 +345,7 @@ impl FindBar {
         let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
             return;
         };
-        document.remove_markup(markup, &self.matches,
-                store, ui, fonts, theme, fx);
+        document.remove_markup(markup, &self.matches, store, ui, fonts, theme, fx);
         crate::OpenDocuments::put_document(store, document_id, document);
     }
 

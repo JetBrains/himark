@@ -21,10 +21,7 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
             return Err("no folders to search".to_owned());
         };
         let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, first) else {
-            return Err(format!(
-                "no seat serves {}",
-                first.authority().as_str()
-            ));
+            return Err(format!("no seat serves {}", first.authority().as_str()));
         };
         // A session's folders live on one seat; a stray foreign
         // authority in the list is skipped, not multiplexed.
@@ -97,9 +94,7 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
 /// The way back from a stream's resource URIs to locations — the
 /// asked location's authority is reused, so remote-seat results stay
 /// on the remote authority (the lsproute precedent).
-fn resolver(
-    authority: Authority,
-) -> Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync> {
+fn resolver(authority: Authority) -> Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync> {
     Arc::new(move |uri| {
         ResourceUriMap::location_of(
             &crate::uris::FileUris,

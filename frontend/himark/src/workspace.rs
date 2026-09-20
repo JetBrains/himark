@@ -225,8 +225,7 @@ impl Effect for FindEffect {
 pub struct LocationsChannel {
     pub seat: std::sync::Arc<dyn crate::higent::AhpServer>,
     pub channel: String,
-    pub resolve:
-        std::sync::Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync>,
+    pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync>,
 }
 
 /// The streaming content search ask. Answers the channel; results

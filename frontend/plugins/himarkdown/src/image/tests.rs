@@ -95,10 +95,9 @@ impl Fetches {
 }
 
 fn md(source: &str) -> himark::Document {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
-    crate::document_from_markdown(source,
-                store, ui, &fonts(), &theme())
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
+    crate::document_from_markdown(source, store, ui, &fonts(), &theme())
 }
 
 fn input(document: &himark::Document, source: &str, previous: Markup) -> EnrichInput {
@@ -144,8 +143,7 @@ fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     };
     let mut entry = over.previous.clone();
     if !fresh.changed.is_empty() {
-        entry.splice(&fresh.changed, fresh.replacement,
-                store, ui, &fonts, &theme);
+        entry.splice(&fresh.changed, fresh.replacement, store, ui, &fonts, &theme);
     }
     entry
 }

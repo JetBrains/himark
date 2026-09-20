@@ -928,8 +928,7 @@ impl Host {
                         .subscribers
                         .get(*channel)
                         .is_none_or(|rows| rows.is_empty());
-                    unsubscribed
-                        && (entry.connection == connection || touched.contains(channel))
+                    unsubscribed && (entry.connection == connection || touched.contains(channel))
                 })
                 .map(|(channel, _)| channel.clone())
                 .collect();
@@ -2404,7 +2403,11 @@ impl Host {
                 let mut resolved = Vec::new();
                 for entry in entries {
                     let Some(path) = crate::uris::file_path(entry) else {
-                        return Err(rpc::failure(id, INVALID_PARAMS, "folders must be file uris"));
+                        return Err(rpc::failure(
+                            id,
+                            INVALID_PARAMS,
+                            "folders must be file uris",
+                        ));
                     };
                     resolved.push(path);
                 }
@@ -2496,7 +2499,12 @@ impl Host {
     /// one `locations/extend` per matched file, a final `done`
     /// action closing the story. The channel's token is the leash;
     /// disposal (the last unsubscribe, a dying connection) flips it.
-    fn search_locations(self: &Arc<Self>, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
+    fn search_locations(
+        self: &Arc<Self>,
+        connection: u64,
+        id: u64,
+        params: Value,
+    ) -> JsonRpcMessage {
         const DEFAULT_LIMIT: usize = 1024;
         const LIMIT_CAP: usize = 10_000;
         let params: himark_ahp_ext_types::SearchLocationsParams =
@@ -2535,8 +2543,7 @@ impl Host {
         let fan_out = channel.clone();
         tokio::task::spawn_blocking(move || {
             let emit = |batch: hifind::FileMatches| {
-                let uri =
-                    crate::uris::file_uri(&folders[batch.folder].join(&batch.relative));
+                let uri = crate::uris::file_uri(&folders[batch.folder].join(&batch.relative));
                 let locations = batch
                     .matches
                     .into_iter()
@@ -4348,7 +4355,9 @@ fn lsp_location_groups(result: &Value) -> Vec<(String, Vec<LspRange>)> {
     let mut order: Vec<String> = Vec::new();
     let mut groups: HashMap<String, Vec<LspRange>> = HashMap::new();
     for entry in entries {
-        let uri = entry["uri"].as_str().or_else(|| entry["targetUri"].as_str());
+        let uri = entry["uri"]
+            .as_str()
+            .or_else(|| entry["targetUri"].as_str());
         let range = ["range", "targetSelectionRange", "targetRange"]
             .iter()
             .map(|key| &entry[*key])

@@ -193,9 +193,9 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
     let mut state = {
         let seat = Arc::clone(&channel.seat);
         let subscribed = channel.channel.clone();
-        block_on(Box::pin(
-            async move { seat.subscribe_locations(subscribed).await },
-        ))
+        block_on(Box::pin(async move {
+            seat.subscribe_locations(subscribed).await
+        }))
         .expect("snapshot")
     };
     while !state.done {
@@ -216,10 +216,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
         .iter()
         .map(|location| location.context.as_str())
         .collect();
-    assert!(
-        contexts.contains(&"conflation is delivery"),
-        "{contexts:?}"
-    );
+    assert!(contexts.contains(&"conflation is delivery"), "{contexts:?}");
 
     // The cancel: dropping the one subscription disposes the channel —
     // a fresh subscribe finds nothing behind the URI.

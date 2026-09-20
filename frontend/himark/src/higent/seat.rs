@@ -172,18 +172,13 @@ pub trait AhpServer: Send + Sync + 'static {
         channel: Uri,
     ) -> SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let _ = channel;
-        Box::pin(std::future::ready(Err(
-            "locations@1 not served".to_owned(),
-        )))
+        Box::pin(std::future::ready(Err("locations@1 not served".to_owned())))
     }
 
     /// Typed poll: only `locations/extend` bodies come back, in
     /// arrival order. A seat that never served the subscribe is
     /// never polled.
-    fn poll_locations(
-        &self,
-        channel: Uri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    fn poll_locations(&self, channel: Uri) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let _ = channel;
         Box::pin(std::future::pending())
     }

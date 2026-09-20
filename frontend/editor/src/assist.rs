@@ -119,8 +119,7 @@ impl Document {
         }
         let operation = builder.finish();
         if !operation.is_empty() {
-            self.edit(&operation,
-                store, ui, fonts, theme, fx);
+            self.edit(&operation, store, ui, fonts, theme, fx);
         }
         self.set_carets(
             editor,

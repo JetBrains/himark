@@ -35,7 +35,7 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
 }
 
 fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let location = OpenDocuments::location(&store, script).expect("located");
     let mut document = OpenDocuments::document(&store, script).expect("the document");
     let editor = document.add_editor(
@@ -43,7 +43,8 @@ fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
         None,
         himark::EditorBuild::Complete,
         &[],
-                store, ui,
+        store,
+        ui,
         &himark::embedded_fonts::source()(),
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
@@ -51,7 +52,8 @@ fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
     let mut batch = imba::effect::Batch::new();
     himark::DynamicEditorCommand::perform(
         &RunScript,
-        store, ui,
+        store,
+        ui,
         &mut document,
         editor,
         &location,
@@ -83,7 +85,7 @@ fn landed(
     script: DocumentId,
     landing: ScriptLanding,
 ) -> imba::effect::Batch<himark::EditorCommand> {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let location = OpenDocuments::location(&store, script).expect("located");
     let mut document = OpenDocuments::document(&store, script).expect("the document");
     let editor = document.add_editor(
@@ -91,7 +93,8 @@ fn landed(
         None,
         himark::EditorBuild::Complete,
         &[],
-                store, ui,
+        store,
+        ui,
         &himark::embedded_fonts::source()(),
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
@@ -99,7 +102,8 @@ fn landed(
     let mut batch = imba::effect::Batch::new();
     himark::DynamicEditorCommand::perform(
         &RunScript,
-        store, ui,
+        store,
+        ui,
         &mut document,
         editor,
         &location,
@@ -117,7 +121,7 @@ const APPEND_SCRIPT: &str = r#"export default async function (himark) {
 
 #[test]
 fn a_run_reads_the_open_document_and_lands_its_write() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(&mut store, &["repo", "walk.js"], APPEND_SCRIPT);
     let plan = registered(&mut store, &["repo", "plan.md"], "alpha");
@@ -134,7 +138,7 @@ fn a_run_reads_the_open_document_and_lands_its_write() {
 
 #[test]
 fn a_failed_run_commits_nothing() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -161,7 +165,7 @@ fn a_failed_run_commits_nothing() {
 
 #[test]
 fn an_unopened_target_stores_through_the_host() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -189,7 +193,7 @@ fn an_unopened_target_stores_through_the_host() {
 
 #[test]
 fn typing_mid_run_discards_the_write() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(&mut store, &["repo", "walk.js"], APPEND_SCRIPT);
     let plan = registered(&mut store, &["repo", "plan.md"], "alpha");
@@ -409,7 +413,7 @@ fn complete() -> StateAction {
 
 #[test]
 fn an_agent_ask_drives_a_turn_and_lands_the_reply() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -444,7 +448,7 @@ fn an_agent_ask_drives_a_turn_and_lands_the_reply() {
 
 #[test]
 fn a_failed_turn_fails_the_run() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -511,7 +515,7 @@ fn an_agentless_ask_names_the_missing_session() {
 
 #[test]
 fn shows_file_now_or_ride_their_store() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -549,14 +553,16 @@ fn shows_file_now_or_ride_their_store() {
             None,
             himark::EditorBuild::Complete,
             &[],
-                store, &ui,
+            store,
+            &ui,
             &himark::embedded_fonts::source()(),
             &himark::env::Themes::of(store),
             &mut imba::effect::Batch::new().effects(),
         );
         himark::DynamicEditorCommand::perform(
             &RunScript,
-            store, &ui,
+            store,
+            &ui,
             &mut document,
             editor,
             &location,

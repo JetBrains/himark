@@ -250,7 +250,8 @@ impl CommentsView {
             list: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
-                store, ui,
+                store,
+                ui,
                 crate::env::Fonts::of(store),
             ),
             items: rpds::HashTrieMapSync::new_sync(),

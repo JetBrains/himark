@@ -5,18 +5,24 @@ use super::*;
 
 #[test]
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
-    let mut document = document_from_markdown("# Title\n\nsome **bold** words\n",
-                store, ui, &fonts, &theme);
+    let mut document = document_from_markdown(
+        "# Title\n\nsome **bold** words\n",
+        store,
+        ui,
+        &fonts,
+        &theme,
+    );
     let editor = document.add_editor(
         700.0,
         None,
         himark::EditorBuild::Complete,
         &[],
-                store, ui,
+        store,
+        ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -41,8 +47,7 @@ fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     );
 
     document.set_caret(editor, 15);
-    document.refresh_unhide(editor,
-                store, ui, &fonts, &theme);
+    document.refresh_unhide(editor, store, ui, &fonts, &theme);
     assert!(hidden_at(&document, 0..8) >= 1, "the # re-hides off-caret");
     assert_eq!(hidden_at(&document, 9..29), 0, "caret line shows its **");
 }

@@ -151,8 +151,8 @@ impl Toolbar {
         let document = crate::Document::new(text::Text::from_string_exact(text), markup);
         let fonts = ::editor::env::Fonts::of(store);
         let theme = ::editor::env::Themes::of(store);
-        let mut input = EditorView::of_document(document, width.max(1.0),
-                store, ui, &fonts(), &theme);
+        let mut input =
+            EditorView::of_document(document, width.max(1.0), store, ui, &fonts(), &theme);
         input.set_caret(text.len() as u32);
         input.focus_text();
         self.session = Some(Session { class, input });

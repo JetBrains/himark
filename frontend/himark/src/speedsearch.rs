@@ -153,7 +153,8 @@ where
     ) where
         T::Command: Send + 'static,
     {
-        self.input = EditorView::input(PILL_INPUT_WIDTH, store, ui, crate::embedded_fonts::source());
+        self.input =
+            EditorView::input(PILL_INPUT_WIDTH, store, ui, crate::embedded_fonts::source());
         self.input.focus_text();
         self.launched = None;
         if let Some(token) = self.lane.take() {

@@ -109,7 +109,7 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
 
 #[test]
 fn a_moved_base_retires_the_stale_stripes_track() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     let mut batch = imba::effect::Batch::<()>::new();
     let location = |authority: &str, name: &str| {

@@ -39,10 +39,20 @@ fn listings_grow_and_fold_the_tree() {
     assert_eq!(view.row_count(), 1, "the folder itself is the root row");
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
+    view.activate(
+        0,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut batch.effects(),
+    );
     assert_eq!(batch.len(), 1, "expansion fetches");
     let mut again = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut again.effects());
+    view.activate(
+        0,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut again.effects(),
+    );
     assert!(again.is_empty(), "a mashed triangle asks once");
     view.tree.splice_listing(
         directory(&["project"]),
@@ -56,7 +66,12 @@ fn listings_grow_and_fold_the_tree() {
     assert_eq!(view.row_count(), 3);
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
+    view.activate(
+        1,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut batch.effects(),
+    );
     assert_eq!(batch.len(), 1, "src expansion fetches");
     view.tree.splice_listing(
         directory(&["project", "src"]),
@@ -70,12 +85,22 @@ fn listings_grow_and_fold_the_tree() {
     assert_eq!(view.row_count(), 5, "children spliced under src");
 
     let mut collapse = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut collapse.effects());
+    view.activate(
+        1,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut collapse.effects(),
+    );
     assert!(collapse.is_empty(), "collapse is local surgery");
     assert_eq!(view.row_count(), 3, "folded back; nothing cached");
 
     let mut reexpand = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut reexpand.effects());
+    view.activate(
+        1,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut reexpand.effects(),
+    );
     assert_eq!(reexpand.len(), 1, "re-expansion re-fetches");
 }
 
@@ -103,7 +128,12 @@ fn a_document_click_requests_the_open() {
         &imba::UiCtx::dont_use_too_slow(),
     );
     let mut click = imba::effect::Batch::new();
-    view.activate(1, &store, &imba::UiCtx::dont_use_too_slow(), &mut click.effects());
+    view.activate(
+        1,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut click.effects(),
+    );
     assert!(click.is_empty());
     let Some(ModalRequest::OpenLocations(locations)) = view.take_request() else {
         panic!("the click filed an open request");
@@ -354,7 +384,12 @@ fn expanded_folders_watch_and_events_relist() {
     assert_eq!(view.row_count(), 2, "the re-list replaced the children");
 
     let mut batch = imba::effect::Batch::new();
-    view.activate(0, &store, &imba::UiCtx::dont_use_too_slow(), &mut batch.effects());
+    view.activate(
+        0,
+        &store,
+        &imba::UiCtx::dont_use_too_slow(),
+        &mut batch.effects(),
+    );
     let launches = crate::test_support::surviving_launches(batch);
     assert!(
         launches

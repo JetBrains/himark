@@ -168,7 +168,15 @@ fn navigate(
     let Some(mut window_entity) = himark::Windows::window(store, window) else {
         return;
     };
-    window_entity.show_document(store, ui, window, document_id, Some(target.range.clone()), false, fx);
+    window_entity.show_document(
+        store,
+        ui,
+        window,
+        document_id,
+        Some(target.range.clone()),
+        false,
+        fx,
+    );
     himark::Windows::put(store, window, window_entity);
 
     himark::sync_document_watches(store, fx);
@@ -193,15 +201,7 @@ impl himark::DynamicEditorCommand for GoDefinition {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
-        navigation(
-            self.id(),
-            store,
-            document,
-            editor,
-            location,
-            payload,
-            fx,
-        );
+        navigation(self.id(), store, document, editor, location, payload, fx);
     }
 }
 

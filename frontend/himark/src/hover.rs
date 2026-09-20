@@ -178,7 +178,8 @@ impl Hover {
                     }),
                     view,
                 ),
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 fx,
@@ -216,13 +217,11 @@ impl Hover {
         if key.is_some() || markup.is_some() {
             fx.scope(to_editor, |fx| {
                 if let Some(key) = key {
-                    document.remove_inlay(key,
-                store, ui, &fonts, &theme, fx);
+                    document.remove_inlay(key, store, ui, &fonts, &theme, fx);
                 }
 
                 if let Some(markup) = markup {
-                    document.remove_markup(markup, &[],
-                store, ui, &fonts, &theme, fx);
+                    document.remove_markup(markup, &[], store, ui, &fonts, &theme, fx);
                 }
             });
         }
@@ -294,8 +293,7 @@ impl HoverView {
         let text = crate::Text::from_string_exact(markdown);
         let document = match crate::env::Parsers::of(store) {
             Some(parsers) => {
-                crate::Document::from_language(text, "markdown", &parsers,
-                store, ui, fonts, theme)
+                crate::Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
             }
             None => crate::Document::new(text, crate::Markup::new()).with_syntax(
                 crate::Syntax::new("markdown", None, crate::Markup::new()),
@@ -303,8 +301,7 @@ impl HoverView {
             ),
         };
         Self {
-            view: crate::EditorView::complete(document, CARD_WIDTH,
-                store, ui, fonts, theme),
+            view: crate::EditorView::complete(document, CARD_WIDTH, store, ui, fonts, theme),
         }
     }
 }

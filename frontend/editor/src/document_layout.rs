@@ -194,7 +194,11 @@ impl DocumentLayout {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
             let ui = imba::UiCtx::dont_use_too_slow();
-            let measure = crate::markup::InlayMeasure { width, store: &seeded, ui: &ui };
+            let measure = crate::markup::InlayMeasure {
+                width,
+                store: &seeded,
+                ui: &ui,
+            };
             Self::build(text, markup, measure, fonts, theme, window)
         }
     }
@@ -212,7 +216,11 @@ impl DocumentLayout {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
             let ui = imba::UiCtx::dont_use_too_slow();
-            let measure = crate::markup::InlayMeasure { width, store: &seeded, ui: &ui };
+            let measure = crate::markup::InlayMeasure {
+                width,
+                store: &seeded,
+                ui: &ui,
+            };
             Self::build_complete(text, markup, measure, fonts, theme, window)
         }
     }
@@ -232,8 +240,20 @@ impl DocumentLayout {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
             let ui = imba::UiCtx::dont_use_too_slow();
-            let measure = crate::markup::InlayMeasure { width, store: &seeded, ui: &ui };
-            self.repair_layout_bounded(text, markup, measure, fonts, theme, byte_start, height_budget)
+            let measure = crate::markup::InlayMeasure {
+                width,
+                store: &seeded,
+                ui: &ui,
+            };
+            self.repair_layout_bounded(
+                text,
+                markup,
+                measure,
+                fonts,
+                theme,
+                byte_start,
+                height_budget,
+            )
         }
     }
 
@@ -251,7 +271,11 @@ impl DocumentLayout {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
             let ui = imba::UiCtx::dont_use_too_slow();
-            let measure = crate::markup::InlayMeasure { width, store: &seeded, ui: &ui };
+            let measure = crate::markup::InlayMeasure {
+                width,
+                store: &seeded,
+                ui: &ui,
+            };
             self.repair_layout(text, markup, measure, fonts, theme, byte_start)
         }
     }
@@ -410,7 +434,15 @@ impl DocumentLayout {
         byte_start: u32,
         height_budget: f32,
     ) {
-        self.repair_region(text, markup, measure, fonts, theme, byte_start, height_budget);
+        self.repair_region(
+            text,
+            markup,
+            measure,
+            fonts,
+            theme,
+            byte_start,
+            height_budget,
+        );
     }
 
     pub fn repair_pending(&self) -> Option<u32> {

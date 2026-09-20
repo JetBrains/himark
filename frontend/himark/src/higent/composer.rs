@@ -167,8 +167,7 @@ impl Composer {
                         self.input
                             .content_mut()
                             .document
-                            .resize(editor, width, 0,
-                store, ui, &fonts, &theme, fx);
+                            .resize(editor, width, 0, store, ui, &fonts, &theme, fx);
                     })
                 });
             }

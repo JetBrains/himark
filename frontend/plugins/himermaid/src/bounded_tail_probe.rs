@@ -5,8 +5,8 @@ use super::tests::*;
 
 #[test]
 fn bounded_open_converges_over_a_mermaid_fence() {
-        let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut source = String::from("# Head\n\n");
     for block in 0..30 {
         for _ in 0..100 {
@@ -21,7 +21,8 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         himark::Text::from_string_exact(&source),
         "markdown",
         &registry,
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
     );
@@ -33,7 +34,8 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         None,
         himark::EditorBuild::Bounded,
         &[],
-                store, ui,
+        store,
+        ui,
         &fonts(),
         &theme(),
         &mut batch.effects(),
@@ -84,7 +86,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &fonts(),
         &theme(),
     )
-        .element_heights();
+    .element_heights();
     let complete: f32 = fresh.iter().map(|(_, height)| height).sum();
     eprintln!("[probe] converged in {rounds} rounds: laid={laid:.0} complete={complete:.0}");
     assert!(

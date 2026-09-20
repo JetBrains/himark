@@ -31,8 +31,7 @@ pub fn document_from_markdown(
 ) -> Document {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
-    document_from_tree_text(text, tree,
-                store, ui, fonts, theme)
+    document_from_tree_text(text, tree, store, ui, fonts, theme)
 }
 
 pub fn markdown_languages(mut languages: himark::SyntaxLanguages) -> himark::SyntaxLanguages {
@@ -126,8 +125,7 @@ pub fn markdown_document(
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
     let blocks = markdown_blocks(&text, &tree);
-    let document = document_from_tree_text(text, tree,
-                store, ui, fonts, theme);
+    let document = document_from_tree_text(text, tree, store, ui, fonts, theme);
     (document, blocks)
 }
 
@@ -139,8 +137,14 @@ pub fn document_from_tree(
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> Document {
-    document_from_tree_text(Text::from_string_exact(source), tree.clone(),
-                store, ui, fonts, theme)
+    document_from_tree_text(
+        Text::from_string_exact(source),
+        tree.clone(),
+        store,
+        ui,
+        fonts,
+        theme,
+    )
 }
 
 fn document_from_tree_text(
@@ -169,8 +173,7 @@ fn document_from_tree_text(
     }
     let mut document = Document::new(text, Markup::new()).with_syntax(syntax, &sites);
 
-    document.enrich_now(&builder_enrichers(),
-                store, ui, fonts, theme);
+    document.enrich_now(&builder_enrichers(), store, ui, fonts, theme);
     document
 }
 

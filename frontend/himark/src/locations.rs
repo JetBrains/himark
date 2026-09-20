@@ -426,8 +426,7 @@ impl crate::DynamicCommand for WashDocument {
         let entity = self.document;
         fx.scope(
             move |command| crate::AppCommand::Entity(entity, command),
-            |fx| document.replace_markup(markup, tints, &ranges,
-                store, ui, &fonts, &theme, fx),
+            |fx| document.replace_markup(markup, tints, &ranges, store, ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, self.document, document);
 
@@ -462,8 +461,7 @@ fn remove_washes(
         let entity = *id;
         fx.scope(
             move |command| crate::AppCommand::Entity(entity, command),
-            |fx| document.remove_markup(*markup, &changed,
-                store, ui, &fonts, &theme, fx),
+            |fx| document.remove_markup(*markup, &changed, store, ui, &fonts, &theme, fx),
         );
         crate::OpenDocuments::put_document(store, *id, document);
     }
@@ -587,7 +585,10 @@ pub fn files_forest<'a>(
         if !grouped.contains_key(&found.location) {
             order.push(found.location.clone());
         }
-        grouped.entry(found.location.clone()).or_default().push(found);
+        grouped
+            .entry(found.location.clone())
+            .or_default()
+            .push(found);
     }
     order
         .into_iter()
@@ -633,16 +634,20 @@ pub fn locations_forest<'a>(
 
     let mut sorted: Vec<&FoundLocation> = rows.into_iter().collect();
     sorted.sort_by(|a, b| {
-        (a.location.authority().as_str(), a.location.path(), a.line, a.column).cmp(&(
-            b.location.authority().as_str(),
-            b.location.path(),
-            b.line,
-            b.column,
-        ))
+        (
+            a.location.authority().as_str(),
+            a.location.path(),
+            a.line,
+            a.column,
+        )
+            .cmp(&(
+                b.location.authority().as_str(),
+                b.location.path(),
+                b.line,
+                b.column,
+            ))
     });
-    sorted.dedup_by(|a, b| {
-        a.location == b.location && a.line == b.line && a.column == b.column
-    });
+    sorted.dedup_by(|a, b| a.location == b.location && a.line == b.line && a.column == b.column);
 
     #[derive(Default)]
     struct Trie<'a> {
@@ -696,11 +701,7 @@ pub fn locations_forest<'a>(
             }
         }
 
-        fn children(
-            &self,
-            trie: Trie<'_>,
-            at: &ResourceLocation,
-        ) -> Vec<ForestNode<LocationKey>> {
+        fn children(&self, trie: Trie<'_>, at: &ResourceLocation) -> Vec<ForestNode<LocationKey>> {
             let mut children = Vec::new();
             for (segment, child) in trie.dirs {
                 let location = at.child(ResourceType::directory(), &segment);

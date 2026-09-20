@@ -122,7 +122,8 @@ impl SearchView {
             search: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
-                store, ui,
+                store,
+                ui,
                 crate::env::Fonts::of(store),
             ),
             focus: SearchArea::Input,
@@ -246,15 +247,16 @@ impl SearchView {
         };
         self.navigated = Some(key);
         let target = found.target();
-        self.request.file(ModalRequest::Perform(crate::AppCommand::Dynamic(
-            self.window,
-            Arc::new(OpenFoundLocation {
-                location: found.location,
-                target,
-                feed: self.feed(store),
-                focus,
-            }),
-        )));
+        self.request
+            .file(ModalRequest::Perform(crate::AppCommand::Dynamic(
+                self.window,
+                Arc::new(OpenFoundLocation {
+                    location: found.location,
+                    target,
+                    feed: self.feed(store),
+                    focus,
+                }),
+            )));
     }
 
     /// Selection IS navigation: the keyboard cursor landing on a file
@@ -308,11 +310,7 @@ impl crate::DynamicCommand for OpenFoundLocation {
                     store,
                     Arc::new(crate::locations::WashDocument { feed, document }),
                 ),
-                None => crate::locations::PendingWashes::note(
-                    store,
-                    self.location.clone(),
-                    feed,
-                ),
+                None => crate::locations::PendingWashes::note(store, self.location.clone(), feed),
             }
         }
         let _ = fx.push(crate::open_by_location_effect(
@@ -339,9 +337,7 @@ impl View for SearchView {
         let rows = self.search.inner().list().len();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match (focus, key) {
-                (_, InputKey::Escape) if !searching => {
-                    EventResult::Command(SearchCommand::Dismiss)
-                }
+                (_, InputKey::Escape) if !searching => EventResult::Command(SearchCommand::Dismiss),
                 (SearchArea::Input, InputKey::Down) | (SearchArea::Input, InputKey::Tab)
                     if rows > 0 =>
                 {
@@ -633,12 +629,14 @@ impl View for SearchView {
             };
             let band = crate::ui::ListRow::new(arena, crate::ui::RowStyle::header(store, ui))
                 .label(status)
-                .on_event(move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                    Event::MouseDown { .. } if running => {
-                        EventResult::Command(SearchCommand::Cancel)
-                    }
-                    _ => EventResult::Ignored,
-                });
+                .on_event(
+                    move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                        Event::MouseDown { .. } if running => {
+                            EventResult::Command(SearchCommand::Cancel)
+                        }
+                        _ => EventResult::Ignored,
+                    },
+                );
             let band = band.layout(
                 arena,
                 Constraints {
@@ -673,9 +671,7 @@ impl View for SearchView {
                     0.0,
                     imba::leaf::leaf::<SearchCommand>(1.0, 1.0).event(
                         move |_arena, event, _size| match event {
-                            Event::Paint { .. } => {
-                                EventResult::Command(SearchCommand::Refresh)
-                            }
+                            Event::Paint { .. } => EventResult::Command(SearchCommand::Refresh),
                             _ => EventResult::Ignored,
                         },
                     ),
@@ -721,10 +717,9 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
                     false => SearchArea::Results,
                 };
                 match self.panel.handle_event(arena, event, viewport) {
-                    EventResult::Command(command) => EventResult::Command(SearchCommand::Focus(
-                        area,
-                        Some(Box::new(command)),
-                    )),
+                    EventResult::Command(command) => {
+                        EventResult::Command(SearchCommand::Focus(area, Some(Box::new(command))))
+                    }
                     _ => EventResult::Command(SearchCommand::Focus(area, None)),
                 }
             }
@@ -955,8 +950,14 @@ fn seeded_input(store: &imba::store::Store, ui: &imba::UiCtx, text: &str) -> Edi
     markup.push_styled_covering(0..text.len() as u32, crate::theme::StyleId::Input);
     let document = crate::Document::new(crate::Text::from_string_exact(text), markup);
     let fonts = crate::fonts::source();
-    let mut input =
-        EditorView::of_document(document, 600.0, store, ui, &fonts(), &crate::theme::Theme::embedded());
+    let mut input = EditorView::of_document(
+        document,
+        600.0,
+        store,
+        ui,
+        &fonts(),
+        &crate::theme::Theme::embedded(),
+    );
     input.set_caret(text.len() as u32);
     input.focus_text();
     input
@@ -1133,7 +1134,12 @@ mod tests {
         );
 
         // Down onto the hit under a.rs: a fresh key, a fresh open.
-        view.perform(&mut store, &ui, SearchCommand::Select(1), &mut batch.effects());
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Select(1),
+            &mut batch.effects(),
+        );
         assert!(
             crate::ModalView::take_request(&mut view).is_some(),
             "the selection move navigated"
@@ -1141,14 +1147,24 @@ mod tests {
 
         // A rebuild re-asserts the cursor: no re-open.
         view.rebuild(&store, &ui);
-        view.perform(&mut store, &ui, SearchCommand::Refresh, &mut batch.effects());
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Refresh,
+            &mut batch.effects(),
+        );
         assert!(
             crate::ModalView::take_request(&mut view).is_none(),
             "standing still never re-navigates"
         );
 
         // Down again onto b.rs: navigates too.
-        view.perform(&mut store, &ui, SearchCommand::Select(1), &mut batch.effects());
+        view.perform(
+            &mut store,
+            &ui,
+            SearchCommand::Select(1),
+            &mut batch.effects(),
+        );
         assert!(
             crate::ModalView::take_request(&mut view).is_some(),
             "the next row navigates too"

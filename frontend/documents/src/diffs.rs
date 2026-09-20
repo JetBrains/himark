@@ -327,7 +327,8 @@ impl OpenDocuments {
             document.remove_diff(
                 id,
                 &[],
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -338,7 +339,8 @@ impl OpenDocuments {
             document.remove_markup(
                 record.base_markup,
                 &[],
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
@@ -554,8 +556,9 @@ pub fn land_diff_markup(
     let Some(mut document) = OpenDocuments::document(store, record.target) else {
         return;
     };
-    document.install_diff_markup(id, markup, changed, derived_at,
-                store, ui, &fonts, &theme, fx);
+    document.install_diff_markup(
+        id, markup, changed, derived_at, store, ui, &fonts, &theme, fx,
+    );
     OpenDocuments::put_document(store, record.target, document);
 }
 

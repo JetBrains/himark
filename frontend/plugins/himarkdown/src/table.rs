@@ -285,8 +285,7 @@ fn cell_view(
         }
     }
     let document = Document::new(text::Text::from_string_exact(text), markup.finish());
-    let mut view = EditorView::of_document(document, width.max(1.0),
-                store, ui, fonts, theme);
+    let mut view = EditorView::of_document(document, width.max(1.0), store, ui, fonts, theme);
     view.blur();
     view
 }
@@ -435,7 +434,8 @@ impl TableEditor {
                     view: cell_view(
                         &cell.content,
                         widths[col] - chrome.cell_pad_x * 2.0,
-                store, ui,
+                        store,
+                        ui,
                         fonts,
                         theme,
                     ),
@@ -525,7 +525,8 @@ impl TableEditor {
                 cell.view = cell_view(
                     &cell.content,
                     (lay[col] - self.chrome.cell_pad_x * 2.0).max(1.0),
-                store, ui,
+                    store,
+                    ui,
                     fonts,
                     theme,
                 );
@@ -715,8 +716,7 @@ impl TableEditor {
         let Some(parsed) = parse_table(&source) else {
             return;
         };
-        let mut fresh = Self::new(parsed,
-                store, ui, fonts, theme);
+        let mut fresh = Self::new(parsed, store, ui, fonts, theme);
         fresh.range = self.range.clone();
         fresh.pending_edit = self.pending_edit.take();
 
@@ -726,8 +726,7 @@ impl TableEditor {
             Ordering::Relaxed,
         );
         let available = self.available();
-        fresh.relay_all(available,
-                store, ui, fonts, theme);
+        fresh.relay_all(available, store, ui, fonts, theme);
         *self = fresh;
     }
 
@@ -779,8 +778,7 @@ impl TableEditor {
                 span: pos..pos,
             });
         }
-        self.rebuild_from_lines(
-                store, ui,fonts, theme);
+        self.rebuild_from_lines(store, ui, fonts, theme);
     }
 
     fn remove_row(
@@ -808,8 +806,7 @@ impl TableEditor {
             ));
         }
         self.lines.remove(line_index);
-        self.rebuild_from_lines(
-                store, ui,fonts, theme);
+        self.rebuild_from_lines(store, ui, fonts, theme);
     }
 
     fn insert_column(
@@ -840,8 +837,7 @@ impl TableEditor {
             delimiter.text.clone(),
             Self::delimiter_line(&alignments),
         ));
-        self.apply_structural(edits,
-                store, ui, fonts, theme);
+        self.apply_structural(edits, store, ui, fonts, theme);
     }
 
     fn remove_column(
@@ -879,8 +875,7 @@ impl TableEditor {
             delimiter.text.clone(),
             Self::delimiter_line(&alignments),
         ));
-        self.apply_structural(edits,
-                store, ui, fonts, theme);
+        self.apply_structural(edits, store, ui, fonts, theme);
     }
 
     fn apply_structural(
@@ -919,8 +914,7 @@ impl TableEditor {
                 }
             }
         }
-        self.rebuild_from_lines(
-                store, ui,fonts, theme);
+        self.rebuild_from_lines(store, ui, fonts, theme);
     }
 
     fn patch_lines(&mut self, at: u32, delete: usize, insert: &str) {
@@ -968,8 +962,7 @@ impl TableEditor {
             theme,
             &self.chrome,
         );
-        self.relay_all(self.available(),
-                store, ui, fonts, theme);
+        self.relay_all(self.available(), store, ui, fonts, theme);
     }
 
     fn launch_relayout(&mut self, width: f32, fx: &mut imba::effect::Effects<'_, TableCommand>) {
@@ -1080,8 +1073,7 @@ impl TableEditor {
             imba::View::perform(&mut cell.view, store, ui, command, &mut discarded.effects());
             let fonts = himark::env::ui_collection(store, ui);
             let theme = himark::env::Themes::of(store);
-            self.relayout_after_edit(row, col,
-                store, ui, &fonts, &theme);
+            self.relayout_after_edit(row, col, store, ui, &fonts, &theme);
         }
     }
 
@@ -1181,8 +1173,7 @@ impl himark::InlayEditing for TableEditor {
             Ordering::Relaxed,
         );
 
-        self.relay_all(previous.available(),
-                store, ui, fonts, theme);
+        self.relay_all(previous.available(), store, ui, fonts, theme);
         self.lines == previous.lines
     }
 }
@@ -1265,14 +1256,14 @@ impl View for TableEditor {
                 let fonts = himark::env::ui_collection(store, ui);
                 let theme = himark::env::Themes::of(store);
                 match structural {
-                    TableCommand::InsertRow(at) => self.insert_row(at,
-                store, ui, &fonts, &theme),
-                    TableCommand::RemoveRow(at) => self.remove_row(at,
-                store, ui, &fonts, &theme),
-                    TableCommand::InsertColumn(at) => self.insert_column(at,
-                store, ui, &fonts, &theme),
-                    TableCommand::RemoveColumn(at) => self.remove_column(at,
-                store, ui, &fonts, &theme),
+                    TableCommand::InsertRow(at) => self.insert_row(at, store, ui, &fonts, &theme),
+                    TableCommand::RemoveRow(at) => self.remove_row(at, store, ui, &fonts, &theme),
+                    TableCommand::InsertColumn(at) => {
+                        self.insert_column(at, store, ui, &fonts, &theme)
+                    }
+                    TableCommand::RemoveColumn(at) => {
+                        self.remove_column(at, store, ui, &fonts, &theme)
+                    }
                     TableCommand::Cell { .. }
                     | TableCommand::Relayout { .. }
                     | TableCommand::Relaid(_) => unreachable!(),
@@ -1427,8 +1418,7 @@ impl himark::DynamicEditorCommand for InsertTable {
         );
         let fonts = himark::env::Fonts::of(store)();
         let theme = himark::env::Themes::of(store);
-        document.insert(editor, &snippet,
-                store, ui, &fonts, &theme, fx);
+        document.insert(editor, &snippet, store, ui, &fonts, &theme, fx);
     }
 }
 
@@ -1570,13 +1560,16 @@ mod hitbox {
         let fonts = himark::embedded_fonts::collection();
         let theme = himark::Theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
-        let mut editor = TableEditor::new(parse_table(source).expect("a table"),
-                store, ui, &fonts, &theme);
+        let mut editor = TableEditor::new(
+            parse_table(source).expect("a table"),
+            store,
+            ui,
+            &fonts,
+            &theme,
+        );
         editor.set_range(0..source.len() as u32);
-        editor.relay_all(600.0,
-                store, ui, &fonts, &theme);
-        editor.insert_row(2,
-                store, ui, &fonts, &theme);
+        editor.relay_all(600.0, store, ui, &fonts, &theme);
+        editor.insert_row(2, store, ui, &fonts, &theme);
 
         let arena = Arena::default();
         let store = Store::new();
@@ -1644,11 +1637,15 @@ mod hitbox {
         let fonts = himark::embedded_fonts::collection();
         let theme = himark::Theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
-        let mut editor = TableEditor::new(parse_table(source).expect("a table"),
-                store, ui, &fonts, &theme);
+        let mut editor = TableEditor::new(
+            parse_table(source).expect("a table"),
+            store,
+            ui,
+            &fonts,
+            &theme,
+        );
         editor.set_range(0..source.len() as u32);
-        editor.relay_all(600.0,
-                store, ui, &fonts, &theme);
+        editor.relay_all(600.0, store, ui, &fonts, &theme);
 
         let arena = Arena::default();
         let store = Store::new();

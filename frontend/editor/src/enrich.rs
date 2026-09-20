@@ -99,17 +99,12 @@ impl MeasureCtx<'_> {
         f: impl FnOnce(crate::markup::InlayMeasure<'_>) -> R,
     ) -> R {
         match self {
-            MeasureCtx::Handed { store, ui } => {
-                f(crate::markup::InlayMeasure { width, store, ui })
-            }
+            MeasureCtx::Handed { store, ui } => f(crate::markup::InlayMeasure { width, store, ui }),
             MeasureCtx::Kept(workshop) => workshop.measure(width, f),
         }
     }
 
-    pub fn with_ctx<R>(
-        &self,
-        f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R,
-    ) -> R {
+    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R) -> R {
         match self {
             MeasureCtx::Handed { store, ui } => f(store, ui),
             MeasureCtx::Kept(workshop) => workshop.with_ctx(f),
@@ -523,7 +518,8 @@ mod tests {
 
         document.edit(
             &operation::Operation::insert_at(0, "XXXX"),
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -615,7 +611,8 @@ mod tests {
             None,
             crate::document::EditorBuild::Complete,
             &[],
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -637,9 +634,9 @@ mod tests {
             "the subject's element grew by the badge height: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::EditorView::complete(document.clone(), 400.0,
-                store, ui, &fonts(), &theme())
-            .element_heights();
+        let reference =
+            crate::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
+                .element_heights();
         assert_eq!(
             live, reference,
             "the landed layout equals a from-scratch layout over the enriched document"
@@ -663,7 +660,8 @@ mod tests {
             None,
             crate::document::EditorBuild::Complete,
             &[],
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -702,9 +700,9 @@ mod tests {
             "the drained repairs laid the deep badge in: {before} -> {after}"
         );
         let live = document.element_heights(editor);
-        let reference = crate::EditorView::complete(document.clone(), 400.0,
-                store, ui, &fonts(), &theme())
-            .element_heights();
+        let reference =
+            crate::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
+                .element_heights();
         assert_eq!(
             live, reference,
             "the repaired layout equals the from-scratch reference"
@@ -778,7 +776,8 @@ mod tests {
             None,
             crate::document::EditorBuild::Complete,
             &[],
-                store, ui,
+            store,
+            ui,
             &fonts(),
             &theme(),
             &mut imba::effect::Batch::new().effects(),

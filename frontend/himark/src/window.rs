@@ -1425,12 +1425,13 @@ impl Window {
         if was == LayerFocus::Bottom {
             fx.scope(
                 move |command| {
-                    crate::AppCommand::Content(
-                        window,
-                        WindowCommand::Bottom(Box::new(command)),
-                    )
+                    crate::AppCommand::Content(window, WindowCommand::Bottom(Box::new(command)))
                 },
-                |fx| self.content.workbench.sheet_focus_changed(store, ui, false, fx),
+                |fx| {
+                    self.content
+                        .workbench
+                        .sheet_focus_changed(store, ui, false, fx)
+                },
             );
         }
     }
@@ -1572,7 +1573,8 @@ impl Window {
                 None,
                 ::editor::EditorBuild::Bounded,
                 &[],
-                store, ui,
+                store,
+                ui,
                 &fonts,
                 &theme,
                 fx,
@@ -1895,7 +1897,13 @@ impl Window {
                 caret,
                 scroll_y: 0.0,
             };
-            if self.navigate(store, ui, window, &crate::NavigationLocation::new(place), fx) {
+            if self.navigate(
+                store,
+                ui,
+                window,
+                &crate::NavigationLocation::new(place),
+                fx,
+            ) {
                 return;
             }
             let Some(document_again) = crate::OpenDocuments::document(store, document_id) else {

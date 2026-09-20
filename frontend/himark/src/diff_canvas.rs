@@ -292,7 +292,13 @@ impl crate::DynamicCommand for OpenDiffCanvas {
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };
-        if !entity.navigate(store, ui, window, &crate::NavigationLocation::new(place), fx) {
+        if !entity.navigate(
+            store,
+            ui,
+            window,
+            &crate::NavigationLocation::new(place),
+            fx,
+        ) {
             eprintln!("[himark] no canvas navigator registered");
         }
         crate::Windows::put(store, window, entity);

@@ -2066,8 +2066,7 @@ impl View for CanvasRow {
                             |fx| {
                                 message
                                     .document
-                                    .resize(editor, width, 0,
-                store, ui, &fonts, &theme, fx)
+                                    .resize(editor, width, 0, store, ui, &fonts, &theme, fx)
                             },
                         );
                     }

@@ -363,7 +363,7 @@ impl HimarkEngine {
             syntax_languages(),
         ))));
         app.register_enrichers(enrichment_passes());
-                app.register_command(Arc::new(palette::TogglePalette));
+        app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
 
         app.register_overlay_surface(peeker::overlay_surface());
@@ -1117,16 +1117,15 @@ impl HimarkEngine {
         let name = name.into();
         let source = source.into();
         let document_name = name.clone();
-        self.app
-            .open_async(
-                wid(window),
-                name,
-                primary,
-                None,
-                move |store, ui, fonts, theme| {
-                    document_for(&document_name, &source, store, ui, fonts, theme)
-                },
-            );
+        self.app.open_async(
+            wid(window),
+            name,
+            primary,
+            None,
+            move |store, ui, fonts, theme| {
+                document_for(&document_name, &source, store, ui, fonts, theme)
+            },
+        );
         true
     }
 
@@ -1766,8 +1765,7 @@ fn document_for(
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> himark::Document {
-    hiahp::open::document_for(&syntax_languages(), name, source,
-                store, ui, fonts, theme)
+    hiahp::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
 }
 
 #[no_mangle]

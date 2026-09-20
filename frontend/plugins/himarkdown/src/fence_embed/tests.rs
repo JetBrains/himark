@@ -70,12 +70,11 @@ fn fetch_caller(path: Vec<String>, content: &'static str) -> imba::effect::Effec
 }
 
 fn host(source: &str) -> (Store, Document) {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     store.put(himark::env::Parsers(languages()));
-    let document = crate::document_from_markdown(source,
-                &store, ui, &fonts(), &theme());
+    let document = crate::document_from_markdown(source, &store, ui, &fonts(), &theme());
     (store, document)
 }
 
@@ -121,8 +120,7 @@ fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller
     };
     let mut entry = over.previous.clone();
     if !fresh.changed.is_empty() {
-        entry.splice(&fresh.changed, fresh.replacement,
-                store, ui, &fonts, &theme);
+        entry.splice(&fresh.changed, fresh.replacement, store, ui, &fonts, &theme);
         FenceEmbedEnricher.install(store, ui, &mut entry, &fresh.changed, &fonts, &theme);
     }
     entry
@@ -180,7 +178,7 @@ fn an_addressed_fence_embeds_the_registered_file() {
 
 #[test]
 fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "``` rust src/main.rs\nx\n```\n\n``` rust src/main.rs#L2-3\ny\n```\n";
     let (mut store, document) = host(source);
     let over = enrich_input(&document, source);
@@ -205,7 +203,8 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
             .expect("target")
             .clone(),
         720.0,
-                &store, ui,
+        &store,
+        ui,
         &fonts(),
         &theme(),
     )
@@ -348,7 +347,7 @@ fn line_window_slices_1_based_inclusive() {
 
 #[test]
 fn a_line_fragment_windows_the_embed() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "``` rust src/main.rs#L2-3\nx\n```\n";
     let (mut store, document) = host(source);
     let over = enrich_input(&document, source);
@@ -372,10 +371,10 @@ fn a_line_fragment_windows_the_embed() {
     assert_eq!(shown, "line two\nline three", "the window's lines only");
 
     let whole = himark::EditorView::complete(
-        crate::document_from_markdown("x",
-                &store, ui, &fonts(), &theme()),
+        crate::document_from_markdown("x", &store, ui, &fonts(), &theme()),
         720.0,
-                &store, ui,
+        &store,
+        ui,
         &fonts(),
         &theme(),
     );

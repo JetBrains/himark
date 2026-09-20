@@ -4,8 +4,7 @@
 use std::time::{Duration, Instant};
 
 use skia_safe::textlayout::{
-    Paragraph, ParagraphBuilder, ParagraphStyle, RectHeightStyle, RectWidthStyle,
-    TextStyle,
+    Paragraph, ParagraphBuilder, ParagraphStyle, RectHeightStyle, RectWidthStyle, TextStyle,
 };
 
 fn build(fonts: &skia_safe::textlayout::FontCollection, text: &str, width: f32) -> Paragraph {

@@ -315,12 +315,7 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn ensure_preview(
-        &mut self,
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        fx: &mut PeekerEffects<'_>,
-    ) {
+    fn ensure_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
         let width = EditorIdView::editor_width(
             self.preview_width,
             &himark::env::Themes::of(store).ui().window,
@@ -530,14 +525,12 @@ impl View for Peeker {
 
                 let landing = location.clone();
                 let _ = fx.push(
-                    imba::effect::AnyEffect::new(BuildDocumentEffect {
-                        location,
-                        text,
-                    })
-                    .map(move |built| PeekerCommand::BuiltPreview {
-                        location: landing,
-                        document: built.document,
-                    }),
+                    imba::effect::AnyEffect::new(BuildDocumentEffect { location, text }).map(
+                        move |built| PeekerCommand::BuiltPreview {
+                            location: landing,
+                            document: built.document,
+                        },
+                    ),
                 );
             }
             PeekerCommand::BuiltPreview { location, document } => {

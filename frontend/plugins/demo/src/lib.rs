@@ -19,11 +19,9 @@ pub fn monster_document(
     theme: &himark::Theme,
 ) -> Document {
     let (mut document, blocks) =
-        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS),
-                store, ui, fonts, theme);
+        himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), store, ui, fonts, theme);
 
-    add_badges(&mut document, &blocks,
-                store, ui, fonts, theme);
+    add_badges(&mut document, &blocks, store, ui, fonts, theme);
     document
 }
 

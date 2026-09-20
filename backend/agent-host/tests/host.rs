@@ -1300,7 +1300,10 @@ async fn search_locations_streams_positioned_matches() {
     let (session, _chat) = open_session(&mut client, &root).await;
 
     let minted = client
-        .request("searchLocations", json!({"channel": session, "query": "CONFLATION"}))
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "CONFLATION"}),
+        )
         .await;
     let channel = minted["channel"].as_str().expect("channel").to_owned();
     assert!(channel.starts_with("ahp-locations:/"), "{channel}");
@@ -1308,7 +1311,12 @@ async fn search_locations_streams_positioned_matches() {
     let subscribed = client
         .request("subscribe", json!({"channel": channel}))
         .await;
-    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
 
     assert_eq!(state["truncated"], json!(false), "{state}");
     let mut locations: Vec<(String, u64, u64, u64)> = state["locations"]
@@ -1361,7 +1369,12 @@ async fn search_locations_limit_truncates_the_stream() {
     let subscribed = client
         .request("subscribe", json!({"channel": channel}))
         .await;
-    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
     assert_eq!(state["truncated"], json!(true), "{state}");
     assert_eq!(state["locations"].as_array().expect("locations").len(), 1);
 }
@@ -1408,7 +1421,10 @@ async fn unsubscribing_disposes_a_locations_channel() {
     let (session, _chat) = open_session(&mut client, &root).await;
 
     let minted = client
-        .request("searchLocations", json!({"channel": session, "query": "conflation"}))
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "conflation"}),
+        )
         .await;
     let channel = minted["channel"].as_str().expect("channel").to_owned();
     client
@@ -1446,7 +1462,12 @@ async fn lsp_locations_stream_contextualized_targets() {
     let subscribed = client
         .request("subscribe", json!({"channel": channel}))
         .await;
-    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
 
     assert_eq!(state["truncated"], json!(false), "{state}");
     let locations = state["locations"].as_array().expect("locations");
@@ -1457,8 +1478,20 @@ async fn lsp_locations_stream_contextualized_targets() {
         assert_eq!(location["context"], "fn answer() -> u32 { 42 }");
         assert_eq!(location["contextColumnStart"], 0);
     }
-    assert_eq!((locations[0]["column"].clone(), locations[0]["length"].clone()), (json!(3), json!(6)));
-    assert_eq!((locations[1]["column"].clone(), locations[1]["length"].clone()), (json!(21), json!(2)));
+    assert_eq!(
+        (
+            locations[0]["column"].clone(),
+            locations[0]["length"].clone()
+        ),
+        (json!(3), json!(6))
+    );
+    assert_eq!(
+        (
+            locations[1]["column"].clone(),
+            locations[1]["length"].clone()
+        ),
+        (json!(21), json!(2))
+    );
 }
 
 #[tokio::test]
@@ -1498,7 +1531,12 @@ async fn lsp_locations_context_prefers_the_mirror() {
     let subscribed = client
         .request("subscribe", json!({"channel": channel}))
         .await;
-    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
 
     // The fake still answers line 0 — which the UNFLUSHED edit made
     // "// hot"; a disk read would answer "fn answer() -> u32 { 42 }".
@@ -1512,7 +1550,11 @@ async fn lsp_locations_refuses_foreign_methods() {
     let dir = tempfile::tempdir().expect("tempdir");
     let (_host, mut client, session, uri) = lsp_fixture(dir.path()).await;
 
-    for method in ["textDocument/definition", "textDocument/didOpen", "shutdown"] {
+    for method in [
+        "textDocument/definition",
+        "textDocument/didOpen",
+        "shutdown",
+    ] {
         let refused = client
             .request_any(
                 "lsp/locations",
@@ -1521,7 +1563,11 @@ async fn lsp_locations_refuses_foreign_methods() {
                 }}),
             )
             .await;
-        assert_eq!(refused["error"]["code"], json!(-32602), "{method}: {refused}");
+        assert_eq!(
+            refused["error"]["code"],
+            json!(-32602),
+            "{method}: {refused}"
+        );
     }
 
     let refused = client
@@ -1586,7 +1632,10 @@ async fn a_dying_connection_reaps_its_unsubscribed_locations_channels() {
         let mut minter = Client::connect(host.clone()).await;
         let (session, _chat) = open_session(&mut minter, &root).await;
         let minted = minter
-            .request("searchLocations", json!({"channel": session, "query": "conflation"}))
+            .request(
+                "searchLocations",
+                json!({"channel": session, "query": "conflation"}),
+            )
             .await;
         minted["channel"].as_str().expect("channel").to_owned()
         // the minter drops here without ever subscribing

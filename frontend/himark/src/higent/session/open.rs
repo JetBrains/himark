@@ -163,7 +163,8 @@ impl DynamicCommand for EnterSessionWork {
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty());
             let pane = crate::higent::Chats::open_with(
-                store, ui,
+                store,
+                ui,
                 self.server,
                 self.session.clone(),
                 chat,

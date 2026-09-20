@@ -168,7 +168,8 @@ impl TocView {
             search: SpeedSearchView::new(
                 forest,
                 ForestSearcher::default(),
-                store, ui,
+                store,
+                ui,
                 crate::env::Fonts::of(store),
             ),
             targets,
@@ -362,7 +363,8 @@ impl crate::DynamicCommand for NavigateToPlace {
             return;
         };
         let _ = entity.navigate(
-            store, ui,
+            store,
+            ui,
             window,
             &crate::NavigationLocation::new(self.place.clone()),
             fx,
@@ -570,7 +572,8 @@ impl OutlineView {
             search: SpeedSearchView::new(
                 ForestList::new(store),
                 ForestSearcher::default(),
-                store, ui,
+                store,
+                ui,
                 crate::env::Fonts::of(store),
             ),
             request: None,

@@ -479,10 +479,24 @@ fn scroll_soak_for_profiling() {
     let ui = &app.ui_ctx();
     let (mut ldoc, lblocks) =
         himarkdown::markdown_document(&left, app.store(), ui, &markdown_fonts, &theme);
-    demo::add_badges(&mut ldoc, &lblocks, app.store(), ui, &markdown_fonts, &theme);
+    demo::add_badges(
+        &mut ldoc,
+        &lblocks,
+        app.store(),
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
     let (mut rdoc, rblocks) =
         himarkdown::markdown_document(&right, app.store(), ui, &markdown_fonts, &theme);
-    demo::add_badges(&mut rdoc, &rblocks, app.store(), ui, &markdown_fonts, &theme);
+    demo::add_badges(
+        &mut rdoc,
+        &rblocks,
+        app.store(),
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
     assert!(app.add_document(app.sole_window(), ldoc, "left.md".to_owned(), false));
     assert!(app.add_document(app.sole_window(), rdoc, "right.md".to_owned(), false));
 

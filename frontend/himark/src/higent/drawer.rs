@@ -330,8 +330,7 @@ impl AgentsPanel {
             }
             AgentKey::Note(_) => {}
             AgentKey::AddHost => {
-                let mut input = EditorView::input(600.0,
-                store, ui, crate::fonts::source());
+                let mut input = EditorView::input(600.0, store, ui, crate::fonts::source());
                 input.focus_text();
                 self.adding = Some(input);
             }

@@ -453,8 +453,7 @@ fn land(
                 let text_before = document.text().clone();
                 let fonts = himark::env::Fonts::of(store)();
                 let theme = himark::env::Themes::of(store);
-                document.edit(&operation,
-                store, ui, &fonts, &theme, fx);
+                document.edit(&operation, store, ui, &fonts, &theme, fx);
                 if let Some(parsers) = himark::env::Parsers::of(store) {
                     document.launch_reparse(parsers, fx);
                 }

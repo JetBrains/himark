@@ -362,7 +362,11 @@ impl EditorViewport {
                             &viewport.hidden[hidden_start..hidden_end],
                             fonts,
                             theme,
-                            crate::markup::InlayMeasure { width: layout_width, store, ui },
+                            crate::markup::InlayMeasure {
+                                width: layout_width,
+                                store,
+                                ui,
+                            },
                             0.0,
                             selected,
                         )

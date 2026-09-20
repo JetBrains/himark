@@ -505,7 +505,15 @@ impl himark::DynamicCommand for ShowWorkingCopy {
                 let Some(mut entity) = himark::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(store, ui, window, document_id, Some(self.target.clone()), false, fx);
+                entity.show_document(
+                    store,
+                    ui,
+                    window,
+                    document_id,
+                    Some(self.target.clone()),
+                    false,
+                    fx,
+                );
                 himark::Windows::put(store, window, entity);
             }
             None => {
@@ -710,7 +718,8 @@ impl DynamicCommand for ShowTerminal {
 
         himark::terminal::Terminals::put(store, channel.clone(), session.clone());
         if !entity.open_panel(
-            store, ui,
+            store,
+            ui,
             Box::new(himark::terminal::TerminalView::new(channel.clone())),
             fx,
         ) {
