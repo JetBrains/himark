@@ -173,3 +173,31 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
         _ => panic!("the drag routes to the focused row"),
     }
 }
+
+/// A keyed pure INSERT in the middle of the list (empty delete range):
+/// the rows must land at the index and every standing key must shift.
+#[test]
+fn a_mid_list_keyed_insert_lands_and_shifts_keys() {
+    let mut view: ListView<Stub, &'static str> = ListView::empty();
+    let mut slice: ListSlice<Stub, &'static str> = ListSlice::new();
+    slice.push_keyed_sized("banner", Stub, 20.0);
+    slice.push_keyed_sized("b.header", Stub, 30.0);
+    slice.push_keyed_sized("b.diff", Stub, 100.0);
+    slice.cover("b", 1..3);
+    view.splice_slice(0..0, slice);
+    assert_eq!(view.len(), 3);
+    assert_eq!(view.row_range(&"b"), Some(1..3), "the cover stands");
+
+    // The pure insert at index 1 — between the banner and b's rows.
+    let mut fresh: ListSlice<Stub, &'static str> = ListSlice::new();
+    fresh.push_keyed_sized("a.header", Stub, 30.0);
+    fresh.push_keyed_sized("a.diff", Stub, 100.0);
+    fresh.cover("a", 0..2);
+    view.splice_slice(1..1, fresh);
+
+    assert_eq!(view.len(), 5, "the two rows landed");
+    assert_eq!(view.row_range(&"a"), Some(1..3), "a covers its pair");
+    assert_eq!(view.row_range(&"b"), Some(3..5), "b shifted right");
+    assert_eq!(view.key_at(1), Some(&"a.header"));
+    assert_eq!(view.key_at(3), Some(&"b.header"));
+}

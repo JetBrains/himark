@@ -259,7 +259,12 @@ impl<T: Clone, K: Clone + Eq + Hash> ListSlice<T, K> {
         self.push_sized(view, height);
         self.spans.push(Interval {
             range: index..index + 1,
-            greedy_left: true,
+            // NEVER greedy on the left: a keyed splice landing exactly
+            // at this row's start must PUSH it down, not be absorbed —
+            // a greedy start made the standing key swallow the
+            // newcomer's rows (overlapping covers, every key-addressed
+            // splice after that corrupting neighbors).
+            greedy_left: false,
             greedy_right: false,
             key,
             value: (),
@@ -269,7 +274,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListSlice<T, K> {
     pub fn cover(&mut self, key: K, range: std::ops::Range<usize>) {
         self.spans.push(Interval {
             range: range.start as u32..range.end as u32,
-            greedy_left: true,
+            greedy_left: false,
             greedy_right: false,
             key,
             value: (),
