@@ -1325,6 +1325,13 @@ impl Window {
         }
     }
 
+    /// The keyboard goes to the dock — a re-invoked dock command
+    /// (cmd-shift-f on an already-open search) FOCUSES instead of
+    /// toggling away.
+    pub fn focus_dock(&mut self) {
+        self.content.focus = LayerFocus::Dock;
+    }
+
     pub fn roll_away_dock(&mut self) {
         if let Some(dock) = self.content.workbench.dock_mut() {
             dock.roll_away();

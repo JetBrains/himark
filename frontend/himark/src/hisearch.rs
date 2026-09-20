@@ -720,7 +720,32 @@ impl crate::DynamicCommand for ToggleSearchView {
     ) {
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
-            entity.roll_away_dock();
+            // Already fronting: cmd-shift-f FOCUSES — the keyboard
+            // lands in the query input, ready to retype. Escape (and
+            // the toolbar button road) still rolls the dock away.
+            entity.focus_dock();
+            if let Some(panel) = entity.dock_panel_mut() {
+                let ui = app.ui_ctx();
+                fx.scope(
+                    move |command| {
+                        crate::AppCommand::Content(
+                            window,
+                            crate::WindowCommand::Dock(Box::new(
+                                crate::dock::DockCommand::Content(command),
+                            )),
+                        )
+                    },
+                    |fx| {
+                        imba::DynView::perform_dyn(
+                            panel.as_mut(),
+                            store,
+                            &ui,
+                            Box::new(SearchCommand::Focus(SearchArea::Input, None)),
+                            fx,
+                        )
+                    },
+                );
+            }
             crate::Windows::put(store, window, entity);
             return;
         }

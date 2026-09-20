@@ -327,8 +327,11 @@ selection moves AND clicks just show the location — the keyboard
 stays with the tree, so navigating on continues. The
 feed keeps streaming past a closed face — the pump is app-level; a
 requery or the stop affordance cancels (`DisposeFeed`/`StopFeed`),
-never mere displacement. shift-cmd-F re-points here (the old panel
-is retired).
+never mere displacement. cmd-shift-F re-points here (the old panel
+is retired): it OPENS the dock tab, and re-invoked on an open one
+it FOCUSES the query input (`Window::focus_dock` + a
+`SearchCommand::Focus(Input)` through the dock's dyn road) — never
+a toggle-away; Escape closes.
 
 ## 7. The UI: references and implementations
 
