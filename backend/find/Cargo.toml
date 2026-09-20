@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+grep-matcher = "0.1"
 grep-regex = "0.1"
 grep-searcher = "0.1"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }

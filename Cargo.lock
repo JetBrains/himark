@@ -1911,6 +1911,7 @@ dependencies = [
 name = "hifind"
 version = "0.1.0"
 dependencies = [
+ "grep-matcher",
  "grep-regex",
  "grep-searcher",
  "himark-ahp-ext-types",
