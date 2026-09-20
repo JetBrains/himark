@@ -79,16 +79,31 @@ pub struct PeekView {
 
 impl PeekView {
     fn new(host: Option<crate::DocumentId>, width: f32, channel: LocationsChannel) -> Self {
+        Self::seeded(host, width, Some(channel), false)
+    }
+
+    /// The ask itself failed: the card mounts resolved cut-off, so
+    /// the failure is visible instead of a silent no-op.
+    fn failed(host: Option<crate::DocumentId>, width: f32) -> Self {
+        Self::seeded(host, width, None, true)
+    }
+
+    fn seeded(
+        host: Option<crate::DocumentId>,
+        width: f32,
+        channel: Option<LocationsChannel>,
+        cut: bool,
+    ) -> Self {
         Self {
             host,
             key: None,
             width,
-            channel: Some(channel),
+            done: cut,
+            truncated: cut,
+            channel,
             poll_token: None,
             fetch_token: None,
             locations: rpds::VectorSync::new_sync(),
-            done: false,
-            truncated: false,
             list: RowList::new(),
             preview: None,
             preview_for: None,
@@ -558,9 +573,6 @@ impl crate::DynamicEditorCommand for GoToReference {
         let Ok(outcome) = payload.downcast::<Result<LocationsChannel, String>>() else {
             return;
         };
-        let Ok(channel) = *outcome else {
-            return;
-        };
 
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
@@ -569,10 +581,20 @@ impl crate::DynamicEditorCommand for GoToReference {
             _ => FALLBACK_WIDTH,
         };
         let host = crate::OpenDocuments::by_location(store, location);
-        let caret = document.caret_byte(editor);
-        let anchor = caret..caret;
+        // An EMPTY anchor renders nothing — an Under inlay's line
+        // anchoring needs a real span (the caret's character,
+        // boundary-snapped; the one before it at the text's end).
+        let Some(anchor) = caret_anchor(document, document.caret_byte(editor)) else {
+            return;
+        };
 
-        let view = PeekView::new(host, width, channel.clone());
+        // An errored ask still shows the card — resolved cut-off —
+        // instead of silently doing nothing.
+        let view = match *outcome {
+            Ok(channel) => PeekView::new(host, width, channel),
+            Err(_) => PeekView::failed(host, width),
+        };
+        let streams = view.channel.clone();
         let markup = peek_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -587,22 +609,111 @@ impl crate::DynamicEditorCommand for GoToReference {
         document.set_focus(editor, EditorFocus::Inlay(key));
 
         // The stream lands into the card by its key.
-        let _ = fx.push(
-            AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                seat: channel.seat,
-                channel: channel.channel,
-            })
-            .map(move |outcome| EditorCommand::Inlay {
-                key,
-                command: Box::new(PeekCommand::Snapshot { outcome }),
-            }),
-        );
+        if let Some(channel) = streams {
+            let _ = fx.push(
+                AnyEffect::new(crate::higent::SubscribeLocationsEffect {
+                    seat: channel.seat,
+                    channel: channel.channel,
+                })
+                .map(move |outcome| EditorCommand::Inlay {
+                    key,
+                    command: Box::new(PeekCommand::Snapshot { outcome }),
+                }),
+            );
+        }
+    }
+}
+
+/// The caret's character as a non-empty anchor span, char-boundary
+/// snapped; the character before it at the text's end; `None` on an
+/// empty document.
+fn caret_anchor(document: &Document, caret: u32) -> Option<std::ops::Range<u32>> {
+    let len = document.text().byte_count().min(u32::MAX as usize) as u32;
+    if len == 0 {
+        return None;
+    }
+    let mut view = document.text().view();
+    if caret < len {
+        let head = view.substring(caret..(caret + 4).min(len));
+        let step = head.chars().next().map(|ch| ch.len_utf8() as u32).unwrap_or(1);
+        Some(caret..(caret + step).min(len))
+    } else {
+        let tail = view.substring(len.saturating_sub(4)..len);
+        let step = tail.chars().last().map(|ch| ch.len_utf8() as u32).unwrap_or(1);
+        Some(len.saturating_sub(step)..len)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_peek_anchor_reserves_height() {
+        let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
+        let fonts = ::editor::embedded_fonts::source()();
+        let theme = crate::theme::Theme::embedded();
+        let mut batch = imba::effect::Batch::new();
+        let editor = document.add_editor(
+            600.0,
+            None,
+            ::editor::EditorBuild::Complete,
+            &[],
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        let bare = document.content_height(editor);
+
+        let markup = crate::MarkupId::mint();
+        document.ensure_document_markup(markup);
+        // The regression: an empty anchor renders NOTHING (an Under
+        // inlay anchors on a line by its span) — the card must mount
+        // on the caret_anchor span, never caret..caret.
+        for caret in [3u32, document.text().byte_count() as u32] {
+            let anchor = caret_anchor(&document, caret).expect("non-empty text anchors");
+            assert!(anchor.start < anchor.end, "a real span: {anchor:?}");
+            let key = document.push_inlay(
+                markup,
+                anchor,
+                crate::Inlay::new(crate::InlayMode::Under, ProbeCard),
+                &fonts,
+                &theme,
+                &mut batch.effects(),
+            );
+            let with_card = document.content_height(editor);
+            assert!(
+                with_card > bare,
+                "the anchored card reserves height: {with_card} vs {bare}"
+            );
+            document.remove_inlay(key, &fonts, &theme, &mut batch.effects());
+        }
+    }
+
+    #[derive(Clone)]
+    struct ProbeCard;
+
+    impl imba::View for ProbeCard {
+        type Command = ();
+        fn perform(
+            &mut self,
+            _store: &mut imba::store::Store,
+            _ui: &imba::UiCtx,
+            _command: Self::Command,
+            _fx: &mut imba::effect::Effects<'_, Self::Command>,
+        ) {
+        }
+        fn display<'a>(
+            &'a self,
+            _arena: &'a imba::arena::Arena,
+            _store: &'a imba::store::Store,
+            _ui: &'a imba::UiCtx,
+        ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+            imba::laid(move |arena: &'a imba::arena::Arena, _constraints| {
+                imba::ThunkBox::new(arena, imba::leaf::leaf::<()>(200.0, 111.0))
+            })
+        }
+    }
 
     fn found(name: &str, line: u32, context: &str) -> FoundLocation {
         FoundLocation {

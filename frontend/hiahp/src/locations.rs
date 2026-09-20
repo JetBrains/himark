@@ -63,10 +63,9 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
     async fn handle(&self, effect: LspLocationsEffect) -> Result<LocationsChannel, String> {
         let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, &effect.location)
         else {
-            return Err(format!(
-                "no seat serves {}",
-                effect.location.authority().as_str()
-            ));
+            let authority = effect.location.authority().as_str();
+            tracing::warn!(target: "ahp_wire", %authority, "lsp/locations: no seat serves the asked document");
+            return Err(format!("no seat serves {authority}"));
         };
         let uri = self.uris.uri_of(&effect.location).into_string();
         let mut params = serde_json::json!({
@@ -80,7 +79,13 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
             }
             LspLocationsKind::Implementations => "textDocument/implementation",
         };
-        let channel = seat.lsp_locations(session, method.to_owned(), params).await?;
+        let channel = match seat.lsp_locations(session, method.to_owned(), params).await {
+            Ok(channel) => channel,
+            Err(error) => {
+                tracing::warn!(target: "ahp_wire", %method, %error, "lsp/locations ask failed");
+                return Err(error);
+            }
+        };
         Ok(LocationsChannel {
             seat,
             channel,

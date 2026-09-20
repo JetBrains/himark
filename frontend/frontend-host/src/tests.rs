@@ -216,6 +216,12 @@ fn save_pick_request(engine: &mut HimarkEngine, seat: &fake_host::Seat) -> (u64,
 }
 
 fn hosted_engine() -> (Hosted, HimarkEngine, u64, HostedFs) {
+    hosted_engine_with_language_servers(Vec::new())
+}
+
+fn hosted_engine_with_language_servers(
+    language_servers: Vec<agent_host::LanguageServer>,
+) -> (Hosted, HimarkEngine, u64, HostedFs) {
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -234,7 +240,7 @@ fn hosted_engine() -> (Hosted, HimarkEngine, u64, HostedFs) {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
-        language_servers: Vec::new(),
+        language_servers,
     };
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -7779,4 +7785,98 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
             text_of(engine) == expected
         });
     }
+}
+
+#[test]
+fn implementations_stream_into_the_search_dock_over_the_wire() {
+    let ls_dir = tempfile::tempdir().expect("ls dir");
+    let (_host, mut engine, window, fs) =
+        hosted_engine_with_language_servers(vec![agent_host::LanguageServer {
+            extensions: vec!["rs".to_owned()],
+            command: agent_host::testing::fake_ls_command(ls_dir.path()),
+        }]);
+    fs.write(&["project", "lib.rs"], "fn answer() -> u32 { 42 }\n");
+
+    assert!(engine.perform_command(window, "file.open"));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &_host.seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["project"])]));
+    settle_until(&mut engine, "the folder session opened", |engine| {
+        let entity_id = engine.app.sole_window();
+        let workspace = himark::Windows::window_ref(engine.app.store(), entity_id)
+            .expect("the window entity")
+            .current_session();
+        !himark::higent::session_folders(engine.app.store(), &workspace).is_empty()
+    });
+    let session = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("the window entity")
+        .current_session();
+    let folders = himark::higent::session_folders(engine.app.store(), &session);
+    let file = himark::ResourceLocation::new(
+        himark::ResourceType::document(),
+        folders[0].authority().clone(),
+        {
+            let mut segments = folders[0].path().to_vec();
+            segments.push("lib.rs".to_owned());
+            segments
+        },
+    );
+
+    struct Open(himark::ResourceLocation);
+    impl himark::DynamicCommand for Open {
+        fn id(&self) -> &'static str {
+            "test.open-lib"
+        }
+        fn name(&self) -> String {
+            "Open".to_owned()
+        }
+        fn perform(
+            &self,
+            _app: &mut himark::Application,
+            store: &mut imba::store::Store,
+            window: himark::WindowId,
+            fx: &mut himark::AppFx<'_>,
+        ) {
+            himark::open_locations(store, window, &[self.0.clone()], fx);
+        }
+    }
+    assert!(engine.app.perform_command(himark::AppCommand::Dynamic(
+        wid(window),
+        Arc::new(Open(file.clone()))
+    )));
+    settle_until(&mut engine, "lib.rs opened", |engine| {
+        himark::OpenDocuments::by_location(engine.app.store(), &file).is_some()
+    });
+
+    let command = himark::palette_commands(engine.app.store(), &engine.app.ui_handle(), wid(window))
+        .into_iter()
+        .find(|presentable| presentable.id == "code.implementations")
+        .expect("the located editor offers implementations")
+        .command;
+    assert!(engine.app.perform_command(command));
+
+    settle_until(&mut engine, "the stream resolved into the feed", |engine| {
+        himark::locations::LocationsFeeds::row(engine.app.store(), &session)
+            .is_some_and(|row| row.done)
+    });
+    let row = himark::locations::LocationsFeeds::row(engine.app.store(), &session)
+        .expect("the feed row");
+    assert!(!row.truncated, "the ask answered whole");
+    assert_eq!(
+        row.locations.len(),
+        2,
+        "the fake server's two implementation targets landed resolved"
+    );
+    assert!(row
+        .locations
+        .iter()
+        .all(|found| found.location.path().join("/").ends_with("lib.rs")
+            && found.context == "fn answer() -> u32 { 42 }"));
+    let entity = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("the window entity");
+    assert_eq!(
+        entity.dock_owner(),
+        Some(himark::hisearch::OWNER),
+        "the Search tab activated"
+    );
 }
