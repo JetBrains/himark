@@ -1083,6 +1083,7 @@ impl Host {
                 self.resource_list(id, params)
             }
             "search" => self.search(connection, id, params).await,
+            "searchLocations" => self.search_locations(connection, id, params),
             "httpServe" => self.http_serve(id, params).await,
             "createTerminal" => self.create_terminal(id, params),
             "disposeTerminal" => self.dispose_terminal(id, params),
@@ -2495,6 +2496,84 @@ impl Host {
         }
     }
 
+    /// `searchLocations` (docs/ahp/ahp-locations.md §3.1): mint a
+    /// locations channel, answer it immediately, and stream the
+    /// walk's positioned matches into it from the blocking pool —
+    /// one `locations/extend` per matched file, a final `done`
+    /// action closing the story. The channel's token is the leash;
+    /// disposal (the last unsubscribe, a dying connection) flips it.
+    fn search_locations(self: &Arc<Self>, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
+        const DEFAULT_LIMIT: usize = 1024;
+        const LIMIT_CAP: usize = 10_000;
+        let params: himark_ahp_ext_types::SearchLocationsParams =
+            match serde_json::from_value(params) {
+                Ok(params) => params,
+                Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
+            };
+        if params.kind == himark_ahp_ext_types::SearchKind::Fuzzy {
+            return rpc::failure(id, INVALID_PARAMS, "kind must be text or regex");
+        }
+        let folders = match self.search_folders(id, &params.channel, params.folders.as_ref()) {
+            Ok(folders) => folders,
+            Err(refusal) => return refusal,
+        };
+        let query = hifind::SearchQuery {
+            term: params.query,
+            kind: params.kind,
+            case_sensitive: params.case_sensitive,
+            target: himark_ahp_ext_types::SearchTarget::Content,
+        };
+        if let Err(message) = hifind::validate(&query) {
+            return rpc::failure(id, INVALID_PARAMS, message);
+        }
+        let limit = params
+            .limit
+            .map(|limit| limit as usize)
+            .unwrap_or(DEFAULT_LIMIT)
+            .min(LIMIT_CAP);
+
+        let (channel, cancel) = self.mint_locations(connection);
+        let host = Arc::clone(self);
+        let fan_out = channel.clone();
+        tokio::task::spawn_blocking(move || {
+            let emit = |batch: hifind::FileMatches| {
+                let uri =
+                    crate::uris::file_uri(&folders[batch.folder].join(&batch.relative));
+                let locations = batch
+                    .matches
+                    .into_iter()
+                    .map(|found| himark_ahp_ext_types::Location {
+                        uri: uri.clone(),
+                        line: found.line,
+                        column: found.column,
+                        length: found.length,
+                        context: found.context,
+                        context_column_start: found.context_column_start,
+                    })
+                    .collect();
+                host.emit_locations(
+                    &fan_out,
+                    himark_ahp_ext_types::LocationList {
+                        locations,
+                        done: false,
+                        truncated: false,
+                    },
+                );
+            };
+            let truncated =
+                hifind::scan_locations(&folders, &query, limit, &cancel, &emit).unwrap_or(true);
+            host.emit_locations(
+                &fan_out,
+                himark_ahp_ext_types::LocationList {
+                    locations: Vec::new(),
+                    done: true,
+                    truncated,
+                },
+            );
+        });
+        rpc::success(id, serde_json::json!({ "channel": channel }))
+    }
+
     fn create_terminal(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params: CreateTerminalParams = match serde_json::from_value(params) {
             Ok(params) => params,
@@ -3329,6 +3408,64 @@ impl Host {
             Some(snapshot) => rpc::success(id, serde_json::json!({ "snapshot": snapshot })),
             None => rpc::failure(id, NO_SUCH_CHANNEL, format!("no channel {channel}")),
         }
+    }
+
+    /// Mint a fresh per-request locations channel
+    /// (docs/ahp/ahp-locations.md §2.3). The caller has already
+    /// validated the session; the answered token is the producer's
+    /// leash, flipped by the last unsubscribe.
+    fn mint_locations(&self, connection: u64) -> (Uri, Arc<std::sync::atomic::AtomicBool>) {
+        let channel = format!("{LOCATIONS_PREFIX}{}", crate::uuid_v4());
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        self.update(|state| {
+            state.locations.insert_mut(
+                channel.clone(),
+                LocationsEntry {
+                    connection,
+                    state: himark_ahp_ext_types::LocationList::default(),
+                    cancel: Arc::clone(&cancel),
+                },
+            );
+        });
+        (channel, cancel)
+    }
+
+    /// Fold a batch into a locations channel and fan it out as one
+    /// `locations/extend` action. A disposed channel (the audience
+    /// left; the producer outran its cancellation check) drops the
+    /// batch silently.
+    fn emit_locations(&self, channel: &Uri, batch: himark_ahp_ext_types::LocationList) {
+        self.update(|state| {
+            let Some(entry) = state.locations.get(channel) else {
+                return;
+            };
+            let mut entry = entry.clone();
+            entry.state.concat(batch.clone());
+            state.locations.insert_mut(channel.clone(), entry);
+
+            let action = himark_ahp_ext_types::locations::action_value(
+                himark_ahp_ext_types::LOCATIONS_EXTEND,
+                &batch,
+            );
+            state.server_seq += 1;
+            let envelope = ahp_types::actions::ActionEnvelope {
+                channel: channel.clone(),
+                action: StateAction::Unknown(action),
+                server_seq: state.server_seq as u64,
+                origin: None,
+                rejection_reason: None,
+            };
+            let line = rpc::line(&rpc::notification("action", &envelope));
+            if let Some(subscribers) = state.subscribers.get(channel) {
+                for (_, outbox) in subscribers.iter() {
+                    let _ = outbox.send(line.clone());
+                }
+            }
+            state.replay.enqueue_mut(envelope);
+            if state.replay.len() > REPLAY_DEPTH {
+                state.replay.dequeue_mut();
+            }
+        });
     }
 
     fn subscribe_locations(

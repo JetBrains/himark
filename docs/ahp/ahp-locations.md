@@ -143,8 +143,9 @@ The server answers the channel, then walks; matches stream as
 `locations/extend` actions, one action per matched file (a server MAY
 split a file with very many matches across several actions). An
 empty `query` answers a channel that immediately resolves
-`{done: true}`. Per-file emission order within a folder is path
-order; across folders, folder order.
+`{done: true}`. Within a file, matches are in (line, column) order;
+ACROSS files the emission order is unspecified — the walk is
+parallel, and consumers present locations in their own order.
 
 ### 3.2 `lsp/locations`
 
@@ -187,7 +188,8 @@ excluded method).
 
 | condition | answer |
 |---|---|
-| unknown session channel | JSON-RPC error `-32602` (Invalid params) |
+| unknown session channel on `searchLocations` | `-32001` (no such channel), as `search` |
+| unknown session channel on `lsp/locations` | `-32602` (Invalid params), as the LSP extension |
 | `kind: "fuzzy"` on `searchLocations` | `-32602` |
 | invalid regular expression | `-32602` |
 | a `folders` entry that is not a `file:` URI, or outside the roots | `-32602` |

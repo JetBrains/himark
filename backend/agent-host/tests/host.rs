@@ -1252,6 +1252,217 @@ async fn an_unknown_locations_channel_answers_no_such_channel() {
     assert_eq!(refused["error"]["code"], json!(-32001), "{refused}");
 }
 
+fn locations_tree(dir: &Path) -> std::path::PathBuf {
+    let root = dir.join("work");
+    std::fs::create_dir_all(root.join("src")).expect("mkdir");
+    std::fs::create_dir_all(root.join("target")).expect("mkdir");
+    std::fs::write(root.join("README.md"), "# readme\nconflation is delivery\n").expect("write");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "let conflation = conflation;\nplain\n",
+    )
+    .expect("write");
+    std::fs::write(root.join("target/ignored.md"), "conflation here too\n").expect("write");
+    std::fs::write(root.join(".gitignore"), "target/\n").expect("write");
+    root
+}
+
+/// Fold `locations/extend` actions over a subscribe snapshot until
+/// the channel's story resolves — the reducer of
+/// docs/ahp/ahp-locations.md §2.2, exercised over the wire. The
+/// snapshot may already carry any prefix of the stream (the producer
+/// starts at the request, not at subscribe).
+async fn drain_locations(client: &mut Client, channel: &str, mut state: Value) -> Value {
+    while !state["done"].as_bool().unwrap_or(false) {
+        let action = client.next_action(channel).await;
+        assert_eq!(action["type"], "locations/extend", "{action}");
+        if let Some(batch) = action["locations"].as_array() {
+            state["locations"]
+                .as_array_mut()
+                .expect("locations")
+                .extend(batch.iter().cloned());
+        }
+        for flag in ["done", "truncated"] {
+            if action[flag].as_bool().unwrap_or(false) {
+                state[flag] = json!(true);
+            }
+        }
+    }
+    state
+}
+
+#[tokio::test]
+async fn search_locations_streams_positioned_matches() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = locations_tree(dir.path());
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let minted = client
+        .request("searchLocations", json!({"channel": session, "query": "CONFLATION"}))
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    assert!(channel.starts_with("ahp-locations:/"), "{channel}");
+
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    let mut locations: Vec<(String, u64, u64, u64)> = state["locations"]
+        .as_array()
+        .expect("locations")
+        .iter()
+        .map(|location| {
+            (
+                location["uri"].as_str().expect("uri").to_owned(),
+                location["line"].as_u64().expect("line"),
+                location["column"].as_u64().expect("column"),
+                location["length"].as_u64().expect("length"),
+            )
+        })
+        .collect();
+    locations.sort();
+    assert_eq!(locations.len(), 3, "{locations:?}");
+    assert!(locations[0].0.ends_with("README.md"), "{locations:?}");
+    assert_eq!((locations[0].1, locations[0].2, locations[0].3), (1, 0, 10));
+    assert!(locations[1].0.ends_with("src/lib.rs"));
+    assert_eq!((locations[1].1, locations[1].2), (0, 4));
+    assert_eq!((locations[2].1, locations[2].2), (0, 17));
+    assert!(
+        !locations.iter().any(|entry| entry.0.contains("target")),
+        "ignore rules hold: {locations:?}"
+    );
+
+    let context = state["locations"][0]["context"].as_str().expect("context");
+    assert!(
+        !context.is_empty() && state["locations"][0]["contextColumnStart"] == json!(0),
+        "{state}"
+    );
+}
+
+#[tokio::test]
+async fn search_locations_limit_truncates_the_stream() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = locations_tree(dir.path());
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "conflation", "limit": 1}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(&mut client, &channel, subscribed["snapshot"]["state"].clone()).await;
+    assert_eq!(state["truncated"], json!(true), "{state}");
+    assert_eq!(state["locations"].as_array().expect("locations").len(), 1);
+}
+
+#[tokio::test]
+async fn search_locations_refuses_bad_queries() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = locations_tree(dir.path());
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let refused = client
+        .request_any(
+            "searchLocations",
+            json!({"channel": session, "query": "x", "kind": "fuzzy"}),
+        )
+        .await;
+    assert_eq!(refused["error"]["code"], json!(-32602), "{refused}");
+
+    let refused = client
+        .request_any(
+            "searchLocations",
+            json!({"channel": session, "query": "(", "kind": "regex"}),
+        )
+        .await;
+    assert_eq!(refused["error"]["code"], json!(-32602), "{refused}");
+
+    let refused = client
+        .request_any(
+            "searchLocations",
+            json!({"channel": "ahp-session:/nope", "query": "x"}),
+        )
+        .await;
+    assert_eq!(refused["error"]["code"], json!(-32001), "{refused}");
+}
+
+#[tokio::test]
+async fn unsubscribing_disposes_a_locations_channel() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = locations_tree(dir.path());
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host.clone()).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    let minted = client
+        .request("searchLocations", json!({"channel": session, "query": "conflation"}))
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    client
+        .request("unsubscribe", json!({"channel": channel}))
+        .await;
+
+    let refused = client
+        .request_any("subscribe", json!({"channel": channel}))
+        .await;
+    assert_eq!(
+        refused["error"]["code"],
+        json!(-32001),
+        "the last unsubscribe disposed the channel: {refused}"
+    );
+}
+
+#[tokio::test]
+async fn a_dying_connection_reaps_its_unsubscribed_locations_channels() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = locations_tree(dir.path());
+    let host = host_at(dir.path());
+
+    let channel = {
+        let mut minter = Client::connect(host.clone()).await;
+        let (session, _chat) = open_session(&mut minter, &root).await;
+        let minted = minter
+            .request("searchLocations", json!({"channel": session, "query": "conflation"}))
+            .await;
+        minted["channel"].as_str().expect("channel").to_owned()
+        // the minter drops here without ever subscribing
+    };
+
+    let mut witness = Client::connect(host).await;
+    let mut refused = Value::Null;
+    for _ in 0..50 {
+        refused = witness
+            .request_any("subscribe", json!({"channel": channel}))
+            .await;
+        if refused.get("error").is_some() {
+            break;
+        }
+        // the close is asynchronous; re-subscribe keeps the row alive,
+        // so drop it again before the next probe
+        witness
+            .request("unsubscribe", json!({"channel": channel}))
+            .await;
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    assert_eq!(refused["error"]["code"], json!(-32001), "{refused}");
+}
+
 #[tokio::test]
 async fn a_changeset_channel_serves_the_folders_changes() {
     let dir = tempfile::tempdir().expect("tempdir");

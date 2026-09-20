@@ -265,9 +265,11 @@ off the UI thread** — the batch handler folds the accumulated feed
 into the trie, shapes the `ListSlice` (rows, spans, context labels)
 on the worker, passing the collapsed set in — and the UI-thread
 `splice_slice` is the O(log n) graft (the no-linear-UI-work rule).
-Fold state and selection survive relandings by key. Search emission is
-path-ordered per folder, so rebuilds coalesce naturally (one relanding
-per landed batch, throttled while the stream runs hot).
+Fold state and selection survive relandings by key. Search emission
+order is unspecified (the host's walk is parallel); the trie build
+sorts, so the tree is always path-ordered whatever order batches
+land in — rebuilds coalesce to one relanding per landed batch,
+throttled while the stream runs hot.
 
 Keyboard is the unified list's, configured once: `with_selection`,
 cursor on arrows, Enter activates, reveal keeps it on screen;
