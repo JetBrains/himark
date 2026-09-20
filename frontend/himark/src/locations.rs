@@ -108,6 +108,11 @@ pub struct LocationsFeedRow {
     pub truncated: bool,
     pub channel: Option<crate::LocationsChannel>,
     pub poll: Option<imba::effect::CancellationToken>,
+    /// The find-results washes this feed installed on opened
+    /// documents: markup id plus the ranges last pushed (the change
+    /// set a removal brings, the find-bar discipline).
+    pub washes:
+        rpds::HashTrieMapSync<crate::DocumentId, (crate::MarkupId, rpds::VectorSync<(u32, u32)>)>,
 }
 
 #[derive(Clone, Default)]
@@ -294,6 +299,172 @@ impl crate::LandingCommand for FeedBatch {
     }
 }
 
+/// Search-originated opens awaiting registration: the pick notes
+/// the location; the document hook converts it into a wash when the
+/// open lands.
+#[derive(Clone, Default)]
+pub struct PendingWashes(rpds::HashTrieMapSync<ResourceLocation, FeedId>);
+
+impl PendingWashes {
+    pub fn note(store: &mut Store, location: ResourceLocation, feed: FeedId) {
+        store.update::<PendingWashes>(|pending| {
+            pending.0.insert_mut(location, feed);
+        });
+    }
+
+    fn take(store: &mut Store, location: &ResourceLocation) -> Option<FeedId> {
+        let feed = store
+            .get::<PendingWashes>()
+            .and_then(|pending| pending.0.get(location).copied());
+        if feed.is_some() {
+            store.update::<PendingWashes>(|pending| {
+                pending.0.remove_mut(location);
+            });
+        }
+        feed
+    }
+
+    fn sweep(store: &mut Store, feed: FeedId) {
+        store.update::<PendingWashes>(|pending| {
+            let stale: Vec<ResourceLocation> = pending
+                .0
+                .iter()
+                .filter(|(_, held)| **held == feed)
+                .map(|(location, _)| location.clone())
+                .collect();
+            for location in stale {
+                pending.0.remove_mut(&location);
+            }
+        });
+    }
+}
+
+/// The registration hook: a search-picked document opened — wash it.
+pub struct LocationsWashHook;
+
+impl crate::DocumentHook for LocationsWashHook {
+    fn opened(&self, store: &mut Store, document: crate::DocumentId) {
+        let Some(location) = crate::OpenDocuments::location(store, document) else {
+            return;
+        };
+        if let Some(feed) = PendingWashes::take(store, &location) {
+            crate::AppRequests::push(store, std::sync::Arc::new(WashDocument { feed, document }));
+        }
+    }
+
+    fn closing(&self, _store: &mut Store, _document: crate::DocumentId) {}
+}
+
+/// Install the feed's find-results markup on an opened document:
+/// every occurrence of this feed in the file, washed
+/// `StyleId::Match`, Document-scoped so every editor of the file —
+/// current and future panes — shows it. Ranges resolve against the
+/// LIVE text and shift with edits like all markup; the wash leaves
+/// with the feed (`DisposeFeed`).
+pub struct WashDocument {
+    pub feed: FeedId,
+    pub document: crate::DocumentId,
+}
+
+impl crate::DynamicCommand for WashDocument {
+    fn id(&self) -> &'static str {
+        "locations.wash-document"
+    }
+
+    fn name(&self) -> String {
+        "Highlight Found Results".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        _window: crate::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
+        let Some(mut row) = LocationsFeeds::row(store, self.feed) else {
+            return;
+        };
+        if row.washes.contains_key(&self.document) {
+            return;
+        }
+        let Some(location) = crate::OpenDocuments::location(store, self.document) else {
+            return;
+        };
+        let Some(mut document) = crate::OpenDocuments::document(store, self.document) else {
+            return;
+        };
+
+        let mut ranges: Vec<std::ops::Range<u32>> = {
+            let mut view = document.text().view();
+            row.locations
+                .iter()
+                .filter(|found| found.location == location)
+                .map(|found| {
+                    let target = found.target();
+                    let start = crate::offset_at(&mut view, target.start) as u32;
+                    start..(start + found.length.max(1))
+                })
+                .collect()
+        };
+        if ranges.is_empty() {
+            crate::OpenDocuments::put_document(store, self.document, document);
+            return;
+        }
+        ranges.sort_by_key(|range| range.start);
+        ranges.dedup();
+
+        let fonts = crate::env::Fonts::of(store)();
+        let theme = crate::env::Themes::of(store);
+        let markup = crate::MarkupId::mint();
+        document.ensure_document_markup(markup);
+        let mut tints = crate::Markup::new();
+        for range in &ranges {
+            tints.push_styled(range.clone(), crate::theme::StyleId::Match);
+        }
+        let entity = self.document;
+        fx.scope(
+            move |command| crate::AppCommand::Entity(entity, command),
+            |fx| document.replace_markup(markup, tints, &ranges, &fonts, &theme, fx),
+        );
+        crate::OpenDocuments::put_document(store, self.document, document);
+
+        row.washes.insert_mut(
+            self.document,
+            (
+                markup,
+                ranges
+                    .into_iter()
+                    .map(|range| (range.start, range.end))
+                    .collect(),
+            ),
+        );
+        LocationsFeeds::put(store, self.feed, row);
+    }
+}
+
+fn remove_washes(
+    store: &mut Store,
+    row: &LocationsFeedRow,
+    fx: &mut crate::app::AppFx<'_>,
+) {
+    let fonts = crate::env::Fonts::of(store)();
+    let theme = crate::env::Themes::of(store);
+    for (id, (markup, pushed)) in row.washes.iter() {
+        let Some(mut document) = crate::OpenDocuments::document(store, *id) else {
+            continue; // closed — the markup died with it
+        };
+        let changed: Vec<std::ops::Range<u32>> =
+            pushed.iter().map(|(start, end)| *start..*end).collect();
+        let entity = *id;
+        fx.scope(
+            move |command| crate::AppCommand::Entity(entity, command),
+            |fx| document.remove_markup(*markup, &changed, &fonts, &theme, fx),
+        );
+        crate::OpenDocuments::put_document(store, *id, document);
+    }
+}
+
 /// Stop a feed's stream, keeping what landed: cancel the pump,
 /// unsubscribe (the host-side cancel), resolve the row cut-off.
 pub struct StopFeed {
@@ -365,6 +536,8 @@ impl crate::DynamicCommand for DisposeFeed {
         let Some(row) = LocationsFeeds::row(store, self.feed) else {
             return;
         };
+        remove_washes(store, &row, fx);
+        PendingWashes::sweep(store, self.feed);
         if let Some(token) = row.poll {
             fx.cancel(token);
         }
@@ -396,7 +569,10 @@ impl crate::LandingCommand for NothingLanded {
 
 /// The peek's master forest: locations grouped by FILE (no directory
 /// nesting — the card is compact), every occurrence a pickable leaf.
-pub fn files_forest(store: &Store, rows: &[FoundLocation]) -> Vec<ForestNode<LocationKey>> {
+pub fn files_forest<'a>(
+    store: &Store,
+    rows: impl IntoIterator<Item = &'a FoundLocation>,
+) -> Vec<ForestNode<LocationKey>> {
     let tree = crate::env::Themes::of(store).ui().tree.clone();
     let chip = tree.directory.0;
     let mut order: Vec<ResourceLocation> = Vec::new();

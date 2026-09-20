@@ -22,8 +22,8 @@ use skia_safe::Size;
 
 use crate::forest::{ForestList, ForestSearcher};
 use crate::locations::{
-    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation,
-    LocationKey, LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
+    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey,
+    LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
 };
 use crate::modal::RequestSlot;
 use crate::speedsearch::{SpeedSearchCommand, SpeedSearchView};
@@ -74,9 +74,10 @@ pub struct SearchView {
     focus: SearchArea,
     last_query: String,
 
-    /// Pick lookup: a hit key answers its own location; a file key
-    /// its first occurrence.
-    targets: rpds::HashTrieMapSync<LocationKey, FoundLocation>,
+    /// Pick lookup: a hit key answers its INDEX into the feed (a
+    /// file key its first occurrence) — indices, never copies; the
+    /// feed row is the one holder of the contexts.
+    targets: rpds::HashTrieMapSync<LocationKey, usize>,
     files: usize,
     shown: Option<(FeedId, u64)>,
 
@@ -148,22 +149,22 @@ impl SearchView {
     }
 
     /// Rebuild the tree and the pick table from the feed — cursor
-    /// and fold state survive by key.
+    /// and fold state survive by key. Location keys ride Arc'd
+    /// paths (O(1) clones); the contexts are never copied here.
     fn rebuild(&mut self, store: &Store, ui: &UiCtx) {
         let feed = self.feed(store);
         let row = self.row(store);
-        let locations: Vec<FoundLocation> = row.locations.iter().cloned().collect();
-        let forest = locations_forest(store, &locations);
+        let forest = locations_forest(store, row.locations.iter());
 
         let mut targets = rpds::HashTrieMapSync::new_sync();
         let mut files = 0usize;
-        for found in &locations {
+        for (index, found) in row.locations.iter().enumerate() {
             let hit = LocationKey::Hit(found.location.clone(), found.line, found.column);
-            targets.insert_mut(hit, found.clone());
+            targets.insert_mut(hit, index);
             let file = LocationKey::Node(found.location.clone());
             if !targets.contains_key(&file) {
                 files += 1;
-                targets.insert_mut(file, found.clone());
+                targets.insert_mut(file, index);
             }
         }
         self.targets = targets;
@@ -220,8 +221,18 @@ impl SearchView {
         );
     }
 
-    fn pick(&mut self, key: LocationKey) {
-        let Some(found) = self.targets.get(&key).cloned() else {
+    fn pick(&mut self, store: &Store, key: LocationKey) {
+        let Some(found) = self
+            .targets
+            .get(&key)
+            .copied()
+            .and_then(|index| {
+                self.feed(store)
+                    .and_then(|feed| LocationsFeeds::row_ref(store, feed))
+                    .and_then(|row| row.locations.get(index))
+            })
+            .cloned()
+        else {
             return;
         };
         let target = found.target();
@@ -230,6 +241,7 @@ impl SearchView {
             Arc::new(OpenFoundLocation {
                 location: found.location,
                 target,
+                feed: self.feed(store),
             }),
         )));
     }
@@ -238,6 +250,9 @@ impl SearchView {
 pub(crate) struct OpenFoundLocation {
     pub(crate) location: crate::ResourceLocation,
     pub(crate) target: std::ops::Range<crate::LineCol>,
+    /// Set for search-view picks: the opened editor gets the feed's
+    /// find-results wash — every occurrence in the file highlighted.
+    pub(crate) feed: Option<FeedId>,
 }
 
 impl crate::DynamicCommand for OpenFoundLocation {
@@ -252,10 +267,23 @@ impl crate::DynamicCommand for OpenFoundLocation {
     fn perform(
         &self,
         _app: &mut crate::Application,
-        _store: &mut Store,
+        store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        if let Some(feed) = self.feed {
+            match crate::OpenDocuments::by_location(store, &self.location) {
+                Some(document) => crate::AppRequests::push(
+                    store,
+                    Arc::new(crate::locations::WashDocument { feed, document }),
+                ),
+                None => crate::locations::PendingWashes::note(
+                    store,
+                    self.location.clone(),
+                    feed,
+                ),
+            }
+        }
         let _ = fx.push(crate::open_by_location_effect(
             window,
             self.location.clone(),
@@ -345,7 +373,7 @@ impl View for SearchView {
                             if location.kind().is_directory());
                         match toggle || branch {
                             true => self.search.inner_mut().toggle(&key, store, ui),
-                            false => self.pick(key),
+                            false => self.pick(store, key),
                         }
                         return;
                     }
@@ -360,7 +388,7 @@ impl View for SearchView {
             SearchCommand::Fold(expand) => self.search.inner_mut().fold_cursor(expand, store, ui),
             SearchCommand::Pick => {
                 if let Some(key) = self.search.inner().list().cursor().cloned() {
-                    self.pick(key);
+                    self.pick(store, key);
                 }
             }
             SearchCommand::Focus(area, then) => {
@@ -419,11 +447,14 @@ impl View for SearchView {
             );
 
             // The status band: counts while streaming and after; a
-            // click while running stops the stream.
+            // click while running stops the stream. Per-frame reads
+            // go through row_ref — no row clone per paint.
             let feed = self.feed(store);
-            let row = self.row(store);
-            let hits = row.locations.len();
-            let status = match (feed.is_some(), row.done, row.truncated) {
+            let row = feed.and_then(|feed| LocationsFeeds::row_ref(store, feed));
+            let (hits, done, truncated, generation) = row
+                .map(|row| (row.locations.len(), row.done, row.truncated, row.generation))
+                .unwrap_or((0, true, false, 0));
+            let status = match (feed.is_some(), done, truncated) {
                 (false, _, _) => "type to search the session".to_owned(),
                 (true, false, _) => format!("{hits} results — searching… (click stops)"),
                 (true, true, false) => match hits {
@@ -432,7 +463,7 @@ impl View for SearchView {
                 },
                 (true, true, true) => format!("{hits} results (cut off)"),
             };
-            let running = feed.is_some() && !row.done;
+            let running = feed.is_some() && !done;
             let band = crate::ui::ListRow::new(arena, crate::ui::RowStyle::header(store, ui))
                 .label(status)
                 .on_event(move |_arena: &Arena, event: &Event<'_>, _size| match event {
@@ -464,12 +495,29 @@ impl View for SearchView {
                 .map(SearchCommand::List)
                 .focus_scope(self.focus == SearchArea::Results),
             );
-            let stale = self.shown != feed.map(|feed| (feed, row.generation));
+            // The refresh probe: a 1px leaf whose own paint files
+            // Refresh when the feed moved — the PANEL keeps painting;
+            // hijacking its Paint blanked a frame per landed batch
+            // (the input caret blinked on every one).
+            let stale = self.shown != feed.map(|feed| (feed, generation));
+            if stale {
+                panel.place(
+                    0.0,
+                    0.0,
+                    imba::leaf::leaf::<SearchCommand>(1.0, 1.0).event(
+                        move |_arena, event, _size| match event {
+                            Event::Paint { .. } => {
+                                EventResult::Command(SearchCommand::Refresh)
+                            }
+                            _ => EventResult::Ignored,
+                        },
+                    ),
+                );
+            }
             panel.wrap_realized(move |panel| SearchPanelWidget {
                 panel,
                 size,
                 input_bottom,
-                stale,
             })
         })
     }
@@ -482,7 +530,6 @@ struct SearchPanelWidget<'a> {
     panel: imba::container::RealizedContainer<'a, SearchCommand>,
     size: Size,
     input_bottom: f32,
-    stale: bool,
 }
 
 impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
@@ -501,11 +548,6 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
         viewport: skia_safe::Rect,
     ) -> EventResult<SearchCommand> {
         match event {
-            Event::Paint { .. } if self.stale => {
-                // The feed moved under the face — refresh, then let
-                // the paint proceed on the refreshed tree next frame.
-                EventResult::Command(SearchCommand::Refresh)
-            }
             Event::MouseDown { point, .. } => {
                 let area = match point.y < self.input_bottom {
                     true => SearchArea::Input,
@@ -701,6 +743,7 @@ fn seeded_input(text: &str) -> EditorView {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::locations::FoundLocation;
 
     fn found(path: &[&str], line: u32, column: u32, context: &str) -> FoundLocation {
         FoundLocation {
@@ -811,7 +854,7 @@ mod tests {
         let mut view = view(&mut store, &ui);
 
         let hit = LocationKey::Hit(found(&["work", "a.rs"], 3, 2, "").location, 3, 2);
-        view.pick(hit);
+        view.pick(&store, hit);
         let request = crate::ModalView::take_request(&mut view);
         assert!(
             matches!(
@@ -823,7 +866,7 @@ mod tests {
 
         // A file pick answers its first occurrence.
         let file = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
-        view.pick(file);
+        view.pick(&store, file);
         assert!(crate::ModalView::take_request(&mut view).is_some());
 
         // A directory key has no target: no request.
@@ -832,7 +875,7 @@ mod tests {
             crate::Authority::new("local"),
             vec!["work".to_owned()],
         ));
-        view.pick(dir);
+        view.pick(&store, dir);
         assert!(crate::ModalView::take_request(&mut view).is_none());
     }
 }

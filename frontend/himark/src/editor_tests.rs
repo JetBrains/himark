@@ -5883,3 +5883,135 @@ unrelated
     );
     let _ = (diff, panel_diff);
 }
+
+mod wash_tests {
+    use super::*;
+    use crate::locations::{
+        DisposeFeed, FeedId, FoundLocation, LocationsFeedRow, LocationsFeeds, PendingWashes,
+    };
+    use crate::{AppCommand, AppFonts, Application, OpenedDocument};
+    use std::sync::Arc;
+
+    fn located(name: &str) -> crate::ResourceLocation {
+        crate::ResourceLocation::new(
+            crate::ResourceType::document(),
+            crate::Authority::new("local"),
+            vec!["work".to_owned(), name.to_owned()],
+        )
+    }
+
+    fn seeded_feed(app: &mut Application, name: &str) -> FeedId {
+        let feed = FeedId::mint();
+        let mut row = LocationsFeedRow {
+            title: "Search: needle".to_owned(),
+            generation: 1,
+            done: true,
+            ..Default::default()
+        };
+        for (line, column) in [(0u32, 0u32), (1, 4)] {
+            row.locations.push_back_mut(FoundLocation {
+                location: located(name),
+                line,
+                column,
+                length: 6,
+                context: "needle".to_owned(),
+                context_column_start: 0,
+            });
+        }
+        row.locations.push_back_mut(FoundLocation {
+            location: located("other.md"),
+            line: 0,
+            column: 0,
+            length: 6,
+            context: "needle".to_owned(),
+            context_column_start: 0,
+        });
+        LocationsFeeds::put(&mut app.store_mut(), feed, row);
+        feed
+    }
+
+    #[test]
+    fn a_search_pick_washes_the_opened_editor() {
+        let mut app = Application::new(AppFonts::embedded());
+        let window = app.add_window();
+        assert!(app.perform_command(AppCommand::Opened(
+            window,
+            OpenedDocument {
+                name: "hit.md".to_owned(),
+                document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
+                location: Some(located("hit.md")),
+                primary: true,
+                target: None,
+            },
+        )));
+        let feed = seeded_feed(&mut app, "hit.md");
+
+        // The already-open pick path: the wash lands through the
+        // drained request, resolved against live text.
+        assert!(app.perform_command(AppCommand::Dynamic(
+            window,
+            Arc::new(crate::hisearch::OpenFoundLocation {
+                location: located("hit.md"),
+                target: crate::LineCol { line: 1, col: 4 }..crate::LineCol { line: 1, col: 10 },
+                feed: Some(feed),
+            }),
+        )));
+        // Requests drain on the next content tick, as in the live app.
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Focus(crate::LayerFocus::Content),
+        )));
+        let row = LocationsFeeds::row(app.store(), feed).expect("the feed");
+        assert_eq!(row.washes.size(), 1, "the opened document is washed");
+        let (document, (_, pushed)) = row.washes.iter().next().expect("the wash");
+        let ranges: Vec<(u32, u32)> = pushed.iter().copied().collect();
+        assert_eq!(
+            ranges,
+            [(0, 6), (15, 21)],
+            "every occurrence in the file, byte-resolved"
+        );
+
+        // Disposal removes the wash and survives the walk.
+        assert!(app.perform_command(AppCommand::Dynamic(
+            window,
+            Arc::new(DisposeFeed { feed }),
+        )));
+        assert!(LocationsFeeds::row(app.store(), feed).is_none());
+        assert!(
+            crate::OpenDocuments::document_ref(app.store(), *document).is_some(),
+            "the document stays; only the wash left"
+        );
+    }
+
+    #[test]
+    fn a_pick_before_the_open_washes_at_registration() {
+        let mut app = Application::new(AppFonts::embedded());
+        let window = app.add_window();
+        let feed = seeded_feed(&mut app, "late.md");
+
+        // The async-open path: the pick notes the pending wash; the
+        // document hook converts it when registration lands.
+        PendingWashes::note(&mut app.store_mut(), located("late.md"), feed);
+        assert!(app.perform_command(AppCommand::Opened(
+            window,
+            OpenedDocument {
+                name: "late.md".to_owned(),
+                document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
+                location: Some(located("late.md")),
+                primary: true,
+                target: None,
+            },
+        )));
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Focus(crate::LayerFocus::Content),
+        )));
+        let row = LocationsFeeds::row(app.store(), feed).expect("the feed");
+        assert_eq!(
+            row.washes.size(),
+            1,
+            "the hook washed the registration: {:?}",
+            row.washes.size()
+        );
+    }
+}

@@ -342,6 +342,10 @@ impl Application {
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
         crate::Navigators::register(&mut store, crate::navigation::EditorNavigator);
+        crate::OpenDocuments::install_hook(
+            &mut store,
+            Arc::new(crate::locations::LocationsWashHook),
+        );
 
         let workshop = Arc::new(::editor::Workshop::new(
             ::editor::env::Fonts::of(&store),
