@@ -179,27 +179,327 @@ fn a_single_unopened_target_registers_its_prefetched_build() {
     );
 }
 
+/// A seat that serves ONLY the locations trio: subscribe answers a
+/// canned stream snapshot, poll parks, everything else is
+/// unreachable in these tests.
+struct StreamSeat {
+    snapshot: himark_ahp_ext_types::LocationList,
+}
+
+impl himark::higent::AhpServer for StreamSeat {
+    fn connect(&self) -> himark::higent::SeatFuture<Result<himark::higent::RootInfo, String>> {
+        unreachable!()
+    }
+    fn list_sessions(
+        &self,
+        _cursor: Option<String>,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::SessionsPage, String>> {
+        unreachable!()
+    }
+    fn poll_root(&self) -> himark::higent::SeatFuture<Vec<himark::higent::ServerEvent>> {
+        unreachable!()
+    }
+    fn create_session(
+        &self,
+        _working_directories: Vec<String>,
+        _options: himark::higent::SessionOptions,
+    ) -> himark::higent::SeatFuture<Result<String, String>> {
+        unreachable!()
+    }
+    fn resolve_session_config(
+        &self,
+        _working_directory: Option<String>,
+        _config: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>
+    {
+        unreachable!()
+    }
+    fn dispose_session(&self, _session: String) -> himark::higent::SeatFuture<Result<(), String>> {
+        unreachable!()
+    }
+    fn subscribe_session(
+        &self,
+        _session: String,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::SessionState, String>> {
+        unreachable!()
+    }
+    fn poll_session(
+        &self,
+        _session: String,
+    ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
+        unreachable!()
+    }
+    fn create_chat(&self, _session: String) -> himark::higent::SeatFuture<Result<String, String>> {
+        unreachable!()
+    }
+    fn subscribe_chat(
+        &self,
+        _chat: String,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChatState, String>> {
+        unreachable!()
+    }
+    fn fetch_turns(
+        &self,
+        _chat: String,
+        _cursor: Option<String>,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::TurnsPage, String>> {
+        unreachable!()
+    }
+    fn start_turn(
+        &self,
+        _chat: String,
+        _text: String,
+        _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
+        _model: Option<himark::higent::ahp_types::state::ModelSelection>,
+    ) -> himark::higent::SeatFuture<Result<(), String>> {
+        unreachable!()
+    }
+    fn poll_chat(
+        &self,
+        _chat: String,
+    ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
+        unreachable!()
+    }
+    fn cancel_turn(&self, _chat: String, _turn_id: String) -> himark::higent::SeatFuture<()> {
+        unreachable!()
+    }
+    fn dispatch_action(
+        &self,
+        _channel: String,
+        _action: himark::higent::ahp_types::actions::StateAction,
+    ) -> himark::higent::SeatFuture<Result<(), String>> {
+        unreachable!()
+    }
+    fn read_file_edit(
+        &self,
+        _before: Option<String>,
+        _after: Option<String>,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::FileEditContents, String>> {
+        unreachable!()
+    }
+    fn resource_read(
+        &self,
+        _session: String,
+        _uri: himark::higent::ResourceUri,
+    ) -> himark::higent::SeatFuture<Option<String>> {
+        unreachable!()
+    }
+    fn resource_write(
+        &self,
+        _session: String,
+        _uri: himark::higent::ResourceUri,
+        _text: String,
+    ) -> himark::higent::SeatFuture<bool> {
+        unreachable!()
+    }
+    fn resource_list(
+        &self,
+        _session: String,
+        _uri: himark::higent::ResourceUri,
+    ) -> himark::higent::SeatFuture<Option<Vec<(String, bool)>>> {
+        unreachable!()
+    }
+    fn resource_watch(
+        &self,
+        _session: String,
+        _uri: himark::higent::ResourceUri,
+        _events: Arc<dyn Fn() + Send + Sync>,
+    ) -> himark::higent::SeatFuture<Option<himark::higent::WatchHandle>> {
+        unreachable!()
+    }
+    fn resource_unwatch(
+        &self,
+        _handle: himark::higent::WatchHandle,
+    ) -> himark::higent::SeatFuture<()> {
+        unreachable!()
+    }
+    fn search(
+        &self,
+        _session: String,
+        _ask: himark::higent::SearchAsk,
+    ) -> himark::higent::SeatFuture<Option<himark::higent::SearchResult>> {
+        unreachable!()
+    }
+    fn terminal_open(
+        &self,
+        _session: String,
+        _channel: String,
+        _cwd: Option<String>,
+        _cols: u16,
+        _rows: u16,
+        _events: Arc<dyn Fn(himark::higent::TerminalEvent) + Send + Sync>,
+    ) -> himark::higent::SeatFuture<Option<himark::higent::TerminalHandle>> {
+        unreachable!()
+    }
+    fn terminal_input(&self, _channel: &String, _data: String) {
+        unreachable!()
+    }
+    fn terminal_resize(&self, _channel: &String, _cols: u16, _rows: u16) {
+        unreachable!()
+    }
+    fn terminal_dispose(&self, _channel: &String) {
+        unreachable!()
+    }
+    fn subscribe_changeset(
+        &self,
+        _channel: String,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChangesetState, String>> {
+        unreachable!()
+    }
+    fn poll_changeset(
+        &self,
+        _channel: String,
+    ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
+        unreachable!()
+    }
+    fn unsubscribe_changeset(&self, _channel: &String) {
+        unreachable!()
+    }
+    fn subscribe_annotations(
+        &self,
+        _session: String,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::AnnotationsState, String>> {
+        unreachable!()
+    }
+    fn poll_annotations(
+        &self,
+        _session: String,
+    ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
+        unreachable!()
+    }
+    fn dispatch_annotations(&self, _session: &String, _action: himark::higent::ahp_types::actions::StateAction) {
+        unreachable!()
+    }
+    fn unsubscribe_annotations(&self, _session: &String) {
+        unreachable!()
+    }
+    fn open_document(
+        &self,
+        _session: String,
+        _uri: Option<himark::higent::ResourceUri>,
+        _text: Option<String>,
+    ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
+        unreachable!()
+    }
+    fn subscribe_document(
+        &self,
+        _channel: String,
+    ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
+        unreachable!()
+    }
+    fn poll_document(
+        &self,
+        _channel: String,
+    ) -> himark::higent::SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
+        unreachable!()
+    }
+    fn dispatch_document(&self, _channel: &String, _action: himark_ahp_ext_types::DocumentApplied) {
+        unreachable!()
+    }
+    fn unsubscribe_document(&self, _channel: &String) -> himark::higent::SeatFuture<()> {
+        Box::pin(std::future::ready(()))
+    }
+    fn lsp(
+        &self,
+        _session: String,
+        _method: String,
+        _params: serde_json::Value,
+    ) -> himark::higent::SeatFuture<Result<serde_json::Value, String>> {
+        unreachable!()
+    }
+
+    fn subscribe_locations(
+        &self,
+        _channel: String,
+    ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+        let snapshot = self.snapshot.clone();
+        Box::pin(std::future::ready(Ok(snapshot)))
+    }
+    // poll_locations keeps its default: parked — the stream is done
+    // in the snapshot. unsubscribe_locations keeps its default no-op.
+}
+
+/// The registry's thin seat handlers, test-side (hiahp registers
+/// these in production).
+struct SeatSubscribeLocations;
+
+impl himark::EffectHandler<himark::higent::SubscribeLocationsEffect> for SeatSubscribeLocations {
+    async fn handle(
+        &self,
+        effect: himark::higent::SubscribeLocationsEffect,
+    ) -> Result<himark_ahp_ext_types::LocationList, String> {
+        effect.seat.subscribe_locations(effect.channel).await
+    }
+}
+
+struct SeatPollLocations;
+
+impl himark::EffectHandler<himark::higent::PollLocationsEffect> for SeatPollLocations {
+    async fn handle(
+        &self,
+        effect: himark::higent::PollLocationsEffect,
+    ) -> Vec<himark_ahp_ext_types::LocationList> {
+        effect.seat.poll_locations(effect.channel).await
+    }
+}
+
+struct SeatUnsubscribeLocations;
+
+impl himark::EffectHandler<himark::higent::UnsubscribeLocationsEffect> for SeatUnsubscribeLocations {
+    async fn handle(&self, effect: himark::higent::UnsubscribeLocationsEffect) {
+        effect.seat.unsubscribe_locations(&effect.channel);
+    }
+}
+
+struct StubLspLocations {
+    snapshot: himark_ahp_ext_types::LocationList,
+}
+
+impl himark::EffectHandler<himark::LspLocationsEffect> for StubLspLocations {
+    async fn handle(
+        &self,
+        _effect: himark::LspLocationsEffect,
+    ) -> Result<himark::LocationsChannel, String> {
+        Ok(himark::LocationsChannel {
+            seat: Arc::new(StreamSeat {
+                snapshot: self.snapshot.clone(),
+            }),
+            channel: "ahp-locations:/test".to_owned(),
+            resolve: Arc::new(|uri| {
+                let name = uri.strip_prefix("test:/")?;
+                Some(document_location(name))
+            }),
+        })
+    }
+}
+
+fn wire_location(uri: &str, line: u32, column: u32, context: &str) -> himark_ahp_ext_types::Location {
+    himark_ahp_ext_types::Location {
+        uri: uri.to_owned(),
+        line,
+        column,
+        length: 4,
+        context: context.to_owned(),
+        context_column_start: 0,
+    }
+}
+
 #[test]
-fn many_targets_open_the_references_panel_with_groups() {
+fn references_stream_into_the_search_dock() {
     let (mut app, window) = app_with_located_document(&"line one two\n".repeat(30));
-    let open_location = document_location("a.rs");
-    let far = document_location("far.rs");
-    app.register_handler::<CodeNavigationEffect>(StubNavigation {
-        targets: Some(vec![
-            CodeTarget {
-                location: open_location.clone(),
-                range: lc(0, 5)..lc(0, 8),
-            },
-            CodeTarget {
-                location: open_location,
-                range: lc(20, 5)..lc(20, 8),
-            },
-            CodeTarget {
-                location: far.clone(),
-                range: lc(0, 0)..lc(0, 3),
-            },
-        ]),
-        built: vec![(far, plain_document("fee fie foe\n"))],
+    app.register_handler::<himark::higent::SubscribeLocationsEffect>(SeatSubscribeLocations);
+    app.register_handler::<himark::higent::PollLocationsEffect>(SeatPollLocations);
+    app.register_handler::<himark::higent::UnsubscribeLocationsEffect>(SeatUnsubscribeLocations);
+    app.register_handler::<himark::LspLocationsEffect>(StubLspLocations {
+        snapshot: himark_ahp_ext_types::LocationList {
+            locations: vec![
+                wire_location("test:/a.rs", 0, 5, "line one two"),
+                wire_location("test:/a.rs", 20, 5, "line one two"),
+                wire_location("test:/far.rs", 0, 0, "fee fie foe"),
+            ],
+            done: true,
+            truncated: false,
+        },
     });
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -221,108 +521,28 @@ fn many_targets_open_the_references_panel_with_groups() {
         let _ = himark::Window::draw(window, &mut app, surface.canvas());
     }
 
-    let mut panel_list = None;
-    app.for_each_plugin_panel(&mut |panel| {
-        if let Some(references) = panel.as_any().downcast_ref::<himark::ListPanel>() {
-            panel_list = Some(references.list_id());
-        }
-    });
-    let panel_entry = panel_list.and_then(|id| himark::LocationLists::entry_ref(app.store(), id));
-    let panel_groups = panel_entry.map(|entry| entry.list.content().group_sizes());
-    let panel_title = panel_entry.map(|entry| entry.title.clone());
+    let entity = himark::Windows::window_ref(app.store(), window).expect("the window");
     assert_eq!(
-        panel_groups,
-        Some(vec![2, 1]),
-        "two far-apart rows in the open document, one in the temp"
+        entity.dock_owner(),
+        Some(himark::hisearch::OWNER),
+        "the Search tab activated"
     );
-    assert_eq!(panel_title.as_deref(), Some("References to `line`"));
+    let session = entity.current_session();
+    let row =
+        himark::locations::LocationsFeeds::row(app.store(), &session).expect("the feed row");
+    assert_eq!(row.title, "References to `line`");
+    assert!(row.done && !row.truncated);
+    assert_eq!(row.locations.len(), 3, "the stream landed, resolved");
+    assert_eq!(
+        row.locations.iter().filter(|found| found
+            .location
+            .name()
+            .ends_with("far.rs")).count(),
+        1
+    );
     assert_eq!(
         app.document_count(),
-        documents_before + 1,
-        "the prefetched preview registers under its location like any open"
-    );
-}
-
-#[test]
-fn cmd_enter_opens_the_focused_group_in_full() {
-    let (mut app, window) = app_with_located_document(&"line one two\n".repeat(30));
-    let open_location = document_location("a.rs");
-    let far = document_location("far.rs");
-    app.register_handler::<CodeNavigationEffect>(StubNavigation {
-        targets: Some(vec![
-            CodeTarget {
-                location: open_location.clone(),
-                range: lc(0, 5)..lc(0, 8),
-            },
-            CodeTarget {
-                location: far.clone(),
-                range: lc(0, 0)..lc(0, 3),
-            },
-        ]),
-        built: vec![(far, plain_document("fee fie foe\n"))],
-    });
-    let (posted, arriving) = mpsc::channel();
-    let runner = app.attach_host(
-        Arc::new(move |command| {
-            let _ = posted.send(command);
-        }),
-        Arc::new(|| {}),
-    );
-    invoke(&mut app, window, "code.references");
-    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    for _ in 0..4 {
-        runner.run();
-        while let Ok(command) = arriving.try_recv() {
-            app.perform_batch(vec![command]);
-        }
-        let _ = himark::Window::draw(window, &mut app, surface.canvas());
-    }
-
-    let list_id = {
-        let mut panel_list = None;
-        app.for_each_plugin_panel(&mut |panel| {
-            if let Some(references) = panel.as_any().downcast_ref::<himark::ListPanel>() {
-                panel_list = Some(references.list_id());
-            }
-        });
-        panel_list.expect("the references panel stands")
-    };
-    let focused_group = |app: &Application| {
-        himark::LocationLists::entry_ref(app.store(), list_id)
-            .map(|entry| entry.list.content().focused_group())
-    };
-
-    'scan: for x in [250, 480, 700] {
-        for y in (120..680).step_by(24) {
-            let _ = himark::test_driver::click(&mut app, x as f32, y as f32, 900.0, 700.0);
-            if focused_group(&app) == Some(Some(1)) {
-                break 'scan;
-            }
-        }
-    }
-    assert_eq!(
-        focused_group(&app),
-        Some(Some(1)),
-        "a click lands the focus on the far group"
-    );
-
-    let handled = himark::test_driver::key(
-        &mut app,
-        imba::event::Key::Enter,
-        imba::event::Modifiers {
-            command: true,
-            ..Default::default()
-        },
-    );
-    assert!(handled, "cmd-enter resolves on the focused group");
-
-    runner.run();
-    while let Ok(command) = arriving.try_recv() {
-        app.perform_batch(vec![command]);
-    }
-    assert_eq!(
-        app.focused_document_text().as_deref(),
-        Some("fee fie foe\n"),
-        "the far group's document opened in full"
+        documents_before,
+        "NOTHING was fetched or registered before navigation"
     );
 }
