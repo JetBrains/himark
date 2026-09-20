@@ -405,7 +405,9 @@ impl View for SearchView {
                             if location.kind().is_directory());
                         match toggle || branch {
                             true => self.search.inner_mut().toggle(&key, store, ui),
-                            false => self.pick(store, key, true),
+                            // A click browses too — the keyboard stays
+                            // with the tree; only Enter is the jump.
+                            false => self.pick(store, key, false),
                         }
                         return;
                     }

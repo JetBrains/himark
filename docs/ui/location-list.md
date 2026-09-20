@@ -321,10 +321,10 @@ or hit row opens it in the pane through the same door a click uses
 (`navigate_selection` → `pick`), deduped by the last-navigated key
 so feed rebuilds re-asserting the cursor never re-open. The door
 carries a **focus preference** (`OpenFoundLocation.focus`, threaded
-to `Window::show_document`): a deliberate jump — click or Enter —
-moves the keyboard to the editor (`LayerFocus::Content`); a
-selection move just shows the location and the keyboard stays in
-the dock, so arrowing on continues. The
+to `Window::show_document`): only **Enter** is the deliberate jump
+that moves the keyboard to the editor (`LayerFocus::Content`);
+selection moves AND clicks just show the location — the keyboard
+stays with the tree, so navigating on continues. The
 feed keeps streaming past a closed face — the pump is app-level; a
 requery or the stop affordance cancels (`DisposeFeed`/`StopFeed`),
 never mere displacement. shift-cmd-F re-points here (the old panel
