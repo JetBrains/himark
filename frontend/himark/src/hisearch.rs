@@ -29,6 +29,10 @@ use crate::speedsearch::{SpeedSearchCommand, SpeedSearchView};
 use crate::tree_item::{tree_interaction, TreeListCommand};
 use crate::{EditorCommand, EditorView, LocationsChannel, ModalRequest, SessionId, WindowId};
 
+/// The dock owner id — the toggle command's, shared by everything
+/// that lands content into this tab.
+pub const OWNER: &str = "search.view";
+
 const MIN_QUERY: usize = 2;
 
 /// The stream's total-location cap per query; the host caps harder.
@@ -175,6 +179,64 @@ impl SearchView {
                 self.search.inner_mut().list_mut().select_only(cursor);
             }
         }
+    }
+
+    /// Adopt an externally minted stream (find-references,
+    /// find-implementations): displace whatever the tab held — the
+    /// old channel unsubscribes, the input clears to the result
+    /// set's title — and subscribe. Master–detail (several result
+    /// sets side by side) is future work; displacement makes room
+    /// for it (docs/ui/location-list.md §7).
+    pub fn attach_stream(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        title: String,
+        channel: LocationsChannel,
+        fx: &mut imba::effect::Effects<'_, SearchCommand>,
+    ) {
+        self.drop_stream(fx);
+        let mut row = self.row(store);
+        row.generation += 1;
+        row.title = title;
+        row.query = String::new();
+        row.locations = rpds::VectorSync::new_sync();
+        row.done = false;
+        row.truncated = false;
+        let generation = row.generation;
+        LocationsFeeds::put(store, self.session.clone(), row);
+        self.last_query = String::new();
+        self.input = seeded_input("");
+        self.focus = SearchArea::Results;
+        self.rebuild(store, ui);
+
+        self.channel = Some(channel.clone());
+        fx.relaunch_erased(
+            &mut self.poll_token,
+            AnyEffect::new(crate::higent::SubscribeLocationsEffect {
+                seat: channel.seat,
+                channel: channel.channel,
+            })
+            .map(move |outcome| SearchCommand::Snapshot {
+                generation,
+                outcome,
+            }),
+        );
+    }
+
+    /// The attach's error half: nothing to stream, the tab reports.
+    pub fn attach_failed(&mut self, store: &mut Store, ui: &UiCtx, title: String) {
+        let mut row = self.row(store);
+        row.generation += 1;
+        row.title = title;
+        row.query = String::new();
+        row.locations = rpds::VectorSync::new_sync();
+        row.done = true;
+        row.truncated = true;
+        LocationsFeeds::put(store, self.session.clone(), row);
+        self.last_query = String::new();
+        self.input = seeded_input("");
+        self.rebuild(store, ui);
     }
 
     /// Drop the live stream: unsubscribe (the host-side cancel) and
@@ -630,7 +692,7 @@ pub struct ToggleSearchView;
 
 impl crate::DynamicCommand for ToggleSearchView {
     fn id(&self) -> &'static str {
-        "search.view"
+        OWNER
     }
 
     fn name(&self) -> String {
@@ -669,7 +731,7 @@ impl crate::DynamicCommand for ToggleSearchView {
 
 pub fn toolbar_button() -> crate::ToolbarButton {
     crate::ToolbarButton {
-        command: "search.view",
+        command: OWNER,
         order: 0.5,
         side: crate::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {

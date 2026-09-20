@@ -964,6 +964,8 @@ impl HimarkEngine {
             self.app
                 .register_editor_command(Arc::new(hicode::GoReferences));
             self.app
+                .register_editor_command(Arc::new(hicode::GoImplementations));
+            self.app
                 .register_editor_command(Arc::new(host::OpenWorkingCopy));
         }
         if capabilities.store_document && !installed.store_document {

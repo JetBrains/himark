@@ -396,8 +396,8 @@ impl himark::DynamicEditorCommand for GoReferences {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
-        navigation(
-            NavigationKind::References,
+        stream_navigation(
+            himark::LspLocationsKind::References,
             self.id(),
             store,
             document,
@@ -406,6 +406,149 @@ impl himark::DynamicEditorCommand for GoReferences {
             payload,
             fx,
         );
+    }
+}
+
+pub struct GoImplementations;
+
+impl himark::DynamicEditorCommand for GoImplementations {
+    fn id(&self) -> &'static str {
+        "code.implementations"
+    }
+    fn name(&self) -> String {
+        "Find Implementations".to_owned()
+    }
+    fn perform(
+        &self,
+        store: &mut Store,
+        document: &mut Document,
+        editor: himark::EditorId,
+        location: &ResourceLocation,
+        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+    ) {
+        stream_navigation(
+            himark::LspLocationsKind::Implementations,
+            self.id(),
+            store,
+            document,
+            editor,
+            location,
+            payload,
+            fx,
+        );
+    }
+}
+
+/// The channel outcome riding the two-phase editor-command re-entry.
+struct StreamOutcome {
+    title: String,
+    outcome: Result<himark::LocationsChannel, String>,
+}
+
+/// References and implementations stream into the Search dock tab
+/// (docs/ui/location-list.md §7): ask `lsp/locations`, land the
+/// channel, displace whatever the tab holds. No target document is
+/// fetched here — the stream carries its own display context.
+#[allow(clippy::too_many_arguments)]
+fn stream_navigation(
+    kind: himark::LspLocationsKind,
+    id: &'static str,
+    store: &mut Store,
+    document: &mut Document,
+    editor: himark::EditorId,
+    location: &ResourceLocation,
+    payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+    fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+) {
+    let Some(payload) = payload else {
+        let caret = document.caret_byte(editor) as usize;
+        let mut view = document.text().view();
+        let position = line_col_at(&mut view, caret);
+        let ident = identifier_at(&mut view, caret);
+        let title = match (kind, ident.is_empty()) {
+            (himark::LspLocationsKind::References, false) => format!("References to `{ident}`"),
+            (himark::LspLocationsKind::References, true) => "References".to_owned(),
+            (himark::LspLocationsKind::Implementations, false) => {
+                format!("Implementations of `{ident}`")
+            }
+            (himark::LspLocationsKind::Implementations, true) => "Implementations".to_owned(),
+        };
+        let _ = fx.push(
+            imba::effect::AnyEffect::new(himark::LspLocationsEffect {
+                location: location.clone(),
+                position,
+                kind,
+            })
+            .map(move |outcome| himark::EditorCommand::Dynamic {
+                id,
+                payload: Some(Box::new(StreamOutcome { title, outcome })),
+            }),
+        );
+        return;
+    };
+    let Ok(landed) = payload.downcast::<StreamOutcome>() else {
+        return;
+    };
+    himark::AppRequests::push(
+        store,
+        Arc::new(ApplyLocationsStream {
+            title: landed.title,
+            outcome: landed.outcome,
+        }),
+    );
+}
+
+/// Land the reference stream into the Search dock tab, activating
+/// it — the ToggleSearchView recipe with an attached channel.
+struct ApplyLocationsStream {
+    title: String,
+    outcome: Result<himark::LocationsChannel, String>,
+}
+
+impl himark::DynamicCommand for ApplyLocationsStream {
+    fn id(&self) -> &'static str {
+        "code.apply-locations"
+    }
+
+    fn name(&self) -> String {
+        "Show Found Locations".to_owned()
+    }
+
+    fn perform(
+        &self,
+        app: &mut himark::Application,
+        store: &mut Store,
+        window: himark::WindowId,
+        fx: &mut himark::AppFx<'_>,
+    ) {
+        let Some(mut entity) = himark::Windows::window(store, window) else {
+            return;
+        };
+        fx.scope(
+            move |command| himark::AppCommand::Content(window, command),
+            |fx| entity.dismiss_modal(store, fx),
+        );
+
+        let session = entity.current_session();
+        let ui = app.ui_ctx();
+        let mut panel = himark::hisearch::SearchView::open(store, &ui, window, session);
+        match self.outcome.clone() {
+            Ok(channel) => fx.scope(himark::dock_scope(window), |fx| {
+                fx.scope(
+                    |command: himark::hisearch::SearchCommand| {
+                        Box::new(command) as imba::DynCommand
+                    },
+                    |fx| panel.attach_stream(store, &ui, self.title.clone(), channel, fx),
+                )
+            }),
+            Err(_) => panel.attach_failed(store, &ui, self.title.clone()),
+        }
+        fx.scope(
+            move |command| himark::AppCommand::Content(window, command),
+            |fx| entity.show_dock(store, Box::new(panel), himark::hisearch::OWNER, fx),
+        );
+        himark::Windows::put(store, window, entity);
     }
 }
 
