@@ -808,6 +808,8 @@ mod app {
     fn web_document(
         name: &str,
         source: &str,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &himark::Theme,
     ) -> himark::Document {
@@ -819,12 +821,14 @@ mod app {
                     himark::Text::from_string_exact(source),
                     &extension,
                     &languages,
+                    store,
+                    ui,
                     fonts,
                     theme,
                 );
             }
         }
-        himarkdown::document_from_markdown(source, fonts, theme)
+        himarkdown::document_from_markdown(source, store, ui, fonts, theme)
     }
 
     extern "C" fn wheel(
