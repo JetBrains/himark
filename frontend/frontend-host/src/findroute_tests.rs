@@ -5,7 +5,7 @@ use crate::hiahp::find::NativeFindHandler;
 use crate::hiahp::fs::SeatDirectory;
 use himark::higent::seat as ahp;
 use himark::ResourceType;
-use himark::{FindEffect, FindTarget, ResourceLocation};
+use himark::{FindEffect, ResourceLocation};
 use imba::effect::EffectHandler;
 use std::sync::Arc;
 
@@ -90,7 +90,6 @@ fn find(
     directory: &Arc<SeatDirectory>,
     folders: Vec<ResourceLocation>,
     term: &str,
-    target: FindTarget,
 ) -> Vec<ResourceLocation> {
     let handler = NativeFindHandler {
         directory: Arc::clone(directory),
@@ -98,7 +97,6 @@ fn find(
     let effect = FindEffect {
         folders,
         term: term.to_owned(),
-        target,
     };
     block_on(Box::pin(async move { handler.handle(effect).await }))
 }
@@ -124,12 +122,7 @@ fn session_folders_ask_their_seat() {
     directory.record(server, Arc::clone(&seat));
 
     let base = located(&encoded, &files);
-    let hits = find(
-        &directory,
-        vec![base.clone()],
-        "conflation",
-        FindTarget::Text,
-    );
+    let hits = find(&directory, vec![base.clone()], "readme");
     assert_eq!(hits.len(), 1, "only the in-folder hit: {hits:?}");
     assert_eq!(hits[0].authority(), base.authority(), "authority inherited");
     assert!(hits[0].kind().is_document());
@@ -156,17 +149,12 @@ fn local_folders_ask_the_designated_backend() {
     directory.set_local(server);
 
     let base = located("local", &files);
-    let hits = find(
-        &directory,
-        vec![base.clone()],
-        "conflation",
-        FindTarget::Text,
-    );
+    let hits = find(&directory, vec![base.clone()], "a.md");
     assert_eq!(hits.len(), 1, "{hits:?}");
     assert_eq!(hits[0].authority().as_str(), "local", "local identity kept");
     assert!(hits[0].path().join("/").ends_with("notes/a.md"), "{hits:?}");
 
-    let names = find(&directory, vec![base.clone()], "am", FindTarget::Path);
+    let names = find(&directory, vec![base.clone()], "am");
     assert_eq!(names.len(), 1, "{names:?}");
 }
 
@@ -270,11 +258,11 @@ fn undesignated_and_foreign_folders_answer_nothing() {
         himark::Authority::new("local"),
         vec!["work".to_owned()],
     );
-    assert!(find(&directory, vec![local], "x", FindTarget::Text).is_empty());
+    assert!(find(&directory, vec![local], "x").is_empty());
     let foreign = ResourceLocation::new(
         ResourceType::directory(),
         himark::Authority::new("remote:box"),
         vec!["work".to_owned()],
     );
-    assert!(find(&directory, vec![foreign], "x", FindTarget::Text).is_empty());
+    assert!(find(&directory, vec![foreign], "x").is_empty());
 }

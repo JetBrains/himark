@@ -5,12 +5,10 @@ use std::sync::Arc;
 
 use crate::fs::SeatDirectory;
 use himark::higent::{SearchAsk, SearchKind, SearchTarget};
-use himark::{FindEffect, FindTarget, ResourceLocation, ResourceType};
+use himark::{FindEffect, ResourceLocation, ResourceType};
 use imba::effect::EffectHandler;
 
 const PATH_CAP: usize = 128;
-
-const TEXT_CAP: usize = 64;
 
 pub struct NativeFindHandler {
     pub directory: Arc<SeatDirectory>,
@@ -18,18 +16,12 @@ pub struct NativeFindHandler {
 
 impl EffectHandler<FindEffect> for NativeFindHandler {
     async fn handle(&self, effect: FindEffect) -> Vec<ResourceLocation> {
-        let cap = match effect.target {
-            FindTarget::Path => PATH_CAP,
-            FindTarget::Text => TEXT_CAP,
-        };
+        let cap = PATH_CAP;
         if effect.term.is_empty() {
             return Vec::new();
         }
 
-        let (kind, target) = match effect.target {
-            FindTarget::Path => (SearchKind::Fuzzy, SearchTarget::Path),
-            FindTarget::Text => (SearchKind::Text, SearchTarget::Content),
-        };
+        let (kind, target) = (SearchKind::Fuzzy, SearchTarget::Path);
         let mut found = Vec::new();
         for folder in &effect.folders {
             let remaining = cap - found.len();

@@ -10,7 +10,7 @@ use imba::thunk_ext::ThunkExt;
 use imba::{UiCtx, View};
 
 use crate::rows::{RowList, RowListCommand};
-use crate::{FindEffect, FindTarget, LineCol, ResourceLocation};
+use crate::{FindEffect, LineCol, ResourceLocation};
 
 const SHOWN: usize = 128;
 
@@ -373,7 +373,6 @@ impl Completion {
         let effect = imba::effect::AnyEffect::new(FindEffect {
             folders: folders.as_ref().clone(),
             term: self.query.clone(),
-            target: FindTarget::Path,
         })
         .map(move |locations| wrap(CompletionFound::Path { serial, locations }));
         fx.relaunch_erased(&mut self.lane, effect);

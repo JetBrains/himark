@@ -3,7 +3,7 @@
 
 use himark::{
     Application, BuildDocumentEffect, Document, EditorIdView, EditorPane, FetchDocumentEffect,
-    FindEffect, FindTarget, ModalRequest, ModalView, PaneCommand, ResourceLocation, WidgetOrigin,
+    FindEffect, ModalRequest, ModalView, PaneCommand, ResourceLocation, WidgetOrigin,
 };
 use imba::{
     arena::Arena,
@@ -267,7 +267,6 @@ impl Peeker {
         let effect = imba::effect::AnyEffect::new(FindEffect {
             folders: self.workspace.clone(),
             term: query.to_owned(),
-            target: FindTarget::Path,
         })
         .map(move |locations| PeekerCommand::Found { serial, locations });
         fx.relaunch_erased(&mut self.find_token, effect);

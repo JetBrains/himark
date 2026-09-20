@@ -69,7 +69,7 @@ pub use crate::family_rows::{
 };
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuildFileDiffEffect,
-    BuiltDocument, BuiltFileDiff, FindEffect, FindTarget, ListDirectoryEffect, LocationsChannel,
+    BuiltDocument, BuiltFileDiff, FindEffect, ListDirectoryEffect, LocationsChannel,
     LspLocationsEffect, LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect,
     PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId, StoreDocumentEffect,
 };

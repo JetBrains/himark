@@ -198,17 +198,12 @@ impl SessionId {
 #[derive(Clone, Default)]
 pub struct ScratchSpaces(u64);
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum FindTarget {
-    Text,
-
-    Path,
-}
-
+/// The quick-open path find: fuzzy over names, capped, one answer.
+/// Content search is the streaming locations channel
+/// (`SearchLocationsEffect`), not a Find target.
 pub struct FindEffect {
     pub folders: Vec<ResourceLocation>,
     pub term: String,
-    pub target: FindTarget,
 }
 
 impl Effect for FindEffect {
