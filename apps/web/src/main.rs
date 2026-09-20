@@ -463,6 +463,7 @@ mod app {
                         },
                     );
                     state.register_command(Arc::new(himark::hisearch::ToggleSearchView));
+                    state.register_command(Arc::new(himark::hisearch::FocusSearchView));
                     state.register_toolbar_button(himark::hisearch::toolbar_button());
                     state.register_handler::<himark::LspLocationsEffect>(
                         hiahp::locations::RouteLspLocations {

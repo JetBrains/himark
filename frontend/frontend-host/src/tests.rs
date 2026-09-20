@@ -7914,3 +7914,61 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         himark::locations::LocationsFeeds::row(engine.app.store(), feed).is_none()
     });
 }
+
+/// cmd-shift-f through the REAL key road: the chord falls through the
+/// focus chain to the keymap, lands on `search.focus`, opens the
+/// search dock — and re-invoked on an open one it FOCUSES (never
+/// toggles away); the toolbar's `search.view` keeps the toggle.
+#[test]
+fn cmd_shift_f_opens_then_focuses_the_search_dock() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let window = engine.add_window();
+    // The capability gate normally registers these when the seat
+    // serves searchLocations; the KEY ROAD under test is the same.
+    engine
+        .app
+        .register_command(std::sync::Arc::new(himark::hisearch::ToggleSearchView));
+    engine
+        .app
+        .register_command(std::sync::Arc::new(himark::hisearch::FocusSearchView));
+
+    let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+
+    assert!(
+        engine.key_down(
+            window,
+            u32::from('f'),
+            HIMARK_MOD_COMMAND | HIMARK_MOD_SHIFT
+        ),
+        "the chord reached the keymap fallback"
+    );
+    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    assert_eq!(
+        engine.app.dock_owner_for_tests(wid(window)),
+        Some("search.view"),
+        "cmd-shift-f opened the search dock"
+    );
+
+    // Again on an open dock: still open (focused, not toggled away).
+    assert!(engine.key_down(
+        window,
+        u32::from('f'),
+        HIMARK_MOD_COMMAND | HIMARK_MOD_SHIFT
+    ));
+    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    assert_eq!(
+        engine.app.dock_owner_for_tests(wid(window)),
+        Some("search.view"),
+        "re-invoke keeps the dock, focusing the input"
+    );
+
+    // The toolbar's command still TOGGLES like every dock button.
+    assert!(engine.perform_command(window, "search.view"));
+    let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
+    assert_eq!(
+        engine.app.dock_owner_for_tests(wid(window)),
+        None,
+        "search.view rolls the fronting dock away"
+    );
+}

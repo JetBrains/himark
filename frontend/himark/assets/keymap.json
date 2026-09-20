@@ -18,7 +18,7 @@
     "ctrl-space": "completion.trigger",
     "cmd-g": "find.next",
     "cmd-shift-g": "find.previous",
-    "cmd-shift-f": "search.view",
+    "cmd-shift-f": "search.focus",
     "cmd-t": "toc.toggle",
     "cmd-e": "files.tree",
     "cmd-i": "chat.composer",

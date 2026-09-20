@@ -328,10 +328,13 @@ stays with the tree, so navigating on continues. The
 feed keeps streaming past a closed face — the pump is app-level; a
 requery or the stop affordance cancels (`DisposeFeed`/`StopFeed`),
 never mere displacement. cmd-shift-F re-points here (the old panel
-is retired): it OPENS the dock tab, and re-invoked on an open one
-it FOCUSES the query input (`Window::focus_dock` + a
-`SearchCommand::Focus(Input)` through the dock's dyn road) — never
-a toggle-away; Escape closes.
+is retired), bound to `search.focus`: OPEN the dock tab, and
+re-invoked on an open one FOCUS the query input
+(`Window::focus_dock` + a `SearchCommand::Focus(Input)` through the
+dock's dyn road) — never a toggle-away. The toolbar button stays on
+`search.view` (`ToggleSearchView`), the toggle every dock button
+has; Escape closes too. The chord road is pinned end-to-end by
+`cmd_shift_f_opens_then_focuses_the_search_dock` (frontend-host).
 
 ## 7. The UI: references and implementations
 

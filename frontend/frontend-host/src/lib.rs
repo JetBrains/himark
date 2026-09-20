@@ -988,6 +988,8 @@ impl HimarkEngine {
             self.app
                 .register_command(Arc::new(himark::hisearch::ToggleSearchView));
             self.app
+                .register_command(Arc::new(himark::hisearch::FocusSearchView));
+            self.app
                 .register_toolbar_button(himark::hisearch::toolbar_button());
         }
 

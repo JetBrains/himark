@@ -720,9 +720,51 @@ impl crate::DynamicCommand for ToggleSearchView {
     ) {
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
-            // Already fronting: cmd-shift-f FOCUSES — the keyboard
-            // lands in the query input, ready to retype. Escape (and
-            // the toolbar button road) still rolls the dock away.
+            entity.roll_away_dock();
+            crate::Windows::put(store, window, entity);
+            return;
+        }
+
+        fx.scope(
+            move |command| crate::AppCommand::Content(window, command),
+            |fx| entity.dismiss_modal(store, fx),
+        );
+
+        let session = entity.current_session();
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session);
+        let owner = self.id();
+        fx.scope(
+            move |command| crate::AppCommand::Content(window, command),
+            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+        );
+        crate::Windows::put(store, window, entity);
+    }
+}
+
+/// The KEYBINDING's road (cmd-shift-f, `search.focus`): open the
+/// dock if it is away, and FOCUS the query input if it already
+/// fronts — never a toggle-away; the toolbar button (`search.view`,
+/// [`ToggleSearchView`]) keeps the toggle every dock button has.
+pub struct FocusSearchView;
+
+impl crate::DynamicCommand for FocusSearchView {
+    fn id(&self) -> &'static str {
+        "search.focus"
+    }
+
+    fn name(&self) -> String {
+        "Focus Search".to_owned()
+    }
+
+    fn perform(
+        &self,
+        app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        if entity.dock_owner() == Some(OWNER) {
             entity.focus_dock();
             if let Some(panel) = entity.dock_panel_mut() {
                 let ui = app.ui_ctx();
@@ -749,20 +791,8 @@ impl crate::DynamicCommand for ToggleSearchView {
             crate::Windows::put(store, window, entity);
             return;
         }
-
-        fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.dismiss_modal(store, fx),
-        );
-
-        let session = entity.current_session();
-        let panel = SearchView::open(store, &app.ui_ctx(), window, session);
-        let owner = self.id();
-        fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
-        );
         crate::Windows::put(store, window, entity);
+        ToggleSearchView.perform(app, store, window, fx);
     }
 }
 
