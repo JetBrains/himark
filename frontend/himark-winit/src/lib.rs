@@ -101,7 +101,7 @@ const VIEW_MENU_ENTRIES: [MenuEntrySpec; 7] = [
     MenuEntrySpec::Command {
         label: "Find in Files",
         shortcut: Some("Ctrl+Shift+F"),
-        command: HostCommand::Command("search.open"),
+        command: HostCommand::Command("search.focus"),
     },
     MenuEntrySpec::Command {
         label: "Close",
