@@ -82,9 +82,9 @@ pub use completion::{LspAnswer, LspCompletionEffect, LspItem};
 pub use dock::{DockCommand, DOCK_MIN_WIDTH, DOCK_WIDTH};
 pub use documents::{
     close_editor, deliver, is_scratch, is_synthetic, line_col_at, mount_editor,
-    next_scratch_location, notify_change, offset_at, ChangeObserver, DocumentChangeEffect,
+    next_scratch_location, offset_at,
     DocumentHook, DocumentId, EditorIdView, FetchDocumentEffect, FetchResourceBytesEffect, LineCol,
-    OpenDocument, OpenDocuments, TextChange,
+    OpenDocument, OpenDocuments,
 };
 pub use drawer::DRAWER_WIDTH;
 pub use effects::*;

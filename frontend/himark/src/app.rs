@@ -585,25 +585,6 @@ impl Application {
         self.setup(|store| crate::Navigators::register(store, navigator));
     }
 
-    pub fn observe_document_changes(&mut self) {
-        self.setup(|store| {
-            crate::ChangeObserver::install(store, {
-                let cache = std::sync::Mutex::new((u64::MAX, std::sync::Arc::new(Vec::new())));
-                std::sync::Arc::new(move |store: &imba::store::Store| {
-                    let generation = crate::higent::Hosts::generation(store);
-                    let mut held = cache.lock().expect("the folders cache");
-                    if held.0 != generation {
-                        *held = (
-                            generation,
-                            std::sync::Arc::new(crate::higent::all_session_folders(store)),
-                        );
-                    }
-                    held.1.as_ref().clone()
-                })
-            })
-        });
-    }
-
     pub fn observe_file_changes(&mut self) {
         self.setup(crate::watch::Watching::install);
     }

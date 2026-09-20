@@ -13,8 +13,7 @@ pub mod sync;
 pub mod watch;
 
 pub use change::{
-    line_col_at, notify_change, offset_at, ChangeObserver, DocumentChangeEffect, FolderSource,
-    LineCol, TextChange,
+    line_col_at, offset_at, LineCol,
 };
 pub use diffs::{
     rearm_base_asks, DiffChanged, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView,
