@@ -160,6 +160,8 @@ bool himark_mouse_move(HimarkEngine *engine, uint64_t window, float x, float y);
 
 bool himark_mouse_up(HimarkEngine *engine, uint64_t window, float x, float y);
 
+bool himark_mouse_left(HimarkEngine *engine, uint64_t window);
+
 bool himark_mouse_down(HimarkEngine *engine,
                        uint64_t window,
                        float x,

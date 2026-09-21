@@ -868,6 +868,15 @@ impl HimarkEngine {
         )
     }
 
+    /// The cursor left the window: a HitTest beyond any component's
+    /// reach (missing, far off-screen), so hover state — tooltips,
+    /// hover popups — lets go instead of sticking to the last point
+    /// the window ever heard about.
+    pub fn mouse_left(&mut self, window: u64) -> bool {
+        let size = self.window_size(window);
+        self.app.dispatch(wid(window), Event::window_left(), size)
+    }
+
     pub fn scroll(&mut self, window: u64, x: f32, y: f32, delta_x: f32, delta_y: f32) -> bool {
         self.scroll_at_time(window, x, y, delta_x, delta_y, 0.0)
     }
@@ -1620,6 +1629,13 @@ pub unsafe extern "C" fn himark_mouse_up(
     engine
         .as_mut()
         .map_or(false, |engine| engine.mouse_up(window, x, y))
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_mouse_left(engine: *mut HimarkEngine, window: u64) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.mouse_left(window))
 }
 
 #[no_mangle]

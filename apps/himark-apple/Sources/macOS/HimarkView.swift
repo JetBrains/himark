@@ -167,12 +167,16 @@ final class HimarkView: NSView, NSTextInputClient {
         if engine.mouseMove(window: windowId, x: x, y: y) { request() }
     }
 
+    override func mouseExited(with event: NSEvent) {
+        if engine.mouseLeft(window: windowId) { request() }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))

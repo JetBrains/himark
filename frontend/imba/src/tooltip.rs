@@ -460,6 +460,38 @@ mod tests {
     }
 
     #[test]
+    fn a_mouse_leaving_the_window_hides_the_tip() {
+        let mut view = TooltipView::new(Body, rows);
+        drive(
+            &mut view,
+            Event::HitTest {
+                point: Point::new(50.0, 10.0),
+                miss: false,
+            },
+        );
+        drive(
+            &mut view,
+            Event::AnimationClock {
+                now: AnimationClock::from_millis(0.0),
+            },
+        );
+        drive(
+            &mut view,
+            Event::AnimationClock {
+                now: AnimationClock::from_millis(500.0),
+            },
+        );
+        assert!(view.showing(), "the rest showed the tip");
+
+        // The shells' cursor-left road: a HitTest beyond any
+        // component's reach. Without it the tip sticks — no
+        // MouseMove ever arrives from outside the window.
+        drive(&mut view, Event::window_left());
+        assert!(!view.showing(), "the off-window miss hid the tip");
+        assert_eq!(overlay_count(&view), 0);
+    }
+
+    #[test]
     fn bare_spots_and_outside_moves_stay_silent() {
         let mut view = TooltipView::new(Body, rows);
 

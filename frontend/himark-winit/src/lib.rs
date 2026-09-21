@@ -272,6 +272,10 @@ impl Engine {
         self.inner.mouse_up(self.window, x, y)
     }
 
+    fn mouse_left(&mut self) -> bool {
+        self.inner.mouse_left(self.window)
+    }
+
     fn scroll_phased_at_time(
         &mut self,
         x: f32,
@@ -1378,6 +1382,10 @@ impl ApplicationHandler<UserEvent> for WinitHost {
                 if let Some(window) = self.window.as_mut() {
                     window.cursor_position = None;
                 }
+                // A HitTest beyond any component's reach, or hover
+                // popups stick to the last in-window point.
+                let changed = self.engine.mouse_left();
+                self.event_changed(changed);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,

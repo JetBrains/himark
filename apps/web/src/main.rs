@@ -184,6 +184,15 @@ mod app {
             >,
             target_thread: usize,
         ) -> c_int;
+        fn emscripten_set_mouseleave_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenMouseEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
         fn emscripten_set_mouseup_callback_on_thread(
             target: *const c_char,
             user_data: *mut c_void,
@@ -630,6 +639,13 @@ mod app {
             Some(mouse_move),
             CALLBACK_THREAD_CALLING,
         );
+        emscripten_set_mouseleave_callback_on_thread(
+            CANVAS,
+            app,
+            true,
+            Some(mouse_leave),
+            CALLBACK_THREAD_CALLING,
+        );
         emscripten_set_mouseup_callback_on_thread(
             EVENT_TARGET_WINDOW,
             app,
@@ -981,6 +997,23 @@ mod app {
             }
             let point = window_mouse_point(app, event);
             end_drag(app, point, event.timestamp / 1000.0)
+        }
+    }
+
+    extern "C" fn mouse_leave(
+        _event_type: c_int,
+        _event: *const EmscriptenMouseEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            // A HitTest beyond any component's reach, or hover popups
+            // stick to the last in-canvas point.
+            app.state.dispatch(
+                app.window,
+                imba::event::Event::window_left(),
+                app.state.viewport_size(),
+            )
         }
     }
 
