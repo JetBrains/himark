@@ -56,6 +56,11 @@ pub enum CanvasCommand {
     /// effects sink to launch.
     RelaunchOwed,
 
+    /// An async landing for the commit banner's message box (the
+    /// Bounded build's tail, the markdown reparse) — routed to the
+    /// banner row wherever it currently sits.
+    BannerEditor(himark::EditorCommand),
+
     Landed {
         key: ResourceLocation,
         built: himark::BuiltFileDiff,
@@ -243,7 +248,11 @@ impl Canvas {
     #[doc(hidden)]
     pub fn probe_banner(&self) -> Option<(String, String)> {
         match self.banner_row()? {
-            BannerRow::Commit { message, author } => Some((message, author)),
+            BannerRow::Commit { message, author } => {
+                let text = message.document.text();
+                let end = text.byte_count().min(u32::MAX as usize) as u32;
+                Some((text.view().substring(0..end), author))
+            }
             _ => None,
         }
     }
@@ -483,6 +492,7 @@ impl Canvas {
                         );
                     }
                     Some(himark::diff_canvas::CanvasBanner::Commit { message, author }) => {
+                        let message = commit_banner_box(store, ui, &message, fx);
                         let height = commit_band(&theme, &message);
                         slice.push_keyed_sized(
                             CanvasKey::Banner,
@@ -1230,6 +1240,17 @@ impl Canvas {
             }
             CanvasCommand::Landed { key, built } => self.land(store, ui, key, built, fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
+            CanvasCommand::BannerEditor(command) => {
+                if let Some(range) = self.rows.content().row_range(&CanvasKey::Banner) {
+                    let rows = ScrollCommand::Content(ListCommand::Child(
+                        range.start,
+                        RowCommand::Composer(ComposerCommand::Message(command)),
+                    ));
+                    fx.scope(CanvasCommand::Rows, |fx| {
+                        self.rows.perform(store, ui, rows, fx)
+                    });
+                }
+            }
             CanvasCommand::Rows(command) => {
                 match row_ask(&command) {
                     Some((index, RowCommand::Arm(width))) => self.launch(index, *width, fx),
@@ -1853,7 +1874,7 @@ pub(crate) enum CanvasRow {
 #[derive(Clone)]
 pub(crate) enum BannerRow {
     Commit {
-        message: String,
+        message: himark::EditorView,
         author: String,
     },
     Composer {
@@ -1927,13 +1948,59 @@ fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> himark::EditorView {
     view
 }
 
-const BANNER_MESSAGE_LINES: usize = 12;
+/// The commit banner's message box — the CHAT CELL's markdown recipe
+/// (higent/cell.rs `build_text`): a markdown document over the exact
+/// message, a Bounded build whose tail repairs and reparse land over
+/// the `BannerEditor` road. Read-only by omission: the banner claims
+/// no focus, so the box never sees a key.
+fn commit_banner_box(
+    store: &Store,
+    ui: &imba::UiCtx,
+    message: &str,
+    fx: &mut Effects<'_, CanvasCommand>,
+) -> himark::EditorView {
+    let fonts = env::Fonts::of(store)();
+    let theme = env::Themes::of(store);
+    let mut document = himark::Document::new(
+        himark::Text::from_string_exact(message),
+        himark::Markup::new(),
+    )
+    .with_syntax(
+        himark::Syntax::new("markdown", None, himark::Markup::new()),
+        &[],
+    );
+    fx.scope(CanvasCommand::BannerEditor, |fx| {
+        let editor = document.add_editor(
+            600.0,
+            None,
+            himark::EditorBuild::Bounded,
+            &[],
+            store,
+            ui,
+            &fonts,
+            &theme,
+            fx,
+        );
+        if let Some(parsers) = env::Parsers::of(store) {
+            document.launch_reparse(parsers, fx);
+        }
+        himark::EditorView {
+            document,
+            editor,
+            reports_geometry: false,
+            location: None,
+            gutter_width: 0.0,
+            base: None,
+        }
+    })
+}
 
-fn commit_band(theme: &himark::Theme, message: &str) -> f32 {
+fn commit_band(theme: &himark::Theme, message: &himark::EditorView) -> f32 {
     let chat = theme.ui().chat.clone();
     let line = chat.title_size * 1.5;
-    let lines = message.lines().take(BANNER_MESSAGE_LINES).count().max(1) + 1; // + the author line
-    lines as f32 * line + chat.pad * 2.0
+    // The full message and the author line under it — no truncation;
+    // the canvas just scrolls.
+    message.content_height().max(line) + line + chat.pad * 2.0
 }
 
 fn reserved_body(theme: &himark::Theme, file: &CanvasFile) -> f32 {
@@ -2031,14 +2098,20 @@ impl View for CanvasRow {
             // are the CANVAS's (it owns the splices and requests).
             CanvasRow::Header(_) => return,
             CanvasRow::Banner(banner) => {
-                let BannerRow::Composer { message, focused } = banner else {
-                    return;
+                let (message, focused) = match banner {
+                    BannerRow::Composer { message, focused } => (message, Some(focused)),
+                    // The commit banner's box is read-only display: it
+                    // takes the async landings (build tail, reparse)
+                    // and the rewrap ride, and claims no focus.
+                    BannerRow::Commit { message, .. } => (message, None),
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
-                            *focused = true;
-                            message.focus_text();
+                        if let Some(focused) = focused {
+                            if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
+                                *focused = true;
+                                message.focus_text();
+                            }
                         }
                         fx.scope(
                             |command| RowCommand::Composer(ComposerCommand::Message(command)),
@@ -2046,14 +2119,18 @@ impl View for CanvasRow {
                         );
                     }
                     RowCommand::Composer(ComposerCommand::Focus) => {
-                        *focused = true;
-                        message.focus_text();
+                        if let Some(focused) = focused {
+                            *focused = true;
+                            message.focus_text();
+                        }
                     }
                     // The canvas already posted the ask (reading the
                     // text first) — the row just resets its box.
                     RowCommand::Composer(ComposerCommand::Commit) => {
-                        *message = fresh_composer_box(store, ui);
-                        *focused = false;
+                        if let Some(focused) = focused {
+                            *message = fresh_composer_box(store, ui);
+                            *focused = false;
+                        }
                     }
                     // The paint probe saw the box wrapped at the
                     // wrong width (the chat composer's Rewrap ride).
@@ -2152,39 +2229,55 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
 
         match row {
             CanvasRow::Banner(BannerRow::Commit { message, author }) => {
+                // The MESSAGE rides its own markdown box (the chat
+                // cell's dress: headers, emphasis, code — the works),
+                // the dim author byline under it. The box wraps at
+                // the canvas width over the composer's Rewrap ride.
                 let band = commit_band(&theme, message);
                 let line = chrome.title_size * 1.5;
                 let inset = chrome.pad;
-                let title_font = himark::fonts::ui_text_font(ui, chrome.title_size);
                 let body_font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.9);
-                let text_color = chrome.text_color.0;
                 let dim = chrome.loader_color.0;
-                let title_size = chrome.title_size;
-                let lines: Vec<String> = message
-                    .lines()
-                    .take(BANNER_MESSAGE_LINES)
-                    .map(str::to_owned)
-                    .collect();
-                let author = author.clone();
-                let face = imba::leaf::leaf::<RowCommand>(width, band).paint_instead(
-                    move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        paint.set_anti_alias(true);
-                        let mut y = rect.top + inset + title_size;
-                        paint.set_color(text_color);
-                        for (n, text) in lines.iter().enumerate() {
-                            let font = match n {
-                                0 => &title_font,
-                                _ => &body_font,
-                            };
-                            canvas.draw_str(text, (rect.left + inset, y), font, &paint);
-                            y += line;
-                        }
-                        paint.set_color(dim);
-                        canvas.draw_str(&author, (rect.left + inset, y), &body_font, &paint);
-                    },
+                let editor_w = (width - inset * 2.0).max(120.0);
+                let content = message.content_height().max(line);
+                let mut face = imba::container::container(arena, Size::new(width, band));
+                face.place(
+                    inset,
+                    inset,
+                    imba::Layout::layout(
+                        message.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(editor_w, content),
+                            max: Size::new(editor_w, content),
+                        },
+                    )
+                    .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
                 );
-                imba::ThunkBox::new(arena, face)
+                let author = author.clone();
+                let ascent = -body_font.metrics().1.ascent;
+                face.place(
+                    0.0,
+                    inset + content,
+                    imba::leaf::leaf::<RowCommand>(width, line).paint_instead(
+                        move |_arena, canvas, rect| {
+                            let mut paint = Paint::default();
+                            paint.set_anti_alias(true);
+                            paint.set_color(dim);
+                            canvas.draw_str(
+                                &author,
+                                (rect.left + inset, rect.top + ascent + (line - ascent) * 0.5),
+                                &body_font,
+                                &paint,
+                            );
+                        },
+                    ),
+                );
+                let rewrap = ((message.layout_width() - editor_w).abs() > 1.0).then_some(editor_w);
+                imba::ThunkBox::new(
+                    arena,
+                    face.wrap_realized(move |inner| RewrapOnPaint { inner, rewrap }),
+                )
             }
             CanvasRow::Banner(BannerRow::Composer { message, focused }) => {
                 // The CHAT COMPOSER's layout, copied whole: the bare
