@@ -4,7 +4,7 @@
 use editor::Document;
 use imba::store::Store;
 
-pub mod change;
+pub mod text_ext;
 pub mod diffs;
 mod entity_view;
 mod lifecycle;
@@ -12,7 +12,7 @@ pub mod scroll_stripes;
 pub mod sync;
 pub mod watch;
 
-pub use change::{
+pub use text_ext::{
     line_col_at, offset_at, LineCol,
 };
 pub use diffs::{
