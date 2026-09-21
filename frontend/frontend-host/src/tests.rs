@@ -6901,6 +6901,42 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         );
     }
 
+    // The banner's message box is a REAL editor: a click focuses it
+    // and the keyboard lands in the document.
+    {
+        let commit_banner = |engine: &HimarkEngine| {
+            let mut shot = None;
+            engine.app.for_each_plugin_panel(&mut |panel| {
+                if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                    if matches!(
+                        canvas.source(),
+                        himark::diff_canvas::CanvasSource::Commit { .. }
+                    ) {
+                        shot = canvas.probe_banner(engine.app.store());
+                    }
+                }
+            });
+            shot
+        };
+        let chrome_top = himark::env::Themes::of(engine.app.store())
+            .ui()
+            .toolbar
+            .height;
+        assert!(himark::test_driver::click(
+            &mut engine.app,
+            60.0,
+            chrome_top + 14.0,
+            900.0,
+            700.0
+        ));
+        assert!(himark::test_driver::type_text(&mut engine.app, "amended "));
+        let (message, _) = commit_banner(&engine).expect("the commit banner");
+        assert!(
+            message.contains("amended"),
+            "typing lands in the banner box: {message:?}"
+        );
+    }
+
     let history_cursor = |engine: &HimarkEngine| {
         himark::Windows::window_ref(engine.app.store(), engine.app.sole_window()).and_then(
             |entity| {

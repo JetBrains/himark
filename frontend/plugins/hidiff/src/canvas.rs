@@ -248,7 +248,9 @@ impl Canvas {
     #[doc(hidden)]
     pub fn probe_banner(&self) -> Option<(String, String)> {
         match self.banner_row()? {
-            BannerRow::Commit { message, author } => {
+            BannerRow::Commit {
+                message, author, ..
+            } => {
                 let text = message.document.text();
                 let end = text.byte_count().min(u32::MAX as usize) as u32;
                 Some((text.view().substring(0..end), author))
@@ -496,7 +498,11 @@ impl Canvas {
                         let height = commit_band(&theme, &message);
                         slice.push_keyed_sized(
                             CanvasKey::Banner,
-                            CanvasRow::Banner(BannerRow::Commit { message, author }),
+                            CanvasRow::Banner(BannerRow::Commit {
+                                message,
+                                author,
+                                focused: false,
+                            }),
                             height,
                         );
                     }
@@ -1876,6 +1882,7 @@ pub(crate) enum BannerRow {
     Commit {
         message: himark::EditorView,
         author: String,
+        focused: bool,
     },
     Composer {
         message: himark::EditorView,
@@ -1951,8 +1958,8 @@ fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> himark::EditorView {
 /// The commit banner's message box — the CHAT CELL's markdown recipe
 /// (higent/cell.rs `build_text`): a markdown document over the exact
 /// message, a Bounded build whose tail repairs and reparse land over
-/// the `BannerEditor` road. Read-only by omission: the banner claims
-/// no focus, so the box never sees a key.
+/// the `BannerEditor` road. A normal editor: it focuses on click and
+/// takes the keyboard like the composer's box.
 fn commit_banner_box(
     store: &Store,
     ui: &imba::UiCtx,
@@ -2058,7 +2065,9 @@ impl View for CanvasRow {
                         .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
                 )
             }
-            CanvasRow::Banner(_) => imba::focus::FocusData::default(),
+            CanvasRow::Banner(BannerRow::Commit { message, .. }) => message
+                .focus_data(store, ui)
+                .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
             CanvasRow::Header(header) => {
                 imba::focus::FocusData::of_commands(open_commands(&header.file.new))
             }
@@ -2098,20 +2107,17 @@ impl View for CanvasRow {
             // are the CANVAS's (it owns the splices and requests).
             CanvasRow::Header(_) => return,
             CanvasRow::Banner(banner) => {
-                let (message, focused) = match banner {
-                    BannerRow::Composer { message, focused } => (message, Some(focused)),
-                    // The commit banner's box is read-only display: it
-                    // takes the async landings (build tail, reparse)
-                    // and the rewrap ride, and claims no focus.
-                    BannerRow::Commit { message, .. } => (message, None),
+                let (message, focused, composer) = match banner {
+                    BannerRow::Composer { message, focused } => (message, focused, true),
+                    BannerRow::Commit {
+                        message, focused, ..
+                    } => (message, focused, false),
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if let Some(focused) = focused {
-                            if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
-                                *focused = true;
-                                message.focus_text();
-                            }
+                        if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
+                            *focused = true;
+                            message.focus_text();
                         }
                         fx.scope(
                             |command| RowCommand::Composer(ComposerCommand::Message(command)),
@@ -2119,18 +2125,14 @@ impl View for CanvasRow {
                         );
                     }
                     RowCommand::Composer(ComposerCommand::Focus) => {
-                        if let Some(focused) = focused {
-                            *focused = true;
-                            message.focus_text();
-                        }
+                        *focused = true;
+                        message.focus_text();
                     }
                     // The canvas already posted the ask (reading the
                     // text first) — the row just resets its box.
-                    RowCommand::Composer(ComposerCommand::Commit) => {
-                        if let Some(focused) = focused {
-                            *message = fresh_composer_box(store, ui);
-                            *focused = false;
-                        }
+                    RowCommand::Composer(ComposerCommand::Commit) if composer => {
+                        *message = fresh_composer_box(store, ui);
+                        *focused = false;
                     }
                     // The paint probe saw the box wrapped at the
                     // wrong width (the chat composer's Rewrap ride).
@@ -2228,7 +2230,11 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
         let gutter = theme.ui().editor_gutter.width;
 
         match row {
-            CanvasRow::Banner(BannerRow::Commit { message, author }) => {
+            CanvasRow::Banner(BannerRow::Commit {
+                message,
+                author,
+                focused,
+            }) => {
                 // The MESSAGE rides its own markdown box (the chat
                 // cell's dress: headers, emphasis, code — the works),
                 // the dim author byline under it. The box wraps at
@@ -2241,6 +2247,21 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let editor_w = (width - inset * 2.0).max(120.0);
                 let content = message.content_height().max(line);
                 let mut face = imba::container::container(arena, Size::new(width, band));
+                // Bottom-most: a press anywhere on the band focuses
+                // the box (the editor and the byline sit on top).
+                face.place(
+                    0.0,
+                    0.0,
+                    imba::leaf::leaf::<RowCommand>(width, band).event(|_arena, event, _size| {
+                        match event {
+                            Event::MouseDown {
+                                button: imba::event::MouseButton::Left,
+                                ..
+                            } => EventResult::Command(RowCommand::Composer(ComposerCommand::Focus)),
+                            _ => EventResult::Ignored,
+                        }
+                    }),
+                );
                 face.place(
                     inset,
                     inset,
@@ -2252,7 +2273,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                             max: Size::new(editor_w, content),
                         },
                     )
-                    .map(|command| RowCommand::Composer(ComposerCommand::Message(command))),
+                    .map(|command| RowCommand::Composer(ComposerCommand::Message(command)))
+                    .focus_scope(*focused),
                 );
                 let author = author.clone();
                 let ascent = -body_font.metrics().1.ascent;
