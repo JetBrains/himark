@@ -9,12 +9,11 @@ use crate::higent::{
 };
 use crate::{env, fonts::ui_text_font, EditorCommand, PanelView};
 use ahp_types::actions::{
-    ChatPendingMessageRemovedAction, ChatPendingMessageSetAction, ChatToolCallConfirmedAction,
-    StateAction,
+    ChatPendingMessageRemovedAction, ChatToolCallConfirmedAction, StateAction,
 };
 use ahp_types::state::{
-    ChatState, ConfirmationOption, ConfirmationOptionKind, Message, MessageKind, MessageOrigin,
-    PendingMessageKind, ToolCallConfirmationReason, ToolInput, Turn,
+    ChatState, ConfirmationOption, ConfirmationOptionKind, PendingMessageKind,
+    ToolCallConfirmationReason, ToolInput, Turn,
 };
 use imba::{
     arena::Arena,
@@ -372,6 +371,11 @@ pub struct ChatPanel {
 
     pending: Option<(String, String)>,
 
+    /// A STEERED prompt: sent while a turn ran, so the run was
+    /// cancelled and this fires the moment the turn ends — the
+    /// Claude Code Esc-with-prompt shape. An explicit STOP drops it.
+    steering: Option<String>,
+
     initial_prompt: Option<String>,
 
     toolbar: super::session_toolbar::SessionToolbar,
@@ -407,6 +411,7 @@ impl Clone for ChatPanel {
             fetch_token: self.fetch_token,
             poll_token: self.poll_token,
             active: self.active.clone(),
+            steering: self.steering.clone(),
             has_loader: self.has_loader,
             pending: self.pending.clone(),
             initial_prompt: self.initial_prompt.clone(),
@@ -444,6 +449,7 @@ impl ChatPanel {
             active: None,
             has_loader: false,
             pending: None,
+            steering: None,
             initial_prompt: None,
             toolbar: super::session_toolbar::SessionToolbar::new(store, ui),
             minted: 0,
@@ -1114,6 +1120,9 @@ impl ChatPanel {
                     {
                         self.active = None;
                         self.stack.clear_ask();
+                        if let Some(text) = self.steering.take() {
+                            self.send_text(store, ui, text, fx);
+                        }
                     }
 
                     crate::higent::session::Agents::note_turn(
@@ -1133,6 +1142,9 @@ impl ChatPanel {
                     );
                     self.active = None;
                     self.stack.clear_ask();
+                    if let Some(text) = self.steering.take() {
+                        self.send_text(store, ui, text, fx);
+                    }
                 }
                 StateAction::ChatError(action) => {
                     let markdown = format!(
@@ -1148,6 +1160,9 @@ impl ChatPanel {
                     );
                     self.active = None;
                     self.stack.clear_ask();
+                    if let Some(text) = self.steering.take() {
+                        self.send_text(store, ui, text, fx);
+                    }
                 }
 
                 _ => {}
@@ -1374,35 +1389,29 @@ impl ChatPanel {
                 completion_editor,
             );
         }
-        let attachments = self.completion_attachments(store, &text);
-
         if self.busy() {
-            self.minted += 1;
-            let id = format!("himark-q{}", self.minted);
-            let message = Message {
-                text,
-                origin: MessageOrigin {
-                    kind: MessageKind::User,
-                },
-                attachments,
-                model: None,
-                agent: None,
-                meta: None,
-            };
-            self.stack.insert_queued(id.clone(), message.clone());
-            self.dispatch(
-                store,
-                StateAction::ChatPendingMessageSet(ChatPendingMessageSetAction {
-                    kind: PendingMessageKind::Queued,
-                    id: id.clone(),
-                    message,
-                }),
-                Some(id),
-                fx,
-            );
+            // STEERING, the Claude Code Esc-with-prompt shape: a
+            // prompt sent at a running agent drops the queue, cancels
+            // the turn, and fires the moment the turn ends. (The old
+            // road QUEUED here — into a queue nothing ever drained.)
+            for (id, _) in self.stack.queue_oracle() {
+                self.stack.remove_queued(&id);
+                self.dispatch(
+                    store,
+                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                        kind: PendingMessageKind::Queued,
+                        id,
+                    }),
+                    None,
+                    fx,
+                );
+            }
+            self.steering = Some(text);
+            self.stop(store, fx);
             self.composer.clear(store, ui);
             return;
         }
+        let attachments = self.completion_attachments(store, &text);
         self.minted += 1;
         let key = format!("local-{}", self.minted);
         let cells = vec![
@@ -1745,7 +1754,10 @@ impl View for ChatPanel {
                     .land(store, ui, self.composer.document_mut(), editor, found);
             }
             ChatPanelCommand::Composer(ComposerCommand::Submit) => self.send(store, ui, fx),
-            ChatPanelCommand::Composer(ComposerCommand::Stop) => self.stop(store, fx),
+            ChatPanelCommand::Composer(ComposerCommand::Stop) => {
+                self.steering = None;
+                self.stop(store, fx);
+            }
             ChatPanelCommand::Composer(command) => {
                 let Some(command) = self.completion_intercept(store, ui, command, fx) else {
                     return;
@@ -1912,7 +1924,7 @@ impl View for ChatPanel {
                 let label = if stop {
                     "STOP"
                 } else if busy {
-                    "QUEUE"
+                    "STEER"
                 } else {
                     "SEND"
                 };
@@ -2153,5 +2165,179 @@ impl PanelView for ChatPanel {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::higent::ahp_types::actions::ChatTurnCancelledAction;
+    use crate::higent::ahp_types::state::{Message, MessageKind, MessageOrigin};
+    use std::sync::Arc;
+
+    struct InertSeat;
+
+    macro_rules! unreached {
+        ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
+            $(fn $name(&self, $($arg: $ty),*) -> $out {
+                $(let _ = $arg;)*
+                unreachable!("the steering tests never reach the seat")
+            })*
+        };
+    }
+
+    impl crate::higent::AhpServer for InertSeat {
+        unreached! {
+            connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
+            list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
+            poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
+            create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<String, String>>;
+            resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
+            dispose_session(session: String) -> crate::higent::SeatFuture<Result<(), String>>;
+            subscribe_session(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
+            poll_session(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            create_chat(session: String) -> crate::higent::SeatFuture<Result<String, String>>;
+            subscribe_chat(chat: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
+            fetch_turns(chat: String, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
+            start_turn(chat: String, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
+            poll_chat(chat: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            cancel_turn(chat: String, turn: String) -> crate::higent::SeatFuture<()>;
+            dispatch_action(chat: String, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
+            read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
+            resource_read(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
+            resource_write(session: String, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
+            resource_list(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
+            resource_watch(session: String, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
+            resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
+            search(session: String, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
+            terminal_input(channel: &String, data: String) -> ();
+            terminal_resize(channel: &String, cols: u16, rows: u16) -> ();
+            terminal_dispose(channel: &String) -> ();
+            subscribe_changeset(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
+            poll_changeset(channel: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            unsubscribe_changeset(channel: &String) -> ();
+            subscribe_annotations(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
+            poll_annotations(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            dispatch_annotations(session: &String, action: StateAction) -> ();
+            unsubscribe_annotations(session: &String) -> ();
+            open_document(session: String, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
+            subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
+            poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
+            dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
+            unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
+            lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
+        }
+
+        fn terminal_open(
+            &self,
+            _session: String,
+            _channel: String,
+            _cwd: Option<String>,
+            _cols: u16,
+            _rows: u16,
+            _events: Arc<dyn Fn(crate::higent::TerminalEvent) + Send + Sync>,
+        ) -> crate::higent::SeatFuture<Option<crate::higent::TerminalHandle>> {
+            unreachable!("the steering tests never reach the seat")
+        }
+    }
+
+    fn running_panel(store: &mut Store, ui: &UiCtx) -> ChatPanel {
+        let mut host = crate::higent::HostId::LOCAL;
+        store.update::<crate::higent::Servers>(|servers| {
+            host = servers.mint(Arc::new(InertSeat));
+        });
+        let mut panel = ChatPanel::new(store, ui, host, "s", "chat:1");
+        panel.state = Link::Ready;
+        panel.active = Some(ActiveStream {
+            turn: "t1".to_owned(),
+            cells: 0,
+            parts: rpds::HashTrieMapSync::new_sync(),
+            tools: rpds::HashTrieMapSync::new_sync(),
+            group: None,
+        });
+        panel
+    }
+
+    fn queued(id: &str) -> Message {
+        Message {
+            text: format!("queued {id}"),
+            origin: MessageOrigin {
+                kind: MessageKind::User,
+            },
+            attachments: None,
+            model: None,
+            agent: None,
+            meta: None,
+        }
+    }
+
+    /// The Claude Code Esc-with-prompt shape: a prompt at a running
+    /// agent DROPS the queue, cancels the turn, and fires the moment
+    /// the turn ends — never parked in a queue nothing drains.
+    #[test]
+    fn a_prompt_at_a_running_agent_steers() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = running_panel(&mut store, ui);
+        panel.stack.insert_queued("q1".to_owned(), queued("q1"));
+        let mut batch = imba::effect::Batch::new();
+
+        panel.send_text(&mut store, ui, "steer me".to_owned(), &mut batch.effects());
+        assert_eq!(panel.steering.as_deref(), Some("steer me"));
+        assert!(
+            panel.stack.queue_oracle().is_empty(),
+            "the standing queue dropped"
+        );
+        assert!(panel.pending.is_none(), "no turn starts under the cancel");
+
+        // The cancel lands: the steered prompt fires as a REAL send.
+        panel.apply_actions(
+            &mut store,
+            ui,
+            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
+                turn_id: "t1".to_owned(),
+                duration: 0,
+                meta: None,
+            })],
+            &mut batch.effects(),
+        );
+        assert!(panel.steering.is_none());
+        assert_eq!(
+            panel.pending.as_ref().map(|(_, text)| text.as_str()),
+            Some("steer me"),
+            "the steered prompt became the next turn"
+        );
+    }
+
+    /// An explicit STOP is just a stop — it drops a standing steer.
+    #[test]
+    fn an_explicit_stop_drops_the_steer() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = running_panel(&mut store, ui);
+        let mut batch = imba::effect::Batch::new();
+
+        panel.send_text(&mut store, ui, "steer me".to_owned(), &mut batch.effects());
+        assert!(panel.steering.is_some());
+        imba::View::perform(
+            &mut panel,
+            &mut store,
+            ui,
+            ChatPanelCommand::Composer(ComposerCommand::Stop),
+            &mut batch.effects(),
+        );
+        assert!(panel.steering.is_none(), "STOP is not a steer");
+
+        panel.apply_actions(
+            &mut store,
+            ui,
+            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
+                turn_id: "t1".to_owned(),
+                duration: 0,
+                meta: None,
+            })],
+            &mut batch.effects(),
+        );
+        assert!(panel.pending.is_none(), "nothing fires after a plain stop");
     }
 }
