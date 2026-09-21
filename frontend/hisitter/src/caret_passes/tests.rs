@@ -9,7 +9,7 @@ use super::{BraceMatchPass, OccurrencePass};
 use crate::TsTree;
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
-    editor::embedded_fonts::source()()
+    editor::test_document::test_fonts_collection().clone()
 }
 
 fn theme() -> editor::Theme {

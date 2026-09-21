@@ -83,7 +83,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
@@ -183,7 +183,7 @@ fn probe_pair(left: String, right: String) {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     eprintln!("[probe] sides: {} / {} bytes", left.len(), right.len());
 
     let started = Instant::now();
@@ -474,7 +474,7 @@ fn scroll_soak_for_profiling() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let (left, right) = monster_pair(1409);
     let ui = &app.ui_ctx();
     let (mut ldoc, lblocks) =

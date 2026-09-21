@@ -46,7 +46,7 @@ fn bench(name: &str, iterations: usize, mut op: impl FnMut()) -> Duration {
 #[test]
 #[ignore = "probe"]
 fn line_metrics_apis_single_threaded() {
-    let fonts = crate::embedded_fonts::collection();
+    let fonts = crate::test_document::test_fonts_collection().clone();
     for (label, text, width) in [("wrapped", WRAPPED, 400.0), ("short", SHORT, 400.0)] {
         let paragraph = build(&fonts, text, width);
         let rows = paragraph.line_number();
@@ -96,7 +96,7 @@ fn line_metrics_apis_under_contention() {
             std::thread::scope(|scope| {
                 for _ in 0..threads {
                     scope.spawn(move || {
-                        let fonts = crate::embedded_fonts::collection();
+                        let fonts = crate::test_document::test_fonts_collection().clone();
                         for _ in 0..iterations {
                             let paragraph = build(&fonts, WRAPPED, 400.0);
                             let rows = paragraph.line_number();

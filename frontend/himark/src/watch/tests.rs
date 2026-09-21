@@ -138,7 +138,7 @@ fn a_stale_diff_landing_discards_itself() {
         &[],
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -148,7 +148,7 @@ fn a_stale_diff_landing_discards_itself() {
         "typed ",
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -227,7 +227,7 @@ fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
         &operation::Operation::insert_at(at, text),
         store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -848,7 +848,7 @@ fn a_shared_edit_is_not_a_reload() {
         &[],
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -858,7 +858,7 @@ fn a_shared_edit_is_not_a_reload() {
         "typed ",
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1148,7 +1148,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
             &op,
             &store,
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );

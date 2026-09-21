@@ -1557,7 +1557,7 @@ mod hitbox {
         let store = &imba::store::Store::new();
         let ui = himark::test_document::test_ui();
         use himark::InlayEditing;
-        let fonts = himark::embedded_fonts::collection();
+        let fonts = himark::test_document::test_fonts_collection().clone();
         let theme = himark::Theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
         let mut editor = TableEditor::new(
@@ -1634,7 +1634,7 @@ mod hitbox {
         use himark::InlayEditing;
         use imba::event::{Event, EventResult, MouseButton};
 
-        let fonts = himark::embedded_fonts::collection();
+        let fonts = himark::test_document::test_fonts_collection().clone();
         let theme = himark::Theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
         let mut editor = TableEditor::new(

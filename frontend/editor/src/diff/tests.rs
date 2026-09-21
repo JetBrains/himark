@@ -243,7 +243,7 @@ macro_rules! fx {
 fn the_edit_door_keeps_live_diffs_valid() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = crate::embedded_fonts::collection();
+    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let base = "one\ntwo\nthree\n";
     let mut target = crate::test_document::plain_document("one\nTWO\nthree\n");
@@ -279,7 +279,7 @@ fn the_edit_door_keeps_live_diffs_valid() {
 fn apply_base_edits_brings_the_old_side_current_idempotently() {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let fonts = crate::embedded_fonts::collection();
+    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let mut base = crate::test_document::plain_document("one\ntwo\nthree\n");
     let mut target = crate::test_document::plain_document("one\nTWO\nthree\n");
@@ -362,7 +362,7 @@ fn remove_diff_takes_its_markup_with_it() {
     let ui = crate::test_document::test_ui();
     let base = crate::test_document::plain_document("a\n");
     let mut target = crate::test_document::plain_document("b\n");
-    let fonts = crate::embedded_fonts::collection();
+    let fonts = crate::test_document::test_fonts_collection().clone();
     let theme = crate::theme::Theme::embedded();
     let operation = diff(base.text(), target.text());
     let id = target.add_diff(operation, 0);

@@ -863,7 +863,7 @@ fn test_theme() -> himark::Theme {
 }
 
 fn font_collection() -> FontCollection {
-    himark::embedded_fonts::collection()
+    himark::test_document::test_fonts_collection().clone()
 }
 
 fn app_fonts() -> AppFonts {
@@ -980,7 +980,7 @@ fn scroll_frame_breakdown() {
 fn typing_everywhere_in_the_monster_survives_reparse() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let mut document = crate::monster_document(store, ui, &fonts, &test_theme());
     let _editor = document.add_editor(
         700.0,
@@ -1108,7 +1108,7 @@ fn the_wall_of_text_opens_and_types() {
 fn resize_repair_matches_fresh_layout() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let theme = himark::Theme::embedded();
     let (mut document, blocks) =
         himarkdown::markdown_document(&crate::SAMPLE.repeat(2), store, ui, &fonts, &theme);
@@ -1211,7 +1211,7 @@ fn where_do_heights_diverge() {
 
 #[test]
 fn tree_demo_panel_toggles_through_clicks() {
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let _ = fonts;
     let (mut app, _arriving) = boot();
 

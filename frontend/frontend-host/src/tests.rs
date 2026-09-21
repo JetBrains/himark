@@ -2296,7 +2296,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         720.0,
         store,
         &ui,
-        &himark::embedded_fonts::source()(),
+        himark::test_document::test_fonts_collection(),
         &himark::env::Themes::of(store),
     )
     .content_height();
@@ -2481,7 +2481,7 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
             720.0,
             store,
             &ui,
-            &himark::embedded_fonts::source()(),
+            himark::test_document::test_fonts_collection(),
             &himark::env::Themes::of(store),
         )
         .content_height()

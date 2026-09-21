@@ -32,7 +32,7 @@ fn headers_align_right_center_left_by_level() {
 }
 
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    himark::embedded_fonts::source()()
+    himark::test_document::test_fonts_collection().clone()
 }
 
 fn test_theme() -> himark::Theme {

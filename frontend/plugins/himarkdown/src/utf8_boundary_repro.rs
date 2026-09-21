@@ -6,7 +6,7 @@ use himark::{EditorCommand, EditorIdView, ReparseOutcome, ReparseWork};
 use imba::{store::Store, View};
 
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    himark::embedded_fonts::source()()
+    himark::test_document::test_fonts_collection().clone()
 }
 
 fn test_theme() -> himark::Theme {
@@ -29,7 +29,7 @@ fn the_search_design_doc_lays_out_completely() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let theme = himark::Theme::embedded();
     let document = document_from_markdown(source, store, ui, &fonts, &theme);
     let width = theme.ui().window.first_pane_width;
@@ -196,7 +196,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let theme = himark::Theme::embedded();
     let mut document = document_from_markdown(source, store, ui, &fonts, &theme);
     let width = theme.ui().window.first_pane_width;

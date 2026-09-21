@@ -7,7 +7,7 @@ use super::*;
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let theme = himark::Theme::embedded();
     let mut document = document_from_markdown(
         "# Title\n\nsome **bold** words\n",

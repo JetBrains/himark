@@ -42,7 +42,7 @@ fn rust_blocks_highlight_for_real() {
     let source = "title\n\n```rust\nfn main() { let x = 1; }\n```\n";
     let content_start = source.find("fn main").unwrap() as u32;
     let content_end = content_start + "fn main() { let x = 1; }\n".len() as u32;
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &test_theme());
     let _editor = document.add_editor(
         400.0,

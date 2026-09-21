@@ -6,7 +6,7 @@ use super::*;
 use himark::{ResourceLocation, ResourceType};
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
-    himark::embedded_fonts::source()()
+    himark::test_document::test_fonts_collection().clone()
 }
 
 fn theme() -> himark::Theme {

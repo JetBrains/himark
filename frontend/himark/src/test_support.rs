@@ -166,14 +166,14 @@ impl Application {
             width,
             self.store(),
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::env::Themes::of(self.store()),
         );
         fresh.reveal_caret(
             document.caret_byte(entity.editor()),
             self.store(),
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::env::Themes::of(self.store()),
         );
         let text = document.text().byte_string(0, document.text().byte_count());
@@ -212,7 +212,7 @@ impl Application {
                     return;
                 }
                 let width = document.layout_width(entity.editor());
-                let fonts = ::editor::embedded_fonts::source()();
+                let fonts = ::editor::test_document::test_fonts_collection();
                 let theme = ::editor::theme::Theme::embedded();
                 let mut reference =
                     crate::EditorView::complete(document.clone(), width, store, ui, &fonts, &theme);

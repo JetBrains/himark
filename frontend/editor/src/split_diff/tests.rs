@@ -20,7 +20,7 @@ impl crate::diff::DiffPolicy for TestMyers {
 }
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
-    crate::embedded_fonts::collection()
+    crate::test_document::test_fonts_collection().clone()
 }
 
 fn run_effect(

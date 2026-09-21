@@ -11,7 +11,7 @@ use crate::editor_view::EditorCommand;
 use crate::test_document::plain_document;
 
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    crate::embedded_fonts::collection()
+    crate::test_document::test_fonts_collection().clone()
 }
 
 struct Pane {

@@ -49,7 +49,7 @@ fn caret_x_includes_whitespace_after_emoji() {
 }
 
 fn font_collection() -> FontCollection {
-    crate::embedded_fonts::collection()
+    crate::test_document::test_fonts_collection().clone()
 }
 
 #[test]

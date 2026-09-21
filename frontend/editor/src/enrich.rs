@@ -292,7 +292,7 @@ mod tests {
     use imba::effect::EffectHandler;
 
     fn fonts() -> skia_safe::textlayout::FontCollection {
-        crate::embedded_fonts::source()()
+        crate::test_document::test_fonts_collection().clone()
     }
 
     fn theme() -> crate::theme::Theme {

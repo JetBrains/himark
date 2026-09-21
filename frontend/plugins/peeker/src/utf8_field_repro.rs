@@ -22,7 +22,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }),
         Arc::new(|| {}),
     );
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let theme = himark::Theme::embedded();
     for (name, source) in [
         (

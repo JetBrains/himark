@@ -905,7 +905,7 @@ mod tests {
         let store = &imba::store::Store::new();
         let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
-        let fonts = ::editor::embedded_fonts::source()();
+        let fonts = ::editor::test_document::test_fonts_collection();
         let theme = crate::theme::Theme::embedded();
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(

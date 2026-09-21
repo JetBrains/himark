@@ -26,7 +26,7 @@ fn languages() -> editor::SyntaxLanguages {
 fn parsed() -> editor::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::Document::from_language(

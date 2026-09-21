@@ -944,7 +944,7 @@ mod tests {
         sync_diff_lanes(&mut store, &mut lanes.effects(), Landed::Normalized);
         assert_eq!(launches(lanes), 0, "nothing owed at birth");
 
-        let fonts = ::editor::embedded_fonts::source()();
+        let fonts = ::editor::test_document::test_fonts_collection();
         let theme = ::editor::theme::Theme::embedded();
         let mut document = OpenDocuments::document(&store, target_id).expect("registered");
         let editor = document.add_editor(

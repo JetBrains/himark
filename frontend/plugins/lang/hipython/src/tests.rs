@@ -26,7 +26,7 @@ fn languages() -> editor::SyntaxLanguages {
 fn parsed() -> editor::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
     let mut document = editor::Document::from_language(
@@ -140,7 +140,7 @@ fn python_blocks_highlight_in_markdown() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let source = "title\n\n```python\ndef greet():\n    return \"hi\"\n```\n";
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let theme = editor::Theme::embedded();
     let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));

@@ -22,7 +22,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
@@ -130,7 +130,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
@@ -225,7 +225,7 @@ fn identical_documents_settle_spacer_free() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let body = "# Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary\nprose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that\nshould soft-wrap cleanly.\n\n## Inline Texture\n\n1. First ordered item\n2. Second ordered item with `inline_code()` and **bold** content.\n3. Third ordered item with a link: [tree-sitter markdown](https://example.com).\n\n- [x] Parse a tree-sitter tree\n- [ ] Build document elements\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all.\n";
     for name in ["one.md", "two.md"] {
         assert!(app.add_document(
@@ -297,7 +297,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -371,7 +371,7 @@ fn typed_insertions_paint_washes() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let body = "# Wash Probe\n\nA plain paragraph that wraps at the half width without any code in it.\n\nAnother plain paragraph to give the pane some body to align against.\n";
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
@@ -472,7 +472,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let left_body = "# Torture \u{1F680}\n\nThis paragraph wraps a couple of times at the half width so heights are not trivial.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n> A quote long enough to wrap once at the pane width, with **bold** and `code`.\n\n### Code Fence: Rust\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, long enough to wrap at the half width as well.\n";
     let right_body = left_body
         .replace(
@@ -578,7 +578,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let sample = include_str!("../../demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
@@ -803,7 +803,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
 
     let block = "## Section\n\nA steady paragraph with enough words to wrap once at the half width, followed by another sentence for body.\n\n- item one\n- item two\n\n";
     let left_body: String = (0..500)
@@ -917,7 +917,7 @@ fn scrolling_after_a_theme_toggle_converges() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let block = "## Section\n\n| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, and long lines that should soft-wrap cleanly.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n";
     let left_body: String = (0..24)
         .map(|index| {
@@ -1059,7 +1059,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
     let theme = himark::Theme::embedded();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
 
     let body: String = (0..80)
         .map(|index| {
@@ -1174,7 +1174,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -1413,7 +1413,7 @@ fn an_edited_markdown_pair_settles_aligned() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let left_body = "# Himark Render Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that should soft-wrap cleanly without making the renderer work harder than necessary.\n\n## Inline Texture\n\nThe quick brown fox edits markdown at 120 Hz while the cursor passes through Unicode: caf\u{e9}, r\u{e9}sum\u{e9}, na\u{ef}ve, and emoji clusters like \u{1F469}\u{200D}\u{1F4BB}.\n\n- [x] Parse a tree-sitter tree\n- [x] Build document elements\n- [ ] Paint real inline spans\n- [ ] Keep scrolling boringly fast\n\n> A quote should look like a quote eventually. It exercises punctuation, wrapping, and multiple inline styles with **bold claims** and `tiny identifiers`.\n\n### Code Fence: Rust\n\n```rust\nfn render_frame(viewport_y: f32) -> f32 {\n    viewport_y + 1.0\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all, so soft wrapping differences show up.\n";
 
     let right_body = left_body
@@ -1487,7 +1487,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
     let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let mut open = |body: &str, extra_editor: bool| {
         let mut document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         let pane = extra_editor.then(|| {
@@ -1636,7 +1636,7 @@ fn the_panel_opens_dressed_with_no_effects_run() {
     let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let mut middle = String::new();
     for line in 0..300u32 {
         middle.push_str(&format!("line {line}: the quiet unchanged middle\n"));
@@ -1686,7 +1686,7 @@ fn a_shared_pair_ignores_a_handed_prep() {
     let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
-    let fonts = himark::embedded_fonts::source()();
+    let fonts = himark::test_document::test_fonts_collection();
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         himark::OpenDocuments::register(&mut store, document, None, name.to_owned(), 0)
@@ -1744,7 +1744,7 @@ fn a_settled_diff_pane_goes_quiet() {
         std::sync::Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     for (name, body) in [
         ("left.md", "# Shared\n\nleft body line\n\ntail\n"),
         (
@@ -1807,7 +1807,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
 
     let unchanged: String = (0..30).map(|n| format!("same line {n}\n")).collect();
     assert!(app.add_document(
@@ -1970,7 +1970,7 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         Arc::new(|| {}),
     );
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
 
     // 6000 lines, a one-line change every 150 — forty hunks.
     let mut old_body = String::new();
@@ -2058,7 +2058,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
 
     // 8000 lines, a one-line change every 100 — eighty hunks.
     let mut old_body = String::new();
@@ -2320,7 +2320,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());
@@ -2437,7 +2437,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());
@@ -2617,7 +2617,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
 
     himarkdown::register_handlers(&mut app);
     let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::embedded_fonts::source()();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let operation = myersdiff::diff(old.text(), new.text());

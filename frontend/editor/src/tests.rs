@@ -29,7 +29,7 @@ fn test_theme() -> crate::theme::Theme {
 }
 
 fn test_fonts() -> FontCollection {
-    crate::embedded_fonts::collection()
+    crate::test_document::test_fonts_collection().clone()
 }
 
 #[test]
@@ -546,7 +546,7 @@ fn x_for_paragraph_position(text: &str, position: i32) -> f32 {
 }
 
 fn font_collection() -> FontCollection {
-    crate::embedded_fonts::collection()
+    crate::test_document::test_fonts_collection().clone()
 }
 
 #[test]

@@ -31,7 +31,7 @@ impl TestPane {
             &[],
             &store,
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
@@ -63,7 +63,7 @@ impl TestPane {
             anchor,
             &self.store,
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
@@ -128,7 +128,7 @@ impl TestPane {
             inlay,
             &self.store,
             ui,
-            &::editor::embedded_fonts::source()(),
+            ::editor::test_document::test_fonts_collection(),
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
@@ -188,7 +188,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         &[],
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -199,7 +199,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         &[],
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -234,7 +234,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         200.0,
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
     assert!(right_view.document_layout().height() > 0.0);
@@ -447,7 +447,7 @@ fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
         200.0,
         &pane.store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
     assert_eq!(view.document_layout().height(), fresh.content_height());
@@ -596,7 +596,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         200.0,
         &pane.store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
     assert!(view.document_layout().height() > 0.0);
@@ -910,7 +910,7 @@ fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
         420.0,
         &pane.store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
 
@@ -998,7 +998,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         200.0,
         &store,
         ui,
-        &::editor::embedded_fonts::source()(),
+        ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
     let opened = EditorIdView::new(document_id, editor_id)
@@ -1411,7 +1411,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         .map(|index| format!("paragraph {index} with a handful of words in it\n"))
         .collect();
     let mut pane = TestPane::new(plain_document(&source), 420.0);
-    let fonts = ::editor::embedded_fonts::source()();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let light = Theme::light();
 
     let entity = pane.view;
@@ -1523,7 +1523,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
         })
         .collect();
     let mut pane = TestPane::new(plain_document(&source), 420.0);
-    let fonts = ::editor::embedded_fonts::source()();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let light = Theme::light();
     let entity = pane.view;
 
@@ -2548,7 +2548,7 @@ fn double_and_triple_click_select_word_and_line() {
 
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
-    let fonts = ::editor::embedded_fonts::source()();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = ::editor::theme::Theme::embedded();
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();
@@ -2641,7 +2641,7 @@ fn drag_extends_selection_by_the_press_unit() {
     use skia_safe::Point;
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
-    let fonts = ::editor::embedded_fonts::source()();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let theme = ::editor::theme::Theme::embedded();
     let point_at = |pane: &TestPane, byte: u32| -> Point {
         let document = pane.document();

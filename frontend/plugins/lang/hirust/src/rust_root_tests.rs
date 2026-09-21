@@ -12,7 +12,7 @@ fn test_theme() -> editor::Theme {
 fn a_rust_file_is_a_document_rooted_in_rust() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let source = "fn main() {\n    let greeting = 1;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
     let mut document = editor::Document::from_language(
@@ -97,7 +97,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
 fn typing_inside_a_function_keeps_distant_body_tokens() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let source = "fn main() {\n    let first = 1;\n    let second = 2;\n    let third = 3;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
     let mut document = editor::Document::from_language(
@@ -172,7 +172,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
 fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let theme = test_theme();
     let source = "# T\n\n```rust\nfn main() {}\n```\n";
     let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &theme);
@@ -242,7 +242,7 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
 fn declarations_emit_outline_items_at_parse() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let source = "struct Point {\n    x: f32,\n}\n\nimpl Point {\n    pub fn len(&self) -> f32 {\n        0.0\n    }\n}\n";
     let languages = himarkdown::markdown_languages(languages());
     let mut document = editor::Document::from_language(
@@ -311,7 +311,7 @@ fn declarations_emit_outline_items_at_parse() {
 fn declaration_names_carry_the_header_style() {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let source = "struct Widget;\n\nimpl Widget {\n    fn frobnicate(&self) {\n        self.helper();\n    }\n}\n\nfn helper(widget: Widget) {}\n";
     let languages = himarkdown::markdown_languages(languages());
     let document = editor::Document::from_language(
@@ -376,7 +376,7 @@ fn render_declaration_names_snapshot() {
     let Ok(path) = std::env::var("HIRUST_SNAPSHOT") else {
         return;
     };
-    let fonts = editor::embedded_fonts::source()();
+    let fonts = editor::test_document::test_fonts_collection();
     let source = "/// A live document channel.\npub struct DocumentChannels {\n    slots: HashMap<Location, Slot>,\n    suppressed: HashSet<(Location, u64)>,\n}\n\nimpl DocumentChannels {\n    /// Starts the channel once — idempotent.\n    pub fn ensure(&self, location: Location) {\n        if self.slots.contains_key(&location) {\n            return;\n        }\n        self.spawn(location);\n    }\n\n    fn spawn(&self, location: Location) {\n        run(async move { life(location).await });\n    }\n}\n\nfn life(location: Location) -> Life {\n    Life::open(location)\n}\n";
     let languages = himarkdown::markdown_languages(languages());
     let mut document = editor::Document::from_language(

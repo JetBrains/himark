@@ -45,7 +45,7 @@ fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
         &[],
         store,
         ui,
-        &himark::embedded_fonts::source()(),
+        himark::test_document::test_fonts_collection(),
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -95,7 +95,7 @@ fn landed(
         &[],
         store,
         ui,
-        &himark::embedded_fonts::source()(),
+        himark::test_document::test_fonts_collection(),
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -204,7 +204,7 @@ fn typing_mid_run_discards_the_write() {
         &operation::Operation::insert_at(0, "typed "),
         &store,
         ui,
-        &himark::embedded_fonts::source()(),
+        himark::test_document::test_fonts_collection(),
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -555,7 +555,7 @@ fn shows_file_now_or_ride_their_store() {
             &[],
             store,
             &ui,
-            &himark::embedded_fonts::source()(),
+            himark::test_document::test_fonts_collection(),
             &himark::env::Themes::of(store),
             &mut imba::effect::Batch::new().effects(),
         );

@@ -11,7 +11,21 @@ use crate::{
 };
 
 pub fn test_fonts() -> crate::FontSource {
-    crate::embedded_fonts::source()
+    std::sync::Arc::new(|| test_fonts_collection().clone())
+}
+
+/// TEST SUPPORT: the embedded `FontCollection`, kept per test thread —
+/// building one loads every typeface from bytes, and per-call builds
+/// dominated suite time. The clone is a refcount bump sharing the
+/// loaded faces. Not `Sync`, so the `'static` borrow stays on its
+/// thread; the `FontSource` above simply builds once per thread that
+/// calls it. Tests only.
+pub fn test_fonts_collection() -> &'static skia_safe::textlayout::FontCollection {
+    thread_local! {
+        static FONTS: &'static skia_safe::textlayout::FontCollection =
+            Box::leak(Box::new(crate::embedded_fonts::collection()));
+    }
+    FONTS.with(|fonts| *fonts)
 }
 
 /// TEST SUPPORT: a KEPT `UiCtx`, one per test thread — its env slots
