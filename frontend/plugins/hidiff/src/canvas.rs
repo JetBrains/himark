@@ -1143,7 +1143,7 @@ fn mounted(
         operation: built.operation,
         marks: built.marks,
     };
-    let id = crate::build_diff_view(store, ui, old_id, new_id, Some(prep), editor_width)?;
+    let id = crate::build_diff_view(store, ui, old_id, new_id, Some(prep), editor_width, true)?;
     let mut pane = crate::PairPane::over(id);
 
     // Default to the inline face.

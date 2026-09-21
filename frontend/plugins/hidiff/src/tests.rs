@@ -3498,3 +3498,39 @@ fn membership_minimal_repro() {
         ],
     );
 }
+
+/// Canvas rows hold their pairs EMBEDDED: they never surface as
+/// family rows (the peeker once drowned in bare "Diff" entries), and
+/// a rebuild replaces the standing pair instead of leaking it.
+#[test]
+fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    let (view, key, built2) = seeded_working_canvas(&mut app);
+
+    assert_eq!(
+        himark::OpenDocuments::diff_view_count(&app.store()),
+        1,
+        "one built row, one pair"
+    );
+    assert!(
+        himark::OpenDocuments::pair_ids(&app.store()).is_empty(),
+        "an embedded pair is no family row"
+    );
+
+    // A host touch rebuilds the row: the landing replaces the pair.
+    let launched = view.reconcile_for_tests(&mut app.store_mut(), vec![canvas_file(&key, 2)]);
+    assert_eq!(launched, 1);
+    {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        view.land_for_tests(&mut store, &ui, key.clone(), built2);
+    }
+    assert_eq!(
+        himark::OpenDocuments::diff_view_count(&app.store()),
+        1,
+        "the rebuild replaced the pair — no leak"
+    );
+    assert!(himark::OpenDocuments::pair_ids(&app.store()).is_empty());
+}

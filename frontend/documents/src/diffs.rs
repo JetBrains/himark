@@ -44,6 +44,10 @@ pub struct DiffView {
     pub left: crate::EditorIdView,
     pub right: crate::EditorIdView,
     pub diff: DiffId,
+    /// A pair living INSIDE a diff canvas row — it fronts with its
+    /// canvas, never as its own family row (the peeker once listed
+    /// every canvas row as a bare "Diff").
+    pub embedded: bool,
     /// The pane's own right-half extras entry (word tints + fold
     /// strips) — editor-owned, dying with the right half's editor.
     /// THE diff markup (hunk washes) is the entry's own
@@ -180,17 +184,29 @@ impl OpenDocuments {
         });
     }
 
+    /// The STANDALONE pairs — the family rows a peeker can front.
+    /// Canvas-embedded pairs stay with their canvas.
     pub fn pair_ids(store: &Store) -> Vec<DiffViewId> {
         store
             .get::<OpenDocuments>()
             .map(|docs| {
                 docs.diffs
                     .diff_views
-                    .keys()
-                    .map(|id| DiffViewId(*id))
+                    .iter()
+                    .filter(|(_, pair)| !pair.embedded)
+                    .map(|(id, _)| DiffViewId(*id))
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// TEST SUPPORT: every held pair, embedded or not.
+    #[doc(hidden)]
+    pub fn diff_view_count(store: &Store) -> usize {
+        store
+            .get::<OpenDocuments>()
+            .map(|docs| docs.diffs.diff_views.size())
+            .unwrap_or(0)
     }
 
     pub fn pair_tracked(store: &Store, base: DocumentId, target: DocumentId) -> bool {

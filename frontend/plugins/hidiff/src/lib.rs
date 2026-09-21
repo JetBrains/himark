@@ -494,6 +494,7 @@ impl DiffPanelView {
                 diff: handle.id,
                 right_extras,
                 state,
+                embedded: false,
             },
         );
         Self {
@@ -570,8 +571,13 @@ impl himark::PanelView for DiffPanelView {
             && OpenDocuments::location(store, right.document()).as_ref() == Some(&place.new)
     }
 
-    fn title(&self, _store: &Store) -> String {
-        "Diff".to_owned()
+    fn title(&self, store: &Store) -> String {
+        let named = himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)
+            .and_then(|pair| OpenDocuments::location(store, pair.right.document()));
+        match named {
+            Some(location) => format!("Diff: {}", location.name()),
+            None => "Diff".to_owned(),
+        }
     }
 
     fn dismantle(&mut self, store: &mut Store) {
@@ -614,7 +620,7 @@ pub fn diff_panel(
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
 ) -> Option<DiffPanelView> {
-    let id = build_diff_view(store, ui, left, right, prep, OPEN_HALF_WIDTH)?;
+    let id = build_diff_view(store, ui, left, right, prep, OPEN_HALF_WIDTH, false)?;
     Some(DiffPanelView::over(id))
 }
 
@@ -633,6 +639,7 @@ pub fn build_diff_view(
     right: himark::DocumentId,
     prep: Option<DiffPrep>,
     half_width: f32,
+    embedded: bool,
 ) -> Option<himark::DiffViewId> {
     let fonts = himark::env::Fonts::of(store)();
     let theme = himark::env::Themes::of(store);
@@ -764,6 +771,7 @@ pub fn build_diff_view(
             diff: handle.id,
             right_extras,
             state,
+            embedded,
         },
     );
     Some(id)
