@@ -70,7 +70,7 @@ fn fetch_caller(path: Vec<String>, content: &'static str) -> imba::effect::Effec
 }
 
 fn host(source: &str) -> (Store, Document) {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     store.put(himark::env::Parsers(languages()));
@@ -105,7 +105,7 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 }
 
 fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = fonts();
     let theme = theme();
     let fresh = {
@@ -178,7 +178,7 @@ fn an_addressed_fence_embeds_the_registered_file() {
 
 #[test]
 fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "``` rust src/main.rs\nx\n```\n\n``` rust src/main.rs#L2-3\ny\n```\n";
     let (mut store, document) = host(source);
     let over = enrich_input(&document, source);
@@ -245,7 +245,7 @@ fn an_open_target_dedups_to_the_same_document() {
     let built = crate::document_from_markdown(
         "fn main() {}\n",
         &store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         &fonts(),
         &theme(),
     );
@@ -347,7 +347,7 @@ fn line_window_slices_1_based_inclusive() {
 
 #[test]
 fn a_line_fragment_windows_the_embed() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "``` rust src/main.rs#L2-3\nx\n```\n";
     let (mut store, document) = host(source);
     let over = enrich_input(&document, source);

@@ -14,6 +14,21 @@ pub fn test_fonts() -> crate::FontSource {
     crate::embedded_fonts::source()
 }
 
+/// TEST SUPPORT: a KEPT `UiCtx`, one per test thread — its env slots
+/// (the `ui_font` typeface cache above all) warm once per thread
+/// instead of once per call, which is what a fresh
+/// `UiCtx::dont_use_too_slow()` at every measure site costs. The
+/// leak is bounded (one ctx per libtest worker); `UiCtx` is not
+/// `Sync`, so the `'static` borrow cannot cross threads. Tests only —
+/// production code is handed the real ctx and must thread it.
+pub fn test_ui() -> &'static imba::UiCtx {
+    thread_local! {
+        static UI: &'static imba::UiCtx =
+            Box::leak(Box::new(imba::UiCtx::dont_use_too_slow()));
+    }
+    UI.with(|ui| *ui)
+}
+
 pub fn test_workshop(theme: crate::theme::Theme) -> std::sync::Arc<crate::env::Workshop> {
     std::sync::Arc::new(crate::env::Workshop::new(
         crate::embedded_fonts::source(),

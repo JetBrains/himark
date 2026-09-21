@@ -96,7 +96,7 @@ impl Fetches {
 
 fn md(source: &str) -> himark::Document {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     crate::document_from_markdown(source, store, ui, &fonts(), &theme())
 }
 
@@ -128,7 +128,7 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 
 fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = fonts();
     let theme = theme();
     let fresh = {

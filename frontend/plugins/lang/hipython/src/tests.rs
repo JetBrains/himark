@@ -25,7 +25,7 @@ fn languages() -> editor::SyntaxLanguages {
 
 fn parsed() -> editor::Document {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let theme = editor::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
@@ -138,7 +138,7 @@ fn folds() {
 #[test]
 fn python_blocks_highlight_in_markdown() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let source = "title\n\n```python\ndef greet():\n    return \"hi\"\n```\n";
     let fonts = editor::embedded_fonts::source()();
     let theme = editor::Theme::embedded();

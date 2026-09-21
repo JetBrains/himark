@@ -136,7 +136,7 @@ fn drain_until_quiet(app: &mut Application, arriving: &std::sync::mpsc::Receiver
 fn markdown_demo_inlays_do_not_replace_headers() {
     let source = "# Demo header\n\n---\n\nplain text";
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let (mut document, blocks) =
         himarkdown::markdown_document(source, store, ui, &font_collection(), &test_theme());
     crate::add_badges(
@@ -200,7 +200,7 @@ fn typing_markdown_into_the_startup_scratch_styles_it() {
 #[ignore = "writes screenshots into HIMARK_SHOT (a directory) for visual inspection"]
 fn dump_rust_split_screenshot() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let Some(dir) = std::env::var_os("HIMARK_SHOT") else {
         return;
     };
@@ -979,7 +979,7 @@ fn scroll_frame_breakdown() {
 #[ignore = "panic-hunt sweep; slow — run explicitly with --nocapture"]
 fn typing_everywhere_in_the_monster_survives_reparse() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::embedded_fonts::source()();
     let mut document = crate::monster_document(store, ui, &fonts, &test_theme());
     let _editor = document.add_editor(
@@ -1107,7 +1107,7 @@ fn the_wall_of_text_opens_and_types() {
 #[test]
 fn resize_repair_matches_fresh_layout() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
     let (mut document, blocks) =
@@ -1312,7 +1312,7 @@ fn tree_demo_panel_toggles_through_clicks() {
 #[test]
 fn rust_document_settles_and_stops_reconciling() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let _guard = heavy();
     let (mut app, host) = attach_bare_host();
     let source = include_str!("../../../editor/src/document.rs");

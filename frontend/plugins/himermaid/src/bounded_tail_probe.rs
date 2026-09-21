@@ -6,7 +6,7 @@ use super::tests::*;
 #[test]
 fn bounded_open_converges_over_a_mermaid_fence() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut source = String::from("# Head\n\n");
     for block in 0..30 {
         for _ in 0..100 {
@@ -49,7 +49,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         base: None,
     };
     let mut store = imba::Store::new();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
 
     let outcome = himark::ReparseHandler(himark::test_support::test_workshop(theme()))
         .reparse(himark::ReparseWork::capture(&view.document, registry.clone()).expect("parse"));
@@ -82,7 +82,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         view.document.clone(),
         900.0,
         &imba::store::Store::new(),
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         &fonts(),
         &theme(),
     )

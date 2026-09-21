@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
     let mut document = document_from_markdown(

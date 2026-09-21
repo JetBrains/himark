@@ -193,7 +193,7 @@ impl DocumentLayout {
         {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
-            let ui = imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             let measure = crate::markup::InlayMeasure {
                 width,
                 store: &seeded,
@@ -215,7 +215,7 @@ impl DocumentLayout {
         {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
-            let ui = imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             let measure = crate::markup::InlayMeasure {
                 width,
                 store: &seeded,
@@ -239,7 +239,7 @@ impl DocumentLayout {
         {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
-            let ui = imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             let measure = crate::markup::InlayMeasure {
                 width,
                 store: &seeded,
@@ -270,7 +270,7 @@ impl DocumentLayout {
         {
             let mut seeded = imba::store::Store::new();
             crate::env::Themes::set(&mut seeded, theme.clone());
-            let ui = imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             let measure = crate::markup::InlayMeasure {
                 width,
                 store: &seeded,

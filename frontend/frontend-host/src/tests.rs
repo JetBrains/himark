@@ -2186,7 +2186,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
 
 #[test]
 fn an_addressed_fence_embeds_a_sibling_file() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 800)).expect("surface");
 
@@ -2254,7 +2254,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         let _ = imba::View::perform(
             &mut view,
             &mut *engine.app.store_mut(),
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             himark::EditorCommand::Inlay {
                 key: inlay_key,
                 command: Box::new(himark::EditorCommand::Viewport {
@@ -2419,7 +2419,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
 
 #[test]
 fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let body = "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\nfn five() {}\n";

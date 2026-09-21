@@ -27,7 +27,7 @@ fn test_cx() -> std::sync::Arc<himark::Workshop> {
 #[test]
 fn the_search_design_doc_lays_out_completely() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
@@ -42,7 +42,7 @@ fn the_search_design_doc_lays_out_completely() {
 
 #[test]
 fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut seed = 0x9e3779b97f4a7c15u64;
     let mut rand = move || {
         seed ^= seed << 13;
@@ -105,7 +105,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 };
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     command,
                     &mut batch.effects(),
                 );
@@ -114,7 +114,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let mut view = editor;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     EditorCommand::Backspace,
                     &mut batch.effects(),
                 );
@@ -124,7 +124,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let y = (rand() % 12_000) as f32;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     EditorCommand::Click {
                         kind: himark::ClickKind::Set,
                         point: skia_safe::Point::new((rand() % 500) as f32, y),
@@ -168,7 +168,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let mut view = editor;
                     view.perform(
                         &mut store,
-                        &imba::UiCtx::dont_use_too_slow(),
+                        himark::test_document::test_ui(),
                         command,
                         &mut batch.effects(),
                     );
@@ -194,7 +194,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
 #[test]
 fn the_search_design_doc_survives_the_bounded_open_tail() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
@@ -238,7 +238,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         imba::View::perform(
             &mut view,
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );

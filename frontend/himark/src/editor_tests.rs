@@ -22,7 +22,7 @@ struct TestPane {
 
 impl TestPane {
     fn new(mut document: Document, width: f32) -> Self {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = Store::new();
         let editor = document.add_editor(
             width,
@@ -52,7 +52,7 @@ impl TestPane {
     }
 
     fn resize(&mut self, width: f32, anchor: u32) -> imba::effect::Batch<EditorCommand> {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
             crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
@@ -75,7 +75,7 @@ impl TestPane {
         let mut batch = imba::effect::Batch::new();
         self.view.perform(
             &mut self.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );
@@ -92,7 +92,7 @@ impl TestPane {
             let mut batch = imba::effect::Batch::new();
             self.view.perform(
                 &mut self.store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -117,7 +117,7 @@ impl TestPane {
     }
 
     fn replace_inlay(&mut self, key: editor::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
             crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
@@ -178,7 +178,7 @@ fn view_refresh_matches_committed_store() {
 
 #[test]
 fn editors_sharing_a_document_see_each_others_edits() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let mut document = plain_document("shared alpha beta gamma delta epsilon");
     let left_editor = document.add_editor(
@@ -212,7 +212,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         let mut batch = imba::effect::Batch::new();
         left_view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "typed ".to_owned(),
             },
@@ -428,7 +428,7 @@ fn deleting_all_text_leaves_nothing_pending() {
 
 #[test]
 fn typing_deep_in_a_giant_paragraph_repairs_to_completion() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let source = "word ".repeat(12_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
     pane.set_caret((source.len() / 2) as u32);
@@ -462,7 +462,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "x".to_owned(),
             },
@@ -484,7 +484,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     crate::close_editor(&mut pane.store, pane.view.document(), pane.view.editor());
     let new_editor = crate::mount_editor(
         &pane.store,
-        &imba::UiCtx::dont_use_too_slow(),
+        ::editor::test_document::test_ui(),
         &mut document_b,
         200.0,
         None,
@@ -505,7 +505,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             command,
             &mut discarded.effects(),
         );
@@ -525,7 +525,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
 
 #[test]
 fn stale_repairs_discard_and_the_fresh_one_converges() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let source = "word ".repeat(4_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
 
@@ -533,7 +533,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "first ".to_owned(),
             },
@@ -547,7 +547,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "second ".to_owned(),
             },
@@ -564,7 +564,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             command,
             &mut discarded.effects(),
         );
@@ -583,7 +583,7 @@ fn stale_repairs_discard_and_the_fresh_one_converges() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );
@@ -639,7 +639,7 @@ fn focus_moves_between_text_and_inlays() {
     );
 
     {
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         assert!(matches!(
             imba::View::focus_data(&pane.view, &pane.store, &ui).text("x"),
             EventResult::Ignored
@@ -653,7 +653,7 @@ fn focus_moves_between_text_and_inlays() {
     assert_eq!(pane.gathered().focus(), EditorFocus::Text);
 
     {
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         assert!(matches!(
             imba::View::focus_data(&pane.view, &pane.store, &ui).text("x"),
             EventResult::Command(EditorCommand::InsertText { .. })
@@ -813,7 +813,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 
     let paint = |pane: &TestPane| -> Vec<EditorCommand> {
         let arena = imba::arena::Arena::default();
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let view = pane.gathered();
         let widget = imba::Layout::layout(
             View::display(&view, &arena, &pane.store, &ui),
@@ -901,7 +901,7 @@ impl View for FocusProbe {
 
 #[test]
 fn resize_repairs_the_viewport_synchronously_and_the_rest_as_an_effect() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let source = "word ".repeat(4_000);
     let mut pane = TestPane::new(plain_document(&source), 200.0);
 
@@ -940,7 +940,7 @@ fn a_repair_from_before_a_resize_discards_itself() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "first ".to_owned(),
             },
@@ -961,7 +961,7 @@ fn a_repair_from_before_a_resize_discards_itself() {
         let mut discarded = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             command,
             &mut discarded.effects(),
         );
@@ -975,7 +975,7 @@ fn a_repair_from_before_a_resize_discards_itself() {
 
 #[test]
 fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let source = "word ".repeat(4_000);
     let mut document = plain_document(&source);
     let mut store = Store::new();
@@ -1019,7 +1019,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
             let mut batch = imba::effect::Batch::new();
             node.perform(
                 &mut store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -1035,7 +1035,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
             let mut batch = imba::effect::Batch::new();
             node.perform(
                 &mut store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -1404,7 +1404,7 @@ fn closing_a_split_pane_collapses_to_the_sibling() {
 
 #[test]
 fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     use ::editor::theme::Theme;
 
     let source: String = (0..2500)
@@ -1445,7 +1445,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::Retheme {
                 top,
                 bottom,
@@ -1491,7 +1491,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
             let mut batch = imba::effect::Batch::new();
             pane.view.perform(
                 &mut pane.store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -1512,7 +1512,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
 #[test]
 fn a_stale_theme_repair_landing_discards_itself() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     use ::editor::theme::Theme;
     let source: String = (0..2000)
         .map(|index| {
@@ -1538,7 +1538,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
             &mut pane.store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             EditorCommand::Retheme {
                 top: 0.0,
                 bottom: 600.0,
@@ -1568,7 +1568,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
             let mut batch = imba::effect::Batch::new();
             pane.view.perform(
                 &mut pane.store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -1590,7 +1590,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
             let mut batch = imba::effect::Batch::new();
             pane.view.perform(
                 &mut pane.store,
-                &imba::UiCtx::dont_use_too_slow(),
+                ::editor::test_document::test_ui(),
                 command,
                 &mut batch.effects(),
             );
@@ -2536,7 +2536,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 #[test]
 fn double_and_triple_click_select_word_and_line() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     use editor::ClickKind;
     use imba::{
         arena::Arena,
@@ -2592,7 +2592,7 @@ fn double_and_triple_click_select_word_and_line() {
     assert_eq!(primary(&pane).offset(), 6);
 
     let arena = Arena::default();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let click = |count: u8, alt: bool| -> Option<ClickKind> {
         let mut event = Event::MouseDown {
             point: in_beta,
@@ -2636,7 +2636,7 @@ fn double_and_triple_click_select_word_and_line() {
 #[test]
 fn drag_extends_selection_by_the_press_unit() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     use editor::ClickKind;
     use skia_safe::Point;
     let text = "alpha  beta gamma\nsecond line\n";
@@ -3386,7 +3386,7 @@ mod toc {
             .clone();
         assert!(view.rows().is_empty(), "nothing landed yet");
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = app.store().clone();
         let mut batch = imba::effect::Batch::new();
         view.perform(
@@ -3477,7 +3477,7 @@ mod toc {
         };
         let toc = crate::TocView::for_locations(
             &store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             window,
             &[at("src", "b.rs"), at("docs", "a.md"), at("src", "a.rs")],
         )
@@ -3495,7 +3495,7 @@ mod toc {
         );
 
         let mut toc = toc;
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut scratch = Store::new();
         toc.perform(
             &mut scratch,
@@ -3512,7 +3512,7 @@ mod toc {
 
         let mut band = crate::TocView::for_locations(
             &store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             window,
             &[at("src", "x.rs")],
         )
@@ -3548,7 +3548,7 @@ mod toc {
         };
         let toc = crate::TocView::for_locations(
             &store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             window,
             &[
                 at(&["src", "ui", "widgets", "c.rs"]),
@@ -3572,7 +3572,7 @@ mod toc {
 
         let chain = crate::TocView::for_locations(
             &store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             window,
             &[at(&["a", "b", "c", "x.rs"])],
         )
@@ -3597,14 +3597,14 @@ mod toc {
         };
         let mut toc = crate::TocView::for_locations(
             &store,
-            &imba::UiCtx::dont_use_too_slow(),
+            ::editor::test_document::test_ui(),
             window,
             &[at("src", "a.rs"), at("src", "b.rs")],
         )
         .expect("rows");
         assert_eq!(toc.visible_rows(), 3, "the band and both files");
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut scratch = Store::new();
         let mut drive = |toc: &mut crate::TocView, command| {
             toc.perform(
@@ -3657,7 +3657,7 @@ mod toc {
             .expect("outline")
             .clone();
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = app.store().clone();
         let mut batch = imba::effect::Batch::new();
         view.perform(
@@ -3756,7 +3756,7 @@ mod toc {
             .expect("outline")
             .clone();
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = app.store().clone();
         let mut batch = imba::effect::Batch::new();
         view.perform(
@@ -3879,7 +3879,7 @@ mod toc {
             .expect("outline")
             .clone();
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = app.store().clone();
         let mut batch = imba::effect::Batch::new();
         view.perform(
@@ -4598,7 +4598,7 @@ mod dock_tests {
         }
 
         let mut store = app.store_mut().clone();
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut panel = crate::higent::AgentsPanel::open(&store, window);
         {
             let mut boot: imba::effect::Batch<crate::higent::AgentsCommand> =
@@ -5067,7 +5067,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     let markup = document.add_markup();
     let editor = document.editor_ids().next().expect("the pane's editor");
     document.show_markup(editor, markup);
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     document.push_inlay(
         markup,
         12..16,
@@ -5117,7 +5117,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
         .find(|(_, held)| held.name() == "popup.md")
         .expect("still open");
     let mut document = held.document().clone();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     document.remove_markup(
         markup,
         &[],
@@ -5709,7 +5709,7 @@ fn ime_hit_test_rejects_chrome_over_a_scrolled_pane() {
 
 #[test]
 fn scroll_stripes_follow_the_diff_through_the_app() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     use crate::{AppFonts, Application};
     use std::sync::{mpsc, Arc};
     let fonts = AppFonts::embedded();

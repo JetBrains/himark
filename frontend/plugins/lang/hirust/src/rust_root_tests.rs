@@ -11,7 +11,7 @@ fn test_theme() -> editor::Theme {
 #[test]
 fn a_rust_file_is_a_document_rooted_in_rust() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let source = "fn main() {\n    let greeting = 1;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
@@ -96,7 +96,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
 #[test]
 fn typing_inside_a_function_keeps_distant_body_tokens() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let source = "fn main() {\n    let first = 1;\n    let second = 2;\n    let third = 3;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
@@ -171,7 +171,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
 #[test]
 fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let theme = test_theme();
     let source = "# T\n\n```rust\nfn main() {}\n```\n";
@@ -241,7 +241,7 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
 #[test]
 fn declarations_emit_outline_items_at_parse() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let source = "struct Point {\n    x: f32,\n}\n\nimpl Point {\n    pub fn len(&self) -> f32 {\n        0.0\n    }\n}\n";
     let languages = himarkdown::markdown_languages(languages());
@@ -310,7 +310,7 @@ fn declarations_emit_outline_items_at_parse() {
 #[test]
 fn declaration_names_carry_the_header_style() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let fonts = editor::embedded_fonts::source()();
     let source = "struct Widget;\n\nimpl Widget {\n    fn frobnicate(&self) {\n        self.helper();\n    }\n}\n\nfn helper(widget: Widget) {}\n";
     let languages = himarkdown::markdown_languages(languages());
@@ -372,7 +372,7 @@ fn declaration_names_carry_the_header_style() {
 #[ignore]
 fn render_declaration_names_snapshot() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let Ok(path) = std::env::var("HIRUST_SNAPSHOT") else {
         return;
     };

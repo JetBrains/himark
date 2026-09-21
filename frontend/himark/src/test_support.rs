@@ -160,7 +160,7 @@ impl Application {
             crate::OpenDocuments::document_ref(self.store(), entity.document()).expect("document");
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut fresh = crate::EditorView::complete(
             document.clone(),
             width,
@@ -200,7 +200,7 @@ impl Application {
     }
 
     pub fn unconverged_panes(&self) -> Vec<(usize, f32, f32)> {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut offenders = Vec::new();
         let mut index = 0usize;
         let store = self.store();

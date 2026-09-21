@@ -1555,7 +1555,7 @@ mod hitbox {
     #[test]
     fn clicking_anywhere_in_an_empty_cell_reaches_it() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = himark::test_document::test_ui();
         use himark::InlayEditing;
         let fonts = himark::embedded_fonts::collection();
         let theme = himark::Theme::embedded();
@@ -1630,7 +1630,7 @@ mod hitbox {
     #[test]
     fn controls_arm_only_after_a_focused_paint() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = himark::test_document::test_ui();
         use himark::InlayEditing;
         use imba::event::{Event, EventResult, MouseButton};
 

@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn the_search_design_doc_cold_reparses_with_the_full_registry() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let source = include_str!("../../../himarkdown/fixtures/utf8-repro.md");
     let fonts = editor::embedded_fonts::source()();
     let theme = editor::Theme::embedded();

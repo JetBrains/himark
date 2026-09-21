@@ -23,7 +23,7 @@ fn hundred_lines() -> String {
 
 fn pane(document: &mut Document) -> crate::editor::EditorId {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let editor = document.add_editor(
         400.0,
         None,
@@ -54,7 +54,7 @@ fn tinted(
 
 fn retint(document: &mut Document, id: crate::MarkupId, ranges: &[Range<u32>], style: StyleId) {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut tints = Markup::new();
     for range in ranges {
         tints.push_styled(range.clone(), style);
@@ -144,7 +144,7 @@ fn touching_same_style_marks_merge_and_keep_the_first_byte() {
 #[test]
 fn the_lane_relaunches_only_when_the_fingerprint_moves() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = plain_document(&hundred_lines());
     let editor = pane(&mut document);
     let markup = tinted(&mut document, editor, &[90..95], StyleId::Match);
@@ -243,7 +243,7 @@ fn the_diff_markup_is_derived_from_the_operation_and_classifies_hunks() {
 #[test]
 fn removing_the_last_diff_owes_one_clearing_relaunch() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     // The commit road: the diff is untracked, the gutter clears at
     // once — and the TRACK must not keep the stale marks. The leaving
     // markup bumps the generation while the diff still vouches for
@@ -295,7 +295,7 @@ fn removing_the_last_diff_owes_one_clearing_relaunch() {
 #[test]
 fn a_diff_carries_its_change_map_from_birth() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     // The base is the target with line 50 spelled differently and one
     // EXTRA line after line 5 — so the operation carries one modified
     // hunk and one pure deletion (target side empty).

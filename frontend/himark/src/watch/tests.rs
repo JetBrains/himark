@@ -68,7 +68,7 @@ fn registered(store: &mut Store, source: &str) -> crate::DocumentId {
 
 #[test]
 fn a_clean_document_follows_the_disk() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
     let mut batch = imba::effect::Batch::new();
@@ -120,7 +120,7 @@ fn a_clean_document_follows_the_disk() {
 
 #[test]
 fn a_stale_diff_landing_discards_itself() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
@@ -171,7 +171,7 @@ fn a_stale_diff_landing_discards_itself() {
 
 #[test]
 fn an_absorbed_external_edit_kicks_the_reparse_lane() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let mut document = plain_document("alpha\nbeta\n");
     document.install_syntax(
@@ -221,7 +221,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
 }
 
 fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut document = OpenDocuments::document(store, id).expect("the document");
     document.edit(
         &operation::Operation::insert_at(at, text),
@@ -236,7 +236,7 @@ fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
 
 #[test]
 fn a_dirty_document_merges_the_external_change() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
     typed(&mut store, id, 0, "MINE ");
@@ -289,7 +289,7 @@ fn a_dirty_document_merges_the_external_change() {
 
 #[test]
 fn a_dirty_save_echo_keeps_the_typing() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     typed(&mut store, id, 0, "typed ");
@@ -331,7 +331,7 @@ fn a_dirty_save_echo_keeps_the_typing() {
 
 #[test]
 fn typing_racing_the_merge_rediffs_until_it_converges() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let mut batch = imba::effect::Batch::new();
@@ -425,7 +425,7 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
 /// land exactly once and nothing may go stale.
 #[test]
 fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "base\n");
 
@@ -543,7 +543,7 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
 
 #[test]
 fn the_saves_own_echo_is_a_no_op() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, id).expect("the document");
@@ -568,7 +568,7 @@ fn the_saves_own_echo_is_a_no_op() {
 
 #[test]
 fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
 
@@ -628,7 +628,7 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
 
 #[test]
 fn a_stale_diff_landing_drops_by_serial() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let stale_serial = OpenDocuments::stamp_refetch(&mut store, id);
@@ -828,7 +828,7 @@ fn the_palette_reload_follows_the_disk() {
 
 #[test]
 fn a_shared_edit_is_not_a_reload() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let document = plain_document("alpha\n");
     let saved = document.revision();
@@ -917,7 +917,7 @@ fn a_shared_edit_is_not_a_reload() {
 /// same insertion past itself and applying it again.
 #[test]
 fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
 
@@ -992,7 +992,7 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
 /// recognized inside the dirty diff and dropped — not duplicated.
 #[test]
 fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
 
@@ -1069,7 +1069,7 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
 /// resurrect anything).
 #[test]
 fn a_shared_deletions_file_echo_deletes_nothing_further() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nDOOMED\nbeta\n");
     let base = OpenDocuments::document_ref(&store, id)
@@ -1134,7 +1134,7 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
 /// conflict. Nobody's bytes may be dropped.
 #[test]
 fn a_same_line_conflict_keeps_both_sides_bytes() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nMIDDLE\nbeta\n");
     // Ours: rewrite MIDDLE locally.
@@ -1205,7 +1205,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
 /// channel dies (mode two).
 #[test]
 fn a_host_synced_document_stops_watching_and_absorbing() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     Watching::install(&mut store);
     let id = registered(&mut store, "alpha\n");

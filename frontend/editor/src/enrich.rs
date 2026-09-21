@@ -436,7 +436,7 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         {
             let mut store = imba::store::Store::new();
-            let ui = &imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             document.apply_enrichment(
                 outcome,
                 &mut store,
@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn a_landing_rebases_over_edits_since_capture() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut document = document("abc @@ def\n");
@@ -545,7 +545,7 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         {
             let mut store = imba::store::Store::new();
-            let ui = &imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             document.apply_enrichment(
                 outcome,
                 &mut store,
@@ -566,7 +566,7 @@ mod tests {
         use imba::effect::EffectHandler;
         let workshop = workshop();
         let mut store = imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut pending = batch.surviving_launches();
         let mut rounds = 0;
         while let Some(effect) = pending.pop() {
@@ -602,7 +602,7 @@ mod tests {
     #[test]
     fn a_landing_damages_and_repairs_the_shown_layout() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut document = document("alpha beta\ngamma @@ delta\ntail line\n");
@@ -647,7 +647,7 @@ mod tests {
     #[test]
     fn a_landing_beyond_the_sync_budget_repairs_through_effects() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let pass = BadgePass::new();
         let registry = registry(&pass);
         let mut source = String::new();
@@ -669,7 +669,7 @@ mod tests {
 
         {
             let mut store = imba::store::Store::new();
-            let ui = &imba::UiCtx::dont_use_too_slow();
+            let ui = crate::test_document::test_ui();
             document.perform(
                 &mut store,
                 &ui,
@@ -770,7 +770,7 @@ mod tests {
 
     fn editor_for(document: &mut crate::Document) -> crate::editor::EditorId {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         document.add_editor(
             400.0,
             None,
@@ -808,7 +808,7 @@ mod tests {
         let second = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut batch = imba::effect::Batch::new();
         document.perform(
             &mut store,
@@ -909,7 +909,7 @@ mod tests {
         let editor = editor_for(&mut document);
         let mut store = imba::store::Store::new();
         store.put(crate::env::Enrichers(Arc::new(registry)));
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         for _ in 0..2 {
             let mut batch = imba::effect::Batch::new();
             document.perform(

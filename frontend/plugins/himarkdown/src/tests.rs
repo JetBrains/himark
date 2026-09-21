@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn headers_align_right_center_left_by_level() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = test_fonts();
     let theme = test_theme();
     let source = "# One\n\n## Two\n\n### Three\n";
@@ -105,7 +105,7 @@ fn resize_entity(
 
 fn perform_pumped(store: &mut Store, view: EditorIdView, command: EditorCommand) {
     let cx = test_cx();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut node = view;
     let mut batch = imba::effect::Batch::new();
     let _ = node.perform(store, &ui, command, &mut batch.effects());
@@ -125,7 +125,7 @@ fn perform_pumped(store: &mut Store, view: EditorIdView, command: EditorCommand)
 }
 
 fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: ReparseOutcome) {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut document = himark::OpenDocuments::document(store, document_id).expect("document");
     let mut batch = imba::effect::Batch::new();
     document.apply_reparse_outcome(
@@ -145,7 +145,7 @@ fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: Re
     };
     let mut node = EditorIdView::new(document_id, editor);
     let cx = test_cx();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(batch)
         .into_iter()
         .map(|effect| himark::test_support::handle_effect(effect, &cx))
@@ -164,7 +164,7 @@ fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: Re
 #[test]
 fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let sample = include_str!("../../demo/sample.md");
     let source = sample.repeat(120);
     let document = document_from_markdown(&source, store, ui, &test_fonts(), &test_theme());
@@ -181,7 +181,7 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     let top = height * 0.7;
     let bottom = top + 800.0;
     let mut node = entity_id;
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let anchor = himark::OpenDocuments::document_ref(&store, document_id)
         .expect("document")
         .first_visible_byte(editor, top);
@@ -223,7 +223,7 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
 #[test]
 fn a_scroll_into_a_resize_tail_heals_synchronously() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let sample = include_str!("../../demo/sample.md");
     let source = sample.repeat(120);
     let document = document_from_markdown(&source, store, ui, &test_fonts(), &test_theme());
@@ -245,7 +245,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
     );
 
     let mut node = entity_id;
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let anchor = himark::OpenDocuments::document_ref(&store, document_id)
         .expect("document")
         .first_visible_byte(editor, top);
@@ -271,7 +271,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
 #[test]
 fn resize_repair_timing_probe() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let sample = include_str!("../../demo/sample.md");
     let source = sample.repeat(1409);
 
@@ -307,7 +307,7 @@ fn resize_repair_timing_probe() {
         );
         node.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -328,7 +328,7 @@ fn resize_repair_timing_probe() {
 
 #[test]
 fn content_only_edits_rebuild_inline_markup() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     let document = document_from_markdown(
         "some **bold** words\n",
@@ -358,7 +358,7 @@ fn content_only_edits_rebuild_inline_markup() {
         let mut view = editor;
         let _ = view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Move {
                 motion: himark::Motion::Right,
                 select: false,
@@ -369,7 +369,7 @@ fn content_only_edits_rebuild_inline_markup() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::Backspace,
         &mut imba::effect::Batch::new().effects(),
     );
@@ -408,7 +408,7 @@ fn content_only_edits_rebuild_inline_markup() {
 
 #[test]
 fn a_focused_table_cell_presents_structural_commands() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use imba::View;
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     let mut store = Store::new();
@@ -423,7 +423,7 @@ fn a_focused_table_cell_presents_structural_commands() {
         .key;
 
     let view = entity;
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     assert!(
         imba::focus::frame_commands(&view, &store, &ui)
             .iter()
@@ -477,7 +477,7 @@ fn a_focused_table_cell_presents_structural_commands() {
 #[test]
 fn nested_task_items_each_get_their_checkbox() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "* [ ] Licensing #P0\n\t* [ ] product code\n\t* [x] license delivery\n* [ ] Performance\n\t* [ ] diagnostics latency\n\t    * [x] deep nesting\n";
     let document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
     let byte_count = document.text().byte_count() as u32;
@@ -506,7 +506,7 @@ fn nested_task_items_each_get_their_checkbox() {
 #[test]
 fn inlay_commands_route_by_layer() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     let mut document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
     let byte_count = document.text().byte_count() as u32;
@@ -539,7 +539,7 @@ fn inlay_commands_route_by_layer() {
 
 #[test]
 fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n| 3 | 4 |\n\nafter\n";
     let block_len = source.find("\n\n").expect("blank line") as u32 + 1;
     let mut store = Store::new();
@@ -568,7 +568,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(command) as himark::InlayCommand,
@@ -635,7 +635,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
 
 #[test]
 fn adding_a_table_row_keeps_the_blocks_below_it() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n\n---\n\n## Tail Heading\n\n| x | y |\n|---|---|\n| 3 | 4 |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -651,7 +651,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::Inlay {
             key,
             command: Box::new(table::TableCommand::InsertRow(2)) as himark::InlayCommand,
@@ -709,7 +709,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
 
 #[test]
 fn multibyte_typing_in_a_cell_stays_utf8() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| Unicode | emoji and combining marks |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -727,7 +727,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -774,7 +774,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
                 let mut view = editor;
                 let _ = view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     EditorCommand::ApplyReparse(outcome),
                     &mut imba::effect::Batch::new().effects(),
                 );
@@ -800,7 +800,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
 
 #[test]
 fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| head | combining |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -818,7 +818,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -862,7 +862,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::ApplyReparse(in_flight),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -884,7 +884,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
 
 #[test]
 fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| head | фывафыва прол джлол |\n|---|---|\n| a | b |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -902,7 +902,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
         let mut view = editor;
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -941,7 +941,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
 
 #[test]
 fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| left | right |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -960,7 +960,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         let mut view = editor;
         view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -998,7 +998,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         .run_reparse();
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::ApplyReparse(outcome),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1016,7 +1016,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         let mut view = editor;
         view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1040,7 +1040,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
 
 #[test]
 fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use himark::DynamicEditorCommand;
 
     let location = himark::ResourceLocation::new(
@@ -1147,7 +1147,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
 
 #[test]
 fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -1164,7 +1164,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     let mut cell = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1214,7 +1214,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     .run_reparse();
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::ApplyReparse(outcome),
         &mut imba::effect::Batch::new().effects(),
     );
@@ -1233,7 +1233,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
 
 #[test]
 fn unmapped_cell_mutations_are_swallowed_not_diverged() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -1250,7 +1250,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
     let mut cell = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
                 command: Box::new(table::TableCommand::Cell {
@@ -1292,7 +1292,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
 
 #[test]
 fn breaking_the_delimiter_dissolves_the_widget() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| 1 | 2 |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -1342,7 +1342,7 @@ fn breaking_the_delimiter_dissolves_the_widget() {
 
 #[test]
 fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use operation::{Op, Operation};
 
     let source = "| a | b |\n|---|---|\n| left | right |\n";
@@ -1402,7 +1402,7 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
 
 #[test]
 fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -1419,7 +1419,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     let mut send = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1493,7 +1493,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
 
 #[test]
 fn a_faithful_reparse_still_carries_the_live_table() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "| a | b |\n|---|---|\n| one | two |\n";
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
@@ -1510,7 +1510,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
     let mut send = |store: &mut Store, command: EditorCommand| {
         let _ = view.perform(
             store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1567,7 +1567,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
 #[test]
 fn a_table_replaces_all_of_its_source_lines() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let two_rows = "before\n\n| x | q |\n|---|---|\n| z | w |\n\nafter\n";
     let six_rows = "before\n\n| x | q |\n|---|---|\n| z | w |\n| z | w |\n| z | w |\n| z | w |\n| z | w |\n\nafter\n";
 
@@ -1596,7 +1596,7 @@ fn a_table_replaces_all_of_its_source_lines() {
 #[test]
 fn a_markdown_table_becomes_an_instead_inlay() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "before\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\nafter\n";
     let document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
     let byte_count = document.text().byte_count() as u32;
@@ -1625,7 +1625,7 @@ fn a_markdown_table_becomes_an_instead_inlay() {
 
 #[test]
 fn late_reparse_outcomes_rebase_over_typing() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     let document = document_from_markdown(
         "plain words here\n",
@@ -1639,7 +1639,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::InsertText {
             text: "# ".to_owned(),
         },
@@ -1654,7 +1654,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
 
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::InsertText {
             text: "big ".to_owned(),
         },
@@ -1678,7 +1678,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
 
 #[test]
 fn demo_open_pipeline_applies_markup_and_layout() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = format!("# heading\n\n{}\n", "words ".repeat(40_000));
     let text = text::Text::from_string_exact(&source);
     let mut document = himark::Document::new(text.clone(), himark::Markup::new());
@@ -1729,7 +1729,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let mut view = entity_id;
     view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         command,
         &mut batch.effects(),
     );
@@ -1741,7 +1741,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         let command = himark::test_support::handle_effect(effect, &test_cx());
         view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );
@@ -1807,7 +1807,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     while let Some(command) = pending.pop() {
         view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );
@@ -1830,7 +1830,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
 
 #[test]
 fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = format!("# heading\n\n{}\n", "words ".repeat(40_000));
     let mut store = Store::new();
     let document = document_from_markdown(&source, &store, ui, &test_fonts(), &test_theme());
@@ -1865,7 +1865,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
         let mut batch = imba::effect::Batch::new();
         view.perform(
             &mut store,
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             EditorCommand::InsertText {
                 text: "x".to_owned(),
             },
@@ -1877,7 +1877,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
             let mut followup_batch = imba::effect::Batch::new();
             view.perform(
                 &mut store,
-                &imba::UiCtx::dont_use_too_slow(),
+                himark::test_document::test_ui(),
                 command,
                 &mut followup_batch.effects(),
             );
@@ -1886,7 +1886,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
                 let command = himark::test_support::handle_effect(effect, &test_cx());
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     command,
                     &mut imba::effect::Batch::new().effects(),
                 );
@@ -1919,7 +1919,7 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
 
 #[test]
 fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut seed = 0x243f6a8885a308d3u64;
     let mut rand = move || {
         seed ^= seed << 13;
@@ -1975,7 +1975,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 };
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     command,
                     &mut batch.effects(),
                 );
@@ -1984,7 +1984,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let mut view = editor;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     EditorCommand::Backspace,
                     &mut batch.effects(),
                 );
@@ -1994,7 +1994,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let y = (rand() % 4000) as f32;
                 view.perform(
                     &mut store,
-                    &imba::UiCtx::dont_use_too_slow(),
+                    himark::test_document::test_ui(),
                     EditorCommand::Click {
                         kind: himark::ClickKind::Set,
                         point: skia_safe::Point::new((rand() % 300) as f32, y),
@@ -2038,7 +2038,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let mut view = editor;
                     view.perform(
                         &mut store,
-                        &imba::UiCtx::dont_use_too_slow(),
+                        himark::test_document::test_ui(),
                         command,
                         &mut batch.effects(),
                     );
@@ -2062,7 +2062,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
 
 #[test]
 fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     let document =
         document_from_markdown("hello\n\nworld", &store, ui, &test_fonts(), &test_theme());
@@ -2071,7 +2071,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     let mut view = editor;
     let _ = view.perform(
         &mut store,
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         EditorCommand::InsertText {
             text: "# ".to_owned(),
         },
@@ -2143,7 +2143,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
 
 #[test]
 fn enter_and_tab_assist_through_the_command_path() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     store.put(himark::env::Themes(test_theme()));
@@ -2169,7 +2169,7 @@ fn enter_and_tab_assist_through_the_command_path() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let perform = |document: &mut Document, store: &mut Store, command: EditorCommand| {
         document.perform(
             store,
@@ -2187,7 +2187,7 @@ fn enter_and_tab_assist_through_the_command_path() {
         document.apply_reparse_outcome(
             outcome,
             &imba::store::Store::new(),
-            &imba::UiCtx::dont_use_too_slow(),
+            himark::test_document::test_ui(),
             &test_fonts(),
             &test_theme(),
             &mut imba::effect::Batch::new().effects(),
@@ -2221,7 +2221,7 @@ fn enter_and_tab_assist_through_the_command_path() {
 
 #[test]
 fn multi_caret_enter_continues_every_item() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     store.put(himark::env::Themes(test_theme()));
@@ -2251,7 +2251,7 @@ fn multi_caret_enter_continues_every_item() {
         editor,
         himark::MultiCaret::normalized(vec![himark::Caret::at(3), himark::Caret::at(7)], 0),
     );
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     document.perform(
         &mut store,
         &ui,
@@ -2267,7 +2267,7 @@ fn multi_caret_enter_continues_every_item() {
 #[test]
 fn sections_emit_outline_items_at_parse() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "# One\ntext\n## Two\nmore\n# Three\ntail\n";
     let languages = test_languages();
     let mut document = Document::from_language(
@@ -2320,7 +2320,7 @@ fn sections_emit_outline_items_at_parse() {
 #[test]
 fn document_from_markdown_populates_the_full_outline() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let titles = |src: &str| -> Vec<String> {
         let document = document_from_markdown(src, store, ui, &test_fonts(), &test_theme());
         document

@@ -847,7 +847,7 @@ mod tests {
     #[test]
     fn the_master_groups_by_file_and_navigates_on_pick() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let feed = feed(
             &mut store,
             &[
@@ -890,7 +890,7 @@ mod tests {
     #[test]
     fn a_single_settled_result_navigates_without_a_card() {
         let mut store = Store::new();
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let feed = feed(&mut store, &[found("a.rs", 3, "only")], true);
         let mut view = PeekView::new(&store, None, 600.0, feed);
         let mut batch = imba::effect::Batch::new();
@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn the_peek_anchor_reserves_height() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut document = ::editor::test_document::plain_document("fn a() {}\nfn b() {}\n");
         let fonts = ::editor::embedded_fonts::source()();
         let theme = crate::theme::Theme::embedded();

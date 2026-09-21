@@ -8,7 +8,7 @@ use std::sync::{mpsc, Arc};
 
 #[test]
 fn the_diff_panel_opens_edits_and_dismantles() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -116,7 +116,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 
 #[test]
 fn the_optimizer_landing_cancels_matching_edits() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -211,7 +211,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
 #[test]
 fn identical_documents_settle_spacer_free() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -283,7 +283,7 @@ fn identical_documents_settle_spacer_free() {
 #[test]
 fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -357,7 +357,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
 #[test]
 fn typed_insertions_paint_washes() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -458,7 +458,7 @@ fn typed_insertions_paint_washes() {
 #[test]
 fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -564,7 +564,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
 #[test]
 fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -789,7 +789,7 @@ fn dump_pair(app: &Application) {
 #[test]
 fn washes_follow_the_scroll_into_deep_documents() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -903,7 +903,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
 #[test]
 fn scrolling_after_a_theme_toggle_converges() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1057,7 +1057,7 @@ fn scrolling_after_a_theme_toggle_converges() {
 #[test]
 fn a_repair_captured_before_a_caret_move_discards_itself() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
 
@@ -1081,7 +1081,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &mut imba::effect::Batch::new().effects(),
     );
     let mut store = policy_store();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut perform = |document: &mut himark::Document, command| {
         let mut batch = imba::effect::Batch::new();
         document.perform(&mut store, &ui, editor, command, &mut batch.effects());
@@ -1160,7 +1160,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 #[test]
 fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1399,7 +1399,7 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
 #[test]
 fn an_edited_markdown_pair_settles_aligned() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1484,7 +1484,7 @@ fn document_text(app: &Application, name: &str) -> String {
 
 #[test]
 fn dismantle_retracts_editors_and_removes_the_editorless_side() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
@@ -1633,7 +1633,7 @@ fn policy_store() -> imba::store::Store {
 
 #[test]
 fn the_panel_opens_dressed_with_no_effects_run() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
@@ -1683,7 +1683,7 @@ fn the_panel_opens_dressed_with_no_effects_run() {
 
 #[test]
 fn a_shared_pair_ignores_a_handed_prep() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
     let fonts = himark::embedded_fonts::source()();
@@ -1731,7 +1731,7 @@ fn a_shared_pair_ignores_a_handed_prep() {
 #[test]
 fn a_settled_diff_pane_goes_quiet() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::AppFonts::embedded();
     let mut app = himark::Application::new(fonts);
     let _ = app.add_window();
@@ -1793,7 +1793,7 @@ fn a_settled_diff_pane_goes_quiet() {
 
 #[test]
 fn the_unified_view_switches_between_split_and_inline() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1956,7 +1956,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 #[test]
 fn inline_diff_paint_cost_is_flat_across_the_document() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2302,7 +2302,7 @@ fn folded_squash_paint_cost_is_size_independent() {
 #[test]
 fn a_full_click_on_host_text_keeps_host_focus() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2421,7 +2421,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 #[test]
 fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2601,7 +2601,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 #[test]
 fn the_split_face_folds_and_wraps_to_its_halves() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2884,7 +2884,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 /// diff — the bug that motivated moving rows off throwaway snapshots.
 #[test]
 fn typing_in_a_canvas_row_updates_its_diff() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -3066,7 +3066,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     assert_eq!(before.len(), 1, "seeded one row");
 
     // The tick driver runs against every store-held canvas.
-    crate::Canvases::sync(&mut app.store_mut(), &imba::UiCtx::dont_use_too_slow());
+    crate::Canvases::sync(&mut app.store_mut(), himark::test_document::test_ui());
 
     // With no live Changes source the sync is a no-op: the row and its
     // registered pair survive intact (state not corrupted).
@@ -3135,7 +3135,7 @@ fn a_committed_change_set_empties_the_canvas() {
     // The commit: the host clears the set — READY and empty.
     view.adopt_for_tests(
         &mut app.store_mut(),
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         7,
         himark::diff_canvas::CanvasListing::Empty("no changes".to_owned()),
     );
@@ -3158,7 +3158,7 @@ fn a_committed_change_set_empties_the_canvas() {
     // A transient computing state must NOT clear anything…
     view.adopt_for_tests(
         &mut app.store_mut(),
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         8,
         himark::diff_canvas::CanvasListing::Ready(vec![canvas_file(&key, 3)]),
     );
@@ -3169,7 +3169,7 @@ fn a_committed_change_set_empties_the_canvas() {
     );
     view.adopt_for_tests(
         &mut app.store_mut(),
-        &imba::UiCtx::dont_use_too_slow(),
+        himark::test_document::test_ui(),
         9,
         himark::diff_canvas::CanvasListing::Pending("computing…".to_owned()),
     );
@@ -3383,7 +3383,7 @@ fn membership_follows_every_adopted_listing() {
     let mut generation: u64 = 1;
     let mut seen: Option<u64> = None;
     let mut expected: Option<Vec<String>> = None; // None = never populated
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
 
     for step in 0..400 {
         let roll = rand() % 10;
@@ -3468,7 +3468,7 @@ fn membership_minimal_repro() {
         let mut store = app.store_mut();
         DiffCanvasView::over(&mut store, source)
     };
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let ready = |names: &[&str], gen: u64| {
         himark::diff_canvas::CanvasListing::Ready(
             names

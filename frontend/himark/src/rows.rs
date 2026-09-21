@@ -302,7 +302,7 @@ mod tests {
         let ui = UiCtx::dont_use_too_slow();
         let mut list = RowList::new();
         let labels: Vec<String> = (0..300).map(|index| format!("row {index}")).collect();
-        list.set(&store, &imba::UiCtx::dont_use_too_slow(), &labels, None, 0);
+        list.set(&store, ::editor::test_document::test_ui(), &labels, None, 0);
         list.select(250);
         assert_eq!(list.scroll_y(), 0.0);
 

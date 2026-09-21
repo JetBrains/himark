@@ -62,7 +62,7 @@ fn keyword_spans(document: &Document, line: std::ops::Range<u32>) -> Vec<std::op
 #[test]
 fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "title\n\n```toy\nabc def\n```\n";
     let content_start = source.find("abc").unwrap() as u32;
     let content_end = content_start + "abc def\n".len() as u32;

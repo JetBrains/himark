@@ -15,7 +15,7 @@ fn theme() -> himark::Theme {
 #[test]
 fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::embedded_fonts::source()();
     let theme = himark::Theme::embedded();
     let mut document = himark::Document::new(Text::from_string_exact(""), himark::Markup::new())
@@ -75,7 +75,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
 #[test]
 fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let fonts = himark::embedded_fonts::source()();
     let source = "intro\n\n```rust\nfn main() { let x = 1; }\nfn other() {}\n```\n\noutro\n";
     let mut document = document_from_markdown(source, store, ui, &fonts, &theme());

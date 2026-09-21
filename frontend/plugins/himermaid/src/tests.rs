@@ -28,7 +28,7 @@ mod helpers {
 
     pub(crate) fn settle(document: &mut himark::Document, registry: &Arc<SyntaxLanguages>) {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = himark::test_document::test_ui();
         let outcome = himark::ReparseWork::capture(document, registry.clone())
             .expect("parse")
             .run_reparse();
@@ -79,7 +79,7 @@ fn diagram_inlay(
 #[test]
 fn a_mermaid_fence_carries_the_diagram_under_it() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "# Title\n\n```mermaid\nflowchart TD\n    Start --> Finish\n```\n\ntail\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
@@ -120,7 +120,7 @@ fn a_mermaid_fence_carries_the_diagram_under_it() {
 #[test]
 fn typing_in_the_fence_rerenders_the_diagram() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "```mermaid\nflowchart TD\n    Start --> Middle\n```\n";
     let registry = languages();
     let mut document = himark::Document::from_language(
@@ -163,7 +163,7 @@ fn typing_in_the_fence_rerenders_the_diagram() {
 #[test]
 fn a_pure_mermaid_file_renders_source_plus_diagram() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "flowchart LR\n    A --> B\n    B --> C\n";
     let mut document = himark::Document::from_language(
         himark::Text::from_string_exact(source),
@@ -191,7 +191,7 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
 #[test]
 fn broken_source_shows_the_error_strip_until_it_parses() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let source = "```mermaid\nnot a diagram at all\n```\n";
     let registry = languages();
     let mut document = himark::Document::from_language(

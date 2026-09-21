@@ -242,7 +242,7 @@ macro_rules! fx {
 #[test]
 fn the_edit_door_keeps_live_diffs_valid() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = crate::embedded_fonts::collection();
     let theme = crate::theme::Theme::embedded();
     let base = "one\ntwo\nthree\n";
@@ -278,7 +278,7 @@ fn the_edit_door_keeps_live_diffs_valid() {
 #[test]
 fn apply_base_edits_brings_the_old_side_current_idempotently() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = crate::embedded_fonts::collection();
     let theme = crate::theme::Theme::embedded();
     let mut base = crate::test_document::plain_document("one\ntwo\nthree\n");
@@ -359,7 +359,7 @@ fn install_normalized_diff_bumps_the_generation_and_guards_lengths() {
 #[test]
 fn remove_diff_takes_its_markup_with_it() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let base = crate::test_document::plain_document("a\n");
     let mut target = crate::test_document::plain_document("b\n");
     let fonts = crate::embedded_fonts::collection();

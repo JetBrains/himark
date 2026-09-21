@@ -6,7 +6,7 @@ use editor::test_document::plain_document;
 
 #[test]
 fn the_retraction_rule_spares_dirty_documents() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let mut batch = imba::effect::Batch::<()>::new();
 
@@ -82,7 +82,7 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
         "the entry covers the target text"
     );
 
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     OpenDocuments::remove_if_editorless(&mut store, ui, base_id, &mut batch.effects());
     assert!(
         OpenDocuments::contains(&store, base_id),
@@ -109,7 +109,7 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
 
 #[test]
 fn a_moved_base_retires_the_stale_stripes_track() {
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let mut batch = imba::effect::Batch::<()>::new();
     let location = |authority: &str, name: &str| {

@@ -85,7 +85,7 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
     use imba::effect::{Batch, Message};
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
@@ -133,7 +133,7 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     use imba::effect::Batch;
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
@@ -159,7 +159,7 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
             )
         })
         .collect();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     imba::View::perform(
         &mut peeker,
         &mut store,

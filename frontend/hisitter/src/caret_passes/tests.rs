@@ -62,7 +62,7 @@ fn landed(pass: &dyn Enricher, input: &EnrichInput) -> Vec<Range<u32>> {
     let fonts = fonts();
     let theme = theme();
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let cx = EnrichCx {
         fonts: &fonts,
         theme: &theme,

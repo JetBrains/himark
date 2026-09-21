@@ -148,7 +148,7 @@ fn normalize(view: &mut SplitDiffView) {
 
 fn pair(left: &str, right: &str, width: f32) -> SplitDiffView {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
     let f = fonts();
     let mut left_document = crate::test_document::plain_document(left);
@@ -891,7 +891,7 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
 #[test]
 fn two_diffs_share_a_document_without_clobbering_washes() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
     let f = fonts();
     let mut a = crate::test_document::plain_document("alpha\nbeta\ngamma\n");
@@ -1041,7 +1041,7 @@ fn two_diffs_share_a_document_without_clobbering_washes() {
 #[test]
 fn the_plain_repair_lane_skips_pair_managed_halves() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
     let f = fonts();
     let mut wall = String::new();
@@ -1336,7 +1336,7 @@ fn prepare_marks_dresses_the_whole_document() {
 #[test]
 fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
     let f = fonts();
     let mut left_source = String::new();
@@ -1479,7 +1479,7 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
 #[test]
 fn a_width_mismatched_pane_idles_instead_of_livelocking() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let theme = crate::theme::Theme::embedded();
     let f = fonts();
     let mut left_document = crate::test_document::plain_document("alpha\nbeta\n");

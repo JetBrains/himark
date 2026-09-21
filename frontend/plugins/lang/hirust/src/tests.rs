@@ -38,7 +38,7 @@ fn spans_on(document: &editor::Document, line: Range<u32>) -> Vec<(Range<u32>, S
 #[test]
 fn rust_blocks_highlight_for_real() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = editor::test_document::test_ui();
     let source = "title\n\n```rust\nfn main() { let x = 1; }\n```\n";
     let content_start = source.find("fn main").unwrap() as u32;
     let content_end = content_start + "fn main() { let x = 1; }\n".len() as u32;

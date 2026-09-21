@@ -65,7 +65,7 @@ fn adjacent_list_items_stay_separate_layout_items() {
 #[test]
 fn softwrap_toggles_to_a_panning_single_row_layout() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let long = "alpha beta gamma delta epsilon zeta eta theta iota kappa ".repeat(8);
     let source = format!("{long}\nshort\n");
     let mut document = plain_document(&source);
@@ -81,7 +81,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut imba::effect::Batch::new().effects(),
     );
     let mut store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
 
     let wrapped_height = document.content_height(editor);
     assert_eq!(document.layout_width(editor), 600.0);
@@ -159,7 +159,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
 #[test]
 fn box_backgrounds_hug_their_content() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let width = 800.0;
 
     let json = include_str!("../assets/theme.json").replace("#401f2937", "#ff2fc142");
@@ -226,7 +226,7 @@ fn box_backgrounds_hug_their_content() {
 #[test]
 fn the_width_mirror_tracks_the_widest_line_through_edits() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let width = 100_000.0;
     let mut document = plain_document("short\nmedium line here\ntiny\n");
     let extras: Vec<_> = document.document_scoped_markups().collect();
@@ -312,7 +312,7 @@ fn the_width_mirror_tracks_the_widest_line_through_edits() {
 #[test]
 fn repaired_layout_matches_fresh_layout_after_plain_insert() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let width = 320.0;
     let mut document = plain_document("alpha beta gamma delta\n\nsecond paragraph stays here");
     let mut layout = layout_of(&document, width);
@@ -345,7 +345,7 @@ fn repaired_layout_matches_fresh_layout_after_plain_insert() {
 #[test]
 fn code_block_with_emoji_keeps_layout_ranges_on_utf8_boundaries_after_edit() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let width = 220.0;
     let mut document = fenced_code_document(code_block_with_emoji());
     let mut layout = layout_of(&document, width);
@@ -413,7 +413,7 @@ fn hidden_interval_takes_no_space() {
 #[test]
 fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source = "a😀b";
     let view = view_of(plain_document(source), 800.0);
     let target_utf16 = "a😀".encode_utf16().count() as i32;
@@ -438,7 +438,7 @@ fn caret_hit_testing_maps_emoji_position_to_source_bytes() {
 #[test]
 fn caret_hit_testing_moves_inside_visible_whitespace() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source = "a    b";
     let view = view_of(plain_document(source), 800.0);
     let target_utf16 = "a  ".encode_utf16().count() as i32;
@@ -474,7 +474,7 @@ fn layout_of(document: &Document, width: f32) -> DocumentLayout {
 
 fn view_of(document: Document, width: f32) -> EditorView {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     EditorView::of_document(document, width, store, ui, &test_fonts(), &test_theme())
 }
 
@@ -566,7 +566,7 @@ fn misaligned_boundary_detector_fires() {
 
 fn ime_doc(source: &str) -> (Document, crate::editor::EditorId) {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = plain_document(source);
     let editor = document.add_editor(
         600.0,
@@ -590,7 +590,7 @@ fn text_of(document: &Document) -> String {
 #[test]
 fn shaped_lines_are_retained_across_builds() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     use std::rc::Rc;
     let (mut document, editor) = ime_doc("alpha\nbeta\ngamma\n");
     let build = |document: &Document| {
@@ -798,7 +798,7 @@ fn deleting_everything_leaves_no_unhealable_damage() {
 #[test]
 fn trailing_newline_gets_its_own_last_line() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("a\nb\n");
     let heights = document.element_heights(editor);
     assert_eq!(
@@ -875,7 +875,7 @@ fn trailing_newline_gets_its_own_last_line() {
 #[test]
 fn composing_then_committing_marked_text() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("ab");
     document.set_caret(editor, 1);
 
@@ -925,7 +925,7 @@ fn composing_then_committing_marked_text() {
 #[test]
 fn unmark_keeps_the_text_and_ends_composition() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("");
     document.set_marked_text(
         editor,
@@ -947,7 +947,7 @@ fn unmark_keeps_the_text_and_ends_composition() {
 #[test]
 fn a_marked_range_shifts_when_a_sibling_editor_edits() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = plain_document("hello world");
     let composing = document.add_editor(
         600.0,
@@ -1018,7 +1018,7 @@ fn utf16_and_byte_offsets_round_trip() {
 #[test]
 fn caret_rect_tracks_the_composing_caret() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("hello");
 
     let (x0, y0, _, h0) = document
@@ -1050,7 +1050,7 @@ fn caret_rect_tracks_the_composing_caret() {
 #[test]
 fn the_caret_sizes_to_the_run_not_the_line_box() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("hello world");
     let theme = test_theme();
     let fonts = test_fonts();
@@ -1070,7 +1070,7 @@ fn the_caret_sizes_to_the_run_not_the_line_box() {
 #[test]
 fn a_focused_empty_document_has_and_paints_a_caret() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("");
     let fonts = test_fonts();
     let theme = test_theme();
@@ -1109,7 +1109,7 @@ fn a_focused_empty_document_has_and_paints_a_caret() {
 #[test]
 fn typing_into_an_empty_document_shows_the_text() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("");
     document.insert(editor, "a", store, ui, &test_fonts(), &test_theme(), fx!());
     assert_eq!(text_of(&document), "a", "the byte is inserted");
@@ -1122,7 +1122,7 @@ fn typing_into_an_empty_document_shows_the_text() {
 #[test]
 fn a_bounded_editor_lays_out_exactly_its_fragment() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = plain_document("alpha\nbravo\ncharlie\ndelta\n");
     let set = document.add_fragment_set();
     let key = document.add_fragment(set, 6..20);
@@ -1182,7 +1182,7 @@ fn a_bounded_editor_lays_out_exactly_its_fragment() {
 #[test]
 fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = plain_document("alpha\nbravo\ncharlie\ndelta\n");
     let set = document.add_fragment_set();
     let key = document.add_fragment(set, 6..20);
@@ -1271,7 +1271,7 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
 #[test]
 fn a_bounded_editor_paints_only_its_fragment() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source = format!(
         "{}THE-FRAGMENT-LINE\n{}",
         "before ".repeat(400),
@@ -1387,7 +1387,7 @@ mod injected_syntax {
     #[test]
     fn markers_shift_and_inside_edits_forward() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document("prefix let x tail");
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
@@ -1442,7 +1442,7 @@ mod injected_syntax {
     #[test]
     fn boundary_edits_drop_the_payload() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document("prefix let x tail");
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
@@ -1464,7 +1464,7 @@ mod injected_syntax {
     #[test]
     fn theme_colors_reach_the_glyphs() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document("prefix keyword tail");
         document.add_syntax(7..14, payload(&[(0..7, StyleId::Keyword)]));
         let editor = document.add_editor(
@@ -1584,7 +1584,7 @@ mod injected_syntax {
 #[test]
 fn typing_in_a_blank_line_free_document_repairs_one_line() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let line = "0000 :: lorem ipsum dolor sit amet consectetur adipiscing elit :: 00\n";
     let source = line.repeat(50_000);
     let fonts = test_fonts();
@@ -1655,7 +1655,7 @@ fn styled_runs_translate_across_hidden_syntax() {
 #[test]
 fn paired_layouts_align_retained_boundaries() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = test_fonts();
     let theme = crate::theme::Theme::embedded();
     let shared_head = "shared first line\nshared second line\n";
@@ -1770,7 +1770,7 @@ fn spacer_at(layout: &crate::document_layout::DocumentLayout, byte: u32) -> f32 
 #[test]
 fn popup_overlays_carry_projected_inlays() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     // The aggregated overlay path (list rows, the workbench pane —
     // everything riding `EditorView::popup_overlays` instead of the
     // editor chain) must emit host-targeting inlays too, or a
@@ -1819,7 +1819,7 @@ fn popup_overlays_carry_projected_inlays() {
         base: None,
     };
     let store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
@@ -1846,7 +1846,7 @@ fn popup_overlays_carry_projected_inlays() {
 #[test]
 fn paired_layouts_absorb_one_sided_inlays() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = test_fonts();
     let theme = crate::theme::Theme::embedded();
     let source = "alpha line\nbeta line\ngamma line\ndelta line\n";
@@ -1952,7 +1952,7 @@ impl imba::View for FixedInlay {
 #[test]
 fn alignment_markers_place_the_covered_lines() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = font_collection();
     let theme = test_theme();
     let source = "right\ncente\nplain\n";
@@ -2005,7 +2005,7 @@ fn alignment_markers_place_the_covered_lines() {
 #[test]
 fn line_spanning_background_markers_paint_to_the_line_end() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n\n";
@@ -2068,7 +2068,7 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
 #[test]
 fn a_through_end_wash_fills_the_block_gap_below() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n";
@@ -2144,7 +2144,7 @@ fn a_through_end_wash_fills_the_block_gap_below() {
 #[test]
 fn tight_background_markers_hug_their_glyphs() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = font_collection();
     let theme = test_theme();
     let source = "BIG word here\n";
@@ -2272,7 +2272,7 @@ fn inline_marker_styles_are_tight_and_line_washes_are_not() {
 #[test]
 fn spacers_on_zero_height_elements_shift_and_fill_the_paint_below() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = font_collection();
     let theme = test_theme();
     let mut document = crate::test_document::plain_document("alpha\nbeta\ngamma\ndelta\ntail\n");
@@ -2437,7 +2437,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     let fonts = font_collection();
     let theme = test_theme();
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let text = text::Text::from_string_exact("hello markup-only\n");
     let len = text.byte_count() as u32;
 
@@ -2575,7 +2575,7 @@ fn layout_survives_chars_straddling_the_chunk_grid() {
 #[test]
 fn a_repair_relaunch_cancels_the_in_flight_lane() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     use imba::effect::{Batch, Message};
     let source = "word ".repeat(20_000);
     let mut document = plain_document(&source);
@@ -2659,7 +2659,7 @@ use crate::editor_view::Motion;
 #[test]
 fn multicaret_insert_is_one_bulk_operation() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("aa bb cc");
     document.set_carets(
         editor,
@@ -2686,7 +2686,7 @@ fn multicaret_insert_is_one_bulk_operation() {
 #[test]
 fn multicaret_insert_replaces_selections() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("one two three");
     document.set_carets(
         editor,
@@ -2700,7 +2700,7 @@ fn multicaret_insert_replaces_selections() {
 #[test]
 fn multicaret_backspace_deletes_at_every_caret() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("aa bb cc");
     document.set_carets(
         editor,
@@ -2728,7 +2728,7 @@ fn multicaret_backspace_deletes_at_every_caret() {
 #[test]
 fn multicaret_delete_forward_eats_selections_first() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("abcdef");
     document.set_carets(
         editor,
@@ -2753,7 +2753,7 @@ fn multicaret_delete_forward_eats_selections_first() {
 #[test]
 fn word_delete_spans_the_word_motion() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("alpha beta gamma");
     document.set_carets(editor, MultiCaret::normalized(vec![Caret::at(10)], 0));
     document.delete_at_carets(
@@ -2804,7 +2804,7 @@ fn word_delete_spans_the_word_motion() {
 #[test]
 fn other_editors_carets_transform_through_a_bulk_edit() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("aa bb cc");
     let other = document.add_editor(
         600.0,
@@ -2830,7 +2830,7 @@ fn other_editors_carets_transform_through_a_bulk_edit() {
 #[test]
 fn word_and_line_motions() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("alpha beta\ngamma delta");
     document.set_caret(editor, 0);
     document.move_carets(
@@ -2915,7 +2915,7 @@ fn word_and_line_motions() {
 #[test]
 fn selecting_motion_grows_from_the_anchor() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("abc def");
     document.set_caret(editor, 3);
     document.move_carets(
@@ -2957,7 +2957,7 @@ fn selecting_motion_grows_from_the_anchor() {
 #[test]
 fn vertical_motion_keeps_the_goal_column() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("a long first line\nab\nanother long third line");
 
     document.set_caret(editor, 12);
@@ -3017,7 +3017,7 @@ fn vertical_motion_keeps_the_goal_column() {
 #[test]
 fn vertical_motion_off_the_edges_goes_to_document_ends() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("first\nlast");
     document.set_caret(editor, 2);
     document.move_carets(
@@ -3046,7 +3046,7 @@ fn vertical_motion_off_the_edges_goes_to_document_ends() {
 #[test]
 fn add_caret_below_stacks_carets() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("aaa\nbbb\nccc");
     document.set_caret(editor, 1);
     document.add_caret_vertically(editor, false, store, ui, &test_fonts(), &test_theme());
@@ -3146,7 +3146,7 @@ fn collapse_returns_to_the_primary_caret() {
 #[test]
 fn typing_after_select_all_occurrences_rewrites_every_match() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (mut document, editor) = ime_doc("cat dog cat");
     document.set_caret(editor, 0);
     document.select_all_occurrences(editor);
@@ -3176,7 +3176,7 @@ fn caret_at_a_line_start_lands_on_the_following_line() {
 #[test]
 fn click_past_a_line_end_stays_on_that_line() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let (document, editor) = ime_doc("ab\nlonger second line");
     let byte = document
         .byte_at_point(editor, 500.0, 5.0, store, ui, &test_fonts(), &test_theme())
@@ -3190,12 +3190,12 @@ fn click_past_a_line_end_stays_on_that_line() {
 #[test]
 fn text_focus_offers_caret_commands_to_the_palette() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let document = plain_document("foo bar foo");
     let mut view =
         crate::EditorView::complete(document, 600.0, store, ui, &test_fonts(), &test_theme());
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
 
     let ids: Vec<&str> = imba::focus::frame_commands(&view, &store, &ui)
         .iter()
@@ -3299,7 +3299,7 @@ fn monster_lines_still_tile_on_the_grid() {
 #[test]
 fn viewport_numbers_first_soft_rows_only() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let width = 220.0;
 
     let source = format!("first\n{}\nthird", "wrap ".repeat(40));
@@ -3373,7 +3373,7 @@ fn viewport_numbers_first_soft_rows_only() {
 #[test]
 fn viewport_build_is_band_scoped() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source = "line\n".repeat(10_000);
     let mut document = plain_document(&source);
     let editor = document.add_editor(
@@ -3413,7 +3413,7 @@ fn viewport_build_is_band_scoped() {
 #[test]
 fn gutter_paints_numbers_beside_shifted_text() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let chrome_width = test_theme().ui().editor_gutter.width;
     let source = "alpha\nbeta\ngamma\n";
     let mut view = crate::EditorView::complete(
@@ -3426,7 +3426,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     );
     view.gutter_width = chrome_width;
     let store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -3510,7 +3510,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
 #[test]
 fn gutter_numbers_share_the_text_baseline() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let chrome = test_theme().ui().editor_gutter.clone();
 
     let source = "alpha\nbeta\ngamma";
@@ -3524,7 +3524,7 @@ fn gutter_numbers_share_the_text_baseline() {
     );
     view.gutter_width = chrome.width;
     let store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -3602,7 +3602,7 @@ mod folding {
             .fold_matching(editor, range)
             .expect("a standing fold");
         let mut store = imba::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         for millis in [0.0, 10_000.0] {
             document.perform(
                 &mut store,
@@ -3627,7 +3627,7 @@ mod folding {
 
     fn viewport_of(document: &Document, editor: crate::EditorId) -> EditorViewport {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         EditorViewport::build(
             document,
             editor,
@@ -3645,7 +3645,7 @@ mod folding {
     #[test]
     fn toggle_folds_into_one_joined_line_and_back() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = foldable_document(SOURCE, interior());
         let editor = document.add_editor(
             400.0,
@@ -3757,7 +3757,7 @@ mod folding {
     #[test]
     fn edits_shift_fold_and_foldable_in_step() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = foldable_document(SOURCE, interior());
         let editor = document.add_editor(
             400.0,
@@ -3807,7 +3807,7 @@ mod folding {
     #[test]
     fn folds_are_per_editor() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = foldable_document(SOURCE, interior());
         let folder = document.add_editor(
             400.0,
@@ -3864,7 +3864,7 @@ mod folding {
     #[test]
     fn a_stale_toggle_on_an_unoffered_range_is_a_no_op() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = foldable_document(SOURCE, interior());
         let editor = document.add_editor(
             400.0,
@@ -3884,7 +3884,7 @@ mod folding {
     #[test]
     fn the_chip_click_unfolds_through_the_inlay_arm() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = foldable_document(SOURCE, interior());
         let editor = document.add_editor(
             400.0,
@@ -3910,7 +3910,7 @@ mod folding {
         let key = document.fold_matching(editor, &interior()).expect("folded");
 
         let mut store = imba::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         document.perform(
             &mut store,
             &ui,
@@ -3933,7 +3933,7 @@ mod folding {
     #[test]
     fn a_gutter_click_toggles_the_fold() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let chrome_width = test_theme().ui().editor_gutter.width;
         let mut view = crate::EditorView::complete(
             foldable_document(SOURCE, interior()),
@@ -3946,7 +3946,7 @@ mod folding {
         view.gutter_width = chrome_width;
         let editor = view.editor;
         let store = imba::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         ui.set(crate::env::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
@@ -3997,7 +3997,7 @@ mod folding {
     fn folding_a_monster_interior_stays_bounded() {
         let body = "    filler line of some length\n".repeat(100_000);
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let source = format!("fn monster() {{\n{body}}}\nafter\n");
         let start = source.find('{').unwrap() as u32 + 1;
         let end = source.rfind('}').unwrap() as u32;
@@ -4067,7 +4067,7 @@ mod gutter_stripes {
         stripes: Option<crate::diff::DiffId>,
     ) -> EditorViewport {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         EditorViewport::build(
             document,
             editor,
@@ -4085,7 +4085,7 @@ mod gutter_stripes {
     #[test]
     fn rows_classify_against_the_tracked_base() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let base = "one\ntwo\nthree\nfour\nfive\nsix\n";
         let source = "one\nTWO!\nthree\nadded\nfour\nsix\n";
         let mut document = plain_document(source);
@@ -4127,7 +4127,7 @@ mod gutter_stripes {
     #[test]
     fn standing_stripes_shift_with_typing_and_fresh_hunks_land_with_the_normalize() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let base = "alpha\nbeta\ngamma\n";
         let source = "alpha\nBETA\ngamma\n";
         let mut document = plain_document(source);
@@ -4199,7 +4199,7 @@ mod gutter_stripes {
     #[test]
     fn stripes_need_both_the_join_and_a_gutter() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let source = "one\ntwo\n";
         let mut document = plain_document(source);
         let editor = document.add_editor(
@@ -4248,7 +4248,7 @@ mod before_inlay {
 
     fn joined() -> crate::EditorView {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document(SOURCE);
         let editor = document.add_editor(
             600.0,
@@ -4277,7 +4277,7 @@ mod before_inlay {
     fn toggle(view: &mut crate::EditorView, at: u32) {
         use imba::View;
         let mut store = imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         view.perform(
             &mut store,
             &ui,
@@ -4374,7 +4374,7 @@ mod before_inlay {
     #[test]
     fn the_anchor_shifts_with_edits() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut view = joined();
         let at = SOURCE.find("TWO!").unwrap() as u32;
         toggle(&mut view, at);
@@ -4397,7 +4397,7 @@ mod before_inlay {
     #[test]
     fn a_multi_line_block_expands_whole_from_any_row() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let base = "keep\nold a\nold b\nold c\ntail\n";
         let source = "keep\nnew one\nnew two\ntail\n";
         let mut document = plain_document(source);
@@ -4453,7 +4453,7 @@ mod before_inlay_presentation {
 
     fn joined() -> crate::EditorView {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document(SOURCE);
         let editor = document.add_editor(
             600.0,
@@ -4482,7 +4482,7 @@ mod before_inlay_presentation {
     fn perform(view: &mut crate::EditorView, command: crate::EditorCommand) {
         use imba::View;
         let mut store = imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         view.perform(&mut store, &ui, command, fx!());
     }
 
@@ -4587,7 +4587,7 @@ mod before_inlay_presentation {
 #[test]
 fn coinciding_decoration_starts_compose_instead_of_dropping() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source = "needle haystack\n";
     let paint = |with_tint: bool| -> Vec<u8> {
         let mut document = plain_document(source);
@@ -4661,7 +4661,7 @@ fn coinciding_decoration_starts_compose_instead_of_dropping() {
 #[test]
 fn editor_scroll_bench() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     use std::time::{Duration, Instant};
     let body = "alpha beta gamma delta epsilon zeta eta theta\n".repeat(4_000);
     let (mut document, editor) = ime_doc(&body);
@@ -4777,7 +4777,7 @@ fn line_marks_sweep_matches_the_per_line_query() {
         let theme = crate::theme::Theme::embedded();
         let mut measure_store = imba::store::Store::new();
         crate::env::Themes::set(&mut measure_store, theme.clone());
-        let measure_ui = imba::UiCtx::dont_use_too_slow();
+        let measure_ui = crate::test_document::test_ui();
         {
             let measure = crate::markup::InlayMeasure {
                 width: 480.0,
@@ -4806,7 +4806,7 @@ fn line_marks_sweep_matches_the_per_line_query() {
 #[test]
 fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = test_fonts();
     let theme = test_theme();
     let source: String = (0..200).map(|i| format!("line number {i}\n")).collect();
@@ -4856,7 +4856,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
     );
 
     let store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -4948,7 +4948,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
 #[test]
 fn sticky_lines_pin_the_enclosing_scopes() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = test_fonts();
     let theme = test_theme();
     let source: String = (0..200).map(|i| format!("line number {i}\n")).collect();
@@ -4999,7 +4999,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     assert!(view.document.outline_enclosing(line_start(5)).is_empty());
 
     let store = imba::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
@@ -5181,7 +5181,7 @@ fn lazy_languages_load_on_first_parse_only() {
 #[test]
 fn selection_rects_cover_the_range_row_by_row() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let source: String = (0..400).map(|i| format!("line number {i}\n")).collect();
     let (document, editor) = ime_doc(&source);
     let fonts = test_fonts();
@@ -5241,7 +5241,7 @@ fn selection_rects_cover_the_range_row_by_row() {
 #[test]
 fn the_first_baseline_is_cached_at_shape_time() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let fonts = test_fonts();
     let theme = test_theme();
     for source in [
@@ -5313,7 +5313,7 @@ fn deleting_the_text_drops_its_markup_intervals() {
 #[test]
 fn a_markup_change_reshapes_only_the_lines_it_touches() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     use std::rc::Rc;
     let source: String = (0..40)
         .map(|i| format!("line number {i} with some words\n"))
@@ -5371,7 +5371,7 @@ fn a_markup_change_reshapes_only_the_lines_it_touches() {
 #[test]
 fn a_small_scroll_keeps_the_overlapping_shaped_lines() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     use std::rc::Rc;
     let source: String = (0..200)
         .map(|i| format!("line number {i} with some words\n"))
@@ -5410,7 +5410,7 @@ fn a_small_scroll_keeps_the_overlapping_shaped_lines() {
 #[test]
 fn translucent_washes_never_double_at_block_seams() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     // Mixed block metrics (plain text around a fenced code block,
     // plus an inline-code span): the paragraph rects can stand
     // taller than the layout slots, and an overflowing translucent
@@ -5483,7 +5483,7 @@ fn translucent_washes_never_double_at_block_seams() {
 #[test]
 fn inline_diff_wash_is_seamless_at_retina_scale() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     // The unified inline face's added wash, painted like production:
     // scale 2 with a fractional pane origin. Any per-row band error
     // (bleed, crown, AA seam) breaks the uniformity.
@@ -5574,7 +5574,7 @@ fn inline_diff_wash_is_seamless_at_retina_scale() {
 #[test]
 fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
     let mut store = imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut document = crate::test_document::plain_document(
         "line 0\nline 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n",
     );
@@ -5660,7 +5660,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
 fn a_rewrap_keeps_the_viewport_anchor_in_view() {
     use imba::effect::{block_on, Batch, EffectHandler, Message};
     let mut store = imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let long = "a long enough line that will wrap once the pane narrows down a lot\n";
     let mut document =
         crate::test_document::plain_document(&format!("{}{}", long.repeat(8), "short tail\n"));

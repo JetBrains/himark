@@ -504,7 +504,7 @@ mod tests {
     #[test]
     fn placeholder_line_exists_only_while_document_is_empty() {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let fonts = crate::embedded_fonts::collection();
         let theme = crate::theme::Theme::embedded();
         let mut document = crate::Document::new(

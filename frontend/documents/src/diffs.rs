@@ -810,7 +810,7 @@ mod tests {
 
     #[test]
     fn the_base_chain_tracks_and_the_release_unwinds() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = Store::new();
         let target = OpenDocuments::register(
             &mut store,
@@ -911,7 +911,7 @@ mod tests {
 
     #[test]
     fn a_prepared_track_is_normalized_at_birth() {
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut store = Store::new();
         let base_id = OpenDocuments::register(
             &mut store,

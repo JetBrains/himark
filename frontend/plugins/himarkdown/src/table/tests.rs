@@ -90,7 +90,7 @@ fn apply(source: &str, operation: &Operation) -> String {
 
 fn editor_over(source: &str) -> TableEditor {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use himark::InlayEditing;
     let fonts = himark::embedded_fonts::collection();
     let theme = himark::Theme::embedded();
@@ -108,7 +108,7 @@ fn editor_over(source: &str) -> TableEditor {
 #[test]
 fn structural_edits_write_correct_markdown() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use himark::InlayEditing;
     let source = "| a | b |\n| --- | :-: |\n| 1 | 2 |\n| 3 | 4 |";
     let fonts = himark::embedded_fonts::collection();
@@ -143,7 +143,7 @@ fn structural_edits_write_correct_markdown() {
 #[test]
 fn resize_relayout_round_trips_through_the_effect() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use imba::effect::{block_on, EffectHandler};
 
     let fonts = himark::embedded_fonts::collection();
@@ -219,7 +219,7 @@ fn resize_relayout_round_trips_through_the_effect() {
 #[test]
 fn a_relaid_landing_over_moved_content_discards_itself() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use himark::InlayEditing;
 
     let fonts = himark::embedded_fonts::collection();
@@ -261,7 +261,7 @@ fn a_relaid_landing_over_moved_content_discards_itself() {
 #[test]
 fn paint_reports_relayout_while_the_width_lags() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = himark::test_document::test_ui();
     use imba::event::{Event, EventResult};
 
     let fonts = himark::embedded_fonts::collection();

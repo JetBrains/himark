@@ -95,7 +95,7 @@ mod tests {
         );
         let fonts = editor::env::Fonts::of(&store)();
         let theme = editor::env::Themes::of(&store);
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let mut sink = imba::effect::Batch::new();
         let quiet = &mut sink.effects();
 
@@ -138,7 +138,7 @@ mod tests {
         }
         assert_eq!(outcomes.len(), 1, "one lane per enabled editor");
 
-        let ui = imba::UiCtx::dont_use_too_slow();
+        let ui = ::editor::test_document::test_ui();
         let outcome = outcomes.pop().expect("counted");
         let landing = editor::EditorCommand::ApplyScrollStripes(outcome);
         let mut document = OpenDocuments::document(&store, id).expect("registered");

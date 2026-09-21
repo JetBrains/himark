@@ -24,7 +24,7 @@ struct Pane {
 impl Pane {
     fn new(source: &str) -> Self {
         let store = &imba::store::Store::new();
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = crate::test_document::test_ui();
         let mut document = plain_document(source);
         let editor = document.add_editor(
             400.0,
@@ -177,7 +177,7 @@ fn clearing_history_disarms_both_stacks() {
 #[test]
 fn a_shared_edit_carries_the_undo_history_across_itself() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = crate::test_document::test_ui();
     let mut pane = Pane::new("");
     pane.type_str("hello");
     assert_eq!(pane.text(), "hello");
