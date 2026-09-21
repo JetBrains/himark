@@ -8,11 +8,12 @@ use std::sync::{Arc, Mutex};
 use ahp_types::actions::{
     ChatDeltaAction, ChatReasoningAction, ChatResponsePartAction, ChatToolCallCompleteAction,
     ChatToolCallReadyAction, ChatToolCallStartAction, ChatTurnCancelledAction,
-    ChatTurnCompleteAction, ChatUsageAction, StateAction,
+    ChatTurnCompleteAction, ChatTurnStartedAction, ChatUsageAction, StateAction,
 };
 use ahp_types::state::{
-    ConfirmationOption, ConfirmationOptionKind, MarkdownResponsePart, ReasoningResponsePart,
-    ResponsePart, ToolCallResult, ToolInput, ToolResultContent, ToolResultTextContent, UsageInfo,
+    ConfirmationOption, ConfirmationOptionKind, MarkdownResponsePart, Message, MessageKind,
+    MessageOrigin, ReasoningResponsePart, ResponsePart, ToolCallResult, ToolInput,
+    ToolResultContent, ToolResultTextContent, UsageInfo,
 };
 use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -99,6 +100,8 @@ struct TurnState {
 
     asks: HashMap<String, String>,
     minted_parts: u64,
+
+    wake_prompt: Option<String>,
 }
 
 struct PendingTurn {
@@ -238,19 +241,26 @@ impl ClaudeAgent {
         if self.is_dead() {
             return Err("the claude process is gone".to_owned());
         }
-        self.send(json!({
-            "type": "user",
-            "message": {"role": "user", "content": [{"type": "text", "text": text}]},
-        }))
-        .await?;
-        let mut state = self.state.lock().expect("turn state");
-        state.turns.push_back(PendingTurn {
-            id: turn_id,
-            cancelled: false,
-        });
-
-        if self.is_dead() {
-            state.turns.clear();
+        // The PendingTurn must be on the queue before the process can react to
+        // the prompt, or the reply's message_start would look agent-initiated
+        // and get adopted as a wake turn.
+        {
+            let mut state = self.state.lock().expect("turn state");
+            state.turns.push_back(PendingTurn {
+                id: turn_id.clone(),
+                cancelled: false,
+            });
+        }
+        let sent = self
+            .send(json!({
+                "type": "user",
+                "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+            }))
+            .await;
+        if sent.is_err() || self.is_dead() {
+            let mut state = self.state.lock().expect("turn state");
+            state.turns.retain(|turn| turn.id != turn_id);
+            sent?;
             return Err("the claude process died at the prompt".to_owned());
         }
         Ok(())
@@ -392,7 +402,10 @@ impl ClaudeAgent {
 
     async fn event(&self, event: Value) {
         match event.get("type").and_then(Value::as_str) {
-            Some("stream_event") => self.stream_event(&event["event"]),
+            Some("stream_event") => {
+                self.adopt_wake_turn(&event);
+                self.stream_event(&event["event"])
+            }
             Some("assistant") => self.assistant_snapshot(&event["message"]),
             Some("user") => self.tool_results(&event["message"]),
             Some("control_request") => self.control_request(&event).await,
@@ -400,6 +413,46 @@ impl ClaudeAgent {
 
             _ => {}
         }
+    }
+
+    /// The CLI starts turns of its own — a fired ScheduleWakeup, a background
+    /// task notification. Those carry no himark-issued PendingTurn, so every
+    /// handler would drop their events. Adopt them: mint a turn and announce it,
+    /// so the turn renders and `result` pops a matching entry.
+    fn adopt_wake_turn(&self, outer: &Value) {
+        if outer["event"]["type"].as_str() != Some("message_start")
+            || !outer["parent_tool_use_id"].is_null()
+        {
+            return;
+        }
+        let (turn_id, prompt) = {
+            let mut state = self.state.lock().expect("turn state");
+            if !state.turns.is_empty() {
+                return;
+            }
+            let turn_id = format!("hihost-wake-{}", crate::uuid_v4());
+            state.turns.push_back(PendingTurn {
+                id: turn_id.clone(),
+                cancelled: false,
+            });
+            (turn_id, state.wake_prompt.take())
+        };
+        self.emit(StateAction::ChatTurnStarted(ChatTurnStartedAction {
+            turn_id,
+            started_at: humantime::format_rfc3339_millis(std::time::SystemTime::now()).to_string(),
+            message: Message {
+                text: prompt.unwrap_or_else(|| "Scheduled wake-up".to_owned()),
+                origin: MessageOrigin {
+                    kind: MessageKind::SystemNotification,
+                },
+                attachments: None,
+                model: None,
+                agent: None,
+                meta: None,
+            },
+            queued_message_id: None,
+            meta: None,
+        }));
     }
 
     fn stream_event(&self, event: &Value) {
@@ -719,6 +772,18 @@ impl ClaudeAgent {
                 }
                 name
             };
+            if name == "ScheduleWakeup" && !is_error {
+                let mut state = self.state.lock().expect("turn state");
+                let input = state
+                    .tools
+                    .get(&id)
+                    .map(|track| track.input.clone())
+                    .unwrap_or(Value::Null);
+                state.wake_prompt = match input["stop"].as_bool() == Some(true) {
+                    true => None,
+                    false => input["prompt"].as_str().map(str::to_owned),
+                };
+            }
             self.emit(StateAction::ChatToolCallComplete(
                 ChatToolCallCompleteAction {
                     turn_id: turn_id.clone(),
@@ -912,5 +977,132 @@ mod discovery_tests {
         assert_eq!(super::discover_binary(), "python3 /tmp/stub.py");
         std::env::remove_var("HIMARK_CLAUDE_BIN");
         assert!(!super::discover_binary().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod wake_tests {
+    use super::*;
+
+    struct RecordingSink(Mutex<Vec<StateAction>>);
+
+    impl AgentSink for RecordingSink {
+        fn action(&self, action: StateAction) {
+            self.0.lock().expect("recorded actions").push(action);
+        }
+
+        fn stash(&self, _text: String) -> String {
+            "ahp-content:/test".to_owned()
+        }
+    }
+
+    fn bare_agent() -> (ClaudeAgent, Arc<RecordingSink>) {
+        let sink = Arc::new(RecordingSink(Mutex::new(Vec::new())));
+        let agent = ClaudeAgent {
+            stdin: Mutex::new(None),
+            state: Mutex::new(TurnState::default()),
+            sink: Arc::clone(&sink) as Sink,
+            child: Mutex::new(None),
+            stderr_tail: Mutex::new(std::collections::VecDeque::new()),
+            cwd: std::path::PathBuf::from("/"),
+            dead: std::sync::atomic::AtomicBool::new(false),
+        };
+        (agent, sink)
+    }
+
+    fn stream(inner: Value) -> Value {
+        json!({"type": "stream_event", "parent_tool_use_id": null, "event": inner})
+    }
+
+    #[tokio::test]
+    async fn an_agent_initiated_turn_is_adopted_and_rendered() {
+        let (agent, sink) = bare_agent();
+        agent
+            .event(stream(
+                json!({"type": "message_start", "message": {"role": "assistant"}}),
+            ))
+            .await;
+        agent
+            .event(stream(json!({"type": "content_block_start", "index": 0,
+                "content_block": {"type": "text", "text": ""}})))
+            .await;
+        agent
+            .event(stream(json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "text_delta", "text": "WOKE"}})))
+            .await;
+        agent
+            .event(json!({"type": "result", "subtype": "success"}))
+            .await;
+
+        let actions = sink.0.lock().expect("recorded actions");
+        let StateAction::ChatTurnStarted(started) = &actions[0] else {
+            panic!("the self-initiated turn was not adopted");
+        };
+        assert_eq!(started.message.origin.kind, MessageKind::SystemNotification);
+        assert_eq!(started.message.text, "Scheduled wake-up");
+        assert!(started.turn_id.starts_with("hihost-wake-"));
+        assert!(
+            matches!(&actions[1], StateAction::ChatResponsePart(part) if part.turn_id == started.turn_id)
+        );
+        assert!(matches!(&actions[2], StateAction::ChatDelta(delta)
+            if delta.turn_id == started.turn_id && delta.content == "WOKE"));
+        assert!(
+            matches!(actions.last(), Some(StateAction::ChatTurnComplete(done))
+            if done.turn_id == started.turn_id)
+        );
+        assert!(agent.idle());
+    }
+
+    #[tokio::test]
+    async fn a_fired_wakeup_turn_carries_the_scheduled_prompt() {
+        let (agent, sink) = bare_agent();
+        agent
+            .state
+            .lock()
+            .expect("turn state")
+            .turns
+            .push_back(PendingTurn {
+                id: "turn-1".to_owned(),
+                cancelled: false,
+            });
+        agent
+            .event(stream(json!({"type": "content_block_start", "index": 0,
+                "content_block": {"type": "tool_use", "id": "tool-1",
+                                  "name": "ScheduleWakeup", "input": {}}})))
+            .await;
+        agent
+            .event(stream(json!({"type": "content_block_delta", "index": 0,
+                "delta": {"type": "input_json_delta",
+                          "partial_json": "{\"delaySeconds\": 60, \"prompt\": \"check the CI run\"}"}})))
+            .await;
+        agent
+            .event(stream(json!({"type": "content_block_stop", "index": 0})))
+            .await;
+        agent
+            .event(
+                json!({"type": "user", "message": {"role": "user", "content": [
+                {"type": "tool_result", "tool_use_id": "tool-1", "content": "scheduled"}]}}),
+            )
+            .await;
+        agent
+            .event(json!({"type": "result", "subtype": "success"}))
+            .await;
+        agent
+            .event(stream(
+                json!({"type": "message_start", "message": {"role": "assistant"}}),
+            ))
+            .await;
+
+        let actions = sink.0.lock().expect("recorded actions");
+        let adoptions: Vec<&ChatTurnStartedAction> = actions
+            .iter()
+            .filter_map(|action| match action {
+                StateAction::ChatTurnStarted(started) => Some(started),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(adoptions.len(), 1, "only the wake turn is adopted");
+        assert_eq!(adoptions[0].message.text, "check the CI run");
+        assert!(adoptions[0].turn_id.starts_with("hihost-wake-"));
     }
 }
