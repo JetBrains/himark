@@ -5,6 +5,8 @@ use super::*;
 
 #[test]
 fn functions_emit_foldables() {
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "fn one() {\n    1;\n}\n\nfn tiny() { 2 }\n";
     let fonts = editor::embedded_fonts::source()();
     let theme = editor::Theme::embedded();
@@ -13,6 +15,8 @@ fn functions_emit_foldables() {
         editor::Text::from_string_exact(source),
         "rs",
         &registry,
+        store,
+        ui,
         &fonts,
         &theme,
     );
@@ -21,6 +25,8 @@ fn functions_emit_foldables() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
+        store,
+        ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),

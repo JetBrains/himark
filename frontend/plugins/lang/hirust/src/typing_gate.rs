@@ -5,6 +5,8 @@ use super::*;
 
 #[test]
 fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../editor/src/document.rs"
@@ -18,6 +20,8 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         editor::Text::from_string_exact(&source),
         "rs",
         &registry,
+        store,
+        ui,
         &fonts,
         &theme,
     );
@@ -26,6 +30,8 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
+        store,
+        ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
@@ -42,6 +48,8 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         None,
         editor::EditorBuild::Bounded,
         &[],
+        store,
+        ui,
         &fonts,
         &theme,
         &mut batch.effects(),

@@ -37,16 +37,20 @@ fn spans_on(document: &editor::Document, line: Range<u32>) -> Vec<(Range<u32>, S
 
 #[test]
 fn rust_blocks_highlight_for_real() {
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let source = "title\n\n```rust\nfn main() { let x = 1; }\n```\n";
     let content_start = source.find("fn main").unwrap() as u32;
     let content_end = content_start + "fn main() { let x = 1; }\n".len() as u32;
     let fonts = editor::embedded_fonts::source()();
-    let mut document = himarkdown::document_from_markdown(source, &fonts, &test_theme());
+    let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &test_theme());
     let _editor = document.add_editor(
         400.0,
         None,
         editor::EditorBuild::Bounded,
         &[],
+        store,
+        ui,
         &fonts,
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
@@ -57,6 +61,8 @@ fn rust_blocks_highlight_for_real() {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
+        store,
+        ui,
         &fonts,
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),

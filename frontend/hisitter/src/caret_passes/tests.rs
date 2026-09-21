@@ -61,16 +61,26 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 fn landed(pass: &dyn Enricher, input: &EnrichInput) -> Vec<Range<u32>> {
     let fonts = fonts();
     let theme = theme();
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let cx = EnrichCx {
         fonts: &fonts,
         theme: &theme,
         caller: imba::effect::EffectCaller::disconnected(),
         languages: None,
+        measure: editor::MeasureCtx::Handed { store, ui },
     };
     let enrichment = poll(pass.derive(input, &cx));
     let mut markup = input.previous.clone();
     if !enrichment.changed.is_empty() {
-        markup.splice(&enrichment.changed, enrichment.replacement, &fonts, &theme);
+        markup.splice(
+            &enrichment.changed,
+            enrichment.replacement,
+            store,
+            ui,
+            &fonts,
+            &theme,
+        );
     }
     markup.styled_ranges_in(0..u32::MAX)
 }

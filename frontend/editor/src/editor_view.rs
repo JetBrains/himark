@@ -1393,7 +1393,6 @@ impl<'a> Widget<'a, EditorCommand> for EditorCoreView<'a> {
         event: &Event<'_>,
         viewport: Rect,
     ) -> EventResult<EditorCommand> {
-        let text_focused = self.document().focus(self.editor()) == EditorFocus::Text;
         match event {
             Event::Settle => {
                 // The pulse delivers the honest viewport: a drifted

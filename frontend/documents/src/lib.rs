@@ -4,23 +4,21 @@
 use editor::Document;
 use imba::store::Store;
 
-pub mod text_ext;
 pub mod diffs;
 mod entity_view;
 mod lifecycle;
 pub mod scroll_stripes;
 pub mod sync;
+pub mod text_ext;
 pub mod watch;
 
-pub use text_ext::{
-    line_col_at, offset_at, LineCol,
-};
 pub use diffs::{
     rearm_base_asks, DiffChanged, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView,
     DiffViewId, FetchBaseEffect, Normalized, StripeBases,
 };
 pub use entity_view::EditorIdView;
 pub use lifecycle::{close_editor, deliver, mount_editor};
+pub use text_ext::{line_col_at, offset_at, LineCol};
 pub use watch::{
     FileChanged, FilesChanged, SubscribeEffect, Subscription, UnsubscribeEffect, Watching,
 };

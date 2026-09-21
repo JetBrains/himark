@@ -24,6 +24,8 @@ fn languages() -> editor::SyntaxLanguages {
 }
 
 fn parsed() -> editor::Document {
+    let store = &imba::store::Store::new();
+    let ui = &imba::UiCtx::dont_use_too_slow();
     let fonts = editor::embedded_fonts::source()();
     let theme = editor::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
@@ -31,6 +33,8 @@ fn parsed() -> editor::Document {
         editor::Text::from_string_exact(SOURCE),
         EXT,
         &registry,
+        store,
+        ui,
         &fonts,
         &theme,
     );
@@ -39,6 +43,8 @@ fn parsed() -> editor::Document {
         .run_reparse();
     document.apply_reparse_outcome(
         outcome,
+        store,
+        ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
