@@ -1737,6 +1737,134 @@ fn key_codes_map_only_known_keys() {
 }
 
 #[test]
+fn scroll_gestures_break_on_touch_not_on_momentum() {
+    // A fresh touch always starts a new gesture, so the scroller under
+    // the pointer gets to re-claim the routing — even mid-flurry.
+    assert!(scroll_gesture_boundary(
+        HIMARK_SCROLL_PHASE_MAY_BEGIN,
+        false
+    ));
+    assert!(scroll_gesture_boundary(HIMARK_SCROLL_PHASE_BEGAN, false));
+
+    // Momentum belongs to the flick that spawned it: it must keep
+    // scrolling the surface the flick claimed, wherever the pointer is.
+    assert!(!scroll_gesture_boundary(
+        HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN,
+        true
+    ));
+    assert!(!scroll_gesture_boundary(
+        HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED,
+        true
+    ));
+    assert!(!scroll_gesture_boundary(
+        HIMARK_SCROLL_PHASE_MOMENTUM_ENDED,
+        true
+    ));
+    assert!(!scroll_gesture_boundary(HIMARK_SCROLL_PHASE_ENDED, true));
+
+    // Phaseless wheels and bare `changed` streams (hosts that never send
+    // a began) fall back to the pause heuristic, so an owner can never
+    // wedge the routing forever.
+    assert!(scroll_gesture_boundary(HIMARK_SCROLL_PHASE_NONE, true));
+    assert!(!scroll_gesture_boundary(HIMARK_SCROLL_PHASE_NONE, false));
+    assert!(scroll_gesture_boundary(HIMARK_SCROLL_PHASE_CHANGED, true));
+    assert!(!scroll_gesture_boundary(HIMARK_SCROLL_PHASE_CHANGED, false));
+}
+
+#[test]
+fn phased_scrolls_route_to_the_gesture_owner_per_window() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let a = engine.add_window();
+    let b = engine.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
+    let _ = engine.draw(b, surface.canvas(), 1100.0, 800.0, 1.0);
+    engine.open_demo_wall(a);
+    engine.open_demo_wall(b);
+    for _ in 0..10 {
+        settle(&mut engine);
+        let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
+        let _ = engine.draw(b, surface.canvas(), 1100.0, 800.0, 1.0);
+    }
+    assert!(engine.perform_command(a, "workbench.split-pane"));
+    for _ in 0..10 {
+        settle(&mut engine);
+        let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
+    }
+    let scroll = |engine: &mut HimarkEngine, window: u64, x: f32, dy: f32, phase: u32| {
+        engine.scroll_phased_at_time(window, x, 400.0, 0.0, dy, phase, 0.0)
+    };
+    let (left, right) = (275.0, 825.0);
+
+    // A zero-delta began is bookkeeping only: nothing may claim a fresh
+    // gesture before its direction is known.
+    assert!(!scroll(
+        &mut engine,
+        a,
+        left,
+        0.0,
+        HIMARK_SCROLL_PHASE_BEGAN
+    ));
+    // The first real delta claims the left pane and scrolls it.
+    assert!(scroll(
+        &mut engine,
+        a,
+        left,
+        120.0,
+        HIMARK_SCROLL_PHASE_CHANGED
+    ));
+    assert!(!scroll(
+        &mut engine,
+        a,
+        left,
+        0.0,
+        HIMARK_SCROLL_PHASE_ENDED
+    ));
+    assert!(scroll(
+        &mut engine,
+        a,
+        left,
+        40.0,
+        HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN
+    ));
+
+    // A touch beginning in ANOTHER window must not break this gesture.
+    assert!(!scroll(
+        &mut engine,
+        b,
+        left,
+        0.0,
+        HIMARK_SCROLL_PHASE_BEGAN
+    ));
+
+    // Momentum drifting over the right pane stays the left pane's: the
+    // right pane must not claim it.
+    assert!(!scroll(
+        &mut engine,
+        a,
+        right,
+        40.0,
+        HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED
+    ));
+    assert!(!scroll(
+        &mut engine,
+        a,
+        right,
+        0.0,
+        HIMARK_SCROLL_PHASE_MOMENTUM_ENDED
+    ));
+
+    // A fresh touch re-resolves from scratch: now the right pane scrolls.
+    assert!(scroll(
+        &mut engine,
+        a,
+        right,
+        40.0,
+        HIMARK_SCROLL_PHASE_BEGAN
+    ));
+}
+
+#[test]
 fn ffi_null_engine_calls_are_noops() {
     unsafe {
         assert_eq!(himark_add_window(null_mut()), 0);
@@ -1745,6 +1873,15 @@ fn ffi_null_engine_calls_are_noops() {
         assert!(!himark_text_input(null_mut(), 0, null(), 0));
         assert!(!himark_mouse_down(null_mut(), 0, 0.0, 0.0, 0, 1));
         assert!(!himark_scroll(null_mut(), 0, 0.0, 0.0, 0.0, 0.0));
+        assert!(!himark_scroll_phased(
+            null_mut(),
+            0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            HIMARK_SCROLL_PHASE_BEGAN
+        ));
         assert!(!himark_animation_tick(null_mut(), 0.0));
         assert!(!himark_perform_command(
             null_mut(),

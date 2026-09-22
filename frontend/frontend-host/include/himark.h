@@ -51,6 +51,26 @@
 
 #define HIMARK_MOD_COMMAND 8
 
+/**
+ * No phase information: a legacy wheel tick, or a host that cannot
+ * tell gestures apart.
+ */
+#define HIMARK_SCROLL_PHASE_NONE 0
+
+#define HIMARK_SCROLL_PHASE_MAY_BEGIN 1
+
+#define HIMARK_SCROLL_PHASE_BEGAN 2
+
+#define HIMARK_SCROLL_PHASE_CHANGED 3
+
+#define HIMARK_SCROLL_PHASE_ENDED 4
+
+#define HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN 5
+
+#define HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED 6
+
+#define HIMARK_SCROLL_PHASE_MOMENTUM_ENDED 7
+
 typedef struct HimarkEngine HimarkEngine;
 
 typedef struct {
@@ -153,6 +173,14 @@ bool himark_scroll(HimarkEngine *engine,
                    float y,
                    float _delta_x,
                    float delta_y);
+
+bool himark_scroll_phased(HimarkEngine *engine,
+                          uint64_t window,
+                          float x,
+                          float y,
+                          float delta_x,
+                          float delta_y,
+                          uint32_t phase);
 
 bool himark_animation_tick(HimarkEngine *engine, double now_ms);
 

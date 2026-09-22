@@ -272,16 +272,24 @@ impl Engine {
         self.inner.mouse_up(self.window, x, y)
     }
 
-    fn scroll_at_time(
+    fn scroll_phased_at_time(
         &mut self,
         x: f32,
         y: f32,
         delta_x: f32,
         delta_y: f32,
+        phase: u32,
         event_started_at: f64,
     ) -> bool {
-        self.inner
-            .scroll_at_time(self.window, x, y, delta_x, delta_y, event_started_at)
+        self.inner.scroll_phased_at_time(
+            self.window,
+            x,
+            y,
+            delta_x,
+            delta_y,
+            phase,
+            event_started_at,
+        )
     }
 
     fn animation_tick(&mut self, now_ms: f64) -> bool {
@@ -1128,7 +1136,7 @@ impl WinitHost {
         self.event_changed(changed);
     }
 
-    fn handle_scroll(&mut self, delta: MouseScrollDelta) {
+    fn handle_scroll(&mut self, delta: MouseScrollDelta, touch: winit::event::TouchPhase) {
         let (x, y) = self
             .window
             .as_ref()
@@ -1136,17 +1144,31 @@ impl WinitHost {
         let Some((x, y)) = self.content_point(x, y) else {
             return;
         };
-        let (delta_x, delta_y) = match delta {
-            MouseScrollDelta::LineDelta(delta_x, delta_y) => {
-                (-delta_x * LINE_SCROLL_PX, -delta_y * LINE_SCROLL_PX)
-            }
-            MouseScrollDelta::PixelDelta(delta) => (-delta.x as f32, -delta.y as f32),
+        let (delta_x, delta_y, phase) = match delta {
+            // Wheel ticks carry no gesture; the engine falls back to its
+            // pause heuristic for them.
+            MouseScrollDelta::LineDelta(delta_x, delta_y) => (
+                -delta_x * LINE_SCROLL_PX,
+                -delta_y * LINE_SCROLL_PX,
+                himark_api::HIMARK_SCROLL_PHASE_NONE,
+            ),
+            MouseScrollDelta::PixelDelta(delta) => (
+                -delta.x as f32,
+                -delta.y as f32,
+                match touch {
+                    winit::event::TouchPhase::Started => himark_api::HIMARK_SCROLL_PHASE_BEGAN,
+                    winit::event::TouchPhase::Moved => himark_api::HIMARK_SCROLL_PHASE_CHANGED,
+                    winit::event::TouchPhase::Ended | winit::event::TouchPhase::Cancelled => {
+                        himark_api::HIMARK_SCROLL_PHASE_ENDED
+                    }
+                },
+            ),
         };
 
-        if delta_x != 0.0 || delta_y != 0.0 {
-            let changed = self
-                .engine
-                .scroll_at_time(x, y, delta_x, delta_y, self.event_time());
+        if delta_x != 0.0 || delta_y != 0.0 || phase == himark_api::HIMARK_SCROLL_PHASE_BEGAN {
+            let changed =
+                self.engine
+                    .scroll_phased_at_time(x, y, delta_x, delta_y, phase, self.event_time());
             self.event_changed(changed);
         }
     }
@@ -1419,7 +1441,7 @@ impl ApplicationHandler<UserEvent> for WinitHost {
                     }
                 }
             }
-            WindowEvent::MouseWheel { delta, .. } => self.handle_scroll(delta),
+            WindowEvent::MouseWheel { delta, phase, .. } => self.handle_scroll(delta, phase),
             WindowEvent::ModifiersChanged(modifiers) => {
                 if let Some(window) = self.window.as_mut() {
                     window.modifiers = modifiers.state();
