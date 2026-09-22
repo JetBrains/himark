@@ -4663,7 +4663,7 @@ mod dock_tests {
     }
 
     #[test]
-    fn the_drawer_groups_sessions_by_folder() {
+    fn the_drawer_groups_sessions_by_folder_most_recent_first() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
         let window = app.sole_window();
@@ -4721,17 +4721,19 @@ mod dock_tests {
             panel.rows(),
             vec![
                 ("Local".to_owned(), 0),
-                ("himark".to_owned(), 1),
-                ("older himark".to_owned(), 2),
-                ("fresh himark".to_owned(), 2),
-                // No folder — the stray stays a plain row under the host.
-                ("stray".to_owned(), 1),
-                ("docs".to_owned(), 1),
-                ("docs session".to_owned(), 2),
-                // Both orderings of the folder set land in one group.
+                // The two-folder set holds the freshest session, so that
+                // group leads; both orderings of the set land in it.
                 ("docs, himark".to_owned(), 1),
                 ("pair".to_owned(), 2),
                 ("pair reversed".to_owned(), 2),
+                ("himark".to_owned(), 1),
+                ("fresh himark".to_owned(), 2),
+                ("older himark".to_owned(), 2),
+                ("docs".to_owned(), 1),
+                ("docs session".to_owned(), 2),
+                // No folder — the stray stays a plain row, ranked by its
+                // own recency.
+                ("stray".to_owned(), 1),
                 ("+ New Session…".to_owned(), 1),
                 ("+ Add Host…".to_owned(), 0),
             ],
@@ -4748,13 +4750,13 @@ mod dock_tests {
             panel.rows(),
             vec![
                 ("Local".to_owned(), 0),
-                ("himark".to_owned(), 1),
-                ("stray".to_owned(), 1),
-                ("docs".to_owned(), 1),
-                ("docs session".to_owned(), 2),
                 ("docs, himark".to_owned(), 1),
                 ("pair".to_owned(), 2),
                 ("pair reversed".to_owned(), 2),
+                ("himark".to_owned(), 1),
+                ("docs".to_owned(), 1),
+                ("docs session".to_owned(), 2),
+                ("stray".to_owned(), 1),
                 ("+ New Session…".to_owned(), 1),
                 ("+ Add Host…".to_owned(), 0),
             ],

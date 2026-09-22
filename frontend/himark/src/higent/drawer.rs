@@ -175,8 +175,10 @@ impl AgentsPanel {
                     );
                 }
                 HostStatus::Connected => {
-                    // Sessions gather under their full folder set
-                    // (order and duplicates ignored).
+                    // Sessions gather under their full folder set (order
+                    // and duplicates ignored); groups and the folder-less
+                    // strays stand most-recent first, recency being the
+                    // last message's modified_at.
                     let mut groups: Vec<(Option<Vec<String>>, Vec<&SessionSummary>)> = Vec::new();
                     for summary in record.sessions.iter() {
                         let folder = summary
@@ -194,6 +196,12 @@ impl AgentsPanel {
                             None => groups.push((folder, vec![summary])),
                         }
                     }
+                    for (_, sessions) in groups.iter_mut() {
+                        sessions.sort_by_key(|summary| std::cmp::Reverse(modified_stamp(summary)));
+                    }
+                    groups.sort_by_key(|(_, sessions)| {
+                        std::cmp::Reverse(sessions.first().map(|first| modified_stamp(first)))
+                    });
                     for (folder, sessions) in groups {
                         let depth = match &folder {
                             Some(folder) => {
@@ -424,6 +432,13 @@ fn age_trail(
         _ => format!("{}d", seconds / 86_400),
     };
     vec![(age, dim)]
+}
+
+/// The stamp the recency order runs on — the summary's modified_at
+/// moves on every message, ours or the agent's. Unparseable stamps
+/// sink to the epoch, so fresh sessions never hide below them.
+fn modified_stamp(summary: &SessionSummary) -> std::time::SystemTime {
+    humantime::parse_rfc3339_weak(&summary.modified_at).unwrap_or(std::time::SystemTime::UNIX_EPOCH)
 }
 
 fn folder_label(folder: &str) -> String {

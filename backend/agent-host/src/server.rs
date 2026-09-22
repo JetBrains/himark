@@ -1033,7 +1033,7 @@ impl Host {
                         .values()
                         .filter(|entry| entry.manifest.session != host_discovery::LOCAL_FS_SESSION)
                         .filter(|entry| entry.manifest.listed)
-                        .map(|entry| summary(&entry.manifest, &entry.state))
+                        .map(|entry| summary(&self.store, entry))
                         .collect();
                     for session in cli {
                         if known.contains(&(session.provider.clone(), session.native_id.clone())) {
@@ -4517,18 +4517,24 @@ fn string_of(config: &serde_json::Map<String, Value>, key: &str) -> Option<Strin
     config.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-fn summary(manifest: &Manifest, state: &SessionState) -> SessionSummary {
+fn summary(store: &Store, entry: &SessionEntry) -> SessionSummary {
+    // Recency is the default chat's log mtime — every chat action is
+    // appended there, so the file tracks content changes for free.
+    let modified_at = store
+        .log_modified_at(&entry.manifest.native_id, &entry.manifest.default_chat)
+        .map(|stamp| humantime::format_rfc3339_millis(stamp).to_string())
+        .unwrap_or_else(|| entry.manifest.created_at.clone());
     SessionSummary {
-        provider: manifest.provider.clone(),
-        title: state.title.clone(),
-        status: state.status,
-        activity: state.activity.clone(),
+        provider: entry.manifest.provider.clone(),
+        title: entry.state.title.clone(),
+        status: entry.state.status,
+        activity: entry.state.activity.clone(),
         project: None,
-        working_directories: Some(manifest.working_directories.clone()),
-        annotations: state.annotations.clone(),
-        resource: manifest.session.clone(),
-        created_at: manifest.created_at.clone(),
-        modified_at: manifest.created_at.clone(),
+        working_directories: Some(entry.manifest.working_directories.clone()),
+        annotations: entry.state.annotations.clone(),
+        resource: entry.manifest.session.clone(),
+        created_at: entry.manifest.created_at.clone(),
+        modified_at,
         changes: None,
         meta: None,
     }
