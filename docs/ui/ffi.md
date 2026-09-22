@@ -83,7 +83,7 @@ What deliberately does NOT get a factory:
 - **`Scroll`'s `gesture`** — `ScrollGesture` is claim-tracking state
   (who owns the momentum), not event payload. Each bridge keeps its
   own tracker and supplies it at dispatch, the way the engine keeps
-  `scroll_gesture` per engine today. The factory carries only the
+  a `WindowScroll` per window today. The factory carries only the
   point and deltas.
 
 `imba_event_window_left()` is the cursor-exit miss — sugar for
