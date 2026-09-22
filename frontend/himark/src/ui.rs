@@ -40,6 +40,7 @@ pub struct TextStyle {
     pub font: skia_safe::Font,
     pub color: Color,
     pub tracking: f32,
+    pub fallback: std::rc::Rc<imba::GlyphFallback>,
 }
 
 impl TextStyle {
@@ -60,6 +61,7 @@ pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, LABEL_SIZE),
         color: crate::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
+        fallback: imba::GlyphFallback::of(ui),
     }
 }
 
@@ -69,6 +71,7 @@ pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, CAPTION_SIZE),
         color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
+        fallback: imba::GlyphFallback::of(ui),
     }
 }
 
@@ -78,6 +81,7 @@ pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_font(ui, HEADING_SIZE),
         color: crate::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
+        fallback: imba::GlyphFallback::of(ui),
     }
 }
 
@@ -88,6 +92,7 @@ pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_font(ui, CAPS_SIZE),
         color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: CAPS_TRACKING,
+        fallback: imba::GlyphFallback::of(ui),
     }
 }
 
@@ -97,12 +102,19 @@ pub fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
         color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
+        fallback: imba::GlyphFallback::of(ui),
     }
 }
 
 /// A styled `imba::Text`.
 pub fn text(style: &TextStyle, content: impl Into<String>) -> imba::Text {
-    imba::text(content, style.font.clone(), style.color).tracking(style.tracking)
+    imba::Text::with_fallback(
+        content,
+        style.font.clone(),
+        style.color,
+        style.fallback.clone(),
+    )
+    .tracking(style.tracking)
 }
 
 /// THE rounded fill-plus-hairline backdrop — every card, well and

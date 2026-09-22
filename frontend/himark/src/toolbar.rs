@@ -293,7 +293,7 @@ impl Toolbar {
             max: Size::new(well_width, chrome.height),
         };
         if let Some(mode) = mode {
-            let label = imba::text(mode, title_font.clone(), chrome.title_color.0)
+            let label = imba::text(ui, mode, title_font.clone(), chrome.title_color.0)
                 .tracking(1.5)
                 .layout(arena, well_bounds);
             strip.place_boxed(
@@ -303,7 +303,7 @@ impl Toolbar {
             );
         }
         if !focused {
-            let label = imba::text(title, title_font.clone(), chrome.title_color.0)
+            let label = imba::text(ui, title, title_font.clone(), chrome.title_color.0)
                 .layout(arena, well_bounds);
             strip.place_boxed(
                 well_x + ((well_width - label.size().width) * 0.5).max(0.0),

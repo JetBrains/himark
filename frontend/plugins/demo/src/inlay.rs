@@ -430,7 +430,7 @@ impl View for DemoInlay {
         &'a self,
         _arena: &'a Arena,
         _store: &'a Store,
-        _ui: &'a imba::UiCtx,
+        ui: &'a imba::UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
             let size = self.size_for(constraints);
@@ -462,8 +462,13 @@ impl View for DemoInlay {
             frame.place_boxed(
                 18.0,
                 baseline(size.height, self.mode) - ascent,
-                imba::text(self.title(), font, palette(self.tone, self.expanded).text)
-                    .layout(arena, Constraints::tight(size).loosen()),
+                imba::text(
+                    ui,
+                    self.title(),
+                    font,
+                    palette(self.tone, self.expanded).text,
+                )
+                .layout(arena, Constraints::tight(size).loosen()),
             );
             frame
         })

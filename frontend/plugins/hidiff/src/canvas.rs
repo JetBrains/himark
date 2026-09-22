@@ -2338,7 +2338,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let cell = imba::Row::new(arena)
                     .gap(combo.gap)
                     .child(
-                        imba::text(label, caps_font.clone(), on_accent)
+                        imba::text(ui, label, caps_font.clone(), on_accent)
                             .tracking(1.5)
                             .pad_insets(imba::Insets {
                                 left: 0.0,
@@ -2347,14 +2347,16 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                                 bottom: 0.0,
                             }),
                     )
-                    .child(imba::text("⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                        imba::Insets {
-                            left: 0.0,
-                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        },
-                    ))
+                    .child(
+                        imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                            imba::Insets {
+                                left: 0.0,
+                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            },
+                        ),
+                    )
                     .pad_insets(imba::Insets {
                         left: combo.pad,
                         top: 0.0,

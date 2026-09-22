@@ -803,18 +803,36 @@ pub struct Text {
     font: skia_safe::Font,
     color: skia_safe::Color,
     tracking: f32,
+    fallback: std::rc::Rc<GlyphFallback>,
 }
 
-pub fn text(content: impl Into<String>, font: skia_safe::Font, color: skia_safe::Color) -> Text {
-    Text {
-        text: content.into(),
-        font,
-        color,
-        tracking: 0.0,
-    }
+pub fn text(
+    ui: &crate::ui::UiCtx,
+    content: impl Into<String>,
+    font: skia_safe::Font,
+    color: skia_safe::Color,
+) -> Text {
+    Text::with_fallback(content, font, color, GlyphFallback::of(ui))
 }
 
 impl Text {
+    /// `text` for callers holding the ctx's `GlyphFallback` handle
+    /// already — layout structs built where `UiCtx` was in scope.
+    pub fn with_fallback(
+        content: impl Into<String>,
+        font: skia_safe::Font,
+        color: skia_safe::Color,
+        fallback: std::rc::Rc<GlyphFallback>,
+    ) -> Text {
+        Text {
+            text: content.into(),
+            font,
+            color,
+            tracking: 0.0,
+            fallback,
+        }
+    }
+
     /// Extra per-glyph advance — the caps-label look several chrome
     /// labels hand-roll today.
     pub fn tracking(mut self, tracking: f32) -> Self {
@@ -823,67 +841,90 @@ impl Text {
     }
 }
 
-thread_local! {
-    static GLYPH_FALLBACK: std::cell::RefCell<
+/// System-fallback faces for codepoints a base face can't map,
+/// memoized per (typeface, char). An env slot in `UiCtx` — per UI
+/// thread and warm for the app's lifetime, like every other font
+/// cache — with one shared font manager instead of a fresh
+/// `FontMgr::new()` per miss.
+pub struct GlyphFallback {
+    manager: skia_safe::FontMgr,
+    faces: std::cell::RefCell<
         std::collections::HashMap<
             (skia_safe::typeface::TypefaceId, char),
             Option<skia_safe::Typeface>,
         >,
-    > = Default::default();
+    >,
 }
 
-/// Split `text` into (font, run) pairs the fonts can actually draw:
-/// codepoints the base face has no glyph for get a system-fallback
-/// face from the font manager. `draw_str` alone paints notdef boxes
-/// for them — chrome labels carry key symbols like ⌘ that UI faces
-/// rarely cover.
-fn glyph_runs(font: &skia_safe::Font, text: &str) -> Vec<(skia_safe::Font, String)> {
-    let base = font.typeface();
-    let style = base.font_style();
-    let base_id = base.unique_id();
-    let mut runs: Vec<(Option<skia_safe::Typeface>, String)> = Vec::new();
-    for ch in text.chars() {
-        let face = match font.unichar_to_glyph(ch as i32) != 0 {
-            true => None,
-            false => GLYPH_FALLBACK.with(|cache| {
-                cache
+impl GlyphFallback {
+    pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Self> {
+        ui.env(|| {
+            std::rc::Rc::new(GlyphFallback {
+                manager: skia_safe::FontMgr::new(),
+                faces: Default::default(),
+            })
+        })
+        .clone()
+    }
+
+    /// Split `text` into (font, run) pairs the fonts can actually
+    /// draw: codepoints the base face has no glyph for get a
+    /// system-fallback face from the font manager. `draw_str` alone
+    /// paints notdef boxes for them — chrome labels carry key symbols
+    /// like ⌘ that UI faces rarely cover.
+    fn runs(&self, font: &skia_safe::Font, text: &str) -> Vec<(skia_safe::Font, String)> {
+        let base = font.typeface();
+        let style = base.font_style();
+        let base_id = base.unique_id();
+        let mut runs: Vec<(Option<skia_safe::Typeface>, String)> = Vec::new();
+        for ch in text.chars() {
+            let face = match font.unichar_to_glyph(ch as i32) != 0 {
+                true => None,
+                false => self
+                    .faces
                     .borrow_mut()
                     .entry((base_id, ch))
                     .or_insert_with(|| {
-                        skia_safe::FontMgr::new()
+                        self.manager
                             .match_family_style_character("", style, &[], ch as i32)
                     })
-                    .clone()
-            }),
-        };
-        match runs.last_mut() {
-            Some((last, run))
-                if last.as_ref().map(skia_safe::Typeface::unique_id)
-                    == face.as_ref().map(skia_safe::Typeface::unique_id) =>
-            {
-                run.push(ch)
+                    .clone(),
+            };
+            match runs.last_mut() {
+                Some((last, run))
+                    if last.as_ref().map(skia_safe::Typeface::unique_id)
+                        == face.as_ref().map(skia_safe::Typeface::unique_id) =>
+                {
+                    run.push(ch)
+                }
+                _ => runs.push((face, String::from(ch))),
             }
-            _ => runs.push((face, String::from(ch))),
         }
+        runs.into_iter()
+            .map(|(face, run)| {
+                let mut with = font.clone();
+                if let Some(face) = face {
+                    with.set_typeface(face);
+                }
+                (with, run)
+            })
+            .collect()
     }
-    runs.into_iter()
-        .map(|(face, run)| {
-            let mut with = font.clone();
-            if let Some(face) = face {
-                with.set_typeface(face);
-            }
-            (with, run)
-        })
-        .collect()
+
+    /// Advance of `text` over the same fallback runs the painter
+    /// draws — `Font::measure_str` alone counts notdef boxes.
+    pub fn advance(&self, font: &skia_safe::Font, text: &str) -> f32 {
+        self.runs(font, text)
+            .iter()
+            .map(|(font, run)| font.measure_str(run, None).0)
+            .sum()
+    }
 }
 
-/// Advance of `text` over the same fallback runs the painter draws —
-/// `Font::measure_str` alone counts notdef boxes.
-pub fn text_advance(font: &skia_safe::Font, text: &str) -> f32 {
-    glyph_runs(font, text)
-        .iter()
-        .map(|(font, run)| font.measure_str(run, None).0)
-        .sum()
+/// Advance of `text` over the same fallback runs `Text` paints, for
+/// callsites that pre-measure symbol strings against a raw `Font`.
+pub fn text_advance(ui: &crate::ui::UiCtx, font: &skia_safe::Font, text: &str) -> f32 {
+    GlyphFallback::of(ui).advance(font, text)
 }
 
 impl<'a, Command: 'a> Layout<'a, Command> for Text {
@@ -892,11 +933,11 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
         let ascent = -metrics.ascent;
         let height = (ascent + metrics.descent).ceil().max(1.0);
         let advance = match self.tracking == 0.0 {
-            true => text_advance(&self.font, &self.text),
+            true => self.fallback.advance(&self.font, &self.text),
             false => self
                 .text
                 .chars()
-                .map(|ch| text_advance(&self.font, &ch.to_string()) + self.tracking)
+                .map(|ch| self.fallback.advance(&self.font, &ch.to_string()) + self.tracking)
                 .sum(),
         };
         let width = advance
@@ -907,6 +948,7 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
             font,
             color,
             tracking,
+            fallback,
         } = self;
         let label = crate::leaf::leaf::<Command>(width, height).paint_instead(
             move |_arena, canvas, rect| {
@@ -916,7 +958,7 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
                 let baseline = rect.top + ascent;
                 if tracking == 0.0 {
                     let mut x = rect.left;
-                    for (run_font, run) in glyph_runs(&font, &text) {
+                    for (run_font, run) in fallback.runs(&font, &text) {
                         canvas.draw_str(&run, (x, baseline), &run_font, &paint);
                         x += run_font.measure_str(&run, None).0;
                     }
@@ -924,7 +966,7 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
                     let mut x = rect.left;
                     for ch in text.chars() {
                         let glyph = ch.to_string();
-                        for (run_font, run) in glyph_runs(&font, &glyph) {
+                        for (run_font, run) in fallback.runs(&font, &glyph) {
                             canvas.draw_str(&run, (x, baseline), &run_font, &paint);
                             x += run_font.measure_str(&run, None).0;
                         }
@@ -949,17 +991,20 @@ mod tests {
     use crate::leaf::leaf;
 
     /// The platform UI face misses most keycap symbols (Helvetica has
-    /// no ⌘) — every one must come back from `glyph_runs` with a face
-    /// that actually maps it, or labels paint notdef boxes.
+    /// no ⌘) — every one must come back from `GlyphFallback::runs`
+    /// with a face that actually maps it, or labels paint notdef
+    /// boxes.
     #[test]
     #[cfg(target_os = "macos")]
     fn key_symbols_resolve_to_real_glyphs() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let fallback = GlyphFallback::of(&ui);
         let face = skia_safe::FontMgr::new()
             .legacy_make_typeface(None, skia_safe::FontStyle::normal())
             .expect("default typeface");
         let font = skia_safe::Font::from_typeface(face, 13.0);
         for ch in ['⌘', '⌃', '⌥', '⇧', '⏎', '⌫', '⎋'] {
-            let runs = glyph_runs(&font, &ch.to_string());
+            let runs = fallback.runs(&font, &ch.to_string());
             assert_eq!(runs.len(), 1);
             let (run_font, run) = &runs[0];
             assert_eq!(run, &ch.to_string());
@@ -1241,12 +1286,13 @@ mod baseline_tests {
     #[test]
     fn text_answers_its_font_ascent_as_the_line() {
         let arena = Arena::default();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let typeface = skia_safe::FontMgr::new()
             .legacy_make_typeface(None, skia_safe::FontStyle::normal())
             .expect("a system typeface");
         let font = skia_safe::Font::new(typeface, 24.0);
         let thunk: ThunkBox<'_, ()> =
-            text("hello", font.clone(), skia_safe::Color::WHITE).layout(&arena, bounds());
+            text(&ui, "hello", font.clone(), skia_safe::Color::WHITE).layout(&arena, bounds());
         let (_, metrics) = font.metrics();
         assert_eq!(thunk.first_baseline(), Some(-metrics.ascent));
         assert!(thunk.size().width > 0.0, "a real face measures");

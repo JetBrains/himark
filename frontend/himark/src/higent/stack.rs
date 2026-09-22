@@ -225,16 +225,19 @@ impl WidgetStack {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.accent.0,
                 tracking: 0.0,
+                fallback: imba::GlyphFallback::of(ui),
             };
             let body_style = crate::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.85),
                 color: chrome.text_color.0,
                 tracking: 0.0,
+                fallback: imba::GlyphFallback::of(ui),
             };
             let code_style = crate::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.text_color.0,
                 tracking: 0.0,
+                fallback: imba::GlyphFallback::of(ui),
             };
             let has_preview = ask.input.is_some();
             let mut body = imba::Column::new(arena)
@@ -318,7 +321,7 @@ impl WidgetStack {
                 let row = imba::Row::new(arena)
                     .child(imba::fixed(chip))
                     .child(
-                        imba::text(label, option_font.clone(), text_color).pad_insets(
+                        imba::text(ui, label, option_font.clone(), text_color).pad_insets(
                             imba::Insets {
                                 left: 0.0,
                                 top: (line * 0.66 - label_ascent).max(0.0),
