@@ -4663,6 +4663,105 @@ mod dock_tests {
     }
 
     #[test]
+    fn the_drawer_groups_sessions_by_folder() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary =
+            |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
+                provider: "test".to_owned(),
+                title: title.to_owned(),
+                status: 0,
+                activity: None,
+                project: None,
+                working_directories: (!folders.is_empty())
+                    .then(|| folders.iter().map(|folder| folder.to_string()).collect()),
+                annotations: None,
+                resource: format!("test-session:/{title}"),
+                created_at: String::new(),
+                modified_at: modified.to_owned(),
+                changes: None,
+                meta: None,
+            };
+        const HIMARK: &str = "file:///dev/himark";
+        const DOCS: &str = "file:///dev/docs";
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![
+                summary("older himark", &[HIMARK], "2026-09-20T10:00:00Z"),
+                summary("stray", &[], "2026-09-21T10:00:00Z"),
+                summary("docs session", &[DOCS], "2026-09-21T12:00:00Z"),
+                summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z"),
+                // The pair sessions share a folder SET — order must not
+                // split them into two groups.
+                summary("pair", &[HIMARK, DOCS], "2026-09-22T11:00:00Z"),
+                summary("pair reversed", &[DOCS, HIMARK], "2026-09-21T09:00:00Z"),
+            ],
+            true,
+        );
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
+            imba::effect::Batch::new();
+        use imba::View;
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Boot,
+            &mut batch.effects(),
+        );
+
+        assert_eq!(
+            panel.rows(),
+            vec![
+                ("Local".to_owned(), 0),
+                ("himark".to_owned(), 1),
+                ("older himark".to_owned(), 2),
+                ("fresh himark".to_owned(), 2),
+                // No folder — the stray stays a plain row under the host.
+                ("stray".to_owned(), 1),
+                ("docs".to_owned(), 1),
+                ("docs session".to_owned(), 2),
+                // Both orderings of the folder set land in one group.
+                ("docs, himark".to_owned(), 1),
+                ("pair".to_owned(), 2),
+                ("pair reversed".to_owned(), 2),
+                ("+ New Session…".to_owned(), 1),
+                ("+ Add Host…".to_owned(), 0),
+            ],
+        );
+
+        // Folding a folder row hides its sessions and nothing else.
+        let index = panel
+            .rows()
+            .iter()
+            .position(|(label, depth)| label == "himark" && *depth == 1)
+            .expect("the himark folder row stands");
+        panel.activate(&mut store, &ui, index, &mut batch.effects());
+        assert_eq!(
+            panel.rows(),
+            vec![
+                ("Local".to_owned(), 0),
+                ("himark".to_owned(), 1),
+                ("stray".to_owned(), 1),
+                ("docs".to_owned(), 1),
+                ("docs session".to_owned(), 2),
+                ("docs, himark".to_owned(), 1),
+                ("pair".to_owned(), 2),
+                ("pair reversed".to_owned(), 2),
+                ("+ New Session…".to_owned(), 1),
+                ("+ Add Host…".to_owned(), 0),
+            ],
+        );
+    }
+
+    #[test]
     fn dock_picks_keep_the_panel_up() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();

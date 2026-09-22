@@ -6838,13 +6838,17 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         let host_at = rows
             .iter()
             .position(|(label, depth)| *depth == 0 && label == "himark Host");
+        // Sessions with a folder list at depth 2 under the folder row;
+        // only folderless strays stay at depth 1.
         session_row = host_at.and_then(|index| {
-            rows.iter()
-                .enumerate()
-                .skip(index + 1)
-                .find(|(_, (label, depth))| {
-                    *depth == 1 && label != "+ New Session…" && !label.contains("connecting")
+            let under_host = rows.iter().enumerate().skip(index + 1);
+            under_host
+                .filter(|(_, (label, depth))| {
+                    (*depth == 1 || *depth == 2)
+                        && label != "+ New Session…"
+                        && !label.contains("connecting")
                 })
+                .max_by_key(|(_, (_, depth))| *depth)
                 .map(|(at, _)| at)
         });
         if session_row.is_some() {

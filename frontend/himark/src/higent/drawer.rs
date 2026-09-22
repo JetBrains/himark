@@ -34,6 +34,7 @@ const PANEL_PAD: f32 = 6.0;
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum AgentKey {
     Server(HostId),
+    Folder(HostId, Vec<String>),
     Session(HostId, Uri),
 
     NewSession(HostId),
@@ -79,6 +80,7 @@ pub struct AgentsPanel {
     booted: bool,
 
     collapsed: rpds::HashTrieSetSync<HostId>,
+    folded: rpds::HashTrieSetSync<(HostId, Vec<String>)>,
 
     polls: rpds::HashTrieMapSync<HostId, CancellationToken>,
 
@@ -93,6 +95,7 @@ impl Clone for AgentsPanel {
             window: self.window,
             booted: self.booted,
             collapsed: self.collapsed.clone(),
+            folded: self.folded.clone(),
             polls: self.polls.clone(),
             adding: self.adding.clone(),
 
@@ -108,6 +111,7 @@ impl AgentsPanel {
             window,
             booted: false,
             collapsed: rpds::HashTrieSetSync::new_sync(),
+            folded: rpds::HashTrieSetSync::new_sync(),
             polls: rpds::HashTrieMapSync::new_sync(),
             adding: None,
             request: None,
@@ -171,17 +175,60 @@ impl AgentsPanel {
                     );
                 }
                 HostStatus::Connected => {
+                    // Sessions gather under their full folder set
+                    // (order and duplicates ignored).
+                    let mut groups: Vec<(Option<Vec<String>>, Vec<&SessionSummary>)> = Vec::new();
                     for summary in record.sessions.iter() {
-                        slice.push_keyed(
-                            AgentKey::Session(server, summary.resource.clone()),
-                            crate::TreeItemView::leaf(
-                                TreeLabel::new(session_label(summary), true, false)
-                                    .with_trail(age_trail(now, dim, summary)),
-                                1,
-                            ),
-                            store,
-                            ui,
-                        );
+                        let folder = summary
+                            .working_directories
+                            .as_ref()
+                            .filter(|folders| !folders.is_empty())
+                            .map(|folders| {
+                                let mut set = folders.clone();
+                                set.sort();
+                                set.dedup();
+                                set
+                            });
+                        match groups.iter_mut().find(|(held, _)| *held == folder) {
+                            Some((_, sessions)) => sessions.push(summary),
+                            None => groups.push((folder, vec![summary])),
+                        }
+                    }
+                    for (folder, sessions) in groups {
+                        let depth = match &folder {
+                            Some(folder) => {
+                                let key = (server, folder.clone());
+                                let expanded = !self.folded.contains(&key);
+                                slice.push_keyed(
+                                    AgentKey::Folder(server, folder.clone()),
+                                    crate::TreeItemView::branch(
+                                        TreeLabel::new(folders_label(folder), false, false),
+                                        1,
+                                        expanded,
+                                    )
+                                    .toggling_on_body(),
+                                    store,
+                                    ui,
+                                );
+                                if !expanded {
+                                    continue;
+                                }
+                                2
+                            }
+                            None => 1,
+                        };
+                        for summary in sessions {
+                            slice.push_keyed(
+                                AgentKey::Session(server, summary.resource.clone()),
+                                crate::TreeItemView::leaf(
+                                    TreeLabel::new(session_label(summary), true, false)
+                                        .with_trail(age_trail(now, dim, summary)),
+                                    depth,
+                                ),
+                                store,
+                                ui,
+                            );
+                        }
                     }
                     {
                         slice.push_keyed(
@@ -304,6 +351,18 @@ impl AgentsPanel {
                 }
                 self.refresh(store, ui);
             }
+            AgentKey::Folder(server, folder) => {
+                let key = (*server, folder.clone());
+                match self.folded.contains(&key) {
+                    true => {
+                        self.folded.remove_mut(&key);
+                    }
+                    false => {
+                        self.folded.insert_mut(key);
+                    }
+                }
+                self.refresh(store, ui);
+            }
             AgentKey::Session(server, session) => {
                 self.list.content_mut().select_only(key.clone());
 
@@ -365,6 +424,20 @@ fn age_trail(
         _ => format!("{}d", seconds / 86_400),
     };
     vec![(age, dim)]
+}
+
+fn folder_label(folder: &str) -> String {
+    let trimmed = folder.trim_end_matches('/');
+    let name = trimmed.rsplit('/').next().filter(|name| !name.is_empty());
+    name.unwrap_or(trimmed).to_owned()
+}
+
+fn folders_label(folders: &[String]) -> String {
+    folders
+        .iter()
+        .map(|folder| folder_label(folder))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn session_label(summary: &SessionSummary) -> String {
