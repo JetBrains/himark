@@ -208,16 +208,31 @@ the imba FFI's types, never the reverse.
   is a different feature (a host-side popup contract) — out of scope
   here.
 
-## Open questions
+## Decisions
 
-- **Reveal routing** across nested native scrollers: the rect is in
-  bridge coordinates; is one rect enough, or does the host need the
-  `Placement`/`Motion` detail `Reveal` carries?
-- **IME**: `layout_data` answers the marked-text caret rect through
-  the widget tree; the bridge can expose a `caret_rect()` probe, but
-  composition routing between native IME and multiple bridges needs
-  its own pass ([ime.md](ime.md)).
-- **Cross-bridge commands**: a panel's `PanelRequest` (open a file,
-  navigate) is answered by the workbench today. A host-mounted panel
-  raising one needs a road back — likely surfaced on `pump` as an
-  app-level notification rather than an `ImbaCommand`.
+- **A reveal is a bare rect.** Bridge coordinates, nothing more. The
+  `Placement`/`Motion` detail `Reveal` carries stays inside the
+  bridge, where its own scrollers already honor it; a native
+  scroller handed the rect brings it into view however it likes.
+  Revisit only if a host ever wants the engine's placement idioms
+  (golden-ratio aim, animated motion) natively.
+
+- **IME rides the focused bridge.** The problem, plainly: an input
+  method (dead keys, CJK composition) needs two things from the
+  app — a caret rectangle to hang its candidate window on, and a
+  place to hold the not-yet-committed ("marked") text as it
+  composes. The engine already answers both per window
+  (`himark_set_marked_text`, `himark_marked_range`,
+  `himark_has_marked_text`); the bridge FFI repeats that trio per
+  bridge, plus a caret-rect probe, and the host points the OS input
+  context at whichever bridge it has focused. Same roads as
+  [ime.md](ime.md), scoped to a bridge — no new machinery.
+
+- **`PanelRequest`s route by a flag; the workbench's perform is
+  exposed.** A mounted panel still raises requests (open a file,
+  navigate). Minting takes a routing flag: a ROUTED bridge hands its
+  requests straight to the workbench, which answers them exactly as
+  it does for its own panels; an UNROUTED bridge surfaces them on
+  `pump`, and the exposed workbench perform lets the host hand any
+  of them back after looking. Both roads end in the same place — the
+  flag only decides whether the host stands in the middle.
