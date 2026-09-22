@@ -104,7 +104,9 @@ it needs to run:
 view_bridge_destroy(ViewBridge*)                    // destroy_dyn + release
 
 // the frame
-view_bridge_draw(ViewBridge*, canvas, w, h, scale)  -> needs_redraw
+view_bridge_measure(ViewBridge*, w, h)              -> content_size
+view_bridge_draw(ViewBridge*, canvas,
+                 w, h, viewport, scale)             -> needs_redraw
 view_bridge_event(ViewBridge*, ImbaEvent*)          -> BridgeAnswer
 
 // commands
@@ -116,11 +118,35 @@ view_bridge_set_focused(ViewBridge*, bool)
 imba_free_command(ImbaCommand*)
 ```
 
-- **`draw`** lays the view out at `Constraints::tight(w × h)`,
-  realizes, and delivers `Event::Paint` with the host's canvas. The
-  host owns the surface, the viewport, and the compositor — the
-  bridge, like the engine, is handed them per frame and retains
-  none.
+- **`draw` takes the layout size AND a viewport — that is what lets
+  a bridge live inside a native scroller.** The two are distinct on
+  purpose: `w × h` is the size the view is laid out at (the
+  document), the viewport is the visible rect of it in content
+  coordinates (the porthole). imba is already built exactly this
+  way — realize is the viewport-dependent curry (`Thunk::realize
+  (arena, viewport)`, [UI.md](UI.md)): the thunk is sized for the
+  whole content, but only what the viewport shows is materialized
+  (a `ListView` realizes only the rows in view). A whole-window
+  host passes `viewport = (0, 0, w, h)` and nothing changes; a
+  native-scroll host lays the bridge out at its content size,
+  realizes the visible slice, and pays for the slice.
+- **`measure`** answers the other half of native scrolling: the
+  host must size its scroller's document before it can scroll it.
+  Measure runs layout at the given constraints (a fixed width and
+  an unbounded height, typically) and returns the content size —
+  `Thunk::size()`, no realize, no paint. Reveal rects (below) are
+  in the same content coordinates, so the answer to "a deep view
+  wants to be seen" is precisely "scroll your native scroller to
+  this rect of the document."
+- **Event points arrive in content coordinates too**; the host
+  translates from its scroller exactly as it translates for draw.
+  The bridge realizes event dispatch at the last-drawn layout size
+  and viewport — between a native scroll and its next paint the
+  pointer is inside the last viewport by construction.
+- The host owns the surface, the scroller, and the compositor — the
+  bridge, like the engine, is handed canvas, size, and viewport per
+  frame and retains only the numbers it needs to route the next
+  event.
 - **`event`** runs the same realize-and-route pass and returns a
   `BridgeAnswer`: the `EventResult` made ABI-shaped —
   `needs_redraw`, zero or more `ImbaCommand*`s (from
@@ -210,7 +236,8 @@ the imba FFI's types, never the reverse.
 
 ## Decisions
 
-- **A reveal is a bare rect.** Bridge coordinates, nothing more. The
+- **A reveal is a bare rect.** Content coordinates — the same space
+  `measure` sizes and `draw`'s viewport cuts — and nothing more. The
   `Placement`/`Motion` detail `Reveal` carries stays inside the
   bridge, where its own scrollers already honor it; a native
   scroller handed the rect brings it into view however it likes.
