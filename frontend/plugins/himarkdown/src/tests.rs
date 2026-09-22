@@ -407,6 +407,55 @@ fn content_only_edits_rebuild_inline_markup() {
 }
 
 #[test]
+fn intraword_underscores_are_not_emphasis() {
+    assert!(
+        inline_decorations("HELLO_FOO_BAR").is_empty(),
+        "underscores inside a word stay literal"
+    );
+    assert!(
+        inline_decorations("HELLO__FOO__BAR").is_empty(),
+        "double underscores inside a word stay literal"
+    );
+
+    let starred: Vec<_> = inline_decorations("HELLO*FOO*BAR")
+        .iter()
+        .map(|token| token.decoration.id)
+        .collect();
+    assert_eq!(starred, [StyleId::Emphasis], "asterisks emphasize intraword");
+
+    let flanked = inline_decorations("say _hello_ there");
+    assert_eq!(flanked.len(), 1, "flanked underscores still emphasize");
+    assert_eq!(flanked[0].decoration.id, StyleId::Emphasis);
+    assert_eq!(flanked[0].decoration.range, 5..10);
+
+    let trailing = inline_decorations("_foo_bar baz_");
+    assert_eq!(
+        trailing.len(),
+        1,
+        "an intraword underscore cannot close, the word-final one can"
+    );
+    assert_eq!(trailing[0].decoration.range, 1..12);
+
+    let wrapped = inline_decorations("_HELLO_FOO_BAR_");
+    assert_eq!(
+        wrapped.len(),
+        1,
+        "flanking underscores emphasize the whole word, inner ones stay"
+    );
+    assert_eq!(wrapped[0].decoration.id, StyleId::Emphasis);
+    assert_eq!(wrapped[0].decoration.range, 1..14, "HELLO_FOO_BAR");
+
+    assert!(
+        inline_decorations("_HELLO_FOO_BAR_BUZZ").is_empty(),
+        "no underscore can close, every one but the first joins a word"
+    );
+    assert!(
+        inline_decorations("HELLO_FOO_BAR_").is_empty(),
+        "no underscore can open, every one joins a word on the left"
+    );
+}
+
+#[test]
 fn a_focused_table_cell_presents_structural_commands() {
     let ui = himark::test_document::test_ui();
     use imba::View;

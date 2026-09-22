@@ -857,9 +857,9 @@ fn inline_decorations(text: &str) -> Vec<InlineToken> {
     delimited_decorations(text, "`", StyleId::InlineCode, &mut tokens);
     delimited_decorations(text, "~~", StyleId::Strikethrough, &mut tokens);
     delimited_decorations(text, "**", StyleId::Strong, &mut tokens);
-    delimited_decorations(text, "__", StyleId::Strong, &mut tokens);
+    underscore_decorations(text, "__", StyleId::Strong, &mut tokens);
     delimited_decorations(text, "*", StyleId::Emphasis, &mut tokens);
-    delimited_decorations(text, "_", StyleId::Emphasis, &mut tokens);
+    underscore_decorations(text, "_", StyleId::Emphasis, &mut tokens);
     link_decorations(text, &mut tokens);
     tokens.sort_by_key(|token| token.decoration.range.start);
     keep_non_overlapping(tokens)
@@ -886,6 +886,65 @@ fn delimited_decorations(
             });
         }
         search_from = close + delimiter.len();
+    }
+}
+
+// CommonMark forbids intraword emphasis with underscores: in HELLO_FOO_BAR
+// a `_` run flanked by a word character on the outside neither opens nor
+// closes, so the underscores stay literal. A single pass classifies each
+// character on the way, so both flanks of a run are known when it ends.
+fn underscore_decorations(
+    text: &str,
+    delimiter: &str,
+    style: StyleId,
+    tokens: &mut Vec<InlineToken>,
+) {
+    let width = delimiter.len();
+    let mut open: Option<usize> = None;
+    let mut word_before = false;
+    let mut chars = text.char_indices().peekable();
+
+    while let Some((start, ch)) = chars.next() {
+        if ch != '_' {
+            word_before = ch.is_alphanumeric();
+            continue;
+        }
+        let mut end = start + 1;
+        while chars.next_if(|&(_, ch)| ch == '_').is_some() {
+            end += 1;
+        }
+        let word_after = chars
+            .peek()
+            .is_some_and(|&(_, ch)| ch.is_alphanumeric());
+
+        let mut found = start;
+        while found + width <= end {
+            match open {
+                None => {
+                    if !word_before {
+                        open = Some(found);
+                    }
+                }
+                Some(open_at) => {
+                    let content_start = open_at + width;
+                    if found == content_start {
+                        open = None; // an empty pair is consumed without a token
+                    } else if word_after {
+                        break; // the whole run shares this flank and cannot close
+                    } else {
+                        tokens.push(InlineToken {
+                            decoration: TextDecorationInterval::new(
+                                content_start..found,
+                                style,
+                            ),
+                            syntax: vec![open_at..content_start, found..found + width],
+                        });
+                        open = None;
+                    }
+                }
+            }
+            found += width;
+        }
     }
 }
 
