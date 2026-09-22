@@ -6012,7 +6012,7 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
     std::fs::create_dir_all(&root).expect("files root");
     let fs = HostedFs { root, _dir: dir };
 
-    let probe = |engine: &HimarkEngine| -> himark::new_session::NewSessionProbe {
+    let try_probe = |engine: &HimarkEngine| -> Option<himark::new_session::NewSessionProbe> {
         let mut probe = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
             if let Some(pane) = panel
@@ -6024,8 +6024,9 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
                         .map(|composer| composer.probe());
             }
         });
-        probe.expect("the composer panel")
+        probe
     };
+    let probe = |engine: &HimarkEngine| try_probe(engine).expect("the composer panel");
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
@@ -6183,6 +6184,7 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
     assert!(!after.model.open, "Enter picked and dismissed");
     assert_eq!(after.model.picked.as_deref(), Some("GPT-5.6 Terra"));
     assert!(after.ready, "prompt + folder + connected host arm Start");
+    let chosen_effort = after.effort.picked.clone();
     let _ = row_mid;
 
     assert!(himark::test_driver::key(
@@ -6241,6 +6243,48 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
             "GPT-5.6 Luna"
         ],
         "the live Codex toolbar stays provider-filtered"
+    );
+
+    // Reopening the composer over the live session carries its folder,
+    // agent, model, effort, and edits mode into the fresh form.
+    let app_window = engine.app.sole_window();
+    assert!(engine.app.perform_registered(app_window, "session.new"));
+    settle_until(
+        engine_mut(&mut engine),
+        "the reopened composer prefilled from the current session",
+        |engine| {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            try_probe(engine).is_some_and(|probe| {
+                probe.dir.picked.as_deref() == Some("files")
+                    && probe.model.picked.as_deref() == Some("GPT-5.6 Terra")
+                    && probe.effort.picked == chosen_effort
+                    && !probe.edits.labels.is_empty()
+            })
+        },
+    );
+    let reopened = probe(&engine);
+    assert_eq!(
+        reopened.dir.picked.as_deref(),
+        Some("files"),
+        "the session's folder carried over"
+    );
+    assert_eq!(
+        reopened.model.picked.as_deref(),
+        Some("GPT-5.6 Terra"),
+        "the session's agent and model carried over"
+    );
+    assert_eq!(
+        reopened.effort.picked, chosen_effort,
+        "the session's effort carried over"
+    );
+    assert_eq!(
+        reopened.edits.picked.as_deref(),
+        Some("Ask first"),
+        "the session's edits mode carried over"
+    );
+    assert_eq!(
+        reopened.prompt, "",
+        "the prompt starts empty — only the setup carries over"
     );
 }
 

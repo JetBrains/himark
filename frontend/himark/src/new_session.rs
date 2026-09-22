@@ -118,6 +118,48 @@ impl imba::effect::Effect for PickFoldersEffect {
 #[derive(Clone, Default)]
 pub struct PendingFolderPick(pub Arc<Vec<crate::ResourceLocation>>);
 
+/// Values carried over from the session that was current when the composer
+/// opened. Each field is applied once its combo lists the value, then
+/// cleared so later user picks stay untouched.
+#[derive(Clone, Default)]
+struct Prefill {
+    dir: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
+    edits: Option<String>,
+}
+
+impl Prefill {
+    fn of_session(store: &Store, session: &crate::SessionId) -> Self {
+        let mut prefill = Self::default();
+        if let Some(folder) = crate::higent::session_folders(store, session).first() {
+            if let Some(uris) = Hosts::uris(store, session.host) {
+                prefill.dir = Some(uris.uri_of(folder).as_str().to_owned());
+            }
+        }
+        let Some(channel) = crate::higent::Agents::channel(store, session) else {
+            return prefill;
+        };
+        if !channel.provider.is_empty() {
+            prefill.provider = Some(channel.provider.clone());
+        }
+        if let Some(config) = &channel.config {
+            let value = |key: &str| {
+                config
+                    .values
+                    .get(key)
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            };
+            prefill.model = value("model");
+            prefill.effort = value("thinkingLevel");
+            prefill.edits = value("permissionMode");
+        }
+        prefill
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ComposerFeed {
     pub resolving: Option<CancellationToken>,
@@ -199,6 +241,7 @@ pub struct NewSessionView {
     worktree: bool,
 
     host_hint: Option<HostId>,
+    prefill: Prefill,
 
     synced: u64,
 
@@ -230,6 +273,15 @@ impl NewSessionView {
     }
 
     pub fn for_host(store: &imba::store::Store, ui: &imba::UiCtx, host: Option<HostId>) -> Self {
+        Self::seeded(store, ui, host, Prefill::default())
+    }
+
+    fn seeded(
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        host: Option<HostId>,
+        prefill: Prefill,
+    ) -> Self {
         Self {
             input: fresh_input(store, ui),
             host: Combo::new(store, ui, "HOST"),
@@ -241,6 +293,7 @@ impl NewSessionView {
             edits: Combo::new(store, ui, "EDITS"),
             worktree: false,
             host_hint: host,
+            prefill,
             synced: u64::MAX,
             asked: None,
             request: None,
@@ -382,6 +435,12 @@ impl NewSessionView {
         }
         options.push(ComboOption::plain(PICK_FOLDER, "Choose folder…"));
         self.dir.set_options(store, ui, options);
+        if let Some(dir) = self.prefill.dir.clone() {
+            self.dir.pick_id(&dir);
+            if self.dir.value().is_some_and(|option| option.id == dir) {
+                self.prefill.dir = None;
+            }
+        }
     }
 
     fn refresh_models(&mut self, store: &Store, ui: &UiCtx) {
@@ -403,7 +462,29 @@ impl NewSessionView {
             })
             .unwrap_or_default();
         self.model.set_options(store, ui, options);
+        self.apply_model_prefill();
         self.refresh_effort(store, ui);
+    }
+
+    fn apply_model_prefill(&mut self) {
+        let Some(provider) = self.prefill.provider.clone() else {
+            return;
+        };
+        let key = match &self.prefill.model {
+            Some(model) => Some(format!("\u{1}model:{provider}:{model}")),
+            None => self
+                .model
+                .options()
+                .iter()
+                .find(|option| option.provider == provider && option.model.is_some())
+                .map(|option| option.key.clone()),
+        };
+        let Some(key) = key else { return };
+        self.model.pick_id(&key);
+        if self.model.value().is_some_and(|option| option.key == key) {
+            self.prefill.provider = None;
+            self.prefill.model = None;
+        }
     }
 
     fn refresh_effort(&mut self, store: &Store, ui: &UiCtx) {
@@ -412,8 +493,16 @@ impl NewSessionView {
             ui,
             &mut self.effort,
             self.model.value().and_then(|option| option.model),
-            None,
+            self.prefill.effort.as_deref(),
         );
+        if self
+            .effort
+            .value()
+            .zip(self.prefill.effort.as_ref())
+            .is_some_and(|(picked, seed)| &picked.id == seed)
+        {
+            self.prefill.effort = None;
+        }
     }
 
     fn config_values(&self) -> serde_json::Map<String, serde_json::Value> {
@@ -486,12 +575,15 @@ impl NewSessionView {
             }
         }
         if fresh_edits {
-            if let Some(value) = result
-                .values
-                .get("permissionMode")
-                .and_then(|value| value.as_str())
-            {
-                self.edits.pick_id(value);
+            let seed = self.prefill.edits.take().or_else(|| {
+                result
+                    .values
+                    .get("permissionMode")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            });
+            if let Some(value) = seed {
+                self.edits.pick_id(&value);
             }
         }
     }
@@ -2067,6 +2159,15 @@ impl crate::DynamicCommand for OpenNewSession {
         };
         let current = entity.current_session();
 
+        // Seed the composer from the session the user is looking at, unless
+        // it targets a different host than the one explicitly requested.
+        let mut host = self.host;
+        let mut prefill = Prefill::default();
+        if current.names_session() && host.is_none_or(|host| host == current.host) {
+            host = Some(current.host);
+            prefill = Prefill::of_session(store, &current);
+        }
+
         if let Some((host, _, session)) = Placeholders::session_of(store, window) {
             if let Some(seat) = Servers::seat(store, host) {
                 fx.push(
@@ -2090,7 +2191,7 @@ impl crate::DynamicCommand for OpenNewSession {
         Composers::put(
             store,
             window,
-            NewSessionView::for_host(store, ui, self.host),
+            NewSessionView::seeded(store, ui, host, prefill),
         );
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
