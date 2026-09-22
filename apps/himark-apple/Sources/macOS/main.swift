@@ -113,6 +113,13 @@ extension AppDelegate: NSWindowDelegate {
         layoutTrafficLights(window)
     }
 
+    // `windows` retains every window (isReleasedWhenClosed is off), so a
+    // closed one must leave the list or repaintAll keeps it alive and busy.
+    func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        windows.removeAll { $0 === window }
+    }
+
     func windowDidResize(_ notification: Notification) { relayout(notification) }
     func windowDidBecomeKey(_ notification: Notification) { relayout(notification) }
     func windowDidResignKey(_ notification: Notification) { relayout(notification) }
