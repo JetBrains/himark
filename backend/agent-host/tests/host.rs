@@ -3327,25 +3327,36 @@ async fn a_mirrored_files_change_broadcasts_as_the_hosts_edit() {
         .request("subscribe", json!({"channel": channel}))
         .await;
 
-    // The agent writes the file behind the host's back.
+    // The agent writes the file behind the host's back. The write is
+    // NOT atomic (truncate, then bytes) — a slow watcher poll can
+    // catch the empty in-between and broadcast that state first; the
+    // host converges over however many states it observed. Follow
+    // the chain until the agent's text lands.
     std::fs::write(&file, "alpha\nAGENT\nbeta\n").unwrap();
 
-    let action = client.next_action(&channel).await;
-    assert_eq!(action["type"], "document/applied");
-    assert_eq!(
-        action["base"],
-        v0.as_str(),
-        "the edit chains off the mirror"
-    );
-    let replacements = action["operation"]["replacements"]
-        .as_array()
-        .expect("replacements");
-    assert!(
-        replacements
+    let mut head = v0.clone();
+    let mut hops = 0;
+    let action = loop {
+        let action = client.next_action(&channel).await;
+        assert_eq!(action["type"], "document/applied");
+        assert_eq!(
+            action["base"],
+            head.as_str(),
+            "every broadcast chains off the mirror's head"
+        );
+        head = action["id"].as_str().expect("an id").to_owned();
+        let replacements = action["operation"]["replacements"]
+            .as_array()
+            .expect("replacements");
+        if replacements
             .iter()
-            .any(|span| span["text"].as_str().unwrap_or_default().contains("AGENT")),
-        "the broadcast carries the agent's change: {action}"
-    );
+            .any(|span| span["text"].as_str().unwrap_or_default().contains("AGENT"))
+        {
+            break action;
+        }
+        hops += 1;
+        assert!(hops < 4, "the agent's change never arrived: last {action}");
+    };
 
     // The mirror moved with it: reopening reports the host edit's id.
     let reopened = client
@@ -3401,8 +3412,13 @@ async fn unflushed_client_edits_survive_the_hosts_file_reload() {
     let echo = client.next_action(&channel).await;
     assert_eq!(echo["id"], uid(0xa1).as_str());
 
-    // The agent appends a line on disk.
-    std::fs::write(&file, "alpha\nbeta\nAGENT\n").unwrap();
+    // The agent appends a line on disk — atomically (temp + rename),
+    // so the watcher observes exactly one new state and the test
+    // stays about the MERGE. Truncate-write races are the mirrored
+    // broadcast test's business, not this one's.
+    let staged = dir.path().join(".shared.md.tmp");
+    std::fs::write(&staged, "alpha\nbeta\nAGENT\n").unwrap();
+    std::fs::rename(&staged, &file).unwrap();
 
     let action = client.next_action(&channel).await;
     assert_eq!(action["type"], "document/applied");
