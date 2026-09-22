@@ -136,7 +136,19 @@ final class HimarkView: NSView, NSTextInputClient {
         window?.makeFirstResponder(self)
 
         if !handled && y <= engine.toolbarHeight() {
-            window?.performDrag(with: event)
+            if event.clickCount == 2 {
+                titlebarDoubleClick()
+            } else {
+                window?.performDrag(with: event)
+            }
+        }
+    }
+
+    private func titlebarDoubleClick() {
+        switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+        case "Minimize": window?.performMiniaturize(nil)
+        case "None": break
+        default: window?.performZoom(nil)
         }
     }
 
