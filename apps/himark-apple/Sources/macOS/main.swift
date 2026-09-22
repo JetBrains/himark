@@ -64,8 +64,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let view = HimarkView(frame: window.contentView!.bounds, engine: engine, device: device)
         view.autoresizingMask = [.width, .height]
         window.contentView = view
+        window.delegate = self
         window.makeFirstResponder(view)
         window.makeKeyAndOrderFront(nil)
+        layoutTrafficLights(window)
         windows.append(window)
         return window
     }
@@ -73,6 +75,50 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func newWindow(_ sender: Any?) {
         makeWindow()
     }
+
+    // AppKit centers the traffic lights in a standard-height titlebar and resets
+    // their frames on resize and key changes, so the header-height layout has to
+    // be re-applied from the window delegate callbacks below.
+    fileprivate func layoutTrafficLights(_ window: NSWindow) {
+        guard !window.styleMask.contains(.fullScreen),
+              let close = window.standardWindowButton(.closeButton),
+              let miniaturize = window.standardWindowButton(.miniaturizeButton),
+              let zoom = window.standardWindowButton(.zoomButton),
+              let titlebar = close.superview,
+              let container = titlebar.superview
+        else { return }
+
+        let scale = window.backingScaleFactor
+        guard scale > 0 else { return }
+        // The engine lays out chrome in device pixels.
+        let headerHeight = CGFloat(engine.toolbarHeight()) / scale
+        guard headerHeight > 0 else { return }
+
+        var containerFrame = container.frame
+        containerFrame.origin.y = window.frame.height - headerHeight
+        containerFrame.size.height = headerHeight
+        container.frame = containerFrame
+
+        for button in [close, miniaturize, zoom] {
+            var origin = button.frame.origin
+            origin.y = (titlebar.frame.height - button.frame.height) * 0.5
+            button.setFrameOrigin(origin)
+        }
+    }
+}
+
+extension AppDelegate: NSWindowDelegate {
+    private func relayout(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        layoutTrafficLights(window)
+    }
+
+    func windowDidResize(_ notification: Notification) { relayout(notification) }
+    func windowDidBecomeKey(_ notification: Notification) { relayout(notification) }
+    func windowDidResignKey(_ notification: Notification) { relayout(notification) }
+    func windowDidDeminiaturize(_ notification: Notification) { relayout(notification) }
+    func windowDidExitFullScreen(_ notification: Notification) { relayout(notification) }
+    func windowDidChangeBackingProperties(_ notification: Notification) { relayout(notification) }
 }
 
 let app = NSApplication.shared
