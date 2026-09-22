@@ -168,7 +168,7 @@ impl Default for Options {
 pub fn run(options: Options) -> Result<(), Box<dyn Error>> {
     let started = Instant::now();
 
-    let _ = himark_api::himark_agent_host_autostart();
+    let _ = himark_api::agent_host_autostart();
     let event_loop = EventLoop::<UserEvent>::with_user_event().build()?;
     let proxy = event_loop.create_proxy();
     let context = softbuffer::Context::new(event_loop.owned_display_handle())?;

@@ -113,8 +113,6 @@ typedef struct {
     float height;
 } HimarkRect;
 
-bool himark_agent_host_autostart(void);
-
 HimarkEngine *himark_create(void);
 
 uint64_t himark_add_window(HimarkEngine *engine);
@@ -205,10 +203,6 @@ bool himark_host_fetched(HimarkEngine *engine,
                          uint64_t request,
                          const char *text,
                          uintptr_t text_len);
-
-bool himark_host_subscribed(HimarkEngine *engine, uint64_t request, uint64_t subscription);
-
-bool himark_file_changed(HimarkEngine *engine, uint64_t subscription);
 
 bool himark_host_stored(HimarkEngine *engine, uint64_t request, bool stored);
 

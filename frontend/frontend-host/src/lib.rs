@@ -1152,18 +1152,6 @@ impl HimarkEngine {
             .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
     }
 
-    pub fn host_subscribed(&mut self, request: u64, subscription: u64) -> bool {
-        self.host.as_ref().is_some_and(|host| {
-            host.requests.fulfill(
-                request,
-                Box::new(match subscription {
-                    0 => None::<u64>,
-                    live => Some(live),
-                }),
-            )
-        })
-    }
-
     pub fn file_changed(&mut self, subscription: u64) -> bool {
         if subscription == 0 {
             return false;
@@ -1418,8 +1406,7 @@ impl HimarkWorker {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn himark_agent_host_autostart() -> bool {
+pub fn agent_host_autostart() -> bool {
     host_discovery::autostart().is_some()
 }
 
@@ -1785,26 +1772,6 @@ pub unsafe extern "C" fn himark_host_fetched(
         },
     };
     engine.host_fetched(request, text)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_host_subscribed(
-    engine: *mut HimarkEngine,
-    request: u64,
-    subscription: u64,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    engine.host_subscribed(request, subscription)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_file_changed(engine: *mut HimarkEngine, subscription: u64) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    engine.file_changed(subscription)
 }
 
 #[no_mangle]
