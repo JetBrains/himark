@@ -803,18 +803,36 @@ pub struct Text {
     font: skia_safe::Font,
     color: skia_safe::Color,
     tracking: f32,
+    shaper: std::rc::Rc<TextShaper>,
 }
 
-pub fn text(content: impl Into<String>, font: skia_safe::Font, color: skia_safe::Color) -> Text {
-    Text {
-        text: content.into(),
-        font,
-        color,
-        tracking: 0.0,
-    }
+pub fn text(
+    ui: &crate::ui::UiCtx,
+    content: impl Into<String>,
+    font: skia_safe::Font,
+    color: skia_safe::Color,
+) -> Text {
+    Text::with_shaper(content, font, color, TextShaper::of(ui))
 }
 
 impl Text {
+    /// `text` for callers holding the ctx's `TextShaper` handle
+    /// already — layout structs built where `UiCtx` was in scope.
+    pub fn with_shaper(
+        content: impl Into<String>,
+        font: skia_safe::Font,
+        color: skia_safe::Color,
+        shaper: std::rc::Rc<TextShaper>,
+    ) -> Text {
+        Text {
+            text: content.into(),
+            font,
+            color,
+            tracking: 0.0,
+            shaper,
+        }
+    }
+
     /// Extra per-glyph advance — the caps-label look several chrome
     /// labels hand-roll today.
     pub fn tracking(mut self, tracking: f32) -> Self {
@@ -823,44 +841,172 @@ impl Text {
     }
 }
 
+/// A label shaped and measured, ready to paint: chrome labels ride
+/// Skia's paragraph engine — the editor's pipeline — so system font
+/// fallback, grapheme clusters and bidi come from the shaper.
+/// `draw_str` alone paints notdef boxes for key symbols like ⌘ that
+/// UI faces rarely cover (the chrome typeface resolves to Helvetica
+/// on macOS, which maps almost none of ⌘ ⌃ ⌥ ⇧ ⌫ ⎋).
+struct ShapedLabel {
+    paragraph: skia_safe::textlayout::Paragraph,
+    /// The unwrapped single-line advance — what `measure_str` answered
+    /// when `Text` drew its glyphs itself.
+    width: f32,
+    /// First-line alphabetic baseline, from the paragraph's top.
+    baseline: f32,
+}
+
+/// Chrome labels are few, short and repeat every frame, so shaped
+/// paragraphs memoize per (text, face, size, tracking, color). An env
+/// slot in `UiCtx` — per UI thread and warm for the app's lifetime,
+/// like every other font cache (the editor's own memo is
+/// `shape_cache`, keyed by document lines instead).
+pub struct TextShaper {
+    fonts: skia_safe::textlayout::FontCollection,
+    labels: std::cell::RefCell<std::collections::HashMap<LabelKey, LabelEntry>>,
+    clock: std::cell::Cell<u64>,
+}
+
+#[derive(PartialEq, Eq, Hash)]
+struct LabelKey {
+    text: String,
+    typeface: skia_safe::typeface::TypefaceId,
+    size: u32,
+    tracking: u32,
+    argb: u32,
+}
+
+struct LabelEntry {
+    label: std::rc::Rc<ShapedLabel>,
+    last_use: u64,
+}
+
+/// Past this many entries the least-recently-looked-up labels drop;
+/// a steady frame's chrome relooks its labels every pass, so live
+/// ones stay young.
+const LABEL_CAPACITY: usize = 1024;
+
+impl TextShaper {
+    pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Self> {
+        ui.env(|| {
+            let mut fonts = skia_safe::textlayout::FontCollection::new();
+            fonts.set_default_font_manager(skia_safe::FontMgr::new(), None);
+            std::rc::Rc::new(TextShaper {
+                fonts,
+                labels: Default::default(),
+                clock: Default::default(),
+            })
+        })
+        .clone()
+    }
+
+    fn shape(
+        &self,
+        font: &skia_safe::Font,
+        text: &str,
+        color: skia_safe::Color,
+        tracking: f32,
+    ) -> skia_safe::textlayout::Paragraph {
+        let typeface = font.typeface();
+        let mut style = skia_safe::textlayout::TextStyle::new();
+        style.set_typeface(typeface.clone());
+        // The families steer FALLBACK matching (weight/slant for the
+        // borrowed faces); the base glyphs come from the typeface.
+        style.set_font_families(&[typeface.family_name()]);
+        style.set_font_style(typeface.font_style());
+        style.set_font_size(font.size());
+        style.set_color(color);
+        if tracking != 0.0 {
+            style.set_letter_spacing(tracking);
+        }
+        let mut paragraph_style = skia_safe::textlayout::ParagraphStyle::new();
+        paragraph_style.set_text_style(&style);
+        let mut builder =
+            skia_safe::textlayout::ParagraphBuilder::new(&paragraph_style, self.fonts.clone());
+        builder.push_style(&style);
+        builder.add_text(text);
+        let mut paragraph = builder.build();
+        // Labels are single-line; the width only exists to not wrap.
+        paragraph.layout(f32::MAX);
+        paragraph
+    }
+
+    fn label(
+        &self,
+        font: &skia_safe::Font,
+        text: &str,
+        color: skia_safe::Color,
+        tracking: f32,
+    ) -> std::rc::Rc<ShapedLabel> {
+        let clock = self.clock.get() + 1;
+        self.clock.set(clock);
+        let key = LabelKey {
+            text: text.to_owned(),
+            typeface: font.typeface().unique_id(),
+            size: font.size().to_bits(),
+            tracking: tracking.to_bits(),
+            argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
+        };
+        if let Some(entry) = self.labels.borrow_mut().get_mut(&key) {
+            entry.last_use = clock;
+            return std::rc::Rc::clone(&entry.label);
+        }
+        let paragraph = self.shape(font, text, color, tracking);
+        let label = std::rc::Rc::new(ShapedLabel {
+            width: paragraph.max_intrinsic_width(),
+            baseline: paragraph.alphabetic_baseline(),
+            paragraph,
+        });
+        let mut labels = self.labels.borrow_mut();
+        if labels.len() >= LABEL_CAPACITY {
+            labels.retain(|_, entry| entry.last_use + LABEL_CAPACITY as u64 >= clock);
+        }
+        labels.insert(
+            key,
+            LabelEntry {
+                label: std::rc::Rc::clone(&label),
+                last_use: clock,
+            },
+        );
+        label
+    }
+
+    /// Advance of `text` shaped the way `Text` paints it —
+    /// `Font::measure_str` alone counts notdef boxes.
+    pub fn advance(&self, font: &skia_safe::Font, text: &str) -> f32 {
+        self.label(font, text, skia_safe::Color::BLACK, 0.0).width
+    }
+}
+
+/// Advance of `text` shaped the way `Text` paints it, for callsites
+/// that pre-measure symbol strings against a raw `Font`.
+pub fn text_advance(ui: &crate::ui::UiCtx, font: &skia_safe::Font, text: &str) -> f32 {
+    TextShaper::of(ui).advance(font, text)
+}
+
 impl<'a, Command: 'a> Layout<'a, Command> for Text {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
+        // The box keeps the BASE font's metrics — chrome baselines are
+        // hand-computed from them everywhere; taller fallback faces
+        // may overdraw the box rather than move a single baseline.
         let (_, metrics) = self.font.metrics();
         let ascent = -metrics.ascent;
         let height = (ascent + metrics.descent).ceil().max(1.0);
-        let advance = match self.tracking == 0.0 {
-            true => self.font.measure_str(&self.text, None).0,
-            false => self
-                .text
-                .chars()
-                .map(|ch| self.font.measure_str(ch.to_string(), None).0 + self.tracking)
-                .sum(),
-        };
-        let width = advance
+        let shaped = self
+            .shaper
+            .label(&self.font, &self.text, self.color, self.tracking);
+        let width = shaped
+            .width
             .min(constraints.max.width)
             .max(constraints.min.width);
-        let Text {
-            text,
-            font,
-            color,
-            tracking,
-        } = self;
         let label = crate::leaf::leaf::<Command>(width, height).paint_instead(
             move |_arena, canvas, rect| {
-                let mut paint = skia_safe::Paint::default();
-                paint.set_anti_alias(true);
-                paint.set_color(color);
-                let baseline = rect.top + ascent;
-                if tracking == 0.0 {
-                    canvas.draw_str(&text, (rect.left, baseline), &font, &paint);
-                } else {
-                    let mut x = rect.left;
-                    for ch in text.chars() {
-                        let glyph = ch.to_string();
-                        canvas.draw_str(&glyph, (x, baseline), &font, &paint);
-                        x += font.measure_str(&glyph, None).0 + tracking;
-                    }
-                }
+                // The paragraph's own first baseline lands on the
+                // box's base-font baseline — pixel parity with the
+                // draw_str chrome.
+                shaped
+                    .paragraph
+                    .paint(canvas, (rect.left, rect.top + ascent - shaped.baseline));
             },
         );
         ThunkBox::new(
@@ -877,6 +1023,28 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
 mod tests {
     use super::*;
     use crate::leaf::leaf;
+
+    /// The platform UI face misses most keycap symbols (Helvetica has
+    /// no ⌘) — the paragraph pipeline must resolve every one through
+    /// system fallback, or labels paint notdef boxes.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn key_symbols_resolve_to_real_glyphs() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let shaper = TextShaper::of(&ui);
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        let font = skia_safe::Font::from_typeface(face, 13.0);
+        let symbols = "⌘⌃⌥⇧⏎⌫⎋";
+        let mut paragraph = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
+        assert_eq!(
+            paragraph.unresolved_glyphs(),
+            Some(0),
+            "notdef in {symbols}"
+        );
+        assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
+    }
 
     fn sized(width: f32, height: f32) -> impl for<'a> Layout<'a, ()> + LayoutValue {
         SizedProbe { width, height }
@@ -1152,12 +1320,13 @@ mod baseline_tests {
     #[test]
     fn text_answers_its_font_ascent_as_the_line() {
         let arena = Arena::default();
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
         let typeface = skia_safe::FontMgr::new()
             .legacy_make_typeface(None, skia_safe::FontStyle::normal())
             .expect("a system typeface");
         let font = skia_safe::Font::new(typeface, 24.0);
         let thunk: ThunkBox<'_, ()> =
-            text("hello", font.clone(), skia_safe::Color::WHITE).layout(&arena, bounds());
+            text(&ui, "hello", font.clone(), skia_safe::Color::WHITE).layout(&arena, bounds());
         let (_, metrics) = font.metrics();
         assert_eq!(thunk.first_baseline(), Some(-metrics.ascent));
         assert!(thunk.size().width > 0.0, "a real face measures");

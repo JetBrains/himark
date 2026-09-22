@@ -1935,7 +1935,7 @@ impl View for ChatPanel {
                     .chars()
                     .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                     .sum::<f32>()
-                    + key_font.measure_str("⌘⏎", None).0
+                    + imba::text_advance(ui, &key_font, "⌘⏎")
                     + ui_theme.combo.gap
                     + pad * 2.0;
                 let accent = if stop {
@@ -1961,7 +1961,7 @@ impl View for ChatPanel {
                 let caps_ascent = -caps_font.metrics().1.ascent;
                 let key_ascent = -key_font.metrics().1.ascent;
                 let mut row = imba::Row::new(arena).gap(gap).child(
-                    imba::text(label, caps_font.clone(), on_accent)
+                    imba::text(ui, label, caps_font.clone(), on_accent)
                         .tracking(1.5)
                         .pad_insets(imba::Insets {
                             left: 0.0,
@@ -1971,14 +1971,16 @@ impl View for ChatPanel {
                         }),
                 );
                 if !stop {
-                    row = row.child(imba::text("⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                        imba::Insets {
-                            left: 0.0,
-                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        },
-                    ));
+                    row = row.child(
+                        imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                            imba::Insets {
+                                left: 0.0,
+                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            },
+                        ),
+                    );
                 }
                 let cell = row
                     .pad_insets(imba::Insets {
@@ -2024,14 +2026,14 @@ impl View for ChatPanel {
                     true => "⎋ chat".to_owned(),
                     false => status.clone(),
                 };
-                let legend_w = key_font.measure_str(&legend, None).0;
+                let legend_w = imba::text_advance(ui, &key_font, &legend);
                 let legend_x = size.width - cell_width - gap - legend_w;
                 // Squeezed out by the combo cells? The legend yields.
                 if legend_x >= toolbar_cells_right + gap {
                     panel.place_boxed(
                         legend_x,
                         size.height - toolbar_h + 1.0,
-                        imba::text(legend, key_font.clone(), accent_soft)
+                        imba::text(ui, legend, key_font.clone(), accent_soft)
                             .pad_insets(imba::Insets {
                                 left: 0.0,
                                 top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),

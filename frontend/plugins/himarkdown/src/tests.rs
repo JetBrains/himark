@@ -421,7 +421,11 @@ fn intraword_underscores_are_not_emphasis() {
         .iter()
         .map(|token| token.decoration.id)
         .collect();
-    assert_eq!(starred, [StyleId::Emphasis], "asterisks emphasize intraword");
+    assert_eq!(
+        starred,
+        [StyleId::Emphasis],
+        "asterisks emphasize intraword"
+    );
 
     let flanked = inline_decorations("say _hello_ there");
     assert_eq!(flanked.len(), 1, "flanked underscores still emphasize");

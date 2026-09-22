@@ -560,7 +560,7 @@ impl View for SearchView {
                 let caps_ascent = -caps_font.metrics().1.ascent;
                 let key_ascent = -key_font.metrics().1.ascent;
                 let mut cell = imba::Row::new(arena).gap(combo.gap).child(
-                    imba::text(label, caps_font.clone(), on_accent)
+                    imba::text(ui, label, caps_font.clone(), on_accent)
                         .tracking(1.5)
                         .pad_insets(imba::Insets {
                             left: 0.0,
@@ -570,14 +570,16 @@ impl View for SearchView {
                         }),
                 );
                 if !running {
-                    cell = cell.child(imba::text("⏎", key_font.clone(), accent_soft).pad_insets(
-                        imba::Insets {
-                            left: 0.0,
-                            top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        },
-                    ));
+                    cell = cell.child(
+                        imba::text(ui, "⏎", key_font.clone(), accent_soft).pad_insets(
+                            imba::Insets {
+                                left: 0.0,
+                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            },
+                        ),
+                    );
                 }
                 let cell = cell
                     .pad_insets(imba::Insets {
