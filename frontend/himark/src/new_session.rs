@@ -470,15 +470,22 @@ impl NewSessionView {
         let Some(provider) = self.prefill.provider.clone() else {
             return;
         };
-        let key = match &self.prefill.model {
-            Some(model) => Some(format!("\u{1}model:{provider}:{model}")),
-            None => self
-                .model
-                .options()
-                .iter()
-                .find(|option| option.provider == provider && option.model.is_some())
-                .map(|option| option.key.clone()),
-        };
+        let options = self.model.options();
+        // The session's exact model may no longer be advertised; once the
+        // provider is listed, settle for its first model so the agent still
+        // carries over instead of the combo keeping the global default.
+        let key = self
+            .prefill
+            .model
+            .as_ref()
+            .map(|model| format!("\u{1}model:{provider}:{model}"))
+            .filter(|key| options.iter().any(|option| &option.key == key))
+            .or_else(|| {
+                options
+                    .iter()
+                    .find(|option| option.provider == provider && option.model.is_some())
+                    .map(|option| option.key.clone())
+            });
         let Some(key) = key else { return };
         self.model.pick_id(&key);
         if self.model.value().is_some_and(|option| option.key == key) {
@@ -488,20 +495,27 @@ impl NewSessionView {
     }
 
     fn refresh_effort(&mut self, store: &Store, ui: &UiCtx) {
+        // Effort ids such as `medium` recur across models, so the seed waits
+        // for the model prefill to resolve: applied to a stand-in model it
+        // would be consumed there and lost for the intended one.
+        let seed = self
+            .prefill
+            .provider
+            .is_none()
+            .then(|| self.prefill.effort.clone())
+            .flatten();
         crate::higent::sync_effort_for_model(
             store,
             ui,
             &mut self.effort,
             self.model.value().and_then(|option| option.model),
-            self.prefill.effort.as_deref(),
+            seed.as_deref(),
         );
-        if self
-            .effort
-            .value()
-            .zip(self.prefill.effort.as_ref())
-            .is_some_and(|(picked, seed)| &picked.id == seed)
-        {
-            self.prefill.effort = None;
+        if let Some(seed) = seed {
+            self.effort.pick_id(&seed);
+            if self.effort.value().is_some_and(|picked| picked.id == seed) {
+                self.prefill.effort = None;
+            }
         }
     }
 
@@ -575,15 +589,21 @@ impl NewSessionView {
             }
         }
         if fresh_edits {
-            let seed = self.prefill.edits.take().or_else(|| {
-                result
-                    .values
-                    .get("permissionMode")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_owned)
-            });
-            if let Some(value) = seed {
-                self.edits.pick_id(&value);
+            if let Some(value) = result
+                .values
+                .get("permissionMode")
+                .and_then(|value| value.as_str())
+            {
+                self.edits.pick_id(value);
+            }
+        }
+        // An early resolve may carry a schema without the session's mode;
+        // keep the seed until an option matches, as the other prefill
+        // fields do, so a later provider-specific schema can restore it.
+        if let Some(value) = self.prefill.edits.clone() {
+            self.edits.pick_id(&value);
+            if self.edits.value().is_some_and(|option| option.id == value) {
+                self.prefill.edits = None;
             }
         }
     }

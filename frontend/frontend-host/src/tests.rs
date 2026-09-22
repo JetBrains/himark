@@ -6184,8 +6184,55 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
     assert!(!after.model.open, "Enter picked and dismissed");
     assert_eq!(after.model.picked.as_deref(), Some("GPT-5.6 Terra"));
     assert!(after.ready, "prompt + folder + connected host arm Start");
-    let chosen_effort = after.effort.picked.clone();
     let _ = row_mid;
+
+    // Move effort and edits off their defaults (Medium and Ask first), so
+    // the reopened composer provably restores the session's values rather
+    // than landing on the defaults again. The toolbar overflows the 1200px
+    // window by now, so those two cells need a wider viewport to reach.
+    let mut wide = skia_safe::surfaces::raster_n32_premul((2000, 800)).expect("surface");
+    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
+    let cells = probe(&engine).cells.clone();
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        cells[4].0 + cells[4].1 * 0.5,
+        800.0 - 37.0,
+        2000.0,
+        800.0,
+    ));
+    assert!(probe(&engine).effort.open, "the EFFORT menu stands");
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Down,
+        imba::event::Modifiers::default()
+    ));
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers::default()
+    ));
+    assert_eq!(probe(&engine).effort.picked.as_deref(), Some("High"));
+    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
+    let cells = probe(&engine).cells.clone();
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        cells[5].0 + 20.0,
+        800.0 - 37.0,
+        2000.0,
+        800.0,
+    ));
+    assert!(probe(&engine).edits.open, "the EDITS menu stands");
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Down,
+        imba::event::Modifiers::default()
+    ));
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers::default()
+    ));
+    assert_eq!(probe(&engine).edits.picked.as_deref(), Some("Accept edits"));
 
     assert!(himark::test_driver::key(
         &mut engine.app,
@@ -6257,8 +6304,8 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
             try_probe(engine).is_some_and(|probe| {
                 probe.dir.picked.as_deref() == Some("files")
                     && probe.model.picked.as_deref() == Some("GPT-5.6 Terra")
-                    && probe.effort.picked == chosen_effort
-                    && !probe.edits.labels.is_empty()
+                    && probe.effort.picked.as_deref() == Some("High")
+                    && probe.edits.picked.as_deref() == Some("Accept edits")
             })
         },
     );
@@ -6274,12 +6321,13 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         "the session's agent and model carried over"
     );
     assert_eq!(
-        reopened.effort.picked, chosen_effort,
+        reopened.effort.picked.as_deref(),
+        Some("High"),
         "the session's effort carried over"
     );
     assert_eq!(
         reopened.edits.picked.as_deref(),
-        Some("Ask first"),
+        Some("Accept edits"),
         "the session's edits mode carried over"
     );
     assert_eq!(
