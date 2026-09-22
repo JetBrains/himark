@@ -19,6 +19,20 @@ follows.** The engine remains the owner of the world (`Store`,
 `UiCtx`, effects, the wake); the host becomes the owner of the frame
 — which views exist on screen, where, and in what native company.
 
+**The end game is the iOS app rewrite: native touch and Liquid
+Glass controls around bridged content.** The current iOS shell
+(`apps/himark-apple/Sources/iOS`) imitates the platform by hand — a
+`UIPanGestureRecognizer` feeds synthetic scroll deltas into imba's
+own scrollers, momentum is a hand-rolled "glide" decay loop in the
+display-link tick, taps become mouse downs, and every piece of
+chrome is imba-drawn. The rewrite inverts that: `UIScrollView` owns
+scrolling (real physics, rubber-banding, indicators, keyboard
+avoidance), native Liquid Glass bars, sheets, and drawers own the
+chrome, and bridges draw the content slices between them. Every
+design point below that smells scroll-shaped — `measure`, the
+`draw` viewport, reveal rects in content coordinates — exists to
+make that inversion possible.
+
 Three new object kinds cross the boundary, all opaque:
 
 ```
@@ -216,6 +230,30 @@ workbench. One view, one owner, one painter — two painters of one
 The engine-level API stays for whole-window hosts; nothing existing
 moves. The layering is strictly downward: the app FFI is a client of
 the imba FFI's types, never the reverse.
+
+## Touch platforms
+
+Touch needs no touch events. The host recognizes gestures natively
+(`UITapGestureRecognizer` and kin) and hands the bridge the mouse
+roads they resolve to:
+
+- **A tap is a `mouse_down` + `mouse_up`** at the point, `count`
+  carrying double-taps — the translation the iOS shell already does
+  today, minus the parts that stop existing (below). Selection
+  drags ride `mouse_drag`.
+- **Scrolling never enters the bridge.** A pan belongs to the
+  native `UIScrollView`, which moves `draw`'s viewport; the
+  synthetic `scroll` deltas, the hand-rolled glide loop, and the
+  imba scroller wrapping the content all retire. The `scroll`
+  factory stays for pointer platforms — and for the iPad trackpad,
+  where it means a real wheel/trackpad gesture again.
+- **No hover, nothing to clear.** Pure touch mints no
+  `mouse_move`/`hit_test` stream, so hover popups never arm and
+  `window_left` has no work. When iPadOS attaches a pointer, the
+  hover roads apply as on desktop.
+- **Text input keeps its road**: the shell's `UITextInput`
+  integration points at the focused bridge — the marked-text trio
+  and caret-rect probe from the IME decision, nothing extra.
 
 ## Rules of the road
 
