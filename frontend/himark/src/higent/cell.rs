@@ -692,6 +692,7 @@ fn header_band_layout<'a>(
         font: crate::fonts::ui_text_font(ui, chrome.title_size * 0.85),
         color: chrome.text_color.0,
         tracking: 0.0,
+        shaper: imba::TextShaper::of(ui),
     };
     let _ = height;
     let style = crate::ui::RowStyle {

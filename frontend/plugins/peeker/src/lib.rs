@@ -650,6 +650,7 @@ impl View for Peeker {
                 panel_bottom - chrome.row_height
                     + ((chrome.row_height - hint_height) * 0.5).max(0.0),
                 imba::text(
+                    ui,
                     format!(
                         "{} matched   enter open   esc dismiss",
                         match_count + hidden
@@ -664,7 +665,7 @@ impl View for Peeker {
                 container.place_boxed(
                     preview_x,
                     list_top + chrome.no_preview_offset - row_ascent,
-                    imba::text("no preview", row_font.clone(), chrome.dim_text.0)
+                    imba::text(ui, "no preview", row_font.clone(), chrome.dim_text.0)
                         .layout(arena, Constraints::tight(size).loosen()),
                 );
             }

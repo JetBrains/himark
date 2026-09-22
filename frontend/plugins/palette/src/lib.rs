@@ -221,8 +221,13 @@ impl View for PaletteView {
                 container.place_boxed(
                     list_x + chrome.row_text_x,
                     list_top + ((row_height - text_height) * 0.5).max(0.0),
-                    imba::text("no matching commands", row_font.clone(), chrome.dim_text.0)
-                        .layout(arena, Constraints::tight(size).loosen()),
+                    imba::text(
+                        ui,
+                        "no matching commands",
+                        row_font.clone(),
+                        chrome.dim_text.0,
+                    )
+                    .layout(arena, Constraints::tight(size).loosen()),
                 );
             }
             let hint_ascent = -hint_font.metrics().1.ascent;
@@ -230,6 +235,7 @@ impl View for PaletteView {
                 list_x,
                 size.height - chrome.hint_bottom - hint_ascent,
                 imba::text(
+                    ui,
                     format!("{match_count} of {total} commands   ↑↓ select   ⏎ run   esc dismiss"),
                     hint_font.clone(),
                     chrome.dim_text.0,
