@@ -234,6 +234,40 @@ pub const HIMARK_MOD_ALT: u32 = 4;
 
 pub const HIMARK_MOD_COMMAND: u32 = 8;
 
+/// No phase information: a legacy wheel tick, or a host that cannot
+/// tell gestures apart.
+pub const HIMARK_SCROLL_PHASE_NONE: u32 = 0;
+
+pub const HIMARK_SCROLL_PHASE_MAY_BEGIN: u32 = 1;
+
+pub const HIMARK_SCROLL_PHASE_BEGAN: u32 = 2;
+
+pub const HIMARK_SCROLL_PHASE_CHANGED: u32 = 3;
+
+pub const HIMARK_SCROLL_PHASE_ENDED: u32 = 4;
+
+pub const HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN: u32 = 5;
+
+pub const HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED: u32 = 6;
+
+pub const HIMARK_SCROLL_PHASE_MOMENTUM_ENDED: u32 = 7;
+
+/// Whether this event starts a new scroll gesture. Explicit finger-down
+/// phases always do; momentum never does — it belongs to the flick that
+/// spawned it. Phaseless events and bare `changed` streams (hosts that
+/// never report a `began`) fall back to the pause heuristic so a stale
+/// owner cannot wedge the routing forever.
+fn scroll_gesture_boundary(phase: u32, paused: bool) -> bool {
+    match phase {
+        HIMARK_SCROLL_PHASE_MAY_BEGIN | HIMARK_SCROLL_PHASE_BEGAN => true,
+        HIMARK_SCROLL_PHASE_ENDED
+        | HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN
+        | HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED
+        | HIMARK_SCROLL_PHASE_MOMENTUM_ENDED => false,
+        _ => paused,
+    }
+}
+
 fn map_key(code: u32) -> Option<Key> {
     Some(match code {
         HIMARK_KEY_BACKSPACE => Key::Backspace,
@@ -840,17 +874,55 @@ impl HimarkEngine {
         delta_y: f32,
         event_started_at: f64,
     ) -> bool {
-        let size = self.window_size(window);
+        self.scroll_phased_at_time(
+            window,
+            x,
+            y,
+            delta_x,
+            delta_y,
+            HIMARK_SCROLL_PHASE_NONE,
+            event_started_at,
+        )
+    }
 
+    /// A scroll carrying the host's gesture phase. The phase decides where
+    /// one gesture ends and the next begins, which is what pins a whole
+    /// flick — momentum included — to the scroller it started on, the way
+    /// native scroll views route. Hosts without phase information pass
+    /// `HIMARK_SCROLL_PHASE_NONE` and fall back to treating a 250 ms pause
+    /// as the boundary.
+    pub fn scroll_phased_at_time(
+        &mut self,
+        window: u64,
+        x: f32,
+        y: f32,
+        delta_x: f32,
+        delta_y: f32,
+        phase: u32,
+        event_started_at: f64,
+    ) -> bool {
         let now = std::time::Instant::now();
         let paused = self
             .last_scroll
             .get()
             .is_none_or(|last| now.duration_since(last).as_millis() > 250);
-        if paused {
+        self.last_scroll.set(Some(now));
+        if scroll_gesture_boundary(phase, paused) {
             self.scroll_gesture.begin();
         }
-        self.last_scroll.set(Some(now));
+        if delta_x == 0.0
+            && delta_y == 0.0
+            && !matches!(
+                phase,
+                HIMARK_SCROLL_PHASE_NONE | HIMARK_SCROLL_PHASE_CHANGED
+            )
+        {
+            // A bookkeeping edge (mayBegin, began, ended, momentum edges)
+            // with nothing to scroll: the surface under the pointer must
+            // not claim the fresh gesture before its direction is known.
+            return false;
+        }
+        let size = self.window_size(window);
         self.app.dispatch_timed(
             wid(window),
             Event::Scroll {
@@ -1568,6 +1640,21 @@ pub unsafe extern "C" fn himark_scroll(
 ) -> bool {
     engine.as_mut().map_or(false, |engine| {
         engine.scroll(window, x, y, _delta_x, delta_y)
+    })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_scroll_phased(
+    engine: *mut HimarkEngine,
+    window: u64,
+    x: f32,
+    y: f32,
+    delta_x: f32,
+    delta_y: f32,
+    phase: u32,
+) -> bool {
+    engine.as_mut().map_or(false, |engine| {
+        engine.scroll_phased_at_time(window, x, y, delta_x, delta_y, phase, 0.0)
     })
 }
 

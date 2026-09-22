@@ -73,6 +73,11 @@ final class HimarkEngine {
     @discardableResult func scroll(window: UInt64, x: Float, y: Float, dx: Float, dy: Float) -> Bool {
         himark_scroll(engine, window, x, y, dx, dy)
     }
+    @discardableResult func scrollPhased(
+        window: UInt64, x: Float, y: Float, dx: Float, dy: Float, phase: UInt32
+    ) -> Bool {
+        himark_scroll_phased(engine, window, x, y, dx, dy, phase)
+    }
 
     @discardableResult
     func text(window: UInt64, _ string: String) -> Bool {

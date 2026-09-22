@@ -191,9 +191,23 @@ final class HimarkView: NSView, NSTextInputClient {
         let (x, y) = devicePoint(event)
         let s = Float(metalLayer.contentsScale)
         let perLine: Float = event.hasPreciseScrollingDeltas ? 1.0 : Self.lineScroll
-        if engine.scroll(window: windowId, x: x, y: y,
-                         dx: Float(-event.scrollingDeltaX) * perLine * s,
-                         dy: Float(-event.scrollingDeltaY) * perLine * s) { request() }
+        if engine.scrollPhased(window: windowId, x: x, y: y,
+                               dx: Float(-event.scrollingDeltaX) * perLine * s,
+                               dy: Float(-event.scrollingDeltaY) * perLine * s,
+                               phase: himarkScrollPhase(event)) { request() }
+    }
+
+    private func himarkScrollPhase(_ event: NSEvent) -> UInt32 {
+        let momentum = event.momentumPhase
+        if momentum.contains(.began) { return UInt32(HIMARK_SCROLL_PHASE_MOMENTUM_BEGAN) }
+        if momentum.contains(.changed) { return UInt32(HIMARK_SCROLL_PHASE_MOMENTUM_CHANGED) }
+        if !momentum.isEmpty { return UInt32(HIMARK_SCROLL_PHASE_MOMENTUM_ENDED) }
+        let phase = event.phase
+        if phase.contains(.mayBegin) { return UInt32(HIMARK_SCROLL_PHASE_MAY_BEGIN) }
+        if phase.contains(.began) { return UInt32(HIMARK_SCROLL_PHASE_BEGAN) }
+        if phase.contains(.changed) { return UInt32(HIMARK_SCROLL_PHASE_CHANGED) }
+        if !phase.isEmpty { return UInt32(HIMARK_SCROLL_PHASE_ENDED) }
+        return UInt32(HIMARK_SCROLL_PHASE_NONE)
     }
 
     private static let lineScroll: Float = 48.0
