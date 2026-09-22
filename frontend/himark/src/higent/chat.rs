@@ -1935,7 +1935,7 @@ impl View for ChatPanel {
                     .chars()
                     .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                     .sum::<f32>()
-                    + key_font.measure_str("⌘⏎", None).0
+                    + imba::text_advance(&key_font, "⌘⏎")
                     + ui_theme.combo.gap
                     + pad * 2.0;
                 let accent = if stop {
@@ -2024,7 +2024,7 @@ impl View for ChatPanel {
                     true => "⎋ chat".to_owned(),
                     false => status.clone(),
                 };
-                let legend_w = key_font.measure_str(&legend, None).0;
+                let legend_w = imba::text_advance(&key_font, &legend);
                 let legend_x = size.width - cell_width - gap - legend_w;
                 // Squeezed out by the combo cells? The legend yields.
                 if legend_x >= toolbar_cells_right + gap {

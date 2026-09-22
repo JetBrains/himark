@@ -858,7 +858,7 @@ impl View for NewSessionView {
                 .chars()
                 .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                 .sum::<f32>()
-                + key_font.measure_str("⌘⏎", None).0
+                + imba::text_advance(&key_font, "⌘⏎")
                 + theme.combo.gap
                 + pad * 2.0;
             let start_x = size.width - start_width;
@@ -992,7 +992,7 @@ impl View for NewSessionView {
             let hints_width: f32 = hints
                 .iter()
                 .map(|(key, label)| {
-                    key_font.measure_str(key, None).0 + 5.0 + hint_font.measure_str(label, None).0
+                    imba::text_advance(&key_font, key) + 5.0 + hint_font.measure_str(label, None).0
                 })
                 .sum::<f32>()
                 + hint_gap

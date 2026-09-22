@@ -823,17 +823,80 @@ impl Text {
     }
 }
 
+thread_local! {
+    static GLYPH_FALLBACK: std::cell::RefCell<
+        std::collections::HashMap<
+            (skia_safe::typeface::TypefaceId, char),
+            Option<skia_safe::Typeface>,
+        >,
+    > = Default::default();
+}
+
+/// Split `text` into (font, run) pairs the fonts can actually draw:
+/// codepoints the base face has no glyph for get a system-fallback
+/// face from the font manager. `draw_str` alone paints notdef boxes
+/// for them — chrome labels carry key symbols like ⌘ that UI faces
+/// rarely cover.
+fn glyph_runs(font: &skia_safe::Font, text: &str) -> Vec<(skia_safe::Font, String)> {
+    let base = font.typeface();
+    let style = base.font_style();
+    let base_id = base.unique_id();
+    let mut runs: Vec<(Option<skia_safe::Typeface>, String)> = Vec::new();
+    for ch in text.chars() {
+        let face = match font.unichar_to_glyph(ch as i32) != 0 {
+            true => None,
+            false => GLYPH_FALLBACK.with(|cache| {
+                cache
+                    .borrow_mut()
+                    .entry((base_id, ch))
+                    .or_insert_with(|| {
+                        skia_safe::FontMgr::new()
+                            .match_family_style_character("", style, &[], ch as i32)
+                    })
+                    .clone()
+            }),
+        };
+        match runs.last_mut() {
+            Some((last, run))
+                if last.as_ref().map(skia_safe::Typeface::unique_id)
+                    == face.as_ref().map(skia_safe::Typeface::unique_id) =>
+            {
+                run.push(ch)
+            }
+            _ => runs.push((face, String::from(ch))),
+        }
+    }
+    runs.into_iter()
+        .map(|(face, run)| {
+            let mut with = font.clone();
+            if let Some(face) = face {
+                with.set_typeface(face);
+            }
+            (with, run)
+        })
+        .collect()
+}
+
+/// Advance of `text` over the same fallback runs the painter draws —
+/// `Font::measure_str` alone counts notdef boxes.
+pub fn text_advance(font: &skia_safe::Font, text: &str) -> f32 {
+    glyph_runs(font, text)
+        .iter()
+        .map(|(font, run)| font.measure_str(run, None).0)
+        .sum()
+}
+
 impl<'a, Command: 'a> Layout<'a, Command> for Text {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> ThunkBox<'a, Command> {
         let (_, metrics) = self.font.metrics();
         let ascent = -metrics.ascent;
         let height = (ascent + metrics.descent).ceil().max(1.0);
         let advance = match self.tracking == 0.0 {
-            true => self.font.measure_str(&self.text, None).0,
+            true => text_advance(&self.font, &self.text),
             false => self
                 .text
                 .chars()
-                .map(|ch| self.font.measure_str(ch.to_string(), None).0 + self.tracking)
+                .map(|ch| text_advance(&self.font, &ch.to_string()) + self.tracking)
                 .sum(),
         };
         let width = advance
@@ -852,13 +915,20 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
                 paint.set_color(color);
                 let baseline = rect.top + ascent;
                 if tracking == 0.0 {
-                    canvas.draw_str(&text, (rect.left, baseline), &font, &paint);
+                    let mut x = rect.left;
+                    for (run_font, run) in glyph_runs(&font, &text) {
+                        canvas.draw_str(&run, (x, baseline), &run_font, &paint);
+                        x += run_font.measure_str(&run, None).0;
+                    }
                 } else {
                     let mut x = rect.left;
                     for ch in text.chars() {
                         let glyph = ch.to_string();
-                        canvas.draw_str(&glyph, (x, baseline), &font, &paint);
-                        x += font.measure_str(&glyph, None).0 + tracking;
+                        for (run_font, run) in glyph_runs(&font, &glyph) {
+                            canvas.draw_str(&run, (x, baseline), &run_font, &paint);
+                            x += run_font.measure_str(&run, None).0;
+                        }
+                        x += tracking;
                     }
                 }
             },
@@ -877,6 +947,25 @@ impl<'a, Command: 'a> Layout<'a, Command> for Text {
 mod tests {
     use super::*;
     use crate::leaf::leaf;
+
+    /// The platform UI face misses most keycap symbols (Helvetica has
+    /// no ⌘) — every one must come back from `glyph_runs` with a face
+    /// that actually maps it, or labels paint notdef boxes.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn key_symbols_resolve_to_real_glyphs() {
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        let font = skia_safe::Font::from_typeface(face, 13.0);
+        for ch in ['⌘', '⌃', '⌥', '⇧', '⏎', '⌫', '⎋'] {
+            let runs = glyph_runs(&font, &ch.to_string());
+            assert_eq!(runs.len(), 1);
+            let (run_font, run) = &runs[0];
+            assert_eq!(run, &ch.to_string());
+            assert_ne!(run_font.unichar_to_glyph(ch as i32), 0, "no glyph for {ch}");
+        }
+    }
 
     fn sized(width: f32, height: f32) -> impl for<'a> Layout<'a, ()> + LayoutValue {
         SizedProbe { width, height }
