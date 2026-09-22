@@ -52,8 +52,9 @@ impl AgentHostFilesystemCapabilities {
 pub struct HimarkEngine {
     app: Application,
 
-    scroll_gesture: imba::event::ScrollGesture,
-    last_scroll: std::cell::Cell<Option<std::time::Instant>>,
+    /// Per-window: a touch beginning in one window must not break the
+    /// gesture — momentum included — still flowing in another.
+    scroll_states: std::collections::HashMap<u64, WindowScroll>,
 
     compose_new_windows: bool,
 
@@ -83,6 +84,15 @@ pub struct HimarkEngine {
     pending_cut: Option<String>,
 
     runtime: tokio::runtime::Runtime,
+}
+
+/// One window's scroll-gesture stream: the capture cell scroll events
+/// ride, and the time of the last event for the phaseless pause
+/// heuristic.
+#[derive(Default)]
+struct WindowScroll {
+    gesture: imba::event::ScrollGesture,
+    last: Option<std::time::Instant>,
 }
 
 #[derive(Default)]
@@ -581,8 +591,7 @@ impl HimarkEngine {
         Self {
             app,
             compose_new_windows: false,
-            scroll_gesture: imba::event::ScrollGesture::default(),
-            last_scroll: std::cell::Cell::new(None),
+            scroll_states: std::collections::HashMap::new(),
             drain_chunk: Self::DRAIN_CHUNK,
             drain_budget: Self::DRAIN_BUDGET,
             clicks: ClickCounter::default(),
@@ -902,13 +911,13 @@ impl HimarkEngine {
         event_started_at: f64,
     ) -> bool {
         let now = std::time::Instant::now();
-        let paused = self
-            .last_scroll
-            .get()
+        let state = self.scroll_states.entry(window).or_default();
+        let paused = state
+            .last
             .is_none_or(|last| now.duration_since(last).as_millis() > 250);
-        self.last_scroll.set(Some(now));
+        state.last = Some(now);
         if scroll_gesture_boundary(phase, paused) {
-            self.scroll_gesture.begin();
+            state.gesture.begin();
         }
         if delta_x == 0.0
             && delta_y == 0.0
@@ -929,7 +938,7 @@ impl HimarkEngine {
                 point: Point::new(x, y),
                 delta_x,
                 delta_y,
-                gesture: &self.scroll_gesture,
+                gesture: &self.scroll_states[&window].gesture,
             },
             size,
             event_started_at,

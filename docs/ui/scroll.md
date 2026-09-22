@@ -105,11 +105,17 @@ alternatives were observed failing: an exhausted pane handing its
 deltas to whichever surface happened to be next, and nested surfaces
 stealing gestures mid-flight:
 
-- **A gesture is a stream, not an event.** Hosts deliver no phase, so
-  the dispatch root (`HimarkEngine::scroll_at_time`) infers it: scroll
-  events closer together than 250ms continue one gesture; a pause
-  begins a fresh one. The gesture rides every `Event::Scroll` as a
-  capture cell (`imba::event::ScrollGesture`).
+- **A gesture is a stream, not an event.** Hosts that can tell
+  gestures apart say so explicitly (`HIMARK_SCROLL_PHASE_*` through
+  `HimarkEngine::scroll_phased_at_time`): a fresh touch — mayBegin or
+  began — starts a new gesture, and momentum phases never do, so a
+  flick's glide belongs to the gesture that spawned it. Phaseless
+  events (legacy wheels, hosts without phase information) fall back
+  to inference: scroll events closer together than 250ms continue one
+  gesture; a pause begins a fresh one. The stream state is per
+  window — a touch in one window cannot break the gesture flowing in
+  another — and the gesture rides every `Event::Scroll` as a capture
+  cell (`imba::event::ScrollGesture`).
 - **Innermost claims first.** A surface DESCENDS into its content
   before considering the gesture its own — a nested scroll, a pannable
   editor under the cursor outranks every ancestor. Claiming is gated
@@ -128,7 +134,9 @@ rides it), the terminal's scrollback, the editor's horizontal pan
 (`ScrollSurfaceId::keyed` off the editor id — the retained state IS
 the surface; widgets are per-frame). Pinned by imba's
 `an_exhausted_owner_eats_the_gesture` /
-`a_claiming_content_owns_the_whole_gesture` / `a_fitted_view_never_claims`.
+`a_claiming_content_owns_the_whole_gesture` / `a_fitted_view_never_claims`,
+and end to end by frontend-host's
+`phased_scrolls_route_to_the_gesture_owner_per_window`.
 One measured consequence: "scroll until dispatch says unhandled"
 cannot detect the bottom (the owner eats) — the demo benchmark
 derives its step count from content height instead, which also makes
