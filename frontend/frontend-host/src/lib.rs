@@ -617,9 +617,13 @@ impl HimarkEngine {
         window.raw()
     }
 
+    // The committed store is gathered for the PRIMARY window only, so a
+    // sibling window's entity is projected out of it — sizes must come
+    // from the live window state or every non-primary window hit-tests
+    // against a 1x1 layout.
     fn window_size(&self, window: u64) -> Size {
-        himark::Windows::window_ref(self.app.store(), wid(window))
-            .map(|entity| entity.viewport_size())
+        self.app
+            .window_viewport(wid(window))
             .unwrap_or_else(|| Size::new(1.0, 1.0))
     }
 
