@@ -1491,10 +1491,12 @@ impl Host {
     }
 
     fn apply(&self, channel: &Uri, action: StateAction) {
-        let mut summary_changes: Option<(Uri, PartialSessionSummary)> = None;
         self.update(|state| {
             state.server_seq += 1;
             let server_seq = state.server_seq as u64;
+            // Deferred until after the action's own broadcast below:
+            // subscribers hear the cause before the derived summary.
+            let mut summary_changes: Option<(Uri, PartialSessionSummary)> = None;
             if channel == ROOT {
                 let mut root = state.root.clone();
                 let _ = ahp::reducers::apply_action_to_root(&mut root, &action);
@@ -1506,13 +1508,11 @@ impl Host {
                 let after = entry.state.status;
                 state.sessions.insert_mut(channel.clone(), entry);
                 if after != before {
-                    summary_changes = Some((
-                        channel.clone(),
-                        PartialSessionSummary {
-                            status: Some(after),
-                            ..Default::default()
-                        },
-                    ));
+                    let changes = PartialSessionSummary {
+                        status: Some(after),
+                        ..Default::default()
+                    };
+                    summary_changes = Some((channel.clone(), changes));
                 }
             } else if let Some(entry) = state.chats.get(channel) {
                 let mut entry = entry.clone();
@@ -1564,16 +1564,29 @@ impl Host {
             if state.replay.len() > REPLAY_DEPTH {
                 state.replay.dequeue_mut();
             }
+            if let Some((session, changes)) = summary_changes {
+                Self::summary_changed_locked(state, &session, &changes);
+            }
         });
-        if let Some((session, changes)) = summary_changes {
-            self.notify_root(
-                "root/sessionSummaryChanged",
-                serde_json::json!({
-                    "channel": ROOT,
-                    "session": session,
-                    "changes": changes,
-                }),
-            );
+    }
+
+    /// Publishes a `root/sessionSummaryChanged` while the state lock is
+    /// held: the notification order matches the commit order, so two
+    /// racing appliers cannot regress a subscriber's summary to an older
+    /// status or stamp. Outboxes are unbounded — sending never blocks.
+    fn summary_changed_locked(state: &State, session: &Uri, changes: &PartialSessionSummary) {
+        let line = rpc::line(&rpc::notification(
+            "root/sessionSummaryChanged",
+            serde_json::json!({
+                "channel": ROOT,
+                "session": session,
+                "changes": changes,
+            }),
+        ));
+        if let Some(subscribers) = state.subscribers.get(ROOT) {
+            for (_, outbox) in subscribers.iter() {
+                let _ = outbox.send(line.clone());
+            }
         }
     }
 
