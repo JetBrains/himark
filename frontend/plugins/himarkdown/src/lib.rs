@@ -913,9 +913,7 @@ fn underscore_decorations(
         while chars.next_if(|&(_, ch)| ch == '_').is_some() {
             end += 1;
         }
-        let word_after = chars
-            .peek()
-            .is_some_and(|&(_, ch)| ch.is_alphanumeric());
+        let word_after = chars.peek().is_some_and(|&(_, ch)| ch.is_alphanumeric());
 
         let mut found = start;
         while found + width <= end {
@@ -933,10 +931,7 @@ fn underscore_decorations(
                         break; // the whole run shares this flank and cannot close
                     } else {
                         tokens.push(InlineToken {
-                            decoration: TextDecorationInterval::new(
-                                content_start..found,
-                                style,
-                            ),
+                            decoration: TextDecorationInterval::new(content_start..found, style),
                             syntax: vec![open_at..content_start, found..found + width],
                         });
                         open = None;
