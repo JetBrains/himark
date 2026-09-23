@@ -1027,14 +1027,6 @@ impl Window {
         changed
     }
 
-    pub(crate) fn visited_sessions(&self) -> Vec<crate::SessionId> {
-        let mut ids = vec![self.current_session.clone()];
-        for (id, _) in self.workbenches.iter() {
-            ids.push(id.clone());
-        }
-        ids
-    }
-
     pub(crate) fn stashed_workbenches(
         &self,
     ) -> impl Iterator<Item = (&crate::SessionId, &Workbench)> + '_ {

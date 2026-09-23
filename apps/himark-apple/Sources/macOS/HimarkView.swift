@@ -317,8 +317,8 @@ final class HimarkView: NSView, NSTextInputClient {
         if engine.perform(window: windowId, command: "changes.view") { request() }
     }
 
-    @objc func toggleWorkspaceSwitcher(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "session.switch") { request() }
+    @objc func toggleAgentsSwitcher(_ sender: Any?) {
+        if engine.perform(window: windowId, command: "agent.toggle-agents") { request() }
     }
 
     @objc func splitPane(_ sender: Any?) {

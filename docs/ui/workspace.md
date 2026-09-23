@@ -60,7 +60,7 @@ rider).
 
 The window's side slot always holds a DRAWER — the himark-level
 chrome that owns APPEARING and DISAPPEARING for every side panel (the
-file tree, the switcher). The drawer rolls the panel in on show,
+file tree, the agents drawer). The drawer rolls the panel in on show,
 rolls it away on focus loss (`ModalView::focus_lost`, filed by the
 window layer when an interaction lands outside), and converts the
 content's `Close` request into an animated exit — the real close
@@ -70,19 +70,14 @@ instantly and the follow-up lands the same frame. Content panels hold
 NONE of this — they draw a `DRAWER_WIDTH` surface at the left edge
 and speak plain requests.
 
-## The switcher
+## Switching
 
-`session.switch` ("Switch Session", shift-cmd-U) toggles the switcher
-drawer: a peeker-styled list whose rows DERIVE (nothing is stored) —
-the local space ("Local") first, then the window's visited
-scratch-only sessions ("Scratch N"), then every host's session
-catalog (rows named by summary title, else the first folder), with
-"+ New Scratch" last. Up/Down move the selection; Enter or a click
-picks: picking another session files `ModalRequest::Perform` with the
-switch command (`session.switch-to`) — the drain dismisses the drawer
-and the workbench swaps in the same frame; picking the current
-session just closes; picking "+ New Scratch" mints a scratch-only
-session and switches.
+`agent.toggle-agents` ("Agents", shift-cmd-U) toggles the agents
+drawer (docs/ahp/agents.md) — the one list of every host's session
+catalog. Picking a session row files `ModalRequest::Perform` with the
+drawer's open command — the drain dismisses the drawer and the
+workbench swaps in the same frame. There is no separate workspace
+switcher; the drawer IS the switch surface.
 
 ## Folder scoping
 

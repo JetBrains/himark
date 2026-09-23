@@ -43,9 +43,6 @@ final class HimarkViewController: UIViewController, UIDocumentPickerDelegate {
                     UIAction(title: "Workspace Tree", image: UIImage(systemName: "sidebar.left")) {
                         [weak self] _ in self?.himarkView.toggleWorkspaceTree()
                     },
-                    UIAction(title: "Switch Workspace", image: UIImage(systemName: "square.on.square")) {
-                        [weak self] _ in self?.himarkView.toggleWorkspaceSwitcher()
-                    },
                     UIAction(title: "Split Pane", image: UIImage(systemName: "rectangle.split.2x1")) {
                         [weak self] _ in self?.himarkView.splitPane()
                     },

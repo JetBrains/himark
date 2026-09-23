@@ -20,11 +20,6 @@ use imba::{
 };
 use skia_safe::{Paint, PathBuilder, Size};
 
-mod switcher;
-pub use switcher::{SessionSwitcherView, SwitchSession, ToggleSessionSwitcher};
-
-pub(crate) const PANEL_WIDTH: f32 = crate::DRAWER_WIDTH;
-
 pub(crate) const PANEL_PAD: f32 = 6.0;
 
 enum Activation {
