@@ -179,6 +179,7 @@ pub struct ComposerFeed {
     pub resolved: rpds::HashTrieMapSync<
         crate::WindowId,
         (
+            u64,
             HostId,
             Result<ahp_types::commands::ResolveSessionConfigResult, String>,
         ),
@@ -927,11 +928,15 @@ impl View for NewSessionView {
                 let resolved = store
                     .get::<ComposerFeed>()
                     .and_then(|feed| feed.resolved.get(&self.window).cloned());
-                if let Some((host, result)) = resolved {
+                if let Some((request, host, result)) = resolved {
+                    let superseded = store
+                        .get::<ComposerFeed>()
+                        .and_then(|feed| feed.resolving.get(&self.window).cloned())
+                        .is_some_and(|(current, _)| current != request);
                     store.update::<ComposerFeed>(|feed| {
                         feed.resolved.remove_mut(&self.window);
                     });
-                    if Some(host) == self.picked_host() {
+                    if !superseded && Some(host) == self.picked_host() {
                         match result {
                             Ok(result) => self.apply_schema(store, ui, result),
                             Err(error) => {
@@ -1898,7 +1903,8 @@ impl crate::DynamicCommand for ConfigResolved {
         let result = self.result.clone();
         store.update::<ComposerFeed>(|feed| {
             feed.resolving.remove_mut(&window);
-            feed.resolved.insert_mut(window, (host, result.clone()));
+            feed.resolved
+                .insert_mut(window, (self.request, host, result.clone()));
         });
         bump_feed(store);
     }
