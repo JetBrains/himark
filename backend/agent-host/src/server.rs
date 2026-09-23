@@ -608,6 +608,13 @@ impl Host {
                     continue;
                 }
             }
+            // The summary keeps the replayed chat's activity bits (an
+            // errored last turn stays an errored session); only the
+            // read mark resets — unread state is not persisted.
+            let mut session = session_state(&manifest);
+            session.status = (session.status & !STATUS_ACTIVITY_MASK)
+                | (chat_state.status & STATUS_ACTIVITY_MASK);
+            session.activity = chat_state.activity.clone();
             chats.insert_mut(
                 manifest.default_chat.clone(),
                 ChatEntry {
@@ -625,7 +632,7 @@ impl Host {
             sessions.insert_mut(
                 manifest.session.clone(),
                 SessionEntry {
-                    state: session_state(&manifest),
+                    state: session,
                     annotations: AnnotationsState {
                         annotations: manifest.annotations.clone(),
                     },
