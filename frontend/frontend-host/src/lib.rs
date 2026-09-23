@@ -15,6 +15,7 @@ mod host;
 mod lsproute;
 use hiahp::uris;
 
+use demo::demo_location;
 use himark::{AppCommand, AppExt, Application, BackgroundRunner};
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, MouseButton};
@@ -131,14 +132,6 @@ fn register_agent_server(
     himark::higent::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
     seats.record(id, seat);
     id
-}
-
-fn demo_location(name: &str) -> himark::ResourceLocation {
-    himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("demo"),
-        vec![name.to_owned()],
-    )
 }
 
 #[derive(Clone)]
@@ -420,6 +413,8 @@ impl HimarkEngine {
         app.register_session_family(hidiff::canvases_session_family());
         app.register_navigator(hidiff::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
+        app.register_command(Arc::new(demo::OpenMonsterDemo));
+        app.register_command(Arc::new(demo::OpenWallOfTextDemo));
 
         app.register_editor_command(Arc::new(himark::hicomments::AddComment));
 

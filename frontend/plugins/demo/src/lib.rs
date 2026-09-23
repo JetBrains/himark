@@ -34,6 +34,66 @@ pub fn wall_of_text_document(
     wall_of_text(1_000_000)
 }
 
+pub fn demo_location(name: &str) -> himark::ResourceLocation {
+    himark::ResourceLocation::new(
+        himark::ResourceType::document(),
+        himark::Authority::new("demo"),
+        vec![name.to_owned()],
+    )
+}
+
+pub struct OpenMonsterDemo;
+
+impl himark::DynamicCommand for OpenMonsterDemo {
+    fn id(&self) -> &'static str {
+        "demo.open-document"
+    }
+    fn name(&self) -> String {
+        "Open Demo Document".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut himark::Application,
+        _store: &mut imba::store::Store,
+        window: himark::WindowId,
+        fx: &mut himark::AppFx<'_>,
+    ) {
+        fx.push(himark::open_effect(
+            window,
+            "torture sample".to_owned(),
+            true,
+            Some(demo_location("torture sample")),
+            Box::new(monster_document),
+        ));
+    }
+}
+
+pub struct OpenWallOfTextDemo;
+
+impl himark::DynamicCommand for OpenWallOfTextDemo {
+    fn id(&self) -> &'static str {
+        "demo.open-wall-of-text"
+    }
+    fn name(&self) -> String {
+        "Open Demo Wall of Text".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut himark::Application,
+        _store: &mut imba::store::Store,
+        window: himark::WindowId,
+        fx: &mut himark::AppFx<'_>,
+    ) {
+        fx.push(himark::open_effect(
+            window,
+            "wall of text".to_owned(),
+            true,
+            Some(demo_location("wall of text")),
+            Box::new(wall_of_text_document),
+        ));
+    }
+}
+
 pub fn wall_of_text(lines: usize) -> Document {
     let unit = "0000 :: lorem ipsum dolor sit amet :: 00 ";
     let mut block = String::new();
