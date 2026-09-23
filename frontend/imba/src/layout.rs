@@ -878,6 +878,7 @@ struct StyleKey {
     size: u32,
     tracking: u32,
     argb: u32,
+    embolden: bool,
 }
 
 struct LabelEntry {
@@ -921,7 +922,27 @@ impl TextShaper {
         color: skia_safe::Color,
         tracking: f32,
     ) -> skia_safe::textlayout::Paragraph {
-        let typeface = font.typeface();
+        let mut typeface = font.typeface();
+        // Synthetic bold (`Font::set_embolden`) has no paragraph
+        // counterpart — resolve the family's real bold face instead;
+        // a family without one keeps the base face.
+        if font.is_embolden() {
+            let base = typeface.font_style();
+            let bold = skia_safe::FontStyle::new(
+                skia_safe::font_style::Weight::BOLD,
+                base.width(),
+                base.slant(),
+            );
+            if let Some(face) = self
+                .fonts
+                .clone()
+                .find_typefaces(&[typeface.family_name()], bold)
+                .into_iter()
+                .next()
+            {
+                typeface = face;
+            }
+        }
         let mut style = skia_safe::textlayout::TextStyle::new();
         style.set_typeface(typeface.clone());
         // The families steer FALLBACK matching (weight/slant for the
@@ -959,6 +980,7 @@ impl TextShaper {
             size: font.size().to_bits(),
             tracking: tracking.to_bits(),
             argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
+            embolden: font.is_embolden(),
         };
         if let Some(entry) = self
             .labels
@@ -1112,6 +1134,34 @@ mod tests {
             paragraph.unresolved_glyphs(),
             Some(0),
             "notdef in {symbols}"
+        );
+    }
+
+    /// `Font::set_embolden` has no paragraph counterpart, so shaping
+    /// resolves the family's real bold face — and the label cache
+    /// must keep bold and regular apart (same typeface id otherwise).
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn embolden_resolves_the_bold_face() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let shaper = TextShaper::of(&ui);
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        let mut bold = skia_safe::Font::from_typeface(face, 13.0);
+        bold.set_embolden(true);
+        let paragraph = shaper.shape(&bold, "bold label", skia_safe::Color::BLACK, 0.0);
+        let weights: Vec<i32> = paragraph
+            .get_fonts()
+            .iter()
+            .map(|info| *info.font.typeface().font_style().weight())
+            .collect();
+        assert!(!weights.is_empty(), "the label resolves at least one run");
+        assert!(
+            weights
+                .iter()
+                .all(|weight| *weight >= *skia_safe::font_style::Weight::BOLD),
+            "runs must resolve bold faces, got weights {weights:?}"
         );
     }
 
