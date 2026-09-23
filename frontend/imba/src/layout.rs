@@ -997,6 +997,33 @@ impl TextShaper {
     pub fn advance(&self, font: &skia_safe::Font, text: &str) -> f32 {
         self.label(font, text, skia_safe::Color::BLACK, 0.0).width
     }
+
+    /// `advance` with the per-glyph tracking chrome caps labels use.
+    pub fn tracked_advance(&self, font: &skia_safe::Font, text: &str, tracking: f32) -> f32 {
+        self.label(font, text, skia_safe::Color::BLACK, tracking)
+            .width
+    }
+
+    /// Paint `text` at `x` with the first line's alphabetic baseline
+    /// on `baseline` — for hand-rolled paint closures whose labels
+    /// would otherwise ride `draw_str` and paint notdef boxes.
+    /// Returns the advance.
+    pub fn draw(
+        &self,
+        canvas: &skia_safe::Canvas,
+        font: &skia_safe::Font,
+        text: &str,
+        color: skia_safe::Color,
+        tracking: f32,
+        x: f32,
+        baseline: f32,
+    ) -> f32 {
+        let label = self.label(font, text, color, tracking);
+        label
+            .paragraph
+            .paint(canvas, (x, baseline - label.baseline));
+        label.width
+    }
 }
 
 /// Advance of `text` shaped the way `Text` paints it, for callsites
@@ -1065,6 +1092,27 @@ mod tests {
             "notdef in {symbols}"
         );
         assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
+    }
+
+    /// Chrome labels also lean on fallback for stray non-Latin
+    /// glyphs — the session toolbar's FULLWIDTH PLUS (U+FF0B) lives
+    /// in CJK faces only.
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn fullwidth_plus_resolves_through_fallback() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let shaper = TextShaper::of(&ui);
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        let font = skia_safe::Font::from_typeface(face, 13.0);
+        let symbols = "＋";
+        let mut paragraph = shaper.shape(&font, symbols, skia_safe::Color::BLACK, 0.0);
+        assert_eq!(
+            paragraph.unresolved_glyphs(),
+            Some(0),
+            "notdef in {symbols}"
+        );
     }
 
     #[test]

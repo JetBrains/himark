@@ -708,11 +708,15 @@ impl View for AgentsPanel {
                 let Some(key) = self.list.inner().content().cursor().cloned() else {
                     return;
                 };
-                if let AgentKey::Server(server) = key {
-                    let expanded = !self.collapsed.contains(&server);
-                    if expanded != expand {
-                        self.activate_key(store, ui, &AgentKey::Server(server), fx);
+                let expanded = match &key {
+                    AgentKey::Server(server) => !self.collapsed.contains(server),
+                    AgentKey::Folder(server, folder) => {
+                        !self.folded.contains(&(*server, folder.clone()))
                     }
+                    _ => return,
+                };
+                if expanded != expand {
+                    self.activate_key(store, ui, &key, fx);
                 }
             }
             AgentsCommand::Pick => {
@@ -768,9 +772,18 @@ impl View for AgentsPanel {
             let inset = crate::panel_inset(&ui_theme);
             let title_font = crate::fonts::ui_font(ui, ui_theme.panel.title_size);
             let mut panel = container(arena, Size::new(PANEL_WIDTH, size.height));
+            let shaper = imba::TextShaper::of(ui);
             let backdrop = leaf::<AgentsCommand>(PANEL_WIDTH, size.height)
                 .paint_instead(move |_arena, canvas, rect| {
-                    crate::paint_panel_chrome(canvas, rect, &ui_theme, &title_font, "Sessions", "");
+                    crate::paint_panel_chrome(
+                        &shaper,
+                        canvas,
+                        rect,
+                        &ui_theme,
+                        &title_font,
+                        "Sessions",
+                        "",
+                    );
                 })
                 .event(|_arena, event, _size| match event {
                     Event::MouseDown { .. } => EventResult::Handled,

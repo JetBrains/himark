@@ -281,7 +281,7 @@ const ADD_FOLDER_LABEL: &str = "＋ FOLDER";
 
 fn action_cell_width(ui: &UiCtx, chrome: &ComboChrome, label: &str) -> f32 {
     let font = crate::fonts::ui_font(ui, chrome.label_size);
-    chrome.pad + crate::combo::tracked_width(&font, label) + chrome.pad
+    chrome.pad + crate::combo::tracked_width(ui, &font, label) + chrome.pad
 }
 
 fn action_cell<'a>(
@@ -295,6 +295,7 @@ fn action_cell<'a>(
     let chrome = theme.combo.clone();
     let rule = theme.toolbar.rule.0;
     let font = crate::fonts::ui_font(ui, chrome.label_size);
+    let shaper = imba::TextShaper::of(ui);
     leaf::<super::chat::ChatPanelCommand>(width, height)
         .paint_below(move |_arena, canvas, rect| {
             let mut paint = skia_safe::Paint::default();
@@ -304,13 +305,12 @@ fn action_cell<'a>(
                 skia_safe::Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
                 &paint,
             );
-            paint.set_anti_alias(true);
-            paint.set_color(chrome.label_color.0);
             let mid = rect.top + rect.height() * 0.5;
             crate::combo::draw_tracked(
+                &shaper,
                 canvas,
                 &font,
-                &paint,
+                chrome.label_color.0,
                 ADD_FOLDER_LABEL,
                 rect.left + chrome.pad,
                 mid + chrome.label_size * 0.35,

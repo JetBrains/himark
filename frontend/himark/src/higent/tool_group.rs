@@ -11,7 +11,7 @@ use imba::{
     thunk_ext::ThunkExt,
     Thunk, UiCtx, View,
 };
-use skia_safe::{Paint, Size};
+use skia_safe::Size;
 
 use crate::env;
 use crate::higent::cell::{Cell, CellCommand, CellKind};
@@ -121,6 +121,7 @@ impl View for ToolRowView {
                         chat.notice_color.0
                     };
                     let text = face.text.clone();
+                    let shaper = imba::TextShaper::of(ui);
                     // The face row's height is ITS OWN: its text
                     // block plus a symmetric padding.
                     let metrics = font.metrics().1;
@@ -130,12 +131,9 @@ impl View for ToolRowView {
                         arena,
                         leaf::<ToolRowCommand>(width, height).paint_instead(
                             move |_arena, canvas, rect| {
-                                let mut paint = Paint::default();
-                                paint.set_anti_alias(true);
-                                paint.set_color(color);
                                 let baseline =
                                     rect.top + rect.height() * 0.5 + tree.font_size * 0.36;
-                                canvas.draw_str(&text, (rect.left, baseline), &font, &paint);
+                                shaper.draw(canvas, &font, &text, color, 0.0, rect.left, baseline);
                             },
                         ),
                     )

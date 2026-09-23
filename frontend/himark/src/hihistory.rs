@@ -933,12 +933,13 @@ impl imba::View for CommitTip {
                 let chrome = theme.ui().combo.clone();
                 let colors = theme.ui().peeker.clone();
                 let font = crate::fonts::ui_text_font(ui, chrome.value_size);
+                let shaper = imba::TextShaper::of(ui);
                 let pad = 14.0f32;
                 let line_h = chrome.value_size * 1.45;
                 let width = self
                     .lines
                     .iter()
-                    .map(|(line, _)| font.measure_str(line, None).0)
+                    .map(|(line, _)| shaper.advance(&font, line))
                     .fold(120.0f32, f32::max)
                     + pad * 2.0;
                 let height = self.lines.len() as f32 * line_h + pad * 2.0;
@@ -951,12 +952,12 @@ impl imba::View for CommitTip {
                         canvas.draw_round_rect(rect, 8.0, 8.0, &paint);
                         let mut y = rect.top + pad + chrome.value_size;
                         for (line, dim) in &lines {
-                            paint.set_color(if *dim {
+                            let color = if *dim {
                                 colors.dim_text.0
                             } else {
                                 colors.text.0
-                            });
-                            canvas.draw_str(line, (rect.left + pad, y), &font, &paint);
+                            };
+                            shaper.draw(canvas, &font, line, color, 0.0, rect.left + pad, y);
                             y += line_h;
                         }
                     },

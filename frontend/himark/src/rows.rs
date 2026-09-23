@@ -72,6 +72,7 @@ pub fn panel_inset(ui: &::editor::theme::UiTheme) -> f32 {
 }
 
 pub fn paint_panel_chrome(
+    shaper: &imba::TextShaper,
     canvas: &skia_safe::Canvas,
     rect: skia_safe::Rect,
     ui: &::editor::theme::UiTheme,
@@ -116,23 +117,28 @@ pub fn paint_panel_chrome(
     ] {
         canvas.draw_rect(edge, &paint);
     }
-    paint.set_anti_alias(true);
-    paint.set_color(panel.title_color.0);
 
-    let mut x = rect.left + panel.title_x;
+    let x = rect.left + panel.title_x;
     let baseline = rect.top + panel.title_baseline;
-    for ch in title.to_uppercase().chars() {
-        let glyph = ch.to_string();
-        canvas.draw_str(&glyph, (x, baseline), title_font, &paint);
-        x += title_font.measure_str(&glyph, None).0 + 1.5;
-    }
+    shaper.draw(
+        canvas,
+        title_font,
+        &title.to_uppercase(),
+        panel.title_color.0,
+        crate::combo::LABEL_TRACKING,
+        x,
+        baseline,
+    );
     if !context.is_empty() {
-        let advance = title_font.measure_str(context, None).0;
-        canvas.draw_str(
-            context,
-            (rect.right - advance - panel.title_x, baseline),
+        let advance = shaper.advance(title_font, context);
+        shaper.draw(
+            canvas,
             title_font,
-            &paint,
+            context,
+            panel.title_color.0,
+            0.0,
+            rect.right - advance - panel.title_x,
+            baseline,
         );
     }
 }
