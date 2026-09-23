@@ -544,7 +544,7 @@ impl View for SearchView {
                     + if running {
                         0.0
                     } else {
-                        key_font.measure_str("⏎", None).0 + combo.gap
+                        imba::text_advance(ui, &key_font, "⏎") + combo.gap
                     }
                     + combo.pad * 2.0;
                 let sendable = self.query().trim().len() >= MIN_QUERY;

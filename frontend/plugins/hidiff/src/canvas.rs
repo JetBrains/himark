@@ -2324,7 +2324,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     .chars()
                     .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                     .sum::<f32>()
-                    + key_font.measure_str("⌘⏎", None).0
+                    + imba::text_advance(ui, &key_font, "⌘⏎")
                     + combo.gap
                     + combo.pad * 2.0;
                 let sendable = message.document.text().byte_count() > 0;

@@ -4,6 +4,14 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 
+/// The app's configured font collection — embedded faces on web, the
+/// system manager on native. The edge seeds it into the ctx at
+/// bootstrap; everything that shapes text (the editor's paragraphs,
+/// `TextShaper`'s labels) reads THIS slot instead of minting a
+/// collection of its own, or a fresh `FontMgr` answers fallback with
+/// fonts the platform may not have.
+pub struct UiFonts(pub skia_safe::textlayout::FontCollection);
+
 pub struct UiCtx {
     slots: RefCell<Vec<(TypeId, Box<dyn Any>)>>,
 }

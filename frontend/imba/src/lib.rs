@@ -33,7 +33,7 @@ pub use clipboard::{ClipboardClient, ClipboardContent};
 pub use dyn_view::{CloneDynView, DynCommand, DynView};
 pub use ime::ImeClient;
 pub use store::{Component, Store};
-pub use ui::UiCtx;
+pub use ui::{UiCtx, UiFonts};
 
 use arena::Arena;
 use event::{Event, EventResult};

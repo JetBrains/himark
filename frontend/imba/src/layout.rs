@@ -893,8 +893,18 @@ const LABEL_CAPACITY: usize = 1024;
 impl TextShaper {
     pub fn of(ui: &crate::ui::UiCtx) -> std::rc::Rc<Self> {
         ui.env(|| {
-            let mut fonts = skia_safe::textlayout::FontCollection::new();
-            fonts.set_default_font_manager(skia_safe::FontMgr::new(), None);
+            // The ctx's configured collection when the edge seeded one
+            // (`UiFonts` carries the embedded faces on web, where a
+            // fresh `FontMgr` knows no font at all); a system-manager
+            // collection only as the bare-ctx fallback.
+            let fonts = match ui.get::<crate::ui::UiFonts>() {
+                Some(fonts) => fonts.0.clone(),
+                None => {
+                    let mut fonts = skia_safe::textlayout::FontCollection::new();
+                    fonts.set_default_font_manager(skia_safe::FontMgr::new(), None);
+                    fonts
+                }
+            };
             std::rc::Rc::new(TextShaper {
                 fonts,
                 labels: Default::default(),
