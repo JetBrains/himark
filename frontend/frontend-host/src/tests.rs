@@ -6233,6 +6233,16 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         imba::event::Modifiers::default()
     ));
     assert_eq!(probe(&engine).edits.picked.as_deref(), Some("Accept edits"));
+    let _ = engine.draw(window, wide.canvas(), 2000.0, 800.0, 1.0);
+    let cells = probe(&engine).cells.clone();
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        cells[6].0 + 20.0,
+        800.0 - 37.0,
+        2000.0,
+        800.0,
+    ));
+    assert!(probe(&engine).worktree, "the worktree checkbox toggled on");
 
     assert!(himark::test_driver::key(
         &mut engine.app,
@@ -6306,6 +6316,7 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
                     && probe.model.picked.as_deref() == Some("GPT-5.6 Terra")
                     && probe.effort.picked.as_deref() == Some("High")
                     && probe.edits.picked.as_deref() == Some("Accept edits")
+                    && probe.worktree
             })
         },
     );
@@ -6329,6 +6340,10 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         reopened.edits.picked.as_deref(),
         Some("Accept edits"),
         "the session's edits mode carried over"
+    );
+    assert!(
+        reopened.worktree,
+        "the session's worktree flag carried over"
     );
     assert_eq!(
         reopened.prompt, "",

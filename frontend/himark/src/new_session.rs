@@ -120,14 +120,17 @@ pub struct PendingFolderPick(pub Arc<Vec<crate::ResourceLocation>>);
 
 /// Values carried over from the session that was current when the composer
 /// opened. Each field is applied once its combo lists the value, then
-/// cleared so later user picks stay untouched.
+/// cleared; an explicit user pick also cancels the corresponding seed so
+/// late-arriving host data never overrides it.
 #[derive(Clone, Default)]
 struct Prefill {
     dir: Option<String>,
     provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    mode: Option<String>,
     edits: Option<String>,
+    worktree: Option<bool>,
 }
 
 impl Prefill {
@@ -154,7 +157,12 @@ impl Prefill {
             };
             prefill.model = value("model");
             prefill.effort = value("thinkingLevel");
+            prefill.mode = value("mode");
             prefill.edits = value("permissionMode");
+            prefill.worktree = config
+                .values
+                .get("worktree")
+                .and_then(|value| value.as_bool());
         }
         prefill
     }
@@ -291,14 +299,14 @@ impl NewSessionView {
             model: Combo::new(store, ui, "MODEL"),
             effort: Combo::new(store, ui, "EFFORT"),
             edits: Combo::new(store, ui, "EDITS"),
-            worktree: false,
+            worktree: prefill.worktree.unwrap_or(false),
             host_hint: host,
             prefill,
             synced: u64::MAX,
             asked: None,
             request: None,
             cell_spans: Arc::new(
-                (0..6)
+                (0..7)
                     .map(|_| std::sync::atomic::AtomicU64::new(0))
                     .collect(),
             ),
@@ -588,6 +596,15 @@ impl NewSessionView {
                 self.mode.pick_id(value);
             }
         }
+        // An early resolve may carry a schema without the session's mode or
+        // edits value; each seed survives until an option matches, so a
+        // later provider-specific schema can still restore it.
+        if let Some(value) = self.prefill.mode.clone() {
+            self.mode.pick_id(&value);
+            if self.mode.value().is_some_and(|option| option.id == value) {
+                self.prefill.mode = None;
+            }
+        }
         if fresh_edits {
             if let Some(value) = result
                 .values
@@ -597,9 +614,6 @@ impl NewSessionView {
                 self.edits.pick_id(value);
             }
         }
-        // An early resolve may carry a schema without the session's mode;
-        // keep the seed until an option matches, as the other prefill
-        // fields do, so a later provider-specific schema can restore it.
         if let Some(value) = self.prefill.edits.clone() {
             self.edits.pick_id(&value);
             if self.edits.value().is_some_and(|option| option.id == value) {
@@ -783,6 +797,9 @@ impl View for NewSessionView {
                     self.host.perform(store, ui, command, fx)
                 });
                 if picked {
+                    // The seeds describe a session on the original host;
+                    // none of them survive an explicit host change.
+                    self.prefill = Prefill::default();
                     self.refresh_dirs(store, ui);
                     self.refresh_models(store, ui);
                     self.file_ask();
@@ -794,6 +811,7 @@ impl View for NewSessionView {
                     self.dir.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.dir = None;
                     if self.dir.value().map(|option| option.id) == Some(PICK_FOLDER.to_owned()) {
                         self.request =
                             Some(crate::PanelRequest::Perform(Arc::new(PickSessionFolder)));
@@ -808,14 +826,23 @@ impl View for NewSessionView {
                     self.mode.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.mode = None;
                     self.file_ask();
                 }
             }
             NewSessionCommand::Model(command) => {
+                let picked = command.picks();
                 let before = self.model.value().map(|option| option.key);
                 fx.scope(NewSessionCommand::Model, |fx| {
                     self.model.perform(store, ui, command, fx)
                 });
+                if picked {
+                    // The effort seed follows the session's model, so an
+                    // explicit model pick retires it along with the model.
+                    self.prefill.provider = None;
+                    self.prefill.model = None;
+                    self.prefill.effort = None;
+                }
                 let after = self.model.value().map(|option| option.key);
                 if before != after {
                     self.effort.set_options(store, ui, Vec::new());
@@ -824,9 +851,13 @@ impl View for NewSessionView {
                 }
             }
             NewSessionCommand::Effort(command) => {
+                let picked = command.picks();
                 fx.scope(NewSessionCommand::Effort, |fx| {
                     self.effort.perform(store, ui, command, fx)
                 });
+                if picked {
+                    self.prefill.effort = None;
+                }
             }
             NewSessionCommand::Edits(command) => {
                 let picked = command.picks();
@@ -834,6 +865,7 @@ impl View for NewSessionView {
                     self.edits.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.edits = None;
                     self.file_ask();
                 }
             }
@@ -1179,6 +1211,12 @@ impl View for NewSessionView {
             let worktree_width =
                 pad * 2.0 + check + 10.0 + hint_font.measure_str(worktree_label, None).0;
             let worktree_x = hints_x - worktree_width;
+            if let Some(span) = self.cell_spans.get(6) {
+                span.store(
+                    ((worktree_x.to_bits() as u64) << 32) | worktree_width.to_bits() as u64,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
             let checked = self.worktree;
             let box_color = theme.combo.label_color.0;
             let text_dim = theme.peeker.dim_text.0;
