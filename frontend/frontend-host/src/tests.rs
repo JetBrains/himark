@@ -6486,6 +6486,122 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         reopened.prompt, "",
         "the prompt starts empty — only the setup carries over"
     );
+
+    // Changing the folder after the prefill must retire the seeded grant:
+    // the placeholder session already holds the carried-over folder, and a
+    // session started from a different pick keeps only that pick.
+    settle_until(
+        engine_mut(&mut engine),
+        "the reopened placeholder gained the seeded folder",
+        |engine| {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            let current = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+                .expect("window")
+                .current_session();
+            current.names_session()
+                && current != session
+                && himark::higent::Agents::channel(engine.app.store(), &current).is_some_and(
+                    |channel| {
+                        channel
+                            .working_directories
+                            .iter()
+                            .any(|held| held.ends_with("files"))
+                    },
+                )
+        },
+    );
+    let reseeded = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("window")
+        .current_session();
+
+    std::fs::create_dir_all(fs.path(&["other"])).expect("other folder");
+    let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+    let dir_cell = probe(&engine).cells[1];
+    assert!(himark::test_driver::click(
+        &mut engine.app,
+        dir_cell.0 + dir_cell.1 * 0.5,
+        800.0 - 37.0,
+        1200.0,
+        800.0,
+    ));
+    assert!(probe(&engine).dir.open, "the DIR menu stands again");
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Down,
+        imba::event::Modifiers::default()
+    ));
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers::default()
+    ));
+    settle(&mut engine);
+    let request = pick_request(&mut engine, &host_seat);
+    assert!(engine.host_picked(request, vec![fs.dir(&["other"])]));
+    settle_until(
+        engine_mut(&mut engine),
+        "the replacement folder landed",
+        |engine| {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            probe(engine).dir.picked.as_deref() == Some("other")
+        },
+    );
+    settle_until(
+        engine_mut(&mut engine),
+        "the seeded folder grant was revoked",
+        |engine| {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            himark::higent::Agents::channel(engine.app.store(), &reseeded).is_some_and(|channel| {
+                channel.working_directories.len() == 1
+                    && channel
+                        .working_directories
+                        .iter()
+                        .all(|held| held.ends_with("other"))
+            })
+        },
+    );
+
+    assert!(himark::test_driver::type_text(&mut engine.app, "again"));
+    assert!(probe(&engine).ready, "prompt + folder re-arm Start");
+    settle(&mut engine);
+    assert!(himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers {
+            command: true,
+            ..Default::default()
+        }
+    ));
+    settle(&mut engine);
+    settle_until(
+        engine_mut(&mut engine),
+        "the re-picked session started",
+        |engine| {
+            let _ = engine.draw(window, surface.canvas(), 1200.0, 800.0, 1.0);
+            himark::new_session::Placeholders::session_of(
+                engine.app.store(),
+                engine.app.sole_window(),
+            )
+            .is_none()
+        },
+    );
+    let restarted = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("window")
+        .current_session();
+    assert_eq!(
+        restarted, reseeded,
+        "start continued the reseeded placeholder session"
+    );
+    settle(&mut engine);
+    let dirs = himark::higent::Agents::channel(engine.app.store(), &restarted)
+        .expect("the restarted session channel mirror")
+        .working_directories
+        .clone();
+    assert_eq!(dirs.len(), 1, "only the picked folder remains: {dirs:?}");
+    assert!(
+        dirs[0].ends_with("other"),
+        "the picked folder replaced the seeded one: {dirs:?}"
+    );
 }
 
 fn engine_mut(engine: &mut HimarkEngine) -> &mut HimarkEngine {
