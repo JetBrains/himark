@@ -125,7 +125,14 @@ impl AgentsPanel {
         self.list
             .content()
             .rows()
-            .map(|row| (row.inner().text().to_owned(), usize::from(row.depth())))
+            .map(|row| {
+                let label = row.inner();
+                let text = match label.badge() {
+                    Some(glyph) => format!("{glyph} {}", label.text()),
+                    None => label.text().to_owned(),
+                };
+                (text, usize::from(row.depth()))
+            })
             .collect()
     }
 
@@ -134,7 +141,9 @@ impl AgentsPanel {
         let mut slice: ListSlice<TreeRow, AgentKey> = ListSlice::new();
 
         let now = std::time::SystemTime::now();
-        let dim = crate::env::Themes::of(store).ui().peeker.dim_text.0;
+        let theme = crate::env::Themes::of(store);
+        let dim = theme.ui().peeker.dim_text.0;
+        let (accent, stop) = (theme.ui().chat.accent.0, theme.ui().chat.stop_color.0);
         for (server, record) in Agents::list(store) {
             let expanded = !self.collapsed.contains(&server);
             let label = match &record.status {
@@ -230,6 +239,7 @@ impl AgentsPanel {
                                 AgentKey::Session(server, summary.resource.clone()),
                                 crate::TreeItemView::leaf(
                                     TreeLabel::new(session_label(summary), true, false)
+                                        .with_badge(session_badge(summary, accent, stop, dim))
                                         .with_trail(age_trail(now, dim, summary)),
                                     depth,
                                 ),
@@ -455,16 +465,36 @@ fn folders_label(folders: &[String]) -> String {
         .join(", ")
 }
 
+/// The session's activity mark: one glyph in one color, leading the
+/// row. Circles tell the session's own pace (○ hollow while a turn is
+/// still cooking, ● filled once an answer stands unviewed);
+/// punctuation flags the states that want the user (? blocked on an
+/// answer, ! the last turn failed).
+fn session_badge(
+    summary: &SessionSummary,
+    accent: skia_safe::Color,
+    stop: skia_safe::Color,
+    dim: skia_safe::Color,
+) -> Option<(String, skia_safe::Color)> {
+    let status = summary.status;
+    // InputNeeded contains the InProgress bit — ask before running.
+    if status & 24 == 24 {
+        return Some(("?".to_owned(), accent));
+    }
+    if status & 8 != 0 {
+        return Some(("○".to_owned(), accent));
+    }
+    if status & 2 != 0 {
+        return Some(("!".to_owned(), stop));
+    }
+    if status & 32 == 0 {
+        return Some(("●".to_owned(), dim));
+    }
+    None
+}
+
 fn session_label(summary: &SessionSummary) -> String {
     let mut label = String::new();
-    if summary.status & 8 != 0 {
-        // InProgress: hollow — the turn is still cooking.
-        label.push_str("○ ");
-    } else if summary.status & 32 == 0 {
-        // Not IsRead: filled — an answer stands ready since the
-        // last view.
-        label.push_str("● ");
-    }
     label.push_str(&summary.title);
     if let Some(activity) = summary
         .activity

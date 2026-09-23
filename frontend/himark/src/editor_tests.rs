@@ -4696,16 +4696,31 @@ mod dock_tests {
             vec![
                 summary("older himark", &[HIMARK], "2026-09-20T10:00:00Z"),
                 {
-                    // Changed since last viewed — the drawer marks it.
+                    // Changed since last viewed — the filled dot.
                     let mut stray = summary("stray", &[], "2026-09-21T10:00:00Z");
                     stray.status = 1;
                     stray
                 },
-                summary("docs session", &[DOCS], "2026-09-21T12:00:00Z"),
-                summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z"),
+                {
+                    // The last turn failed — the bang.
+                    let mut errored = summary("docs session", &[DOCS], "2026-09-21T12:00:00Z");
+                    errored.status = 34; // Error | IsRead
+                    errored
+                },
+                {
+                    // A turn is streaming — the hollow dot.
+                    let mut busy = summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z");
+                    busy.status = 40; // InProgress | IsRead
+                    busy
+                },
                 // The pair sessions share a folder SET — order must not
                 // split them into two groups.
-                summary("pair", &[HIMARK, DOCS], "2026-09-22T11:00:00Z"),
+                {
+                    // Blocked on the user's answer — the question mark.
+                    let mut asking = summary("pair", &[HIMARK, DOCS], "2026-09-22T11:00:00Z");
+                    asking.status = 56; // InputNeeded | IsRead
+                    asking
+                },
                 summary("pair reversed", &[DOCS, HIMARK], "2026-09-21T09:00:00Z"),
             ],
             true,
@@ -4730,13 +4745,13 @@ mod dock_tests {
                 // The two-folder set holds the freshest session, so that
                 // group leads; both orderings of the set land in it.
                 ("docs, himark".to_owned(), 1),
-                ("pair".to_owned(), 2),
+                ("? pair".to_owned(), 2),
                 ("pair reversed".to_owned(), 2),
                 ("himark".to_owned(), 1),
-                ("fresh himark".to_owned(), 2),
+                ("○ fresh himark".to_owned(), 2),
                 ("older himark".to_owned(), 2),
                 ("docs".to_owned(), 1),
-                ("docs session".to_owned(), 2),
+                ("! docs session".to_owned(), 2),
                 // No folder — the stray stays a plain row, ranked by its
                 // own recency; unread, so it wears the filled dot.
                 ("● stray".to_owned(), 1),
@@ -4757,11 +4772,11 @@ mod dock_tests {
             vec![
                 ("Local".to_owned(), 0),
                 ("docs, himark".to_owned(), 1),
-                ("pair".to_owned(), 2),
+                ("? pair".to_owned(), 2),
                 ("pair reversed".to_owned(), 2),
                 ("himark".to_owned(), 1),
                 ("docs".to_owned(), 1),
-                ("docs session".to_owned(), 2),
+                ("! docs session".to_owned(), 2),
                 ("● stray".to_owned(), 1),
                 ("+ New Session…".to_owned(), 1),
                 ("+ Add Host…".to_owned(), 0),
