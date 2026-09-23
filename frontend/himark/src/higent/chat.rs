@@ -1168,6 +1168,7 @@ impl ChatPanel {
                     if let Some(text) = self.steering.take() {
                         self.send_text(store, ui, text, fx);
                     }
+                    self.mark_read(store, fx);
                 }
                 StateAction::ChatError(action) => {
                     let markdown = format!(
@@ -1186,6 +1187,7 @@ impl ChatPanel {
                     if let Some(text) = self.steering.take() {
                         self.send_text(store, ui, text, fx);
                     }
+                    self.mark_read(store, fx);
                 }
 
                 _ => {}
