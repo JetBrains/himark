@@ -170,9 +170,12 @@ impl Prefill {
 
 /// Per-window: two windows can compose concurrently, and a shared slot
 /// would let one consume or clobber the schema resolved for the other.
+/// Each resolve request is tagged with a `sequence` number; only the
+/// request currently on file for the window may deliver, so a late
+/// arrival from a superseded or dismantled composer is ignored.
 #[derive(Clone, Default)]
 pub struct ComposerFeed {
-    pub resolving: rpds::HashTrieMapSync<crate::WindowId, CancellationToken>,
+    pub resolving: rpds::HashTrieMapSync<crate::WindowId, (u64, CancellationToken)>,
     pub resolved: rpds::HashTrieMapSync<
         crate::WindowId,
         (
@@ -181,6 +184,7 @@ pub struct ComposerFeed {
         ),
     >,
 
+    pub sequence: u64,
     pub generation: u64,
 }
 
@@ -1723,12 +1727,17 @@ impl crate::DynamicCommand for ComposerAsk {
             );
         }
 
-        if let Some(token) = store
+        if let Some((_, token)) = store
             .get::<ComposerFeed>()
             .and_then(|feed| feed.resolving.get(&window).cloned())
         {
             fx.cancel(token);
         }
+        let request = store
+            .get::<ComposerFeed>()
+            .map(|feed| feed.sequence)
+            .unwrap_or(0)
+            .wrapping_add(1);
         let token = fx.push(
             AnyEffect::new(ResolveSessionConfigEffect {
                 seat,
@@ -1736,11 +1745,19 @@ impl crate::DynamicCommand for ComposerAsk {
                 config: Some(self.config.clone()),
             })
             .map(move |result| {
-                crate::app::AppCommand::Dynamic(window, Arc::new(ConfigResolved { host, result }))
+                crate::app::AppCommand::Dynamic(
+                    window,
+                    Arc::new(ConfigResolved {
+                        host,
+                        request,
+                        result,
+                    }),
+                )
             }),
         );
         store.update::<ComposerFeed>(|feed| {
-            feed.resolving.insert_mut(window, token);
+            feed.sequence = request;
+            feed.resolving.insert_mut(window, (request, token));
         });
 
         ensure_placeholder(
@@ -1848,6 +1865,7 @@ impl crate::DynamicCommand for SessionsListed {
 
 struct ConfigResolved {
     host: HostId,
+    request: u64,
     result: Result<ahp_types::commands::ResolveSessionConfigResult, String>,
 }
 
@@ -1867,6 +1885,15 @@ impl crate::DynamicCommand for ConfigResolved {
         window: crate::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
+        // A cancellation can lose the race with delivery: a request from a
+        // dismantled or superseded composer may still arrive here. Only the
+        // request on file for the window may install its result.
+        let current = store
+            .get::<ComposerFeed>()
+            .and_then(|feed| feed.resolving.get(&window).cloned());
+        if current.map(|(request, _)| request) != Some(self.request) {
+            return;
+        }
         let host = self.host;
         let result = self.result.clone();
         store.update::<ComposerFeed>(|feed| {
