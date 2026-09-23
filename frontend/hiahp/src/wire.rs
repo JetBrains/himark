@@ -1773,7 +1773,13 @@ pub struct Feed {
 #[derive(Default)]
 struct FeedState {
     actions: VecDeque<StateAction>,
-    waker: Option<Waker>,
+
+    /// EVERY pending waiter, not a single slot. Refetch roads arm a
+    /// second poll on a channel that already has one standing (the
+    /// changes refresh chip does), and a one-slot waker means the
+    /// overwritten waiter is never polled again — a parked chain
+    /// once the registered one has drained and gone.
+    wakers: Vec<Waker>,
 
     turns_capture: Option<OneShot<TurnsPage>>,
 }
@@ -1791,7 +1797,7 @@ impl Feed {
             }
         }
         state.actions.push_back(action);
-        if let Some(waker) = state.waker.take() {
+        for waker in state.wakers.drain(..) {
             waker.wake();
         }
     }
@@ -1817,7 +1823,10 @@ impl Future for PollFeed {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Vec<StateAction>> {
         let mut state = self.feed.state.lock().expect("feed state");
         if state.actions.is_empty() {
-            state.waker = Some(cx.waker().clone());
+            let waker = cx.waker();
+            if !state.wakers.iter().any(|held| held.will_wake(waker)) {
+                state.wakers.push(waker.clone());
+            }
             return Poll::Pending;
         }
         Poll::Ready(state.actions.drain(..).collect())
@@ -1832,14 +1841,14 @@ struct RootFeed {
 #[derive(Default)]
 struct RootFeedState {
     events: VecDeque<ServerEvent>,
-    waker: Option<Waker>,
+    wakers: Vec<Waker>,
 }
 
 impl RootFeed {
     fn push(&self, event: ServerEvent) {
         let mut state = self.state.lock().expect("root feed");
         state.events.push_back(event);
-        if let Some(waker) = state.waker.take() {
+        for waker in state.wakers.drain(..) {
             waker.wake();
         }
     }
@@ -1855,7 +1864,10 @@ impl Future for PollRootFeed {
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Vec<ServerEvent>> {
         let mut state = self.feed.state.lock().expect("root feed");
         if state.events.is_empty() {
-            state.waker = Some(cx.waker().clone());
+            let waker = cx.waker();
+            if !state.wakers.iter().any(|held| held.will_wake(waker)) {
+                state.wakers.push(waker.clone());
+            }
             return Poll::Pending;
         }
         Poll::Ready(state.events.drain(..).collect())
@@ -1965,6 +1977,42 @@ mod tests {
         assert!(
             matches!(a.as_bytes()[19], b'8' | b'9' | b'a' | b'b'),
             "variant: {a}"
+        );
+    }
+
+    #[test]
+    fn a_feeds_push_wakes_every_waiter() {
+        struct Flag(std::sync::atomic::AtomicBool);
+        impl std::task::Wake for Flag {
+            fn wake(self: Arc<Self>) {
+                self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        }
+        let feed = Arc::new(Feed::default());
+        let first = Arc::new(Flag(Default::default()));
+        let second = Arc::new(Flag(Default::default()));
+        let first_waker = std::task::Waker::from(Arc::clone(&first));
+        let second_waker = std::task::Waker::from(Arc::clone(&second));
+        let mut poll_first = PollFeed {
+            feed: Arc::clone(&feed),
+        };
+        let mut poll_second = PollFeed {
+            feed: Arc::clone(&feed),
+        };
+        assert!(Pin::new(&mut poll_first)
+            .poll(&mut Context::from_waker(&first_waker))
+            .is_pending());
+        assert!(Pin::new(&mut poll_second)
+            .poll(&mut Context::from_waker(&second_waker))
+            .is_pending());
+
+        feed.push(StateAction::Unknown(serde_json::Value::Null));
+        let woken = std::sync::atomic::Ordering::SeqCst;
+        assert!(
+            first.0.load(woken) && second.0.load(woken),
+            "a push must wake EVERY waiter — an overwritten waker is a \
+             permanently parked poll chain (the changes refresh chip arms \
+             a second poll on a channel that already has one standing)"
         );
     }
 
