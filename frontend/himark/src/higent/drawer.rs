@@ -708,11 +708,15 @@ impl View for AgentsPanel {
                 let Some(key) = self.list.inner().content().cursor().cloned() else {
                     return;
                 };
-                if let AgentKey::Server(server) = key {
-                    let expanded = !self.collapsed.contains(&server);
-                    if expanded != expand {
-                        self.activate_key(store, ui, &AgentKey::Server(server), fx);
+                let expanded = match &key {
+                    AgentKey::Server(server) => !self.collapsed.contains(server),
+                    AgentKey::Folder(server, folder) => {
+                        !self.folded.contains(&(*server, folder.clone()))
                     }
+                    _ => return,
+                };
+                if expanded != expand {
+                    self.activate_key(store, ui, &key, fx);
                 }
             }
             AgentsCommand::Pick => {
