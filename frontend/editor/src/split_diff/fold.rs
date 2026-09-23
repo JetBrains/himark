@@ -333,12 +333,13 @@ impl imba::View for FoldStrip {
         &'a self,
         _arena: &'a imba::arena::Arena,
         store: &'a imba::store::Store,
-        _ui: &'a imba::UiCtx,
+        ui: &'a imba::UiCtx,
     ) -> impl imba::Layout<'a, FoldCommand> + imba::LayoutValue + 'a {
         FoldStripLayout {
             chrome: crate::env::Themes::of(store).ui().diff.clone(),
             lines: self.lines,
             silent: self.silent,
+            shaper: imba::TextShaper::of(ui),
         }
     }
 }
@@ -353,6 +354,7 @@ struct FoldStripLayout {
     chrome: crate::theme::DiffChrome,
     lines: u32,
     silent: bool,
+    shaper: std::rc::Rc<imba::TextShaper>,
 }
 
 impl imba::LayoutValue for FoldStripLayout {}
@@ -385,10 +387,11 @@ impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
         let font = strip_font(chrome.fold_text_size);
         let ascent = -font.metrics().1.ascent;
         let baseline = (height + chrome.fold_text_size * 0.7) * 0.5;
-        let label = imba::text(
+        let label = imba::Text::with_shaper(
             format!("… {} unchanged lines", self.lines),
             font,
             chrome.fold_text.0,
+            self.shaper.clone(),
         )
         .pad_insets(imba::Insets {
             left: size * 0.5,

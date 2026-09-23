@@ -15,7 +15,7 @@ impl Fonts {
     }
 }
 
-pub struct UiFonts(pub skia_safe::textlayout::FontCollection);
+pub use imba::UiFonts;
 
 #[derive(Clone)]
 pub struct Parsers(pub std::sync::Arc<crate::reparse::SyntaxLanguages>);

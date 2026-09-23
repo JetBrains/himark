@@ -1017,7 +1017,7 @@ impl View for NewSessionView {
                 .chars()
                 .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                 .sum::<f32>()
-                + key_font.measure_str("⌘⏎", None).0
+                + imba::text_advance(ui, &key_font, "⌘⏎")
                 + theme.combo.gap
                 + pad * 2.0;
             let start_x = size.width - start_width;
@@ -1098,7 +1098,7 @@ impl View for NewSessionView {
             let start_cell = imba::Row::new(arena)
                 .gap(theme_gap())
                 .child(
-                    imba::text(start_label, caps_font.clone(), on_accent)
+                    imba::text(ui, start_label, caps_font.clone(), on_accent)
                         .tracking(1.5)
                         .pad_insets(imba::Insets {
                             left: 0.0,
@@ -1108,7 +1108,7 @@ impl View for NewSessionView {
                         }),
                 )
                 .child(
-                    imba::text("⌘⏎", key_font.clone(), accent_soft).pad_insets(imba::Insets {
+                    imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(imba::Insets {
                         left: 0.0,
                         top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                         right: 0.0,
@@ -1151,7 +1151,9 @@ impl View for NewSessionView {
             let hints_width: f32 = hints
                 .iter()
                 .map(|(key, label)| {
-                    key_font.measure_str(key, None).0 + 5.0 + hint_font.measure_str(label, None).0
+                    imba::text_advance(ui, &key_font, key)
+                        + 5.0
+                        + hint_font.measure_str(label, None).0
                 })
                 .sum::<f32>()
                 + hint_gap
@@ -1174,16 +1176,16 @@ impl View for NewSessionView {
             let pairs = hints.len();
             for (index, (key, label)) in hints.into_iter().enumerate() {
                 hint_row = hint_row
-                    .child(
-                        imba::text(key, key_font.clone(), key_color).pad_insets(imba::Insets {
+                    .child(imba::text(ui, key, key_font.clone(), key_color).pad_insets(
+                        imba::Insets {
                             left: 0.0,
                             top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                             right: 5.0,
                             bottom: 0.0,
-                        }),
-                    )
+                        },
+                    ))
                     .child(
-                        imba::text(label, hint_font.clone(), label_color).pad_insets(
+                        imba::text(ui, label, hint_font.clone(), label_color).pad_insets(
                             imba::Insets {
                                 left: 0.0,
                                 top: (mid + hint_font.size() * 0.35 - hint_ascent).max(0.0),
@@ -1241,7 +1243,7 @@ impl View for NewSessionView {
             // left rule and the checkbox GLYPH stay a backdrop
             // painter (form geometry), and the press is `.on_click`,
             // minting ToggleWorktree like the old event closure.
-            let worktree_cell = imba::text(worktree_label, hint_font.clone(), text_dim)
+            let worktree_cell = imba::text(ui, worktree_label, hint_font.clone(), text_dim)
                 .pad_insets(imba::Insets {
                     left: pad + check + 10.0,
                     top: (mid + hint_font.size() * 0.35 - hint_ascent).max(0.0),
@@ -2368,7 +2370,7 @@ impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
         } else {
             chrome.menu_text.0
         };
-        let mut label = imba::text(label, font, color);
+        let mut label = imba::text(ui, label, font, color);
         if heading {
             label = label.tracking(1.5);
         }

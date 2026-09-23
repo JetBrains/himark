@@ -9,5 +9,5 @@ rope = { path = "../rope" }
 intervals = { path = "../intervals" }
 bumpalo = { version = "3.16.0", features = ["collections", "boxed"] }
 rpds = "1"
-skia-safe = "0.99.0"
+skia-safe = { version = "0.99.0", features = ["textlayout"] }
 resvg = "0.48"
