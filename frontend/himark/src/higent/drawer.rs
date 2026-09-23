@@ -458,6 +458,11 @@ fn folders_label(folders: &[String]) -> String {
 fn session_label(summary: &SessionSummary) -> String {
     let mut label = String::new();
     if summary.status & 8 != 0 {
+        // InProgress: hollow — the turn is still cooking.
+        label.push_str("○ ");
+    } else if summary.status & 32 == 0 {
+        // Not IsRead: filled — an answer stands ready since the
+        // last view.
         label.push_str("● ");
     }
     label.push_str(&summary.title);

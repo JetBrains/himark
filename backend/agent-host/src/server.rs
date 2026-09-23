@@ -1501,8 +1501,19 @@ impl Host {
                 state.root = root;
             } else if let Some(entry) = state.sessions.get(channel) {
                 let mut entry = entry.clone();
+                let before = entry.state.status;
                 let _ = ahp::reducers::apply_action_to_session(&mut entry.state, &action);
+                let after = entry.state.status;
                 state.sessions.insert_mut(channel.clone(), entry);
+                if after != before {
+                    summary_changes = Some((
+                        channel.clone(),
+                        PartialSessionSummary {
+                            status: Some(after),
+                            ..Default::default()
+                        },
+                    ));
+                }
             } else if let Some(entry) = state.chats.get(channel) {
                 let mut entry = entry.clone();
                 let outcome = ahp::reducers::apply_action_to_chat(&mut entry.state, &action);
@@ -4488,11 +4499,15 @@ const LSP_EXCLUDED: &[&str] = &[
 /// (`Idle` / `Error` / `InProgress` / `InputNeeded`).
 const STATUS_ACTIVITY_MASK: u32 = (1 << 5) - 1;
 
+/// A session at rest: idle, nothing unread.
+const STATUS_IDLE_READ: u32 = SessionStatus::Idle.bits() | SessionStatus::IsRead.bits();
+
 /// Re-derives a session's summary-level `status` and `activity` from its
 /// chats after a chat action lands, following the `SessionSummary`
 /// aggregation rules: activity bits come from the default chat (falling
 /// back to the most recently modified one), any chat needing input or in
-/// error promotes, and the session-scoped flag bits stay.
+/// error promotes, and the session-scoped flag bits stay. New chat content
+/// (`touched`) clears `IsRead`.
 ///
 /// Answers the `root/sessionSummaryChanged` delta to publish. Content-only
 /// changes stay silent so a streaming turn does not flood the root channel;
@@ -4531,7 +4546,10 @@ fn sync_session_summary(
         chat.status & STATUS_ACTIVITY_MASK
     });
     let activity = source.and_then(|chat| chat.activity.clone());
-    let status = (entry.state.status & !STATUS_ACTIVITY_MASK) | bits;
+    let mut status = (entry.state.status & !STATUS_ACTIVITY_MASK) | bits;
+    if touched {
+        status &= !SessionStatus::IsRead.bits();
+    }
     if status == entry.state.status && activity == entry.state.activity {
         return None;
     }
@@ -4551,7 +4569,7 @@ fn session_state(manifest: &Manifest) -> SessionState {
     SessionState {
         provider: manifest.provider.clone(),
         title: manifest.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: Some(manifest.working_directories.clone()),
@@ -4633,7 +4651,7 @@ fn cli_summary(session: &crate::catalog::CliSession) -> SessionSummary {
     SessionSummary {
         provider: session.provider.clone(),
         title: session.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: session
@@ -4653,7 +4671,7 @@ fn summary_of(manifest: &Manifest) -> SessionSummary {
     SessionSummary {
         provider: manifest.provider.clone(),
         title: manifest.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: Some(manifest.working_directories.clone()),

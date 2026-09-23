@@ -4675,7 +4675,8 @@ mod dock_tests {
             |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
                 provider: "test".to_owned(),
                 title: title.to_owned(),
-                status: 0,
+                // Idle and read — labels stay bare of activity marks.
+                status: 33,
                 activity: None,
                 project: None,
                 working_directories: (!folders.is_empty())
@@ -4694,7 +4695,12 @@ mod dock_tests {
             host,
             vec![
                 summary("older himark", &[HIMARK], "2026-09-20T10:00:00Z"),
-                summary("stray", &[], "2026-09-21T10:00:00Z"),
+                {
+                    // Changed since last viewed — the drawer marks it.
+                    let mut stray = summary("stray", &[], "2026-09-21T10:00:00Z");
+                    stray.status = 1;
+                    stray
+                },
                 summary("docs session", &[DOCS], "2026-09-21T12:00:00Z"),
                 summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z"),
                 // The pair sessions share a folder SET — order must not
@@ -4732,8 +4738,8 @@ mod dock_tests {
                 ("docs".to_owned(), 1),
                 ("docs session".to_owned(), 2),
                 // No folder — the stray stays a plain row, ranked by its
-                // own recency.
-                ("stray".to_owned(), 1),
+                // own recency; unread, so it wears the filled dot.
+                ("● stray".to_owned(), 1),
                 ("+ New Session…".to_owned(), 1),
                 ("+ Add Host…".to_owned(), 0),
             ],
@@ -4756,7 +4762,7 @@ mod dock_tests {
                 ("himark".to_owned(), 1),
                 ("docs".to_owned(), 1),
                 ("docs session".to_owned(), 2),
-                ("stray".to_owned(), 1),
+                ("● stray".to_owned(), 1),
                 ("+ New Session…".to_owned(), 1),
                 ("+ Add Host…".to_owned(), 0),
             ],

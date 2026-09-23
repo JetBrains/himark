@@ -328,7 +328,7 @@ async fn a_turn_streams_through_the_fake_cli() {
 }
 
 #[tokio::test]
-async fn the_session_summary_tracks_turn_activity() {
+async fn the_session_summary_tracks_turn_activity_and_reads() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = host_at(dir.path());
     let mut client = Client::connect(host).await;
@@ -340,6 +340,7 @@ async fn the_session_summary_tracks_turn_activity() {
     assert_eq!(changed["session"], session, "{changed}");
     let status = changed["changes"]["status"].as_u64().expect("status");
     assert_eq!(status & 8, 8, "the turn runs: {changed}");
+    assert_eq!(status & 32, 0, "new content is unread: {changed}");
     assert!(changed["changes"]["modifiedAt"].is_string(), "{changed}");
     let retitled = client.next_notification("root/sessionSummaryChanged").await;
     assert_eq!(retitled["changes"]["title"], "hello", "{retitled}");
@@ -349,6 +350,7 @@ async fn the_session_summary_tracks_turn_activity() {
     let status = changed["changes"]["status"].as_u64().expect("status");
     assert_eq!(status & 8, 0, "the turn ended: {changed}");
     assert_eq!(status & 1, 1, "idle again: {changed}");
+    assert_eq!(status & 32, 0, "still unread: {changed}");
 
     let list = client
         .request("listSessions", json!({"channel": ROOT}))
@@ -358,6 +360,17 @@ async fn the_session_summary_tracks_turn_activity() {
         .and_then(|items| items.iter().find(|item| item["resource"] == session))
         .expect("the session is listed");
     assert_eq!(held["status"].as_u64(), Some(status), "{held}");
+
+    client
+        .dispatch(
+            &session,
+            json!({"type": "session/isReadChanged", "isRead": true}),
+        )
+        .await;
+    let changed = client.next_notification("root/sessionSummaryChanged").await;
+    let status = changed["changes"]["status"].as_u64().expect("status");
+    assert_eq!(status & 32, 32, "viewing marks it read: {changed}");
+    assert_eq!(status & 1, 1, "{changed}");
 }
 
 #[tokio::test]
