@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use ahp_types::actions::{
     ChangesetContentChangedAction, ChangesetStatusChangedAction, ChatPendingMessageRemovedAction,
-    ChatTurnStartedAction, RootTerminalsChangedAction, StateAction, TerminalDataAction,
-    TerminalExitedAction,
+    ChatTurnCancelledAction, ChatTurnStartedAction, RootTerminalsChangedAction, StateAction,
+    TerminalDataAction, TerminalExitedAction,
 };
 use ahp_types::commands::{
     CreateTerminalParams, DisposeTerminalParams, Implementation, InitializeParams,
@@ -21,8 +21,8 @@ use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{
     AgentInfo, Annotation, AnnotationsState, AnnotationsSummary, ChangesetState, ChangesetStatus,
     ChatOrigin, ChatState, ChatSummary, ErrorInfo, MessageAttachment, PendingMessageKind,
-    RootState, SessionLifecycle, SessionState, SessionSummary, Snapshot, SnapshotState,
-    TerminalContentPart, TerminalInfo, TerminalState,
+    RootState, SessionLifecycle, SessionState, SessionStatus, SessionSummary, Snapshot,
+    SnapshotState, TerminalContentPart, TerminalInfo, TerminalState,
 };
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -586,6 +586,17 @@ impl Host {
             for action in store.replay(&manifest.native_id, &manifest.default_chat) {
                 let _ = ahp::reducers::apply_action_to_chat(&mut chat_state, &action);
             }
+            // A turn the log never closed died with the previous host
+            // process — end it, or the chat replays as busy forever.
+            if let Some(active) = chat_state.active_turn.as_ref() {
+                let cancelled = StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
+                    turn_id: active.id.clone(),
+                    duration: 0,
+                    meta: None,
+                });
+                let _ = ahp::reducers::apply_action_to_chat(&mut chat_state, &cancelled);
+                store.append(&manifest.native_id, &manifest.default_chat, &cancelled);
+            }
             let spoken = !chat_state.turns.is_empty();
             let mut manifest = manifest;
             if !manifest.listed {
@@ -1033,7 +1044,7 @@ impl Host {
                         .values()
                         .filter(|entry| entry.manifest.session != host_discovery::LOCAL_FS_SESSION)
                         .filter(|entry| entry.manifest.listed)
-                        .map(|entry| summary(&entry.manifest, &entry.state))
+                        .map(|entry| summary(&self.store, entry))
                         .collect();
                     for session in cli {
                         if known.contains(&(session.provider.clone(), session.native_id.clone())) {
@@ -1480,6 +1491,7 @@ impl Host {
     }
 
     fn apply(&self, channel: &Uri, action: StateAction) {
+        let mut summary_changes: Option<(Uri, PartialSessionSummary)> = None;
         self.update(|state| {
             state.server_seq += 1;
             let server_seq = state.server_seq as u64;
@@ -1489,13 +1501,27 @@ impl Host {
                 state.root = root;
             } else if let Some(entry) = state.sessions.get(channel) {
                 let mut entry = entry.clone();
+                let before = entry.state.status;
                 let _ = ahp::reducers::apply_action_to_session(&mut entry.state, &action);
+                let after = entry.state.status;
                 state.sessions.insert_mut(channel.clone(), entry);
+                if after != before {
+                    summary_changes = Some((
+                        channel.clone(),
+                        PartialSessionSummary {
+                            status: Some(after),
+                            ..Default::default()
+                        },
+                    ));
+                }
             } else if let Some(entry) = state.chats.get(channel) {
                 let mut entry = entry.clone();
-                let _ = ahp::reducers::apply_action_to_chat(&mut entry.state, &action);
+                let outcome = ahp::reducers::apply_action_to_chat(&mut entry.state, &action);
+                let touched = outcome == ahp::reducers::ReduceOutcome::Applied;
                 self.store.append(&entry.native_id, channel, &action);
+                let session = entry.session.clone();
                 state.chats.insert_mut(channel.clone(), entry);
+                summary_changes = sync_session_summary(state, &session, touched);
             } else if let Some(entry) = state.terminals.get(channel) {
                 let mut entry = entry.clone();
                 let _ = ahp::reducers::apply_action_to_terminal(&mut entry.state, &action);
@@ -1539,6 +1565,16 @@ impl Host {
                 state.replay.dequeue_mut();
             }
         });
+        if let Some((session, changes)) = summary_changes {
+            self.notify_root(
+                "root/sessionSummaryChanged",
+                serde_json::json!({
+                    "channel": ROOT,
+                    "session": session,
+                    "changes": changes,
+                }),
+            );
+        }
     }
 
     fn broadcast_unfolded(&self, channel: &Uri, action: StateAction) {
@@ -2284,7 +2320,7 @@ impl Host {
             }
             session.manifest.listed = true;
             let _ = self.store.write_manifest(&session.manifest);
-            let summary = summary_of(&session.manifest);
+            let summary = summary(&self.store, &session);
             state.sessions.insert_mut(session_uri, session);
             Some(summary)
         });
@@ -4459,11 +4495,81 @@ const LSP_EXCLUDED: &[&str] = &[
     "workspace/didChangeWorkspaceFolders",
 ];
 
+/// Bits 0–4 of a status word: the mutually-exclusive activity bits
+/// (`Idle` / `Error` / `InProgress` / `InputNeeded`).
+const STATUS_ACTIVITY_MASK: u32 = (1 << 5) - 1;
+
+/// A session at rest: idle, nothing unread.
+const STATUS_IDLE_READ: u32 = SessionStatus::Idle.bits() | SessionStatus::IsRead.bits();
+
+/// Re-derives a session's summary-level `status` and `activity` from its
+/// chats after a chat action lands, following the `SessionSummary`
+/// aggregation rules: activity bits come from the default chat (falling
+/// back to the most recently modified one), any chat needing input or in
+/// error promotes, and the session-scoped flag bits stay. New chat content
+/// (`touched`) clears `IsRead`.
+///
+/// Answers the `root/sessionSummaryChanged` delta to publish. Content-only
+/// changes stay silent so a streaming turn does not flood the root channel;
+/// a status or activity transition carries a fresh modified stamp out.
+fn sync_session_summary(
+    state: &mut State,
+    session: &Uri,
+    touched: bool,
+) -> Option<(Uri, PartialSessionSummary)> {
+    let mut entry = state.sessions.get(session)?.clone();
+    let mut driving: Option<&ChatState> = None;
+    let mut freshest: Option<&ChatState> = None;
+    let mut promoted: Option<&ChatState> = None;
+    for (uri, chat) in state.chats.iter() {
+        if chat.session != *session {
+            continue;
+        }
+        let chat = &chat.state;
+        if *uri == entry.manifest.default_chat {
+            driving = Some(chat);
+        }
+        if freshest.is_none_or(|held| chat.modified_at > held.modified_at) {
+            freshest = Some(chat);
+        }
+        let needs_input =
+            chat.status & SessionStatus::InputNeeded.bits() == SessionStatus::InputNeeded.bits();
+        let errored = chat.status & SessionStatus::Error.bits() != 0;
+        if needs_input {
+            promoted = Some(chat);
+        } else if errored && promoted.is_none() {
+            promoted = Some(chat);
+        }
+    }
+    let source = promoted.or(driving).or(freshest);
+    let bits = source.map_or(SessionStatus::Idle.bits(), |chat| {
+        chat.status & STATUS_ACTIVITY_MASK
+    });
+    let activity = source.and_then(|chat| chat.activity.clone());
+    let mut status = (entry.state.status & !STATUS_ACTIVITY_MASK) | bits;
+    if touched {
+        status &= !SessionStatus::IsRead.bits();
+    }
+    if status == entry.state.status && activity == entry.state.activity {
+        return None;
+    }
+    entry.state.status = status;
+    entry.state.activity = activity.clone();
+    state.sessions.insert_mut(session.clone(), entry);
+    let changes = PartialSessionSummary {
+        status: Some(status),
+        activity,
+        modified_at: touched.then(now_rfc3339),
+        ..Default::default()
+    };
+    Some((session.clone(), changes))
+}
+
 fn session_state(manifest: &Manifest) -> SessionState {
     SessionState {
         provider: manifest.provider.clone(),
         title: manifest.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: Some(manifest.working_directories.clone()),
@@ -4517,18 +4623,24 @@ fn string_of(config: &serde_json::Map<String, Value>, key: &str) -> Option<Strin
     config.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-fn summary(manifest: &Manifest, state: &SessionState) -> SessionSummary {
+fn summary(store: &Store, entry: &SessionEntry) -> SessionSummary {
+    // Recency is the default chat's log mtime — every chat action is
+    // appended there, so the file tracks content changes for free.
+    let modified_at = store
+        .log_modified_at(&entry.manifest.native_id, &entry.manifest.default_chat)
+        .map(|stamp| humantime::format_rfc3339_millis(stamp).to_string())
+        .unwrap_or_else(|| entry.manifest.created_at.clone());
     SessionSummary {
-        provider: manifest.provider.clone(),
-        title: state.title.clone(),
-        status: state.status,
-        activity: state.activity.clone(),
+        provider: entry.manifest.provider.clone(),
+        title: entry.state.title.clone(),
+        status: entry.state.status,
+        activity: entry.state.activity.clone(),
         project: None,
-        working_directories: Some(manifest.working_directories.clone()),
-        annotations: state.annotations.clone(),
-        resource: manifest.session.clone(),
-        created_at: manifest.created_at.clone(),
-        modified_at: manifest.created_at.clone(),
+        working_directories: Some(entry.manifest.working_directories.clone()),
+        annotations: entry.state.annotations.clone(),
+        resource: entry.manifest.session.clone(),
+        created_at: entry.manifest.created_at.clone(),
+        modified_at,
         changes: None,
         meta: None,
     }
@@ -4539,7 +4651,7 @@ fn cli_summary(session: &crate::catalog::CliSession) -> SessionSummary {
     SessionSummary {
         provider: session.provider.clone(),
         title: session.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: session
@@ -4559,7 +4671,7 @@ fn summary_of(manifest: &Manifest) -> SessionSummary {
     SessionSummary {
         provider: manifest.provider.clone(),
         title: manifest.title.clone(),
-        status: 1,
+        status: STATUS_IDLE_READ,
         activity: None,
         project: None,
         working_directories: Some(manifest.working_directories.clone()),

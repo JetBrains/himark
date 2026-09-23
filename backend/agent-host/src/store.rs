@@ -121,6 +121,12 @@ impl Store {
         }
     }
 
+    pub fn log_modified_at(&self, native_id: &str, chat: &Uri) -> Option<std::time::SystemTime> {
+        std::fs::metadata(self.chat_log(native_id, chat))
+            .and_then(|meta| meta.modified())
+            .ok()
+    }
+
     pub fn replay(&self, native_id: &str, chat: &Uri) -> Vec<StateAction> {
         let Ok(raw) = std::fs::read_to_string(self.chat_log(native_id, chat)) else {
             return Vec::new();

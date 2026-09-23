@@ -4599,7 +4599,7 @@ mod dock_tests {
 
         let mut store = app.store_mut().clone();
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
         {
             let mut boot: imba::effect::Batch<crate::higent::AgentsCommand> =
                 imba::effect::Batch::new();
@@ -4660,6 +4660,282 @@ mod dock_tests {
         );
         assert!(panel.add_host_text().is_none());
         assert!(crate::ModalView::take_request(&mut panel).is_none());
+    }
+
+    #[test]
+    fn the_drawer_groups_sessions_by_folder_most_recent_first() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary =
+            |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
+                provider: "test".to_owned(),
+                title: title.to_owned(),
+                // Idle and read — labels stay bare of activity marks.
+                status: 33,
+                activity: None,
+                project: None,
+                working_directories: (!folders.is_empty())
+                    .then(|| folders.iter().map(|folder| folder.to_string()).collect()),
+                annotations: None,
+                resource: format!("test-session:/{title}"),
+                created_at: String::new(),
+                modified_at: modified.to_owned(),
+                changes: None,
+                meta: None,
+            };
+        const HIMARK: &str = "file:///dev/himark";
+        const DOCS: &str = "file:///dev/docs";
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![
+                summary("older himark", &[HIMARK], "2026-09-20T10:00:00Z"),
+                {
+                    // Changed since last viewed — the filled dot.
+                    let mut stray = summary("stray", &[], "2026-09-21T10:00:00Z");
+                    stray.status = 1;
+                    stray
+                },
+                {
+                    // The last turn failed — the bang.
+                    let mut errored = summary("docs session", &[DOCS], "2026-09-21T12:00:00Z");
+                    errored.status = 34; // Error | IsRead
+                    errored
+                },
+                {
+                    // A turn is streaming — the hollow dot.
+                    let mut busy = summary("fresh himark", &[HIMARK], "2026-09-22T09:00:00Z");
+                    busy.status = 40; // InProgress | IsRead
+                    busy
+                },
+                // The pair sessions share a folder SET — order must not
+                // split them into two groups.
+                {
+                    // Blocked on the user's answer — the question mark.
+                    let mut asking = summary("pair", &[HIMARK, DOCS], "2026-09-22T11:00:00Z");
+                    asking.status = 56; // InputNeeded | IsRead
+                    asking
+                },
+                summary("pair reversed", &[DOCS, HIMARK], "2026-09-21T09:00:00Z"),
+            ],
+            true,
+        );
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
+        let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
+            imba::effect::Batch::new();
+        use imba::View;
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Boot,
+            &mut batch.effects(),
+        );
+
+        assert_eq!(
+            panel.rows(),
+            vec![
+                ("Local".to_owned(), 0),
+                // The two-folder set holds the freshest session, so that
+                // group leads; both orderings of the set land in it.
+                ("docs, himark".to_owned(), 1),
+                ("? pair".to_owned(), 2),
+                ("pair reversed".to_owned(), 2),
+                ("himark".to_owned(), 1),
+                ("○ fresh himark".to_owned(), 2),
+                ("older himark".to_owned(), 2),
+                ("docs".to_owned(), 1),
+                ("! docs session".to_owned(), 2),
+                // No folder — the stray stays a plain row, ranked by its
+                // own recency; unread, so it wears the filled dot.
+                ("● stray".to_owned(), 1),
+                ("+ New Session…".to_owned(), 1),
+                ("+ Add Host…".to_owned(), 0),
+            ],
+        );
+
+        // Folding a folder row hides its sessions and nothing else.
+        let index = panel
+            .rows()
+            .iter()
+            .position(|(label, depth)| label == "himark" && *depth == 1)
+            .expect("the himark folder row stands");
+        panel.activate(&mut store, &ui, index, &mut batch.effects());
+        assert_eq!(
+            panel.rows(),
+            vec![
+                ("Local".to_owned(), 0),
+                ("docs, himark".to_owned(), 1),
+                ("? pair".to_owned(), 2),
+                ("pair reversed".to_owned(), 2),
+                ("himark".to_owned(), 1),
+                ("docs".to_owned(), 1),
+                ("! docs session".to_owned(), 2),
+                ("● stray".to_owned(), 1),
+                ("+ New Session…".to_owned(), 1),
+                ("+ Add Host…".to_owned(), 0),
+            ],
+        );
+    }
+
+    #[test]
+    fn the_drawer_lands_on_the_window_s_open_session() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary = |title: &str| ahp_types::state::SessionSummary {
+            provider: "test".to_owned(),
+            title: title.to_owned(),
+            status: 33,
+            activity: None,
+            project: None,
+            working_directories: None,
+            annotations: None,
+            resource: format!("test-session:/{title}"),
+            created_at: String::new(),
+            modified_at: "2026-09-22T10:00:00Z".to_owned(),
+            changes: None,
+            meta: None,
+        };
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![summary("alpha"), summary("beta")],
+            true,
+        );
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let _ = entity.switch_to(crate::SessionId {
+            host,
+            session: "test-session:/beta".to_owned(),
+        });
+        crate::Windows::put(&mut store, window, entity);
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
+        let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
+            imba::effect::Batch::new();
+        use imba::View;
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Boot,
+            &mut batch.effects(),
+        );
+
+        let rows = panel.rows();
+        let beta = rows
+            .iter()
+            .position(|(label, _)| label == "beta")
+            .expect("the beta session stands in the list");
+        assert_eq!(
+            panel.selected_row(),
+            Some(beta),
+            "the open session is the selection: {rows:?}"
+        );
+    }
+
+    #[test]
+    fn the_drawer_speed_search_filters_sessions() {
+        use imba::effect::{block_on, EffectHandler, Message};
+
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary = |title: &str| ahp_types::state::SessionSummary {
+            provider: "test".to_owned(),
+            title: title.to_owned(),
+            status: 33,
+            activity: None,
+            project: None,
+            working_directories: None,
+            annotations: None,
+            resource: format!("test-session:/{title}"),
+            created_at: String::new(),
+            modified_at: "2026-09-22T10:00:00Z".to_owned(),
+            changes: None,
+            meta: None,
+        };
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![summary("alpha"), summary("beta"), summary("gamma")],
+            true,
+        );
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
+        use imba::View;
+        let mut drive = |panel: &mut crate::higent::AgentsPanel,
+                         command|
+         -> imba::effect::Batch<crate::higent::AgentsCommand> {
+            let mut batch = imba::effect::Batch::new();
+            panel.perform(&mut store, &ui, command, &mut batch.effects());
+            batch
+        };
+        let _ = drive(&mut panel, crate::higent::AgentsCommand::Boot);
+
+        let typing = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Input(
+                crate::EditorCommand::InsertText {
+                    text: "bet".to_owned(),
+                },
+            )),
+        );
+        let mut matches = None;
+        for message in typing.drain() {
+            let (Message::Launch(_, effect) | Message::Relaunch(_, _, effect)) = message else {
+                continue;
+            };
+            let (value, _) = effect.into_payload().split();
+            if let Ok(effect) = value.downcast::<crate::SpeedSearchEffect>() {
+                matches = Some(block_on(Box::pin(async move {
+                    crate::SpeedSearchHandler.handle(*effect).await
+                })));
+            }
+        }
+        let matches = matches.expect("typing launched the filter");
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Landed(matches)),
+        );
+        assert_eq!(panel.match_count(), 1, "only beta matches");
+        let rows = panel.rows();
+        let beta = rows
+            .iter()
+            .position(|(label, _)| label == "beta")
+            .expect("the beta row stands");
+        assert_eq!(
+            panel.selected_row(),
+            Some(beta),
+            "the cursor jumped to the match: {rows:?}"
+        );
+
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Step(1)),
+        );
+        assert_eq!(panel.selected_row(), Some(beta), "wrapped in place");
+
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Clear),
+        );
+        assert_eq!(panel.match_count(), 0, "cleared");
     }
 
     #[test]

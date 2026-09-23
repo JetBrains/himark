@@ -30,6 +30,10 @@ pub struct TreeLabel {
 
     tint: TreeTint,
 
+    /// A short status mark leading the label, in its own color (the
+    /// drawer's session activity dots).
+    badge: Option<(String, skia_safe::Color)>,
+
     trail: Vec<(String, skia_safe::Color)>,
 
     /// A right-aligned ghost chip on the row (the changes view's
@@ -52,9 +56,15 @@ impl TreeLabel {
             pick,
             dim,
             tint: TreeTint::Label,
+            badge: None,
             trail: Vec::new(),
             action: None,
         }
+    }
+
+    pub fn with_badge(mut self, badge: Option<(String, skia_safe::Color)>) -> Self {
+        self.badge = badge;
+        self
     }
 
     pub fn tinted(mut self, tint: TreeTint) -> Self {
@@ -74,6 +84,10 @@ impl TreeLabel {
 
     pub fn text(&self) -> &str {
         &self.label
+    }
+
+    pub fn badge(&self) -> Option<&str> {
+        self.badge.as_ref().map(|(glyph, _)| glyph.as_str())
     }
 }
 
@@ -105,8 +119,11 @@ impl View for TreeLabel {
             (false, TreeTint::File) => style.label.clone().colored(tree.file.0),
             (false, TreeTint::Label) => style.label.clone(),
         };
-        let mut row = crate::ui::ListRow::new(arena, style.clone())
-            .label_styled(&label_style, self.label.clone());
+        let mut row = crate::ui::ListRow::new(arena, style.clone());
+        if let Some((glyph, color)) = &self.badge {
+            row = row.badge_styled(&label_style.clone().colored(*color), glyph.clone());
+        }
+        row = row.label_styled(&label_style, self.label.clone());
         for (text, color) in &self.trail {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }

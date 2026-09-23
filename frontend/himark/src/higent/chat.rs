@@ -738,6 +738,7 @@ impl ChatPanel {
                 self.has_loader = self.cursor.is_some();
                 self.reveal_tail(store);
 
+                self.mark_read(store, fx);
                 self.relaunch_poll(store, fx);
 
                 if let Some(prompt) = self.initial_prompt.take() {
@@ -777,6 +778,27 @@ impl ChatPanel {
             })
             .map(move |result| ChatPanelCommand::Dispatched {
                 undo_queue: undo_queue.clone(),
+                result,
+            }),
+        );
+    }
+
+    /// The panel is showing the session's latest state — tell the server so
+    /// the session list drops its unread mark.
+    fn mark_read(&self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
+        let Some(seat) = self.seat(store) else {
+            return;
+        };
+        fx.push(
+            AnyEffect::new(DispatchChatActionEffect {
+                seat,
+                channel: self.session.clone(),
+                action: StateAction::SessionIsReadChanged(
+                    ahp_types::actions::SessionIsReadChangedAction { is_read: true },
+                ),
+            })
+            .map(|result| ChatPanelCommand::Dispatched {
+                undo_queue: None,
                 result,
             }),
         );
@@ -1131,6 +1153,7 @@ impl ChatPanel {
                         &self.chat,
                         &action.turn_id,
                     );
+                    self.mark_read(store, fx);
                 }
                 StateAction::ChatTurnCancelled(action) => {
                     self.append_stream_cell(

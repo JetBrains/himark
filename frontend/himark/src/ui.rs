@@ -245,14 +245,15 @@ enum RowEntry<'a, Command> {
     Action(imba::Text, Box<dyn Fn() -> Command + 'a>),
 }
 
-/// The one leading-label-trail row: label runs from the left inset,
-/// trails pin to the right one, everything baseline-aligned and
-/// vertically centered. Presses on the row are the caller's business
-/// (`.on_event` on the whole row); `action` gives one trail its own
-/// press.
+/// The one leading-label-trail row: an optional badge (a short status
+/// mark in its own color) leads, the label runs from it, trails pin to
+/// the right inset, everything baseline-aligned and vertically
+/// centered. Presses on the row are the caller's business (`.on_event`
+/// on the whole row); `action` gives one trail its own press.
 pub struct ListRow<'a, Command> {
     arena: &'a Arena,
     style: RowStyle,
+    badge: Option<imba::Text>,
     label: Option<imba::Text>,
     trails: Vec<RowEntry<'a, Command>>,
 }
@@ -262,9 +263,15 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
         Self {
             arena,
             style,
+            badge: None,
             label: None,
             trails: Vec::new(),
         }
+    }
+
+    pub fn badge_styled(mut self, style: &TextStyle, content: impl Into<String>) -> Self {
+        self.badge = Some(text(style, content));
+        self
     }
 
     pub fn label(mut self, content: impl Into<String>) -> Self {
@@ -307,13 +314,24 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
         let ListRow {
             arena: row_arena,
             style,
+            badge,
             label,
             trails,
         } = self;
         let mut row = imba::Row::new(row_arena);
+        let badged = badge.is_some();
+        if let Some(badge) = badge {
+            row = row.child_by_baseline(badge.pad_insets(imba::Insets {
+                left: style.inset,
+                ..Default::default()
+            }));
+        }
         if let Some(label) = label {
             row = row.child_by_baseline(label.pad_insets(imba::Insets {
-                left: style.inset,
+                left: match badged {
+                    true => space::S,
+                    false => style.inset,
+                },
                 ..Default::default()
             }));
         }
