@@ -212,8 +212,8 @@ func buildMenu() -> NSMenu {
                      action: #selector(HimarkView.toggleWorkspaceTree(_:)), keyEquivalent: "T")
     viewMenu.addItem(withTitle: "Changes",
                      action: #selector(HimarkView.toggleChangesView(_:)), keyEquivalent: "r")
-    viewMenu.addItem(withTitle: "Switch Workspace",
-                     action: #selector(HimarkView.toggleWorkspaceSwitcher(_:)), keyEquivalent: "U")
+    viewMenu.addItem(withTitle: "Switch Session",
+                     action: #selector(HimarkView.toggleAgentsSwitcher(_:)), keyEquivalent: "U")
     viewMenu.addItem(withTitle: "Command Palette",
                      action: #selector(HimarkView.togglePalette(_:)), keyEquivalent: "P")
     viewMenu.addItem(withTitle: "Split Pane",

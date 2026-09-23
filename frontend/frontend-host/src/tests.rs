@@ -686,12 +686,6 @@ fn history_row_y(index: usize) -> f32 {
     ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
 }
 
-fn peeker_row_y(index: usize) -> f32 {
-    let ui = himark::Theme::embedded();
-    let row = ui.ui().peeker.row_height;
-    ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
-}
-
 fn directory_location(path: &[&str]) -> himark::ResourceLocation {
     himark::ResourceLocation::new(
         himark::ResourceType::directory(),
@@ -1443,93 +1437,6 @@ fn stripes_take_the_changesets_old_text_as_base() {
     assert!(
         base_text.contains("old body"),
         "the stripes base is HEAD's content: {base_text:?}"
-    );
-}
-
-#[test]
-fn the_workspace_switcher_switches_and_creates() {
-    let (_host, mut engine, window, _fs) = hosted_engine();
-    assert!(himark::test_driver::type_text(&mut engine.app, "hello one"));
-    let first_text = engine
-        .substring(
-            window,
-            HimarkRange {
-                start: 0,
-                length: u32::MAX,
-            },
-        )
-        .expect("the scratch");
-    assert!(first_text.contains("hello one"));
-
-    let roll_in = |engine: &mut HimarkEngine| {
-        let _ = himark::test_driver::animate(
-            &mut engine.app,
-            imba::anim::AnimationClock::from_millis(0.0),
-        );
-        let _ = himark::test_driver::animate(
-            &mut engine.app,
-            imba::anim::AnimationClock::from_millis(10_000.0),
-        );
-    };
-    let switcher_labels = |engine: &HimarkEngine| -> Option<(Vec<String>, usize)> {
-        let entity = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())?;
-        let view = entity
-            .side_panel()?
-            .as_any()
-            .downcast_ref::<himark::hifiles::SessionSwitcherView>()?;
-        Some((view.labels().to_vec(), view.selected()))
-    };
-
-    assert!(engine.perform_command(window, "session.switch"));
-    settle(&mut engine);
-    roll_in(&mut engine);
-    let (labels, selected) = switcher_labels(&engine).expect("the switcher is up");
-    assert_eq!(labels, ["Local", "+ New Scratch"]);
-    assert_eq!(selected, 0, "the current workspace starts selected");
-
-    let clicked = himark::test_driver::click(&mut engine.app, 40.0, peeker_row_y(1), 900.0, 700.0);
-    assert!(clicked);
-    settle(&mut engine);
-    {
-        let entity = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-            .expect("the window entity");
-        assert!(entity.side_panel().is_none(), "the pick dismissed");
-    }
-    let second_text = engine
-        .substring(
-            window,
-            HimarkRange {
-                start: 0,
-                length: u32::MAX,
-            },
-        )
-        .expect("the fresh scratch");
-    assert!(
-        !second_text.contains("hello one"),
-        "a fresh workbench: {second_text:?}"
-    );
-
-    assert!(engine.perform_command(window, "session.switch"));
-    settle(&mut engine);
-    roll_in(&mut engine);
-    let (labels, selected) = switcher_labels(&engine).expect("the switcher again");
-    assert_eq!(labels, ["Local", "Scratch 1", "+ New Scratch"]);
-    assert_eq!(selected, 1, "the fresh scratch space is current now");
-    let clicked = himark::test_driver::click(&mut engine.app, 40.0, peeker_row_y(0), 900.0, 700.0);
-    assert!(clicked);
-    settle(&mut engine);
-    let restored = engine
-        .substring(
-            window,
-            HimarkRange {
-                start: 0,
-                length: u32::MAX,
-            },
-        )
-        .expect("the restored tree");
-    assert!(
-        restored.contains("hello one"),
-        "the first workspace's workbench came back intact: {restored:?}"
     );
 }
 
