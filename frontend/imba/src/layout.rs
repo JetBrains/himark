@@ -857,19 +857,23 @@ struct ShapedLabel {
 }
 
 /// Chrome labels are few, short and repeat every frame, so shaped
-/// paragraphs memoize per (text, face, size, tracking, color). An env
-/// slot in `UiCtx` — per UI thread and warm for the app's lifetime,
-/// like every other font cache (the editor's own memo is
-/// `shape_cache`, keyed by document lines instead).
+/// paragraphs memoize per (style, text). An env slot in `UiCtx` — per
+/// UI thread and warm for the app's lifetime, like every other font
+/// cache (the editor's own memo is `shape_cache`, keyed by document
+/// lines instead). Two map levels so the steady-state hit probes by
+/// `&str` — a flat (style, String) key would clone the label text on
+/// every lookup.
 pub struct TextShaper {
     fonts: skia_safe::textlayout::FontCollection,
-    labels: std::cell::RefCell<std::collections::HashMap<LabelKey, LabelEntry>>,
+    labels: std::cell::RefCell<
+        std::collections::HashMap<StyleKey, std::collections::HashMap<String, LabelEntry>>,
+    >,
     clock: std::cell::Cell<u64>,
 }
 
-#[derive(PartialEq, Eq, Hash)]
-struct LabelKey {
-    text: String,
+/// Everything that shapes a label besides its text.
+#[derive(PartialEq, Eq, Hash, Clone, Copy)]
+struct StyleKey {
     typeface: skia_safe::typeface::TypefaceId,
     size: u32,
     tracking: u32,
@@ -940,14 +944,18 @@ impl TextShaper {
     ) -> std::rc::Rc<ShapedLabel> {
         let clock = self.clock.get() + 1;
         self.clock.set(clock);
-        let key = LabelKey {
-            text: text.to_owned(),
+        let style = StyleKey {
             typeface: font.typeface().unique_id(),
             size: font.size().to_bits(),
             tracking: tracking.to_bits(),
             argb: u32::from_be_bytes([color.a(), color.r(), color.g(), color.b()]),
         };
-        if let Some(entry) = self.labels.borrow_mut().get_mut(&key) {
+        if let Some(entry) = self
+            .labels
+            .borrow_mut()
+            .get_mut(&style)
+            .and_then(|texts| texts.get_mut(text))
+        {
             entry.last_use = clock;
             return std::rc::Rc::clone(&entry.label);
         }
@@ -958,11 +966,14 @@ impl TextShaper {
             paragraph,
         });
         let mut labels = self.labels.borrow_mut();
-        if labels.len() >= LABEL_CAPACITY {
-            labels.retain(|_, entry| entry.last_use + LABEL_CAPACITY as u64 >= clock);
+        if labels.values().map(|texts| texts.len()).sum::<usize>() >= LABEL_CAPACITY {
+            for texts in labels.values_mut() {
+                texts.retain(|_, entry| entry.last_use + LABEL_CAPACITY as u64 >= clock);
+            }
+            labels.retain(|_, texts| !texts.is_empty());
         }
-        labels.insert(
-            key,
+        labels.entry(style).or_default().insert(
+            text.to_owned(),
             LabelEntry {
                 label: std::rc::Rc::clone(&label),
                 last_use: clock,
