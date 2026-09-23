@@ -136,6 +136,13 @@ impl AgentsPanel {
             .collect()
     }
 
+    #[doc(hidden)]
+    pub fn selected_row(&self) -> Option<usize> {
+        let key = self.list.content().cursor()?;
+        let range = self.list.content().row_range(key)?;
+        Some(range.start)
+    }
+
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let cursor = self.list.content().cursor().cloned();
         let mut slice: ListSlice<TreeRow, AgentKey> = ListSlice::new();
@@ -270,11 +277,22 @@ impl AgentsPanel {
         );
         let len = self.list.content().len();
         self.list.content_mut().splice_slice(0..len, slice);
-        if let Some(key) = cursor {
+        // The cursor survives a refresh; a fresh list lands on the
+        // session the window currently shows.
+        let target = cursor.or_else(|| self.open_session_key(store));
+        if let Some(key) = target {
             if self.list.content().row_range(&key).is_some() {
                 self.list.content_mut().select_only(key);
             }
         }
+    }
+
+    /// The row key of the session the panel's window has open, if the
+    /// window shows a session at all.
+    fn open_session_key(&self, store: &Store) -> Option<AgentKey> {
+        let open = crate::Windows::window_ref(store, self.window)?.current_session();
+        open.names_session()
+            .then(|| AgentKey::Session(open.host, open.session))
     }
 
     fn connect(&mut self, store: &mut Store, server: HostId, fx: &mut Effects<'_, AgentsCommand>) {

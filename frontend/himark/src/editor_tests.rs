@@ -4785,6 +4785,66 @@ mod dock_tests {
     }
 
     #[test]
+    fn the_drawer_lands_on_the_window_s_open_session() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary = |title: &str| ahp_types::state::SessionSummary {
+            provider: "test".to_owned(),
+            title: title.to_owned(),
+            status: 33,
+            activity: None,
+            project: None,
+            working_directories: None,
+            annotations: None,
+            resource: format!("test-session:/{title}"),
+            created_at: String::new(),
+            modified_at: "2026-09-22T10:00:00Z".to_owned(),
+            changes: None,
+            meta: None,
+        };
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![summary("alpha"), summary("beta")],
+            true,
+        );
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let _ = entity.switch_to(crate::SessionId {
+            host,
+            session: "test-session:/beta".to_owned(),
+        });
+        crate::Windows::put(&mut store, window, entity);
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
+            imba::effect::Batch::new();
+        use imba::View;
+        panel.perform(
+            &mut store,
+            &ui,
+            crate::higent::AgentsCommand::Boot,
+            &mut batch.effects(),
+        );
+
+        let rows = panel.rows();
+        let beta = rows
+            .iter()
+            .position(|(label, _)| label == "beta")
+            .expect("the beta session stands in the list");
+        assert_eq!(
+            panel.selected_row(),
+            Some(beta),
+            "the open session is the selection: {rows:?}"
+        );
+    }
+
+    #[test]
     fn dock_picks_keep_the_panel_up() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
