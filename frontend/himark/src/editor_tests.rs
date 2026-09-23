@@ -4599,7 +4599,7 @@ mod dock_tests {
 
         let mut store = app.store_mut().clone();
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
         {
             let mut boot: imba::effect::Batch<crate::higent::AgentsCommand> =
                 imba::effect::Batch::new();
@@ -4727,7 +4727,7 @@ mod dock_tests {
         );
 
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
         let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
             imba::effect::Batch::new();
         use imba::View;
@@ -4821,7 +4821,7 @@ mod dock_tests {
         crate::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
-        let mut panel = crate::higent::AgentsPanel::open(&store, window);
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
         let mut batch: imba::effect::Batch<crate::higent::AgentsCommand> =
             imba::effect::Batch::new();
         use imba::View;
@@ -4842,6 +4842,100 @@ mod dock_tests {
             Some(beta),
             "the open session is the selection: {rows:?}"
         );
+    }
+
+    #[test]
+    fn the_drawer_speed_search_filters_sessions() {
+        use imba::effect::{block_on, EffectHandler, Message};
+
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut store = app.store_mut().clone();
+        let host = crate::SessionId::local_default(&store).host;
+        crate::higent::Agents::seed(&mut store, host, "Test Host");
+        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        let summary = |title: &str| ahp_types::state::SessionSummary {
+            provider: "test".to_owned(),
+            title: title.to_owned(),
+            status: 33,
+            activity: None,
+            project: None,
+            working_directories: None,
+            annotations: None,
+            resource: format!("test-session:/{title}"),
+            created_at: String::new(),
+            modified_at: "2026-09-22T10:00:00Z".to_owned(),
+            changes: None,
+            meta: None,
+        };
+        crate::higent::Agents::add_sessions(
+            &mut store,
+            host,
+            vec![summary("alpha"), summary("beta"), summary("gamma")],
+            true,
+        );
+
+        let ui = ::editor::test_document::test_ui();
+        let mut panel = crate::higent::AgentsPanel::open(&store, &ui, window);
+        use imba::View;
+        let mut drive = |panel: &mut crate::higent::AgentsPanel,
+                         command|
+         -> imba::effect::Batch<crate::higent::AgentsCommand> {
+            let mut batch = imba::effect::Batch::new();
+            panel.perform(&mut store, &ui, command, &mut batch.effects());
+            batch
+        };
+        let _ = drive(&mut panel, crate::higent::AgentsCommand::Boot);
+
+        let typing = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Input(
+                crate::EditorCommand::InsertText {
+                    text: "bet".to_owned(),
+                },
+            )),
+        );
+        let mut matches = None;
+        for message in typing.drain() {
+            let (Message::Launch(_, effect) | Message::Relaunch(_, _, effect)) = message else {
+                continue;
+            };
+            let (value, _) = effect.into_payload().split();
+            if let Ok(effect) = value.downcast::<crate::SpeedSearchEffect>() {
+                matches = Some(block_on(Box::pin(async move {
+                    crate::SpeedSearchHandler.handle(*effect).await
+                })));
+            }
+        }
+        let matches = matches.expect("typing launched the filter");
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Landed(matches)),
+        );
+        assert_eq!(panel.match_count(), 1, "only beta matches");
+        let rows = panel.rows();
+        let beta = rows
+            .iter()
+            .position(|(label, _)| label == "beta")
+            .expect("the beta row stands");
+        assert_eq!(
+            panel.selected_row(),
+            Some(beta),
+            "the cursor jumped to the match: {rows:?}"
+        );
+
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Step(1)),
+        );
+        assert_eq!(panel.selected_row(), Some(beta), "wrapped in place");
+
+        let _ = drive(
+            &mut panel,
+            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Clear),
+        );
+        assert_eq!(panel.match_count(), 0, "cleared");
     }
 
     #[test]

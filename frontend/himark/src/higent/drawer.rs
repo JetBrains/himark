@@ -7,7 +7,10 @@ use crate::higent::{
     ConnectServerEffect, HostId, ListSessionsEffect, PollServerEffect, RootInfo, ServerEvent,
     SessionsPage,
 };
-use crate::{AppCommand, ModalRequest, ModalView, TreeLabel, TreeListCommand, TreeRow};
+use crate::{
+    AppCommand, ModalRequest, ModalView, SpeedSearchCommand, SpeedSearchView, TreeLabel,
+    TreeListCommand, TreeRow,
+};
 use ahp_types::common::Uri;
 use ahp_types::state::SessionSummary;
 use imba::{
@@ -46,8 +49,40 @@ enum AgentKey {
 
 type TreeList = ScrollView<ListView<TreeRow, AgentKey>>;
 
+/// Speed-search over the drawer's folder and session rows — chrome
+/// rows (hosts, notes, the "+ …" affordances) stay out of the match
+/// set. Keys ascend with the rows, so zipping pairs each key with its
+/// row's visible label.
+#[derive(Clone)]
+struct SessionSearcher;
+
+impl crate::Searcher for SessionSearcher {
+    type View = TreeList;
+    type Key = AgentKey;
+
+    fn capture(&self, view: &Self::View) -> crate::ItemSource<AgentKey> {
+        let keys = view.content().structure_keys().ordered_keys();
+        let labels: Vec<String> = view
+            .content()
+            .rows()
+            .map(|row| row.inner().text().to_owned())
+            .collect();
+        let items: Vec<(String, AgentKey)> = keys
+            .into_iter()
+            .zip(labels)
+            .filter(|(key, _)| matches!(key, AgentKey::Session(..) | AgentKey::Folder(..)))
+            .map(|(key, label)| (label, key))
+            .collect();
+        Box::new(move || items)
+    }
+
+    fn generation(&self, view: &Self::View) -> u64 {
+        view.content().generation()
+    }
+}
+
 pub enum AgentsCommand {
-    Rows(TreeListCommand),
+    Rows(SpeedSearchCommand<TreeListCommand>),
 
     Boot,
     Connected(HostId, Result<RootInfo, String>),
@@ -75,7 +110,7 @@ pub enum AgentsCommand {
 }
 
 pub struct AgentsPanel {
-    list: TreeList,
+    list: SpeedSearchView<TreeList, SessionSearcher>,
     window: crate::WindowId,
     booted: bool,
 
@@ -105,9 +140,15 @@ impl Clone for AgentsPanel {
 }
 
 impl AgentsPanel {
-    pub fn open(store: &Store, window: crate::WindowId) -> Self {
+    pub fn open(store: &Store, ui: &UiCtx, window: crate::WindowId) -> Self {
         let panel = Self {
-            list: ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
+            list: SpeedSearchView::new(
+                ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
+                SessionSearcher,
+                store,
+                ui,
+                crate::env::Fonts::of(store),
+            ),
             window,
             booted: false,
             collapsed: rpds::HashTrieSetSync::new_sync(),
@@ -123,6 +164,7 @@ impl AgentsPanel {
 
     pub fn rows(&self) -> Vec<(String, usize)> {
         self.list
+            .inner()
             .content()
             .rows()
             .map(|row| {
@@ -137,14 +179,20 @@ impl AgentsPanel {
     }
 
     #[doc(hidden)]
+    pub fn match_count(&self) -> usize {
+        use imba::list::SearchableList;
+        self.list.inner().match_count()
+    }
+
+    #[doc(hidden)]
     pub fn selected_row(&self) -> Option<usize> {
-        let key = self.list.content().cursor()?;
-        let range = self.list.content().row_range(key)?;
+        let key = self.list.inner().content().cursor()?;
+        let range = self.list.inner().content().row_range(key)?;
         Some(range.start)
     }
 
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        let cursor = self.list.content().cursor().cloned();
+        let cursor = self.list.inner().content().cursor().cloned();
         let mut slice: ListSlice<TreeRow, AgentKey> = ListSlice::new();
 
         let now = std::time::SystemTime::now();
@@ -275,14 +323,17 @@ impl AgentsPanel {
             store,
             ui,
         );
-        let len = self.list.content().len();
-        self.list.content_mut().splice_slice(0..len, slice);
+        let len = self.list.inner().content().len();
+        self.list
+            .inner_mut()
+            .content_mut()
+            .splice_slice(0..len, slice);
         // The cursor survives a refresh; a fresh list lands on the
         // session the window currently shows.
         let target = cursor.or_else(|| self.open_session_key(store));
         if let Some(key) = target {
-            if self.list.content().row_range(&key).is_some() {
-                self.list.content_mut().select_only(key);
+            if self.list.inner().content().row_range(&key).is_some() {
+                self.list.inner_mut().content_mut().select_only(key);
             }
         }
     }
@@ -355,7 +406,7 @@ impl AgentsPanel {
         index: usize,
         fx: &mut Effects<'_, AgentsCommand>,
     ) {
-        let Some(key) = self.list.content().key_at(index).cloned() else {
+        let Some(key) = self.list.inner().content().key_at(index).cloned() else {
             return;
         };
         self.activate_key(store, ui, &key, fx);
@@ -400,7 +451,7 @@ impl AgentsPanel {
                 self.refresh(store, ui);
             }
             AgentKey::Session(server, session) => {
-                self.list.content_mut().select_only(key.clone());
+                self.list.inner_mut().content_mut().select_only(key.clone());
 
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
@@ -552,13 +603,18 @@ impl View for AgentsPanel {
             };
             return own.merge_under(input.focus_data(store, ui).map(AgentsCommand::AddHostInput));
         }
+        let searching = self.list.searching();
         let own = FocusData {
-            on_key: Some(Box::new(|key, _mods| match key {
-                InputKey::Escape => EventResult::Command(AgentsCommand::Dismiss),
-                InputKey::Up => EventResult::Command(AgentsCommand::Select(-1)),
-                InputKey::Down => EventResult::Command(AgentsCommand::Select(1)),
-                InputKey::Left => EventResult::Command(AgentsCommand::Fold(false)),
-                InputKey::Right => EventResult::Command(AgentsCommand::Fold(true)),
+            on_key: Some(Box::new(move |key, _mods| match key {
+                InputKey::Escape if !searching => EventResult::Command(AgentsCommand::Dismiss),
+                InputKey::Up if !searching => EventResult::Command(AgentsCommand::Select(-1)),
+                InputKey::Down if !searching => EventResult::Command(AgentsCommand::Select(1)),
+                InputKey::Left if !searching => EventResult::Command(AgentsCommand::Fold(false)),
+                InputKey::Right if !searching => EventResult::Command(AgentsCommand::Fold(true)),
+                InputKey::Enter if searching => EventResult::Commands(vec![
+                    AgentsCommand::Pick,
+                    AgentsCommand::Rows(SpeedSearchCommand::Clear),
+                ]),
                 InputKey::Enter => EventResult::Command(AgentsCommand::Pick),
                 _ => EventResult::Ignored,
             })),
@@ -567,11 +623,12 @@ impl View for AgentsPanel {
         own.merge_under(self.list.focus_data(store, ui).map(AgentsCommand::Rows))
     }
 
-    fn destroy(&mut self, _store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
+    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         for (_, token) in self.polls.iter() {
             fx.cancel(*token);
         }
         self.polls = rpds::HashTrieMapSync::new_sync();
+        fx.scope(AgentsCommand::Rows, |fx| self.list.destroy(store, fx));
     }
 
     fn perform(
@@ -636,17 +693,19 @@ impl View for AgentsPanel {
                 self.refresh(store, ui);
             }
             AgentsCommand::Rows(command) => {
-                if let Some((index, _)) = crate::tree_interaction(&command) {
-                    self.activate(store, ui, index, fx);
-                    return;
+                if let SpeedSearchCommand::Inner(inner) = &command {
+                    if let Some((index, _)) = crate::tree_interaction(inner) {
+                        self.activate(store, ui, index, fx);
+                        return;
+                    }
                 }
                 fx.scope(AgentsCommand::Rows, |fx| {
                     self.list.perform(store, ui, command, fx)
                 });
             }
-            AgentsCommand::Select(delta) => self.list.content_mut().cursor_step(delta),
+            AgentsCommand::Select(delta) => self.list.inner_mut().content_mut().cursor_step(delta),
             AgentsCommand::Fold(expand) => {
-                let Some(key) = self.list.content().cursor().cloned() else {
+                let Some(key) = self.list.inner().content().cursor().cloned() else {
                     return;
                 };
                 if let AgentKey::Server(server) = key {
@@ -657,7 +716,7 @@ impl View for AgentsPanel {
                 }
             }
             AgentsCommand::Pick => {
-                if let Some(key) = self.list.content().cursor().cloned() {
+                if let Some(key) = self.list.inner().content().cursor().cloned() {
                     self.activate_key(store, ui, &key, fx);
                 }
             }
@@ -946,7 +1005,7 @@ impl crate::DynamicCommand for ToggleAgentsView {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = AgentsPanel::open(store, window);
+        let panel = AgentsPanel::open(store, &_app.ui_ctx(), window);
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
