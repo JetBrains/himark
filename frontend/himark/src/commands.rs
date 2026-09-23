@@ -277,6 +277,43 @@ impl DynamicCommand for ToggleTheme {
     }
 }
 
+/// Selects an explicit theme, unlike [ToggleTheme] — the host calls this to
+/// follow the OS appearance (at startup and when the system theme changes).
+pub(crate) struct SetTheme {
+    pub(crate) dark: bool,
+}
+
+impl DynamicCommand for SetTheme {
+    fn id(&self) -> &'static str {
+        if self.dark {
+            "theme.dark"
+        } else {
+            "theme.light"
+        }
+    }
+    fn name(&self) -> String {
+        if self.dark {
+            "Use Dark Theme".to_owned()
+        } else {
+            "Use Light Theme".to_owned()
+        }
+    }
+    fn perform(
+        &self,
+        _app: &mut Application,
+        store: &mut Store,
+        _window: crate::WindowId,
+        _fx: &mut crate::AppFx<'_>,
+    ) {
+        let theme = if self.dark {
+            ::editor::theme::Theme::embedded()
+        } else {
+            ::editor::theme::Theme::light()
+        };
+        ::editor::env::Themes::set(store, theme);
+    }
+}
+
 pub(crate) struct CompletionTrigger;
 
 impl DynamicCommand for CompletionTrigger {
@@ -559,6 +596,8 @@ pub(crate) fn register_builtins(store: &mut Store) {
     Commands::register(store, Arc::new(NavigateForward));
     Commands::register(store, Arc::new(crate::toc::ToggleToc));
     Commands::register(store, Arc::new(ToggleTheme));
+    Commands::register(store, Arc::new(SetTheme { dark: true }));
+    Commands::register(store, Arc::new(SetTheme { dark: false }));
     Commands::register(store, Arc::new(ChatComposer));
 
     Commands::register(
