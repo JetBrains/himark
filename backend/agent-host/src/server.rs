@@ -21,15 +21,15 @@ use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{
     AgentInfo, Annotation, AnnotationsState, AnnotationsSummary, ChangesetState, ChangesetStatus,
     ChatOrigin, ChatState, ChatSummary, ErrorInfo, MessageAttachment, PendingMessageKind,
-    RootState, SessionLifecycle, SessionState, SessionSummary, Snapshot, SnapshotState,
-    TerminalContentPart, TerminalInfo, TerminalState,
+    ResponsePart, RootState, SessionLifecycle, SessionState, SessionSummary, Snapshot,
+    SnapshotState, TerminalContentPart, TerminalInfo, TerminalState,
 };
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 
 use crate::rpc;
-use crate::store::{Manifest, Store};
+use crate::store::{Manifest, Store, TitleSource};
 
 pub(crate) const ROOT: &str = "ahp-root://";
 
@@ -79,6 +79,10 @@ pub struct HostConfig {
 
     pub codex_home: PathBuf,
 
+    /// Ask the provider's CLI for a model-generated session title after the
+    /// first turn completes. Off in tests, which drive fake CLIs.
+    pub model_titles: bool,
+
     pub shell: String,
 
     pub language_servers: Vec<LanguageServer>,
@@ -111,6 +115,7 @@ impl Default for HostConfig {
                     let home = std::env::var("HOME").unwrap_or_default();
                     PathBuf::from(home).join(".codex")
                 }),
+            model_titles: true,
             shell: std::env::var("HIMARK_SHELL")
                 .or_else(|_| std::env::var("SHELL"))
                 .unwrap_or_else(|_| "/bin/sh".to_owned()),
@@ -563,6 +568,10 @@ pub struct Host {
 
     lsp_cancelled: Mutex<std::collections::HashSet<(u64, u64)>>,
 
+    /// Sessions a model-title call has been attempted for — one attempt
+    /// per session per host run, whether or not the call succeeded.
+    titling: Mutex<std::collections::HashSet<Uri>>,
+
     pub(crate) trace: Arc<crate::trace::HostTrace>,
 
     pub(crate) http: crate::http::HttpServer,
@@ -636,6 +645,7 @@ impl Host {
             primary: None,
             default_chat: String::new(),
             title: "Local Files".to_owned(),
+            title_source: TitleSource::Prompt,
             created_at: String::new(),
             annotations: local_annotations,
             model: None,
@@ -673,6 +683,7 @@ impl Host {
                 lsp,
                 lsp_inflight: Mutex::new(HashMap::new()),
                 lsp_cancelled: Mutex::new(std::collections::HashSet::new()),
+                titling: Mutex::new(std::collections::HashSet::new()),
                 trace: crate::trace::HostTrace::new(),
                 http: crate::http::HttpServer::new(),
                 web_root: std::sync::Mutex::new(None),
@@ -1413,6 +1424,7 @@ impl Host {
                 .next(),
             default_chat: default_chat.clone(),
             title: session.title.clone(),
+            title_source: TitleSource::Prompt,
             created_at: now_rfc3339(),
             annotations: Vec::new(),
             model: None,
@@ -1626,6 +1638,7 @@ impl Host {
             primary,
             default_chat: default_chat.clone(),
             title: "New Session".to_owned(),
+            title_source: TitleSource::Prompt,
             created_at: now_rfc3339(),
             annotations: Vec::new(),
             model: params["model"]["id"].as_str().map(str::to_owned),
@@ -2195,6 +2208,7 @@ impl Host {
             });
         }
         if terminal && natural {
+            self.model_retitle(chat);
             self.drain_queue(chat);
         }
     }
@@ -2244,9 +2258,9 @@ impl Host {
             if session.manifest.title != "New Session" {
                 return None;
             }
-            let mut title = started.message.text.trim().replace('\n', " ");
-            if title.len() > 64 {
-                title.truncate(64);
+            let mut title: String = started.message.text.trim().replace('\n', " ");
+            if title.chars().count() > 64 {
+                title = title.chars().take(64).collect();
             }
             if title.is_empty() {
                 return None;
@@ -2267,6 +2281,101 @@ impl Host {
                 "session": session,
                 "changes": PartialSessionSummary {
                     title: Some(fresh_title),
+                    modified_at: Some(now_rfc3339()),
+                    ..Default::default()
+                },
+            }),
+        );
+    }
+
+    /// Upgrades the prompt-derived placeholder title to a model-generated
+    /// one after a turn completes naturally. The title comes from a one-shot
+    /// CLI call outside the session, so the conversation stays untouched;
+    /// on any failure the placeholder simply survives.
+    fn model_retitle(self: &Arc<Self>, chat: &Uri) {
+        if !self.config.model_titles {
+            return;
+        }
+        let (session_uri, provider, prompt) = {
+            let state = self.snapshot();
+            let Some(entry) = state.chats.get(chat) else {
+                return;
+            };
+            let session_uri = entry.session.clone();
+            let Some(session) = state.sessions.get(&session_uri) else {
+                return;
+            };
+            if session.manifest.title_source == TitleSource::Model {
+                return;
+            }
+            if !matches!(session.manifest.provider.as_str(), "claude" | "codex") {
+                return;
+            }
+            let Some(turn) = entry.state.turns.first() else {
+                return;
+            };
+            let request = turn.message.text.trim();
+            if request.is_empty() {
+                return;
+            }
+            let response: String = turn
+                .response_parts
+                .iter()
+                .filter_map(|part| match part {
+                    ResponsePart::Markdown(markdown) => Some(markdown.content.as_str()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            (
+                session_uri,
+                session.manifest.provider.clone(),
+                title_prompt(request, response.trim()),
+            )
+        };
+        {
+            let mut titling = self.titling.lock().expect("titling");
+            if !titling.insert(session_uri.clone()) {
+                return;
+            }
+        }
+        let host = Arc::clone(self);
+        tokio::spawn(async move {
+            let cwd = host.config.data_dir.clone();
+            let raw = match provider.as_str() {
+                "claude" => {
+                    crate::claude::generate_title(&host.config.claude_binary, &cwd, &prompt).await
+                }
+                _ => crate::codex::generate_title(&host.config.codex_binary, &cwd, &prompt).await,
+            };
+            match raw.map(|raw| clean_title(&raw)) {
+                Ok(title) if !title.is_empty() => host.apply_model_title(&session_uri, title),
+                Ok(_) => eprintln!("[hihost] title call returned nothing for {session_uri}"),
+                Err(error) => eprintln!("[hihost] title call failed for {session_uri}: {error}"),
+            }
+        });
+    }
+
+    fn apply_model_title(&self, session_uri: &Uri, title: String) {
+        let applied = self.update(|state| {
+            let mut session = state.sessions.get(session_uri)?.clone();
+            session.manifest.title = title.clone();
+            session.manifest.title_source = TitleSource::Model;
+            session.state.title = title.clone();
+            let _ = self.store.write_manifest(&session.manifest);
+            state.sessions.insert_mut(session_uri.clone(), session);
+            Some(())
+        });
+        if applied.is_none() {
+            return;
+        }
+        self.notify_root(
+            "root/sessionSummaryChanged",
+            serde_json::json!({
+                "channel": ROOT,
+                "session": session_uri,
+                "changes": PartialSessionSummary {
+                    title: Some(title),
                     modified_at: Some(now_rfc3339()),
                     ..Default::default()
                 },
@@ -4553,6 +4662,37 @@ fn cli_summary(session: &crate::catalog::CliSession) -> SessionSummary {
         changes: None,
         meta: None,
     }
+}
+
+fn title_prompt(request: &str, response: &str) -> String {
+    let request: String = request.chars().take(2000).collect();
+    let mut prompt = format!(
+        "{} Name a coding session after the work below. Reply with the name \
+         only: at most six plain words, no quotes, no trailing punctuation.\n\n\
+         The user asked:\n{request}\n",
+        crate::catalog::INTERNAL_PROMPT_MARKER,
+    );
+    if !response.is_empty() {
+        let response: String = response.chars().take(2000).collect();
+        prompt.push_str(&format!("\nThe agent replied:\n{response}\n"));
+    }
+    prompt
+}
+
+/// First non-empty line of a model's title answer, stripped of the quoting
+/// and punctuation models like to add, capped at the 64 chars titles get
+/// everywhere else.
+fn clean_title(raw: &str) -> String {
+    let line = raw
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or("");
+    let line = line
+        .trim_matches(|c| matches!(c, '"' | '\'' | '`' | '*' | '#'))
+        .trim()
+        .trim_end_matches('.');
+    line.chars().take(64).collect::<String>().trim().to_owned()
 }
 
 fn summary_of(manifest: &Manifest) -> SessionSummary {

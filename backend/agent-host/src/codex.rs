@@ -45,6 +45,47 @@ pub fn discover_binary() -> String {
     "codex".to_owned()
 }
 
+/// One-shot `codex exec` call used for session titling. Runs outside any
+/// thread (read-only sandbox, fresh rollout) so the conversation the user
+/// sees stays untouched; the throwaway rollout is skipped by
+/// `catalog::scan_codex` via the internal prompt marker.
+pub async fn generate_title(
+    binary: &str,
+    cwd: &std::path::Path,
+    prompt: &str,
+) -> Result<String, String> {
+    let mut words = binary.split_whitespace();
+    let program = words.next().unwrap_or("codex").to_owned();
+    let answer = std::env::temp_dir().join(format!("himark-title-{}.txt", crate::uuid_v4()));
+    let mut command = tokio::process::Command::new(&program);
+    command.args(words);
+    command
+        .arg("exec")
+        .arg("--skip-git-repo-check")
+        .args(["--sandbox", "read-only"])
+        .arg("--output-last-message")
+        .arg(&answer)
+        .arg(prompt)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(60), command.output())
+        .await
+        .map_err(|_| "title call timed out".to_owned())
+        .and_then(|held| held.map_err(|error| format!("failed to spawn `{binary}`: {error}")));
+    let title = std::fs::read_to_string(&answer);
+    let _ = std::fs::remove_file(&answer);
+    let output = output?;
+    if !output.status.success() {
+        return Err(format!(
+            "title call exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    title.map_err(|error| format!("title call produced no answer: {error}"))
+}
+
 pub struct SpawnConfig {
     pub binary: String,
     pub cwd: std::path::PathBuf,

@@ -16,6 +16,12 @@ with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "spawn-log.js
     log.write(json.dumps({"argv": sys.argv[1:], "cwd": os.getcwd(),
                           "max_thinking_tokens": os.environ.get("MAX_THINKING_TOKENS")}) + "\n")
 
+# One-shot title calls come without the stream-json plumbing: answer in
+# plain text like `claude --print "<prompt>"` would and get out.
+if "--input-format" not in sys.argv:
+    print("Titled By The Stub")
+    sys.exit(0)
+
 def out(obj):
     sys.stdout.write(json.dumps(obj) + "\n")
     sys.stdout.flush()
@@ -134,6 +140,13 @@ import json, os, sys
 
 root = os.path.dirname(os.path.abspath(__file__))
 log_path = os.path.join(root, "codex-log.jsonl")
+
+# One-shot title calls run `codex exec --output-last-message <path> <prompt>`:
+# park the answer in the file like the real CLI and get out.
+if "exec" in sys.argv:
+    with open(sys.argv[sys.argv.index("--output-last-message") + 1], "w") as answer:
+        answer.write("Titled By The Codex Stub\n")
+    sys.exit(0)
 
 def out(obj):
     sys.stdout.write(json.dumps(obj) + "\n")

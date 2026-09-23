@@ -59,6 +59,40 @@ pub(crate) fn is_executable(path: &std::path::Path) -> bool {
         .is_ok_and(|meta| meta.is_file() && meta.permissions().mode() & 0o111 != 0)
 }
 
+/// One-shot `claude --print` call used for session titling. Runs outside
+/// any session (fresh transcript, cheapest model) so the conversation the
+/// user sees stays untouched; the throwaway transcript is skipped by
+/// `catalog::scan` via the internal prompt marker.
+pub async fn generate_title(
+    binary: &str,
+    cwd: &std::path::Path,
+    prompt: &str,
+) -> Result<String, String> {
+    let mut words = binary.split_whitespace();
+    let program = words.next().unwrap_or("claude").to_owned();
+    let mut command = tokio::process::Command::new(&program);
+    command.args(words);
+    command
+        .arg("--print")
+        .args(["--model", "haiku"])
+        .arg(prompt)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .kill_on_drop(true);
+    let output = tokio::time::timeout(std::time::Duration::from_secs(60), command.output())
+        .await
+        .map_err(|_| "title call timed out".to_owned())?
+        .map_err(|error| format!("failed to spawn `{binary}`: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "title call exited with {}: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
 pub struct SpawnConfig {
     pub binary: String,
     pub cwd: std::path::PathBuf,

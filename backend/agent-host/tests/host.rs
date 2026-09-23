@@ -145,6 +145,7 @@ fn host_at(dir: &Path) -> Arc<agent_host::Host> {
         codex_binary: "false".to_owned(),
         claude_home: dir.join("dot-claude"),
         codex_home: dir.join("dot-codex"),
+        model_titles: false,
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
     })
@@ -187,6 +188,7 @@ fn codex_host_at(dir: &Path) -> Arc<agent_host::Host> {
         codex_binary: agent_host::testing::fake_codex_command(dir),
         claude_home: dir.join("dot-claude"),
         codex_home: dir.join("dot-codex"),
+        model_titles: false,
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
         ..agent_host::HostConfig::default()
@@ -325,6 +327,92 @@ async fn a_turn_streams_through_the_fake_cli() {
         .as_array()
         .expect("turns");
     assert_eq!(turns.len(), 1, "one folded turn");
+}
+
+#[tokio::test]
+async fn the_first_completed_turn_upgrades_the_title_via_the_model() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = agent_host::Host::new(agent_host::HostConfig {
+        agents: Vec::new(),
+        data_dir: dir.path().join("data"),
+        claude_binary: agent_host::testing::fake_cli_command(dir.path()),
+        codex_binary: "false".to_owned(),
+        claude_home: dir.path().join("dot-claude"),
+        codex_home: dir.path().join("dot-codex"),
+        model_titles: true,
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+    });
+    let mut client = Client::connect(host).await;
+    let (session, chat) = open_session(&mut client, dir.path()).await;
+    client.request("subscribe", json!({"channel": ROOT})).await;
+
+    client
+        .dispatch(
+            &chat,
+            turn_started("t-1", "make the scroll tests stop flaking"),
+        )
+        .await;
+    let changed = client.next_notification("root/sessionSummaryChanged").await;
+    assert_eq!(changed["session"], session, "{changed}");
+    assert_eq!(
+        changed["changes"]["title"], "make the scroll tests stop flaking",
+        "the prompt-derived placeholder lands first: {changed}"
+    );
+    let changed = client.next_notification("root/sessionSummaryChanged").await;
+    assert_eq!(changed["session"], session, "{changed}");
+    assert_eq!(
+        changed["changes"]["title"], "Titled By The Stub",
+        "{changed}"
+    );
+
+    let listed = client
+        .request("listSessions", json!({"channel": ROOT}))
+        .await;
+    let row = listed["items"]
+        .as_array()
+        .expect("items")
+        .iter()
+        .find(|item| item["resource"] == session.as_str())
+        .expect("the retitled session");
+    assert_eq!(row["title"], "Titled By The Stub");
+}
+
+#[tokio::test]
+async fn the_first_completed_codex_turn_upgrades_the_title_via_the_model() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = agent_host::Host::new(agent_host::HostConfig {
+        data_dir: dir.path().join("codex-data"),
+        claude_binary: "false".to_owned(),
+        codex_binary: agent_host::testing::fake_codex_command(dir.path()),
+        claude_home: dir.path().join("dot-claude"),
+        codex_home: dir.path().join("dot-codex"),
+        model_titles: true,
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+        ..agent_host::HostConfig::default()
+    });
+    let mut client = Client::connect(host).await;
+    let (session, chat) = open_codex_session(&mut client, dir.path()).await;
+    client.request("subscribe", json!({"channel": ROOT})).await;
+
+    client
+        .dispatch(
+            &chat,
+            turn_started("codex-1", "make the scroll tests stop flaking"),
+        )
+        .await;
+    let changed = client.next_notification("root/sessionSummaryChanged").await;
+    assert_eq!(
+        changed["changes"]["title"], "make the scroll tests stop flaking",
+        "the prompt-derived placeholder lands first: {changed}"
+    );
+    let changed = client.next_notification("root/sessionSummaryChanged").await;
+    assert_eq!(changed["session"], session, "{changed}");
+    assert_eq!(
+        changed["changes"]["title"], "Titled By The Codex Stub",
+        "{changed}"
+    );
 }
 
 #[tokio::test]
@@ -851,6 +939,54 @@ async fn terminal_sessions_list_and_open_with_backfilled_turns() {
         .expect("turns");
     assert_eq!(turns.len(), 1, "the backfilled turn");
     assert_eq!(turns[0]["message"]["text"], "fix the bug");
+}
+
+#[tokio::test]
+async fn internal_title_transcripts_never_list_as_sessions() {
+    let dir = tempfile::tempdir().expect("tempdir");
+
+    // The residue of a one-shot `claude --print` title call.
+    let project = dir.path().join("dot-claude/projects/-data");
+    std::fs::create_dir_all(&project).expect("project dir");
+    std::fs::write(
+        project.join("99999999-2222-4333-8444-555555555555.jsonl"),
+        concat!(
+            r#"{"type":"user","cwd":"/data","message":{"role":"user","content":"[himark-internal] Name a coding session after the work below."},"uuid":"u1","timestamp":"2026-08-13T10:00:00Z"}"#, "
+",
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Scroll Test Repair"}]},"uuid":"a1"}"#, "
+",
+        ),
+    )
+    .expect("jsonl");
+
+    // The residue of a one-shot `codex exec` title call.
+    let sessions = dir.path().join("dot-codex/sessions/2026/08/31");
+    std::fs::create_dir_all(&sessions).expect("codex sessions");
+    std::fs::write(
+        sessions.join("rollout-2026-08-31T10-00-00-019f0eb0-8444-7383-ba6e-628509b1c33f.jsonl"),
+        concat!(
+            r#"{"timestamp":"2026-08-31T10:00:00Z","type":"session_meta","payload":{"id":"019f0eb0-8444-7383-ba6e-628509b1c33f","cwd":"/data","source":"exec"}}"#, "
+",
+            r#"{"timestamp":"2026-08-31T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"[himark-internal] Name a coding session after the work below."}]}}"#, "
+",
+            r#"{"timestamp":"2026-08-31T10:00:02Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Scroll Test Repair"}]}}"#, "
+",
+        ),
+    )
+    .expect("codex transcript");
+
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+        )
+        .await;
+    let listed = client
+        .request("listSessions", json!({"channel": ROOT}))
+        .await;
+    assert_eq!(listed["items"], json!([]), "{listed}");
 }
 
 fn long_jsonl(dir: &Path, native: &str) {
@@ -2484,6 +2620,7 @@ async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::Host>, Client, String, Stri
         codex_binary: "false".to_owned(),
         claude_home: dir.join("dot-claude"),
         codex_home: dir.join("dot-codex"),
+        model_titles: false,
         shell: "/bin/sh".to_owned(),
         language_servers: vec![agent_host::LanguageServer {
             extensions: vec!["rs".to_owned()],
@@ -2669,6 +2806,7 @@ async fn session_config_resolves_and_creation_honors_it() {
         claude_binary: agent_host::testing::fake_cli_command(dir.path()),
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
+        model_titles: false,
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
         ..agent_host::HostConfig::default()

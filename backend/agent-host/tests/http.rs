@@ -16,6 +16,7 @@ fn host_at(dir: &std::path::Path) -> Arc<agent_host::Host> {
         codex_binary: "false".to_owned(),
         claude_home: dir.join("dot-claude"),
         codex_home: dir.join("dot-codex"),
+        model_titles: false,
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
     })

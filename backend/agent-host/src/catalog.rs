@@ -10,6 +10,12 @@ use ahp_types::actions::{
 use ahp_types::state::{MarkdownResponsePart, Message, MessageKind, MessageOrigin, ResponsePart};
 use serde_json::Value;
 
+/// Prefix of prompts the host sends to the CLIs for its own purposes
+/// (session titling). The transcripts of those one-shot runs live in the
+/// same homes `scan`/`scan_codex` walk, so both skip sessions whose first
+/// user message carries the marker.
+pub const INTERNAL_PROMPT_MARKER: &str = "[himark-internal]";
+
 #[derive(Debug, Clone)]
 pub struct CliSession {
     pub provider: String,
@@ -173,6 +179,11 @@ fn head(path: &Path) -> Option<(String, Option<String>)> {
         }
         if title.is_empty() || title.starts_with('/') {
             continue;
+        }
+        if title.starts_with(INTERNAL_PROMPT_MARKER) {
+            // A one-shot transcript the host produced itself (e.g. a title
+            // prompt) — its only user message is ours, so skip the file.
+            return None;
         }
         let cwd = entry["cwd"].as_str().map(str::to_owned);
         return Some((title, cwd));
@@ -361,6 +372,7 @@ fn injected_codex_message(text: &str) -> bool {
         "<skills_instructions>",
         "<apps_instructions>",
         "<plugins_instructions>",
+        INTERNAL_PROMPT_MARKER,
     ]
     .iter()
     .any(|prefix| text.starts_with(prefix))
