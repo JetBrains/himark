@@ -118,13 +118,68 @@ impl imba::effect::Effect for PickFoldersEffect {
 #[derive(Clone, Default)]
 pub struct PendingFolderPick(pub Arc<Vec<crate::ResourceLocation>>);
 
+/// Values carried over from the session that was current when the composer
+/// opened. Each field is applied once its combo lists the value, then
+/// cleared; an explicit user pick also cancels the corresponding seed so
+/// late-arriving host data never overrides it.
+#[derive(Clone, Default)]
+struct Prefill {
+    dir: Option<String>,
+    provider: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
+    mode: Option<String>,
+    edits: Option<String>,
+    worktree: Option<bool>,
+}
+
+impl Prefill {
+    fn of_session(store: &Store, session: &crate::SessionId) -> Self {
+        let mut prefill = Self::default();
+        if let Some(folder) = crate::higent::session_folders(store, session).first() {
+            if let Some(uris) = Hosts::uris(store, session.host) {
+                prefill.dir = Some(uris.uri_of(folder).as_str().to_owned());
+            }
+        }
+        let Some(channel) = crate::higent::Agents::channel(store, session) else {
+            return prefill;
+        };
+        if !channel.provider.is_empty() {
+            prefill.provider = Some(channel.provider.clone());
+        }
+        if let Some(config) = &channel.config {
+            let value = |key: &str| {
+                config
+                    .values
+                    .get(key)
+                    .and_then(|value| value.as_str())
+                    .map(str::to_owned)
+            };
+            prefill.model = value("model");
+            prefill.effort = value("thinkingLevel");
+            prefill.mode = value("mode");
+            prefill.edits = value("permissionMode");
+            prefill.worktree = config
+                .values
+                .get("worktree")
+                .and_then(|value| value.as_bool());
+        }
+        prefill
+    }
+}
+
+/// Per-window: two windows can compose concurrently, and a shared slot
+/// would let one consume or clobber the schema resolved for the other.
 #[derive(Clone, Default)]
 pub struct ComposerFeed {
-    pub resolving: Option<CancellationToken>,
-    pub resolved: Option<(
-        HostId,
-        Result<ahp_types::commands::ResolveSessionConfigResult, String>,
-    )>,
+    pub resolving: rpds::HashTrieMapSync<crate::WindowId, CancellationToken>,
+    pub resolved: rpds::HashTrieMapSync<
+        crate::WindowId,
+        (
+            HostId,
+            Result<ahp_types::commands::ResolveSessionConfigResult, String>,
+        ),
+    >,
 
     pub generation: u64,
 }
@@ -187,6 +242,7 @@ pub enum NewSessionCommand {
 
 #[derive(Clone)]
 pub struct NewSessionView {
+    window: crate::WindowId,
     input: ScrollView<EditorView>,
     host: Combo,
 
@@ -199,6 +255,7 @@ pub struct NewSessionView {
     worktree: bool,
 
     host_hint: Option<HostId>,
+    prefill: Prefill,
 
     synced: u64,
 
@@ -225,12 +282,28 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<Edito
 }
 
 impl NewSessionView {
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
-        Self::for_host(store, ui, None)
+    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, window: crate::WindowId) -> Self {
+        Self::for_host(store, ui, window, None)
     }
 
-    pub fn for_host(store: &imba::store::Store, ui: &imba::UiCtx, host: Option<HostId>) -> Self {
+    pub fn for_host(
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        window: crate::WindowId,
+        host: Option<HostId>,
+    ) -> Self {
+        Self::seeded(store, ui, window, host, Prefill::default())
+    }
+
+    fn seeded(
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        window: crate::WindowId,
+        host: Option<HostId>,
+        prefill: Prefill,
+    ) -> Self {
         Self {
+            window,
             input: fresh_input(store, ui),
             host: Combo::new(store, ui, "HOST"),
             hosts: Arc::new(Vec::new()),
@@ -239,13 +312,14 @@ impl NewSessionView {
             model: Combo::new(store, ui, "MODEL"),
             effort: Combo::new(store, ui, "EFFORT"),
             edits: Combo::new(store, ui, "EDITS"),
-            worktree: false,
+            worktree: prefill.worktree.unwrap_or(false),
             host_hint: host,
+            prefill,
             synced: u64::MAX,
             asked: None,
             request: None,
             cell_spans: Arc::new(
-                (0..6)
+                (0..7)
                     .map(|_| std::sync::atomic::AtomicU64::new(0))
                     .collect(),
             ),
@@ -382,6 +456,12 @@ impl NewSessionView {
         }
         options.push(ComboOption::plain(PICK_FOLDER, "Choose folder…"));
         self.dir.set_options(store, ui, options);
+        if let Some(dir) = self.prefill.dir.clone() {
+            self.dir.pick_id(&dir);
+            if self.dir.value().is_some_and(|option| option.id == dir) {
+                self.prefill.dir = None;
+            }
+        }
     }
 
     fn refresh_models(&mut self, store: &Store, ui: &UiCtx) {
@@ -403,17 +483,61 @@ impl NewSessionView {
             })
             .unwrap_or_default();
         self.model.set_options(store, ui, options);
+        self.apply_model_prefill();
         self.refresh_effort(store, ui);
     }
 
+    fn apply_model_prefill(&mut self) {
+        let Some(provider) = self.prefill.provider.clone() else {
+            return;
+        };
+        let options = self.model.options();
+        // The session's exact model may no longer be advertised; once the
+        // provider is listed, settle for its first model so the agent still
+        // carries over instead of the combo keeping the global default.
+        let key = self
+            .prefill
+            .model
+            .as_ref()
+            .map(|model| format!("\u{1}model:{provider}:{model}"))
+            .filter(|key| options.iter().any(|option| &option.key == key))
+            .or_else(|| {
+                options
+                    .iter()
+                    .find(|option| option.provider == provider && option.model.is_some())
+                    .map(|option| option.key.clone())
+            });
+        let Some(key) = key else { return };
+        self.model.pick_id(&key);
+        if self.model.value().is_some_and(|option| option.key == key) {
+            self.prefill.provider = None;
+            self.prefill.model = None;
+        }
+    }
+
     fn refresh_effort(&mut self, store: &Store, ui: &UiCtx) {
+        // Effort ids such as `medium` recur across models, so the seed waits
+        // for the model prefill to resolve: applied to a stand-in model it
+        // would be consumed there and lost for the intended one.
+        let seed = self
+            .prefill
+            .provider
+            .is_none()
+            .then(|| self.prefill.effort.clone())
+            .flatten();
         crate::higent::sync_effort_for_model(
             store,
             ui,
             &mut self.effort,
             self.model.value().and_then(|option| option.model),
-            None,
+            seed.as_deref(),
         );
+        if let Some(seed) = seed {
+            self.effort.pick_id(&seed);
+            if self.effort.value().is_some_and(|picked| picked.id == seed) {
+                self.prefill.effort = None;
+            }
+        }
     }
 
     fn config_values(&self) -> serde_json::Map<String, serde_json::Value> {
@@ -485,6 +609,15 @@ impl NewSessionView {
                 self.mode.pick_id(value);
             }
         }
+        // An early resolve may carry a schema without the session's mode or
+        // edits value; each seed survives until an option matches, so a
+        // later provider-specific schema can still restore it.
+        if let Some(value) = self.prefill.mode.clone() {
+            self.mode.pick_id(&value);
+            if self.mode.value().is_some_and(|option| option.id == value) {
+                self.prefill.mode = None;
+            }
+        }
         if fresh_edits {
             if let Some(value) = result
                 .values
@@ -492,6 +625,12 @@ impl NewSessionView {
                 .and_then(|value| value.as_str())
             {
                 self.edits.pick_id(value);
+            }
+        }
+        if let Some(value) = self.prefill.edits.clone() {
+            self.edits.pick_id(&value);
+            if self.edits.value().is_some_and(|option| option.id == value) {
+                self.prefill.edits = None;
             }
         }
     }
@@ -671,6 +810,9 @@ impl View for NewSessionView {
                     self.host.perform(store, ui, command, fx)
                 });
                 if picked {
+                    // The seeds describe a session on the original host;
+                    // none of them survive an explicit host change.
+                    self.prefill = Prefill::default();
                     self.refresh_dirs(store, ui);
                     self.refresh_models(store, ui);
                     self.file_ask();
@@ -682,6 +824,7 @@ impl View for NewSessionView {
                     self.dir.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.dir = None;
                     if self.dir.value().map(|option| option.id) == Some(PICK_FOLDER.to_owned()) {
                         self.request =
                             Some(crate::PanelRequest::Perform(Arc::new(PickSessionFolder)));
@@ -696,14 +839,23 @@ impl View for NewSessionView {
                     self.mode.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.mode = None;
                     self.file_ask();
                 }
             }
             NewSessionCommand::Model(command) => {
+                let picked = command.picks();
                 let before = self.model.value().map(|option| option.key);
                 fx.scope(NewSessionCommand::Model, |fx| {
                     self.model.perform(store, ui, command, fx)
                 });
+                if picked {
+                    // The effort seed follows the session's model, so an
+                    // explicit model pick retires it along with the model.
+                    self.prefill.provider = None;
+                    self.prefill.model = None;
+                    self.prefill.effort = None;
+                }
                 let after = self.model.value().map(|option| option.key);
                 if before != after {
                     self.effort.set_options(store, ui, Vec::new());
@@ -712,9 +864,13 @@ impl View for NewSessionView {
                 }
             }
             NewSessionCommand::Effort(command) => {
+                let picked = command.picks();
                 fx.scope(NewSessionCommand::Effort, |fx| {
                     self.effort.perform(store, ui, command, fx)
                 });
+                if picked {
+                    self.prefill.effort = None;
+                }
             }
             NewSessionCommand::Edits(command) => {
                 let picked = command.picks();
@@ -722,6 +878,7 @@ impl View for NewSessionView {
                     self.edits.perform(store, ui, command, fx)
                 });
                 if picked {
+                    self.prefill.edits = None;
                     self.file_ask();
                 }
             }
@@ -765,9 +922,11 @@ impl View for NewSessionView {
                 }
                 let resolved = store
                     .get::<ComposerFeed>()
-                    .and_then(|feed| feed.resolved.clone());
+                    .and_then(|feed| feed.resolved.get(&self.window).cloned());
                 if let Some((host, result)) = resolved {
-                    store.update::<ComposerFeed>(|feed| feed.resolved = None);
+                    store.update::<ComposerFeed>(|feed| {
+                        feed.resolved.remove_mut(&self.window);
+                    });
                     if Some(host) == self.picked_host() {
                         match result {
                             Ok(result) => self.apply_schema(store, ui, result),
@@ -1067,6 +1226,12 @@ impl View for NewSessionView {
             let worktree_width =
                 pad * 2.0 + check + 10.0 + hint_font.measure_str(worktree_label, None).0;
             let worktree_x = hints_x - worktree_width;
+            if let Some(span) = self.cell_spans.get(6) {
+                span.store(
+                    ((worktree_x.to_bits() as u64) << 32) | worktree_width.to_bits() as u64,
+                    std::sync::atomic::Ordering::Relaxed,
+                );
+            }
             let checked = self.worktree;
             let box_color = theme.combo.label_color.0;
             let text_dim = theme.peeker.dim_text.0;
@@ -1305,6 +1470,10 @@ impl crate::PanelView for ComposerPane {
 
     fn dismantle(&mut self, store: &mut Store) {
         Composers::remove(store, self.window);
+        store.update::<ComposerFeed>(|feed| {
+            feed.resolving.remove_mut(&self.window);
+            feed.resolved.remove_mut(&self.window);
+        });
     }
 
     fn take_request(&mut self) -> Option<crate::PanelRequest> {
@@ -1554,7 +1723,10 @@ impl crate::DynamicCommand for ComposerAsk {
             );
         }
 
-        if let Some(token) = store.get::<ComposerFeed>().and_then(|feed| feed.resolving) {
+        if let Some(token) = store
+            .get::<ComposerFeed>()
+            .and_then(|feed| feed.resolving.get(&window).cloned())
+        {
             fx.cancel(token);
         }
         let token = fx.push(
@@ -1567,7 +1739,9 @@ impl crate::DynamicCommand for ComposerAsk {
                 crate::app::AppCommand::Dynamic(window, Arc::new(ConfigResolved { host, result }))
             }),
         );
-        store.update::<ComposerFeed>(|feed| feed.resolving = Some(token));
+        store.update::<ComposerFeed>(|feed| {
+            feed.resolving.insert_mut(window, token);
+        });
 
         ensure_placeholder(
             store,
@@ -1690,14 +1864,14 @@ impl crate::DynamicCommand for ConfigResolved {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let host = self.host;
         let result = self.result.clone();
         store.update::<ComposerFeed>(|feed| {
-            feed.resolving = None;
-            feed.resolved = Some((host, result.clone()));
+            feed.resolving.remove_mut(&window);
+            feed.resolved.insert_mut(window, (host, result.clone()));
         });
         bump_feed(store);
     }
@@ -2067,6 +2241,15 @@ impl crate::DynamicCommand for OpenNewSession {
         };
         let current = entity.current_session();
 
+        // Seed the composer from the session the user is looking at, unless
+        // it targets a different host than the one explicitly requested.
+        let mut host = self.host;
+        let mut prefill = Prefill::default();
+        if current.names_session() && host.is_none_or(|host| host == current.host) {
+            host = Some(current.host);
+            prefill = Prefill::of_session(store, &current);
+        }
+
         if let Some((host, _, session)) = Placeholders::session_of(store, window) {
             if let Some(seat) = Servers::seat(store, host) {
                 fx.push(
@@ -2090,7 +2273,7 @@ impl crate::DynamicCommand for OpenNewSession {
         Composers::put(
             store,
             window,
-            NewSessionView::for_host(store, ui, self.host),
+            NewSessionView::seeded(store, ui, window, host, prefill),
         );
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
