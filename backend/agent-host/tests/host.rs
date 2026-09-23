@@ -415,6 +415,44 @@ async fn a_restart_keeps_the_replayed_error_status() {
 }
 
 #[tokio::test]
+async fn a_side_chats_activity_freshens_the_listed_session() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+    let second = "ahp-chat:/second";
+    client
+        .request("createChat", json!({"channel": session, "chat": second}))
+        .await;
+    client
+        .request("subscribe", json!({"channel": second}))
+        .await;
+
+    // Land the side chat's activity strictly after the creation stamp.
+    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+    client
+        .dispatch(second, turn_started("t-side", "hello"))
+        .await;
+    client.actions_until(second, "chat/turnComplete").await;
+
+    let list = client
+        .request("listSessions", json!({"channel": ROOT}))
+        .await;
+    let held = list["items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["resource"] == session))
+        .expect("the session is listed");
+    let (created, modified) = (
+        held["createdAt"].as_str().expect("createdAt"),
+        held["modifiedAt"].as_str().expect("modifiedAt"),
+    );
+    assert!(
+        modified > created,
+        "the side chat freshened the session: {held}"
+    );
+}
+
+#[tokio::test]
 async fn codex_streams_natively_and_resumes_its_thread() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = codex_host_at(dir.path());

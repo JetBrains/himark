@@ -1051,7 +1051,7 @@ impl Host {
                         .values()
                         .filter(|entry| entry.manifest.session != host_discovery::LOCAL_FS_SESSION)
                         .filter(|entry| entry.manifest.listed)
-                        .map(|entry| summary(&self.store, entry))
+                        .map(|entry| summary(&self.store, &state, entry))
                         .collect();
                     for session in cli {
                         if known.contains(&(session.provider.clone(), session.native_id.clone())) {
@@ -2340,7 +2340,7 @@ impl Host {
             }
             session.manifest.listed = true;
             let _ = self.store.write_manifest(&session.manifest);
-            let summary = summary(&self.store, &session);
+            let summary = summary(&self.store, state, &session);
             state.sessions.insert_mut(session_uri, session);
             Some(summary)
         });
@@ -4643,11 +4643,23 @@ fn string_of(config: &serde_json::Map<String, Value>, key: &str) -> Option<Strin
     config.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-fn summary(store: &Store, entry: &SessionEntry) -> SessionSummary {
-    // Recency is the default chat's log mtime — every chat action is
-    // appended there, so the file tracks content changes for free.
-    let modified_at = store
-        .log_modified_at(&entry.manifest.native_id, &entry.manifest.default_chat)
+fn summary(store: &Store, state: &State, entry: &SessionEntry) -> SessionSummary {
+    // Recency spans every chat of the session — each chat appends its
+    // actions to its own log, so the freshest log mtime is the
+    // session's last content change. A session with no spoken chat
+    // falls back to its creation stamp.
+    let session = &entry.manifest.session;
+    let mut modified: Option<std::time::SystemTime> = None;
+    for (uri, chat) in state.chats.iter() {
+        if chat.session != *session {
+            continue;
+        }
+        let stamp = store.log_modified_at(&chat.native_id, uri);
+        if stamp > modified {
+            modified = stamp;
+        }
+    }
+    let modified_at = modified
         .map(|stamp| humantime::format_rfc3339_millis(stamp).to_string())
         .unwrap_or_else(|| entry.manifest.created_at.clone());
     SessionSummary {
