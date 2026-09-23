@@ -8285,3 +8285,25 @@ fn cmd_shift_f_opens_then_focuses_the_search_dock() {
         "search.view rolls the fronting dock away"
     );
 }
+
+#[test]
+fn input_reaches_a_second_window() {
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let a = engine.add_window();
+    let b = engine.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let _ = engine.draw(a, surface.canvas(), 1100.0, 800.0, 1.0);
+    let _ = engine.draw(b, surface.canvas(), 1100.0, 800.0, 1.0);
+
+    // The committed store is gathered for the primary window, so the
+    // sibling's viewport must be answered from the live window state —
+    // otherwise every event in the second window hit-tests a 1x1 layout.
+    assert!(
+        engine.mouse_down(a, 550.0, 400.0, 0, 1),
+        "a click lands in the first window"
+    );
+    assert!(
+        engine.mouse_down(b, 550.0, 400.0, 0, 1),
+        "a click lands in the second window"
+    );
+}
