@@ -168,13 +168,18 @@ impl Prefill {
     }
 }
 
+/// Per-window: two windows can compose concurrently, and a shared slot
+/// would let one consume or clobber the schema resolved for the other.
 #[derive(Clone, Default)]
 pub struct ComposerFeed {
-    pub resolving: Option<CancellationToken>,
-    pub resolved: Option<(
-        HostId,
-        Result<ahp_types::commands::ResolveSessionConfigResult, String>,
-    )>,
+    pub resolving: rpds::HashTrieMapSync<crate::WindowId, CancellationToken>,
+    pub resolved: rpds::HashTrieMapSync<
+        crate::WindowId,
+        (
+            HostId,
+            Result<ahp_types::commands::ResolveSessionConfigResult, String>,
+        ),
+    >,
 
     pub generation: u64,
 }
@@ -237,6 +242,7 @@ pub enum NewSessionCommand {
 
 #[derive(Clone)]
 pub struct NewSessionView {
+    window: crate::WindowId,
     input: ScrollView<EditorView>,
     host: Combo,
 
@@ -276,21 +282,28 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<Edito
 }
 
 impl NewSessionView {
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
-        Self::for_host(store, ui, None)
+    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, window: crate::WindowId) -> Self {
+        Self::for_host(store, ui, window, None)
     }
 
-    pub fn for_host(store: &imba::store::Store, ui: &imba::UiCtx, host: Option<HostId>) -> Self {
-        Self::seeded(store, ui, host, Prefill::default())
+    pub fn for_host(
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        window: crate::WindowId,
+        host: Option<HostId>,
+    ) -> Self {
+        Self::seeded(store, ui, window, host, Prefill::default())
     }
 
     fn seeded(
         store: &imba::store::Store,
         ui: &imba::UiCtx,
+        window: crate::WindowId,
         host: Option<HostId>,
         prefill: Prefill,
     ) -> Self {
         Self {
+            window,
             input: fresh_input(store, ui),
             host: Combo::new(store, ui, "HOST"),
             hosts: Arc::new(Vec::new()),
@@ -909,9 +922,11 @@ impl View for NewSessionView {
                 }
                 let resolved = store
                     .get::<ComposerFeed>()
-                    .and_then(|feed| feed.resolved.clone());
+                    .and_then(|feed| feed.resolved.get(&self.window).cloned());
                 if let Some((host, result)) = resolved {
-                    store.update::<ComposerFeed>(|feed| feed.resolved = None);
+                    store.update::<ComposerFeed>(|feed| {
+                        feed.resolved.remove_mut(&self.window);
+                    });
                     if Some(host) == self.picked_host() {
                         match result {
                             Ok(result) => self.apply_schema(store, ui, result),
@@ -1455,6 +1470,10 @@ impl crate::PanelView for ComposerPane {
 
     fn dismantle(&mut self, store: &mut Store) {
         Composers::remove(store, self.window);
+        store.update::<ComposerFeed>(|feed| {
+            feed.resolving.remove_mut(&self.window);
+            feed.resolved.remove_mut(&self.window);
+        });
     }
 
     fn take_request(&mut self) -> Option<crate::PanelRequest> {
@@ -1704,7 +1723,10 @@ impl crate::DynamicCommand for ComposerAsk {
             );
         }
 
-        if let Some(token) = store.get::<ComposerFeed>().and_then(|feed| feed.resolving) {
+        if let Some(token) = store
+            .get::<ComposerFeed>()
+            .and_then(|feed| feed.resolving.get(&window).cloned())
+        {
             fx.cancel(token);
         }
         let token = fx.push(
@@ -1717,7 +1739,9 @@ impl crate::DynamicCommand for ComposerAsk {
                 crate::app::AppCommand::Dynamic(window, Arc::new(ConfigResolved { host, result }))
             }),
         );
-        store.update::<ComposerFeed>(|feed| feed.resolving = Some(token));
+        store.update::<ComposerFeed>(|feed| {
+            feed.resolving.insert_mut(window, token);
+        });
 
         ensure_placeholder(
             store,
@@ -1840,14 +1864,14 @@ impl crate::DynamicCommand for ConfigResolved {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let host = self.host;
         let result = self.result.clone();
         store.update::<ComposerFeed>(|feed| {
-            feed.resolving = None;
-            feed.resolved = Some((host, result.clone()));
+            feed.resolving.remove_mut(&window);
+            feed.resolved.insert_mut(window, (host, result.clone()));
         });
         bump_feed(store);
     }
@@ -2249,7 +2273,7 @@ impl crate::DynamicCommand for OpenNewSession {
         Composers::put(
             store,
             window,
-            NewSessionView::seeded(store, ui, host, prefill),
+            NewSessionView::seeded(store, ui, window, host, prefill),
         );
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
