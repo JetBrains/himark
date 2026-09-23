@@ -1067,6 +1067,32 @@ mod tests {
         assert!(shaper.advance(&font, symbols) > 0.0, "symbols measure");
     }
 
+    #[test]
+    fn text_shaper_uses_seeded_ui_fonts() {
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let family = "text-shaper-seeded-ui-fonts-test-family";
+        let face = skia_safe::FontMgr::new()
+            .legacy_make_typeface(None, skia_safe::FontStyle::normal())
+            .expect("default typeface");
+        let mut provider = skia_safe::textlayout::TypefaceFontProvider::new();
+        provider.register_typeface(face, Some(family));
+        let mut fonts = skia_safe::textlayout::FontCollection::new();
+        fonts.set_default_font_manager(skia_safe::FontMgr::from(provider), Some(family));
+        ui.set(crate::ui::UiFonts(fonts));
+
+        let shaper = TextShaper::of(&ui);
+        let face = shaper
+            .fonts
+            .clone()
+            .find_typefaces(&[family], skia_safe::FontStyle::normal())
+            .into_iter()
+            .next()
+            .expect("seeded family resolves");
+        let font = skia_safe::Font::from_typeface(face, 13.0);
+        let mut paragraph = shaper.shape(&font, "seeded ui fonts", skia_safe::Color::BLACK, 0.0);
+        assert_eq!(paragraph.unresolved_glyphs(), Some(0));
+    }
+
     fn sized(width: f32, height: f32) -> impl for<'a> Layout<'a, ()> + LayoutValue {
         SizedProbe { width, height }
     }
