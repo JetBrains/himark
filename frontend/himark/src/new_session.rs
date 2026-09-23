@@ -1958,18 +1958,32 @@ fn ensure_placeholder(
         .and_then(|rows| rows.0.get(&window).cloned());
     match slot {
         Some(row) if row.host == host && row.provider == provider => {
-            let Some(directory) = working_directory else {
-                return;
-            };
-            if row.applied.iter().any(|applied| *applied == directory) {
-                return;
-            }
             match row.session.clone() {
-                Some(session) => grant_folder(store, window, host, session, directory),
+                Some(session) => {
+                    // The dir combo holds one folder at a time, so a grant
+                    // for an earlier pick (say the folder seeded from the
+                    // previous session) is revoked once the ask moves on.
+                    let stale: Vec<String> = row
+                        .applied
+                        .iter()
+                        .filter(|applied| working_directory.as_deref() != Some(applied.as_str()))
+                        .cloned()
+                        .collect();
+                    for directory in stale {
+                        revoke_folder(store, window, host, session.clone(), directory);
+                    }
+                    let Some(directory) = working_directory else {
+                        return;
+                    };
+                    if row.applied.iter().any(|applied| *applied == directory) {
+                        return;
+                    }
+                    grant_folder(store, window, host, session, directory);
+                }
                 None => {
                     store.update::<Placeholders>(|rows| {
                         if let Some(mut row) = rows.0.get(&window).cloned() {
-                            row.pending = Some(directory.clone());
+                            row.pending = working_directory.clone();
                             rows.0.insert_mut(window, row);
                         }
                     });
@@ -2080,6 +2094,40 @@ fn grant_folder(
             seat,
             session,
             directory,
+            revoke: false,
+        }),
+    );
+}
+
+fn revoke_folder(
+    store: &mut Store,
+    window: crate::WindowId,
+    host: HostId,
+    session: String,
+    directory: String,
+) {
+    let Some(seat) = Servers::seat(store, host) else {
+        return;
+    };
+    store.update::<Placeholders>(|rows| {
+        if let Some(mut row) = rows.0.get(&window).cloned() {
+            let mut kept = rpds::VectorSync::new_sync();
+            for applied in row.applied.iter().filter(|applied| **applied != directory) {
+                kept.push_back_mut(applied.clone());
+            }
+            row.applied = kept;
+            rows.0.insert_mut(window, row);
+        }
+    });
+
+    crate::AppRequests::push(
+        store,
+        Arc::new(GrantPlaceholderFolder {
+            host,
+            seat,
+            session,
+            directory,
+            revoke: true,
         }),
     );
 }
@@ -2089,6 +2137,7 @@ struct GrantPlaceholderFolder {
     seat: Arc<dyn crate::higent::AhpServer>,
     session: String,
     directory: String,
+    revoke: bool,
 }
 
 impl crate::DynamicCommand for GrantPlaceholderFolder {
@@ -2106,23 +2155,36 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = self.host;
+        use crate::higent::ahp_types::actions;
+        let (label, action) = if self.revoke {
+            (
+                "workingDirectoryRemoved",
+                actions::StateAction::SessionWorkingDirectoryRemoved(
+                    actions::SessionWorkingDirectoryRemovedAction {
+                        directory: self.directory.clone(),
+                    },
+                ),
+            )
+        } else {
+            (
+                "workingDirectorySet",
+                actions::StateAction::SessionWorkingDirectorySet(
+                    actions::SessionWorkingDirectorySetAction {
+                        directory: self.directory.clone(),
+                    },
+                ),
+            )
+        };
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
                 seat: Arc::clone(&self.seat),
                 channel: self.session.clone(),
-                action: crate::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
-                    crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
-                        directory: self.directory.clone(),
-                    },
-                ),
+                action,
             })
             .map(move |result| {
                 crate::app::AppCommand::Dynamic(
                     window,
-                    Arc::new(PlaceholderDispatched {
-                        label: "workingDirectorySet",
-                        result,
-                    }),
+                    Arc::new(PlaceholderDispatched { label, result }),
                 )
             }),
         );
