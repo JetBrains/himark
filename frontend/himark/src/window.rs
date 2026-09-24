@@ -1430,7 +1430,7 @@ impl Window {
 
     pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
         let _ = store;
-        let displaced = std::mem::replace(self.workbench_mut().root.focused_pane_mut(), panel);
+        let displaced = self.workbench_mut().root.replace_focused_panel(panel);
 
         self.stash_displaced(displaced);
     }
@@ -1491,10 +1491,10 @@ impl Window {
     }
 
     pub fn mount_focused(&mut self, widget: Box<dyn crate::DynPanelView>) {
-        let displaced = std::mem::replace(
-            self.workbench_mut().root.focused_pane_mut(),
-            Panel::Plugin(widget),
-        );
+        let displaced = self
+            .workbench_mut()
+            .root
+            .replace_focused_panel(Panel::Plugin(widget));
         self.stash_displaced(displaced);
     }
 
@@ -1679,7 +1679,7 @@ impl Window {
             WalkStep::Replace => {}
         }
         if let Some(panel) = panel {
-            let displaced = std::mem::replace(&mut slot.panel, panel);
+            let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
         Self::touch_recent(store, target);
@@ -1698,7 +1698,7 @@ impl Window {
         }
         let closed = {
             let slot = self.workbench_mut().root.focused_slot_mut();
-            std::mem::replace(&mut slot.panel, Panel::blank())
+            slot.replace_panel(Panel::blank())
         };
         match closed {
             Panel::Editor(pane) => {
@@ -1759,7 +1759,7 @@ impl Window {
             slot.back.push_back_mut(place);
             slot.forward = rpds::VectorSync::new_sync();
         }
-        let displaced = std::mem::replace(&mut slot.panel, panel);
+        let displaced = slot.replace_panel(panel);
         self.retire_displaced(store, ui, displaced, fx);
     }
 

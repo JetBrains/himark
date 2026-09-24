@@ -510,9 +510,60 @@ impl WorkbenchNode {
     }
 }
 
+/// A workbench-minted identity for the panel occupying a leaf. Effects a
+/// panel launches are routed by leaf PATH, so an async result can land
+/// after a swap put a different panel in that leaf; the id the command
+/// was tagged with lets the delivery drop a stale command instead of
+/// mis-delivering it to whoever now sits there (docs/editor/diff-canvas.md).
+/// Minted fresh whenever a leaf's occupant is replaced; it rides the slot
+/// (and so travels with the panel) when the tree reshapes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PanelId(u64);
+
+impl PanelId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// A panel bundled with its workbench identity, so the two are always
+/// replaced together (a `PaneSlot` outlives its occupants — its history
+/// persists across navigations — so keeping `id` beside `panel` as
+/// separate fields would risk them drifting out of sync). Derefs to the
+/// `Panel` so read access reads through transparently; use `PaneSlot::
+/// replace_panel` to swap the occupant, which mints a fresh id.
+#[derive(Clone)]
+pub struct PanelWithId {
+    pub(crate) id: PanelId,
+    pub(crate) panel: Panel,
+}
+
+impl PanelWithId {
+    fn new(panel: Panel) -> Self {
+        Self {
+            id: PanelId::mint(),
+            panel,
+        }
+    }
+}
+
+impl std::ops::Deref for PanelWithId {
+    type Target = Panel;
+    fn deref(&self) -> &Panel {
+        &self.panel
+    }
+}
+
+impl std::ops::DerefMut for PanelWithId {
+    fn deref_mut(&mut self) -> &mut Panel {
+        &mut self.panel
+    }
+}
+
 #[derive(Clone)]
 pub struct PaneSlot {
-    pub(crate) panel: Panel,
+    pub(crate) panel: PanelWithId,
     pub(crate) back: rpds::VectorSync<crate::NavigationLocation>,
     pub(crate) forward: rpds::VectorSync<crate::NavigationLocation>,
 
@@ -560,7 +611,7 @@ impl PaneSlot {
 
     pub(crate) fn of(panel: Panel) -> Self {
         Self {
-            panel,
+            panel: PanelWithId::new(panel),
             back: rpds::VectorSync::new_sync(),
             forward: rpds::VectorSync::new_sync(),
             pending: None,
@@ -568,6 +619,17 @@ impl PaneSlot {
             completion: crate::completion::Completion::new(),
             hover: crate::hover::Hover::new(),
         }
+    }
+
+    pub(crate) fn panel_id(&self) -> PanelId {
+        self.panel.id
+    }
+
+    /// Swap in a new occupant, minting it a fresh `PanelId` so any effect
+    /// still in flight for the departing panel is dropped on delivery
+    /// rather than mis-routed to the newcomer. Returns the displaced panel.
+    pub(crate) fn replace_panel(&mut self, panel: Panel) -> Panel {
+        std::mem::replace(&mut self.panel, PanelWithId::new(panel)).panel
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -957,8 +1019,19 @@ impl PaneSlot {
 }
 
 pub enum NodeCommand {
-    Leaf(PanelCommand),
+    Leaf {
+        /// The occupant this command was addressed to; a leaf drops it if
+        /// its current occupant no longer carries this id (a stale route
+        /// after a panel swap).
+        target: PanelId,
+        command: PanelCommand,
+    },
     Split(Box<SplitCommand<NodeCommand, NodeCommand>>),
+}
+
+/// Tag a leaf's outgoing commands with the occupant they belong to.
+fn wrap_leaf(target: PanelId) -> impl Fn(PanelCommand) -> NodeCommand + Copy {
+    move |command| NodeCommand::Leaf { target, command }
 }
 
 impl WorkbenchNode {
@@ -1006,11 +1079,16 @@ impl WorkbenchNode {
     }
 
     pub fn focused_pane(&self) -> &Panel {
-        &self.focused_slot().panel
+        &self.focused_slot().panel.panel
     }
 
     pub fn focused_pane_mut(&mut self) -> &mut Panel {
-        &mut self.focused_slot_mut().panel
+        &mut self.focused_slot_mut().panel.panel
+    }
+
+    /// Swap the focused leaf's occupant, minting it a fresh `PanelId`.
+    pub(crate) fn replace_focused_panel(&mut self, panel: Panel) -> Panel {
+        self.focused_slot_mut().replace_panel(panel)
     }
 
     pub(crate) fn focused_slot(&self) -> &PaneSlot {
@@ -1035,7 +1113,7 @@ impl WorkbenchNode {
 
     pub fn for_each_pane(&self, visit: &mut impl FnMut(&Panel)) {
         match self {
-            Self::Leaf(slot) => visit(&slot.panel),
+            Self::Leaf(slot) => visit(&slot.panel.panel),
             Self::Split(split) => {
                 split.first().for_each_pane(visit);
                 split.second().for_each_pane(visit);
@@ -1055,7 +1133,7 @@ impl WorkbenchNode {
 
     pub fn for_each_pane_mut(&mut self, visit: &mut impl FnMut(&mut Panel)) {
         match self {
-            Self::Leaf(slot) => visit(&mut slot.panel),
+            Self::Leaf(slot) => visit(&mut slot.panel.panel),
             Self::Split(split) => {
                 split.first_mut().for_each_pane_mut(visit);
                 split.second_mut().for_each_pane_mut(visit);
@@ -1075,9 +1153,9 @@ impl WorkbenchNode {
             },
             Self::Leaf(slot) => {
                 let placeholder = new_panel.placeholder();
-                let current = std::mem::replace(&mut slot.panel, placeholder);
+                let current = std::mem::replace(&mut slot.panel, PanelWithId::new(placeholder));
                 let history = (slot.back.clone(), slot.forward.clone());
-                let mut current_slot = PaneSlot::of(current);
+                let mut current_slot = PaneSlot::of(current.panel);
                 current_slot.back = history.0.clone();
                 current_slot.forward = history.1.clone();
                 let mut new_slot = PaneSlot::of(new_panel);
@@ -1106,7 +1184,7 @@ impl View for WorkbenchNode {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, NodeCommand> {
         match self {
-            Self::Leaf(slot) => slot.focus_data(store, ui).map(NodeCommand::Leaf),
+            Self::Leaf(slot) => slot.focus_data(store, ui).map(wrap_leaf(slot.panel_id())),
             Self::Split(split) => split
                 .focus_data(store, ui)
                 .map(|command| NodeCommand::Split(Box::new(command))),
@@ -1121,59 +1199,65 @@ impl View for WorkbenchNode {
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
         match (self, command) {
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Find(command))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.perform_find(store, ui, command, fx)
-                }),
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Completion(found))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.land_completion(store, ui, found, fx)
-                }),
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Hover(found))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.land_hover(store, ui, found, fx)
-                }),
-
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::HoverTick(now))) => {
-                fx.scope(NodeCommand::Leaf, |fx| slot.tick_hover(store, now, fx))
-            }
-            (Self::Leaf(slot), NodeCommand::Leaf(command)) => {
-                if let (
-                    Some(find),
-                    PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                        ::editor::EditorCommand::Click { .. },
-                    )),
-                ) = (&mut slot.find, &command)
-                {
-                    find.focused = false;
+            (Self::Leaf(slot), NodeCommand::Leaf { target, command }) => {
+                // Stale route: an async result addressed to a panel that
+                // has since left this leaf (a swap put another there).
+                // Drop it — its panel, if still alive elsewhere, re-derives.
+                if slot.panel_id() != target {
+                    return;
                 }
+                let wrap = wrap_leaf(target);
+                match command {
+                    PanelCommand::Find(command) => {
+                        fx.scope(wrap, |fx| slot.perform_find(store, ui, command, fx))
+                    }
+                    PanelCommand::Completion(found) => {
+                        fx.scope(wrap, |fx| slot.land_completion(store, ui, found, fx))
+                    }
+                    PanelCommand::Hover(found) => {
+                        fx.scope(wrap, |fx| slot.land_hover(store, ui, found, fx))
+                    }
+                    PanelCommand::HoverTick(now) => {
+                        fx.scope(wrap, |fx| slot.tick_hover(store, now, fx))
+                    }
+                    command => {
+                        if let (
+                            Some(find),
+                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                                ::editor::EditorCommand::Click { .. },
+                            )),
+                        ) = (&mut slot.find, &command)
+                        {
+                            find.focused = false;
+                        }
 
-                if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                    ::editor::EditorCommand::Hover(point),
-                )) = &command
-                {
-                    let point = *point;
-                    return fx.scope(NodeCommand::Leaf, |fx| {
-                        slot.sync_hover(store, ui, point, fx)
-                    });
+                        if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                            ::editor::EditorCommand::Hover(point),
+                        )) = &command
+                        {
+                            let point = *point;
+                            return fx.scope(wrap, |fx| slot.sync_hover(store, ui, point, fx));
+                        }
+                        fx.scope(wrap, |fx| {
+                            let Some(command) = slot.intercept_completion(store, ui, command, fx)
+                            else {
+                                return;
+                            };
+
+                            let inserted = match &command {
+                                PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                                    ::editor::EditorCommand::InsertText { text },
+                                )) => Some(text.clone()),
+                                _ => None,
+                            };
+                            slot.panel.perform(store, ui, command, fx);
+                            slot.sync_find(store, ui, fx);
+                            slot.sync_completion(store, ui, inserted.as_deref(), fx);
+
+                            slot.sync_hover(store, ui, None, fx);
+                        })
+                    }
                 }
-                fx.scope(NodeCommand::Leaf, |fx| {
-                    let Some(command) = slot.intercept_completion(store, ui, command, fx) else {
-                        return;
-                    };
-
-                    let inserted = match &command {
-                        PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                            ::editor::EditorCommand::InsertText { text },
-                        )) => Some(text.clone()),
-                        _ => None,
-                    };
-                    slot.panel.perform(store, ui, command, fx);
-                    slot.sync_find(store, ui, fx);
-                    slot.sync_completion(store, ui, inserted.as_deref(), fx);
-
-                    slot.sync_hover(store, ui, None, fx);
-                })
             }
             (Self::Split(split), NodeCommand::Split(command)) => fx.scope(
                 |command| NodeCommand::Split(Box::new(command)),
@@ -1200,10 +1284,11 @@ impl View for WorkbenchNode {
                             arena,
                             constraints,
                         )
-                        .map(NodeCommand::Leaf),
+                        .map(wrap_leaf(slot.panel_id())),
                     ),
 
                     Some(find) => {
+                        let leaf = wrap_leaf(slot.panel_id());
                         let size = constraints.max;
                         let chrome = ::editor::env::Themes::of(store).ui().search.clone();
                         let bar_height = crate::find::FindBar::height(&chrome).min(size.height);
@@ -1219,13 +1304,13 @@ impl View for WorkbenchNode {
                                     (size.height - bar_height).max(1.0),
                                 )),
                             )
-                            .map(NodeCommand::Leaf),
+                            .map(leaf),
                         );
                         column.place(
                             0.0,
                             0.0,
                             find.layout(arena, store, ui, size.width)
-                                .map(|command| NodeCommand::Leaf(PanelCommand::Find(command))),
+                                .map(move |command| leaf(PanelCommand::Find(command))),
                         );
                         imba::ThunkBox::new(arena, column)
                     }
@@ -1251,18 +1336,21 @@ impl View for WorkbenchNode {
                 }
             };
 
-            if matches!(self, Self::Leaf(slot) if slot.hover.armed()) {
-                return imba::ThunkBox::new(
-                    arena,
-                    widget.event(|_arena, event, _size| match event {
-                        imba::event::Event::AnimationClock { now } => {
-                            imba::event::EventResult::Command(NodeCommand::Leaf(
-                                PanelCommand::HoverTick(*now),
-                            ))
-                        }
-                        _ => imba::event::EventResult::Ignored,
-                    }),
-                );
+            if let Self::Leaf(slot) = self {
+                if slot.hover.armed() {
+                    let leaf = wrap_leaf(slot.panel_id());
+                    return imba::ThunkBox::new(
+                        arena,
+                        widget.event(move |_arena, event, _size| match event {
+                            imba::event::Event::AnimationClock { now } => {
+                                imba::event::EventResult::Command(leaf(PanelCommand::HoverTick(
+                                    *now,
+                                )))
+                            }
+                            _ => imba::event::EventResult::Ignored,
+                        }),
+                    );
+                }
             }
             widget
         })
