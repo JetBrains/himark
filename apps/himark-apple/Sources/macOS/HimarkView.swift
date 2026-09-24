@@ -217,6 +217,14 @@ final class HimarkView: NSView, NSTextInputClient {
         render()
     }
 
+    // The backing scale can flip (wake from hibernation, moving to a
+    // differently-scaled display) while rendering is paused; without a
+    // repaint the last frame stays composited at the old scale.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        request()
+    }
+
     override func viewWillStartLiveResize() {
         super.viewWillStartLiveResize()
         surface.setSyncPresent(true)
