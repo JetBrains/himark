@@ -3,21 +3,13 @@
 
 use super::*;
 
-fn insert_at(offset: u32, text: &str) -> Operation {
-    let mut ops = Vec::new();
-    if offset > 0 {
-        ops.push(Op::Retain(offset));
-    }
-    ops.push(Op::Insert(text.to_owned()));
-    Operation::from_ops(ops)
-}
 
 #[test]
 fn revisions_are_positions_in_the_log() {
     let mut log = EditLog::new();
     assert_eq!(log.revision(), 0);
-    log.record(&insert_at(0, "ab"), 0);
-    log.record(&insert_at(2, "c"), 2);
+    log.record(&Operation::insert_in(0, 0, "ab"), 0);
+    log.record(&Operation::insert_in(2, 2, "c"), 2);
     assert_eq!(log.revision(), 2);
     assert_eq!(log.since(1).count(), 1);
     assert_eq!(log.since(5).count(), 0);
@@ -26,8 +18,8 @@ fn revisions_are_positions_in_the_log() {
 #[test]
 fn composition_chains_padded_entries() {
     let mut log = EditLog::new();
-    log.record(&insert_at(0, "hello"), 0);
-    log.record(&insert_at(5, " world"), 5);
+    log.record(&Operation::insert_in(0, 0, "hello"), 0);
+    log.record(&Operation::insert_in(5, 5, " world"), 5);
     let composed = log.compose_since(0).expect("two entries");
     assert_eq!(composed.old_len(), 0);
     assert_eq!(composed.new_len(), 11);
@@ -38,8 +30,8 @@ fn composition_chains_padded_entries() {
 fn ranges_since_land_in_current_coordinates() {
     let mut log = EditLog::new();
 
-    log.record(&insert_at(3, "XY"), 6);
-    log.record(&insert_at(0, "__"), 8);
+    log.record(&Operation::insert_in(6, 3, "XY"), 6);
+    log.record(&Operation::insert_in(8, 0, "__"), 8);
     let ranges = log.ranges_since(0);
 
     assert!(ranges.contains(&(0..2)));
@@ -48,10 +40,10 @@ fn ranges_since_land_in_current_coordinates() {
 
 #[test]
 fn range_ends_extend_conservatively() {
-    let range = EditLog::transform_range(2..5, &insert_at(5, "!!"));
+    let range = EditLog::transform_range(2..5, &Operation::insert_in(5, 5, "!!"));
     assert_eq!(range, 2..7);
 
-    let range = EditLog::transform_range(2..5, &insert_at(2, "!!"));
+    let range = EditLog::transform_range(2..5, &Operation::insert_in(5, 2, "!!"));
     assert_eq!(range, 2..7);
 }
 
@@ -68,9 +60,9 @@ fn text_of(source: &str, log: &EditLog, from: u64) -> String {
 #[test]
 fn a_shared_edit_carries_one_identity() {
     let mut mine = EditLog::new();
-    let identity = mine.record(&insert_at(0, "hello"), 0);
+    let identity = mine.record(&Operation::insert_in(0, 0, "hello"), 0);
     let mut theirs = EditLog::new();
-    theirs.record_as(identity, &insert_at(0, "hello"), 0);
+    theirs.record_as(identity, &Operation::insert_in(0, 0, "hello"), 0);
 
     assert_eq!(mine.head(), theirs.head());
     assert_eq!(common_base(&mine, &theirs), Some((0, 0)));
@@ -83,12 +75,12 @@ fn a_shared_edit_carries_one_identity() {
 #[test]
 fn the_bridge_undoes_mine_and_redoes_theirs() {
     let mut common = EditLog::new();
-    common.record(&insert_at(0, "hello"), 0);
+    common.record(&Operation::insert_in(0, 0, "hello"), 0);
 
     let mut mine = common.clone();
-    mine.record(&insert_at(5, "!"), 5);
+    mine.record(&Operation::insert_in(5, 5, "!"), 5);
     let mut theirs = common.clone();
-    theirs.record(&insert_at(0, ">> "), 5);
+    theirs.record(&Operation::insert_in(5, 0, ">> "), 5);
 
     assert_eq!(
         common_base(&mine, &theirs),
@@ -109,7 +101,7 @@ fn the_bridge_undoes_mine_and_redoes_theirs() {
         "the arrow lands on the state their log describes"
     );
 
-    let late = insert_at(6, "?");
+    let late = Operation::insert_in(6, 6, "?");
     let placed = late.transform(&arrow);
     let landed = text::Text::from_string_exact(">> hello").edit(&placed);
     let end = landed.byte_count() as u32;
@@ -119,9 +111,9 @@ fn the_bridge_undoes_mine_and_redoes_theirs() {
 #[test]
 fn strangers_bridge_across_everything() {
     let mut mine = EditLog::new();
-    mine.record(&insert_at(0, "mine"), 0);
+    mine.record(&Operation::insert_in(0, 0, "mine"), 0);
     let mut theirs = EditLog::new();
-    theirs.record(&insert_at(0, "theirs"), 0);
+    theirs.record(&Operation::insert_in(0, 0, "theirs"), 0);
     assert_eq!(common_base(&mine, &theirs), None);
 
     let arrow = bridge(&mine, &theirs).expect("their histories meet end to end");

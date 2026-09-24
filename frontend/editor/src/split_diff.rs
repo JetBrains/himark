@@ -30,10 +30,6 @@ const MARK_SLACK_PX: f32 = 2_000.0;
 pub struct DiffState {
     id: crate::diff::DiffId,
 
-    /// The edge-installed policy (`env::Differ`), carried so the
-    /// repair fallbacks below can recompute without store access.
-    policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
-
     diff: Operation,
 
     seen_generation: u64,
@@ -74,17 +70,18 @@ impl DiffState {
         left_marks: crate::markup::MarkupId,
         right_marks: crate::markup::MarkupId,
         seeded: Option<Range<u32>>,
-        policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
     ) -> Option<Self> {
         let mut entry = right.diff(id)?.clone();
-        let operation = match entry.apply_base_edits(left.log()) {
-            true => entry.operation().clone(),
-
-            false => policy.diff(left.text(), right.text(), None),
-        };
+        // The entry's operation is kept exact against the current pair
+        // by the edit door and the normalize lane; the pane adopts it
+        // as-is. `apply_base_edits` rolls the base side forward when it
+        // can (a real ancestor); if it cannot, the last-maintained
+        // operation still stands — the pane NEVER recomputes a diff on
+        // the UI thread (docs/no-diff-on-ui-thread).
+        entry.apply_base_edits(left.log());
+        let operation = entry.operation().clone();
         Some(Self {
             id,
-            policy,
             diff: operation,
             seen_generation: entry.generation(),
             left_revision: left.revision(),
@@ -253,11 +250,16 @@ impl SplitDiffView {
         let (mut region, text_moved) = match self.roll_forward() {
             Some((rolled, moved)) => (rolled, moved),
             None => {
-                self.state.diff = self.state.policy.diff(
-                    self.left.document.text(),
-                    self.right.document.text(),
-                    None,
-                );
+                // roll_forward only fails in a should-never-happen
+                // revision inversion; recomputing a diff here is banned
+                // (docs/no-diff-on-ui-thread). Adopt the LIVE diff
+                // entry instead — the edit door keeps its operation
+                // exact against the current text, so it needs no
+                // computation. If the entry is gone, the standing
+                // `diff` is the best we have and stays.
+                if let Some(entry) = self.right.document.diff(self.state.id) {
+                    self.state.diff = entry.operation().clone();
+                }
                 self.state.left_revision = self.left.document.revision();
                 self.state.right_revision = self.right.document.revision();
                 self.state.marks_dirty = true;

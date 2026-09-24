@@ -63,7 +63,7 @@ mod workspace;
 
 pub use crate::diffs::{
     rearm_base_asks, sync_stripe_bases, DiffChanged, DiffHandle, DiffNormalizeEffect,
-    DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
+    DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, PreparedDiff, StripeBases,
 };
 pub use crate::family_rows::{
     mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,

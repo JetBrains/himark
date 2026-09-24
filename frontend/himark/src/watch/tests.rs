@@ -223,8 +223,9 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
 fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
     let ui = ::editor::test_document::test_ui();
     let mut document = OpenDocuments::document(store, id).expect("the document");
+    let len = document.text().byte_count().min(u32::MAX as usize) as u32;
     document.edit(
-        &operation::Operation::insert_at(at, text),
+        &operation::Operation::insert_in(len, at, text),
         store,
         ui,
         ::editor::test_document::test_fonts_collection(),

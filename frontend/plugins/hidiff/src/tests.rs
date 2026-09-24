@@ -1631,8 +1631,15 @@ fn policy_store() -> imba::store::Store {
     store
 }
 
+/// A LOCAL diff open (`diff.open`) carries no off-thread prep, so it
+/// must NOT diff on the UI thread to dress itself
+/// (docs/no-diff-on-ui-thread). It opens on the whole-replace seed —
+/// undressed, its entry not yet normalized — and OWES exactly one
+/// normalization to the batch-tail sweep, which lands the minimal diff
+/// and its dressing from a worker. (The vcs and canvas roads DO prep
+/// off-thread and open dressed; only this dev-command road defers.)
 #[test]
-fn the_panel_opens_dressed_with_no_effects_run() {
+fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
@@ -1649,36 +1656,27 @@ fn the_panel_opens_dressed_with_no_effects_run() {
     let new = register(&format!("{middle}new tail\n"), "new");
 
     let panel = diff_panel(&mut store, &ui, old, new, None).expect("both registered");
-
     let state = panel.diff_state(&store).expect("attached at construction");
-    let (left_marks, right_marks) = state.mark_markups();
-    let washed = |document: himark::DocumentId, marks: himark::MarkupId| {
-        himark::OpenDocuments::document_ref(&store, document)
-            .and_then(|document| document.feature_markup(marks))
-            .is_some_and(|markup| !markup.is_empty())
-    };
-    assert!(washed(old, left_marks), "the left wash is standing");
-    assert!(washed(new, right_marks), "the right wash is standing");
 
-    let (left_half, _) = panel.halves(&store);
-    let height = himark::OpenDocuments::document_ref(&store, old)
-        .and_then(|document| document.document_layout(left_half.editor()))
-        .map(|layout| layout.height())
-        .expect("the half mounted");
-    assert!(
-        height < 3_000.0,
-        "the FIRST layout collapsed the unchanged middle behind strips \
-         (got {height}px for 300+ lines)"
-    );
-
+    // The entry is the whole-replace seed: exact over the live text,
+    // and NOT normalized at birth — its dressing (washes, folds) is
+    // owed to the normalize lane, never computed on this thread. (The
+    // "one normalization owed" round-trip is pinned in the documents
+    // crate's a_stale_prepared_track_defers_to_the_normalize_lane.)
     let generation = himark::OpenDocuments::document_ref(&store, new)
-        .and_then(|document| {
-            document
-                .diff(state.diff_id())
-                .map(|entry| entry.generation())
-        })
+        .and_then(|document| document.diff(state.diff_id()).map(|e| e.generation()))
         .expect("the entry rides the target");
-    assert_eq!(generation, 1, "normalized at birth — folds keyed directly");
+    assert_eq!(generation, 0, "not dressed at birth — the lane owes it");
+
+    let live_len = himark::OpenDocuments::document_ref(&store, new)
+        .expect("registered")
+        .text()
+        .view()
+        .byte_count();
+    let covers = himark::OpenDocuments::document_ref(&store, new)
+        .and_then(|document| document.diff(state.diff_id()).map(|e| e.operation().new_len()))
+        .expect("the entry rides the target");
+    assert_eq!(covers as usize, live_len, "the seed covers the live text exactly");
 }
 
 #[test]
@@ -1700,12 +1698,19 @@ fn a_shared_pair_ignores_a_handed_prep() {
     let foreign_right = himark::Text::from_string_exact("something\nELSE\n".to_owned());
     let operation = myersdiff::diff(&foreign_left, &foreign_right);
     let marks = himark::prepare_marks(&operation, &foreign_left);
+    // The pair is already tracked, so this foreign prep is dropped by
+    // dedup regardless of its stamp — the standing entry is the truth.
     let panel = diff_panel(
         &mut store,
         &ui,
         old,
         new,
-        Some(DiffPrep { operation, marks }),
+        Some(DiffPrep {
+            operation,
+            marks,
+            base_revision: 0,
+            target_revision: 0,
+        }),
     )
     .expect("the shared pair still opens");
 
@@ -2977,8 +2982,9 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         let mut document =
             himark::OpenDocuments::document(&store, target_id).expect("target document");
         let mut batch = imba::effect::Batch::new();
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &operation::Operation::insert_at(5, "X"),
+            &operation::Operation::insert_in(len, 5, "X"),
             &store,
             ui,
             &fonts,

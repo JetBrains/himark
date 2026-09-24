@@ -1152,12 +1152,21 @@ fn mounted(
     let gutter = theme.ui().editor_gutter.width;
     let editor_width = (built.width - gutter).max(120.0);
 
+    // The stamp names the revisions `built.operation` was diffed
+    // against — the freshly built sides. Captured BEFORE
+    // `register_side` moves them: when a side dedups onto an already
+    // open (and possibly moved) document, `track_diff` sees the stamp
+    // disagree with the live revision and drops the stale prep.
+    let base_revision = built.old.revision();
+    let target_revision = built.new.revision();
     let old_id = register_side(store, &file.old, built.old);
     let new_id = register_side(store, &file.new, built.new);
 
     let prep = crate::DiffPrep {
         operation: built.operation,
         marks: built.marks,
+        base_revision,
+        target_revision,
     };
     let id = crate::build_diff_view(store, ui, old_id, new_id, Some(prep), editor_width, true)?;
     let mut pane = crate::PairPane::over(id);

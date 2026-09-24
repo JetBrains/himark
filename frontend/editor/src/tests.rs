@@ -316,10 +316,11 @@ fn repaired_layout_matches_fresh_layout_after_plain_insert() {
     let width = 320.0;
     let mut document = plain_document("alpha beta gamma delta\n\nsecond paragraph stays here");
     let mut layout = layout_of(&document, width);
-    let operation = Operation::from_ops([
-        Op::Retain("alpha ".len() as u32),
-        Op::Insert("inserted words that should wrap ".to_owned()),
-    ]);
+    let operation = Operation::insert_in(
+        crate::text_cursor::byte_count(document.text()),
+        "alpha ".len() as u32,
+        "inserted words that should wrap ",
+    );
 
     let repair_start = layout.edit(&operation);
     document.edit(&operation, store, ui, &test_fonts(), &test_theme(), fx!());
@@ -354,8 +355,11 @@ fn code_block_with_emoji_keeps_layout_ranges_on_utf8_boundaries_after_edit() {
     let insert_at = code_block_with_emoji()
         .find("abcdefghijklmnopqrstuvwxyz")
         .expect("sample marker") as u32;
-    let operation =
-        Operation::from_ops([Op::Retain(insert_at), Op::Insert("😀 inserted ".to_owned())]);
+    let operation = Operation::insert_in(
+        crate::text_cursor::byte_count(document.text()),
+        insert_at,
+        "😀 inserted ",
+    );
 
     let repair_start = layout.edit(&operation);
     document.edit(&operation, store, ui, &test_fonts(), &test_theme(), fx!());
@@ -1392,7 +1396,10 @@ mod injected_syntax {
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
         document.edit(
-            &Operation::insert_at(0, "AA"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                0, "AA",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -1406,7 +1413,10 @@ mod injected_syntax {
         );
 
         document.edit(
-            &Operation::insert_at(13, "yy"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                13, "yy",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -1420,7 +1430,10 @@ mod injected_syntax {
         );
 
         document.edit(
-            &Operation::insert_at(10, "zz"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                10, "zz",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -1447,7 +1460,10 @@ mod injected_syntax {
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
         document.edit(
-            &Operation::delete_at(5, "x l"),
+            &Operation::delete_in(
+                crate::text_cursor::byte_count(document.text()),
+                5, "x l",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -1609,7 +1625,10 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
     for i in 0..12u32 {
         let started = std::time::Instant::now();
         let _ = document.edit(
-            &operation::Operation::insert_at(at + i, "x"),
+            &operation::Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                at + i, "x",
+            ),
             store,
             ui,
             &fonts,
@@ -3781,7 +3800,10 @@ mod folding {
         );
 
         document.edit(
-            &Operation::insert_at(0, "// note\n"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                0, "// note\n",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -4148,7 +4170,10 @@ mod gutter_stripes {
         // Typing ABOVE the standing hunk shifts its stripe the same
         // frame — the markup rides the edit door.
         document.edit(
-            &Operation::insert_at(0, "zero\n"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(document.text()),
+                0, "zero\n",
+            ),
             store,
             ui,
             &test_fonts(),
@@ -4380,7 +4405,11 @@ mod before_inlay {
         toggle(&mut view, at);
         let before = cards(&view)[0].0.clone();
         view.document.edit(
-            &Operation::insert_at(0, "head\n"),
+            &Operation::insert_in(
+                crate::text_cursor::byte_count(view.document.text()),
+                0,
+                "head\n",
+            ),
             store,
             ui,
             &test_fonts(),

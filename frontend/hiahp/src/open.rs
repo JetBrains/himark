@@ -156,6 +156,12 @@ impl OpenDiffByLocationsHandler {
             self.diff_policy
                 .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
         let marks = himark::prepare_marks(&operation, old.text());
+        let prep = hidiff::DiffPrep {
+            operation,
+            marks,
+            base_revision: old.revision(),
+            target_revision: new.revision(),
+        };
         AppCommand::Dynamic(
             window,
             Arc::new(OpenDiffPair {
@@ -163,7 +169,7 @@ impl OpenDiffByLocationsHandler {
                 old,
                 new,
                 new_location,
-                prep: hidiff::DiffPrep { operation, marks },
+                prep,
             }),
         )
     }

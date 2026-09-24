@@ -6119,8 +6119,9 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
         let mut document = crate::OpenDocuments::document(&store, target).expect("open");
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_at(0, "zero\n"),
+            &::editor::Operation::insert_in(len, 0, "zero\n"),
             &store,
             ui,
             &fonts,
@@ -6182,8 +6183,9 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
         let mut document = crate::OpenDocuments::document(&store, base).expect("open");
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_at(0, "gone\n"),
+            &::editor::Operation::insert_in(len, 0, "gone\n"),
             &store,
             ui,
             &fonts,

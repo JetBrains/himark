@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use operation::{Operation, OperationBuilder};
+use operation::{Op, Operation, OperationBuilder};
 use text::Text;
 
 use crate::caret::{Caret, DragOrigin, MultiCaret};
@@ -114,7 +114,7 @@ impl Document {
         fx: &mut EditorEffects<'_>,
     ) {
         let (operation, after) = bulk_replace(self.text(), &carets, ranges, insert);
-        if operation.is_empty() {
+        if operation.iter().all(|op| matches!(op, Op::Retain(_))) {
             return;
         }
         self.edit(&operation, store, ui, fonts, theme, fx);
@@ -472,6 +472,7 @@ fn bulk_replace(
         consumed = end;
         after.push(Caret::at((end as i64 + grown) as u32));
     }
+    builder.push_retain(byte_count - consumed);
     (
         builder.finish(),
         MultiCaret::normalized(after, carets.primary_index()),

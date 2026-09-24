@@ -85,8 +85,25 @@ The pieces, and where each is documented:
 
 ## One edit door
 
-`Document::edit` is the only way text changes, and it mutates
-EVERYTHING in one pass — first the substance, then every projection:
+`Document::edit` is the only way text changes, and it admits an
+operation only if it covers the text EXACTLY (`old_len == byte
+count`). There is no padding and no clamping tolerance anywhere
+behind the door — `Text::edit`'s clamps mean a mismatched operation
+would not crash, it would silently corrupt and desync every reader,
+so the door is the reject point: a mismatch is a debug assert in
+development and a logged no-op in production (the empty operation is
+the one explicit no-op). Producers own their trailing retain
+(`Operation::insert_in`/`delete_in` are the exact-splice
+constructors; `insert_at`/`delete_at` are partial by construction and
+only for consumers that complete the coverage themselves, like the
+inlay write-through forwarder). Anything computed off-thread against
+a snapshot must be revalidated or rebased through the edit log before
+it reaches the door — never recomputed on the UI thread, and never
+trusted by length alone (the 2026-09-24 crash was a stale worker diff
+installing over a live document).
+
+Admitted, the edit mutates EVERYTHING in one pass — first the
+substance, then every projection:
 
 1. splice the rope; shift every `markups` entry and `fragments` set;
    **compose every `diffs` entry** with the operation (a tracked diff

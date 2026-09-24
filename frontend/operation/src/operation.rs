@@ -51,12 +51,31 @@ impl Operation {
         Self { rope }
     }
 
+    /// PARTIAL by construction (no tail retain) — for consumers that
+    /// complete the coverage themselves against a base they know
+    /// (the inlay write-through). Anything headed for a document's
+    /// edit door wants [`Operation::insert_in`].
     pub fn insert_at(offset: u32, text: impl Into<String>) -> Self {
         Self::op_at(offset, Op::Insert(text.into()))
     }
 
+    /// PARTIAL by construction — see [`Operation::insert_at`].
     pub fn delete_at(offset: u32, text: impl Into<String>) -> Self {
         Self::op_at(offset, Op::Delete(text.into()))
+    }
+
+    /// The EXACT splice over an `old_len`-byte base: retain to
+    /// `offset`, insert, retain the rest. Every operation reaching an
+    /// edit door must cover its base exactly; these constructors
+    /// cannot build anything less.
+    pub fn insert_in(old_len: u32, offset: u32, text: impl Into<String>) -> Self {
+        Self::op_in(old_len, offset, Op::Insert(text.into()))
+    }
+
+    /// The exact deletion over an `old_len`-byte base — see
+    /// [`Operation::insert_in`].
+    pub fn delete_in(old_len: u32, offset: u32, text: impl Into<String>) -> Self {
+        Self::op_in(old_len, offset, Op::Delete(text.into()))
     }
 
     fn op_at(offset: u32, op: Op) -> Self {
@@ -65,6 +84,27 @@ impl Operation {
             ops.push(Op::Retain(offset));
         }
         ops.push(op);
+        Self::from_ops(ops)
+    }
+
+    fn op_in(old_len: u32, offset: u32, op: Op) -> Self {
+        let offset = offset.min(old_len);
+        let consumed = match &op {
+            Op::Delete(text) => offset + text.len().min(u32::MAX as usize) as u32,
+            _ => offset,
+        };
+        assert!(
+            consumed <= old_len,
+            "the splice must fit its base: {consumed} past {old_len}",
+        );
+        let mut ops = Vec::with_capacity(3);
+        if offset != 0 {
+            ops.push(Op::Retain(offset));
+        }
+        ops.push(op);
+        if old_len > consumed {
+            ops.push(Op::Retain(old_len - consumed));
+        }
         Self::from_ops(ops)
     }
 

@@ -3,22 +3,6 @@
 
 use super::*;
 
-/// `myersdiff::Myers` implements the LIB build's `DiffPolicy`; the
-/// test harness compiles `editor` separately, so tests need their own
-/// shim over the same function.
-struct TestMyers;
-
-impl crate::diff::DiffPolicy for TestMyers {
-    fn diff(
-        &self,
-        base: &text::Text,
-        target: &text::Text,
-        _syntax: Option<&crate::diff::DiffSyntax<'_>>,
-    ) -> Operation {
-        myersdiff::diff(base, target)
-    }
-}
-
 fn fonts() -> skia_safe::textlayout::FontCollection {
     crate::test_document::test_fonts_collection().clone()
 }
@@ -120,16 +104,8 @@ fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffState {
     let id = right.add_diff(operation, left.revision());
     let left_marks = left.add_markup();
     let right_marks = right.add_markup();
-    DiffState::attach(
-        id,
-        left,
-        right,
-        left_marks,
-        right_marks,
-        None,
-        std::sync::Arc::new(TestMyers),
-    )
-    .expect("the entry was just installed")
+    DiffState::attach(id, left, right, left_marks, right_marks, None)
+        .expect("the entry was just installed")
 }
 
 fn normalize(view: &mut SplitDiffView) {
@@ -1425,7 +1401,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         left_marks,
         right_marks,
         Some(prepared.window.clone()),
-        std::sync::Arc::new(TestMyers),
     )
     .expect("the entry stands");
     assert_eq!(

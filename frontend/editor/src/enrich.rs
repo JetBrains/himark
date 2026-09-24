@@ -516,8 +516,9 @@ mod tests {
         let effect = launched(&mut document, &registry, &[0..1]);
         let command = land(effect);
 
+        let len = crate::text_cursor::byte_count(document.text());
         document.edit(
-            &operation::Operation::insert_at(0, "XXXX"),
+            &operation::Operation::insert_in(len, 0, "XXXX"),
             store,
             ui,
             &fonts(),

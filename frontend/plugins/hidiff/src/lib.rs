@@ -62,7 +62,6 @@ fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
                 OpenDocuments::diff_handle(store, pair.diff)?.base_markup,
                 pair.right_extras,
                 None,
-                himark::env::Differ::of(store),
             )?,
         };
         Some(UnifiedDiffView::new(SplitDiffView::new(
@@ -611,6 +610,12 @@ pub fn open_diff_documents(
 pub struct DiffPrep {
     pub operation: himark::Operation,
     pub marks: himark::PreparedMarks,
+    /// The revisions the `operation` was diffed against — the stamp
+    /// `track_diff` checks the LIVE pair against before trusting the
+    /// prepared op (a moved pair drops it, undressed for one normalize
+    /// round-trip, rather than installing a stale diff).
+    pub base_revision: u64,
+    pub target_revision: u64,
 }
 
 pub fn diff_panel(
@@ -644,15 +649,15 @@ pub fn build_diff_view(
     let fonts = himark::env::Fonts::of(store)();
     let theme = himark::env::Themes::of(store);
 
+    // An already-tracked pair ignores the prep (dedup); an untracked
+    // one hands its prep to `track_diff`, which trusts it ONLY if the
+    // live pair still stands where it was diffed. NO synchronous diff
+    // is ever computed here — a missing prep means the tracking opens
+    // on the whole-replace seed and the normalize lane owes the
+    // minimal diff off-thread (docs/no-diff-on-ui-thread).
     let prep = match OpenDocuments::pair_tracked(store, left, right) {
         true => None,
-        false => prep.or_else(|| {
-            let base = OpenDocuments::document_ref(store, left)?;
-            let target = OpenDocuments::document_ref(store, right)?;
-            let operation = himark::env::Differ::of(store).diff(base.text(), target.text(), None);
-            let marks = himark::prepare_marks(&operation, base.text());
-            Some(DiffPrep { operation, marks })
-        }),
+        false => prep,
     };
 
     let diff = OpenDocuments::track_diff(
@@ -660,8 +665,21 @@ pub fn build_diff_view(
         left,
         right,
         false,
-        prep.as_ref().map(|prep| prep.operation.clone()),
+        prep.as_ref().map(|prep| himark::PreparedDiff {
+            operation: prep.operation.clone(),
+            base_revision: prep.base_revision,
+            target_revision: prep.target_revision,
+        }),
     )?;
+    // Did the prepared op survive `track_diff`'s live-pair check? If it
+    // did, the entry is normalized at birth and its prepared marks are
+    // valid to seed; if it was rejected (a moved pair), the marks are
+    // stale — drop them and let the pane dress on the normalize
+    // landing, so a stale wash never shows.
+    let dressed = OpenDocuments::document_ref(store, right)
+        .and_then(|document| document.diff(diff).map(|entry| entry.generation() > 0))
+        .unwrap_or(false);
+    let prep = if dressed { prep } else { None };
     let handle = OpenDocuments::diff_handle(store, diff)?;
     let target_markup = OpenDocuments::document_ref(store, right)
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
@@ -758,7 +776,6 @@ pub fn build_diff_view(
             handle.base_markup,
             right_extras,
             prep.map(|prep| prep.marks.window),
-            himark::env::Differ::of(store),
         )
     };
     let id = himark::DiffViewId::mint();

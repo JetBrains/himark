@@ -62,12 +62,10 @@ impl EditLog {
         operation: &Operation,
         old_len: u32,
     ) -> EditIdentity {
-        let pad = old_len.saturating_sub(operation.old_len());
-        let logged = match pad {
-            0 => operation.clone(),
-            pad => Operation::from_ops(operation.iter().chain(std::iter::once(Op::Retain(pad)))),
-        };
-        self.operations.push_back_mut(logged);
+        // The edit door admits only exact-coverage operations — a
+        // mismatch here is a bug upstream, never padded over.
+        debug_assert_eq!(operation.old_len(), old_len);
+        self.operations.push_back_mut(operation.clone());
         self.identities.push_back_mut(identity);
         identity
     }

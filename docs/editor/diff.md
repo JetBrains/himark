@@ -371,40 +371,60 @@ damages old ∪ new so a shrinking strip re-lays the lines it releases.
 
 ## 6. The atomic open
 
-A fresh pane opens FULLY DRESSED — washes, fold strips and the
-normalized operation are all standing before the first frame paints.
-Nothing pops in a worker round-trip later.
+A pane opened with an off-thread PREP opens FULLY DRESSED — washes,
+fold strips and the normalized operation are all standing before the
+first frame paints. **No diff is ever computed on the UI thread to
+dress a pane** (docs/no-diff-on-ui-thread): the dressing rides a diff
+the WORKER already produced, or it is deferred to the normalize lane.
 
 The dressing is pure compute over `(Operation, left Text)`:
 `prepare_marks` (`split_diff.rs`) derives whole-document marks
 (fragment-capped like every derivation) plus the strips, sharing the
-minting code with the pipeline. Who runs it:
+minting code with the pipeline. The prep travels stamped with the
+revisions it was diffed against (`DiffPrep`/`PreparedDiff`), so
+`track_diff` trusts it only if the LIVE pair still stands where the
+worker snapshotted it (§below). Who produces it:
 
 - **The vcs open** (`OpenDiffByLocationsHandler`, hiahp): on the
   WORKER, right after both documents build — the prep rides the
-  `OpenDiffPair` landing. The landing forwards it only when BOTH
-  sides register fresh: a deduped side's live text may differ from
-  the fetched snapshot, so the panel prepares inline instead.
-- **Local opens** (`diff.open`, back-navigation): inline in
-  `diff_panel` — the synchronous first diff is the track cost; only
-  the cheap derivations are added.
+  `OpenDiffPair` landing, stamped with the built sides' revisions.
+  The landing forwards it only when BOTH sides register fresh; a
+  deduped side opens on the seed and dresses from the lane.
 - **Row-owned diffs** (the chat diff cell, the diff canvas —
-  docs/editor/diff-canvas.md): on the build worker, landing with the row.
+  docs/editor/diff-canvas.md): on the build worker, landing with the row,
+  stamped with the built sides' revisions.
+- **Local opens** (`diff.open`, back-navigation): carry NO prep — a
+  synchronous diff here is banned. The pane opens on the whole-replace
+  SEED (an exact delete-all/insert-all, zero diffing) and the
+  batch-tail sweep owes it one normalization, which lands the minimal
+  diff and its dressing from a worker one round-trip later.
 
-`diff_panel` installs everything before the pane exists:
-`track_diff(prepared)` installs the entry normalized at birth
-(generation 1, `record.normalized` stamped — the sweep owes nothing,
-no redundant first normalization); the marks markups seed with empty
-change sets (a plain map insert — no editors yet); the half editors
-mount with the markups in `shown`, so the FIRST layout shapes washes
-and collapses folds (`Instead` spans skip shaping — the dressed first
-build is cheaper than a naked one); and `DiffState::attach` runs
-eagerly at construction with the seeded window — fold phase Done,
-marks clean, the standing `marks_window` also serving as the
-pre-viewport fallback in `marks_window_now` so no shrinking marks job
-fires before the first viewport report. A pane joining an
-ALREADY-tracked pair skips the prep entirely — the standing entry and
-its markups are the truth.
+`track_diff` is the gate. Given a stamped prep it checks the live
+pair: unmoved (same revisions, matching lengths) → install the
+operation normalized at birth (generation 1, `record.normalized`
+stamped — the sweep owes nothing); moved (a docsync host edit landed
+between the worker's snapshot and this landing — the 2026-09-24
+crash) or absent → install the whole-replace SEED (generation 0) and
+leave the minimal diff owed to the normalize lane. It never rebases a
+prep across the live log: the prep was diffed against a fetched
+snapshot, not a point in the edit log, so composing the live tail onto
+it is unsound — the sound rebase lives in the normalize landing, whose
+capture IS a live ancestor.
+
+With a valid prep `diff_panel` installs everything before the pane
+exists: the entry normalized at birth; the marks markups seed with
+empty change sets (a plain map insert — no editors yet); the half
+editors mount with the markups in `shown`, so the FIRST layout shapes
+washes and collapses folds (`Instead` spans skip shaping — the dressed
+first build is cheaper than a naked one); and `DiffState::attach` runs
+eagerly at construction with the seeded window — fold phase Done, marks
+clean, the standing `marks_window` also serving as the pre-viewport
+fallback in `marks_window_now` so no shrinking marks job fires before
+the first viewport report. A pane opening on the seed (no/rejected
+prep) attaches undressed — marks dirty, no seeded window — and dresses
+on the first normalize landing. A pane joining an ALREADY-tracked pair
+skips the prep entirely — the standing entry and its markups are the
+truth.
 
 ---
 

@@ -368,7 +368,6 @@ impl Cell {
                     left_marks,
                     right_extras,
                     Some(prepared.window),
-                    ::editor::env::Differ::of(store),
                 )
                 .expect("the entry was just installed");
                 let left = EditorView {
