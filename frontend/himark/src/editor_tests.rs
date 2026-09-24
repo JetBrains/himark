@@ -20,6 +20,24 @@ struct TestPane {
     inlay_markup: editor::MarkupId,
 }
 
+/// TEST SUPPORT: the landing's first-match jump rides the
+/// `AnnounceSelect` round trip (docs/ui/list-keyboard.md §5) — drain
+/// it out of a batch and hand back the command it would dispatch.
+pub(crate) fn drain_announced<C: 'static>(batch: imba::effect::Batch<C>) -> Option<C> {
+    use imba::effect::Message;
+    let mut announced = None;
+    for message in batch.drain() {
+        let (Message::Launch(_, effect) | Message::Relaunch(_, _, effect)) = message else {
+            continue;
+        };
+        let (value, lift) = effect.into_payload().split();
+        if value.downcast::<crate::AnnounceSelect>().is_ok() {
+            announced = lift(Box::new(()));
+        }
+    }
+    announced
+}
+
 impl TestPane {
     fn new(mut document: Document, width: f32) -> Self {
         let ui = ::editor::test_document::test_ui();
@@ -3419,18 +3437,17 @@ mod toc {
             crate::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(1_000.0));
         assert!(crate::test_driver::type_text(&mut app, "x"));
         let mut store = app.store().clone();
-        view.perform(
-            &mut store,
-            &ui,
-            crate::OutlineCommand::Select(1),
-            &mut imba::effect::Batch::new().effects(),
-        );
-        view.perform(
-            &mut store,
-            &ui,
-            crate::OutlineCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            let step = view.search.step_index(1).expect("a stepped row");
+            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            view.perform(&mut store, &ui, select, &mut imba::effect::Batch::new().effects());
+            let at = view.search.cursor_index().expect("a cursor row");
+            let pick = crate::OutlineCommand::List(
+                view.search.activate_command(at, ActivateTrigger::Enter),
+            );
+            view.perform(&mut store, &ui, pick, &mut imba::effect::Batch::new().effects());
+        }
         let Some(crate::ModalRequest::Perform(command)) = crate::ModalView::take_request(&mut view)
         else {
             panic!("the pick performs the jump");
@@ -3501,12 +3518,13 @@ mod toc {
         let mut toc = toc;
         let ui = ::editor::test_document::test_ui();
         let mut scratch = Store::new();
-        toc.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            let at = toc.search.cursor_index().expect("a cursor row");
+            let pick =
+                crate::TocCommand::List(toc.search.activate_command(at, ActivateTrigger::Enter));
+            toc.perform(&mut scratch, &ui, pick, &mut imba::effect::Batch::new().effects());
+        }
         let Some(crate::ModalRequest::OpenLocations(locations)) =
             crate::ModalView::take_request(&mut toc)
         else {
@@ -3521,18 +3539,18 @@ mod toc {
             &[at("src", "x.rs")],
         )
         .expect("rows");
-        band.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Select(-1),
-            &mut imba::effect::Batch::new().effects(),
-        );
-        band.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            // The band row is the only cursor stop; Up clamps onto it.
+            if let Some(step) = band.search.step_index(-1) {
+                let select = crate::TocCommand::List(band.search.select_command(step));
+                band.perform(&mut scratch, &ui, select, &mut imba::effect::Batch::new().effects());
+            }
+            let at = band.search.cursor_index().expect("a cursor row");
+            let pick =
+                crate::TocCommand::List(band.search.activate_command(at, ActivateTrigger::Enter));
+            band.perform(&mut scratch, &ui, pick, &mut imba::effect::Batch::new().effects());
+        }
         assert!(
             crate::ModalView::take_request(&mut band).is_none(),
             "band rows never pick"
@@ -3619,14 +3637,26 @@ mod toc {
             );
         };
 
-        drive(&mut toc, crate::TocCommand::Select(-1));
-        drive(&mut toc, crate::TocCommand::Fold(false));
+        use imba::list::{ActivateTrigger, ListOps};
+        if let Some(step) = toc.search.step_index(-1) {
+            let select = crate::TocCommand::List(toc.search.select_command(step));
+            drive(&mut toc, select);
+        }
+        let fold = crate::TocCommand::List(crate::ListKeyCommand::Fold {
+            index: toc.search.cursor_index().expect("a cursor row"),
+            expand: false,
+        });
+        drive(&mut toc, fold);
         assert_eq!(toc.visible_rows(), 1, "the fold hides the subtree");
         assert!(
             crate::ModalView::take_request(&mut toc).is_none(),
             "folding is not a pick"
         );
-        drive(&mut toc, crate::TocCommand::Pick);
+        let pick = crate::TocCommand::List(
+            toc.search
+                .activate_command(toc.search.cursor_index().expect("a cursor row"), ActivateTrigger::Enter),
+        );
+        drive(&mut toc, pick);
         assert_eq!(toc.visible_rows(), 3, "Enter on a directory unfolds");
     }
 
@@ -3680,7 +3710,7 @@ mod toc {
 
         let typing = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Input(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "two".to_owned(),
                 },
@@ -3699,10 +3729,14 @@ mod toc {
             }
         }
         let matches = matches.expect("typing launched the filter");
-        let _ = drive(
+        let landing = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Landed(matches)),
+            crate::OutlineCommand::List(crate::ListKeyCommand::Landed(matches)),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            let _ = drive(&mut view, select);
+        }
         assert_eq!(view.match_count(), 1, "only 'Two' matches");
         assert_eq!(
             view.cursor_title().as_deref(),
@@ -3710,10 +3744,12 @@ mod toc {
             "the cursor jumped"
         );
 
-        let _ = drive(
-            &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Step(1)),
-        );
+        {
+            use imba::list::ListOps;
+            let step = view.search.matched_step_index(1).expect("a match to step");
+            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            let _ = drive(&mut view, select);
+        }
         assert_eq!(
             view.cursor_title().as_deref(),
             Some("Two"),
@@ -3721,7 +3757,7 @@ mod toc {
         );
         let _ = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Clear),
+            crate::OutlineCommand::List(crate::ListKeyCommand::Clear),
         );
         assert_eq!(view.match_count(), 0, "cleared");
     }
@@ -3781,7 +3817,7 @@ mod toc {
         view.perform(
             &mut store,
             &ui,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Input(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "o".to_owned(),
                 },
@@ -3800,14 +3836,24 @@ mod toc {
                 })));
             }
         }
+        let mut landing = imba::effect::Batch::new();
         view.perform(
             &mut store,
             &ui,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Landed(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Landed(
                 matches.expect("filter launched"),
             )),
-            &mut imba::effect::Batch::new().effects(),
+            &mut landing.effects(),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            view.perform(
+                &mut store,
+                &ui,
+                select,
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         assert_eq!(view.match_count(), 2, "One and Two match 'o'");
         assert_eq!(view.cursor_title().as_deref(), Some("One"));
 
@@ -3831,13 +3877,21 @@ mod toc {
             drop(widget);
             result
         };
-        let stepped = matches!(
-            result,
-            EventResult::Command(crate::OutlineCommand::List(
-                crate::SpeedSearchCommand::Step(1)
-            ))
+        let stepped = match &result {
+            EventResult::Command(crate::OutlineCommand::List(command)) => {
+                use imba::list::ListOps;
+                type Search = crate::ListKeyboardController<
+                    crate::ForestList<crate::toc::OutlineKey>,
+                    crate::ForestSearcher<crate::toc::OutlineKey>,
+                >;
+                Search::selected_index(command).is_some()
+            }
+            _ => false,
+        };
+        assert!(
+            stepped,
+            "Down while searching must answer the matched-step Select"
         );
-        assert!(stepped, "Down while searching must become Step(1)");
 
         if let EventResult::Command(command) = result {
             view.perform(
@@ -3904,7 +3958,14 @@ mod toc {
         drive(&mut view, crate::OutlineCommand::Landed(landed.clone()));
         assert_eq!(view.visible_rows(), 2, "One with Two nested");
 
-        drive(&mut view, crate::OutlineCommand::Fold(false));
+        {
+            use imba::list::ListOps;
+            let fold = crate::OutlineCommand::List(crate::ListKeyCommand::Fold {
+                index: view.search.cursor_index().expect("a cursor row"),
+                expand: false,
+            });
+            drive(&mut view, fold);
+        }
         assert_eq!(view.visible_rows(), 1, "folded");
 
         let mut relanded = landed;
@@ -4894,7 +4955,7 @@ mod dock_tests {
 
         let typing = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Input(
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "bet".to_owned(),
                 },
@@ -4913,10 +4974,14 @@ mod dock_tests {
             }
         }
         let matches = matches.expect("typing launched the filter");
-        let _ = drive(
+        let landing = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Landed(matches)),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Landed(matches)),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            let _ = drive(&mut panel, select);
+        }
         assert_eq!(panel.match_count(), 1, "only beta matches");
         let rows = panel.rows();
         let beta = rows
@@ -4929,15 +4994,13 @@ mod dock_tests {
             "the cursor jumped to the match: {rows:?}"
         );
 
-        let _ = drive(
-            &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Step(1)),
-        );
+        let step = panel.matched_step_rows(1).expect("a match to step");
+        let _ = drive(&mut panel, step);
         assert_eq!(panel.selected_row(), Some(beta), "wrapped in place");
 
         let _ = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Clear),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Clear),
         );
         assert_eq!(panel.match_count(), 0, "cleared");
     }

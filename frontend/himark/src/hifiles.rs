@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use crate::{
-    ModalRequest, ModalView, ResourceLocation, SpeedSearchCommand, SpeedSearchView, TreeRow,
+    ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, ResourceLocation, TreeRow,
 };
+use imba::list::{ActivateTrigger, ListOps};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -58,7 +59,7 @@ impl crate::Searcher for LocationSearcher {
 
 #[derive(Clone)]
 struct LocationTree {
-    list: SpeedSearchView<TreeList, LocationSearcher>,
+    list: ListKeyboardController<TreeList, LocationSearcher>,
 
     pending: rpds::HashTrieSetSync<ResourceLocation>,
 
@@ -70,13 +71,14 @@ struct LocationTree {
 impl LocationTree {
     fn new(store: &Store, ui: &imba::UiCtx) -> Self {
         Self {
-            list: SpeedSearchView::new(
+            list: ListKeyboardController::searchable(
                 ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
                 LocationSearcher,
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             pending: rpds::HashTrieSetSync::new_sync(),
             watches: rpds::HashTrieMapSync::new_sync(),
             by_subscription: rpds::HashTrieMapSync::new_sync(),
@@ -349,15 +351,9 @@ impl SessionTree {
 }
 
 pub enum TreeCommand {
-    Rows(SpeedSearchCommand<crate::TreeListCommand>),
+    Rows(ListKeyCommand<crate::TreeListCommand>),
 
     Retheme,
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
 
     Listed {
         parent: ResourceLocation,
@@ -549,19 +545,12 @@ impl View for SessionTreeView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, TreeCommand> {
         use imba::focus::FocusData;
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal.
         let searching = self.tree.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(TreeCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(TreeCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(TreeCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(TreeCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(TreeCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    TreeCommand::Pick,
-                    TreeCommand::Rows(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter => EventResult::Command(TreeCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -585,10 +574,68 @@ impl View for SessionTreeView {
     ) {
         match command {
             TreeCommand::Rows(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        self.activate(index, store, ui, fx);
-                        return self.persist(store);
+                type Rows = ListKeyboardController<TreeList, LocationSearcher>;
+                match &command {
+                    // The bespoke lazy fold: Right lists an unlisted
+                    // directory, Left collapses a listed one or walks
+                    // to the visible parent.
+                    ListKeyCommand::Fold { expand, .. } => {
+                        let expand = *expand;
+                        self.pending_reveal = None;
+                        let Some(location) = self.tree.list.inner().content().cursor().cloned()
+                        else {
+                            return self.persist(store);
+                        };
+                        let directory = location.kind().is_directory();
+                        let listed = self.tree.is_listed(&location);
+                        match (expand, directory, listed) {
+                            (true, true, false) => self.activate_key(&location, store, ui, fx),
+
+                            (false, true, true) => self.activate_key(&location, store, ui, fx),
+
+                            (false, _, _) => {
+                                if location.path().len() > 1 {
+                                    let parent = ResourceLocation::new(
+                                        crate::ResourceType::directory(),
+                                        location.authority().clone(),
+                                        location.path()[..location.path().len() - 1].to_vec(),
+                                    );
+                                    if self.tree.is_visible(&parent) {
+                                        self.tree.select_and_reveal(&parent);
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        return;
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = crate::tree_toggle(inner) {
+                            self.activate(index, store, ui, fx);
+                            return self.persist(store);
+                        }
+                    }
+                    _ => {}
+                }
+                if Rows::selected_index(&command).is_some() {
+                    self.pending_reveal = None;
+                }
+                if let Some((index, trigger)) = Rows::activated(&command) {
+                    let searching = self.tree.list.searching();
+                    self.activate(index, store, ui, fx);
+                    self.persist(store);
+                    match trigger {
+                        // The deliberate pick ends the search in the
+                        // same stroke.
+                        ActivateTrigger::Enter if searching => {
+                            return self.perform(
+                                store,
+                                ui,
+                                TreeCommand::Rows(ListKeyCommand::Clear),
+                                fx,
+                            );
+                        }
+                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
                 fx.scope(TreeCommand::Rows, |fx| {
@@ -601,42 +648,6 @@ impl View for SessionTreeView {
                     .inner_mut()
                     .content_mut()
                     .set_selection_style(crate::selection_style(store));
-            }
-            TreeCommand::Select(delta) => {
-                self.pending_reveal = None;
-                self.tree.list.inner_mut().content_mut().cursor_step(delta);
-            }
-            TreeCommand::Fold(expand) => {
-                self.pending_reveal = None;
-                let Some(location) = self.tree.list.inner().content().cursor().cloned() else {
-                    return self.persist(store);
-                };
-                let directory = location.kind().is_directory();
-                let listed = self.tree.is_listed(&location);
-                match (expand, directory, listed) {
-                    (true, true, false) => self.activate_key(&location, store, ui, fx),
-
-                    (false, true, true) => self.activate_key(&location, store, ui, fx),
-
-                    (false, _, _) => {
-                        if location.path().len() > 1 {
-                            let parent = ResourceLocation::new(
-                                crate::ResourceType::directory(),
-                                location.authority().clone(),
-                                location.path()[..location.path().len() - 1].to_vec(),
-                            );
-                            if self.tree.is_visible(&parent) {
-                                self.tree.select_and_reveal(&parent);
-                            }
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            TreeCommand::Pick => {
-                if let Some(location) = self.tree.list.inner().content().cursor().cloned() {
-                    self.activate_key(&location, store, ui, fx);
-                }
             }
             TreeCommand::Listed { parent, entries } => {
                 let listed = entries.is_some();
@@ -729,6 +740,8 @@ impl View for SessionTreeView {
             .map(TreeCommand::Rows);
             overlay.place(0.0, PANEL_PAD, rows);
 
+            // The key table lives in the controller's own overlay;
+            // the surface keeps only its dismissal and retheme.
             let searching = self.tree.list.searching();
             let keymap =
                 leaf::<TreeCommand>(size.width, size.height).event(move |_arena, event, _size| {
@@ -737,32 +750,6 @@ impl View for SessionTreeView {
                             key: InputKey::Escape,
                             ..
                         } if !searching => EventResult::Command(TreeCommand::Dismiss),
-                        Event::KeyDown {
-                            key: InputKey::Up, ..
-                        } if !searching => EventResult::Command(TreeCommand::Select(-1)),
-                        Event::KeyDown {
-                            key: InputKey::Down,
-                            ..
-                        } if !searching => EventResult::Command(TreeCommand::Select(1)),
-                        Event::KeyDown {
-                            key: InputKey::Left,
-                            ..
-                        } if !searching => EventResult::Command(TreeCommand::Fold(false)),
-                        Event::KeyDown {
-                            key: InputKey::Right,
-                            ..
-                        } if !searching => EventResult::Command(TreeCommand::Fold(true)),
-                        Event::KeyDown {
-                            key: InputKey::Enter,
-                            ..
-                        } if searching => EventResult::Commands(vec![
-                            TreeCommand::Pick,
-                            TreeCommand::Rows(SpeedSearchCommand::Clear),
-                        ]),
-                        Event::KeyDown {
-                            key: InputKey::Enter,
-                            ..
-                        } => EventResult::Command(TreeCommand::Pick),
 
                         Event::ThemeChanged => EventResult::Command(TreeCommand::Retheme),
                         _ => EventResult::Ignored,

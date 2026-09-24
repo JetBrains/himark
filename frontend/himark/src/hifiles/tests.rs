@@ -427,6 +427,9 @@ fn cursor_walks_and_enter_opens() {
         &store,
         ::editor::test_document::test_ui(),
     );
+    // The commands the controller's key table emits, verbatim
+    // (docs/ui/list-keyboard.md §3).
+    use imba::list::{ActivateTrigger, ListOps};
     let mut drive = |view: &mut SessionTreeView, command| {
         view.perform(
             &mut store,
@@ -435,19 +438,36 @@ fn cursor_walks_and_enter_opens() {
             &mut imba::effect::Batch::new().effects(),
         );
     };
+    let step = |view: &SessionTreeView, delta| {
+        let index = view.tree.list.step_index(delta).expect("a stepped row");
+        TreeCommand::Rows(view.tree.list.select_command(index))
+    };
+    let enter = |view: &SessionTreeView| {
+        let index = view.tree.list.cursor_index().expect("a cursor row");
+        TreeCommand::Rows(view.tree.list.activate_command(index, ActivateTrigger::Enter))
+    };
+    let fold = |view: &SessionTreeView, expand| {
+        let index = view.tree.list.cursor_index().expect("a cursor row");
+        TreeCommand::Rows(crate::ListKeyCommand::Fold { index, expand })
+    };
 
-    drive(&mut view, TreeCommand::Select(1));
-    drive(&mut view, TreeCommand::Select(1));
+    let command = step(&view, 1);
+    drive(&mut view, command);
+    let command = step(&view, 1);
+    drive(&mut view, command);
     assert_eq!(view.selected_name().as_deref(), Some("README.md"));
-    drive(&mut view, TreeCommand::Pick);
+    let command = enter(&view);
+    drive(&mut view, command);
     let Some(ModalRequest::OpenLocations(locations)) = view.take_request() else {
         panic!("Enter opens the selected document");
     };
     assert_eq!(locations, vec![document(&["project", "README.md"])]);
 
-    drive(&mut view, TreeCommand::Fold(false));
+    let command = fold(&view, false);
+    drive(&mut view, command);
     assert_eq!(view.selected_name().as_deref(), Some("project"));
-    drive(&mut view, TreeCommand::Fold(false));
+    let command = fold(&view, false);
+    drive(&mut view, command);
     assert_eq!(view.row_count(), 1, "the fold took the subtree");
 }
 

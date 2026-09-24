@@ -1,17 +1,26 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::{AppCommand, Application, ModalRequest, ModalView};
+use himark::{AppCommand, Application, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView};
 use imba::{
     arena::Arena,
     constraints::Constraints,
     event::{Event, EventResult, Key},
     leaf::leaf,
+    list::{ListCommand, ListOps, ListView},
+    scroll::{ScrollCommand, ScrollView},
     store::Store,
     thunk_ext::ThunkExt,
     Layout as _, PresentableCommand, UiCtx, View,
 };
 use skia_safe::{Paint, Size};
+
+/// Keys-only controller over the raw label list — the palette's own
+/// input does the filtering; the table does the movement
+/// (docs/ui/list-keyboard.md).
+type Rows =
+    ListKeyboardController<ScrollView<ListView<himark::LabelRow, usize>>>;
+type RowsCommand = ListKeyCommand<ScrollCommand<ListCommand<std::convert::Infallible>>>;
 
 #[derive(Clone)]
 struct Entry {
@@ -24,9 +33,7 @@ struct Entry {
 }
 
 pub enum PaletteCommand {
-    Rows(himark::RowListCommand),
-
-    Select(isize),
+    Rows(RowsCommand),
 
     Pick(usize),
 
@@ -40,9 +47,8 @@ pub struct PaletteView {
     entries: Vec<Entry>,
 
     matches: Vec<usize>,
-    selected: usize,
 
-    list: himark::RowList,
+    list: Rows,
 
     request: himark::RequestSlot<ModalRequest>,
 }
@@ -62,8 +68,7 @@ impl PaletteView {
         let mut palette = Self {
             entries,
             matches: Vec::new(),
-            selected: 0,
-            list: himark::RowList::new(),
+            list: ListKeyboardController::new(ScrollView::new(ListView::empty())),
             request: Default::default(),
         };
         palette.filter(store, ui, "");
@@ -90,7 +95,11 @@ impl PaletteView {
                 self.matches.push(index);
             }
         }
-        self.selected = self.selected.min(self.matches.len().saturating_sub(1));
+        let selected = self
+            .list
+            .cursor_index()
+            .unwrap_or(0)
+            .min(self.matches.len().saturating_sub(1));
         let labels = self.labels();
 
         let trails: Vec<Option<String>> = self
@@ -98,17 +107,18 @@ impl PaletteView {
             .iter()
             .map(|&index| self.entries[index].shortcut.clone())
             .collect();
-        self.list
-            .set_with_trails(store, ui, &labels, &trails, None, self.selected);
+        let scroll_y = self.list.inner().scroll_y();
+        let mut list = ListView::from_slice(himark::label_slice(store, ui, &labels, &trails, None))
+            .with_selection(himark::selection_style(store));
+        if !labels.is_empty() {
+            list.select_only(selected);
+        }
+        *self.list.inner_mut() = ScrollView::new(list);
+        self.list.inner_mut().set_scroll_y(scroll_y);
     }
 
-    fn move_selection(&mut self, delta: isize) {
-        if self.matches.is_empty() {
-            return;
-        }
-        let last = self.matches.len() - 1;
-        self.selected = self.selected.saturating_add_signed(delta).min(last);
-        self.list.select(self.selected);
+    fn selected(&self) -> usize {
+        self.list.cursor_index().unwrap_or(0)
     }
 }
 
@@ -121,17 +131,18 @@ impl View for PaletteView {
         _ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::event::EventResult;
-        let selected = self.selected;
-        imba::focus::FocusData {
+        // Movement and Enter are the controller's table; the palette
+        // keeps its own close (and Enter-with-nothing closes too).
+        let empty = self.matches.is_empty();
+        let own = imba::focus::FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Up => EventResult::Command(PaletteCommand::Select(-1)),
-                Key::Down => EventResult::Command(PaletteCommand::Select(1)),
-                Key::Enter => EventResult::Command(PaletteCommand::Pick(selected)),
+                Key::Enter if empty => EventResult::Command(PaletteCommand::Close),
                 Key::Escape => EventResult::Command(PaletteCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..imba::focus::FocusData::default()
-        }
+        };
+        own.merge_under(self.list.focus_data(_store, _ui).map(PaletteCommand::Rows))
     }
 
     fn perform(
@@ -143,16 +154,16 @@ impl View for PaletteView {
     ) {
         match command {
             PaletteCommand::Rows(command) => {
-                if let Some(row) = self.list.picked(&command) {
-                    self.selected = row;
-                    return self.perform(store, ui, PaletteCommand::Pick(row), fx);
+                if let Some((row, _trigger)) = Rows::activated(&command) {
+                    // Enter and click both run the command; the note
+                    // row is unkeyed and never answers.
+                    if self.list.inner().content().key_at(row).is_some() {
+                        return self.perform(store, ui, PaletteCommand::Pick(row), fx);
+                    }
                 }
                 fx.scope(PaletteCommand::Rows, |fx| {
                     imba::View::perform(&mut self.list, store, ui, command, fx)
                 });
-            }
-            PaletteCommand::Select(delta) => {
-                self.move_selection(delta);
             }
             PaletteCommand::Pick(row) => {
                 let picked = self
@@ -188,7 +199,6 @@ impl View for PaletteView {
             let list_height =
                 (size.height - list_top - chrome.hint_bottom - chrome.row_height).max(row_height);
 
-            let selected = self.selected;
             let match_count = self.matches.len();
             let total = self.entries.len();
             let row_font = himark::fonts::ui_font(ui, chrome.row_size);
@@ -254,17 +264,13 @@ impl View for PaletteView {
                 .map(PaletteCommand::Rows),
             );
 
+            // Movement and Enter live in the controller's overlay.
+            let empty = match_count == 0;
             let keymap = leaf::<PaletteCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
-                    Event::KeyDown { key: Key::Up, .. } => {
-                        EventResult::Command(PaletteCommand::Select(-1))
-                    }
-                    Event::KeyDown { key: Key::Down, .. } => {
-                        EventResult::Command(PaletteCommand::Select(1))
-                    }
                     Event::KeyDown {
                         key: Key::Enter, ..
-                    } => EventResult::Command(PaletteCommand::Pick(selected)),
+                    } if empty => EventResult::Command(PaletteCommand::Close),
                     Event::KeyDown {
                         key: Key::Escape, ..
                     } => EventResult::Command(PaletteCommand::Close),

@@ -5,9 +5,11 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::{
-    AppCommand, ForestList, ForestNode, ForestSearcher, ModalRequest, ModalView, ResourceLocation,
-    ResourceType, SpeedSearchCommand, SpeedSearchView, TreeListCommand,
+    ActivateTrigger, AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
+    ListKeyboardController, ModalRequest, ModalView, ResourceLocation, ResourceType,
+    TreeListCommand,
 };
+use imba::list::ListOps;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -199,16 +201,12 @@ fn dir_children(
     children
 }
 
+type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
+
 pub enum CommentsCommand {
-    Rows(SpeedSearchCommand<TreeListCommand>),
+    Rows(ListKeyCommand<TreeListCommand>),
 
     SendAll,
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
 
     Refresh,
 
@@ -216,7 +214,7 @@ pub enum CommentsCommand {
 }
 
 pub struct CommentsView {
-    list: SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
+    list: Rows,
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     workspace: crate::SessionId,
     window: crate::WindowId,
@@ -247,13 +245,14 @@ impl CommentsView {
         workspace: crate::SessionId,
     ) -> Self {
         let mut panel = Self {
-            list: SpeedSearchView::new(
+            list: ListKeyboardController::searchable(
                 ForestList::new(store),
                 ForestSearcher::default(),
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),
             workspace,
             window,
@@ -332,19 +331,12 @@ impl View for CommentsView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, CommentsCommand> {
         use imba::focus::FocusData;
+        // The key table is the controller's (docs/ui/list-keyboard.md
+        // §3); the surface keeps only its own dismissal.
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(CommentsCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(CommentsCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(CommentsCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(CommentsCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(CommentsCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    CommentsCommand::Pick,
-                    CommentsCommand::Rows(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter => EventResult::Command(CommentsCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -367,21 +359,37 @@ impl View for CommentsView {
     ) {
         match command {
             CommentsCommand::Rows(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        return self.activate(index, store, ui);
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        return self.list.inner_mut().fold_cursor(*expand, store, ui);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = crate::tree_toggle(inner) {
+                            return self.activate(index, store, ui);
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Rows::activated(&command) {
+                    let searching = self.list.searching();
+                    self.activate(index, store, ui);
+                    // The deliberate pick ends the search in the same
+                    // stroke; a browsing click leaves it standing.
+                    match trigger {
+                        ActivateTrigger::Enter if searching => {
+                            return self.perform(
+                                store,
+                                ui,
+                                CommentsCommand::Rows(ListKeyCommand::Clear),
+                                fx,
+                            );
+                        }
+                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
                 fx.scope(CommentsCommand::Rows, |fx| {
                     self.list.perform(store, ui, command, fx)
                 });
-            }
-            CommentsCommand::Select(delta) => self.list.inner_mut().list_mut().cursor_step(delta),
-            CommentsCommand::Fold(expand) => self.list.inner_mut().fold_cursor(expand, store, ui),
-            CommentsCommand::Pick => {
-                if let Some(key) = self.list.inner().list().cursor().cloned() {
-                    self.activate_key(&key, store, ui);
-                }
             }
             CommentsCommand::Refresh => self.refresh(store, ui),
             CommentsCommand::SendAll => {
@@ -464,6 +472,8 @@ impl View for CommentsView {
                     _ => EventResult::Ignored,
                 });
 
+            // The key table lives in the controller's own overlay;
+            // the surface keeps only its dismissal.
             let searching = self.list.searching();
             let keymap = leaf::<CommentsCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
@@ -471,32 +481,6 @@ impl View for CommentsView {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::Command(CommentsCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(CommentsCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(CommentsCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(CommentsCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(CommentsCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if searching => EventResult::Commands(vec![
-                        CommentsCommand::Pick,
-                        CommentsCommand::Rows(SpeedSearchCommand::Clear),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } => EventResult::Command(CommentsCommand::Pick),
                     _ => EventResult::Ignored,
                 },
             );

@@ -127,7 +127,12 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers.register::<crate::toc::OutlineEffect>(crate::toc::OutlineHandler);
     handlers.register::<crate::find::FindScanEffect>(crate::find::FindScanHandler);
     handlers
-        .register::<crate::speedsearch::SpeedSearchEffect>(crate::speedsearch::SpeedSearchHandler);
+        .register::<crate::list_keyboard::SpeedSearchEffect>(
+            crate::list_keyboard::SpeedSearchHandler,
+        );
+    handlers.register::<crate::list_keyboard::AnnounceSelect>(
+        crate::list_keyboard::AnnounceSelectHandler,
+    );
     handlers.register::<crate::watch::RefetchDiffEffect>(crate::watch::RefetchDiffHandler);
     handlers.register::<crate::app::OpenEffect>(crate::app::OpenHandler(Arc::clone(workshop)));
 }

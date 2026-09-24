@@ -14,7 +14,8 @@ use imba::{
 };
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
-use crate::speedsearch::{ItemSource, Searcher, SpeedSearchCommand, SpeedSearchView};
+use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
+use imba::list::{ActivateTrigger, ListOps};
 use ::editor::theme::ComboChrome;
 
 const MENU_MAX_ROWS: usize = 9;
@@ -157,29 +158,28 @@ where
 
     pub picked: usize,
     pub open: bool,
-    menu: SpeedSearchView<OptionList<T>, OptionSearcher<T>>,
+    menu: ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
 }
 
 pub enum ComboCommand<C = std::convert::Infallible> {
     Open,
     Close,
 
-    Select(isize),
     Pick(usize),
 
-    PickCursor,
-
-    Menu(Box<SpeedSearchCommand<ScrollCommand<ListCommand<C>>>>),
+    Menu(Box<ListKeyCommand<ScrollCommand<ListCommand<C>>>>),
 }
 
 impl<C> ComboCommand<C> {
     pub fn picks(&self) -> bool {
         match self {
-            ComboCommand::Pick(_) | ComboCommand::PickCursor => true,
-            ComboCommand::Menu(command) => matches!(
-                command.as_ref(),
-                SpeedSearchCommand::Inner(ScrollCommand::Content(ListCommand::Focus(_, _)))
-            ),
+            ComboCommand::Pick(_) => true,
+            ComboCommand::Menu(command) =>
+
+                matches!(
+                    command.as_ref(),
+                    ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Activate(..)))
+                ),
             _ => false,
         }
     }
@@ -194,7 +194,7 @@ where
             label,
             picked: 0,
             open: false,
-            menu: SpeedSearchView::new(
+            menu: ListKeyboardController::searchable(
                 ScrollView::new(
                     ListView::empty().with_selection(imba::list::SelectionStyle::default()),
                 ),
@@ -267,11 +267,6 @@ where
 
     pub fn is_empty(&self) -> bool {
         self.list().is_empty()
-    }
-
-    fn cursor_index(&self) -> Option<usize> {
-        let key = self.list().cursor()?.clone();
-        Some(self.list().row_range(&key)?.start)
     }
 
     pub fn cell_width(&self, ui: &UiCtx, chrome: &ComboChrome) -> f32 {
@@ -407,16 +402,11 @@ where
         ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::focus::FocusData;
+        // The key table is the controller's; the surface keeps only
+        // its own close.
         let searching = self.menu.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Up if !searching => EventResult::Command(ComboCommand::Select(-1)),
-                Key::Down if !searching => EventResult::Command(ComboCommand::Select(1)),
-                Key::Enter if searching => EventResult::Commands(vec![
-                    ComboCommand::PickCursor,
-                    ComboCommand::Menu(Box::new(SpeedSearchCommand::Clear)),
-                ]),
-                Key::Enter => EventResult::Command(ComboCommand::PickCursor),
                 Key::Escape if !searching => EventResult::Command(ComboCommand::Close),
                 _ => EventResult::Ignored,
             })),
@@ -450,15 +440,13 @@ where
                     |fx| self.menu.clear(store, ui, fx),
                 );
                 if let Some(key) = self.list().key_at(self.picked).cloned() {
+                    // select_only arms the reveal — the opened menu
+                    // scrolls the standing pick into view.
                     self.list_mut().select_only(key);
-                    self.list_mut().cursor_step(0);
                 }
             }
             ComboCommand::Close => {
                 self.open = false;
-            }
-            ComboCommand::Select(delta) => {
-                self.list_mut().cursor_step(delta);
             }
             ComboCommand::Pick(index) => {
                 let selectable = index < self.len()
@@ -472,20 +460,19 @@ where
                     self.picked = index;
                 }
             }
-            ComboCommand::PickCursor => {
-                self.open = false;
-                if let Some(index) = self.cursor_index() {
-                    self.picked = index;
-                }
-            }
             ComboCommand::Menu(command) => {
-                if let SpeedSearchCommand::Inner(ScrollCommand::Content(ListCommand::Focus(
-                    index,
-                    _,
-                ))) = command.as_ref()
-                {
-                    let index = *index;
+                type Menu<T> = ListKeyboardController<OptionList<T>, OptionSearcher<T>>;
+                if let Some((index, trigger)) = Menu::<T>::activated(command.as_ref()) {
+                    let searching = self.menu.searching();
                     self.perform(store, ui, ComboCommand::Pick(index), fx);
+                    if let (ActivateTrigger::Enter, true) = (trigger, searching) {
+                        return self.perform(
+                            store,
+                            ui,
+                            ComboCommand::Menu(Box::new(ListKeyCommand::Clear)),
+                            fx,
+                        );
+                    }
                     return;
                 }
                 fx.scope(
@@ -534,7 +521,7 @@ struct MenuSeed<'a, T: ComboItem>
 where
     T::Command: Send + 'static,
 {
-    menu: &'a SpeedSearchView<OptionList<T>, OptionSearcher<T>>,
+    menu: &'a ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
     store: &'a Store,
     ui: &'a UiCtx,
     chrome: ComboChrome,
@@ -610,27 +597,14 @@ where
         .map(|command| ComboCommand::Menu(Box::new(command)));
         menu.place(1.0, 1.0, rows);
 
+        // The key table lives in the controller's own overlay; the
+        // menu keeps only its close.
         let searching = self.searching;
         menu.place(
             0.0,
             0.0,
             leaf::<ComboCommand<T::Command>>(width, height).event(move |_arena, event, _size| {
                 match event {
-                    Event::KeyDown { key: Key::Up, .. } if !searching => {
-                        EventResult::Command(ComboCommand::Select(-1))
-                    }
-                    Event::KeyDown { key: Key::Down, .. } if !searching => {
-                        EventResult::Command(ComboCommand::Select(1))
-                    }
-                    Event::KeyDown {
-                        key: Key::Enter, ..
-                    } if searching => EventResult::Commands(vec![
-                        ComboCommand::PickCursor,
-                        ComboCommand::Menu(Box::new(SpeedSearchCommand::Clear)),
-                    ]),
-                    Event::KeyDown {
-                        key: Key::Enter, ..
-                    } => EventResult::Command(ComboCommand::PickCursor),
                     Event::KeyDown {
                         key: Key::Escape, ..
                     } if !searching => EventResult::Command(ComboCommand::Close),
@@ -700,8 +674,16 @@ mod tests {
 
         drive(&mut combo, &mut store, &ui, ComboCommand::Open);
         assert!(combo.open);
-        drive(&mut combo, &mut store, &ui, ComboCommand::Select(2));
-        drive(&mut combo, &mut store, &ui, ComboCommand::PickCursor);
+        // Two steps down and Enter, through the same commands the
+        // controller's key table emits.
+        let step = combo.menu.step_index(2).expect("a stepped row");
+        let select = ComboCommand::Menu(Box::new(combo.menu.select_command(step)));
+        drive(&mut combo, &mut store, &ui, select);
+        let at = combo.menu.cursor_index().expect("a cursor row");
+        let pick = ComboCommand::Menu(Box::new(
+            combo.menu.activate_command(at, ActivateTrigger::Enter),
+        ));
+        drive(&mut combo, &mut store, &ui, pick);
         assert!(!combo.open);
         assert_eq!(combo.value().expect("picked").id, "id-9");
     }

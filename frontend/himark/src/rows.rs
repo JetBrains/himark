@@ -5,8 +5,7 @@ use imba::{
     arena::Arena,
     effect::Effects,
     event::{Event, EventResult},
-    list::{ListCommand, ListSlice, ListView, SelectionStyle},
-    scroll::{ScrollCommand, ScrollView},
+    list::{ListSlice, SelectionStyle},
     store::Store,
     LayoutExt as _, UiCtx, View,
 };
@@ -20,13 +19,14 @@ pub struct LabelRow {
     trail: Option<String>,
 }
 
-#[derive(Clone, Copy)]
-pub enum RowCommand {
-    Picked,
+impl LabelRow {
+    pub fn new(label: String, dim: bool, trail: Option<String>) -> Self {
+        Self { label, dim, trail }
+    }
 }
 
 impl View for LabelRow {
-    type Command = RowCommand;
+    type Command = std::convert::Infallible;
 
     fn perform(
         &mut self,
@@ -55,9 +55,12 @@ impl View for LabelRow {
         if let Some(trail) = &self.trail {
             row = row.trail(trail.clone());
         }
+        // The row body consumes nothing: an unclaimed click is the
+        // LIST's to answer — `Select` then `Activate(Click)`
+        // (docs/ui/list-keyboard.md §2).
+        let _ = dim;
         row.on_event(
             move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                Event::MouseDown { .. } if !dim => EventResult::Command(RowCommand::Picked),
                 Event::MouseDown { .. } => EventResult::Handled,
                 _ => EventResult::Ignored,
             },
@@ -65,7 +68,42 @@ impl View for LabelRow {
     }
 }
 
-pub type RowListCommand = ScrollCommand<ListCommand<RowCommand>>;
+/// The label-row slice builder the palette/peeker/completion popups
+/// share: keyed rows for the pickable labels, one dim UNKEYED note
+/// row at the tail (never addressable, never selectable).
+pub fn label_slice(
+    store: &Store,
+    ui: &UiCtx,
+    labels: &[String],
+    trails: &[Option<String>],
+    note: Option<String>,
+) -> ListSlice<LabelRow, usize> {
+    let mut slice: ListSlice<LabelRow, usize> = ListSlice::new();
+    for (index, label) in labels.iter().enumerate() {
+        slice.push_keyed(
+            index,
+            LabelRow {
+                label: label.clone(),
+                dim: false,
+                trail: trails.get(index).cloned().flatten(),
+            },
+            store,
+            ui,
+        );
+    }
+    if let Some(label) = note {
+        slice.push(
+            LabelRow {
+                label,
+                dim: true,
+                trail: None,
+            },
+            store,
+            ui,
+        );
+    }
+    slice
+}
 
 pub fn panel_inset(ui: &::editor::theme::UiTheme) -> f32 {
     ui.peeker.margin * 4.0 / 3.0
@@ -154,162 +192,30 @@ pub fn selection_style(store: &Store) -> SelectionStyle {
     }
 }
 
-#[derive(Clone)]
-pub struct RowList {
-    scroll: ScrollView<ListView<LabelRow, usize>>,
-    len: usize,
-}
-
-impl RowList {
-    pub fn new() -> Self {
-        Self {
-            scroll: ScrollView::new(ListView::empty()),
-            len: 0,
-        }
-    }
-
-    pub fn set(
-        &mut self,
-        store: &Store,
-        ui: &UiCtx,
-        labels: &[String],
-        note: Option<String>,
-        selected: usize,
-    ) {
-        self.set_with_trails(store, ui, labels, &[], note, selected)
-    }
-
-    pub fn set_with_trails(
-        &mut self,
-        store: &Store,
-        ui: &UiCtx,
-        labels: &[String],
-        trails: &[Option<String>],
-        note: Option<String>,
-        selected: usize,
-    ) {
-        self.len = labels.len();
-        let selected = selected.min(self.len.saturating_sub(1));
-        let mut slice: ListSlice<LabelRow, usize> = ListSlice::new();
-        for (index, label) in labels.iter().enumerate() {
-            slice.push_keyed(
-                index,
-                LabelRow {
-                    label: label.clone(),
-                    dim: false,
-                    trail: trails.get(index).cloned().flatten(),
-                },
-                store,
-                ui,
-            );
-        }
-        if let Some(label) = note {
-            slice.push(
-                LabelRow {
-                    label,
-                    dim: true,
-                    trail: None,
-                },
-                store,
-                ui,
-            );
-        }
-        let scroll_y = self.scroll.scroll_y();
-        let mut list = ListView::from_slice(slice).with_selection(selection_style(store));
-        if self.len > 0 {
-            list.select_only(selected);
-        }
-        self.scroll = ScrollView::new(list);
-        self.scroll.set_scroll_y(scroll_y);
-    }
-
-    pub fn select(&mut self, index: usize) {
-        if self.len == 0 {
-            return;
-        }
-        self.scroll
-            .content_mut()
-            .select_only(index.min(self.len - 1));
-    }
-
-    pub fn selected(&self) -> usize {
-        self.scroll.content().cursor().copied().unwrap_or(0)
-    }
-
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn scroll_y(&self) -> f32 {
-        self.scroll.scroll_y()
-    }
-
-    pub fn picked(&self, command: &RowListCommand) -> Option<usize> {
-        let ScrollCommand::Content(command) = command else {
-            return None;
-        };
-        let index = match command {
-            ListCommand::Child(index, RowCommand::Picked) => *index,
-            ListCommand::Focus(index, Some(then)) => match then.as_ref() {
-                ListCommand::Child(_, RowCommand::Picked) => *index,
-                _ => return None,
-            },
-            _ => return None,
-        };
-        (index < self.len).then_some(index)
-    }
-}
-
-impl Default for RowList {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl View for RowList {
-    type Command = RowListCommand;
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        if matches!(command, ScrollCommand::SetScrollY(_)) {
-            self.scroll.content_mut().cancel_reveal();
-        }
-        self.scroll.perform(store, ui, command, fx)
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        self.scroll.display(arena, store, ui)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use imba::anim::AnimationClock;
+    use imba::list::ListView;
+    use imba::scroll::ScrollView;
     use skia_safe::Size;
 
     #[test]
     fn selection_reveal_glides_the_scroll_until_visible() {
         let mut store = Store::new();
         let ui = UiCtx::dont_use_too_slow();
-        let mut list = RowList::new();
         let labels: Vec<String> = (0..300).map(|index| format!("row {index}")).collect();
-        list.set(&store, ::editor::test_document::test_ui(), &labels, None, 0);
-        list.select(250);
+        let slice = label_slice(
+            &store,
+            ::editor::test_document::test_ui(),
+            &labels,
+            &[],
+            None,
+        );
+        let mut list = ScrollView::new(
+            ListView::from_slice(slice).with_selection(selection_style(&store)),
+        );
+        list.content_mut().select_only(250);
         assert_eq!(list.scroll_y(), 0.0);
 
         let viewport = Size::new(600.0, 400.0);

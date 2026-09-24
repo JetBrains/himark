@@ -43,8 +43,7 @@ pub struct Peeker {
 
     hidden: usize,
 
-    list: himark::RowList,
-    selected: usize,
+    list: Rows,
     preview: Option<PreviewSlot>,
 
     preview_width: f32,
@@ -58,8 +57,6 @@ pub type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
 
 pub enum PeekerCommand {
     Preview(PaneCommand),
-
-    Select(isize),
 
     Pick(usize),
 
@@ -82,7 +79,7 @@ pub enum PeekerCommand {
 
     Widget(imba::DynCommand),
 
-    Rows(himark::RowListCommand),
+    Rows(RowsCommand),
 }
 
 #[derive(Clone)]
@@ -109,6 +106,22 @@ enum PreviewSlot {
 }
 
 const PEEKER_SHOWN: usize = 200;
+
+/// Keys-only controller over the raw label list — the peeker's own
+/// input filters; the table does the movement, the list's cursor IS
+/// the selection (docs/ui/list-keyboard.md).
+type Rows = himark::ListKeyboardController<
+    imba::scroll::ScrollView<imba::list::ListView<himark::LabelRow, usize>>,
+>;
+type RowsCommand = himark::ListKeyCommand<
+    imba::scroll::ScrollCommand<imba::list::ListCommand<std::convert::Infallible>>,
+>;
+
+fn rows_list() -> Rows {
+    himark::ListKeyboardController::new(imba::scroll::ScrollView::new(
+        imba::list::ListView::empty(),
+    ))
+}
 
 impl Peeker {
     pub fn open(
@@ -141,8 +154,7 @@ impl Peeker {
             rows: Vec::new(),
             labels: Vec::new(),
             hidden: 0,
-            list: himark::RowList::new(),
-            selected: 0,
+            list: rows_list(),
             preview: None,
             preview_width: preview_width(viewport, &chrome),
             chrome,
@@ -221,9 +233,27 @@ impl Peeker {
                 location.name().to_owned(),
             );
         }
-        self.selected = self.selected.min(self.row_count().saturating_sub(1));
+        let selected = self.selected().min(self.row_count().saturating_sub(1));
         let note = (self.hidden > 0).then(|| format!("… {} more — narrow the filter", self.hidden));
-        self.list.set(store, ui, &self.labels, note, self.selected);
+        let scroll_y = self.list.inner().scroll_y();
+        let mut list = imba::list::ListView::from_slice(himark::label_slice(
+            store,
+            ui,
+            &self.labels,
+            &[],
+            note,
+        ))
+        .with_selection(himark::selection_style(store));
+        if !self.labels.is_empty() {
+            list.select_only(selected);
+        }
+        *self.list.inner_mut() = imba::scroll::ScrollView::new(list);
+        self.list.inner_mut().set_scroll_y(scroll_y);
+    }
+
+    fn selected(&self) -> usize {
+        use imba::list::ListOps;
+        self.list.cursor_index().unwrap_or(0)
     }
 
     pub fn labels(&self) -> &[String] {
@@ -292,15 +322,6 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn move_selection(&mut self, delta: isize) {
-        if self.row_count() == 0 {
-            return;
-        }
-        let last = self.row_count() - 1;
-        self.selected = self.selected.saturating_add_signed(delta).min(last);
-        self.list.select(self.selected);
-    }
-
     fn drop_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
@@ -321,12 +342,12 @@ impl Peeker {
             &himark::env::Themes::of(store).ui().window,
         );
 
-        if let Some(index) = self.widget_at(self.selected) {
+        if let Some(index) = self.widget_at(self.selected()) {
             self.preview = Some(PreviewSlot::Widget(index));
             return;
         }
 
-        let document_id = match self.location_at(self.selected).cloned() {
+        let document_id = match self.location_at(self.selected()).cloned() {
             Some(location) => match himark::OpenDocuments::by_location(store, &location) {
                 Some(id) => Some(id),
                 None => match self.temp_docs.get(&location) {
@@ -404,22 +425,23 @@ impl View for Peeker {
         _ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, PeekerCommand> {
         use imba::event::EventResult;
-        let selected = self.selected;
-        imba::focus::FocusData {
+        // Movement and Enter are the controller's table; the peeker
+        // keeps its own close (and Enter-with-nothing closes too).
+        let empty = self.row_count() == 0;
+        let own = imba::focus::FocusData {
             commands: vec![imba::PresentableCommand::new(
                 "peeker.close",
                 "Close Peeker",
                 PeekerCommand::Close,
             )],
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Up => EventResult::Command(PeekerCommand::Select(-1)),
-                Key::Down => EventResult::Command(PeekerCommand::Select(1)),
-                Key::Enter => EventResult::Command(PeekerCommand::Pick(selected)),
+                Key::Enter if empty => EventResult::Command(PeekerCommand::Close),
                 Key::Escape => EventResult::Command(PeekerCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..imba::focus::FocusData::default()
-        }
+        };
+        own.merge_under(self.list.focus_data(_store, _ui).map(PeekerCommand::Rows))
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -446,10 +468,6 @@ impl View for Peeker {
                     });
                 }
             }
-            PeekerCommand::Select(delta) => {
-                self.move_selection(delta);
-                self.ensure_preview(store, ui, fx)
-            }
             PeekerCommand::Widget(command) => {
                 if let Some(PreviewSlot::Widget(index)) = &self.preview {
                     let index = *index;
@@ -461,14 +479,22 @@ impl View for Peeker {
                 }
             }
             PeekerCommand::Rows(command) => {
-                if let Some(row) = self.list.picked(&command) {
-                    self.selected = row;
-                    self.list.select(row);
-                    return self.perform(store, ui, PeekerCommand::Pick(row), fx);
+                use imba::list::ListOps;
+                if let Some((row, _trigger)) = Rows::activated(&command) {
+                    // Enter and click both pick; the note row is
+                    // unkeyed and never answers.
+                    if self.list.inner().content().key_at(row).is_some() {
+                        return self.perform(store, ui, PeekerCommand::Pick(row), fx);
+                    }
                 }
+                let selected = Rows::selected_index(&command).is_some();
                 fx.scope(PeekerCommand::Rows, |fx| {
                     imba::View::perform(&mut self.list, store, ui, command, fx)
                 });
+                // Moving the selection returns the preview.
+                if selected {
+                    self.ensure_preview(store, ui, fx);
+                }
             }
             PeekerCommand::Pick(row) => {
                 if let Some(index) = self.widget_at(row) {
@@ -545,7 +571,7 @@ impl View for Peeker {
                     revision,
                 );
                 self.temp_docs.insert(location.clone(), id);
-                if self.location_at(self.selected) == Some(&location) {
+                if self.location_at(self.selected()) == Some(&location) {
                     self.ensure_preview(store, ui, fx);
                 }
             }
@@ -575,7 +601,6 @@ impl View for Peeker {
             let list_height = (size.height - inset - row_height - 2.0 - list_top).max(row_height);
 
             let sheet_rule = himark::env::Themes::of(store).ui().toolbar.rule.0;
-            let selected = self.selected;
             let match_count = self.labels.len();
             let hidden = self.hidden;
             let has_preview = self.preview.is_some();
@@ -719,17 +744,13 @@ impl View for Peeker {
                 .map(PeekerCommand::Rows),
             );
 
+            // Movement and Enter live in the controller's overlay.
+            let empty = match_count == 0;
             let keymap = leaf::<PeekerCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
-                    Event::KeyDown { key: Key::Up, .. } => {
-                        EventResult::Command(PeekerCommand::Select(-1))
-                    }
-                    Event::KeyDown { key: Key::Down, .. } => {
-                        EventResult::Command(PeekerCommand::Select(1))
-                    }
                     Event::KeyDown {
                         key: Key::Enter, ..
-                    } => EventResult::Command(PeekerCommand::Pick(selected)),
+                    } if empty => EventResult::Command(PeekerCommand::Close),
                     Event::KeyDown {
                         key: Key::Escape, ..
                     } => EventResult::Command(PeekerCommand::Close),

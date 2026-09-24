@@ -327,6 +327,10 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     /// read it to anchor what the user was looking at.
     viewport_top: f32,
 
+    /// The viewport's band height, from the same traversal report —
+    /// what `page_index` steps by.
+    viewport_height: f32,
+
     /// Where the anchored content sits AFTER a height mutation above
     /// the viewport — set by the mutation door, read by the settle
     /// pulse, cleared when the next Viewport report lands. Absolute,
@@ -353,17 +357,48 @@ pub enum ListCommand<C> {
 
     Focus(usize, Option<Box<ListCommand<C>>>),
 
-    /// The widget re-observed its viewport top on a traversal
-    /// (docs/editor/viewport-preservation.md §3.1): the retained copy
-    /// refreshes, and any pending correction is superseded — the
-    /// scroll that moved the top knows better than the door did.
-    ViewportTop(f32),
+    /// THE selection edit and THE selection signal — one variant.
+    /// Absolute row index, resolved by the initiator at the edge
+    /// (the keyboard controller's table, the mouse arm, a
+    /// speed-search landing). The perform arm is the one mutation
+    /// door (`key_at → select_only`); a surface reacts to selection
+    /// by matching this in the command stream it already routes
+    /// (docs/ui/list-keyboard.md §2).
+    Select(usize),
+
+    /// THE activation signal. The list itself does nothing with it —
+    /// it exists so the surface receives activation uniformly,
+    /// parameterized by what triggered it.
+    Activate(usize, ActivateTrigger),
+
+    /// The widget re-observed its viewport on a traversal
+    /// (docs/editor/viewport-preservation.md §3.1): top and band
+    /// height; the retained copies refresh, and any pending
+    /// correction is superseded — the scroll that moved the top
+    /// knows better than the door did.
+    ViewportTop(f32, f32),
 
     SetHeight(usize, f32),
 
     Animate(AnimationClock),
 
     Revealed,
+}
+
+/// EXHAUSTIVE on purpose: a surface must match every trigger and
+/// decide what each means for it (click browses vs Enter jumps).
+/// There is no default to hide behind, and a future trigger breaks
+/// every match — forcing exactly the per-surface decision it should.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ActivateTrigger {
+    Enter,
+    Click,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Edge {
+    First,
+    Last,
 }
 
 /// The list's row rope — the PREBUILT form a `ListView` mounts O(1).
@@ -405,6 +440,7 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
             separators: None,
             laid_width: std::sync::atomic::AtomicU32::new(width.to_bits()),
             viewport_top: 0.0,
+            viewport_height: 0.0,
             settle_to: None,
             row_reveal: None,
             animations: Vec::new(),
@@ -622,31 +658,91 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         }
     }
 
-    pub fn cursor_step(&mut self, delta: isize) {
-        if self.selection.is_none() || self.items.is_empty() {
-            return;
-        }
-        let at = self
-            .cursor()
+    /// The cursor's own row — the anchor every relative query
+    /// resolves from.
+    pub fn cursor_index(&self) -> Option<usize> {
+        self.cursor()
             .and_then(|key| self.own_row_index(key))
-            .unwrap_or(0);
+            .filter(|_| !self.items.is_empty())
+    }
+
+    /// `cursor_step`'s walk minus the mutation: the row a ±delta
+    /// step over KEYED rows lands on (clamped at the ends; the
+    /// cursor's own row when it cannot move). The initiator turns
+    /// the answer into `ListCommand::Select(index)` so the edit
+    /// descends the command stream (docs/ui/list-keyboard.md §2).
+    pub fn step_index(&self, delta: isize) -> Option<usize> {
+        if self.selection.is_none() || self.items.is_empty() {
+            return None;
+        }
+        let at = self.cursor_index().unwrap_or(0);
         let len = self.items.len();
         let step = if delta >= 0 { 1isize } else { -1 };
         let mut index = at as isize;
         let mut remaining = delta.abs();
-        let mut landed: Option<K> = self.key_at(at).cloned();
+        let mut landed: Option<usize> = self.key_at(at).map(|_| at);
         while remaining > 0 {
             index += step;
             if index < 0 || index >= len as isize {
                 break;
             }
-            if let Some(key) = self.key_at(index as usize) {
-                landed = Some(key.clone());
+            if self.key_at(index as usize).is_some() {
+                landed = Some(index as usize);
                 remaining -= 1;
             }
         }
-        if let Some(key) = landed {
-            self.select_only(key);
+        landed
+    }
+
+    /// The first/last KEYED row.
+    pub fn edge_index(&self, edge: Edge) -> Option<usize> {
+        if self.selection.is_none() || self.items.is_empty() {
+            return None;
+        }
+        let len = self.items.len();
+        match edge {
+            Edge::First => (0..len).find(|&index| self.key_at(index).is_some()),
+            Edge::Last => (0..len).rev().find(|&index| self.key_at(index).is_some()),
+        }
+    }
+
+    /// One viewport extent from the cursor's row, snapped to a keyed
+    /// row (walking on in `direction`, falling back toward the
+    /// cursor). The extent arrives with the scroll's traversal
+    /// report; before the first report there is no page to step.
+    pub fn page_index(&self, direction: isize) -> Option<usize> {
+        if self.selection.is_none() || self.items.is_empty() {
+            return None;
+        }
+        let extent = self.viewport_height;
+        if extent <= 0.0 {
+            return None;
+        }
+        let at = self.cursor_index().unwrap_or(0);
+        let (top, _) = self.row_span(at)?;
+        let len = self.items.len();
+        let target = if direction >= 0 {
+            top + extent
+        } else {
+            (top - extent).max(0.0)
+        };
+        let landed = self.index_at_y(target).unwrap_or(len - 1);
+        if self.key_at(landed).is_some() {
+            return Some(landed);
+        }
+        let keyed = |index: &usize| self.key_at(*index).is_some();
+        if direction >= 0 {
+            (landed..len).find(keyed).or_else(|| (0..landed).rev().find(keyed))
+        } else {
+            (0..=landed).rev().find(keyed).or_else(|| (landed..len).find(keyed))
+        }
+    }
+
+    pub fn cursor_step(&mut self, delta: isize) {
+        if let Some(index) = self.step_index(delta) {
+            if let Some(key) = self.key_at(index).cloned() {
+                self.select_only(key);
+            }
         }
     }
 
@@ -1129,15 +1225,104 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
     }
 }
 
-pub trait SearchableList<K> {
-    fn set_matches(&mut self, keys: &[K]);
-    fn clear_matches(&mut self);
+/// The OPERATIONS reach-through: the keyboard controller and the
+/// speed-search lane address a `ListView` buried under a scroll (or
+/// deeper) without knowing the nesting — one line of forwarding per
+/// wrapper (docs/ui/list-keyboard.md §3). Operations, never
+/// structure: the row type never appears.
+pub trait ListOps: crate::View {
+    type Key: Clone + Eq + Hash + Send + Sync + 'static;
 
-    fn step_matched(&mut self, delta: isize);
+    fn set_matches(&mut self, keys: &[Self::Key]);
+    fn clear_matches(&mut self);
     fn match_count(&self) -> usize;
+
+    // The read queries the key table resolves ABSOLUTE indices with.
+    fn cursor_index(&self) -> Option<usize>;
+    fn step_index(&self, delta: isize) -> Option<usize>;
+    fn matched_step_index(&self, delta: isize) -> Option<usize>;
+    fn edge_index(&self, edge: Edge) -> Option<usize>;
+    fn matched_edge_index(&self, edge: Edge) -> Option<usize>;
+    fn page_index(&self, direction: isize) -> Option<usize>;
+
+    /// The COMPOSITIONAL addressing: each wrapper wraps its inner's
+    /// answer, so an initiator emits list commands blind to nesting.
+    fn select_command(&self, index: usize) -> Self::Command;
+    fn activate_command(&self, index: usize, trigger: ActivateTrigger) -> Self::Command;
+
+    /// The inspection inverses, for surfaces reacting to the stream:
+    /// peel their own layer and ask inward. `Some` iff the command
+    /// is (or carries) the matching `ListCommand` variant.
+    fn selected_index(command: &Self::Command) -> Option<usize>;
+    fn activated(command: &Self::Command) -> Option<(usize, ActivateTrigger)>;
 }
 
-impl<T: Clone, K: Clone + Eq + Hash> SearchableList<K> for ListView<T, K> {
+impl<T, K> ListView<T, K>
+where
+    T: View + Clone,
+    T::Command: Send + 'static,
+    K: Clone + Eq + Hash + Send + Sync + 'static,
+{
+    /// `step_matched`'s walk minus the mutation: the matched row a
+    /// ±delta step lands on (wrapping; delta 0 = the first match
+    /// at/after the cursor).
+    pub fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        if self.matches.is_empty() {
+            return None;
+        }
+        let at = self.cursor_index().unwrap_or(0) as u32;
+        let first = |order: Order, range: std::ops::Range<u32>| -> Option<usize> {
+            self.matches
+                .query(range.clone(), order)
+                .find(|interval| {
+                    interval.range.end > range.start && interval.range.start < range.end
+                })
+                .map(|interval| interval.range.start as usize)
+        };
+        let len = self.items.len() as u32;
+        if delta == 0 {
+            first(Order::Ascending, at..len).or_else(|| first(Order::Ascending, 0..len))
+        } else if delta > 0 {
+            first(Order::Ascending, at.saturating_add(1)..len)
+                .or_else(|| first(Order::Ascending, 0..len))
+        } else {
+            first(Order::Descending, 0..at).or_else(|| first(Order::Descending, 0..len))
+        }
+    }
+
+    /// The first/last MATCHED row.
+    pub fn matched_edge_index(&self, edge: Edge) -> Option<usize> {
+        if self.matches.is_empty() {
+            return None;
+        }
+        let len = self.items.len() as u32;
+        let order = match edge {
+            Edge::First => Order::Ascending,
+            Edge::Last => Order::Descending,
+        };
+        self.matches
+            .query(0..len, order)
+            .next()
+            .map(|interval| interval.range.start as usize)
+    }
+
+    pub fn step_matched(&mut self, delta: isize) {
+        if let Some(index) = self.matched_step_index(delta) {
+            if let Some(key) = self.key_at(index).cloned() {
+                self.select_only(key);
+            }
+        }
+    }
+}
+
+impl<T, K> ListOps for ListView<T, K>
+where
+    T: View + Clone,
+    T::Command: Send + 'static,
+    K: Clone + Eq + Hash + Send + Sync + 'static,
+{
+    type Key = K;
+
     fn set_matches(&mut self, keys: &[K]) {
         let mut matches = Intervals::new();
         matches.insert(
@@ -1161,57 +1346,110 @@ impl<T: Clone, K: Clone + Eq + Hash> SearchableList<K> for ListView<T, K> {
         self.matches = Intervals::new();
     }
 
-    fn step_matched(&mut self, delta: isize) {
-        if self.matches.is_empty() {
-            return;
-        }
-        let at = self
-            .cursor()
-            .and_then(|key| self.own_row_index(key))
-            .unwrap_or(0) as u32;
-
-        let first = |order: Order, range: std::ops::Range<u32>| -> Option<K> {
-            self.matches
-                .query(range.clone(), order)
-                .find(|interval| {
-                    interval.range.end > range.start && interval.range.start < range.end
-                })
-                .map(|interval| interval.key.clone())
-        };
-        let len = self.items.len() as u32;
-        let landed = if delta == 0 {
-            first(Order::Ascending, at..len).or_else(|| first(Order::Ascending, 0..len))
-        } else if delta > 0 {
-            first(Order::Ascending, at.saturating_add(1)..len)
-                .or_else(|| first(Order::Ascending, 0..len))
-        } else {
-            first(Order::Descending, 0..at).or_else(|| first(Order::Descending, 0..len))
-        };
-        if let Some(key) = landed {
-            self.select_only(key);
-        }
-    }
-
     fn match_count(&self) -> usize {
         self.matches.len()
     }
+
+    fn cursor_index(&self) -> Option<usize> {
+        ListView::cursor_index(self)
+    }
+
+    fn step_index(&self, delta: isize) -> Option<usize> {
+        ListView::step_index(self, delta)
+    }
+
+    fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        ListView::matched_step_index(self, delta)
+    }
+
+    fn edge_index(&self, edge: Edge) -> Option<usize> {
+        ListView::edge_index(self, edge)
+    }
+
+    fn matched_edge_index(&self, edge: Edge) -> Option<usize> {
+        ListView::matched_edge_index(self, edge)
+    }
+
+    fn page_index(&self, direction: isize) -> Option<usize> {
+        ListView::page_index(self, direction)
+    }
+
+    fn select_command(&self, index: usize) -> Self::Command {
+        ListCommand::Select(index)
+    }
+
+    fn activate_command(&self, index: usize, trigger: ActivateTrigger) -> Self::Command {
+        ListCommand::Activate(index, trigger)
+    }
+
+    fn selected_index(command: &Self::Command) -> Option<usize> {
+        match command {
+            ListCommand::Select(index) => Some(*index),
+            ListCommand::Focus(_, Some(then)) => Self::selected_index(then),
+            _ => None,
+        }
+    }
+
+    fn activated(command: &Self::Command) -> Option<(usize, ActivateTrigger)> {
+        match command {
+            ListCommand::Activate(index, trigger) => Some((*index, *trigger)),
+            ListCommand::Focus(_, Some(then)) => Self::activated(then),
+            _ => None,
+        }
+    }
 }
 
-impl<V, K> SearchableList<K> for crate::scroll::ScrollView<V>
+impl<V> ListOps for crate::scroll::ScrollView<V>
 where
-    V: SearchableList<K> + crate::View,
+    V: ListOps + crate::View,
+    Self: crate::View<Command = crate::scroll::ScrollCommand<V::Command>>,
 {
-    fn set_matches(&mut self, keys: &[K]) {
+    type Key = V::Key;
+
+    fn set_matches(&mut self, keys: &[Self::Key]) {
         self.content_mut().set_matches(keys);
     }
     fn clear_matches(&mut self) {
         self.content_mut().clear_matches();
     }
-    fn step_matched(&mut self, delta: isize) {
-        self.content_mut().step_matched(delta);
-    }
     fn match_count(&self) -> usize {
         self.content().match_count()
+    }
+    fn cursor_index(&self) -> Option<usize> {
+        self.content().cursor_index()
+    }
+    fn step_index(&self, delta: isize) -> Option<usize> {
+        self.content().step_index(delta)
+    }
+    fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        self.content().matched_step_index(delta)
+    }
+    fn edge_index(&self, edge: Edge) -> Option<usize> {
+        self.content().edge_index(edge)
+    }
+    fn matched_edge_index(&self, edge: Edge) -> Option<usize> {
+        self.content().matched_edge_index(edge)
+    }
+    fn page_index(&self, direction: isize) -> Option<usize> {
+        self.content().page_index(direction)
+    }
+    fn select_command(&self, index: usize) -> Self::Command {
+        crate::scroll::ScrollCommand::Content(self.content().select_command(index))
+    }
+    fn activate_command(&self, index: usize, trigger: ActivateTrigger) -> Self::Command {
+        crate::scroll::ScrollCommand::Content(self.content().activate_command(index, trigger))
+    }
+    fn selected_index(command: &Self::Command) -> Option<usize> {
+        match command {
+            crate::scroll::ScrollCommand::Content(inner) => V::selected_index(inner),
+            _ => None,
+        }
+    }
+    fn activated(command: &Self::Command) -> Option<(usize, ActivateTrigger)> {
+        match command {
+            crate::scroll::ScrollCommand::Content(inner) => V::activated(inner),
+            _ => None,
+        }
     }
 }
 
@@ -1228,6 +1466,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
                 self.laid_width.load(std::sync::atomic::Ordering::Relaxed),
             ),
             viewport_top: self.viewport_top,
+            viewport_height: self.viewport_height,
             settle_to: self.settle_to,
             row_reveal: self.row_reveal.clone(),
 
@@ -1326,6 +1565,14 @@ where
                     self.perform(store, ui, *command, fx);
                 }
             }
+            ListCommand::Select(index) => {
+                if let Some(key) = self.key_at(index).cloned() {
+                    self.select_only(key);
+                }
+            }
+            // Activation is the SURFACE's signal — the list has no
+            // opinion on what Enter or a click means.
+            ListCommand::Activate(..) => {}
             ListCommand::Animate(now) => {
                 let mut animations = std::mem::take(&mut self.animations);
                 let mut index = 0;
@@ -1374,8 +1621,9 @@ where
                 }
                 self.animations = animations;
             }
-            ListCommand::ViewportTop(top) => {
+            ListCommand::ViewportTop(top, height) => {
                 self.viewport_top = top;
+                self.viewport_height = height;
                 self.settle_to = None;
             }
             ListCommand::Revealed => {
@@ -1509,6 +1757,7 @@ where
             ListWidget {
                 items: &self.items,
                 structure: &self.structure,
+                selectable: self.selection.is_some(),
                 selection: self.selection.as_ref(),
                 matches: &self.matches,
                 settle_to: self.settle_to,
@@ -1534,6 +1783,7 @@ where
 struct ListWidget<'a, T: Clone, K: Clone + Eq + Hash> {
     items: &'a Rope<ListElement<T>, ListMeasure>,
     structure: &'a Intervals<K, ()>,
+    selectable: bool,
     selection: Option<&'a SelectionState<K>>,
     matches: &'a Intervals<K, ()>,
     settle_to: Option<f32>,
@@ -2079,8 +2329,12 @@ where
                 // belt for programmatic `set_scroll_y` placements,
                 // which raise no pulse (docs §3.1).
                 if (viewport.top - self.viewport_top).abs() > 0.5 {
-                    merged = std::mem::replace(&mut merged, EventResult::Ignored)
-                        .merge(EventResult::Command(ListCommand::ViewportTop(viewport.top)));
+                    merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(
+                        EventResult::Command(ListCommand::ViewportTop(
+                            viewport.top,
+                            viewport.height(),
+                        )),
+                    );
                 }
                 match merged {
                     EventResult::Ignored => EventResult::Handled,
@@ -2104,7 +2358,10 @@ where
                     // rides this round; the next round, if any,
                     // speaks from fresh state.
                     if (viewport.top - self.viewport_top).abs() > 0.5 {
-                        let mine = EventResult::Command(ListCommand::ViewportTop(viewport.top));
+                        let mine = EventResult::Command(ListCommand::ViewportTop(
+                            viewport.top,
+                            viewport.height(),
+                        ));
                         merged = std::mem::replace(&mut merged, EventResult::Ignored).merge(mine);
                         return merged;
                     }
@@ -2188,9 +2445,22 @@ where
                     Event::MouseDown { .. } => {
                         let index = cursor.index() as usize;
                         match result {
+                            // A row affordance consumed the click (a
+                            // chevron's Toggle, a button) — that is
+                            // not activation.
                             EventResult::Command(command) => EventResult::Command(
                                 ListCommand::Focus(index, Some(Box::new(command))),
                             ),
+                            // The ROW BODY: routing, selection and
+                            // activation, each its own inspectable
+                            // command (docs/ui/list-keyboard.md §2).
+                            _ if self.selectable => EventResult::Commands(vec![
+                                ListCommand::Focus(
+                                    index,
+                                    Some(Box::new(ListCommand::Select(index))),
+                                ),
+                                ListCommand::Activate(index, ActivateTrigger::Click),
+                            ]),
                             _ => EventResult::Command(ListCommand::Focus(index, None)),
                         }
                     }

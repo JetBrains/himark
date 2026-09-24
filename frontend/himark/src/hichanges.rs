@@ -9,8 +9,10 @@ use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetSt
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
 use crate::{
     AppCommand, Authority, ForestList, ForestNode, ForestSearcher, ModalRequest, ModalView,
-    ResourceLocation, ResourceType, SpeedSearchCommand, SpeedSearchView, TreeListCommand,
+    ActivateTrigger, ListKeyCommand, ListKeyboardController, ResourceLocation, ResourceType,
+    TreeListCommand,
 };
+use imba::list::ListOps;
 use himark_ahp_ext_types::history as history_wire;
 use imba::{
     arena::Arena,
@@ -1125,16 +1127,12 @@ pub(crate) fn dir_forest(
     children
 }
 
+type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
+
 pub enum ChangesCommand {
-    Rows(SpeedSearchCommand<TreeListCommand>),
+    Rows(ListKeyCommand<TreeListCommand>),
 
     Refetch(ResourceLocation),
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
 
     Refresh,
 
@@ -1142,7 +1140,7 @@ pub enum ChangesCommand {
 }
 
 pub struct ChangesView {
-    list: SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
+    list: Rows,
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
 
     workspace: crate::SessionId,
@@ -1175,13 +1173,14 @@ impl ChangesView {
         workspace: crate::SessionId,
     ) -> Self {
         let mut panel = Self {
-            list: SpeedSearchView::new(
+            list: ListKeyboardController::searchable(
                 ForestList::new(store),
                 ForestSearcher::default(),
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),
             workspace,
             window,
@@ -1285,19 +1284,12 @@ impl View for ChangesView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChangesCommand> {
         use imba::focus::FocusData;
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal.
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(ChangesCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(ChangesCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(ChangesCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(ChangesCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    ChangesCommand::Pick,
-                    ChangesCommand::Rows(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter => EventResult::Command(ChangesCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -1320,14 +1312,42 @@ impl View for ChangesView {
     ) {
         match command {
             ChangesCommand::Rows(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some(index) = crate::tree_action(inner) {
-                        if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
-                            return self.perform(store, ui, ChangesCommand::Refetch(folder), fx);
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        return self.list.inner_mut().fold_cursor(*expand, store, ui);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = crate::tree_action(inner) {
+                            if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
+                                return self.perform(
+                                    store,
+                                    ui,
+                                    ChangesCommand::Refetch(folder),
+                                    fx,
+                                );
+                            }
+                        }
+                        if let Some(index) = crate::tree_toggle(inner) {
+                            return self.activate(index, store, ui);
                         }
                     }
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        return self.activate(index, store, ui);
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Rows::activated(&command) {
+                    let searching = self.list.searching();
+                    self.activate(index, store, ui);
+                    match trigger {
+                        // The deliberate pick ends the search in the
+                        // same stroke.
+                        ActivateTrigger::Enter if searching => {
+                            return self.perform(
+                                store,
+                                ui,
+                                ChangesCommand::Rows(ListKeyCommand::Clear),
+                                fx,
+                            );
+                        }
+                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
                 fx.scope(ChangesCommand::Rows, |fx| {
@@ -1335,13 +1355,6 @@ impl View for ChangesView {
                 });
             }
 
-            ChangesCommand::Select(delta) => self.list.inner_mut().list_mut().cursor_step(delta),
-            ChangesCommand::Fold(expand) => self.list.inner_mut().fold_cursor(expand, store, ui),
-            ChangesCommand::Pick => {
-                if let Some(key) = self.list.inner().list().cursor().cloned() {
-                    self.activate_key(&key, store, ui);
-                }
-            }
             ChangesCommand::Refresh => self.refresh(store, ui),
             ChangesCommand::Refetch(folder) => {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
@@ -1379,6 +1392,8 @@ impl View for ChangesView {
             .map(ChangesCommand::Rows);
             overlay.place(0.0, band, rows);
 
+            // The key table lives in the controller's own overlay;
+            // the surface keeps only its dismissal.
             let searching = self.list.searching();
             let keymap = leaf::<ChangesCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
@@ -1386,32 +1401,6 @@ impl View for ChangesView {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(ChangesCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if searching => EventResult::Commands(vec![
-                        ChangesCommand::Pick,
-                        ChangesCommand::Rows(SpeedSearchCommand::Clear),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } => EventResult::Command(ChangesCommand::Pick),
                     _ => EventResult::Ignored,
                 },
             );

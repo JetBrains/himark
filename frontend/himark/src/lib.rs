@@ -30,7 +30,7 @@ pub mod new_session;
 pub mod rows;
 mod save;
 mod sheet;
-mod speedsearch;
+mod list_keyboard;
 mod startup_profile;
 mod state;
 mod stats;
@@ -43,12 +43,13 @@ mod toc;
 mod tree_item;
 pub mod ui;
 pub use forest::{Forest, ForestList, ForestNode, ForestSearcher, TreeRow};
-pub use speedsearch::{
-    subsequence_match, ItemSource, Searcher, SpeedSearchCommand, SpeedSearchEffect,
-    SpeedSearchHandler, SpeedSearchView,
+pub use list_keyboard::{
+    subsequence_match, ActivateTrigger, AnnounceSelect, AnnounceSelectHandler, ItemSource,
+    ListKeyCommand, ListKeyboardController, NoSearcher, Searcher, SpeedSearchEffect,
+    SpeedSearchHandler, SpeedSearchMatches,
 };
 pub use tree_item::{
-    tree_action, tree_interaction, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand,
+    tree_action, tree_toggle, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand,
     TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
@@ -96,7 +97,7 @@ pub use navigation::{
     EditorPlace, NavigationLocation, Navigator, Navigators, NoPlace, Place, RecentLocations,
 };
 pub use rows::{
-    paint_panel_chrome, panel_inset, selection_style, LabelRow, RowList, RowListCommand,
+    label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow,
 };
 pub use save::{SaveAll, SaveDocument};
 pub use sheet::{composer_button, FloatingChat};

@@ -2210,7 +2210,7 @@ mod viewport_preservation {
         list.perform(
             store,
             &ui,
-            ListCommand::ViewportTop(top),
+            ListCommand::ViewportTop(top, 300.0),
             &mut batch.effects(),
         );
     }
@@ -2330,7 +2330,7 @@ mod viewport_preservation {
         };
         assert!(commands.iter().any(|command| matches!(
             command,
-            ScrollCommand::Content(ListCommand::ViewportTop(top)) if *top == 45.0
+            ScrollCommand::Content(ListCommand::ViewportTop(top, _)) if *top == 45.0
         )));
         for command in commands {
             scroll.perform(&mut store, &ui, command, &mut batch.effects());

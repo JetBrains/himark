@@ -15,8 +15,9 @@ use crate::higent::{
 };
 use crate::{
     AppCommand, ForestList, ForestNode, ForestSearcher, ModalRequest, ResourceLocation,
-    ResourceType, SpeedSearchCommand, SpeedSearchView, TreeListCommand,
+    ActivateTrigger, ListKeyCommand, ListKeyboardController, ResourceType, TreeListCommand,
 };
+use imba::list::ListOps;
 use himark_ahp_ext_types::history as history_wire;
 use imba::tooltip::{TooltipCommand, TooltipView};
 use imba::{
@@ -968,7 +969,7 @@ impl imba::View for CommitTip {
 }
 
 fn commit_tip(
-    rows: &SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
+    rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
     point: skia_safe::Point,
 ) -> Option<(skia_safe::Rect, CommitTip)> {
@@ -987,14 +988,13 @@ fn commit_tip(
     Some((anchor, CommitTip::of(commit)))
 }
 
+type Rows = TooltipView<
+    ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
+    CommitTip,
+>;
+
 pub enum HistoryCommand {
-    Rows(TooltipCommand<SpeedSearchCommand<TreeListCommand>>),
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
+    Rows(TooltipCommand<ListKeyCommand<TreeListCommand>>),
 
     AutoGrow,
 
@@ -1004,10 +1004,7 @@ pub enum HistoryCommand {
 }
 
 pub struct HistoryView {
-    list: TooltipView<
-        SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
-        CommitTip,
-    >,
+    list: Rows,
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     workspace: crate::SessionId,
     window: crate::WindowId,
@@ -1042,13 +1039,14 @@ impl HistoryView {
     ) -> Self {
         let mut section = Self {
             list: TooltipView::new(
-                SpeedSearchView::new(
+                ListKeyboardController::searchable(
                     ForestList::new(store),
                     ForestSearcher::default(),
                     store,
                     ui,
                     crate::env::Fonts::of(store),
-                ),
+                )
+                .with_folds(),
                 commit_tip,
             ),
             items: rpds::HashTrieMapSync::new_sync(),
@@ -1183,19 +1181,12 @@ impl View for HistoryView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, HistoryCommand> {
         use imba::focus::FocusData;
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal.
         let searching = self.list.view().searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(HistoryCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(HistoryCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(HistoryCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(HistoryCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    HistoryCommand::Pick,
-                    HistoryCommand::Rows(TooltipCommand::Host(SpeedSearchCommand::Clear)),
-                ]),
-                InputKey::Enter => EventResult::Command(HistoryCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -1212,47 +1203,62 @@ impl View for HistoryView {
     ) {
         match command {
             HistoryCommand::Rows(command) => {
-                if let TooltipCommand::Host(SpeedSearchCommand::Inner(inner)) = &command {
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        return self.activate(index, store, ui);
+                match &command {
+                    // The bespoke lazy fold: expanding an unfetched
+                    // commit launches its file listing first.
+                    TooltipCommand::Host(ListKeyCommand::Fold { expand, .. }) => {
+                        let expand = *expand;
+                        if expand {
+                            if let Some(key) = self.list.view().inner().list().cursor().cloned() {
+                                if let Some(RowItem::Commit { folder, id }) =
+                                    self.items.get(&key).cloned()
+                                {
+                                    let entry = History::folder(store, &folder);
+                                    let unfetched = entry
+                                        .is_some_and(|entry| entry.commit_files.get(&id).is_none());
+                                    if unfetched {
+                                        self.request =
+                                            Some(ModalRequest::Perform(AppCommand::Dynamic(
+                                                self.window,
+                                                Arc::new(FetchCommitFiles { folder, commit: id }),
+                                            )));
+                                    }
+                                }
+                            }
+                        }
+                        return self
+                            .list
+                            .view_mut()
+                            .inner_mut()
+                            .fold_cursor(expand, store, ui);
+                    }
+                    TooltipCommand::Host(ListKeyCommand::Inner(inner)) => {
+                        if let Some(index) = crate::tree_toggle(inner) {
+                            return self.activate(index, store, ui);
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Rows::activated(&command) {
+                    let searching = self.list.view().searching();
+                    self.activate(index, store, ui);
+                    match trigger {
+                        // The deliberate pick ends the search in the
+                        // same stroke.
+                        ActivateTrigger::Enter if searching => {
+                            return self.perform(
+                                store,
+                                ui,
+                                HistoryCommand::Rows(TooltipCommand::Host(ListKeyCommand::Clear)),
+                                fx,
+                            );
+                        }
+                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
                 fx.scope(HistoryCommand::Rows, |fx| {
                     self.list.perform(store, ui, command, fx)
                 });
-            }
-            HistoryCommand::Select(delta) => self
-                .list
-                .view_mut()
-                .inner_mut()
-                .list_mut()
-                .cursor_step(delta),
-            HistoryCommand::Fold(expand) => {
-                if expand {
-                    if let Some(key) = self.list.view().inner().list().cursor().cloned() {
-                        if let Some(RowItem::Commit { folder, id }) = self.items.get(&key).cloned()
-                        {
-                            let entry = History::folder(store, &folder);
-                            let unfetched =
-                                entry.is_some_and(|entry| entry.commit_files.get(&id).is_none());
-                            if unfetched {
-                                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                                    self.window,
-                                    Arc::new(FetchCommitFiles { folder, commit: id }),
-                                )));
-                            }
-                        }
-                    }
-                }
-                self.list
-                    .view_mut()
-                    .inner_mut()
-                    .fold_cursor(expand, store, ui);
-            }
-            HistoryCommand::Pick => {
-                if let Some(key) = self.list.view().inner().list().cursor().cloned() {
-                    self.activate_key(&key, store, ui);
-                }
             }
             HistoryCommand::AutoGrow => {
                 for folder in crate::higent::session_folders(store, &self.workspace) {
@@ -1299,6 +1305,8 @@ impl View for HistoryView {
             .map(HistoryCommand::Rows);
             section.place(0.0, band, rows);
 
+            // The key table lives in the controller's own overlay;
+            // the surface keeps only its dismissal.
             let searching = self.list.view().searching();
             let keymap = leaf::<HistoryCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
@@ -1306,32 +1314,6 @@ impl View for HistoryView {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(HistoryCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if searching => EventResult::Commands(vec![
-                        HistoryCommand::Pick,
-                        HistoryCommand::Rows(TooltipCommand::Host(SpeedSearchCommand::Clear)),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } => EventResult::Command(HistoryCommand::Pick),
                     _ => EventResult::Ignored,
                 },
             );

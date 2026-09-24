@@ -25,7 +25,6 @@ pub enum TreeTint {
 #[derive(Clone)]
 pub struct TreeLabel {
     label: String,
-    pick: bool,
     dim: bool,
 
     tint: TreeTint,
@@ -43,17 +42,17 @@ pub struct TreeLabel {
 
 #[derive(Clone, Copy)]
 pub enum TreeLabelCommand {
-    Activate,
-
     /// The row's right-aligned action chip was pressed.
     Action,
 }
 
 impl TreeLabel {
-    pub fn new(label: String, pick: bool, dim: bool) -> Self {
+    /// `pick` is presentation-free now: activation is the LIST's
+    /// signal (docs/ui/list-keyboard.md §2), and what a pick means is
+    /// the surface's per-key decision.
+    pub fn new(label: String, _pick: bool, dim: bool) -> Self {
         Self {
             label,
-            pick,
             dim,
             tint: TreeTint::Label,
             badge: None,
@@ -127,14 +126,13 @@ impl View for TreeLabel {
         for (text, color) in &self.trail {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }
-        let pick = self.pick;
         let action = self.action.clone();
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+            // The row body consumes nothing: an unclaimed click is the
+            // LIST's to answer — `Select` then `Activate(Click)`
+            // (docs/ui/list-keyboard.md §2).
             let row = row.on_event(
                 move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                    Event::MouseDown { .. } if pick => {
-                        EventResult::Command(TreeLabelCommand::Activate)
-                    }
                     Event::MouseDown { .. } => EventResult::Handled,
                     _ => EventResult::Ignored,
                 },
@@ -499,7 +497,11 @@ where
 pub type TreeListCommand =
     imba::scroll::ScrollCommand<imba::list::ListCommand<TreeItemCommand<TreeLabelCommand>>>;
 
-pub fn tree_interaction(command: &TreeListCommand) -> Option<(usize, bool)> {
+/// A press on a row's chevron (or a toggling body): the fold
+/// protocol's click half. Body picks are NOT here — those arrive as
+/// `ListCommand::Select`/`Activate` from the list itself
+/// (docs/ui/list-keyboard.md §2).
+pub fn tree_toggle(command: &TreeListCommand) -> Option<usize> {
     use imba::list::ListCommand;
     use imba::scroll::ScrollCommand;
     let ScrollCommand::Content(command) = command else {
@@ -514,8 +516,7 @@ pub fn tree_interaction(command: &TreeListCommand) -> Option<(usize, bool)> {
         _ => return None,
     };
     match command {
-        TreeItemCommand::Toggle => Some((index, true)),
-        TreeItemCommand::Inner(TreeLabelCommand::Activate) => Some((index, false)),
+        TreeItemCommand::Toggle => Some(index),
         TreeItemCommand::Inner(TreeLabelCommand::Action) => None,
     }
 }

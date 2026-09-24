@@ -88,6 +88,65 @@ where
     }
 }
 
+impl<V, T> crate::list::ListOps for TooltipView<V, T>
+where
+    V: crate::list::ListOps,
+    V::Command: 'static,
+    T: View<Command = Infallible>,
+{
+    type Key = V::Key;
+
+    fn set_matches(&mut self, keys: &[Self::Key]) {
+        self.view.set_matches(keys);
+    }
+    fn clear_matches(&mut self) {
+        self.view.clear_matches();
+    }
+    fn match_count(&self) -> usize {
+        self.view.match_count()
+    }
+    fn cursor_index(&self) -> Option<usize> {
+        self.view.cursor_index()
+    }
+    fn step_index(&self, delta: isize) -> Option<usize> {
+        self.view.step_index(delta)
+    }
+    fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        self.view.matched_step_index(delta)
+    }
+    fn edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
+        self.view.edge_index(edge)
+    }
+    fn matched_edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
+        self.view.matched_edge_index(edge)
+    }
+    fn page_index(&self, direction: isize) -> Option<usize> {
+        self.view.page_index(direction)
+    }
+    fn select_command(&self, index: usize) -> Self::Command {
+        TooltipCommand::Host(self.view.select_command(index))
+    }
+    fn activate_command(
+        &self,
+        index: usize,
+        trigger: crate::list::ActivateTrigger,
+    ) -> Self::Command {
+        TooltipCommand::Host(self.view.activate_command(index, trigger))
+    }
+    fn selected_index(command: &Self::Command) -> Option<usize> {
+        match command {
+            TooltipCommand::Host(inner) => V::selected_index(inner),
+            _ => None,
+        }
+    }
+    fn activated(command: &Self::Command) -> Option<(usize, crate::list::ActivateTrigger)> {
+        match command {
+            TooltipCommand::Host(inner) => V::activated(inner),
+            _ => None,
+        }
+    }
+}
+
 impl<V, T> View for TooltipView<V, T>
 where
     V: View,

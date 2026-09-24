@@ -9,7 +9,22 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::{UiCtx, View};
 
-use crate::rows::{RowList, RowListCommand};
+use crate::rows::{label_slice, selection_style, LabelRow};
+use imba::list::{ListCommand, ListOps, ListView};
+use imba::scroll::{ScrollCommand, ScrollView};
+
+/// The popup's list: the raw assembly, cursor as THE selection
+/// (docs/ui/list-keyboard.md §9 — RowList is gone).
+type PopupList = ScrollView<ListView<LabelRow, usize>>;
+type PopupRowsCommand = ScrollCommand<ListCommand<std::convert::Infallible>>;
+
+fn popup_list() -> PopupList {
+    ScrollView::new(ListView::empty())
+}
+
+fn popup_selected(list: &PopupList) -> usize {
+    list.content().cursor().copied().unwrap_or(0)
+}
 use crate::{FindEffect, LineCol, ResourceLocation};
 
 const SHOWN: usize = 128;
@@ -22,7 +37,7 @@ pub enum CompletionCommand {
 
     PickCursor,
 
-    Rows(RowListCommand),
+    Rows(PopupRowsCommand),
 
     Close,
 }
@@ -102,7 +117,7 @@ impl SourceState {
 
 #[derive(Clone)]
 pub struct CompletionPopupView {
-    list: RowList,
+    list: PopupList,
     rows: usize,
 }
 
@@ -115,7 +130,7 @@ impl View for CompletionPopupView {
         _ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, CompletionCommand> {
         use imba::event::EventResult;
-        let armed = self.list.len() > 0;
+        let armed = self.rows > 0;
         imba::focus::FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 Key::Up if armed => EventResult::Command(CompletionCommand::Select(-1)),
@@ -191,7 +206,7 @@ impl View for CompletionPopupView {
                 .map(CompletionCommand::Rows);
                 popup.place(1.0, 1.0, rows);
 
-                let armed = self.list.len() > 0;
+                let armed = self.rows > 0;
                 popup.place(
                     0.0,
                     0.0,
@@ -236,7 +251,7 @@ pub struct Completion {
     serial: u64,
 
     lane: Option<CancellationToken>,
-    list: RowList,
+    list: PopupList,
     source: SourceState,
 }
 
@@ -250,7 +265,7 @@ impl Completion {
             anchor_offset: 0,
             serial: 0,
             lane: None,
-            list: RowList::new(),
+            list: popup_list(),
             source: SourceState::Path {
                 folders: Arc::new(Vec::new()),
                 recents: Arc::new(Vec::new()),
@@ -277,7 +292,7 @@ impl Completion {
     }
 
     pub fn selected(&self) -> usize {
-        self.list.selected()
+        popup_selected(&self.list)
     }
 
     #[doc(hidden)]
@@ -626,8 +641,8 @@ impl Completion {
             return;
         }
         let last = count as isize - 1;
-        let next = (self.list.selected() as isize + delta).clamp(0, last) as usize;
-        self.list.select(next);
+        let next = (popup_selected(&self.list) as isize + delta).clamp(0, last) as usize;
+        self.list.content_mut().select_only(next);
         self.swap_view(document, editor);
     }
 
@@ -637,12 +652,19 @@ impl Completion {
         ui: &UiCtx,
         document: &mut crate::Document,
         editor: ::editor::EditorId,
-        command: RowListCommand,
+        command: PopupRowsCommand,
     ) -> Option<usize> {
-        if let Some(row) = self.list.picked(&command) {
-            return Some(row);
+        // A row-body click activates (docs/ui/list-keyboard.md §2);
+        // the dim note row is unkeyed, so it never answers.
+        if let Some((row, _trigger)) = PopupList::activated(&command) {
+            if self.list.content().key_at(row).is_some() {
+                return Some(row);
+            }
         }
 
+        if matches!(command, ScrollCommand::SetScrollY(_)) {
+            self.list.content_mut().cancel_reveal();
+        }
         let mut discarded = imba::effect::Batch::new();
         self.list
             .perform(store, ui, command, &mut discarded.effects());
@@ -827,7 +849,7 @@ impl Completion {
                 };
 
                 for location in recents.iter() {
-                    if crate::speedsearch::subsequence_match(
+                    if crate::list_keyboard::subsequence_match(
                         &location.name().to_lowercase(),
                         &query,
                     ) {
@@ -847,7 +869,7 @@ impl Completion {
                         continue;
                     }
                     let haystack = item.filter_text.as_deref().unwrap_or(&item.label);
-                    if !crate::speedsearch::subsequence_match(&haystack.to_lowercase(), &query) {
+                    if !crate::list_keyboard::subsequence_match(&haystack.to_lowercase(), &query) {
                         continue;
                     }
                     labels.push(item.label.clone());
@@ -858,12 +880,15 @@ impl Completion {
             }
         }
         let note = (hidden > 0).then(|| format!("… {hidden} more — narrow the filter"));
-        let selected = self
-            .list
-            .selected()
-            .min(self.source.row_count().saturating_sub(1));
-        self.list
-            .set_with_trails(store, ui, &labels, &trails, note, selected);
+        let selected = popup_selected(&self.list).min(self.source.row_count().saturating_sub(1));
+        let scroll_y = self.list.scroll_y();
+        let mut list = ListView::from_slice(label_slice(store, ui, &labels, &trails, note))
+            .with_selection(selection_style(store));
+        if !labels.is_empty() {
+            list.select_only(selected);
+        }
+        self.list = ScrollView::new(list);
+        self.list.set_scroll_y(scroll_y);
     }
 
     fn view(&self) -> CompletionPopupView {

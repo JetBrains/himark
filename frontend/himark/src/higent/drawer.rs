@@ -8,9 +8,10 @@ use crate::higent::{
     SessionsPage,
 };
 use crate::{
-    AppCommand, ModalRequest, ModalView, SpeedSearchCommand, SpeedSearchView, TreeLabel,
-    TreeListCommand, TreeRow,
+    ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView,
+    TreeLabel, TreeListCommand, TreeRow,
 };
+use imba::list::ListOps;
 use ahp_types::common::Uri;
 use ahp_types::state::SessionSummary;
 use imba::{
@@ -82,7 +83,7 @@ impl crate::Searcher for SessionSearcher {
 }
 
 pub enum AgentsCommand {
-    Rows(SpeedSearchCommand<TreeListCommand>),
+    Rows(ListKeyCommand<TreeListCommand>),
 
     Boot,
     Connected(HostId, Result<RootInfo, String>),
@@ -94,12 +95,6 @@ pub enum AgentsCommand {
 
     Events(HostId, Vec<ServerEvent>),
 
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
-
     Dismiss,
 
     AddHostInput(EditorCommand),
@@ -110,7 +105,7 @@ pub enum AgentsCommand {
 }
 
 pub struct AgentsPanel {
-    list: SpeedSearchView<TreeList, SessionSearcher>,
+    list: ListKeyboardController<TreeList, SessionSearcher>,
     window: crate::WindowId,
     booted: bool,
 
@@ -142,13 +137,14 @@ impl Clone for AgentsPanel {
 impl AgentsPanel {
     pub fn open(store: &Store, ui: &UiCtx, window: crate::WindowId) -> Self {
         let panel = Self {
-            list: SpeedSearchView::new(
+            list: ListKeyboardController::searchable(
                 ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
                 SessionSearcher,
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             window,
             booted: false,
             collapsed: rpds::HashTrieSetSync::new_sync(),
@@ -180,8 +176,15 @@ impl AgentsPanel {
 
     #[doc(hidden)]
     pub fn match_count(&self) -> usize {
-        use imba::list::SearchableList;
         self.list.inner().match_count()
+    }
+
+    /// TEST SUPPORT: the command the key table's Down emits while a
+    /// query stands.
+    #[doc(hidden)]
+    pub fn matched_step_rows(&self, delta: isize) -> Option<AgentsCommand> {
+        let index = self.list.matched_step_index(delta)?;
+        Some(AgentsCommand::Rows(self.list.select_command(index)))
     }
 
     #[doc(hidden)]
@@ -603,19 +606,12 @@ impl View for AgentsPanel {
             };
             return own.merge_under(input.focus_data(store, ui).map(AgentsCommand::AddHostInput));
         }
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal (and the add-host mode above).
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(AgentsCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(AgentsCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(AgentsCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(AgentsCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(AgentsCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    AgentsCommand::Pick,
-                    AgentsCommand::Rows(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter => EventResult::Command(AgentsCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -693,36 +689,55 @@ impl View for AgentsPanel {
                 self.refresh(store, ui);
             }
             AgentsCommand::Rows(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        self.activate(store, ui, index, fx);
+                type Rows = ListKeyboardController<TreeList, SessionSearcher>;
+                match &command {
+                    // The bespoke fold: expansion state lives in the
+                    // panel's own collapsed/folded sets.
+                    ListKeyCommand::Fold { expand, .. } => {
+                        let expand = *expand;
+                        let Some(key) = self.list.inner().content().cursor().cloned() else {
+                            return;
+                        };
+                        let expanded = match &key {
+                            AgentKey::Server(server) => !self.collapsed.contains(server),
+                            AgentKey::Folder(server, folder) => {
+                                !self.folded.contains(&(*server, folder.clone()))
+                            }
+                            _ => return,
+                        };
+                        if expanded != expand {
+                            self.activate_key(store, ui, &key, fx);
+                        }
                         return;
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = crate::tree_toggle(inner) {
+                            self.activate(store, ui, index, fx);
+                            return;
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Rows::activated(&command) {
+                    let searching = self.list.searching();
+                    self.activate(store, ui, index, fx);
+                    match trigger {
+                        // The deliberate pick ends the search in the
+                        // same stroke.
+                        ActivateTrigger::Enter if searching => {
+                            return self.perform(
+                                store,
+                                ui,
+                                AgentsCommand::Rows(ListKeyCommand::Clear),
+                                fx,
+                            );
+                        }
+                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
                 fx.scope(AgentsCommand::Rows, |fx| {
                     self.list.perform(store, ui, command, fx)
                 });
-            }
-            AgentsCommand::Select(delta) => self.list.inner_mut().content_mut().cursor_step(delta),
-            AgentsCommand::Fold(expand) => {
-                let Some(key) = self.list.inner().content().cursor().cloned() else {
-                    return;
-                };
-                let expanded = match &key {
-                    AgentKey::Server(server) => !self.collapsed.contains(server),
-                    AgentKey::Folder(server, folder) => {
-                        !self.folded.contains(&(*server, folder.clone()))
-                    }
-                    _ => return,
-                };
-                if expanded != expand {
-                    self.activate_key(store, ui, &key, fx);
-                }
-            }
-            AgentsCommand::Pick => {
-                if let Some(key) = self.list.inner().content().cursor().cloned() {
-                    self.activate_key(store, ui, &key, fx);
-                }
             }
             AgentsCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
@@ -855,7 +870,10 @@ impl View for AgentsPanel {
 
             overlay.place(0.0, 0.0, panel);
 
+            // The key table lives in the controller's own overlay;
+            // the surface keeps its add-host mode and dismissal.
             let adding = self.adding.is_some();
+            let searching = self.list.searching();
             let keymap = leaf::<AgentsCommand>(size.width, size.height).event(
                 move |_arena, event, _size| {
                     if adding {
@@ -875,26 +893,7 @@ impl View for AgentsPanel {
                         Event::KeyDown {
                             key: InputKey::Escape,
                             ..
-                        } => EventResult::Command(AgentsCommand::Dismiss),
-                        Event::KeyDown {
-                            key: InputKey::Up, ..
-                        } => EventResult::Command(AgentsCommand::Select(-1)),
-                        Event::KeyDown {
-                            key: InputKey::Down,
-                            ..
-                        } => EventResult::Command(AgentsCommand::Select(1)),
-                        Event::KeyDown {
-                            key: InputKey::Left,
-                            ..
-                        } => EventResult::Command(AgentsCommand::Fold(false)),
-                        Event::KeyDown {
-                            key: InputKey::Right,
-                            ..
-                        } => EventResult::Command(AgentsCommand::Fold(true)),
-                        Event::KeyDown {
-                            key: InputKey::Enter,
-                            ..
-                        } => EventResult::Command(AgentsCommand::Pick),
+                        } if !searching => EventResult::Command(AgentsCommand::Dismiss),
                         _ => EventResult::Ignored,
                     }
                 },

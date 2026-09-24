@@ -13,20 +13,17 @@ use imba::{
 use skia_safe::{Paint, Size};
 
 use crate::forest::{ForestList, ForestNode, ForestSearcher};
+use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::modal::{ModalRequest, ModalView};
-use crate::speedsearch::{SpeedSearchCommand, SpeedSearchView};
-use crate::tree_item::{tree_interaction, TreeListCommand};
+use crate::tree_item::{tree_toggle, TreeListCommand};
+use imba::list::{ActivateTrigger, ListOps};
 
 pub(crate) const OUTLINE_CAP: usize = 2_000;
 
-pub type SearchListCommand = SpeedSearchCommand<TreeListCommand>;
+pub type SearchListCommand = ListKeyCommand<TreeListCommand>;
 
 pub enum TocCommand {
     List(SearchListCommand),
-    Select(isize),
-    Pick,
-
-    Fold(bool),
     Dismiss,
 }
 
@@ -34,7 +31,7 @@ pub struct TocView {
     window: crate::WindowId,
 
     context: String,
-    search: SpeedSearchView<ForestList<u64>, ForestSearcher<u64>>,
+    pub(crate) search: ListKeyboardController<ForestList<u64>, ForestSearcher<u64>>,
 
     targets: rpds::HashTrieMapSync<u64, crate::ResourceLocation>,
     request: Option<ModalRequest>,
@@ -165,13 +162,14 @@ impl TocView {
                 (false, 1) => "1 file".to_owned(),
                 (false, n) => format!("{n} files"),
             },
-            search: SpeedSearchView::new(
+            search: ListKeyboardController::searchable(
                 forest,
                 ForestSearcher::default(),
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             targets,
             request: None,
         })
@@ -206,20 +204,12 @@ impl View for TocView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, TocCommand> {
         use imba::focus::FocusData;
-        let rows = self.search.inner().list().len();
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal.
         let searching = self.search.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(TocCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(TocCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(TocCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(TocCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(TocCommand::Fold(true)),
-                InputKey::Enter if rows > 0 && searching => EventResult::Commands(vec![
-                    TocCommand::Pick,
-                    TocCommand::List(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter if rows > 0 => EventResult::Command(TocCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -236,30 +226,46 @@ impl View for TocView {
     ) {
         match command {
             TocCommand::List(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, toggle)) = tree_interaction(inner) {
-                        let Some(key) = self.search.inner().list().key_at(index).copied() else {
-                            return;
-                        };
-                        self.search.inner_mut().list_mut().select_only(key);
-                        match toggle || !self.targets.contains_key(&key) {
-                            true => self.search.inner_mut().toggle(&key, store, ui),
-                            false => self.pick(key, store, ui),
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        return self.search.inner_mut().fold_cursor(*expand, store, ui);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = tree_toggle(inner) {
+                            let Some(key) = self.search.inner().list().key_at(index).copied()
+                            else {
+                                return;
+                            };
+                            self.search.inner_mut().list_mut().select_only(key);
+                            return self.search.inner_mut().toggle(&key, store, ui);
                         }
-                        return;
+                    }
+                    _ => {}
+                }
+                type Search = ListKeyboardController<ForestList<u64>, ForestSearcher<u64>>;
+                if let Some((index, trigger)) = Search::activated(&command) {
+                    if let Some(key) = self.search.inner().list().key_at(index).copied() {
+                        let searching = self.search.searching();
+                        self.pick(key, store, ui);
+                        match trigger {
+                            // The deliberate pick ends the search in
+                            // the same stroke.
+                            ActivateTrigger::Enter if searching => {
+                                return self.perform(
+                                    store,
+                                    ui,
+                                    TocCommand::List(ListKeyCommand::Clear),
+                                    fx,
+                                );
+                            }
+                            ActivateTrigger::Enter | ActivateTrigger::Click => {}
+                        }
                     }
                 }
                 fx.scope(TocCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
             }
-            TocCommand::Select(delta) => self.search.inner_mut().list_mut().cursor_step(delta),
-            TocCommand::Pick => {
-                if let Some(key) = self.search.inner().list().cursor().copied() {
-                    self.pick(key, store, ui);
-                }
-            }
-            TocCommand::Fold(expand) => self.search.inner_mut().fold_cursor(expand, store, ui),
             TocCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
@@ -275,7 +281,6 @@ impl View for TocView {
         {
             let theme_ui = crate::env::Themes::of(store).ui().clone();
             let title_font = crate::fonts::ui_font(ui, theme_ui.panel.title_size);
-            let rows = self.search.inner().list().len();
             let searching = self.search.searching();
             DrawerPanel {
                 content: imba::LayoutBox::new(
@@ -294,32 +299,6 @@ impl View for TocView {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::Command(TocCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(TocCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(TocCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(TocCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(TocCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if rows > 0 && searching => EventResult::Commands(vec![
-                        TocCommand::Pick,
-                        TocCommand::List(SpeedSearchCommand::Clear),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if rows > 0 => EventResult::Command(TocCommand::Pick),
                     _ => EventResult::Ignored,
                 },
             }
@@ -450,7 +429,7 @@ impl crate::DynamicCommand for ToggleToc {
     }
 }
 
-type OutlineKey = (::editor::SyntaxId, ::editor::IntervalId);
+pub(crate) type OutlineKey = (::editor::SyntaxId, ::editor::IntervalId);
 
 #[derive(Clone, Debug)]
 pub struct OutlineRow {
@@ -513,10 +492,6 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
 
 pub enum OutlineCommand {
     List(SearchListCommand),
-    Select(isize),
-    Pick,
-
-    Fold(bool),
     Dismiss,
 
     Refresh,
@@ -534,7 +509,8 @@ pub struct OutlineView {
 
     launched: Option<(u64, u64)>,
     lane: Option<imba::effect::CancellationToken>,
-    search: SpeedSearchView<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>,
+    pub(crate) search:
+        ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>,
     request: Option<ModalRequest>,
 }
 
@@ -570,13 +546,14 @@ impl OutlineView {
             derived: None,
             launched: None,
             lane: None,
-            search: SpeedSearchView::new(
+            search: ListKeyboardController::searchable(
                 ForestList::new(store),
                 ForestSearcher::default(),
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             request: None,
         }
     }
@@ -594,8 +571,7 @@ impl OutlineView {
     }
 
     pub fn match_count(&self) -> usize {
-        use imba::list::SearchableList;
-        self.search.inner().list().match_count()
+        ListOps::match_count(self.search.inner().list())
     }
 
     pub fn cursor_title(&self) -> Option<String> {
@@ -657,20 +633,12 @@ impl View for OutlineView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, OutlineCommand> {
         use imba::focus::FocusData;
-        let rows = self.search.inner().list().len();
+        // The key table is the controller's; the surface keeps only
+        // its own dismissal.
         let searching = self.search.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
                 InputKey::Escape if !searching => EventResult::Command(OutlineCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(OutlineCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(OutlineCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(OutlineCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(OutlineCommand::Fold(true)),
-                InputKey::Enter if rows > 0 && searching => EventResult::Commands(vec![
-                    OutlineCommand::Pick,
-                    OutlineCommand::List(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter if rows > 0 => EventResult::Command(OutlineCommand::Pick),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
@@ -687,30 +655,46 @@ impl View for OutlineView {
     ) {
         match command {
             OutlineCommand::List(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, toggle)) = tree_interaction(inner) {
-                        let Some(key) = self.search.inner().list().key_at(index).copied() else {
-                            return;
-                        };
-                        self.search.inner_mut().list_mut().select_only(key);
-                        match toggle {
-                            true => self.search.inner_mut().toggle(&key, store, ui),
-                            false => self.pick(store, key),
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        return self.search.inner_mut().fold_cursor(*expand, store, ui);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = tree_toggle(inner) {
+                            let Some(key) = self.search.inner().list().key_at(index).copied()
+                            else {
+                                return;
+                            };
+                            self.search.inner_mut().list_mut().select_only(key);
+                            return self.search.inner_mut().toggle(&key, store, ui);
                         }
-                        return;
+                    }
+                    _ => {}
+                }
+                type Search = ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>;
+                if let Some((index, trigger)) = Search::activated(&command) {
+                    if let Some(key) = self.search.inner().list().key_at(index).copied() {
+                        let searching = self.search.searching();
+                        self.pick(store, key);
+                        match trigger {
+                            // The deliberate pick ends the search in
+                            // the same stroke.
+                            ActivateTrigger::Enter if searching => {
+                                return self.perform(
+                                    store,
+                                    ui,
+                                    OutlineCommand::List(ListKeyCommand::Clear),
+                                    fx,
+                                );
+                            }
+                            ActivateTrigger::Enter | ActivateTrigger::Click => {}
+                        }
                     }
                 }
                 fx.scope(OutlineCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
             }
-            OutlineCommand::Select(delta) => self.search.inner_mut().list_mut().cursor_step(delta),
-            OutlineCommand::Pick => {
-                if let Some(key) = self.search.inner().list().cursor().copied() {
-                    self.pick(store, key);
-                }
-            }
-            OutlineCommand::Fold(expand) => self.search.inner_mut().fold_cursor(expand, store, ui),
             OutlineCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
@@ -774,7 +758,6 @@ impl View for OutlineView {
                     let stamp = Self::stamp_of(document);
                     self.derived != Some(stamp) && self.launched != Some(stamp)
                 });
-            let rows = self.search.inner().list().len();
             let searching = self.search.searching();
             DrawerPanel {
                 content: imba::LayoutBox::new(
@@ -794,32 +777,6 @@ impl View for OutlineView {
                         key: InputKey::Escape,
                         ..
                     } if !searching => EventResult::Command(OutlineCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(OutlineCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(OutlineCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(OutlineCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(OutlineCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if rows > 0 && searching => EventResult::Commands(vec![
-                        OutlineCommand::Pick,
-                        OutlineCommand::List(SpeedSearchCommand::Clear),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if rows > 0 => EventResult::Command(OutlineCommand::Pick),
                     _ => EventResult::Ignored,
                 },
             }

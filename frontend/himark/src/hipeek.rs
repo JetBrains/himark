@@ -29,7 +29,9 @@ use crate::locations::{
     files_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation, LocationKey,
     LocationsFeeds,
 };
-use crate::tree_item::{tree_interaction, TreeListCommand};
+use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
+use crate::tree_item::{tree_toggle, TreeListCommand};
+use imba::list::{ActivateTrigger, ListOps};
 use crate::{
     AppRequests, Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayKey, InlayMode,
     LocationsChannel,
@@ -42,10 +44,7 @@ const HEADER_HEIGHT: f32 = 24.0;
 const FALLBACK_WIDTH: f32 = 600.0;
 
 pub enum PeekCommand {
-    Tree(TreeListCommand),
-    Select(isize),
-    Fold(bool),
-    Pick,
+    Tree(ListKeyCommand<TreeListCommand>),
     Close,
     /// The header chip: front this feed in the Search dock tab —
     /// the standing results move, nothing re-asks.
@@ -71,7 +70,7 @@ pub struct PeekView {
     width: f32,
     feed: FeedId,
 
-    tree: ForestList<LocationKey>,
+    tree: ListKeyboardController<ForestList<LocationKey>>,
     /// A hit key answers its INDEX into the feed (a file key its
     /// first occurrence) — indices, never copies of the locations:
     /// the feed row is the one holder of the contexts.
@@ -96,7 +95,7 @@ impl PeekView {
             key: None,
             width,
             feed,
-            tree: ForestList::new(store),
+            tree: ListKeyboardController::new(ForestList::new(store)).with_folds(),
             targets: rpds::HashTrieMapSync::new_sync(),
             shown: 0,
             navigated: false,
@@ -161,11 +160,11 @@ impl PeekView {
         self.targets = targets;
 
         let forest = files_forest(store, row.locations.iter());
-        let cursor = self.tree.list().cursor().cloned();
-        self.tree.set(&forest, store, ui);
+        let cursor = self.tree.inner().list().cursor().cloned();
+        self.tree.inner_mut().set(&forest, store, ui);
         if let Some(cursor) = cursor {
-            if self.tree.forest.contains(&cursor) {
-                self.tree.list_mut().select_only(cursor);
+            if self.tree.inner().forest.contains(&cursor) {
+                self.tree.inner_mut().list_mut().select_only(cursor);
             }
         }
         self.ensure_preview(store, ui, fx);
@@ -183,7 +182,7 @@ impl PeekView {
         ui: &imba::UiCtx,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
-        let Some(key) = self.tree.list().cursor().cloned() else {
+        let Some(key) = self.tree.inner().list().cursor().cloned() else {
             return;
         };
         let Some(index) = self.targets.get(&key).copied() else {
@@ -392,19 +391,16 @@ impl View for PeekView {
         _ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, PeekCommand> {
         use imba::focus::FocusData;
-        let rows = self.tree.list().len();
-        FocusData {
+        // The key table is the controller's; the card keeps only its
+        // own close.
+        let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Up => EventResult::Command(PeekCommand::Select(-1)),
-                InputKey::Down => EventResult::Command(PeekCommand::Select(1)),
-                InputKey::Left => EventResult::Command(PeekCommand::Fold(false)),
-                InputKey::Right => EventResult::Command(PeekCommand::Fold(true)),
-                InputKey::Enter if rows > 0 => EventResult::Command(PeekCommand::Pick),
                 InputKey::Escape => EventResult::Command(PeekCommand::Close),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
-        }
+        };
+        own.merge_under(self.tree.focus_data(_store, _ui).map(PeekCommand::Tree))
     }
 
     fn destroy(&mut self, _store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -422,46 +418,51 @@ impl View for PeekView {
     ) {
         match command {
             PeekCommand::Tree(command) => {
-                if let Some((index, toggle)) = tree_interaction(&command) {
-                    let Some(key) = self.tree.list().key_at(index).cloned() else {
+                type Tree = ListKeyboardController<ForestList<LocationKey>>;
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        return self.tree.inner_mut().fold_cursor(*expand, store, ui);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = tree_toggle(inner) {
+                            let Some(key) = self.tree.inner().list().key_at(index).cloned()
+                            else {
+                                return;
+                            };
+                            self.tree.inner_mut().list_mut().select_only(key.clone());
+                            self.tree.inner_mut().toggle(&key, store, ui);
+                            return self.ensure_preview(store, ui, fx);
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Tree::activated(&command) {
+                    let Some(key) = self.tree.inner().list().key_at(index).cloned() else {
                         return;
                     };
-                    self.tree.list_mut().select_only(key.clone());
-                    let file = matches!(&key, LocationKey::Node(_));
-                    match toggle || file {
-                        true => self.tree.toggle(&key, store, ui),
-                        false => {
+                    // Both triggers behave alike here: a file row
+                    // toggles its hits, a hit navigates and closes.
+                    match (&key, trigger) {
+                        (LocationKey::Node(_), ActivateTrigger::Enter | ActivateTrigger::Click) => {
+                            self.tree.inner_mut().toggle(&key, store, ui);
+                            return self.ensure_preview(store, ui, fx);
+                        }
+                        (LocationKey::Hit(..), ActivateTrigger::Enter | ActivateTrigger::Click) => {
                             if let Some(found) = self.found(store, &key) {
                                 self.navigate(store, &found);
                                 self.close(store, false);
-                                return;
                             }
+                            return;
                         }
                     }
-                    self.ensure_preview(store, ui, fx);
-                    return;
                 }
+                let selected = Tree::selected_index(&command).is_some();
                 fx.scope(PeekCommand::Tree, |fx| {
                     self.tree.perform(store, ui, command, fx)
                 });
-            }
-            PeekCommand::Select(delta) => {
-                self.tree.list_mut().cursor_step(delta);
-                self.ensure_preview(store, ui, fx);
-            }
-            PeekCommand::Fold(expand) => self.tree.fold_cursor(expand, store, ui),
-            PeekCommand::Pick => {
-                let Some(key) = self.tree.list().cursor().cloned() else {
-                    return;
-                };
-                match &key {
-                    LocationKey::Node(_) => self.tree.toggle(&key, store, ui),
-                    LocationKey::Hit(..) => {
-                        if let Some(found) = self.found(store, &key) {
-                            self.navigate(store, &found);
-                            self.close(store, false);
-                        }
-                    }
+                // Moving the selection returns the preview.
+                if selected {
+                    self.ensure_preview(store, ui, fx);
                 }
             }
             PeekCommand::Close => self.close(store, false),
@@ -861,7 +862,7 @@ mod tests {
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
 
-        let rows = view.tree.forest.rows();
+        let rows = view.tree.inner().forest.rows();
         assert_eq!(
             rows.iter()
                 .map(|(depth, label, _)| (*depth, label.as_str()))
@@ -877,8 +878,10 @@ mod tests {
         );
 
         let hit = LocationKey::Hit(found("b.rs", 0, "").location, 0, 2);
-        view.tree.list_mut().select_only(hit);
-        view.perform(&mut store, &ui, PeekCommand::Pick, &mut batch.effects());
+        view.tree.inner_mut().list_mut().select_only(hit);
+        let at = view.tree.cursor_index().expect("a cursor row");
+        let pick = PeekCommand::Tree(view.tree.activate_command(at, ActivateTrigger::Enter));
+        view.perform(&mut store, &ui, pick, &mut batch.effects());
         let requests = store.get::<crate::AppRequests>().expect("requests");
         assert!(!requests.is_empty(), "the pick navigated through the door");
         assert!(
