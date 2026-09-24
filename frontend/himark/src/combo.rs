@@ -277,10 +277,10 @@ where
     pub fn cell_width(&self, ui: &UiCtx, chrome: &ComboChrome) -> f32 {
         let label_font = crate::fonts::ui_font(ui, chrome.label_size);
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
-        let label = tracked_width(&label_font, self.label);
+        let label = tracked_width(ui, &label_font, self.label);
         let value = self
             .value()
-            .map(|option| measured_plain(&value_font, &option.cell_label()))
+            .map(|option| imba::text_advance(ui, &value_font, &option.cell_label()))
             .unwrap_or(0.0);
         chrome.pad + label + chrome.gap + value + chrome.gap + chrome.chevron + chrome.pad
     }
@@ -310,6 +310,7 @@ where
                 let label_font = label_font.clone();
                 let value_font = value_font.clone();
                 let value = value.clone();
+                let shaper = imba::TextShaper::of(ui);
                 move |_arena, canvas, rect| {
                     let mut paint = Paint::default();
                     paint.set_anti_alias(false);
@@ -322,25 +323,26 @@ where
 
                     let mut x = rect.left + chrome.pad;
                     let mid = rect.top + rect.height() * 0.5;
-                    paint.set_color(chrome.label_color.0);
                     x = draw_tracked(
+                        &shaper,
                         canvas,
                         &label_font,
-                        &paint,
+                        chrome.label_color.0,
                         label,
                         x,
                         mid + chrome.label_size * 0.35,
                     );
                     x += chrome.gap;
                     if let Some(value) = &value {
-                        paint.set_color(chrome.value_color.0);
-                        canvas.draw_str(
-                            value.as_str(),
-                            (x, mid + chrome.value_size * 0.35),
+                        x += shaper.draw(
+                            canvas,
                             &value_font,
-                            &paint,
+                            value,
+                            chrome.value_color.0,
+                            0.0,
+                            x,
+                            mid + chrome.value_size * 0.35,
                         );
-                        x += value_font.measure_str(value.as_str(), None).0;
                     }
                     x += chrome.gap;
                     let mut chevron = Paint::default();
@@ -508,70 +510,24 @@ where
     }
 }
 
-fn measured_tracked(font: &Font, text: &str) -> (f32, std::rc::Rc<[f32]>) {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    thread_local! {
-        static MEMO: RefCell<HashMap<u32, HashMap<String, (f32, std::rc::Rc<[f32]>)>>> =
-            RefCell::new(HashMap::new());
-    }
-    MEMO.with(|memo| {
-        let mut memo = memo.borrow_mut();
-        let by_text = memo.entry(font.size().to_bits()).or_default();
-        if let Some(hit) = by_text.get(text) {
-            return hit.clone();
-        }
-        let mut advances = Vec::new();
-        let mut total = 0.0f32;
-        for (at, ch) in text.char_indices() {
-            let advance = font.measure_str(&text[at..at + ch.len_utf8()], None).0 + 1.5;
-            advances.push(advance);
-            total += advance;
-        }
-        let entry = (total, std::rc::Rc::from(advances));
-        by_text.insert(text.to_owned(), entry.clone());
-        entry
-    })
-}
+/// The per-glyph tracking of chrome caps labels — `Text::tracking`
+/// takes the same value where labels ride the layout path.
+pub(crate) const LABEL_TRACKING: f32 = 1.5;
 
-pub(crate) fn tracked_width(font: &Font, text: &str) -> f32 {
-    measured_tracked(font, text).0
-}
-
-fn measured_plain(font: &Font, text: &str) -> f32 {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    thread_local! {
-        static MEMO: RefCell<HashMap<u32, HashMap<String, f32>>> =
-            RefCell::new(HashMap::new());
-    }
-    MEMO.with(|memo| {
-        let mut memo = memo.borrow_mut();
-        let by_text = memo.entry(font.size().to_bits()).or_default();
-        if let Some(hit) = by_text.get(text) {
-            return *hit;
-        }
-        let width = font.measure_str(text, None).0;
-        by_text.insert(text.to_owned(), width);
-        width
-    })
+pub(crate) fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
+    imba::TextShaper::of(ui).tracked_advance(font, text, LABEL_TRACKING)
 }
 
 pub(crate) fn draw_tracked(
+    shaper: &imba::TextShaper,
     canvas: &skia_safe::Canvas,
     font: &Font,
-    paint: &Paint,
+    color: skia_safe::Color,
     text: &str,
     x: f32,
     baseline: f32,
 ) -> f32 {
-    let (_, advances) = measured_tracked(font, text);
-    let mut x = x;
-    for ((at, ch), advance) in text.char_indices().zip(advances.iter()) {
-        canvas.draw_str(&text[at..at + ch.len_utf8()], (x, baseline), font, paint);
-        x += advance;
-    }
-    x
+    x + shaper.draw(canvas, font, text, color, LABEL_TRACKING, x, baseline)
 }
 
 struct MenuSeed<'a, T: ComboItem>

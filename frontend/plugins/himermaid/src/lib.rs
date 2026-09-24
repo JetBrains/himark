@@ -12,7 +12,7 @@ use imba::{
     arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt, UiCtx,
     View,
 };
-use skia_safe::{Canvas, Paint, Rect, Size};
+use skia_safe::{Canvas, Rect, Size};
 use text::Text;
 
 pub fn register(registry: &mut SyntaxLanguages) {
@@ -205,19 +205,15 @@ impl MermaidView {
                 svg.paint(canvas, inner);
             }
             Outcome::Error(message) => {
-                let mut paint = Paint::default();
-                paint.set_anti_alias(true);
-
-                paint.set_color(skia_safe::Color::from_argb(0xA0, 0x80, 0x80, 0x80));
                 let font = himark::fonts::ui_text_font(ui, 12.0);
-                canvas.draw_str(
-                    message.as_ref(),
-                    (
-                        rect.left + DIAGRAM_PAD,
-                        rect.top + ERROR_STRIP_HEIGHT * 0.5 + 4.0,
-                    ),
+                imba::TextShaper::of(ui).draw(
+                    canvas,
                     &font,
-                    &paint,
+                    message.as_ref(),
+                    skia_safe::Color::from_argb(0xA0, 0x80, 0x80, 0x80),
+                    0.0,
+                    rect.left + DIAGRAM_PAD,
+                    rect.top + ERROR_STRIP_HEIGHT * 0.5 + 4.0,
                 );
             }
         }

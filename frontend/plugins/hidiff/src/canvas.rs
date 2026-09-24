@@ -1311,24 +1311,22 @@ impl Canvas {
                     let chrome = env::Themes::of(store).ui().chat.clone();
                     let text = note.clone();
                     let font = himark::fonts::ui_text_font(ui, chrome.title_size);
+                    let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let size = constraints.max;
                     imba::ThunkBox::new(
                         arena,
                         imba::leaf::leaf::<CanvasCommand>(size.width, size.height.min(240.0))
                             .paint_instead(move |_arena, canvas, rect| {
-                                let mut paint = Paint::default();
-                                paint.set_anti_alias(true);
-                                paint.set_color(color);
-                                let width = font.measure_str(&text, None).0;
-                                canvas.draw_str(
-                                    &text,
-                                    (
-                                        rect.left + (rect.width() - width) / 2.0,
-                                        rect.top + rect.height() * 0.5,
-                                    ),
+                                let width = shaper.advance(&font, &text);
+                                shaper.draw(
+                                    canvas,
                                     &font,
-                                    &paint,
+                                    &text,
+                                    color,
+                                    0.0,
+                                    rect.left + (rect.width() - width) / 2.0,
+                                    rect.top + rect.height() * 0.5,
                                 );
                             }),
                     )
@@ -2278,19 +2276,20 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 );
                 let author = author.clone();
                 let ascent = -body_font.metrics().1.ascent;
+                let shaper = imba::TextShaper::of(ui);
                 face.place(
                     0.0,
                     inset + content,
                     imba::leaf::leaf::<RowCommand>(width, line).paint_instead(
                         move |_arena, canvas, rect| {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(dim);
-                            canvas.draw_str(
-                                &author,
-                                (rect.left + inset, rect.top + ascent + (line - ascent) * 0.5),
+                            shaper.draw(
+                                canvas,
                                 &body_font,
-                                &paint,
+                                &author,
+                                dim,
+                                0.0,
+                                rect.left + inset,
+                                rect.top + ascent + (line - ascent) * 0.5,
                             );
                         },
                     ),
@@ -2468,17 +2467,18 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 RowBody::Failed(error) => {
                     let text = format!("{} — {error}", diff.file.title);
                     let font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.85);
+                    let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
                         .paint_instead(move |_arena, canvas, rect| {
-                            let mut paint = Paint::default();
-                            paint.set_anti_alias(true);
-                            paint.set_color(color);
-                            canvas.draw_str(
-                                &text,
-                                (rect.left + 16.0, rect.top + rect.height() * 0.5),
+                            shaper.draw(
+                                canvas,
                                 &font,
-                                &paint,
+                                &text,
+                                color,
+                                0.0,
+                                rect.left + 16.0,
+                                rect.top + rect.height() * 0.5,
                             );
                         });
                     imba::ZBox::new(arena)
@@ -2564,6 +2564,7 @@ struct HeaderFace {
     title_size: f32,
     title_color: skia_safe::Color,
     trail_font: skia_safe::Font,
+    shaper: std::rc::Rc<imba::TextShaper>,
     added_color: skia_safe::Color,
     removed_color: skia_safe::Color,
     affordance_color: skia_safe::Color,
@@ -2613,6 +2614,7 @@ impl HeaderFace {
             title_size: size,
             title_color: h1.color.unwrap_or(chrome.text_color.0),
             trail_font: himark::fonts::ui_text_font(ui, chrome.title_size),
+            shaper: imba::TextShaper::of(ui),
             added_color: chrome.added_color.0,
             removed_color: chrome.removed_color.0,
             affordance_color: chrome.loader_color.0,
@@ -2664,18 +2666,26 @@ impl HeaderFace {
         // The +N −M trail after the chevron.
         let mut x = rect.left + self.chevron.right;
         if let Some(added) = self.added {
-            paint.set_color(self.added_color);
             let label = format!("+{added}");
-            canvas.draw_str(&label, (x, baseline), &self.trail_font, &paint);
-            x += self.trail_font.measure_str(&label, None).0 + 8.0;
+            x += self.shaper.draw(
+                canvas,
+                &self.trail_font,
+                &label,
+                self.added_color,
+                0.0,
+                x,
+                baseline,
+            ) + 8.0;
         }
         if let Some(removed) = self.removed {
-            paint.set_color(self.removed_color);
-            canvas.draw_str(
-                &format!("−{removed}"),
-                (x, baseline),
+            self.shaper.draw(
+                canvas,
                 &self.trail_font,
-                &paint,
+                &format!("−{removed}"),
+                self.removed_color,
+                0.0,
+                x,
+                baseline,
             );
         }
 
@@ -2735,17 +2745,16 @@ impl HeaderFace {
             .last()
             .map(|(_, zone)| zone.left)
             .unwrap_or(self.width - self.inset);
-        paint.set_color(self.title_color);
-        let title_width = self.title_font.measure_str(&self.title, None).0;
-        canvas.draw_str(
-            &self.title,
-            (
-                (rect.left + buttons_left - self.inset - title_width)
-                    .max(rect.left + self.chevron.right),
-                baseline,
-            ),
+        let title_width = self.shaper.advance(&self.title_font, &self.title);
+        self.shaper.draw(
+            canvas,
             &self.title_font,
-            &paint,
+            &self.title,
+            self.title_color,
+            0.0,
+            (rect.left + buttons_left - self.inset - title_width)
+                .max(rect.left + self.chevron.right),
+            baseline,
         );
     }
 }

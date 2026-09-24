@@ -286,6 +286,7 @@ impl View for TocView {
                 ),
                 theme: theme_ui,
                 title_font,
+                shaper: imba::TextShaper::of(ui),
                 context: self.context.clone(),
                 scaled_pad: true,
                 keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
@@ -784,6 +785,7 @@ impl View for OutlineView {
                 ),
                 theme: theme_ui,
                 title_font,
+                shaper: imba::TextShaper::of(ui),
                 context: self.location.name().to_owned(),
                 scaled_pad: false,
                 keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
@@ -848,6 +850,7 @@ struct DrawerPanel<'a, Command, Keys> {
     content: imba::LayoutBox<'a, Command>,
     theme: ::editor::theme::UiTheme,
     title_font: skia_safe::Font,
+    shaper: std::rc::Rc<imba::TextShaper>,
     context: String,
     /// The toc panel scales its content pad with the height; the
     /// outline panel uses a hairline.
@@ -876,6 +879,7 @@ where
             content,
             theme,
             title_font,
+            shaper,
             context,
             keys,
             ..
@@ -890,6 +894,7 @@ where
             .backdrop(
                 move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
                     crate::rows::paint_panel_chrome(
+                        &shaper,
                         canvas,
                         rect,
                         &theme,

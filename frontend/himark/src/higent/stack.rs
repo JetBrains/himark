@@ -390,6 +390,7 @@ impl WidgetStack {
                     let id = held.id.clone();
                     let text: String = held.message.text.lines().next().unwrap_or("").to_owned();
                     let row_font = row_font.clone();
+                    let shaper = imba::TextShaper::of(ui);
                     let row_y = queue_y + line + index as f32 * line;
                     let row = leaf::<StackCommand>(box_w - box_pad * 2.0, line)
                         .paint_instead(move |_arena, canvas, rect| {
@@ -401,12 +402,14 @@ impl WidgetStack {
                                 2.5,
                                 &paint,
                             );
-                            paint.set_color(text_color);
-                            canvas.draw_str(
-                                text.as_str(),
-                                (rect.left + line * 0.55, rect.top + line * 0.66),
+                            shaper.draw(
+                                canvas,
                                 &row_font,
-                                &paint,
+                                &text,
+                                text_color,
+                                0.0,
+                                rect.left + line * 0.55,
+                                rect.top + line * 0.66,
                             );
                             paint.set_color(dim);
 

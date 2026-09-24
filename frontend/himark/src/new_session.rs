@@ -2445,9 +2445,9 @@ impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
             crate::fonts::ui_text_font(ui, chrome.menu_row_size)
         };
         let text_width = if heading {
-            crate::combo::tracked_width(&font, &label)
+            crate::combo::tracked_width(ui, &font, &label)
         } else {
-            font.measure_str(&label, None).0
+            imba::text_advance(ui, &font, &label)
         };
         let natural = text_width + chrome.menu_pad * if heading { 2.0 } else { 2.75 };
         let width = if constraints.max.width.is_finite() {
