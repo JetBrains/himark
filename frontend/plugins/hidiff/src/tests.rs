@@ -6,6 +6,32 @@ use himark::AppExt;
 use himark::{AppFonts, Application};
 use std::sync::{mpsc, Arc};
 
+/// TEST SUPPORT: build an `OpenedDiffPair` over two freshly-built,
+/// not-yet-registered sides (`DiffSide::Built`) — what the off-thread
+/// open step produces for a canvas row when both sides are closed. The
+/// landing registers them (register-at-display) and the normalize lane
+/// computes the diff.
+fn prepared_pair(
+    old_location: himark::ResourceLocation,
+    old: himark::Document,
+    new_location: himark::ResourceLocation,
+    new: himark::Document,
+    width: f32,
+) -> himark::OpenedDiffPair {
+    himark::OpenedDiffPair {
+        old: himark::DiffSide::Built {
+            location: old_location,
+            document: himark::BuiltDocument { document: old },
+        },
+        new: himark::DiffSide::Built {
+            location: new_location,
+            document: himark::BuiltDocument { document: new },
+        },
+        width,
+        failed: false,
+    }
+}
+
 #[test]
 fn the_diff_panel_opens_edits_and_dismantles() {
     let ui = himark::test_document::test_ui();
@@ -1521,7 +1547,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
     let (old_doc, _, old_entity) = open("old side\n", false);
     let (new_doc, new_pane, new_entity) = open("new side\n", true);
 
-    let diff = himark::OpenDocuments::track_diff(&mut store, old_doc, new_doc, false, None)
+    let diff = himark::OpenDocuments::track_diff(&mut store, old_doc, new_doc, false)
         .expect("both sides registered");
     let handle = himark::OpenDocuments::diff_handle(&store, diff).expect("tracked");
     let right_extras = {
@@ -1655,14 +1681,14 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     let old = register(&format!("{middle}old tail\n"), "old");
     let new = register(&format!("{middle}new tail\n"), "new");
 
-    let panel = diff_panel(&mut store, &ui, old, new, None).expect("both registered");
+    let panel = diff_panel(&mut store, &ui, old, new).expect("both registered");
     let state = panel.diff_state(&store).expect("attached at construction");
 
     // The entry is the whole-replace seed: exact over the live text,
     // and NOT normalized at birth — its dressing (washes, folds) is
     // owed to the normalize lane, never computed on this thread. (The
     // "one normalization owed" round-trip is pinned in the documents
-    // crate's a_stale_prepared_track_defers_to_the_normalize_lane.)
+    // crate's diff tests.)
     let generation = himark::OpenDocuments::document_ref(&store, new)
         .and_then(|document| document.diff(state.diff_id()).map(|e| e.generation()))
         .expect("the entry rides the target");
@@ -1680,7 +1706,7 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
 }
 
 #[test]
-fn a_shared_pair_ignores_a_handed_prep() {
+fn a_shared_pair_reuses_the_standing_entry() {
     let ui = himark::test_document::test_ui();
     let mut store = policy_store();
     let theme = himark::Theme::embedded();
@@ -1692,27 +1718,11 @@ fn a_shared_pair_ignores_a_handed_prep() {
     let old = register("one\ntwo\n", "old");
     let new = register("one\nTWO\n", "new");
 
-    himark::OpenDocuments::track_diff(&mut store, old, new, true, None).expect("tracked");
+    himark::OpenDocuments::track_diff(&mut store, old, new, true).expect("tracked");
 
-    let foreign_left = himark::Text::from_string_exact("something\nelse\n".to_owned());
-    let foreign_right = himark::Text::from_string_exact("something\nELSE\n".to_owned());
-    let operation = myersdiff::diff(&foreign_left, &foreign_right);
-    let marks = himark::prepare_marks(&operation, &foreign_left);
-    // The pair is already tracked, so this foreign prep is dropped by
-    // dedup regardless of its stamp — the standing entry is the truth.
-    let panel = diff_panel(
-        &mut store,
-        &ui,
-        old,
-        new,
-        Some(DiffPrep {
-            operation,
-            marks,
-            base_revision: 0,
-            target_revision: 0,
-        }),
-    )
-    .expect("the shared pair still opens");
+    // The pair is already tracked; opening a pane over it reuses the
+    // standing entry rather than tracking a second one.
+    let panel = diff_panel(&mut store, &ui, old, new).expect("the shared pair still opens");
 
     let state = panel.diff_state(&store).expect("attached");
     let entry_len = himark::OpenDocuments::document_ref(&store, new)
@@ -2104,8 +2114,6 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         dense(&new_body),
     );
     let _ = (&markdown_fonts, &theme);
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
 
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
@@ -2122,14 +2130,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         removed: Some(80),
         updated: 0,
     };
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 1100.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
@@ -2233,8 +2234,6 @@ fn folded_squash_paint_cost_is_size_independent() {
             himark::Text::from_string_exact(new_body.clone()),
             dense(&new_body),
         );
-        let operation = myersdiff::diff(old.text(), new.text());
-        let marks = himark::prepare_marks(&operation, old.text());
         let location = |name: &str, kind| {
             himark::ResourceLocation::new(
                 kind,
@@ -2250,14 +2249,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             removed: Some(2),
             updated: 0,
         };
-        let built = himark::BuiltFileDiff {
-            old,
-            new,
-            operation,
-            marks,
-            width: 1100.0,
-            failed: None,
-        };
+        let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
         let canvas = {
             let ui = app.ui_handle();
             let mut store = app.store_mut();
@@ -2328,8 +2320,6 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
             kind,
@@ -2347,14 +2337,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     };
     // A MISMATCHED build width — the real canvas arms at one width
     // and lands after a resize; the rewrap ride reconciles.
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 700.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 700.0);
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
@@ -2370,11 +2353,25 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     };
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
+    // The diff is dressed by the normalize lane, not at birth
+    // (docs/no-diff-on-ui-thread) — the before-cards and host text land
+    // at their real rows once it settles.
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
-    for _ in 0..6 {
+    for _ in 0..40 {
         let _ =
             himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
         let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
 
@@ -2445,8 +2442,6 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
             kind,
@@ -2462,14 +2457,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         removed: Some(2),
         updated: 0,
     };
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 1100.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
@@ -2625,8 +2613,6 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let markdown_fonts = himark::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
     let location = |name: &str, kind| {
         himark::ResourceLocation::new(
             kind,
@@ -2642,14 +2628,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         removed: Some(2),
         updated: 0,
     };
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 1100.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
@@ -2665,11 +2644,24 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     };
     assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
 
+    // The diff is dressed by the normalize lane, not at birth
+    // (docs/no-diff-on-ui-thread) — the folds appear once it lands.
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Application| {
-        for _ in 0..8 {
+        for _ in 0..40 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
             let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
         }
     };
@@ -2781,7 +2773,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
         removed: Some(1),
         updated,
     };
-    let built_diff = |old_body: &str, new_body: &str| {
+    let built_diff = |file: &himark::diff_canvas::CanvasFile, old_body: &str, new_body: &str| {
         let old = himark::Document::new(
             himark::Text::from_string_exact(old_body),
             himark::Markup::new(),
@@ -2790,16 +2782,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
             himark::Text::from_string_exact(new_body),
             himark::Markup::new(),
         );
-        let operation = myersdiff::diff(old.text(), new.text());
-        let marks = himark::prepare_marks(&operation, old.text());
-        himark::BuiltFileDiff {
-            old,
-            new,
-            operation,
-            marks,
-            width: 1100.0,
-            failed: None,
-        }
+        prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0)
     };
 
     let file_a = canvas_file("a.md", 1);
@@ -2813,7 +2796,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
                 folder: location("proj", himark::ResourceType::directory()),
             },
             file_a.clone(),
-            built_diff("one\ntwo\n", "one\nTWO\n"),
+            built_diff(&file_a, "one\ntwo\n", "one\nTWO\n"),
         )
     };
 
@@ -2857,7 +2840,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
             &mut store,
             &ui,
             file_a.new.clone(),
-            built_diff("one\ntwo\n", "one\nTWO\nthree\n"),
+            built_diff(&file_a, "one\ntwo\n", "one\nTWO\nthree\n"),
         );
     }
     assert_eq!(view.probe_rows(&app.store())[0].1, canvas::RowPhase::Built);
@@ -2894,6 +2877,28 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
 
+    // The seed is the whole-replace; the diff is dressed by the normalize
+    // lane, never at birth (docs/no-diff-on-ui-thread). Drive that lane so
+    // identical sides settle to the identity before we assert on it.
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let settle = |app: &mut Application| {
+        for _ in 0..8 {
+            let window = app.sole_window();
+            app.perform_batch(vec![himark::AppCommand::ViewportResized(window, size)]);
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+        }
+    };
+
     let doc_loc = |name: &str| {
         himark::ResourceLocation::new(
             himark::ResourceType::document(),
@@ -2906,8 +2911,6 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let body = "hello\nworld\n";
     let old = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
     let new = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
     let file = himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
         old: doc_loc("a.md.old"),
@@ -2916,14 +2919,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         removed: Some(0),
         updated: 0,
     };
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 1100.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
 
     let view = {
         let ui = app.ui_handle();
@@ -2968,10 +2964,11 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let has_edit =
         |op: &operation::Operation| op.iter().any(|o| !matches!(o, operation::Op::Retain(_)));
 
+    settle(&mut app);
     let before = op_of(&app);
     assert!(
         !has_edit(&before),
-        "identical sides start as the identity diff: {before:?}"
+        "identical sides settle to the identity diff: {before:?}"
     );
 
     // Type an "X" after "hello" into the registered target document.
@@ -3039,16 +3036,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     };
     let old = make("hello\n");
     let new = make("hello\n");
-    let operation = myersdiff::diff(old.text(), new.text());
-    let marks = himark::prepare_marks(&operation, old.text());
-    let built = himark::BuiltFileDiff {
-        old,
-        new,
-        operation,
-        marks,
-        width: 1100.0,
-        failed: None,
-    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
 
     let view = {
         let ui = app.ui_handle();
@@ -3206,29 +3194,25 @@ fn seeded_working_canvas(
 ) -> (
     DiffCanvasView,
     himark::ResourceLocation,
-    himark::BuiltFileDiff,
+    himark::OpenedDiffPair,
 ) {
     let key = himark::ResourceLocation::new(
         himark::ResourceType::document(),
         himark::Authority::new("test"),
         vec!["proj".to_owned(), "a.md".to_owned()],
     );
+    let file = canvas_file(&key, 1);
     let make = |body: &str| {
         himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new())
     };
     let built = |old_body: &str, new_body: &str| {
-        let old = make(old_body);
-        let new = make(new_body);
-        let operation = myersdiff::diff(old.text(), new.text());
-        let marks = himark::prepare_marks(&operation, old.text());
-        himark::BuiltFileDiff {
-            old,
-            new,
-            operation,
-            marks,
-            width: 1100.0,
-            failed: None,
-        }
+        prepared_pair(
+            file.old.clone(),
+            make(old_body),
+            file.new.clone(),
+            make(new_body),
+            1100.0,
+        )
     };
     let view = {
         let ui = app.ui_handle();
@@ -3243,7 +3227,7 @@ fn seeded_working_canvas(
                     vec!["proj".to_owned()],
                 ),
             },
-            canvas_file(&key, 1),
+            file.clone(),
             built("one\n", "ONE\n"),
         )
     };
@@ -3279,18 +3263,14 @@ fn a_retired_file_leaves_no_orphan_row() {
     };
     let make =
         |b: &str| himark::Document::new(himark::Text::from_string_exact(b), himark::Markup::new());
-    let built = |o: &str, n: &str| {
-        let (old, new) = (make(o), make(n));
-        let operation = myersdiff::diff(old.text(), new.text());
-        let marks = himark::prepare_marks(&operation, old.text());
-        himark::BuiltFileDiff {
-            old,
-            new,
-            operation,
-            marks,
-            width: 1100.0,
-            failed: None,
-        }
+    let built = |name: &str, o: &str, n: &str| {
+        prepared_pair(
+            loc(&format!("{name}.old")),
+            make(o),
+            loc(name),
+            make(n),
+            1100.0,
+        )
     };
 
     // Seed a.md built, then reconcile in b.md and build it too.
@@ -3308,14 +3288,14 @@ fn a_retired_file_leaves_no_orphan_row() {
                 ),
             },
             file("a.md", 1),
-            built("a\n", "A\n"),
+            built("a.md", "a\n", "A\n"),
         )
     };
     view.reconcile_for_tests(&mut app.store_mut(), vec![file("a.md", 1), file("b.md", 1)]);
     {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        view.land_for_tests(&mut store, &ui, loc("b.md"), built("b\n", "B\n"));
+        view.land_for_tests(&mut store, &ui, loc("b.md"), built("b.md", "b\n", "B\n"));
     }
 
     // RESTAMP a.md — this runs `refresh_header(a.md)` (the cover
@@ -3324,7 +3304,7 @@ fn a_retired_file_leaves_no_orphan_row() {
     {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
-        view.land_for_tests(&mut store, &ui, loc("a.md"), built("a\n", "AA\n"));
+        view.land_for_tests(&mut store, &ui, loc("a.md"), built("a.md", "a\n", "AA\n"));
     }
     assert_eq!(
         view.probe_cover(&app.store(), &loc("a.md")),

@@ -594,10 +594,9 @@ pub fn open_diff_documents(
     window: himark::WindowId,
     left: himark::DocumentId,
     right: himark::DocumentId,
-    prep: Option<DiffPrep>,
     fx: &mut himark::AppFx<'_>,
 ) -> bool {
-    let Some(panel) = diff_panel(store, ui, left, right, prep) else {
+    let Some(panel) = diff_panel(store, ui, left, right) else {
         return false;
     };
     let mut entity = himark::Windows::window(store, window).expect("the window entity");
@@ -606,16 +605,74 @@ pub fn open_diff_documents(
     opened
 }
 
-#[derive(Clone)]
-pub struct DiffPrep {
-    pub operation: himark::Operation,
-    pub marks: himark::PreparedMarks,
-    /// The revisions the `operation` was diffed against — the stamp
-    /// `track_diff` checks the LIVE pair against before trusting the
-    /// prepared op (a moved pair drops it, undressed for one normalize
-    /// round-trip, rather than installing a stale diff).
-    pub base_revision: u64,
-    pub target_revision: u64,
+/// Resolve one opened side to a registered `DocumentId`: reuse the open
+/// one, or REGISTER the freshly-built one (register-at-display — a
+/// located document is always an OpenDocuments document,
+/// docs/editor/diff-canvas.md §7). A `Built` side whose location was
+/// opened by someone else meanwhile reuses the winner and drops the
+/// build — the one genuine (and rare) throwaway, a lost open race.
+fn register_or_reuse(store: &mut Store, side: himark::DiffSide) -> himark::DocumentId {
+    match side {
+        himark::DiffSide::Open(id) => id,
+        himark::DiffSide::Built { location, document } => {
+            match OpenDocuments::by_location(store, &location) {
+                Some(id) => id,
+                None => {
+                    let revision = document.document.revision();
+                    OpenDocuments::register(
+                        store,
+                        document.document,
+                        Some(location.clone()),
+                        location.name().to_owned(),
+                        revision,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/// Install an opened pair: register/reuse both sides, then
+/// `build_diff_view` (which tracks the diff — the normalize lane
+/// computes and dresses it — and mounts the `UnifiedDiffView`). The
+/// one landing behind the split-diff pane AND the diff canvas; each
+/// wraps the returned id in its own face.
+pub fn install_opened_pair(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    pair: himark::OpenedDiffPair,
+    embedded: bool,
+) -> Option<himark::DiffViewId> {
+    let old_id = register_or_reuse(store, pair.old);
+    let new_id = register_or_reuse(store, pair.new);
+    let half_width = match embedded {
+        true => {
+            let gutter = himark::env::Themes::of(store).ui().editor_gutter.width;
+            (pair.width - gutter).max(120.0)
+        }
+        false => OPEN_HALF_WIDTH,
+    };
+    build_diff_view(store, ui, old_id, new_id, half_width, embedded)
+}
+
+/// Open an opened pair as a standalone split-diff pane (the changes
+/// view's "Open Diff", the diff navigator). Shares the whole road with
+/// the canvas — only the face differs.
+pub fn open_opened_diff_pane(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    window: himark::WindowId,
+    pair: himark::OpenedDiffPair,
+    fx: &mut himark::AppFx<'_>,
+) -> bool {
+    let Some(id) = install_opened_pair(store, ui, pair, false) else {
+        return false;
+    };
+    let panel = DiffPanelView::over(id);
+    let mut entity = himark::Windows::window(store, window).expect("the window entity");
+    let opened = entity.open_panel(store, ui, Box::new(panel), fx);
+    himark::Windows::put(store, window, entity);
+    opened
 }
 
 pub fn diff_panel(
@@ -623,102 +680,33 @@ pub fn diff_panel(
     ui: &imba::UiCtx,
     left: himark::DocumentId,
     right: himark::DocumentId,
-    prep: Option<DiffPrep>,
 ) -> Option<DiffPanelView> {
-    let id = build_diff_view(store, ui, left, right, prep, OPEN_HALF_WIDTH, false)?;
+    let id = build_diff_view(store, ui, left, right, OPEN_HALF_WIDTH, false)?;
     Some(DiffPanelView::over(id))
 }
 
-/// Register a tracked diff over two ALREADY-REGISTERED documents and
-/// mint the store-held `DiffView` for it: track it through the Diffs
-/// subsystem (so the normalize lane runs and edits compose), add a
-/// bounded editor per half, seed the prepared markups, and attach the
-/// `DiffState`. Returns the `DiffViewId` for a `PairPane` to render.
-/// The reusable core of `diff_panel`; the diff canvas drives it per
-/// row so its rows are registered documents, not throwaway snapshots
-/// (docs/editor/diff-canvas.md §7, docs/editor/diff-canvas.md §7).
+/// Make a diff view over two ALREADY-REGISTERED documents and mint the
+/// store-held `DiffView`: track the diff through the Diffs subsystem
+/// (which SEEDS it — the normalize lane computes the real diff from the
+/// documents and dresses it), add a bounded editor per half, and attach
+/// the `DiffState`. No diff is computed here (docs/no-diff-on-ui-thread).
+/// The reusable core the split-diff pane and the diff canvas both mount.
 pub fn build_diff_view(
     store: &mut Store,
     ui: &imba::UiCtx,
     left: himark::DocumentId,
     right: himark::DocumentId,
-    prep: Option<DiffPrep>,
     half_width: f32,
     embedded: bool,
 ) -> Option<himark::DiffViewId> {
     let fonts = himark::env::Fonts::of(store)();
     let theme = himark::env::Themes::of(store);
 
-    // An already-tracked pair ignores the prep (dedup); an untracked
-    // one hands its prep to `track_diff`, which trusts it ONLY if the
-    // live pair still stands where it was diffed. NO synchronous diff
-    // is ever computed here — a missing prep means the tracking opens
-    // on the whole-replace seed and the normalize lane owes the
-    // minimal diff off-thread (docs/no-diff-on-ui-thread).
-    let prep = match OpenDocuments::pair_tracked(store, left, right) {
-        true => None,
-        false => prep,
-    };
-
-    let diff = OpenDocuments::track_diff(
-        store,
-        left,
-        right,
-        false,
-        prep.as_ref().map(|prep| himark::PreparedDiff {
-            operation: prep.operation.clone(),
-            base_revision: prep.base_revision,
-            target_revision: prep.target_revision,
-        }),
-    )?;
-    // Did the prepared op survive `track_diff`'s live-pair check? If it
-    // did, the entry is normalized at birth and its prepared marks are
-    // valid to seed; if it was rejected (a moved pair), the marks are
-    // stale — drop them and let the pane dress on the normalize
-    // landing, so a stale wash never shows.
-    let dressed = OpenDocuments::document_ref(store, right)
-        .and_then(|document| document.diff(diff).map(|entry| entry.generation() > 0))
-        .unwrap_or(false);
-    let prep = if dressed { prep } else { None };
+    let diff = OpenDocuments::track_diff(store, left, right, false)?;
     let handle = OpenDocuments::diff_handle(store, diff)?;
     let target_markup = OpenDocuments::document_ref(store, right)
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
 
-    fn seed(
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
-        document_id: himark::DocumentId,
-        marks: himark::MarkupId,
-        markup: &himark::Markup,
-    ) {
-        let Some(mut document) = OpenDocuments::document(store, document_id) else {
-            return;
-        };
-        document.replace_markup(
-            marks,
-            markup.clone(),
-            &[],
-            store,
-            ui,
-            fonts,
-            theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        OpenDocuments::put_document(store, document_id, document);
-    }
-    if let Some(prep) = &prep {
-        seed(
-            store,
-            ui,
-            &fonts,
-            &theme,
-            left,
-            handle.base_markup,
-            &prep.marks.left,
-        );
-    }
     let mut open =
         |document_id: himark::DocumentId, marks: himark::MarkupId| -> Option<EditorIdView> {
             let mut document = OpenDocuments::document(store, document_id)?;
@@ -746,25 +734,16 @@ pub fn build_diff_view(
         return None;
     };
     // The pane's own right-half extras (word tints + fold strips) —
-    // editor-owned, dying with the half. THE diff markup
-    // (`target_markup`, the hunk washes) stays the diff machinery's.
+    // editor-owned, dying with the half; derived by the marks job on
+    // settle. THE diff markup (`target_markup`, the hunk washes) stays
+    // the diff machinery's — seeded by `track_diff`, minimized by the
+    // normalize lane.
     let right_extras = {
         let mut document = OpenDocuments::document(store, right)?;
         let id = document.add_owned_markup(right_view.editor());
         OpenDocuments::put_document(store, right, document);
         id
     };
-    if let Some(prep) = &prep {
-        seed(
-            store,
-            ui,
-            &fonts,
-            &theme,
-            right,
-            right_extras,
-            &prep.marks.right,
-        );
-    }
 
     let state = {
         let left_document = OpenDocuments::document_ref(store, left)?;
@@ -775,7 +754,7 @@ pub fn build_diff_view(
             right_document,
             handle.base_markup,
             right_extras,
-            prep.map(|prep| prep.marks.window),
+            None,
         )
     };
     let id = himark::DiffViewId::mint();
@@ -826,7 +805,7 @@ impl himark::DynamicCommand for OpenDiff {
         let (Some(newest), Some(older)) = (recent.first(), recent.get(1)) else {
             return;
         };
-        let _ = open_diff_documents(store, ui, window, older.0, newest.0, None, _fx);
+        let _ = open_diff_documents(store, ui, window, older.0, newest.0, _fx);
     }
 }
 

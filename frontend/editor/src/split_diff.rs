@@ -46,6 +46,16 @@ pub struct DiffState {
     unified_layout: crate::unified_diff::DiffLayout,
     inline_editor: Option<crate::editor::EditorId>,
 
+    /// The diff generation the inline face was last built for. The
+    /// inline editor is a bounded build off the CURRENT dressing (folds
+    /// + before-cards); when the normalize lane lands a new generation
+    /// the split face heals in place, but the inline face — which has no
+    /// alignment partner to re-fold its off-screen extent — must be
+    /// rebuilt from the fresh markup (docs/no-diff-on-ui-thread). A
+    /// bounded rebuild stays O(viewport); an in-place full re-layout
+    /// would not.
+    inline_generation: u64,
+
     align_pending: Option<Range<u32>>,
 
     #[cfg(any(test, feature = "test-support"))]
@@ -93,6 +103,7 @@ impl DiffState {
             align_pending: Some(0..left.text().byte_count() as u32),
             unified_layout: crate::unified_diff::DiffLayout::Split,
             inline_editor: None,
+            inline_generation: entry.generation(),
             #[cfg(any(test, feature = "test-support"))]
             ui_synced_boundaries: 0,
             pair_repair_token: None,
@@ -124,6 +135,18 @@ impl DiffState {
     ) {
         self.unified_layout = layout;
         self.inline_editor = inline_editor;
+    }
+
+    /// The inline face was built for an older dressing than the pane has
+    /// now adopted — it owes a rebuild off the fresh markup.
+    pub(crate) fn inline_stale(&self) -> bool {
+        self.inline_editor.is_some() && self.inline_generation != self.seen_generation
+    }
+
+    /// Record that the inline face is now built for the adopted
+    /// generation (called after a build or a rebuild).
+    pub(crate) fn note_inline_built(&mut self) {
+        self.inline_generation = self.seen_generation;
     }
 
     pub(crate) fn right_marks(&self) -> crate::markup::MarkupId {

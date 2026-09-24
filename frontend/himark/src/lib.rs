@@ -63,17 +63,18 @@ mod workspace;
 
 pub use crate::diffs::{
     rearm_base_asks, sync_stripe_bases, DiffChanged, DiffHandle, DiffNormalizeEffect,
-    DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, PreparedDiff, StripeBases,
+    DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
 };
 pub use crate::family_rows::{
     mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,
     SessionFamilyValue, SyncObserver, SyncObservers,
 };
 pub use crate::workspace::{
-    open_by_location_effect, open_locations, BuildDocumentEffect, BuildFileDiffEffect,
-    BuiltDocument, BuiltFileDiff, FindEffect, ListDirectoryEffect, LocationsChannel,
-    LspLocationsEffect, LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect,
-    PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId, StoreDocumentEffect,
+    open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument, DiffSide,
+    DiffSideInput, FindEffect, ListDirectoryEffect, LocationsChannel, LspLocationsEffect,
+    LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
+    OpenedDiffPair, PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId,
+    StoreDocumentEffect,
 };
 pub use ::editor::*;
 pub use app::*;

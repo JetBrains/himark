@@ -49,135 +49,120 @@ pub fn install_open_handlers(
         Arc::clone(&workshop),
         Arc::clone(&languages),
     ));
-    app.register_handler::<himark::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler {
-        caller: caller.clone(),
-        workshop: Arc::clone(&workshop),
-        languages: Arc::clone(&languages),
-        diff_policy: Arc::clone(&diff_policy),
-    });
-    app.register_handler::<himark::BuildFileDiffEffect>(BuildFileDiffHandler {
+    let _ = &diff_policy;
+    let shop = DiffOpenShop {
         caller,
         workshop,
         languages,
-        diff_policy,
-    });
+    };
+    app.register_handler::<himark::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
+        shop.clone(),
+    ));
+    app.register_handler::<himark::OpenDiffPairEffect>(OpenDiffPairHandler(shop));
     app.register_navigator(DiffNavigator);
 }
 
-/// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
-/// fetches, both documents, the Myers pass and the mark prep all run
-/// here, off the UI thread; the landing only mounts editors.
-pub struct BuildFileDiffHandler {
-    pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<::himark::Workshop>,
-    pub languages: Arc<himark::SyntaxLanguages>,
-    pub diff_policy: Arc<dyn himark::diff::DiffPolicy>,
+/// The ONE off-thread step both diff roads share (docs/editor/diff-canvas.md
+/// §4): ensure each side is a registered document. An OPEN side passes
+/// through by id; a CLOSED side is fetched and built here (the landing
+/// registers it). No diff runs here — the diff view's normalize lane
+/// computes it from the registered documents (docs/no-diff-on-ui-thread).
+#[derive(Clone)]
+struct DiffOpenShop {
+    caller: imba::effect::EffectCaller,
+    workshop: Arc<::himark::Workshop>,
+    languages: Arc<himark::SyntaxLanguages>,
 }
 
-impl EffectHandler<himark::BuildFileDiffEffect> for BuildFileDiffHandler {
-    async fn handle(&self, effect: himark::BuildFileDiffEffect) -> himark::BuiltFileDiff {
-        let fetch = |location: ResourceLocation| self.caller.call(FetchDocumentEffect { location });
-        let old_text = fetch(effect.old.clone()).await.flatten();
-        let new_text = fetch(effect.new.clone()).await.flatten();
-        let failed = (old_text.is_none() && new_text.is_none())
-            .then(|| format!("contents unavailable: {}", effect.new.name()));
-        let build = |location: &ResourceLocation, text: &str| {
-            self.workshop.with_ctx(|store, ui| {
-                document_for(
-                    &self.languages,
-                    location.name(),
-                    text,
-                    store,
-                    ui,
-                    &self.workshop.fonts(),
-                    &self.workshop.theme(),
+impl DiffOpenShop {
+    /// Resolve a side to the thing the landing installs, and whether it
+    /// was reachable. An open side passes through; a closed side is
+    /// fetched and built (registered at the landing, at its location).
+    async fn resolve(&self, input: himark::DiffSideInput) -> (himark::DiffSide, bool) {
+        match input {
+            himark::DiffSideInput::Open(document) => (himark::DiffSide::Open(document), true),
+            himark::DiffSideInput::Fetch(location) => {
+                let text = self
+                    .caller
+                    .call(FetchDocumentEffect {
+                        location: location.clone(),
+                    })
+                    .await
+                    .flatten();
+                let present = text.is_some();
+                let document = self.workshop.with_ctx(|store, ui| {
+                    document_for(
+                        &self.languages,
+                        location.name(),
+                        text.as_deref().unwrap_or(""),
+                        store,
+                        ui,
+                        &self.workshop.fonts(),
+                        &self.workshop.theme(),
+                    )
+                });
+                (
+                    himark::DiffSide::Built {
+                        location,
+                        document: himark::BuiltDocument { document },
+                    },
+                    present,
                 )
-            })
-        };
-        let old = build(&effect.old, old_text.as_deref().unwrap_or(""));
-        let new = build(&effect.new, new_text.as_deref().unwrap_or(""));
-        let operation =
-            self.diff_policy
-                .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
-        let marks = himark::prepare_marks(&operation, old.text());
-        himark::BuiltFileDiff {
-            old,
-            new,
-            operation,
-            marks,
-            width: effect.width,
-            failed,
+            }
+        }
+    }
+
+    async fn open_pair(
+        &self,
+        old: himark::DiffSideInput,
+        new: himark::DiffSideInput,
+        width: f32,
+    ) -> himark::OpenedDiffPair {
+        let (old_side, old_present) = self.resolve(old).await;
+        let (new_side, new_present) = self.resolve(new).await;
+        himark::OpenedDiffPair {
+            old: old_side,
+            new: new_side,
+            width,
+            failed: !old_present && !new_present,
         }
     }
 }
 
-pub struct OpenDiffByLocationsHandler {
-    pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<::himark::Workshop>,
-    pub languages: Arc<himark::SyntaxLanguages>,
-    pub diff_policy: Arc<dyn himark::diff::DiffPolicy>,
-}
+struct OpenDiffByLocationsHandler(DiffOpenShop);
 
-impl OpenDiffByLocationsHandler {
-    async fn open(
-        &self,
-        window: himark::WindowId,
-        old_location: ResourceLocation,
-        new_location: ResourceLocation,
-    ) -> AppCommand {
-        let fetch = |location: ResourceLocation| self.caller.call(FetchDocumentEffect { location });
-        let old_text = fetch(old_location.clone()).await.flatten();
-        let new_text = fetch(new_location.clone()).await.flatten();
-        if old_text.is_none() && new_text.is_none() {
-            return AppCommand::Dynamic(
-                window,
-                Arc::new(FetchFailed {
-                    location: new_location,
-                }),
-            );
+impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
+    async fn handle(&self, effect: himark::OpenDiffByLocationsEffect) -> AppCommand {
+        // The pane's editor width is resolved by `install_opened_pair`
+        // (non-embedded → OPEN_HALF_WIDTH); the carried width is unused.
+        let pair = self.0.open_pair(effect.old, effect.new, 0.0).await;
+        if pair.failed {
+            // Both sides absent → both were fetched, so a built side
+            // carries its location for the notice.
+            let location = [&pair.old, &pair.new]
+                .into_iter()
+                .find_map(|side| match side {
+                    himark::DiffSide::Built { location, .. } => Some(location.clone()),
+                    himark::DiffSide::Open(_) => None,
+                })
+                .expect("a failed pair has a built side");
+            return AppCommand::Dynamic(effect.window, Arc::new(FetchFailed { location }));
         }
-        let build = |location: &ResourceLocation, text: &str| {
-            self.workshop.with_ctx(|store, ui| {
-                document_for(
-                    &self.languages,
-                    location.name(),
-                    text,
-                    store,
-                    ui,
-                    &self.workshop.fonts(),
-                    &self.workshop.theme(),
-                )
-            })
-        };
-        let old = build(&old_location, old_text.as_deref().unwrap_or(""));
-        let new = build(&new_location, new_text.as_deref().unwrap_or(""));
-
-        let operation =
-            self.diff_policy
-                .diff(old.text(), new.text(), diff_syntax(&old, &new).as_ref());
-        let marks = himark::prepare_marks(&operation, old.text());
-        let prep = hidiff::DiffPrep {
-            operation,
-            marks,
-            base_revision: old.revision(),
-            target_revision: new.revision(),
-        };
         AppCommand::Dynamic(
-            window,
+            effect.window,
             Arc::new(OpenDiffPair {
-                old_location,
-                old,
-                new,
-                new_location,
-                prep,
+                window: effect.window,
+                pair,
             }),
         )
     }
 }
 
-impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
-    async fn handle(&self, effect: himark::OpenDiffByLocationsEffect) -> AppCommand {
-        self.open(effect.window, effect.old, effect.new).await
+struct OpenDiffPairHandler(DiffOpenShop);
+
+impl EffectHandler<himark::OpenDiffPairEffect> for OpenDiffPairHandler {
+    async fn handle(&self, effect: himark::OpenDiffPairEffect) -> himark::OpenedDiffPair {
+        self.0.open_pair(effect.old, effect.new, effect.width).await
     }
 }
 
@@ -189,34 +174,28 @@ impl himark::Navigator for DiffNavigator {
     fn navigate(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        _ui: &imba::UiCtx,
         window: himark::WindowId,
         place: &hidiff::DiffPlace,
         fx: &mut AppFx<'_>,
     ) -> Option<himark::Panel> {
-        let old = himark::OpenDocuments::by_location(store, &place.old);
-        let new = himark::OpenDocuments::by_location(store, &place.new);
-        let (Some(old), Some(new)) = (old, new) else {
-            fx.push(AnyEffect::new(himark::OpenDiffByLocationsEffect {
-                window,
-                old: place.old.clone(),
-                new: place.new.clone(),
-            }));
-            return None;
-        };
-
-        let panel = hidiff::diff_panel(store, ui, old, new, None)?;
-        Some(himark::Panel::Plugin(Box::new(panel)))
+        // Resolve both sides on the UI thread — an open side hands over
+        // its live snapshot; the prep runs off-thread and the landing
+        // opens the dressed pane. Diffing never runs here.
+        let old = himark::DiffSideInput::resolve(store, place.old.clone());
+        let new = himark::DiffSideInput::resolve(store, place.new.clone());
+        fx.push(AnyEffect::new(himark::OpenDiffByLocationsEffect {
+            window,
+            old,
+            new,
+        }));
+        None
     }
 }
 
 pub struct OpenDiffPair {
-    old_location: ResourceLocation,
-    old: himark::Document,
-    new: himark::Document,
-    new_location: ResourceLocation,
-
-    prep: hidiff::DiffPrep,
+    window: himark::WindowId,
+    pair: himark::OpenedDiffPair,
 }
 
 impl DynamicCommand for OpenDiffPair {
@@ -230,36 +209,19 @@ impl DynamicCommand for OpenDiffPair {
         &self,
         app: &mut himark::Application,
         store: &mut Store,
-        window: himark::WindowId,
+        _window: himark::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut side = |location: &ResourceLocation, document: &himark::Document| {
-            match himark::OpenDocuments::by_location(store, location) {
-                Some(open_id) => (open_id, false),
-                None => (
-                    himark::OpenDocuments::register(
-                        store,
-                        document.clone(),
-                        Some(location.clone()),
-                        location.name().to_owned(),
-                        document.revision(),
-                    ),
-                    true,
-                ),
-            }
-        };
-        let (old_id, old_fresh) = side(&self.old_location, &self.old);
-        let (new_id, new_fresh) = side(&self.new_location, &self.new);
-
-        let prep = (old_fresh && new_fresh).then(|| self.prep.clone());
-        let _ = hidiff::open_diff_documents(store, ui, window, old_id, new_id, prep, fx);
-
+        let _ = hidiff::open_opened_diff_pane(store, ui, self.window, self.pair.clone(), fx);
         himark::sync_document_watches(store, fx);
         himark::sync_stripe_bases(store, fx);
     }
 }
 
+/// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
+/// fetches, both documents, the Myers pass and the mark prep all run
+/// here, off the UI thread; the landing only mounts editors.
 pub struct BuildDocumentHandler(
     pub Arc<::himark::Workshop>,
     pub Arc<himark::SyntaxLanguages>,
@@ -357,20 +319,3 @@ impl DynamicCommand for FetchFailed {
     }
 }
 
-/// Syntax context for the built pair: the fresh documents were parsed
-/// right here, so their trees match their texts exactly.
-fn diff_syntax<'a>(
-    old: &'a himark::Document,
-    new: &'a himark::Document,
-) -> Option<himark::diff::DiffSyntax<'a>> {
-    let target = new.syntax()?;
-    let base_tree = old
-        .syntax()
-        .filter(|base| base.language == target.language)
-        .and_then(|base| base.tree.as_deref());
-    Some(himark::diff::DiffSyntax {
-        language: &target.language,
-        base_tree,
-        target_tree: target.tree.as_deref(),
-    })
-}

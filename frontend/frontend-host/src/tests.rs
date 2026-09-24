@@ -8028,16 +8028,14 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
         fn perform(
             &self,
             _app: &mut himark::Application,
-            _store: &mut imba::store::Store,
+            store: &mut imba::store::Store,
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
+            let old = himark::DiffSideInput::resolve(store, self.old.clone());
+            let new = himark::DiffSideInput::resolve(store, self.new.clone());
             fx.push(imba::effect::AnyEffect::new(
-                himark::OpenDiffByLocationsEffect {
-                    window,
-                    old: self.old.clone(),
-                    new: self.new.clone(),
-                },
+                himark::OpenDiffByLocationsEffect { window, old, new },
             ));
         }
     }

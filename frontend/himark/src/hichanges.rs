@@ -954,14 +954,19 @@ impl crate::DynamicCommand for OpenDiffForPair {
     fn perform(
         &self,
         _app: &mut crate::Application,
-        _store: &mut Store,
+        store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        // Resolve both sides on the UI thread — an open side hands over
+        // its live registry snapshot, so the diff is against the live
+        // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
+        let old = crate::DiffSideInput::resolve(store, self.old.clone());
+        let new = crate::DiffSideInput::resolve(store, self.new.clone());
         let _ = fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
             window,
-            old: self.old.clone(),
-            new: self.new.clone(),
+            old,
+            new,
         }));
     }
 }

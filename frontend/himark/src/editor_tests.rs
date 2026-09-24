@@ -6090,7 +6090,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         "base.md".to_owned(),
         0,
     );
-    let diff = crate::OpenDocuments::track_diff(&mut app.store_mut(), base, target, true, None)
+    let diff = crate::OpenDocuments::track_diff(&mut app.store_mut(), base, target, true)
         .expect("tracked");
     let _ = window;
 
@@ -6259,7 +6259,7 @@ unrelated
         0,
     );
     let panel_diff =
-        crate::OpenDocuments::track_diff(&mut app.store_mut(), snapshot, target, false, None)
+        crate::OpenDocuments::track_diff(&mut app.store_mut(), snapshot, target, false)
             .expect("the panel road tracks");
     // The pane's own diff empties: HEAD catches up again.
     let target_text = crate::OpenDocuments::document_ref(app.store(), target)

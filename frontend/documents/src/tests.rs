@@ -56,12 +56,12 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
         0,
     );
 
-    let pane = OpenDocuments::track_diff(&mut store, base_id, target_id, false, None)
+    let pane = OpenDocuments::track_diff(&mut store, base_id, target_id, false)
         .expect("both registered");
     assert!(OpenDocuments::stripe_diff(&store, target_id).is_none());
 
     let stripes =
-        OpenDocuments::track_diff(&mut store, base_id, target_id, true, None).expect("dedups");
+        OpenDocuments::track_diff(&mut store, base_id, target_id, true).expect("dedups");
     assert_eq!(pane, stripes, "one diff per pair");
     let handle = OpenDocuments::stripe_diff(&store, target_id).expect("joined now");
     assert_eq!(handle.base, base_id);

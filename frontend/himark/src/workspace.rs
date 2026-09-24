@@ -41,6 +41,7 @@ impl Effect for BuildDocumentEffect {
     type Result = BuiltDocument;
 }
 
+#[derive(Clone)]
 pub struct BuiltDocument {
     pub document: crate::Document,
 }
@@ -60,41 +61,75 @@ impl Effect for OpenByLocationEffect {
     type Result = AppCommand;
 }
 
+/// The pane road's boundary type (himark → hiahp): the changes view's
+/// "Open Diff" and the diff navigator resolve the two sides on the UI
+/// thread and launch this; the handler opens both sides and lands the
+/// pane-open command.
 pub struct OpenDiffByLocationsEffect {
     pub window: crate::WindowId,
-    pub old: ResourceLocation,
-    pub new: ResourceLocation,
+    pub old: DiffSideInput,
+    pub new: DiffSideInput,
 }
 
 impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-/// One diff-canvas item's whole off-thread half (docs/editor/diff-canvas.md
-/// §4): fetch both sides, build language-aware documents, diff,
-/// prepare the marks. The landing only mounts.
-pub struct BuildFileDiffEffect {
-    pub old: ResourceLocation,
-    pub new: ResourceLocation,
-
-    /// The canvas's content width at arm time — the landing lays the
-    /// editors at it and re-arms if the panel resized meanwhile.
+/// The ONE off-thread step both diff roads share (docs/editor/diff-canvas.md
+/// §4): ensure each side is a REGISTERED document. An OPEN side passes
+/// through by id (no fetch, no build); a CLOSED side is fetched and
+/// built here and registered at the landing — the standard open road.
+/// It does NOT diff: the diff view's normalize lane computes the diff
+/// from the registered documents (docs/no-diff-on-ui-thread). The
+/// canvas has no business with Texts, parses, or operations.
+pub struct OpenDiffPairEffect {
+    pub old: DiffSideInput,
+    pub new: DiffSideInput,
+    /// The half width to lay the editors at (the canvas's content width).
     pub width: f32,
 }
 
-pub struct BuiltFileDiff {
-    pub old: crate::Document,
-    pub new: crate::Document,
-    pub operation: crate::Operation,
-    pub marks: crate::PreparedMarks,
-    pub width: f32,
-
-    /// Both sides unreachable — the row reports instead of mounting.
-    pub failed: Option<String>,
+impl Effect for OpenDiffPairEffect {
+    type Result = OpenedDiffPair;
 }
 
-impl Effect for BuildFileDiffEffect {
-    type Result = BuiltFileDiff;
+/// One side to open, resolved on the UI thread at launch — a reference,
+/// never content.
+pub enum DiffSideInput {
+    /// Already a registered document — use it as-is.
+    Open(crate::DocumentId),
+    /// Closed — the handler fetches and builds it, the landing registers.
+    Fetch(ResourceLocation),
+}
+
+impl DiffSideInput {
+    pub fn resolve(store: &imba::store::Store, location: ResourceLocation) -> Self {
+        match crate::OpenDocuments::by_location(store, &location) {
+            Some(document) => DiffSideInput::Open(document),
+            None => DiffSideInput::Fetch(location),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct OpenedDiffPair {
+    pub old: DiffSide,
+    pub new: DiffSide,
+    pub width: f32,
+    /// Both sides gone — the caller reports instead of mounting.
+    pub failed: bool,
+}
+
+/// What the landing does with a side: reuse the registered document, or
+/// register the freshly-built one at its location (register-at-display —
+/// the standard `BuiltDocument` payload).
+#[derive(Clone)]
+pub enum DiffSide {
+    Open(crate::DocumentId),
+    Built {
+        location: ResourceLocation,
+        document: BuiltDocument,
+    },
 }
 
 pub fn open_by_location_effect(

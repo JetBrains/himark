@@ -8,7 +8,7 @@ use crate::{AppCommand, AppFx};
 pub use documents::diffs::{
     adopt_base_location, land_base_built, land_normalized, rearm_base_asks, DiffChanged,
     DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect,
-    PreparedDiff, StripeBases,
+    StripeBases,
 };
 
 pub(crate) fn sync_diff_lanes(store: &mut Store, fx: &mut AppFx<'_>) {

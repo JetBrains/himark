@@ -78,39 +78,80 @@ impl UnifiedDiffView {
             return;
         }
         if next == DiffLayout::Inline && self.inline_editor.is_none() {
-            let fonts = crate::env::ui_collection(store, ui);
-            let theme = crate::env::Themes::of(store);
-            let width = self
-                .split
-                .right
-                .document
-                .layout_width(self.split.right.editor)
-                .max(200.0);
-            let shown = [
-                self.split.state.hunk_markup(),
-                self.split.state.right_marks(),
-            ];
-            let diff = self.split.state.diff_id();
-            let base = self.split.left.document.clone();
-            let right = &mut self.split.right.document;
-            let editor = fx.scope(UnifiedDiffCommand::Inline, |fx| {
-                let editor = right.add_editor(
-                    width,
-                    None,
-                    EditorBuild::Bounded,
-                    &shown,
-                    store,
-                    ui,
-                    &fonts,
-                    &theme,
-                    fx,
-                );
-                right.expand_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx);
-                editor
-            });
+            let editor = self.build_inline_editor(store, ui, fx);
             self.inline_editor = Some(editor);
+            self.split.state.note_inline_built();
         }
         self.layout = next;
+        self.split
+            .state
+            .set_unified(self.layout, self.inline_editor);
+    }
+
+    /// A bounded build of the inline face off the CURRENT dressing: it
+    /// shows the hunk washes and the fold strips (`right_marks`), and
+    /// its before-cards are expanded from the pane's live diff
+    /// operation. Never diffs (docs/no-diff-on-ui-thread).
+    fn build_inline_editor(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut UnifiedDiffEffects<'_>,
+    ) -> EditorId {
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        let width = self
+            .split
+            .right
+            .document
+            .layout_width(self.split.right.editor)
+            .max(200.0);
+        let shown = [
+            self.split.state.hunk_markup(),
+            self.split.state.right_marks(),
+        ];
+        let diff = self.split.state.diff_id();
+        let base = self.split.left.document.clone();
+        let right = &mut self.split.right.document;
+        fx.scope(UnifiedDiffCommand::Inline, |fx| {
+            let editor = right.add_editor(
+                width,
+                None,
+                EditorBuild::Bounded,
+                &shown,
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            );
+            right.expand_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx);
+            editor
+        })
+    }
+
+    /// The normalize lane landed a fresh dressing. The split face healed
+    /// in place; the inline face — a bounded build with no alignment
+    /// partner to re-fold its off-screen extent — is rebuilt from the
+    /// fresh markup, exactly the state it would have been born with had
+    /// the diff been dressed first. The rebuild is bounded, so this
+    /// stays O(viewport) (docs/no-diff-on-ui-thread, himark O(log n)).
+    fn refresh_inline_if_stale(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut UnifiedDiffEffects<'_>,
+    ) {
+        if !self.split.state.inline_stale() {
+            return;
+        }
+        let Some(stale) = self.inline_editor.take() else {
+            return;
+        };
+        self.split.right.document.remove_editor(stale);
+        let editor = self.build_inline_editor(store, ui, fx);
+        self.inline_editor = Some(editor);
+        self.split.state.note_inline_built();
         self.split
             .state
             .set_unified(self.layout, self.inline_editor);
@@ -208,30 +249,40 @@ impl imba::View for UnifiedDiffView {
                 });
             }
             UnifiedDiffCommand::Inline(command) => {
-                if let EditorCommand::Inlay { key, command } = &command {
-                    if let Some(fold_command) = command.downcast_ref::<fold::FoldCommand>() {
-                        let key = *key;
-                        let fold_command = *fold_command;
-                        return fx.scope(UnifiedDiffCommand::Split, |fx| {
+                let fold = match &command {
+                    EditorCommand::Inlay { key, command } => command
+                        .downcast_ref::<fold::FoldCommand>()
+                        .map(|fold_command| (*key, *fold_command)),
+                    _ => None,
+                };
+                match fold {
+                    Some((key, fold_command)) => {
+                        fx.scope(UnifiedDiffCommand::Split, |fx| {
                             self.split.adjust_fold(key, fold_command, store, ui, fx)
                         });
                     }
+                    None => {
+                        let Some(mut view) = self.inline_face(store) else {
+                            return;
+                        };
+                        fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                            view.perform(store, ui, command, fx)
+                        });
+
+                        self.split.right.document = view.document;
+
+                        fx.scope(UnifiedDiffCommand::Split, |fx| {
+                            self.split.settle_after(None, None);
+                            self.split.pair_lane(fx);
+                        });
+                    }
                 }
-                let Some(mut view) = self.inline_face(store) else {
-                    return;
-                };
-                fx.scope(UnifiedDiffCommand::Inline, |fx| {
-                    view.perform(store, ui, command, fx)
-                });
-
-                self.split.right.document = view.document;
-
-                fx.scope(UnifiedDiffCommand::Split, |fx| {
-                    self.split.settle_after(None, None);
-                    self.split.pair_lane(fx);
-                });
             }
         }
+        // A command may have adopted a freshly-normalized generation
+        // (the pane's settle runs inside these handlers); the inline
+        // face rebuilds off the new dressing if so.
+        self.refresh_inline_if_stale(store, ui, fx);
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {

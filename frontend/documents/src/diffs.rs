@@ -13,23 +13,6 @@ fn probe() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_DIFF").is_some())
 }
 
-/// A diff computed OFF-THREAD, stamped with the revisions of the two
-/// documents it was computed against. The stamp is what lets
-/// `track_diff` tell an operation that still fits the LIVE pair from
-/// one the pair has moved out from under (a docsync host edit landing
-/// between the worker's snapshot and this landing — the 2026-09-24
-/// crash). The operation is NOT rebased across the live log: it was
-/// computed against a fetched snapshot, never a point in the live edit
-/// log, so composing the live tail onto it is unsound. Unmoved → use
-/// it; moved → drop it and let the normalize lane earn the minimal
-/// diff from a worker.
-#[derive(Clone)]
-pub struct PreparedDiff {
-    pub operation: Operation,
-    pub base_revision: u64,
-    pub target_revision: u64,
-}
-
 /// base -> target as ONE replacement: the only correct-by-construction
 /// operation over two texts that costs no diffing — the seed for a
 /// tracking whose minimal diff the normalize lane still owes.
@@ -252,12 +235,19 @@ impl OpenDocuments {
             .is_some_and(|docs| docs.diffs.by_pair(base, target).is_some())
     }
 
+    /// Track a diff between two ALREADY-REGISTERED documents and mint
+    /// its entry. The entry is SEEDED with the whole-replace (an exact,
+    /// content-blind delete-all/insert-all — no diffing on this thread)
+    /// and the batch-tail sweep's normalize lane computes the real
+    /// minimal diff from the live documents (structural, from their
+    /// parses) and dresses it. There is no prepared operation and no
+    /// snapshot: the documents ARE the truth (docs/no-diff-on-ui-thread,
+    /// docs/editor/diff-canvas.md §7).
     pub fn track_diff(
         store: &mut Store,
         base: DocumentId,
         target: DocumentId,
         stripes: bool,
-        prepared: Option<PreparedDiff>,
     ) -> Option<DiffId> {
         let mut result = None;
         store.update::<OpenDocuments>(|docs| {
@@ -294,38 +284,11 @@ impl OpenDocuments {
             let Some(target_entity) = docs.entries.get(&target) else {
                 return;
             };
-            let target_revision = target_entity.document.revision();
-            // A prepared operation was computed OFF-THREAD against
-            // snapshots of the pair. It is usable ONLY if the live pair
-            // still stands exactly where it was captured — same
-            // revisions, matching lengths. A pair that moved since
-            // (docsync folded a host edit into an open side between the
-            // worker's snapshot and this landing — the 2026-09-24
-            // crash) is NOT rebased here: the operation was computed
-            // against a fetched snapshot, not a point in the live edit
-            // log, so composing the live tail onto it is unsound. NO
-            // diff ever runs on this thread — a rejected or absent
-            // prepared op seeds the tracking with the WHOLE-REPLACE
-            // (correct by construction, zero computation) and the
-            // normalize lane, already scheduled by the batch-tail
-            // sweep, lands the minimal diff from a worker.
-            let target_len = target_entity.document.text().byte_count();
-            let prepared = prepared.filter(|prep| {
-                prep.base_revision == base_revision
-                    && prep.target_revision == target_revision
-                    && prep.operation.old_len() as usize == base_text.byte_count()
-                    && prep.operation.new_len() as usize == target_len
-            });
-            let normalized_at_birth = prepared.is_some();
-            let operation = match prepared {
-                Some(prep) => prep.operation,
-                None => whole_replace(&base_text, target_entity.document.text()),
-            };
+            // The seed: exact by construction, zero diffing. The
+            // normalize lane owes the minimal diff.
+            let operation = whole_replace(&base_text, target_entity.document.text());
             let mut target_document = target_entity.document.clone();
-            let id = target_document.add_diff(operation.clone(), base_revision);
-            if normalized_at_birth {
-                target_document.install_normalized_diff(id, operation, base_revision);
-            }
+            let id = target_document.add_diff(operation, base_revision);
             // THE stripes diff registers on the enabled tracks; a
             // panel's diff (stripes=false) stays off them.
             if stripes {
@@ -353,7 +316,8 @@ impl OpenDocuments {
                     refs: 1,
                     stripes,
                     normalize_token: None,
-                    normalized: normalized_at_birth.then_some((base_revision, target_revision)),
+                    // Seeded, never normalized at birth — the sweep owes it.
+                    normalized: None,
                 },
             );
             if probe() {
@@ -721,7 +685,7 @@ pub fn adopt_base_location<R: 'static>(
     }
     let base = base?;
     if let Some(base_id) = OpenDocuments::by_location(store, &base) {
-        let _ = OpenDocuments::track_diff(store, base_id, document, true, None);
+        let _ = OpenDocuments::track_diff(store, base_id, document, true);
         return None;
     }
     Some(base)
@@ -758,7 +722,7 @@ pub fn land_base_built<R: 'static>(
             id
         }
     };
-    let tracked = OpenDocuments::track_diff(store, base_id, document, true, None);
+    let tracked = OpenDocuments::track_diff(store, base_id, document, true);
     if probe() {
         eprintln!("[diffs] stripes tracked={tracked:?} for {document:?}");
     }
@@ -975,181 +939,5 @@ mod tests {
             "the base released with the record"
         );
         assert!(OpenDocuments::diff_handle(&store, handle.id).is_none());
-    }
-
-    #[test]
-    fn a_prepared_track_is_normalized_at_birth() {
-        let ui = ::editor::test_document::test_ui();
-        let mut store = Store::new();
-        let base_id = OpenDocuments::register(
-            &mut store,
-            plain_document("one\ntwo\n"),
-            None,
-            "base".to_owned(),
-            0,
-        );
-        let target_id = OpenDocuments::register(
-            &mut store,
-            plain_document("one\nTWO\n"),
-            None,
-            "target".to_owned(),
-            0,
-        );
-        let prepared = {
-            let base = OpenDocuments::document_ref(&store, base_id).expect("registered");
-            let target = OpenDocuments::document_ref(&store, target_id).expect("registered");
-            PreparedDiff {
-                operation: myersdiff::diff(base.text(), target.text()),
-                base_revision: base.revision(),
-                target_revision: target.revision(),
-            }
-        };
-        let id = OpenDocuments::track_diff(&mut store, base_id, target_id, false, Some(prepared))
-            .expect("both registered");
-
-        let generation = OpenDocuments::document_ref(&store, target_id)
-            .and_then(|document| document.diff(id).map(|entry| entry.generation()))
-            .expect("the entry rides the target");
-        assert_eq!(generation, 1, "normalized at birth");
-
-        let mut lanes = imba::effect::Batch::new();
-        sync_diff_lanes(&mut store, &mut lanes.effects(), Landed::Normalized);
-        assert_eq!(launches(lanes), 0, "nothing owed at birth");
-
-        let fonts = ::editor::test_document::test_fonts_collection();
-        let theme = ::editor::theme::Theme::embedded();
-        let mut document = OpenDocuments::document(&store, target_id).expect("registered");
-        let editor = document.add_editor(
-            400.0,
-            None,
-            ::editor::EditorBuild::Complete,
-            &[],
-            &store,
-            ui,
-            &fonts,
-            &theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        document.insert(
-            editor,
-            "typed",
-            &store,
-            ui,
-            &fonts,
-            &theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        OpenDocuments::put_document(&mut store, target_id, document);
-        let mut lanes = imba::effect::Batch::new();
-        sync_diff_lanes(&mut store, &mut lanes.effects(), Landed::Normalized);
-        assert_eq!(
-            launches(lanes),
-            1,
-            "the edit owes exactly one normalization"
-        );
-    }
-
-    /// REPRO of the 2026-09-24 crash: a prepared operation computed
-    /// off-thread against snapshots landed after the LIVE target had
-    /// moved (docsync). The moved pair must be DETECTED by the stamp
-    /// and the stale operation dropped — NO diff runs on this thread;
-    /// the tracking seeds with the whole-replace, the normalize lane
-    /// owes the minimal diff, and the next edit composes cleanly
-    /// instead of aborting the app.
-    #[test]
-    fn a_stale_prepared_track_defers_to_the_normalize_lane() {
-        let ui = ::editor::test_document::test_ui();
-        let mut store = Store::new();
-        let base_id = OpenDocuments::register(
-            &mut store,
-            plain_document("one\ntwo\n"),
-            None,
-            "base".to_owned(),
-            0,
-        );
-        let target_id = OpenDocuments::register(
-            &mut store,
-            plain_document("one\nTWO\n"),
-            None,
-            "target".to_owned(),
-            0,
-        );
-        // The worker's snapshot diff — stamped with the revisions it
-        // was computed against, BEFORE the live target moves under it.
-        let prepared = {
-            let base = OpenDocuments::document_ref(&store, base_id).expect("registered");
-            let target = OpenDocuments::document_ref(&store, target_id).expect("registered");
-            PreparedDiff {
-                operation: myersdiff::diff(base.text(), target.text()),
-                base_revision: base.revision(),
-                target_revision: target.revision(),
-            }
-        };
-
-        let fonts = ::editor::test_document::test_fonts_collection();
-        let theme = ::editor::theme::Theme::embedded();
-        let mut document = OpenDocuments::document(&store, target_id).expect("registered");
-        let editor = document.add_editor(
-            400.0,
-            None,
-            ::editor::EditorBuild::Complete,
-            &[],
-            &store,
-            ui,
-            &fonts,
-            &theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        // The docsync race: the live target moves after the snapshot.
-        document.insert(
-            editor,
-            "!",
-            &store,
-            ui,
-            &fonts,
-            &theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        OpenDocuments::put_document(&mut store, target_id, document);
-
-        let id = OpenDocuments::track_diff(&mut store, base_id, target_id, false, Some(prepared))
-            .expect("both registered");
-        let shown = OpenDocuments::document_ref(&store, target_id)
-            .map(|document| document.text().byte_count())
-            .expect("registered");
-        let covers = OpenDocuments::document_ref(&store, target_id)
-            .and_then(|document| document.diff(id).map(|entry| entry.operation().new_len()))
-            .expect("the entry rides the target");
-        assert_eq!(
-            covers as usize, shown,
-            "the stale prepared op was dropped; the whole-replace covers the LIVE text"
-        );
-        let generation = OpenDocuments::document_ref(&store, target_id)
-            .and_then(|document| document.diff(id).map(|entry| entry.generation()))
-            .expect("the entry rides the target");
-        assert_eq!(generation, 0, "not normalized at birth — the lane owes it");
-
-        // The batch-tail sweep owes exactly one normalization: the
-        // minimal diff is computed OFF-THREAD, never here.
-        let mut lanes = imba::effect::Batch::new();
-        sync_diff_lanes(&mut store, &mut lanes.effects(), Landed::Normalized);
-        assert_eq!(launches(lanes), 1, "the minimal diff is owed to the worker");
-
-        // The next edit composes into the diff instead of aborting.
-        let mut document = OpenDocuments::document(&store, target_id).expect("registered");
-        document.insert(
-            editor,
-            "more",
-            &store,
-            ui,
-            &fonts,
-            &theme,
-            &mut imba::effect::Batch::new().effects(),
-        );
-        OpenDocuments::put_document(&mut store, target_id, document);
-        let covers = OpenDocuments::document_ref(&store, target_id)
-            .and_then(|document| document.diff(id).map(|entry| entry.operation().new_len()))
-            .expect("the entry rides the target");
-        assert_eq!(covers as usize, shown + 4, "the edit composed into the diff");
     }
 }

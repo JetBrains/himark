@@ -63,7 +63,7 @@ pub enum CanvasCommand {
 
     Landed {
         key: ResourceLocation,
-        built: himark::BuiltFileDiff,
+        prep: himark::OpenedDiffPair,
     },
 
     /// A key-addressed row command — effect landings route by KEY,
@@ -744,11 +744,36 @@ impl Canvas {
         }
     }
 
+    /// Launch a row's diff prep: resolve each side on the UI thread (an
+    /// open side hands over its live registry snapshot, no fetch/
+    /// throwaway; a closed side is fetched, built, and registered at
+    /// the landing), run the shared off-thread prep, land a fully
+    /// dressed pair (docs/editor/diff-canvas.md §4).
+    fn launch_pair(
+        store: &Store,
+        key: ResourceLocation,
+        file: &CanvasFile,
+        width: f32,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let old = himark::DiffSideInput::resolve(store, file.old.clone());
+        let new = himark::DiffSideInput::resolve(store, file.new.clone());
+        fx.push(
+            AnyEffect::new(himark::OpenDiffPairEffect { old, new, width }).map(move |prep| {
+                CanvasCommand::Landed {
+                    key: key.clone(),
+                    prep,
+                }
+            }),
+        );
+    }
+
     /// Relaunch a stale row's build at its standing width. A row that
     /// never built (placeholder) has no width yet — its paint arm
     /// picks up the fresh pair from `files` on its own.
     fn relaunch(
         &self,
+        store: &Store,
         key: &ResourceLocation,
         file: &CanvasFile,
         fx: &mut Effects<'_, CanvasCommand>,
@@ -756,18 +781,7 @@ impl Canvas {
         let Some(width) = self.built_width(key) else {
             return;
         };
-        let location = key.clone();
-        fx.push(
-            AnyEffect::new(himark::BuildFileDiffEffect {
-                old: file.old.clone(),
-                new: file.new.clone(),
-                width,
-            })
-            .map(move |built| CanvasCommand::Landed {
-                key: location.clone(),
-                built,
-            }),
-        );
+        Self::launch_pair(store, key.clone(), file, width, fx);
     }
 
     fn built_width(&self, key: &ResourceLocation) -> Option<f32> {
@@ -789,7 +803,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         file: CanvasFile,
-        built: himark::BuiltFileDiff,
+        prep: himark::OpenedDiffPair,
     ) {
         let theme = env::Themes::of(store);
         let key = file.new.clone();
@@ -820,27 +834,17 @@ impl Canvas {
         self.rows.content_mut().splice_slice(at..at, slice);
         self.populated = true;
         let mut throwaway = imba::effect::Batch::new();
-        self.land(store, ui, key, built, &mut throwaway.effects());
+        self.land(store, ui, key, prep, &mut throwaway.effects());
     }
 
-    fn launch(&self, index: usize, width: f32, fx: &mut Effects<'_, CanvasCommand>) {
+    fn launch(&self, store: &Store, index: usize, width: f32, fx: &mut Effects<'_, CanvasCommand>) {
         let Some(CanvasKey::Diff(location)) = self.rows.content().key_at(index).cloned() else {
             return;
         };
-        let Some(file) = self.files.get(&location) else {
+        let Some(file) = self.files.get(&location).cloned() else {
             return;
         };
-        fx.push(
-            AnyEffect::new(himark::BuildFileDiffEffect {
-                old: file.old.clone(),
-                new: file.new.clone(),
-                width,
-            })
-            .map(move |built| CanvasCommand::Landed {
-                key: location.clone(),
-                built,
-            }),
-        );
+        Self::launch_pair(store, location, &file, width, fx);
     }
 
     fn land(
@@ -848,7 +852,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         key: ResourceLocation,
-        built: himark::BuiltFileDiff,
+        prep: himark::OpenedDiffPair,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         let Some(file) = self.files.get(&key).cloned() else {
@@ -861,16 +865,19 @@ impl Canvas {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
         let route = key.clone();
-        let built_width = built.width;
-        let (body, body_height) = match built.failed.clone() {
-            Some(error) => (RowBody::Failed(error), chrome.title_size * 3.0),
-            None => {
+        let built_width = prep.width;
+        let (body, body_height) = match prep.failed {
+            true => (
+                RowBody::Failed(format!("contents unavailable: {}", file.title)),
+                chrome.title_size * 3.0,
+            ),
+            false => {
                 let mounted = fx.scope(
                     move |command: RowCommand| CanvasCommand::ToRow {
                         key: route.clone(),
                         command,
                     },
-                    |fx| mounted(store, ui, &file, built, fx),
+                    |fx| mounted(store, ui, prep, fx),
                 );
                 match mounted {
                     Some((pane, height)) => (RowBody::Built { pane }, height),
@@ -1134,41 +1141,23 @@ fn row_ask(command: &RowsCommand) -> Option<(usize, &RowCommand)> {
     dig(inner)
 }
 
-/// Mount a row's diff over REGISTERED documents tracked by the Diffs
-/// subsystem (docs/editor/diff-canvas.md §7): reuse the open
-/// document for each side's location — or register the freshly-fetched
-/// build — then `build_diff_view` tracks the pair (so the normalize
-/// lane runs and edits compose) and mints a store-held `DiffView`. The
-/// row holds only the `PairPane` id; its documents live in
-/// `OpenDocuments`, exactly like any pane.
+/// Mount a row's diff over REGISTERED documents through the SHARED
+/// install road (docs/editor/diff-canvas.md §7): `install_opened_pair`
+/// reuses each open side and registers each freshly-built one, then
+/// `build_diff_view` tracks the pair (rebasing the prepared op to the
+/// live pair) and mints a store-held `DiffView`. Exactly the road the
+/// split-diff pane runs — the row is just the embedded face.
 fn mounted(
     store: &mut Store,
     ui: &UiCtx,
-    file: &CanvasFile,
-    built: himark::BuiltFileDiff,
+    prep: himark::OpenedDiffPair,
     fx: &mut Effects<'_, RowCommand>,
 ) -> Option<(crate::PairPane, f32)> {
     let theme = env::Themes::of(store);
     let gutter = theme.ui().editor_gutter.width;
-    let editor_width = (built.width - gutter).max(120.0);
+    let editor_width = (prep.width - gutter).max(120.0);
 
-    // The stamp names the revisions `built.operation` was diffed
-    // against — the freshly built sides. Captured BEFORE
-    // `register_side` moves them: when a side dedups onto an already
-    // open (and possibly moved) document, `track_diff` sees the stamp
-    // disagree with the live revision and drops the stale prep.
-    let base_revision = built.old.revision();
-    let target_revision = built.new.revision();
-    let old_id = register_side(store, &file.old, built.old);
-    let new_id = register_side(store, &file.new, built.new);
-
-    let prep = crate::DiffPrep {
-        operation: built.operation,
-        marks: built.marks,
-        base_revision,
-        target_revision,
-    };
-    let id = crate::build_diff_view(store, ui, old_id, new_id, Some(prep), editor_width, true)?;
+    let id = crate::install_opened_pair(store, ui, prep, true)?;
     let mut pane = crate::PairPane::over(id);
 
     // Default to the inline face.
@@ -1196,27 +1185,6 @@ fn mounted(
     Some((pane, height))
 }
 
-/// A document keyed to a `ResourceLocation` must BE the registered
-/// `OpenDocuments` document for it (docs/editor/diff-canvas.md §7).
-fn register_side(
-    store: &mut Store,
-    location: &ResourceLocation,
-    document: himark::Document,
-) -> himark::DocumentId {
-    match himark::OpenDocuments::by_location(store, location) {
-        Some(id) => id,
-        None => {
-            let revision = document.revision();
-            himark::OpenDocuments::register(
-                store,
-                document,
-                Some(location.clone()),
-                location.name().to_owned(),
-                revision,
-            )
-        }
-    }
-}
 
 impl Canvas {
     fn focus_data<'w>(
@@ -1249,11 +1217,11 @@ impl Canvas {
                 self.owed = rpds::HashTrieSetSync::new_sync();
                 for key in owed {
                     if let Some(file) = self.files.get(&key).cloned() {
-                        self.relaunch(&key, &file, fx);
+                        self.relaunch(store, &key, &file, fx);
                     }
                 }
             }
-            CanvasCommand::Landed { key, built } => self.land(store, ui, key, built, fx),
+            CanvasCommand::Landed { key, prep } => self.land(store, ui, key, prep, fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
             CanvasCommand::BannerEditor(command) => {
                 if let Some(range) = self.rows.content().row_range(&CanvasKey::Banner) {
@@ -1268,7 +1236,7 @@ impl Canvas {
             }
             CanvasCommand::Rows(command) => {
                 match row_ask(&command) {
-                    Some((index, RowCommand::Arm(width))) => self.launch(index, *width, fx),
+                    Some((index, RowCommand::Arm(width))) => self.launch(store, index, *width, fx),
                     Some((index, RowCommand::Header(action))) => {
                         let key = match self.rows.content().key_at(index) {
                             Some(CanvasKey::File(location)) | Some(CanvasKey::Diff(location)) => {
@@ -1597,11 +1565,11 @@ impl DiffCanvasView {
         ui: &UiCtx,
         source: CanvasSource,
         file: CanvasFile,
-        built: himark::BuiltFileDiff,
+        prep: himark::OpenedDiffPair,
     ) -> Self {
         let view = Self::over(store, source);
         if let Some(mut canvas) = Canvases::take(store, view.id) {
-            canvas.seed_built_for_tests(store, ui, file, built);
+            canvas.seed_built_for_tests(store, ui, file, prep);
             Canvases::put(store, view.id, canvas);
         }
         view
@@ -1662,7 +1630,7 @@ impl DiffCanvasView {
                 canvas.owed = rpds::HashTrieSetSync::new_sync();
                 for key in owed {
                     if let Some(file) = canvas.files.get(&key).cloned() {
-                        canvas.relaunch(&key, &file, &mut fx);
+                        canvas.relaunch(store, &key, &file, &mut fx);
                     }
                 }
             }
@@ -1691,11 +1659,11 @@ impl DiffCanvasView {
         store: &mut Store,
         ui: &UiCtx,
         key: himark::ResourceLocation,
-        built: himark::BuiltFileDiff,
+        prep: himark::OpenedDiffPair,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.id) {
             let mut batch = imba::effect::Batch::new();
-            canvas.land(store, ui, key, built, &mut batch.effects());
+            canvas.land(store, ui, key, prep, &mut batch.effects());
             Canvases::put(store, self.id, canvas);
         }
     }
