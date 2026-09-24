@@ -608,6 +608,13 @@ impl Host {
                     continue;
                 }
             }
+            // The summary keeps the replayed chat's activity bits (an
+            // errored last turn stays an errored session); only the
+            // read mark resets — unread state is not persisted.
+            let mut session = session_state(&manifest);
+            session.status = (session.status & !STATUS_ACTIVITY_MASK)
+                | (chat_state.status & STATUS_ACTIVITY_MASK);
+            session.activity = chat_state.activity.clone();
             chats.insert_mut(
                 manifest.default_chat.clone(),
                 ChatEntry {
@@ -625,7 +632,7 @@ impl Host {
             sessions.insert_mut(
                 manifest.session.clone(),
                 SessionEntry {
-                    state: session_state(&manifest),
+                    state: session,
                     annotations: AnnotationsState {
                         annotations: manifest.annotations.clone(),
                     },
@@ -1044,7 +1051,7 @@ impl Host {
                         .values()
                         .filter(|entry| entry.manifest.session != host_discovery::LOCAL_FS_SESSION)
                         .filter(|entry| entry.manifest.listed)
-                        .map(|entry| summary(&self.store, entry))
+                        .map(|entry| summary(&self.store, &state, entry))
                         .collect();
                     for session in cli {
                         if known.contains(&(session.provider.clone(), session.native_id.clone())) {
@@ -1491,10 +1498,12 @@ impl Host {
     }
 
     fn apply(&self, channel: &Uri, action: StateAction) {
-        let mut summary_changes: Option<(Uri, PartialSessionSummary)> = None;
         self.update(|state| {
             state.server_seq += 1;
             let server_seq = state.server_seq as u64;
+            // Deferred until after the action's own broadcast below:
+            // subscribers hear the cause before the derived summary.
+            let mut summary_changes: Option<(Uri, PartialSessionSummary)> = None;
             if channel == ROOT {
                 let mut root = state.root.clone();
                 let _ = ahp::reducers::apply_action_to_root(&mut root, &action);
@@ -1506,13 +1515,11 @@ impl Host {
                 let after = entry.state.status;
                 state.sessions.insert_mut(channel.clone(), entry);
                 if after != before {
-                    summary_changes = Some((
-                        channel.clone(),
-                        PartialSessionSummary {
-                            status: Some(after),
-                            ..Default::default()
-                        },
-                    ));
+                    let changes = PartialSessionSummary {
+                        status: Some(after),
+                        ..Default::default()
+                    };
+                    summary_changes = Some((channel.clone(), changes));
                 }
             } else if let Some(entry) = state.chats.get(channel) {
                 let mut entry = entry.clone();
@@ -1564,16 +1571,29 @@ impl Host {
             if state.replay.len() > REPLAY_DEPTH {
                 state.replay.dequeue_mut();
             }
+            if let Some((session, changes)) = summary_changes {
+                Self::summary_changed_locked(state, &session, &changes);
+            }
         });
-        if let Some((session, changes)) = summary_changes {
-            self.notify_root(
-                "root/sessionSummaryChanged",
-                serde_json::json!({
-                    "channel": ROOT,
-                    "session": session,
-                    "changes": changes,
-                }),
-            );
+    }
+
+    /// Publishes a `root/sessionSummaryChanged` while the state lock is
+    /// held: the notification order matches the commit order, so two
+    /// racing appliers cannot regress a subscriber's summary to an older
+    /// status or stamp. Outboxes are unbounded — sending never blocks.
+    fn summary_changed_locked(state: &State, session: &Uri, changes: &PartialSessionSummary) {
+        let line = rpc::line(&rpc::notification(
+            "root/sessionSummaryChanged",
+            serde_json::json!({
+                "channel": ROOT,
+                "session": session,
+                "changes": changes,
+            }),
+        ));
+        if let Some(subscribers) = state.subscribers.get(ROOT) {
+            for (_, outbox) in subscribers.iter() {
+                let _ = outbox.send(line.clone());
+            }
         }
     }
 
@@ -2320,7 +2340,7 @@ impl Host {
             }
             session.manifest.listed = true;
             let _ = self.store.write_manifest(&session.manifest);
-            let summary = summary(&self.store, &session);
+            let summary = summary(&self.store, state, &session);
             state.sessions.insert_mut(session_uri, session);
             Some(summary)
         });
@@ -4623,11 +4643,23 @@ fn string_of(config: &serde_json::Map<String, Value>, key: &str) -> Option<Strin
     config.get(key).and_then(Value::as_str).map(str::to_owned)
 }
 
-fn summary(store: &Store, entry: &SessionEntry) -> SessionSummary {
-    // Recency is the default chat's log mtime — every chat action is
-    // appended there, so the file tracks content changes for free.
-    let modified_at = store
-        .log_modified_at(&entry.manifest.native_id, &entry.manifest.default_chat)
+fn summary(store: &Store, state: &State, entry: &SessionEntry) -> SessionSummary {
+    // Recency spans every chat of the session — each chat appends its
+    // actions to its own log, so the freshest log mtime is the
+    // session's last content change. A session with no spoken chat
+    // falls back to its creation stamp.
+    let session = &entry.manifest.session;
+    let mut modified: Option<std::time::SystemTime> = None;
+    for (uri, chat) in state.chats.iter() {
+        if chat.session != *session {
+            continue;
+        }
+        let stamp = store.log_modified_at(&chat.native_id, uri);
+        if stamp > modified {
+            modified = stamp;
+        }
+    }
+    let modified_at = modified
         .map(|stamp| humantime::format_rfc3339_millis(stamp).to_string())
         .unwrap_or_else(|| entry.manifest.created_at.clone());
     SessionSummary {

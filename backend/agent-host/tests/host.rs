@@ -374,6 +374,85 @@ async fn the_session_summary_tracks_turn_activity_and_reads() {
 }
 
 #[tokio::test]
+async fn a_restart_keeps_the_replayed_error_status() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    // A host whose agent binary cannot spawn: the turn fails for real
+    // and the chat log ends on chat/error.
+    let host = agent_host::Host::new(agent_host::HostConfig {
+        agents: Vec::new(),
+        data_dir: dir.path().join("data"),
+        claude_binary: dir.path().join("no-such-agent").display().to_string(),
+        codex_binary: "false".to_owned(),
+        claude_home: dir.path().join("dot-claude"),
+        codex_home: dir.path().join("dot-codex"),
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+    });
+    let mut client = Client::connect(host).await;
+    let (session, chat) = open_session(&mut client, dir.path()).await;
+    client.dispatch(&chat, turn_started("t-1", "hello")).await;
+    client.actions_until(&chat, "chat/error").await;
+
+    let restarted = host_at(dir.path());
+    let mut fresh = Client::connect(restarted).await;
+    fresh
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "fresh"}),
+        )
+        .await;
+    let list = fresh
+        .request("listSessions", json!({"channel": ROOT}))
+        .await;
+    let held = list["items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["resource"] == session))
+        .expect("the session survived the restart");
+    let status = held["status"].as_u64().expect("status");
+    assert_eq!(status & 2, 2, "the error bit survived the replay: {held}");
+    assert_eq!(status & 8, 0, "nothing runs after a restart: {held}");
+    assert_eq!(status & 32, 32, "restarts reset the read mark: {held}");
+}
+
+#[tokio::test]
+async fn a_side_chats_activity_freshens_the_listed_session() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+    let second = "ahp-chat:/second";
+    client
+        .request("createChat", json!({"channel": session, "chat": second}))
+        .await;
+    client
+        .request("subscribe", json!({"channel": second}))
+        .await;
+
+    // Land the side chat's activity strictly after the creation stamp.
+    tokio::time::sleep(std::time::Duration::from_millis(15)).await;
+    client
+        .dispatch(second, turn_started("t-side", "hello"))
+        .await;
+    client.actions_until(second, "chat/turnComplete").await;
+
+    let list = client
+        .request("listSessions", json!({"channel": ROOT}))
+        .await;
+    let held = list["items"]
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item["resource"] == session))
+        .expect("the session is listed");
+    let (created, modified) = (
+        held["createdAt"].as_str().expect("createdAt"),
+        held["modifiedAt"].as_str().expect("modifiedAt"),
+    );
+    assert!(
+        modified > created,
+        "the side chat freshened the session: {held}"
+    );
+}
+
+#[tokio::test]
 async fn codex_streams_natively_and_resumes_its_thread() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = codex_host_at(dir.path());
