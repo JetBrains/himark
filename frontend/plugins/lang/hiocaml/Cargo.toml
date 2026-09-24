@@ -9,7 +9,7 @@ editor = { path = "../../../editor" }
 hisitter = { path = "../../../hisitter" }
 
 [target.'cfg(not(target_os = "emscripten"))'.dependencies]
-tree-sitter-ocaml = "0.25.0"
+tree-sitter-ocaml = "0.26.0"
 
 [dev-dependencies]
 imba = { path = "../../../imba" }
