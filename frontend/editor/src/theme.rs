@@ -557,9 +557,6 @@ pub struct UiTheme {
     pub combo: ComboChrome,
 
     #[serde(default)]
-    pub sheet: SheetChrome,
-
-    #[serde(default)]
     pub scroll_stripe: ScrollStripeChrome,
 }
 
@@ -581,33 +578,6 @@ impl Default for ScrollStripeChrome {
             width: 8.0,
             inset: 6.0,
             min_height: 6.0,
-        }
-    }
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(default)]
-pub struct SheetChrome {
-    pub width: f32,
-
-    pub margin: f32,
-
-    pub cast: f32,
-
-    pub collapsed: f32,
-    pub border: Rgba,
-    pub cast_border: Rgba,
-}
-
-impl Default for SheetChrome {
-    fn default() -> Self {
-        Self {
-            width: 1520.0,
-            margin: 32.0,
-            cast: 16.0,
-            collapsed: 168.0,
-            border: Rgba(Color::from_argb(0xff, 0x3a, 0x42, 0x5c)),
-            cast_border: Rgba(Color::from_argb(0xff, 0x23, 0x29, 0x3d)),
         }
     }
 }

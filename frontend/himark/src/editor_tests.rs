@@ -4377,144 +4377,41 @@ mod dock_tests {
         );
     }
 
+    /// `chat.composer` (⌘I, the toolbar bubble) FRONTS the session's
+    /// chat as an ordinary workbench panel: it mounts the chat when
+    /// none is open, keeps a standing one, and re-fronts a displaced
+    /// one — the floating sheet is gone.
     #[test]
-    fn an_editor_drag_still_selects_while_the_floating_chat_is_up() {
+    fn the_composer_command_fronts_the_chat_panel() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
+        let window = app.sole_window();
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-        assert!(test_driver::type_text(
-            &mut app,
-            "alpha beta gamma delta epsilon zeta"
-        ));
+        crate::Window::draw(window, &mut app, surface.canvas());
 
-        let uri = "ahp-chat:/x".to_owned();
-        let panel = crate::higent::ChatPanel::new(
-            app.store(),
-            &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
-            "ahp-session:/x",
-            uri.clone(),
-        );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        {
-            let window = app.sole_window();
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri)));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: "ahp-session:/volatile".to_owned(),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
         }
-        settle(&mut app, &mut surface);
-
-        assert!(test_driver::click(&mut app, 160.0, 120.0, 800.0, 600.0));
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-        test_driver::drag(&mut app, 380.0, 130.0);
-        test_driver::mouse_up(&mut app, 380.0, 130.0);
-        let (_, held) = crate::OpenDocuments::list(app.store())
-            .into_iter()
-            .next()
-            .expect("the scratch document");
-        let document = held.document();
-        let editor = document.editor_ids().next().expect("its editor");
-        let selection = document.carets(editor).primary().selection();
-        assert!(
-            !selection.is_empty(),
-            "the drag selected nothing — the floating chat swallowed it"
-        );
-    }
-
-    #[test]
-    fn escape_collapses_the_drawer_but_keeps_the_chat_focused() {
-        let mut app = Application::new(AppFonts::embedded());
-        let _ = app.add_window();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-
-        let uri = "ahp-chat:/esc".to_owned();
-        let panel = crate::higent::ChatPanel::new(
-            app.store(),
-            &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
-            "ahp-session:/esc",
-            uri.clone(),
-        );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        {
-            let window = app.sole_window();
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
-        }
-        settle(&mut app, &mut surface);
-
-        let rect = crate::Windows::window_ref(app.store(), app.sole_window())
-            .expect("window")
-            .bottom_rect(app.store(), skia_safe::Size::new(800.0, 600.0))
-            .expect("the sheet stands");
-        assert!(test_driver::click(
-            &mut app,
-            rect.center_x(),
-            rect.bottom - 12.0,
-            800.0,
-            600.0
-        ));
-        settle(&mut app, &mut surface);
-
-        let oracle = |app: &crate::Application| {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let blurred = crate::higent::Chats::chat_ref(app.store(), &uri.clone().into())
-                .expect("the chat panel")
-                .blurred();
-            (entity.layer_focus(), entity.bottom_expanded(), blurred)
-        };
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(
-            focus,
-            crate::LayerFocus::Bottom,
-            "the click focused the sheet"
-        );
-        assert_eq!(expanded, Some(false));
-        assert!(!blurred, "a focused sheet's prompt is grown");
-
-        assert!(test_driver::key(
-            &mut app,
-            imba::event::Key::Escape,
-            Default::default()
-        ));
-        settle(&mut app, &mut surface);
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(focus, crate::LayerFocus::Bottom);
-        assert_eq!(expanded, Some(true), "Escape rolled the drawer out");
-        assert!(!blurred);
-
-        assert!(test_driver::key(
-            &mut app,
-            imba::event::Key::Escape,
-            Default::default()
-        ));
-        settle(&mut app, &mut surface);
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(expanded, Some(false), "Escape rolled the drawer away");
-        assert_eq!(
-            focus,
-            crate::LayerFocus::Bottom,
-            "the keys stay with the chat — Escape must not dump focus"
-        );
-        assert!(!blurred, "the prompt keeps its size on Escape");
-
-        assert!(test_driver::click(&mut app, 400.0, 100.0, 800.0, 600.0));
-        settle(&mut app, &mut surface);
-        let (focus, _, blurred) = oracle(&app);
-        assert_eq!(focus, crate::LayerFocus::Content);
-        assert!(blurred, "keys leaving the sheet shrink the prompt");
-    }
-
-    #[test]
-    fn the_composer_sheet_hides_on_blur_and_returns_by_command() {
-        let mut app = Application::new(AppFonts::embedded());
-        let _ = app.add_window();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
 
         let uri = "ahp-chat:/volatile".to_owned();
         let panel = crate::higent::ChatPanel::new(
@@ -4525,54 +4422,57 @@ mod dock_tests {
             uri.clone(),
         );
         crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        let window = app.sole_window();
+        settle(&mut app, &mut surface);
+
+        let mounted_chat = |app: &crate::Application| -> Option<String> {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let mut found = None;
+            entity.workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                        found = Some(pane.chat().clone());
+                    }
+                }
+            });
+            found
+        };
+        assert_eq!(mounted_chat(&app), None, "nothing mounted the chat yet");
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            mounted_chat(&app).as_deref(),
+            Some("ahp-chat:/volatile"),
+            "the command mounts the session's chat as a workbench panel"
+        );
+
+        // Idempotent: the standing pane is fronted, not duplicated.
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut surface);
+        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
+
+        // Displaced by another occupant, the command fronts it again.
         {
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
+            entity.replace_focused_panel(&mut app.store_mut(), crate::Panel::blank());
             crate::Windows::put(&mut app.store_mut(), window, entity);
         }
         settle(&mut app, &mut surface);
-
-        let oracle = |app: &crate::Application| {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let on_screen = entity
-                .bottom_rect(app.store(), skia_safe::Size::new(800.0, 600.0))
-                .is_some();
-            (
-                entity.layer_focus(),
-                on_screen,
-                entity.bottom_pane().is_some(),
-            )
-        };
-
-        assert_eq!(oracle(&app), (crate::LayerFocus::Bottom, true, true));
-
-        assert!(test_driver::click(&mut app, 400.0, 100.0, 800.0, 600.0));
-        settle(&mut app, &mut surface);
-        assert_eq!(
-            oracle(&app),
-            (crate::LayerFocus::Content, false, true),
-            "blur hides the sheet completely; the chat pane survives"
-        );
-
+        assert_eq!(mounted_chat(&app), None, "the chat pane was displaced");
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut surface);
-        assert_eq!(oracle(&app), (crate::LayerFocus::Bottom, true, true));
+        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
+        let entity = crate::Windows::window_ref(app.store(), window).expect("window");
         assert!(
-            !crate::higent::Chats::chat_ref(app.store(), &uri.clone().into())
-                .expect("the chat panel")
-                .blurred(),
-            "the shown sheet's prompt is grown"
+            matches!(entity.workbench().root.focused_pane(), crate::Panel::Plugin(view)
+                if view.as_any().is::<crate::higent::ChatPane>()),
+            "the fronted chat pane holds the focus"
         );
-
-        assert!(app.perform_registered(window, "chat.composer"));
-        settle(&mut app, &mut surface);
-        assert_eq!(oracle(&app), (crate::LayerFocus::Content, false, true));
     }
 
     #[test]
-    fn new_session_leaves_the_previous_session_and_its_sheet() {
+    fn new_session_leaves_the_previous_session_and_its_chat() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
         let window = app.sole_window();
@@ -4612,14 +4512,33 @@ mod dock_tests {
         );
         crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
         {
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri)));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
+            let ui = app.ui_ctx();
+            let mut store = app.store_mut();
+            let mut entity = crate::Windows::window(&store, window).expect("window");
+            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+            let _ = entity.open_panel(
+                &mut store,
+                &ui,
+                Box::new(crate::higent::ChatPane::new(uri)),
+                &mut batch.effects(),
+            );
+            crate::Windows::put(&mut store, window, entity);
         }
         settle(&mut app, &mut surface);
+        let chat_mounted = |app: &crate::Application| -> bool {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let mut found = false;
+            entity.workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    found |= view.as_any().is::<crate::higent::ChatPane>();
+                }
+            });
+            found
+        };
         let entity = crate::Windows::window_ref(app.store(), window).expect("window");
         assert!(entity.current_session().names_session());
-        assert!(entity.bottom_pane().is_some(), "the chat sheet stands");
+        assert!(chat_mounted(&app), "the chat panel stands");
 
         assert!(app.perform_command(AppCommand::Dynamic(
             window,
@@ -4633,8 +4552,8 @@ mod dock_tests {
             entity.current_session()
         );
         assert!(
-            entity.bottom_pane().is_none(),
-            "the previous session's chat sheet is still mounted"
+            !chat_mounted(&app),
+            "the previous session's chat panel is still mounted"
         );
         let title = crate::Windows::window_ref(app.store(), window)
             .expect("window")
@@ -5264,7 +5183,7 @@ mod toolbar_side_tests {
 }
 
 #[test]
-fn switching_workspaces_stashes_the_bottom_sheet() {
+fn switching_workspaces_stashes_the_chat_panel() {
     use crate::AppFonts;
     use std::sync::Arc;
 
@@ -5274,7 +5193,7 @@ fn switching_workspaces_stashes_the_bottom_sheet() {
     }
     impl crate::DynamicCommand for Switch {
         fn id(&self) -> &'static str {
-            "test.switch-sheet"
+            "test.switch-chat"
         }
         fn name(&self) -> String {
             "Test Switch".to_owned()
@@ -5318,32 +5237,41 @@ fn switching_workspaces_stashes_the_bottom_sheet() {
         .current_session();
 
     {
-        let mut entity = crate::Windows::window(app.store(), window).expect("window");
-        entity.open_bottom(Box::new(crate::higent::ChatPane::new(
-            "ahp-chat:/a".to_owned(),
-        )));
-        crate::Windows::put(&mut app.store_mut(), window, entity);
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+        let _ = entity.open_panel(
+            &mut store,
+            &ui,
+            Box::new(crate::higent::ChatPane::new("ahp-chat:/a".to_owned())),
+            &mut batch.effects(),
+        );
+        crate::Windows::put(&mut store, window, entity);
     }
-    let sheet_chat = |app: &crate::Application| -> Option<String> {
-        crate::Windows::window_ref(app.store(), app.sole_window())
-            .and_then(|entity| entity.bottom_pane())
-            .and_then(|pane| pane.as_any().downcast_ref::<crate::higent::ChatPane>())
-            .map(|pane| pane.chat().clone())
+    let mounted_chat = |app: &crate::Application| -> Option<String> {
+        let entity = crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+        let mut found = None;
+        entity.workbench().root.for_each_pane(&mut |panel| {
+            if let crate::Panel::Plugin(view) = panel {
+                if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                    found = Some(pane.chat().clone());
+                }
+            }
+        });
+        found
     };
-    assert_eq!(sheet_chat(&app).as_deref(), Some("ahp-chat:/a"));
+    assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/a"));
 
     let second = switch(&mut app, None);
-    assert_eq!(sheet_chat(&app), None, "B never shows A's chat");
-    assert_eq!(
-        crate::Windows::window_ref(app.store(), window)
-            .expect("window")
-            .layer_focus(),
-        crate::LayerFocus::Content,
-        "the sheet's keys do not cross sessions"
-    );
+    assert_eq!(mounted_chat(&app), None, "B never shows A's chat");
 
     let _ = switch(&mut app, Some(first));
-    assert_eq!(sheet_chat(&app).as_deref(), Some("ahp-chat:/a"));
+    assert_eq!(
+        mounted_chat(&app).as_deref(),
+        Some("ahp-chat:/a"),
+        "A's chat panel rides its stashed workbench home"
+    );
     let _ = second;
 }
 
@@ -5530,9 +5458,17 @@ fn the_at_completion_opens_finds_and_picks() {
     );
     crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
     {
-        let mut entity = crate::Windows::window(app.store(), window).expect("window");
-        entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
-        crate::Windows::put(&mut app.store_mut(), window, entity);
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+        let _ = entity.open_panel(
+            &mut store,
+            &ui,
+            Box::new(crate::higent::ChatPane::new(uri.clone())),
+            &mut batch.effects(),
+        );
+        crate::Windows::put(&mut store, window, entity);
     }
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     crate::Window::draw(window, &mut app, surface.canvas());

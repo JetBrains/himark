@@ -578,7 +578,7 @@ impl DynamicCommand for ChatComposer {
     ) {
         let ui = std::rc::Rc::clone(&app.ui);
         let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        entity.toggle_composer(store, &ui, window, fx);
+        entity.front_chat(store, &ui, fx);
         crate::Windows::put(store, window, entity);
     }
 }

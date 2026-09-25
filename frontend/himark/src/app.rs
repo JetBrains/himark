@@ -1150,13 +1150,6 @@ fn command_label(command: &AppCommand) -> &'static str {
                 _ => "dock",
             }
         }
-        AppCommand::Content(_, crate::WindowCommand::Bottom(command)) => {
-            match command.downcast_ref::<crate::sheet::SheetCommand>() {
-                Some(crate::sheet::SheetCommand::Tick(_)) => "sheet slide-tick",
-                Some(crate::sheet::SheetCommand::Content(_)) => "sheet content",
-                _ => "sheet",
-            }
-        }
         AppCommand::Content(_, crate::WindowCommand::Modal(_)) => "modal",
         AppCommand::Content(_, crate::WindowCommand::Focus(_)) => "focus",
         AppCommand::Dynamic(..) => "dynamic",

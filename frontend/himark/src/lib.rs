@@ -29,7 +29,6 @@ mod navigation;
 pub mod new_session;
 pub mod rows;
 mod save;
-mod sheet;
 mod list_keyboard;
 mod startup_profile;
 mod state;
@@ -101,7 +100,6 @@ pub use rows::{
     label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow,
 };
 pub use save::{SaveAll, SaveDocument};
-pub use sheet::{composer_button, FloatingChat};
 pub use state::{AppState, Gathered};
 pub use stats::Stats;
 pub use toc::{
@@ -109,7 +107,7 @@ pub use toc::{
     ToggleToc,
 };
 pub use toolbar::{
-    toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton, ToolbarButtons,
+    composer_button, toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton, ToolbarButtons,
     ToolbarCommand, ToolbarRequest, ToolbarSide,
 };
 pub use watch::{

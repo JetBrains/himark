@@ -24,7 +24,6 @@ pub enum WindowCommand {
 
     Toolbar(crate::toolbar::ToolbarCommand),
 
-    Bottom(imba::DynCommand),
     Side(imba::DynCommand),
 
     Dock(imba::DynCommand),
@@ -41,8 +40,6 @@ pub enum LayerFocus {
     Content,
 
     Dock,
-
-    Bottom,
 }
 
 #[derive(Clone)]
@@ -80,17 +77,6 @@ impl View for Layers {
                     });
                 }
             }
-            WindowCommand::Bottom(command) => {
-                let keys = fx.scope(WindowCommand::Bottom, |fx| {
-                    self.workbench.perform_sheet(store, ui, command, fx)
-                });
-                if let Some(expanding) = keys {
-                    self.focus = match expanding {
-                        true => LayerFocus::Bottom,
-                        false => LayerFocus::Content,
-                    };
-                }
-            }
             WindowCommand::Dock(command) => {
                 fx.scope(WindowCommand::Dock, |fx| {
                     self.workbench.perform_dock(store, ui, command, fx)
@@ -109,22 +95,7 @@ impl View for Layers {
                 }
             }
             WindowCommand::Focus(focus) => {
-                let was = self.focus;
                 self.focus = focus;
-
-                if was != focus && (was == LayerFocus::Bottom || focus == LayerFocus::Bottom) {
-                    fx.scope(
-                        |command| WindowCommand::Bottom(Box::new(command)),
-                        |fx| {
-                            self.workbench.sheet_focus_changed(
-                                store,
-                                ui,
-                                focus == LayerFocus::Bottom,
-                                fx,
-                            )
-                        },
-                    );
-                }
             }
         }
     }
@@ -156,9 +127,6 @@ impl View for Layers {
             .workbench
             .dock()
             .map(|dock| dock.focus_data_dyn(store, ui).map(WindowCommand::Dock));
-        let bottom = self.workbench.shown_bottom().map(|bottom| {
-            imba::DynView::focus_data_dyn(bottom, store, ui).map(WindowCommand::Bottom)
-        });
         let base = self
             .workbench
             .focus_data(store, ui)
@@ -170,7 +138,6 @@ impl View for Layers {
         let mut modal = modal.unwrap_or_default();
         let mut side = side.unwrap_or_default();
         let mut dock = dock.unwrap_or_default();
-        let mut bottom = bottom.unwrap_or_default();
         let mut toolbar = toolbar;
         let mut base = base;
         if has_modal {
@@ -180,18 +147,12 @@ impl View for Layers {
             commands.append(&mut modal.commands);
         } else {
             commands.append(&mut side.commands);
-            if focus == LayerFocus::Bottom {
-                commands.append(&mut bottom.commands);
-            }
             if focus == LayerFocus::Dock {
                 commands.append(&mut dock.commands);
             }
             commands.append(&mut base.commands);
             if focus != LayerFocus::Dock {
                 commands.append(&mut dock.commands);
-            }
-            if focus != LayerFocus::Bottom {
-                commands.append(&mut bottom.commands);
             }
         }
 
@@ -219,18 +180,16 @@ impl View for Layers {
             modal.on_key.take(),
             side.on_key.take(),
             dock.on_key.take(),
-            bottom.on_key.take(),
             toolbar.on_key.take(),
             base.on_key.take(),
         );
         let on_key = Some(Box::new(move |key, mods| {
-            let (modal, side, dock, bottom, toolbar, base) = (
+            let (modal, side, dock, toolbar, base) = (
                 &mut key_parts.0,
                 &mut key_parts.1,
                 &mut key_parts.2,
                 &mut key_parts.3,
                 &mut key_parts.4,
-                &mut key_parts.5,
             );
 
             if has_modal {
@@ -240,12 +199,6 @@ impl View for Layers {
                 };
             }
             let mut below = |key, mods| {
-                if focus == LayerFocus::Bottom {
-                    match try_key(bottom, key, mods) {
-                        EventResult::Ignored => {}
-                        result => return result,
-                    }
-                }
                 if focus == LayerFocus::Dock {
                     match try_key(dock, key, mods) {
                         EventResult::Ignored => {}
@@ -279,18 +232,16 @@ impl View for Layers {
             modal.on_text.take(),
             side.on_text.take(),
             dock.on_text.take(),
-            bottom.on_text.take(),
             toolbar.on_text.take(),
             base.on_text.take(),
         );
         let on_text = Some(Box::new(move |text: &str| {
-            let (modal, side, dock, bottom, toolbar, base) = (
+            let (modal, side, dock, toolbar, base) = (
                 &mut text_parts.0,
                 &mut text_parts.1,
                 &mut text_parts.2,
                 &mut text_parts.3,
                 &mut text_parts.4,
-                &mut text_parts.5,
             );
 
             if focus == LayerFocus::Toolbar {
@@ -307,12 +258,6 @@ impl View for Layers {
             }
             if has_side {
                 match try_text(side, text) {
-                    EventResult::Ignored => {}
-                    result => return result,
-                }
-            }
-            if focus == LayerFocus::Bottom {
-                match try_text(bottom, text) {
                     EventResult::Ignored => {}
                     result => return result,
                 }
@@ -354,11 +299,6 @@ impl View for Layers {
                 dock.location.take(),
                 dock.seat.take(),
             );
-            let b = (
-                bottom.clipboard.take(),
-                bottom.location.take(),
-                bottom.seat.take(),
-            );
             let ba = (
                 base.clipboard.take(),
                 base.location.take(),
@@ -374,15 +314,10 @@ impl View for Layers {
                         }
                     } else {
                         let banded = |gate: bool, seat| if gate { seat } else { None };
-                        let bottom_seat = banded(focus == LayerFocus::Bottom, b.$slot);
                         let dock_seat = banded(focus == LayerFocus::Dock, d.$slot);
                         match toolbar_first {
-                            true => {
-                                first(vec![t.$slot, sd.$slot, bottom_seat, dock_seat, ba.$slot])
-                            }
-                            false => {
-                                first(vec![sd.$slot, bottom_seat, dock_seat, t.$slot, ba.$slot])
-                            }
+                            true => first(vec![t.$slot, sd.$slot, dock_seat, ba.$slot]),
+                            false => first(vec![sd.$slot, dock_seat, t.$slot, ba.$slot]),
                         }
                     }
                 }};
@@ -430,14 +365,11 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
     toolbar: ToolbarWidget,
     side: Option<DynWidget>,
     dock: Option<DynWidget>,
-    bottom: Option<DynWidget>,
     modal: Option<DynWidget>,
 
     focus: LayerFocus,
 
     toolbar_height: f32,
-
-    bottom_rect: Option<skia_safe::Rect>,
 
     dock_edge_x: Option<f32>,
 }
@@ -463,11 +395,9 @@ where
             toolbar,
             side,
             dock,
-            bottom,
             modal,
             focus,
             toolbar_height,
-            bottom_rect,
             dock_edge_x,
         } = self;
 
@@ -478,11 +408,9 @@ where
                 toolbar: toolbar.realize(arena, viewport),
                 side: side.map(|side| side.realize(arena, viewport)),
                 dock: dock.map(|dock| dock.realize(arena, viewport)),
-                bottom: bottom.map(|bottom| bottom.realize(arena, viewport)),
                 modal: modal.map(|modal| modal.realize(arena, viewport)),
                 focus,
                 toolbar_height,
-                bottom_rect,
                 dock_edge_x,
             },
         )
@@ -494,11 +422,9 @@ struct RealizedLayers<'a> {
     toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
     side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    bottom: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     modal: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     focus: LayerFocus,
     toolbar_height: f32,
-    bottom_rect: Option<skia_safe::Rect>,
     dock_edge_x: Option<f32>,
 }
 
@@ -519,9 +445,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         }
         if let Some(dock) = &mut self.dock {
             overlays.append(&mut map_overlays(dock.overlays(), &WindowCommand::Dock));
-        }
-        if let Some(bottom) = &mut self.bottom {
-            overlays.append(&mut map_overlays(bottom.overlays(), &WindowCommand::Bottom));
         }
         if let Some(modal) = &mut self.modal {
             overlays.append(&mut map_overlays(modal.overlays(), &WindowCommand::Modal));
@@ -555,12 +478,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
             folded = dock
                 .layout_data(target)
                 .map(WindowCommand::Dock)
-                .merge_over(folded);
-        }
-        if let Some(bottom) = &mut self.bottom {
-            folded = bottom
-                .layout_data(target)
-                .map(WindowCommand::Bottom)
                 .merge_over(folded);
         }
         if let Some(modal) = &mut self.modal {
@@ -619,17 +536,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
                     .map(WindowCommand::Dock),
                 );
             }
-            if let Some(bottom) = &self.bottom {
-                result = result.merge(
-                    bottom
-                        .handle_event(
-                            arena,
-                            &scoped(self.modal.is_none() && self.focus == LayerFocus::Bottom),
-                            viewport,
-                        )
-                        .map(WindowCommand::Bottom),
-                );
-            }
             if let Some(modal) = &self.modal {
                 result = result.merge(
                     modal
@@ -644,13 +550,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
             Event::MouseDown { point, .. } => {
                 let target = if point.y < self.toolbar_height {
                     LayerFocus::Toolbar
-                } else if self.bottom_rect.is_some_and(|rect| {
-                    point.x >= rect.left
-                        && point.x < rect.right
-                        && point.y >= rect.top
-                        && point.y < rect.bottom
-                }) {
-                    LayerFocus::Bottom
                 } else if self.dock_edge_x.is_some_and(|edge| point.x >= edge) {
                     LayerFocus::Dock
                 } else {
@@ -703,14 +602,6 @@ impl<'a> RealizedLayers<'a> {
                 merged = merged.merge(
                     side.handle_event(arena, &event, viewport)
                         .map(WindowCommand::Side),
-                );
-            }
-            if let Some(bottom) = &self.bottom {
-                let event = tick(&mut claimed, bottom.blocks_pointer(*point));
-                merged = merged.merge(
-                    bottom
-                        .handle_event(arena, &event, viewport)
-                        .map(WindowCommand::Bottom),
                 );
             }
             if let Some(dock) = &self.dock {
@@ -777,14 +668,6 @@ impl<'a> RealizedLayers<'a> {
         let drag_path = matches!(event, Event::MouseDrag { .. } | Event::MouseUp { .. });
         let focus_routed = drag_path;
 
-        if let Some(bottom) = &self.bottom {
-            if !focus_routed || self.focus == LayerFocus::Bottom {
-                match bottom.handle_event(arena, event, viewport) {
-                    EventResult::Ignored => {}
-                    result => return result.map(WindowCommand::Bottom),
-                }
-            }
-        }
         if let Some(dock) = &self.dock {
             if !focus_routed || self.focus == LayerFocus::Dock {
                 match dock.handle_event(arena, event, viewport) {
@@ -968,7 +851,7 @@ impl Window {
             return None;
         }
 
-        if matches!(self.content.focus, LayerFocus::Dock | LayerFocus::Bottom) {
+        if matches!(self.content.focus, LayerFocus::Dock) {
             self.content.focus = LayerFocus::Content;
         }
         let Some(stashed) = self.workbenches.get(&workspace) else {
@@ -1171,70 +1054,40 @@ impl Window {
         self.content.side.as_ref().map(|drawer| drawer.content())
     }
 
-    pub(crate) fn open_bottom(&mut self, pane: Box<dyn crate::DynPanelView>) {
-        self.content.workbench.open_sheet(pane);
-        self.content.focus = LayerFocus::Bottom;
-    }
-
-    pub(crate) fn toggle_composer(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
+    /// `chat.composer` (the toolbar bubble, ⌘I): FRONT the session's
+    /// chat as an ordinary workbench panel — focus the standing chat
+    /// pane if one is open in this workbench, otherwise mount the
+    /// session's chat into the focused pane.
+    pub(crate) fn front_chat(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut AppFx<'_>) {
         if self.has_modal() {
             return;
         }
-        let held = self.content.focus == LayerFocus::Bottom;
-        let Some(sheet) = self.content.workbench.bottom_mut() else {
+        let is_chat = |panel: &Panel| {
+            matches!(panel, Panel::Plugin(view)
+                if matches!(view.family_row(), Some(crate::FamilyRow::Chat(_))))
+        };
+        if self.workbench_mut().root.focus_where(&is_chat) {
+            self.content.focus = LayerFocus::Content;
+            return;
+        }
+        let session = self.current_session();
+        let Some(chat) = crate::higent::Chats::list(store).into_iter().find(|chat| {
+            crate::higent::Chats::chat_ref(store, chat)
+                .is_some_and(|panel| panel.session_id() == session)
+        }) else {
             return;
         };
-        let to_sheet = move |command: crate::sheet::SheetCommand| {
-            crate::AppCommand::Content(window, WindowCommand::Bottom(Box::new(command)))
+        let Some(pane) = crate::family_rows::mint(store, &crate::FamilyRow::Chat(chat)) else {
+            return;
         };
-        if sheet.shown() && held {
-            fx.scope(to_sheet, |fx| sheet.focus_changed(store, ui, false, fx));
+        if self.open_panel(store, ui, pane, fx) {
             self.content.focus = LayerFocus::Content;
-        } else {
-            sheet.show();
-            fx.scope(to_sheet, |fx| sheet.set_blur(store, ui, false, fx));
-            self.content.focus = LayerFocus::Bottom;
         }
     }
 
     #[doc(hidden)]
     pub fn layer_focus(&self) -> LayerFocus {
         self.content.focus
-    }
-
-    pub fn bottom_pane(&self) -> Option<&dyn crate::DynPanelView> {
-        self.content.workbench.bottom().map(|sheet| sheet.pane())
-    }
-
-    pub fn bottom_expanded(&self) -> Option<bool> {
-        self.content
-            .workbench
-            .bottom()
-            .map(crate::sheet::Sheet::expanded)
-    }
-
-    #[doc(hidden)]
-    pub fn bottom_rect(
-        &self,
-        store: &imba::store::Store,
-        size: skia_safe::Size,
-    ) -> Option<skia_safe::Rect> {
-        let chrome = ::editor::env::Themes::of(store).ui().sheet.clone();
-        let toolbar = ::editor::env::Themes::of(store).ui().toolbar.height;
-
-        let below = skia_safe::Size::new(size.width.max(1.0), (size.height - toolbar).max(1.0));
-
-        self.content.workbench.shown_bottom().map(|sheet| {
-            let mut rect = sheet.rect(&chrome, store, below);
-            rect.offset((0.0, toolbar));
-            rect
-        })
     }
 
     pub fn side_panel_mut(&mut self) -> Option<&mut Box<dyn ModalView>> {
@@ -1412,20 +1265,8 @@ impl Window {
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        let was = self.content.focus;
+        let _ = (store, ui, window, fx);
         self.content.focus = LayerFocus::Content;
-        if was == LayerFocus::Bottom {
-            fx.scope(
-                move |command| {
-                    crate::AppCommand::Content(window, WindowCommand::Bottom(Box::new(command)))
-                },
-                |fx| {
-                    self.content
-                        .workbench
-                        .sheet_focus_changed(store, ui, false, fx)
-                },
-            );
-        }
     }
 
     pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
@@ -2035,7 +1876,7 @@ fn same_editor_location(a: &crate::NavigationLocation, b: &crate::NavigationLoca
 }
 
 /// The window WIREFRAME, reified (docs/ui/UI.md stage 2): toolbar band,
-/// base workbench, side/dock/bottom layers — geometry cut per
+/// base workbench, side/dock layers — geometry cut per
 /// constraints, composed into the focus-routing `LayersWidget`.
 /// Captures the store/ui borrows the `laid` closure used to hide;
 /// hoisting the child `display` calls up is this view's next verse.
@@ -2073,17 +1914,9 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                 (size.height - toolbar_height).max(1.0),
             ));
 
-            let bottom_rect = layers.workbench.shown_bottom().map(|bottom| {
-                let chrome = ::editor::env::Themes::of(store).ui().sheet.clone();
-
-                let mut rect = bottom.rect(&chrome, store, below.max);
-                rect.offset((0.0, toolbar_height));
-                rect
-            });
             LayersWidget {
                 focus: layers.focus,
                 toolbar_height,
-                bottom_rect,
                 dock_edge_x: layers.workbench.dock().map(|_| size.width - revealed),
                 base: below_layer(
                     arena,
@@ -2124,14 +1957,6 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                         size,
                         toolbar_height,
                         dock.layout_dyn(arena, store, ui, below),
-                    )
-                }),
-                bottom: layers.workbench.shown_bottom().map(|bottom| {
-                    below_layer(
-                        arena,
-                        size,
-                        toolbar_height,
-                        imba::DynView::layout_dyn(bottom, arena, store, ui, below),
                     )
                 }),
                 modal: layers.modal.as_ref().map(|modal| {

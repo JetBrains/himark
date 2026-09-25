@@ -439,9 +439,6 @@ impl HimarkEngine {
 
         app.register_toolbar_button(himark::composer_button());
 
-        if let Ok(value) = std::env::var("HIMARK_FLOATING_CHAT") {
-            himark::FloatingChat::set(&mut app.store_mut(), value != "0");
-        }
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
         let wake = Arc::new(WakeSlot::default());
         let effect_wake = Arc::new(WakeSlot::default());

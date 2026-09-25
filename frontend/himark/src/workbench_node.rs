@@ -1091,6 +1091,26 @@ impl WorkbenchNode {
         self.focused_slot_mut().replace_panel(panel)
     }
 
+    /// Focus the leaf holding a panel the predicate accepts — re-aiming
+    /// each split's focus along the found branch. Leaves focus untouched
+    /// and answers false when nothing matches.
+    pub(crate) fn focus_where(&mut self, matches: &dyn Fn(&Panel) -> bool) -> bool {
+        match self {
+            Self::Leaf(slot) => matches(&slot.panel.panel),
+            Self::Split(split) => {
+                if split.first_mut().focus_where(matches) {
+                    split.focus(Pane::First);
+                    true
+                } else if split.second_mut().focus_where(matches) {
+                    split.focus(Pane::Second);
+                    true
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
     pub(crate) fn focused_slot(&self) -> &PaneSlot {
         match self {
             Self::Leaf(slot) => slot,

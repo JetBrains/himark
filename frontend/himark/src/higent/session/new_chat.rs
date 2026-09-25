@@ -91,11 +91,7 @@ impl DynamicCommand for OpenCreatedChat {
         let pane = crate::higent::Chats::open(store, ui, self.server, session, chat);
         let mut entity = Windows::window(store, window).expect("the window entity");
 
-        if crate::FloatingChat::on(store) {
-            entity.open_bottom(pane);
-        } else {
-            let _ = entity.open_panel(store, ui, pane, fx);
-        }
+        let _ = entity.open_panel(store, ui, pane, fx);
         Windows::put(store, window, entity);
     }
 }

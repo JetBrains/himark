@@ -828,12 +828,11 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let recents = himark::RecentLocations::list(store);
 
             let mut widgets = entity.unmount_all_widgets();
-            let mut fronted: Vec<himark::FamilyRow> = widgets
+            let fronted: Vec<himark::FamilyRow> = widgets
                 .iter()
                 .filter_map(|(_, widget)| widget.family_row())
                 .collect();
 
-            fronted.extend(entity.bottom_pane().and_then(|pane| pane.family_row()));
             widgets.extend(
                 himark::mint_unfronted(store, &fronted)
                     .into_iter()

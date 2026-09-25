@@ -11,75 +11,15 @@ pub struct Workbench {
     pub root: WorkbenchNode,
 
     dock: Option<crate::dock::Dock>,
-
-    bottom: Option<crate::sheet::Sheet>,
 }
 
 impl Workbench {
     pub(crate) fn new(root: WorkbenchNode) -> Self {
-        Self {
-            root,
-            dock: None,
-            bottom: None,
-        }
+        Self { root, dock: None }
     }
 
     pub(crate) fn dock(&self) -> Option<&crate::dock::Dock> {
         self.dock.as_ref()
-    }
-
-    pub(crate) fn bottom(&self) -> Option<&crate::sheet::Sheet> {
-        self.bottom.as_ref()
-    }
-
-    pub(crate) fn shown_bottom(&self) -> Option<&crate::sheet::Sheet> {
-        self.bottom.as_ref().filter(|sheet| sheet.shown())
-    }
-
-    pub(crate) fn bottom_mut(&mut self) -> Option<&mut crate::sheet::Sheet> {
-        self.bottom.as_mut()
-    }
-
-    pub(crate) fn open_sheet(&mut self, pane: Box<dyn crate::DynPanelView>) {
-        self.bottom = Some(crate::sheet::Sheet::new(pane));
-    }
-
-    pub(crate) fn perform_sheet(
-        &mut self,
-        store: &mut imba::store::Store,
-        ui: &imba::UiCtx,
-        command: imba::DynCommand,
-        fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
-    ) -> Option<bool> {
-        let bottom = self.bottom.as_mut()?;
-        let mut keys = None;
-        if matches!(
-            command.downcast_ref::<crate::sheet::SheetCommand>(),
-            Some(crate::sheet::SheetCommand::Toggle)
-        ) {
-            let expanding = !bottom.expanded();
-            if expanding {
-                keys = Some(true);
-                fx.scope(
-                    |command: crate::sheet::SheetCommand| -> imba::DynCommand { Box::new(command) },
-                    |fx| bottom.set_blur(store, ui, false, fx),
-                );
-            }
-        }
-        imba::DynView::perform_dyn(bottom, store, ui, command, fx);
-        keys
-    }
-
-    pub(crate) fn sheet_focus_changed(
-        &mut self,
-        store: &mut imba::store::Store,
-        ui: &imba::UiCtx,
-        focused: bool,
-        fx: &mut imba::effect::Effects<'_, crate::sheet::SheetCommand>,
-    ) {
-        if let Some(bottom) = &mut self.bottom {
-            bottom.focus_changed(store, ui, focused, fx);
-        }
     }
 
     pub(crate) fn perform_dock(

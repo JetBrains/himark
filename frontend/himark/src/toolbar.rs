@@ -549,3 +549,35 @@ fn feed_query(
     });
     crate::Windows::put(store, window, entity);
 }
+
+/// The chat bubble on the toolbar well — `chat.composer` (⌘I): front
+/// the session's chat as an ordinary workbench panel.
+pub fn composer_button() -> crate::ToolbarButton {
+    crate::ToolbarButton {
+        command: "chat.composer",
+        order: 0.0,
+        side: crate::ToolbarSide::Well,
+        glyph: std::sync::Arc::new(|canvas, rect, color| {
+            let mut paint = skia_safe::Paint::default();
+            paint.set_anti_alias(true);
+            paint.set_color(color);
+            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_stroke_width((rect.width() * 0.09).max(1.0));
+            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
+
+            let bubble = skia_safe::Rect::from_xywh(l, t + h * 0.04, w, h * 0.68);
+            canvas.draw_round_rect(bubble, w * 0.18, w * 0.18, &paint);
+            let mut tail = skia_safe::PathBuilder::new();
+            tail.move_to((l + w * 0.24, t + h * 0.72));
+            tail.line_to((l + w * 0.18, t + h * 0.96));
+            tail.line_to((l + w * 0.46, t + h * 0.72));
+            canvas.draw_path(&tail.detach(), &paint);
+
+            let mut caret = skia_safe::PathBuilder::new();
+            caret.move_to((l + w * 0.32, t + h * 0.22));
+            caret.line_to((l + w * 0.32, t + h * 0.54));
+            canvas.draw_path(&caret.detach(), &paint);
+        }),
+    }
+}
