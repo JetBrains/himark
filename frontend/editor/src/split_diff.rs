@@ -137,6 +137,22 @@ impl DiffState {
         self.inline_editor = inline_editor;
     }
 
+    /// The pane's settled view lags the store: a document moved since
+    /// the last settle, or a normalize landed that the pane has not
+    /// adopted. The pane's PAINT probe answers a stale frame with
+    /// `Resync` — paint is the one signal every visible face receives
+    /// each frame (a pushed event dies at focus-routed and virtualized
+    /// containers, and misses faces realized after it fired). One
+    /// Resync clears it: settle rolls the revisions forward and adopts
+    /// the pending generation.
+    pub fn stale(&self, left: &crate::Document, right: &crate::Document) -> bool {
+        self.left_revision != left.revision()
+            || self.right_revision != right.revision()
+            || right
+                .diff(self.id)
+                .is_some_and(|entry| entry.generation() != self.seen_generation)
+    }
+
     /// The inline face was built for an older dressing than the pane has
     /// now adopted — it owes a rebuild off the fresh markup.
     pub(crate) fn inline_stale(&self) -> bool {
@@ -353,6 +369,11 @@ impl SplitDiffView {
         self.state.seen_generation = generation;
         self.state.marks_dirty = true;
 
+        // Folds derive ONCE (Waiting → Owed on the first adopted
+        // generation) and are the USER'S after that — they toggle
+        // strips open and closed, and a re-derive on every landed
+        // edit would snap their choices shut. Later landings carry
+        // the standing strips (positions transform with the text).
         if self.state.fold_phase == fold::FoldPhase::Waiting {
             self.state.fold_phase = fold::FoldPhase::Owed;
         }

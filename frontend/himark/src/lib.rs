@@ -62,7 +62,7 @@ mod workbench_node;
 mod workspace;
 
 pub use crate::diffs::{
-    rearm_base_asks, sync_stripe_bases, DiffChanged, DiffHandle, DiffNormalizeEffect,
+    rearm_base_asks, sync_stripe_bases, DiffHandle, DiffNormalizeEffect,
     DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
 };
 pub use crate::family_rows::{

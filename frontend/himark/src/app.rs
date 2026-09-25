@@ -45,8 +45,6 @@ pub struct Application {
 
     pending_file_events: Vec<crate::watch::Subscription>,
 
-    pending_diff_events: Vec<::editor::diff::DiffId>,
-
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
     /// viewport corrections land in the SAME frame
@@ -382,7 +380,6 @@ impl Application {
             workshop,
             ui_arena: Arena::default(),
             pending_file_events: Vec::new(),
-            pending_diff_events: Vec::new(),
             settle_requested: false,
             settling: false,
         };
@@ -975,20 +972,6 @@ impl Application {
             }
         }
 
-        for diff in std::mem::take(&mut self.pending_diff_events) {
-            let event = crate::DiffChanged { diff };
-            let windows: Vec<(crate::WindowId, Size)> = self
-                .state
-                .windows
-                .ids()
-                .into_iter()
-                .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
-                .collect();
-            for (window, size) in windows {
-                self.dispatch(window, Event::UserEvent(&event), size);
-            }
-        }
-
         // The settle loop, at the END of the bit-raising batch — not
         // deferred to paint. The ordering is what buys exactness: a
         // scroll batch pulses BEFORE any later batch performs, so a
@@ -1494,7 +1477,9 @@ impl Application {
                             )
                         });
                     }
-                    self.pending_diff_events.push(diff);
+                    // No push here: every visible diff face notices the
+                    // landed generation itself, on its next paint (the
+                    // staleness probe in hidiff's GatheredSplit).
                 }
             }
             AppCommand::DocumentStored {

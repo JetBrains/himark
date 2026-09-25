@@ -594,10 +594,6 @@ pub fn land_diff_markup(
     OpenDocuments::put_document(store, record.target, document);
 }
 
-pub struct DiffChanged {
-    pub diff: DiffId,
-}
-
 pub struct FetchBaseEffect {
     pub location: editor::ResourceLocation,
 }

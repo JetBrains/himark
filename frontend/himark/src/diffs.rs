@@ -6,7 +6,7 @@ use imba::store::Store;
 use crate::{AppCommand, AppFx};
 
 pub use documents::diffs::{
-    adopt_base_location, land_base_built, land_normalized, rearm_base_asks, DiffChanged,
+    adopt_base_location, land_base_built, land_normalized, rearm_base_asks,
     DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect,
     StripeBases,
 };

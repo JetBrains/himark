@@ -418,18 +418,25 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         let (Some(view), Some(inner)) = (self.view, &self.inner) else {
             return imba::event::EventResult::Ignored;
         };
-
-        if let imba::event::Event::UserEvent(payload) = event {
-            if let Some(changed) = payload.downcast_ref::<himark::DiffChanged>() {
-                if changed.diff == view.split.state.diff_id() {
-                    return imba::event::EventResult::Command(UnifiedDiffCommand::Split(
-                        SplitDiffCommand::Resync,
-                    ));
-                }
-                return imba::event::EventResult::Ignored;
-            }
+        let result = inner.handle_event(arena, event, viewport);
+        // The staleness probe (the ReconcileShell pattern): the pair's
+        // documents are REGISTERED documents any editor may move — a
+        // split editor's keystroke never sends this face a command.
+        // Paint is the one signal every visible face receives each
+        // frame, so a stale frame answers with Resync and the pane
+        // rolls forward, adopts the landed generation, and re-dresses
+        // (spacers, marks, folds, the inline face).
+        if matches!(event, imba::event::Event::Paint { .. })
+            && view
+                .split
+                .state
+                .stale(&view.split.left.document, &view.split.right.document)
+        {
+            return result.merge(imba::event::EventResult::Command(UnifiedDiffCommand::Split(
+                SplitDiffCommand::Resync,
+            )));
         }
-        inner.handle_event(arena, event, viewport)
+        result
     }
 
     fn layout_data<'w>(

@@ -380,6 +380,108 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     assert_pair_aligned(&app);
 }
 
+/// The pair's documents are REGISTERED documents — another editor (a
+/// plain pane in a split) edits the same right document without a
+/// single command flowing through the diff pane. The pane must still
+/// re-dress on its own: normalize lands off-thread, the pane's PAINT
+/// probe answers the stale frame with a Resync, and the spacers follow
+/// the fresh diff. (Folds deliberately do NOT re-derive — they are the
+/// user's to toggle after the first dressing.)
+#[test]
+fn an_edit_from_another_editor_realigns_the_pair() {
+    let store = &imba::store::Store::new();
+    let ui = himark::test_document::test_ui();
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    app.register_command(Arc::new(OpenDiff));
+    himarkdown::register_handlers(&mut app);
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    // A LONG identical middle: the first dressing folds it, and the
+    // out-of-pane edit lands inside the folded run — a stale carry
+    // would keep the (grown) strip covering the edit.
+    let mut body = String::from("# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n");
+    for n in 0..120 {
+        body.push_str(&format!("same line {n}\n"));
+    }
+    body.push_str("\nA closing paragraph, long enough to wrap once at the half width.\n");
+    for (name, tail) in [("left.md", "old tail\n"), ("right.md", "new tail\n")] {
+        let body = format!("{body}{tail}");
+        assert!(app.add_document(
+            app.sole_window(),
+            himarkdown::document_from_markdown(&body, &store, ui, &markdown_fonts, &theme),
+            name.to_owned(),
+            false,
+        ));
+    }
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+        for _ in 0..rounds {
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    settle(&mut app, &mut surface, 8);
+    assert!(app.perform_registered(app.sole_window(), "diff.open"));
+    settle(&mut app, &mut surface, 40);
+    assert_pair_aligned(&app);
+
+    let right_id = {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() {
+                shot = Some(panel.halves(app.store()).1.document());
+            }
+        });
+        shot.expect("the diff pane is open")
+    };
+    // The out-of-pane edit: a line lands in the MIDDLE of the folded
+    // identical run of the RIGHT document, through the document road
+    // (what any other editor's keystroke amounts to) — not one command
+    // touches the diff pane.
+    let inserted = "an inserted line from the OTHER editor\n";
+    {
+        let fonts = himark::env::Fonts::of(&app.store())();
+        let theme = himark::env::Themes::of(&app.store());
+        let mut store = app.store_mut();
+        let mut document =
+            himark::OpenDocuments::document(&store, right_id).expect("right document");
+        let mut batch = imba::effect::Batch::new();
+        let text = document.text().to_string();
+        let at = text.find("same line 60").expect("the identical run") as u32;
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
+        document.edit(
+            &operation::Operation::insert_in(len, at, inserted),
+            &store,
+            ui,
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        himark::OpenDocuments::put_document(&mut store, right_id, document);
+    }
+    // The keystroke's own batch (any batch) runs the diff lanes; the
+    // pane hears NOTHING — its paint probe must notice on its own.
+    let window = app.sole_window();
+    app.perform_batch(vec![himark::AppCommand::ViewportResized(window, size)]);
+
+    settle(&mut app, &mut surface, 40);
+    assert_pair_aligned(&app);
+}
+
 #[test]
 fn typed_insertions_paint_washes() {
     let store = &imba::store::Store::new();
@@ -3001,6 +3103,145 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             .iter()
             .any(|o| matches!(o, operation::Op::Insert(text) if text == "X")),
         "the diff reflects the typed insert: {after:?}"
+    );
+}
+
+/// The user's split: a plain editor pane edits a document whose diff
+/// sits in an UNFOCUSED canvas row next to it. No command ever reaches
+/// the row (a pushed event dies at the focus-routed virtualized list),
+/// so the row's PAINT probe must notice the stale pair on its own and
+/// resync — spacers, marks, folds, the adopted generation.
+#[test]
+fn an_unfocused_canvas_row_resyncs_from_its_paint_probe() {
+    let store = &imba::store::Store::new();
+    let ui = himark::test_document::test_ui();
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    himarkdown::register_handlers(&mut app);
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let mut old_body = String::from("old head\n");
+    let mut new_body = String::from("new head\n");
+    for n in 0..30 {
+        old_body.push_str(&format!("same line {n}\n"));
+        new_body.push_str(&format!("same line {n}\n"));
+    }
+    old_body.push_str("old tail\n");
+    new_body.push_str("new tail\n");
+    let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
+    let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let key = location("a.md", himark::ResourceType::document());
+    let file = himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: location("a.md.old", himark::ResourceType::document()),
+        new: key.clone(),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+        for _ in 0..rounds {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    let stale_now = |app: &Application| -> bool {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() else {
+                return;
+            };
+            let store = app.store();
+            let Some(id) = canvas.probe_pair(store, &key) else {
+                return;
+            };
+            let Some(pair) = himark::OpenDocuments::diff_view_ref(store, id) else {
+                return;
+            };
+            let (Some(state), Some(left), Some(right)) = (
+                pair.state.as_ref(),
+                himark::OpenDocuments::document_ref(store, pair.left.document()),
+                himark::OpenDocuments::document_ref(store, pair.right.document()),
+            ) else {
+                return;
+            };
+            shot = Some(state.stale(left, right));
+        });
+        shot.expect("the built row's tracked pair")
+    };
+
+    settle(&mut app, &mut surface, 30);
+    assert!(!stale_now(&app), "the seeded row settles fresh");
+
+    // The out-of-pane edit through the document road — the row is not
+    // focused, no command ever reaches it.
+    let right_id =
+        himark::OpenDocuments::by_location(&app.store(), &key).expect("the registered target");
+    {
+        let fonts = himark::env::Fonts::of(&app.store())();
+        let theme = himark::env::Themes::of(&app.store());
+        let mut store = app.store_mut();
+        let mut document =
+            himark::OpenDocuments::document(&store, right_id).expect("right document");
+        let mut batch = imba::effect::Batch::new();
+        let text = document.text().to_string();
+        let at = text.find("same line 15").expect("the identical run") as u32;
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
+        document.edit(
+            &operation::Operation::insert_in(len, at, "typed from the split editor\n"),
+            &store,
+            ui,
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        himark::OpenDocuments::put_document(&mut store, right_id, document);
+    }
+    assert!(stale_now(&app), "the edit leaves the row's pair stale");
+
+    // Paint alone converges it: the probe answers Resync, the Resync's
+    // batch runs the diff lanes, the landing is adopted next frame.
+    settle(&mut app, &mut surface, 30);
+    assert!(
+        !stale_now(&app),
+        "the unfocused row resynced from its paint probe"
     );
 }
 

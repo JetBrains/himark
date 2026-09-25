@@ -13,7 +13,7 @@ pub mod text_ext;
 pub mod watch;
 
 pub use diffs::{
-    rearm_base_asks, DiffChanged, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView,
+    rearm_base_asks, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView,
     DiffViewId, FetchBaseEffect, Normalized, StripeBases,
 };
 pub use entity_view::EditorIdView;
