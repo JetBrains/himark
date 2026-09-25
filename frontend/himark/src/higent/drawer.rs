@@ -945,6 +945,10 @@ impl<'a, Inner: Widget<'a, AgentsCommand>> Widget<'a, AgentsCommand> for BootShe
 }
 
 impl ModalView for AgentsPanel {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

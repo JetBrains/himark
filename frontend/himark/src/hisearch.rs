@@ -734,6 +734,10 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
 }
 
 impl crate::ModalView for SearchView {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn take_request(&mut self) -> Option<ModalRequest> {
         self.request.take()
     }

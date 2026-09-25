@@ -1139,7 +1139,6 @@ pub enum ChangesCommand {
 
     Refetch(ResourceLocation),
 
-    Refresh,
 
     Dismiss,
 }
@@ -1360,7 +1359,6 @@ impl View for ChangesView {
                 });
             }
 
-            ChangesCommand::Refresh => self.refresh(store, ui),
             ChangesCommand::Refetch(folder) => {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
@@ -1410,52 +1408,16 @@ impl View for ChangesView {
                 },
             );
             overlay.place(0.0, 0.0, keymap);
-
-            let stale = Changes::generation(store) != self.seen;
-            overlay.wrap(move |inner| ReconcileShell { inner, stale })
+            overlay
         })
     }
 }
 
-struct ReconcileShell<Inner> {
-    inner: Inner,
-    stale: bool,
-}
-
-impl<'a, Inner: Widget<'a, ChangesCommand>> Widget<'a, ChangesCommand> for ReconcileShell<Inner> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, ChangesCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<ChangesCommand> {
-        let result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) && self.stale {
-            return result.merge(EventResult::Command(ChangesCommand::Refresh));
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, ChangesCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
 impl ModalView for ChangesView {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }
@@ -1466,6 +1428,40 @@ impl ModalView for ChangesView {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+/// The PUSH lane for the changes dock: at the batch tail, refresh any
+/// window's mounted `ChangesView` whose feed generation moved — the
+/// same batch the feed landed in, no paint probe. Scope-guarded: only
+/// a view of the GATHERED session compares against its generation.
+pub(crate) fn sync_changes_docks(store: &mut Store, ui: &UiCtx) {
+    let Some(scope) = crate::Gathered::scope(store).cloned() else {
+        return;
+    };
+    let generation = Changes::generation(store);
+    let windows = match store.get::<crate::Windows>() {
+        Some(windows) => windows.ids(),
+        None => return,
+    };
+    for window in windows {
+        let Some(mut entity) = crate::Windows::window(store, window) else {
+            continue;
+        };
+        let stale = entity
+            .dock_panel_mut()
+            .and_then(|panel| panel.as_any_mut().downcast_mut::<ChangesView>())
+            .is_some_and(|view| view.workspace == scope && view.seen != generation);
+        if !stale {
+            continue;
+        }
+        if let Some(view) = entity
+            .dock_panel_mut()
+            .and_then(|panel| panel.as_any_mut().downcast_mut::<ChangesView>())
+        {
+            view.refresh(store, ui);
+        }
+        crate::Windows::put(store, window, entity);
     }
 }
 

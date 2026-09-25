@@ -60,6 +60,10 @@ pub trait ModalView: imba::DynView + Send + Sync {
     fn focus_lost(&mut self) {}
     fn as_any(&self) -> &dyn std::any::Any;
 
+    /// Mutable reach-through for the PUSH lanes: a batch-tail sync may
+    /// refresh a store-held dock panel in place, no paint involved.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
+
     fn clone_modal(&self) -> Box<dyn ModalView>;
 }
 

@@ -838,6 +838,10 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
 }
 
 impl ModalView for SessionTreeView {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

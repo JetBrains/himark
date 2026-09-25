@@ -154,6 +154,10 @@ impl View for Drawer {
 }
 
 impl ModalView for Drawer {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

@@ -998,7 +998,6 @@ pub enum HistoryCommand {
 
     AutoGrow,
 
-    Refresh,
 
     Dismiss,
 }
@@ -1278,7 +1277,6 @@ impl View for HistoryView {
                     break;
                 }
             }
-            HistoryCommand::Refresh => self.refresh(store, ui),
             HistoryCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
@@ -1319,7 +1317,6 @@ impl View for HistoryView {
             );
             section.place(0.0, 0.0, keymap);
 
-            let stale = self.stale(store);
             let rows_height = (size.height - band).max(1.0);
             let near_tail = {
                 let list = self.list.view().inner();
@@ -1336,20 +1333,22 @@ impl View for HistoryView {
                     })
                 });
             let grow = near_tail && pageable;
-            section.wrap(move |inner| ReconcileShell { inner, stale, grow })
+            section.wrap(move |inner| GrowShell { inner, grow })
         })
     }
 }
 
-struct ReconcileShell<Inner> {
+/// The load-more probe is genuinely LAYOUT-BOUND (it reads the laid
+/// viewport's nearness to the tail), so it stays on paint. The data
+/// staleness probe is gone — the sync lane pushes refreshes.
+struct GrowShell<Inner> {
     inner: Inner,
-    stale: bool,
 
     grow: bool,
 }
 
 impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryCommand>
-    for ReconcileShell<Inner>
+    for GrowShell<Inner>
 {
     fn size(&self) -> Size {
         self.inner.size()
@@ -1366,13 +1365,8 @@ impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryComman
         viewport: skia_safe::Rect,
     ) -> EventResult<HistoryCommand> {
         let mut result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) {
-            if self.stale {
-                result = result.merge(EventResult::Command(HistoryCommand::Refresh));
-            }
-            if self.grow {
-                result = result.merge(EventResult::Command(HistoryCommand::AutoGrow));
-            }
+        if matches!(event, Event::Paint { .. }) && self.grow {
+            result = result.merge(EventResult::Command(HistoryCommand::AutoGrow));
         }
         result
     }
@@ -1388,7 +1382,44 @@ impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryComman
     }
 }
 
+/// The PUSH lane for the history dock — the changes dock's twin
+/// (hichanges::sync_changes_docks): refresh a mounted, stale
+/// `HistoryView` at the tail of the batch its feed landed in.
+pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
+    let Some(scope) = crate::Gathered::scope(store).cloned() else {
+        return;
+    };
+    let generation = History::generation(store);
+    let windows = match store.get::<crate::Windows>() {
+        Some(windows) => windows.ids(),
+        None => return,
+    };
+    for window in windows {
+        let Some(mut entity) = crate::Windows::window(store, window) else {
+            continue;
+        };
+        let stale = entity
+            .dock_panel_mut()
+            .and_then(|panel| panel.as_any_mut().downcast_mut::<HistoryView>())
+            .is_some_and(|view| view.workspace == scope && view.seen != generation);
+        if !stale {
+            continue;
+        }
+        if let Some(view) = entity
+            .dock_panel_mut()
+            .and_then(|panel| panel.as_any_mut().downcast_mut::<HistoryView>())
+        {
+            view.refresh(store, ui);
+        }
+        crate::Windows::put(store, window, entity);
+    }
+}
+
 impl crate::ModalView for HistoryView {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn crate::ModalView> {
         Box::new(self.clone())
     }

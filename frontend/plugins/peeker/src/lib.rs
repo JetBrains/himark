@@ -780,6 +780,10 @@ fn preview_width(size: Size, chrome: &himark::theme::PeekerChrome) -> f32 {
 }
 
 impl ModalView for Peeker {
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

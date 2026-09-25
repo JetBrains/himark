@@ -924,6 +924,11 @@ impl Application {
                 &mut fx,
                 |document, command| AppCommand::Entity(document, command),
             );
+            // The dock tree views ride the push road too: a changes /
+            // history feed landing refreshes a mounted stale view in
+            // the SAME batch — no paint probe.
+            crate::hichanges::sync_changes_docks(&mut store, &self.ui_ctx());
+            crate::hihistory::sync_history_docks(&mut store, &self.ui_ctx());
             // Plugin store-state observers (e.g. hidiff's Canvases)
             // sync against the fresh document/diff/changeset state —
             // the SAME batch a feed landed in, with a REAL effects
