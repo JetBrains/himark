@@ -158,6 +158,23 @@ impl DiffViewState {
                 .is_some_and(|entry| entry.generation() != self.seen_generation)
     }
 
+    /// FULLY DRESSED: an honest (non-seed) generation adopted, its
+    /// marks landed, and — on the inline face — the inline editor
+    /// rebuilt from that honest markup (folds and cards included). A
+    /// freshly-mounted pair is a SEED and answers false until the
+    /// whole dressing chain has run; the canvas keeps a row's
+    /// placeholder face up until this flips, so loader → diff is one
+    /// swap.
+    pub(crate) fn dressed(&self) -> bool {
+        if self.seen_generation == 0 || self.marks_dirty {
+            return false;
+        }
+        match self.unified_layout {
+            crate::unified_diff::DiffLayout::Inline => self.inline_generation != 0,
+            crate::unified_diff::DiffLayout::Split => true,
+        }
+    }
+
     /// The inline face was built for an older dressing than the pane has
     /// now adopted — it owes a refresh off the fresh markup.
     pub(crate) fn inline_stale(&self) -> bool {

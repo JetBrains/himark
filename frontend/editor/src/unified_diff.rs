@@ -44,6 +44,15 @@ pub struct UnifiedDiffView {
 }
 
 impl UnifiedDiffView {
+    /// FULLY DRESSED — presentable: an honest generation adopted,
+    /// marks landed, the inline face (when worn) rebuilt from them. A
+    /// freshly-mounted pair answers false until the whole dressing
+    /// chain has run; hosts that stage a placeholder (the canvas row)
+    /// hold it up until this flips, so loader → diff is ONE swap.
+    pub fn dressed(&self) -> bool {
+        self.split.state.dressed()
+    }
+
     pub fn new(split: SplitDiffView) -> Self {
         let layout = split.state.unified_layout();
         let inline_editor = split.state.inline_editor();

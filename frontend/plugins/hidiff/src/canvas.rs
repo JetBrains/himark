@@ -480,6 +480,12 @@ impl Canvas {
         let Some(view) = crate::gathered_view(store, pane.id()) else {
             return;
         };
+        // The row holds its reserved band under the skeleton until the
+        // dressing is whole — the flip to the real height IS the one
+        // visible transition.
+        if !view.dressed() {
+            return;
+        }
         let body = match view.layout {
             himark::DiffLayout::Inline => match view
                 .inline_editor
@@ -942,7 +948,20 @@ impl Canvas {
                     |fx| mounted(store, ui, prep, fx),
                 );
                 match mounted {
-                    Some((pane, height)) => (RowBody::Built { pane }, height),
+                    // A fresh mount is a SEED — the row keeps the
+                    // skeleton face and its RESERVED band until the
+                    // dressing lands whole, so splice at the reserved
+                    // height: the only height move is the final one
+                    // (`resize_row`, once the view answers dressed).
+                    Some((pane, height)) => {
+                        let dressed = crate::gathered_view(store, pane.id())
+                            .is_none_or(|view| view.dressed());
+                        let height = match dressed {
+                            true => height,
+                            false => (reserved_body(&theme, &file) - chrome.gap).max(0.0),
+                        };
+                        (RowBody::Built { pane }, height)
+                    }
                     None => (
                         RowBody::Failed("could not open the diff".to_owned()),
                         chrome.title_size * 3.0,
@@ -2545,6 +2564,33 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                         },
                     )
                     .map(RowCommand::Diff);
+                    // A fresh landing is a SEED. The pane mounts and
+                    // paints underneath (its own probes drive the
+                    // dressing lanes), but the ROW keeps the skeleton
+                    // face and its reserved band until the view answers
+                    // DRESSED — loader → diff is one swap, not a
+                    // striptease of markup, folds and heights arriving
+                    // separately. The list clips the row, and the
+                    // container reports the reserved size, so the
+                    // taller undressed body neither bleeds nor fights
+                    // the list's visible-resize measure.
+                    let dressed = crate::gathered_view(store, pane.id())
+                        .is_none_or(|view| view.dressed());
+                    if !dressed {
+                        let body_height =
+                            (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
+                        let mut face = imba::container::container(
+                            arena,
+                            Size::new(width, body_height + chrome.gap),
+                        );
+                        face.place_boxed(0.0, 0.0, imba::ThunkBox::new(arena, body));
+                        face.place_boxed(
+                            0.0,
+                            0.0,
+                            skeleton_layout(arena, &theme, &diff.file, width, body_height),
+                        );
+                        return imba::ThunkBox::new(arena, face);
+                    }
                     let body_height = Thunk::size(&body).height;
                     // The row-level rewrap governs the INLINE face
                     // only. On the split face the halves report their

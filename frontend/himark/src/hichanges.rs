@@ -23,9 +23,9 @@ use imba::{
     leaf::leaf,
     store::Store,
     thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
+    UiCtx, View,
 };
-use skia_safe::{Rect, Size};
+use skia_safe::Size;
 
 const NOTE_KIND: &str = "changes-note";
 

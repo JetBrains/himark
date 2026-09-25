@@ -1389,7 +1389,6 @@ pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
     let Some(scope) = crate::Gathered::scope(store).cloned() else {
         return;
     };
-    let generation = History::generation(store);
     let windows = match store.get::<crate::Windows>() {
         Some(windows) => windows.ids(),
         None => return,
@@ -1401,7 +1400,7 @@ pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
         let stale = entity
             .dock_panel_mut()
             .and_then(|panel| panel.as_any_mut().downcast_mut::<HistoryView>())
-            .is_some_and(|view| view.workspace == scope && view.seen != generation);
+            .is_some_and(|view| view.workspace == scope && view.stale(store));
         if !stale {
             continue;
         }

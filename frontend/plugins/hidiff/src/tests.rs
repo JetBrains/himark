@@ -2593,12 +2593,21 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
 
+    // Every line differs: dressed, nothing folds away — the sticky
+    // band needs the row to overflow the viewport.
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
     for n in 0..60 {
-        old_body.push_str(&format!("same line {n}\n"));
-        new_body.push_str(&format!("same line {n}\n"));
+        old_body.push_str(&format!("old line {n}\n"));
+        new_body.push_str(&format!("new line {n}\n"));
     }
     old_body.push_str("old tail\n");
     new_body.push_str("new tail\n");
@@ -2642,8 +2651,12 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let size = skia_safe::Size::new(1100.0, 800.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut settle = |app: &mut Application| {
-        for _ in 0..6 {
+        for _ in 0..12 {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
             let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
         }
     };
@@ -2748,6 +2761,124 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             "the focused canvas row offers {id}"
         );
     }
+}
+
+/// THE FLICKER REGRESSION: a landed pair is a SEED, and its dressing
+/// (honest markup, folds, the inline face) arrives in later batches.
+/// The row must NOT show the undressed body in between — it wears the
+/// skeleton at the RESERVED height until the view answers dressed,
+/// then swaps ONCE. The stored row height is the observable: across
+/// the whole settle it takes exactly two values — reserved, and the
+/// final dressed height — never the tall undressed body.
+#[test]
+fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
+    let store = &imba::store::Store::new();
+    let ui = himark::test_document::test_ui();
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    himarkdown::register_handlers(&mut app);
+    app.register_sync_observer(crate::canvas_sync_observer());
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+
+    // A changed head over a long identical middle: undressed, the body
+    // is ~90 lines tall; dressed, the middle folds away. Reserved,
+    // dressed and undressed heights are three DISTINCT bands — if the
+    // undressed body ever showed, the height trace would catch it.
+    let mut body = String::from("head\n");
+    for n in 0..80 {
+        body.push_str(&format!("same line {n}\n"));
+    }
+    body.push_str("tail\n");
+    let old = himarkdown::document_from_markdown(
+        &format!("old head\n{body}"),
+        &store,
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
+    let new = himarkdown::document_from_markdown(
+        &format!("new head\n{body}"),
+        &store,
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let file = himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: location("a.md.old", himark::ResourceType::document()),
+        new: location("a.md", himark::ResourceType::document()),
+        added: Some(1),
+        removed: Some(1),
+        updated: 0,
+    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let row_height = |app: &Application| -> f32 {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = canvas.probe_rows(app.store()).first().map(|row| row.2);
+            }
+        });
+        shot.expect("the built row")
+    };
+    let reserved = row_height(&app);
+    assert!(
+        reserved > 0.0 && reserved < 600.0,
+        "the landed SEED row stands at the reserved band, \
+         not the undressed body: {reserved}"
+    );
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let mut trace: Vec<f32> = vec![reserved];
+    for _ in 0..40 {
+        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let height = row_height(&app);
+        if (height - trace.last().copied().unwrap_or(0.0)).abs() > 0.5 {
+            trace.push(height);
+        }
+    }
+
+    assert!(
+        trace.len() == 2 && trace[1] > reserved,
+        "one swap: reserved → dressed, no striptease in between: {trace:?}"
+    );
 }
 
 /// The DEPENDENCY the push road must honor: a diff changing height must
@@ -2907,7 +3038,6 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
-
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
     for n in 0..600 {
