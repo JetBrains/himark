@@ -487,6 +487,9 @@ impl Document {
                     }
                     let mut diff = diff.clone();
 
+                    // The operation rebases through this target-side
+                    // edit; the fold bans do NOT — they live in BASE
+                    // coordinates and only `apply_base_edits` moves them.
                     diff.operation = diff.operation.splice_compose(operation);
                     self.diffs.insert_mut(id, diff);
                 }
@@ -2862,9 +2865,23 @@ impl Document {
                 base_revision,
                 markup,
                 generation: 0,
+                fold_bans: crate::diff::FoldBans::new(),
             },
         );
         id
+    }
+
+    /// Record a user fold reveal on the tracked diff: within `extent`
+    /// (base coordinates) the banned set becomes `extent \ keep`, and
+    /// every later fold derivation subtracts it. Pair-level state —
+    /// it rides the `Diff` entry, not any view.
+    pub fn ban_fold(&mut self, id: crate::diff::DiffId, extent: Range<u32>, keep: Range<u32>) {
+        let Some(diff) = self.diffs.get(&id) else {
+            return;
+        };
+        let mut diff = diff.clone();
+        diff.ban_fold(extent, keep);
+        self.diffs.insert_mut(id, diff);
     }
 
     /// Lands a normalize run's freshly derived diff markup

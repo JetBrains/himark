@@ -99,12 +99,12 @@ fn drain(view: &mut SplitDiffView, effects: Vec<imba::effect::AnyEffect<SplitDif
     }
 }
 
-fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffState {
+fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffViewState {
     let operation = myersdiff::diff(left.text(), right.text());
     let id = right.add_diff(operation, left.revision());
     let left_marks = left.add_markup();
     let right_marks = right.add_markup();
-    DiffState::attach(id, left, right, left_marks, right_marks, None)
+    DiffViewState::attach(id, left, right, left_marks, right_marks, None)
         .expect("the entry was just installed")
 }
 
@@ -1394,7 +1394,7 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         "a shown markup registers on the editor"
     );
 
-    let state = DiffState::attach(
+    let state = DiffViewState::attach(
         id,
         &left_document,
         &right_document,

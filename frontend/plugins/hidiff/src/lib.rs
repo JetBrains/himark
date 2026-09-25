@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::{
-    Application, DiffState, EditorIdView, EditorView, OpenDocuments, SplitDiffCommand,
+    Application, DiffViewState, EditorIdView, EditorView, OpenDocuments, SplitDiffCommand,
     SplitDiffView, UnifiedDiffCommand, UnifiedDiffView,
 };
 use imba::{
@@ -55,7 +55,7 @@ fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
         let state = match &pair.state {
             Some(state) => state.clone(),
 
-            None => DiffState::attach(
+            None => DiffViewState::attach(
                 pair.diff,
                 &left_view.document,
                 &right_view.document,
@@ -469,7 +469,7 @@ impl DiffPanelView {
         self.pane.content().id
     }
 
-    pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffState> {
+    pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
         himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)?
             .state
             .as_ref()
@@ -488,7 +488,7 @@ impl DiffPanelView {
         right: EditorIdView,
         handle: himark::DiffHandle,
         right_extras: himark::MarkupId,
-        state: Option<DiffState>,
+        state: Option<DiffViewState>,
     ) -> Self {
         let id = himark::DiffViewId::mint();
         himark::OpenDocuments::put_diff_view(
@@ -696,7 +696,7 @@ pub fn diff_panel(
 /// store-held `DiffView`: track the diff through the Diffs subsystem
 /// (which SEEDS it — the normalize lane computes the real diff from the
 /// documents and dresses it), add a bounded editor per half, and attach
-/// the `DiffState`. No diff is computed here (docs/no-diff-on-ui-thread).
+/// the `DiffViewState`. No diff is computed here (docs/no-diff-on-ui-thread).
 /// The reusable core the split-diff pane and the diff canvas both mount.
 pub fn build_diff_view(
     store: &mut Store,
@@ -755,7 +755,7 @@ pub fn build_diff_view(
     let state = {
         let left_document = OpenDocuments::document_ref(store, left)?;
         let right_document = OpenDocuments::document_ref(store, right)?;
-        DiffState::attach(
+        DiffViewState::attach(
             diff,
             left_document,
             right_document,

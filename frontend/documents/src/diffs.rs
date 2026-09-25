@@ -73,7 +73,7 @@ pub struct DiffView {
     /// THE diff markup (hunk washes) is the entry's own
     /// (`Diff::markup`), never the pane's to write.
     pub right_extras: editor::MarkupId,
-    pub state: Option<editor::DiffState>,
+    pub state: Option<editor::DiffViewState>,
 }
 
 #[derive(Clone, Default)]

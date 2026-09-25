@@ -18,6 +18,65 @@ impl DiffId {
     }
 }
 
+/// The user's standing fold reveals: intervals over the BASE (left)
+/// text the fold derivation must never fold again. Pair-level state —
+/// no view owns it — living on the `Diff` entry with the operation and
+/// maintained at the same explicit points: born empty at `track`,
+/// rolled by `apply_base_edits` with the same composed base operation
+/// that rolls the diff, untouched by target-side edits (base
+/// coordinates) and by normalize landings, gone with the entry.
+pub type FoldBans = intervals::Intervals<crate::markup::IntervalId, ()>;
+
+/// Rewrite the banned set WITHIN `extent` to `extent \ keep`, leaving
+/// bans outside `extent` alone. `keep` empty bans the whole extent (a
+/// full Remove); `keep == extent` un-bans it (a full Hide). The set
+/// stays canonical: sorted, disjoint, merged, empty-free.
+pub(crate) fn rewrite_bans(bans: &mut FoldBans, extent: Range<u32>, keep: Range<u32>) {
+    use intervals::{IntervalQuery, Order};
+    let mut fresh: Vec<Range<u32>> = Vec::new();
+    for standing in bans.query(0..u32::MAX, Order::Ascending) {
+        // The parts of a standing ban OUTSIDE the extent survive.
+        if standing.range.start < extent.start {
+            fresh.push(standing.range.start..standing.range.end.min(extent.start));
+        }
+        if standing.range.end > extent.end {
+            fresh.push(standing.range.start.max(extent.end)..standing.range.end);
+        }
+    }
+    let keep = keep.start.clamp(extent.start, extent.end)..keep.end.clamp(extent.start, extent.end);
+    if keep.start >= keep.end {
+        fresh.push(extent.clone());
+    } else {
+        fresh.push(extent.start..keep.start);
+        fresh.push(keep.end..extent.end);
+    }
+    fresh.retain(|range| range.start < range.end);
+    fresh.sort_by_key(|range| range.start);
+    // Merge touching neighbours and rebuild — the set is user-action
+    // sized, and a canonical rebuild is what keeps it disjoint.
+    let mut merged: Vec<Range<u32>> = Vec::with_capacity(fresh.len());
+    for range in fresh {
+        match merged.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    let mut canonical = FoldBans::new();
+    canonical.insert(
+        merged
+            .into_iter()
+            .enumerate()
+            .map(|(n, range)| intervals::Interval {
+                range,
+                greedy_left: false,
+                greedy_right: false,
+                key: crate::markup::IntervalId(n as u32),
+                value: (),
+            }),
+    );
+    *bans = canonical;
+}
+
 #[derive(Clone)]
 pub struct Diff {
     pub(crate) operation: Operation,
@@ -30,6 +89,7 @@ pub struct Diff {
     /// in between.
     pub(crate) markup: crate::markup::MarkupId,
     pub(crate) generation: u64,
+    pub(crate) fold_bans: FoldBans,
 }
 
 impl Diff {
@@ -49,6 +109,14 @@ impl Diff {
         self.generation
     }
 
+    pub fn fold_bans(&self) -> &FoldBans {
+        &self.fold_bans
+    }
+
+    pub(crate) fn ban_fold(&mut self, extent: Range<u32>, keep: Range<u32>) {
+        rewrite_bans(&mut self.fold_bans, extent, keep);
+    }
+
     pub fn apply_base_edits(&mut self, base_log: &EditLog) -> bool {
         let now = base_log.revision();
         if now < self.base_revision {
@@ -56,6 +124,10 @@ impl Diff {
         }
         if let Some(edits) = base_log.compose_since(self.base_revision) {
             self.operation = edits.invert().splice_compose_into(&self.operation);
+            // The fold bans are intervals over the same base text —
+            // the one composed operation rolls them too (an emptied
+            // ban banned text that is gone, and drops itself).
+            self.fold_bans.edit(crate::markup::interval_steps(&edits));
         }
         self.base_revision = now;
         true

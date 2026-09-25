@@ -361,7 +361,7 @@ impl Cell {
                     );
                 }
 
-                let state = crate::DiffState::attach(
+                let state = crate::DiffViewState::attach(
                     diff_id,
                     &before_doc,
                     &after_doc,

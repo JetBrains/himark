@@ -26,10 +26,24 @@ const MARK_FRAGMENT_CAP: usize = 512;
 
 const MARK_SLACK_PX: f32 = 2_000.0;
 
+/// The diff VIEW's persistent state — one per face, stored in the
+/// registry's `DiffView` record. `SplitDiffView`/`UnifiedDiffView` are
+/// stateless per-ask facades minted from (store documents + this);
+/// everything a face remembers between asks lives here. Pair-level
+/// truth does NOT: the operation, its markup and the fold bans ride
+/// the `Diff` entry on the target document, maintained by the edit
+/// door, `apply_base_edits` and the normalize lane.
 #[derive(Clone)]
-pub struct DiffState {
+pub struct DiffViewState {
     id: crate::diff::DiffId,
 
+    /// The BASIS of the current dressing — the operation this face's
+    /// painted spacers, marks and alignment were computed against.
+    /// NOT the truth (that is `Diff::operation`, always exact): the
+    /// basis lags until `settle` rolls it and `adopt_normalized`
+    /// adopts, so mid-frame offset mapping agrees with what is
+    /// painted, and adoption can compute `disagreement(basis, truth)`
+    /// — the minimal region owed a re-dress.
     diff: Operation,
 
     seen_generation: u64,
@@ -65,23 +79,12 @@ pub struct DiffState {
 
     pair_seq: u64,
 
-    /// The user's standing reveals, as intervals over the LEFT
-    /// document: ranges the fold derivation must never fold again.
-    /// This is the ONLY persistent fold state — the strips themselves
-    /// re-derive with every marks landing so they follow the diff (an
-    /// agent's reload lands as an ordinary edit, and a carried strip
-    /// would hide it); a reveal survives as banned negative space
-    /// instead of a pinned strip. Rolled forward with the diff through
-    /// left-document edits (`Intervals::edit`); an emptied ban banned
-    /// text that is gone, and drops itself.
-    fold_bans: intervals::Intervals<crate::markup::IntervalId, ()>,
-
     marks_dirty: bool,
 
     marks_window: Option<Range<u32>>,
 }
 
-impl DiffState {
+impl DiffViewState {
     pub fn attach(
         id: crate::diff::DiffId,
         left: &crate::Document,
@@ -117,7 +120,6 @@ impl DiffState {
             ui_synced_boundaries: 0,
             pair_repair_token: None,
             pair_seq: 0,
-            fold_bans: intervals::Intervals::new(),
             marks_dirty: seeded.is_none(),
             marks_window: seeded,
         })
@@ -206,7 +208,7 @@ impl DiffState {
 pub struct SplitDiffView {
     pub left: EditorView,
     pub right: EditorView,
-    pub state: DiffState,
+    pub state: DiffViewState,
 }
 
 pub enum SplitDiffCommand {
@@ -240,7 +242,7 @@ fn trace_diff(message: impl FnOnce() -> String) {
 }
 
 impl SplitDiffView {
-    pub fn new(left: EditorView, right: EditorView, state: DiffState) -> Self {
+    pub fn new(left: EditorView, right: EditorView, state: DiffViewState) -> Self {
         Self { left, right, state }
     }
 
@@ -264,9 +266,6 @@ impl SplitDiffView {
                 widen(span);
             }
             self.state.diff = a.invert().splice_compose_into(&self.state.diff);
-            // The fold bans are intervals over the left text — they
-            // ride the same roll.
-            self.state.fold_bans.edit(crate::markup::interval_steps(&a));
             self.state.left_revision = self.left.document.revision();
             rolled_any = true;
         }
@@ -309,8 +308,6 @@ impl SplitDiffView {
                 self.state.right_revision = self.right.document.revision();
                 self.state.marks_dirty = true;
                 self.state.marks_window = None;
-                // The bans' coordinates did not survive the jump.
-                self.state.fold_bans = intervals::Intervals::new();
                 self.state.align_pending = Some(0..self.left.document.text().byte_count() as u32);
                 (None, false)
             }
@@ -465,7 +462,12 @@ impl SplitDiffView {
                 .document
                 .feature_markup(self.state.right_marks)
                 .cloned(),
-            fold_bans: self.state.fold_bans.clone(),
+            fold_bans: self
+                .right
+                .document
+                .diff(self.state.id)
+                .map(|entry| entry.fold_bans().clone())
+                .unwrap_or_else(crate::diff::FoldBans::new),
             window,
         });
         RepairDiffEffect {
@@ -561,10 +563,12 @@ impl SplitDiffView {
         let theme = crate::env::Themes::of(store);
 
         if matches!(command, fold::FoldCommand::Remove) {
-            // The reveal persists as a BAN, not as a missing strip: the
-            // next derivation (every marks landing) subtracts it, so
+            // The reveal persists as a BAN on the tracked diff, not as
+            // a missing strip: every later derivation subtracts it, so
             // the fold stays open however often the diff re-dresses.
-            fold::ban(&mut self.state.fold_bans, left_range.clone(), 0..0);
+            self.right
+                .document
+                .ban_fold(self.state.id, left_range.clone(), 0..0);
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
@@ -647,7 +651,9 @@ impl SplitDiffView {
         // Within this fold's maximal extent, the banned set is exactly
         // what the user has revealed — a Reveal grows it, a Hide gives
         // range back to the derivation.
-        fold::ban(&mut self.state.fold_bans, spec.left.clone(), start..end);
+        self.right
+            .document
+            .ban_fold(self.state.id, spec.left.clone(), start..end);
 
         if end > start {
             let lines = scan.count_lines(start, end);
@@ -839,7 +845,7 @@ fn mint_fold_strips(
     left_text: &Text,
     left_markup: &mut crate::markup::Markup,
     right_markup: &mut crate::markup::Markup,
-    bans: &fold::FoldBans,
+    bans: &crate::diff::FoldBans,
 ) {
     if !fold::FOLDS_ENABLED {
         return;
@@ -900,7 +906,7 @@ pub fn prepare_marks(diff: &Operation, left_text: &Text) -> PreparedMarks {
     const BLOCK: u32 = 4 * 1024;
     let window = 0..len.div_ceil(BLOCK).saturating_mul(BLOCK);
     let (mut left, mut right) = derive_wash_markups(diff, left_text, &window);
-    mint_fold_strips(diff, left_text, &mut left, &mut right, &fold::FoldBans::new());
+    mint_fold_strips(diff, left_text, &mut left, &mut right, &crate::diff::FoldBans::new());
     PreparedMarks {
         left,
         right,
@@ -1169,7 +1175,7 @@ struct MarksJob {
     left_current: Option<crate::markup::Markup>,
     right_current: Option<crate::markup::Markup>,
 
-    fold_bans: fold::FoldBans,
+    fold_bans: crate::diff::FoldBans,
 }
 
 pub struct MarksLanding {
