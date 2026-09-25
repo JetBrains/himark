@@ -2750,6 +2750,149 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     }
 }
 
+/// The DEPENDENCY the push road must honor: a diff changing height must
+/// resize its canvas row — and it must land through the SYNC lane, not
+/// paint. An edit to the target document regrows the diff; after the
+/// normalize/repair land, a bare perform batch (NO draw between the
+/// edit and the assert) must have moved the stored row height. The
+/// list's paint SetHeight can't have fired without a paint, so a moved
+/// height proves the canvas sync re-measured it.
+#[test]
+fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
+    let store = &imba::store::Store::new();
+    let ui = himark::test_document::test_ui();
+    let fonts = AppFonts::embedded();
+    let mut app = Application::new(fonts);
+    let _ = app.add_window();
+    himarkdown::register_handlers(&mut app);
+    app.register_sync_observer(crate::canvas_sync_observer());
+    let (posted, arriving) = mpsc::channel();
+    let runner = app.attach_host(
+        Arc::new(move |command| {
+            let _ = posted.send(command);
+        }),
+        Arc::new(|| {}),
+    );
+    let theme = himark::Theme::embedded();
+    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+
+    // A long identical middle so the first dressing folds it small.
+    let mut body = String::from("head\n");
+    for n in 0..80 {
+        body.push_str(&format!("same line {n}\n"));
+    }
+    body.push_str("tail\n");
+    // Sides differ at the head: a real diff stands, and its long
+    // identical middle folds — so the row opens SHORT (folded).
+    let old = himarkdown::document_from_markdown(
+        &format!("old head\n{body}"),
+        &store,
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
+    let new = himarkdown::document_from_markdown(
+        &format!("new head\n{body}"),
+        &store,
+        ui,
+        &markdown_fonts,
+        &theme,
+    );
+    let location = |name: &str, kind| {
+        himark::ResourceLocation::new(
+            kind,
+            himark::Authority::new("test"),
+            vec!["proj".to_owned(), name.to_owned()],
+        )
+    };
+    let key = location("a.md", himark::ResourceType::document());
+    let file = himark::diff_canvas::CanvasFile {
+        title: "a.md".to_owned(),
+        old: location("a.md.old", himark::ResourceType::document()),
+        new: key.clone(),
+        added: Some(0),
+        removed: Some(0),
+        updated: 0,
+    };
+    let built = prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0);
+    let canvas = {
+        let ui = app.ui_handle();
+        let mut store = app.store_mut();
+        DiffCanvasView::seeded_for_tests(
+            &mut store,
+            &ui,
+            himark::diff_canvas::CanvasSource::WorkingCopy {
+                folder: location("proj", himark::ResourceType::directory()),
+            },
+            file,
+            built,
+        )
+    };
+    assert!(app.open_panel(app.sole_window(), Box::new(canvas)));
+
+    let size = skia_safe::Size::new(1100.0, 800.0);
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let draw_settle = |app: &mut Application, surface: &mut skia_safe::Surface, rounds: usize| {
+        for _ in 0..rounds {
+            let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
+            runner.run();
+            while let Ok(command) = arriving.try_recv() {
+                app.perform_batch(vec![command]);
+            }
+            let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+        }
+    };
+    draw_settle(&mut app, &mut surface, 40);
+
+    let row_height = |app: &Application| -> f32 {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                shot = canvas.probe_rows(app.store()).first().map(|row| row.2);
+            }
+        });
+        shot.expect("the built row")
+    };
+    let folded = row_height(&app);
+    assert!(folded > 0.0, "the row stands at a folded height: {folded}");
+
+    // Edit the TARGET document in the identical run: the diff regrows a
+    // changed region, so the fold there shrinks and the body grows.
+    let target = himark::OpenDocuments::by_location(&app.store(), &key)
+        .expect("the row's registered target");
+    {
+        let fonts = himark::env::Fonts::of(&app.store())();
+        let theme = himark::env::Themes::of(&app.store());
+        let mut store = app.store_mut();
+        let mut document =
+            himark::OpenDocuments::document(&store, target).expect("target document");
+        let text = document.text().to_string();
+        let at = text.find("same line 40").expect("the identical run") as u32;
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
+        let mut batch = imba::effect::Batch::new();
+        document.edit(
+            &operation::Operation::insert_in(len, at, "CHANGED an inserted line\n"),
+            &store,
+            ui,
+            &fonts,
+            &theme,
+            &mut batch.effects(),
+        );
+        himark::OpenDocuments::put_document(&mut store, target, document);
+    }
+
+    // Settle: the diff rebased at the edit door, its resync re-dresses
+    // and re-lays-out the row's body, and the command that reaches the
+    // row resizes it (resize_row) — no O(rows) scan.
+    draw_settle(&mut app, &mut surface, 40);
+
+    let regrown = row_height(&app);
+    assert!(
+        regrown > folded + 10.0,
+        "the diff grew but its canvas row did not resize: {folded} -> {regrown}"
+    );
+}
+
 // REGRESSION (2026-09-18): the canvas halves shipped with
 // `reports_geometry: false`, so on the split face the BOUNDED
 // editors never got the Viewport road — beyond the initial layout
@@ -3365,7 +3508,19 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     assert_eq!(before.len(), 1, "seeded one row");
 
     // The tick driver runs against every store-held canvas.
-    crate::Canvases::sync(&mut app.store_mut(), himark::test_document::test_ui());
+    {
+        let ui = himark::test_document::test_ui();
+        let mut batch = imba::effect::Batch::<himark::AppCommand>::new();
+        crate::Canvases::sync(
+            &mut app.store_mut(),
+            &ui,
+            himark::SyncScope {
+                window: None,
+                session: None,
+            },
+            &mut batch.effects(),
+        );
+    }
 
     // With no live Changes source the sync is a no-op: the row and its
     // registered pair survive intact (state not corrupted).

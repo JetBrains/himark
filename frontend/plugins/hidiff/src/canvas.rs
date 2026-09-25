@@ -44,18 +44,6 @@ type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 pub enum CanvasCommand {
     Rows(RowsCommand),
 
-    /// The paint probe saw the feed's generation move.
-    Refresh,
-
-    /// The paint probe saw an armed reveal on an already-populated
-    /// canvas (a reuse navigation delivered it).
-    PickupReveal,
-
-    /// The paint probe saw owed relaunches — builds the reconcile
-    /// marked (possibly on the headless sync tick) that need a REAL
-    /// effects sink to launch.
-    RelaunchOwed,
-
     /// An async landing for the commit banner's message box (the
     /// Bounded build's tail, the markdown reparse) — routed to the
     /// banner row wherever it currently sits.
@@ -105,12 +93,6 @@ pub struct Canvas {
     /// just stops holding their rows.
     stash: rpds::HashTrieMapSync<ResourceLocation, (CanvasRow, f32)>,
 
-    /// Built rows whose pair moved under them since their build — the
-    /// relaunch is OWED, issued by the panel's paint probe through a
-    /// real effects sink. The sync tick only marks; it has no landing
-    /// road of its own (its batch is discarded), and pushing builds
-    /// there was how refreshed rows silently kept their stale diff.
-    owed: rpds::HashTrieSetSync<ResourceLocation>,
 }
 
 /// A row's lifecycle, panel-tracked — the test oracle.
@@ -146,7 +128,6 @@ impl Canvas {
             reveal: None,
             refs: 0,
             stash: rpds::HashTrieMapSync::new_sync(),
-            owed: rpds::HashTrieSetSync::new_sync(),
         }
     }
 
@@ -440,6 +421,86 @@ impl Canvas {
         self.adopt(store, ui, generation, listing, fx);
     }
 
+    /// The push-road reconcile, driven from the sync tick with a REAL
+    /// routed sink (`Canvases::sync`). Three explicit steps, no paint:
+    /// membership follows the feed generation; each BUILT row's stored
+    /// height follows its diff's fresh content height (the diff lane
+    /// ran just before us — the list's paint SetHeight only corrects
+    /// the VISIBLE part on a resize, never a model change like a fold
+    /// landing); an armed reveal lands.
+    fn sync_in_place(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        if self.seen != Some(canvas_generation(store, &self.source)) {
+            self.refresh(store, ui, fx);
+        }
+        if self.populated {
+            if let Some(key) = self.reveal.take() {
+                self.rows
+                    .content_mut()
+                    .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
+                fx.settle();
+            }
+        }
+    }
+
+    /// Resize ONE diff row to its current body height — called right
+    /// after a command reaches that row (a repair, a fold toggle, a
+    /// face flip, the diff's own Resync), which is exactly when — and
+    /// the only time — its height can change. No scan: we know which
+    /// row changed because we just routed a command to it. A no-op
+    /// unless the row is a built diff whose stored height has drifted.
+    fn resize_row(
+        &mut self,
+        index: usize,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let Some(CanvasKey::Diff(key)) = self.rows.content().key_at(index) else {
+            return;
+        };
+        // Re-resolve the index by key: an interleaved splice may have
+        // shifted it since the command that triggered this.
+        let key = key.clone();
+        let Some(range) = self.rows.content().row_range(&CanvasKey::Diff(key)) else {
+            return;
+        };
+        let index = range.start;
+        let Some(CanvasRow::Diff(DiffRow {
+            body: RowBody::Built { pane },
+            ..
+        })) = self.rows.content().view_at(index)
+        else {
+            return;
+        };
+        let Some(view) = crate::gathered_view(store, pane.id()) else {
+            return;
+        };
+        let body = match view.layout {
+            himark::DiffLayout::Inline => match view
+                .inline_editor
+                .map(|editor| view.split.right.document.content_height(editor))
+            {
+                Some(height) => height,
+                None => return,
+            },
+            himark::DiffLayout::Split => {
+                let left = view.split.left.document.content_height(view.split.left.editor);
+                let right = view.split.right.document.content_height(view.split.right.editor);
+                left.max(right)
+            }
+        };
+        let want = body + env::Themes::of(store).ui().chat.gap;
+        if (want - self.rows.content().height_at(index).unwrap_or(0.0)).abs() > 0.5 {
+            let rows = ScrollCommand::Content(ListCommand::SetHeight(index, want));
+            fx.scope(CanvasCommand::Rows, |fx| self.rows.perform(store, ui, rows, fx));
+        }
+    }
+
     fn adopt(
         &mut self,
         store: &mut Store,
@@ -597,7 +658,9 @@ impl Canvas {
                     if file.updated > known.updated {
                         self.files.insert_mut(key.clone(), file.clone());
                         self.refresh_header(&key, &file, band);
-                        self.owed.insert_mut(key.clone());
+                        // The stamp moved: relaunch the build NOW,
+                        // through the routed sink — no `owed`, no paint.
+                        self.relaunch(store, &key, &file, fx);
                         moved = true;
                     } else if file != known {
                         // A value change without a stamp move should
@@ -657,7 +720,6 @@ impl Canvas {
         self.files.remove_mut(key);
         self.phases.remove_mut(key);
         self.stash.remove_mut(key);
-        self.owed.remove_mut(key);
         if self.reveal.as_ref() == Some(key) {
             self.reveal = None;
         }
@@ -1103,6 +1165,9 @@ impl Canvas {
                 fx.scope(CanvasCommand::Rows, |fx| {
                     self.rows.perform(store, ui, rows, fx)
                 });
+                // A face flip / fold toggle routed here changes the
+                // row's body height — resize it afterward.
+                self.resize_row(index, store, ui, fx);
             }
             None => {
                 let Some((mut row, height)) = self.stash.get(&key).cloned() else {
@@ -1203,24 +1268,6 @@ impl Canvas {
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         match command {
-            CanvasCommand::Refresh => self.refresh(store, ui, fx),
-            CanvasCommand::PickupReveal => {
-                if let Some(key) = self.reveal.take() {
-                    self.rows
-                        .content_mut()
-                        .reveal_row(CanvasKey::File(key), Placement::TopLeftAt);
-                    fx.settle();
-                }
-            }
-            CanvasCommand::RelaunchOwed => {
-                let owed: Vec<ResourceLocation> = self.owed.iter().cloned().collect();
-                self.owed = rpds::HashTrieSetSync::new_sync();
-                for key in owed {
-                    if let Some(file) = self.files.get(&key).cloned() {
-                        self.relaunch(store, &key, &file, fx);
-                    }
-                }
-            }
             CanvasCommand::Landed { key, prep } => self.land(store, ui, key, prep, fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
             CanvasCommand::BannerEditor(command) => {
@@ -1265,9 +1312,19 @@ impl Canvas {
                     }
                     _ => {}
                 }
+                // A command that reaches a diff row (a repair, a fold
+                // toggle, a face flip, the diff's own Resync) may change
+                // its body height — resize exactly that row afterward.
+                let touched = match row_ask(&command) {
+                    Some((index, RowCommand::Diff(_) | RowCommand::Rewrap(_))) => Some(index),
+                    _ => None,
+                };
                 fx.scope(CanvasCommand::Rows, |fx| {
                     self.rows.perform(store, ui, command, fx)
                 });
+                if let Some(index) = touched {
+                    self.resize_row(index, store, ui, fx);
+                }
             }
         }
     }
@@ -1280,9 +1337,6 @@ impl Canvas {
     ) -> impl imba::Layout<'a, CanvasCommand> + imba::LayoutValue + 'a {
         let _ = arena;
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
-            let refresh = self.seen != Some(canvas_generation(store, &self.source));
-            let reveal = self.populated && self.reveal.is_some();
-            let owed = self.populated && !self.owed.is_empty();
             let inner: imba::ThunkBox<'a, CanvasCommand> = match &self.note {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
@@ -1318,64 +1372,8 @@ impl Canvas {
                         .overlay_host(imba::list::STICKY_HOST),
                 ),
             };
-            inner.wrap(move |widget| CanvasProbe {
-                inner: widget,
-                refresh,
-                reveal,
-                owed,
-            })
+            inner
         })
-    }
-}
-
-/// The ReconcileShell of the canvas: paint compares retained state
-/// against the store and answers with commands — mutation stays in
-/// perform.
-struct CanvasProbe<Inner> {
-    inner: Inner,
-    refresh: bool,
-    reveal: bool,
-    owed: bool,
-}
-
-impl<'a, Inner: Widget<'a, CanvasCommand>> Widget<'a, CanvasCommand> for CanvasProbe<Inner> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, CanvasCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<CanvasCommand> {
-        let mut result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) {
-            if self.refresh {
-                result = result.merge(EventResult::Command(CanvasCommand::Refresh));
-            }
-            if self.reveal {
-                result = result.merge(EventResult::Command(CanvasCommand::PickupReveal));
-            }
-            if self.owed {
-                result = result.merge(EventResult::Command(CanvasCommand::RelaunchOwed));
-            }
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, CanvasCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
     }
 }
 
@@ -1471,28 +1469,37 @@ impl Canvases {
     /// it. This is why `Canvases` is store state: clicking a file in
     /// the changes view reveals it because the row is already there
     /// (docs/editor/diff-canvas.md §7).
-    pub fn sync(store: &mut Store, ui: &imba::UiCtx) {
+    pub fn sync(
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        scope: himark::SyncScope<'_>,
+        fx: &mut himark::AppFx<'_>,
+    ) {
         let ids: Vec<CanvasId> = match store.get::<Canvases>() {
             Some(canvases) => canvases.0.keys().copied().collect(),
             None => return,
         };
         for id in ids {
-            let stale = match Self::get(store, id) {
-                Some(canvas) => canvas.seen != Some(canvas_generation(store, &canvas.source)),
-                None => false,
-            };
-            if !stale {
+            let Some(mut canvas) = Self::take(store, id) else {
                 continue;
+            };
+            // The reconcile launches through a REAL sink routed home by
+            // id (the diff lane's discipline) — but only when the batch
+            // gives a session AND window to route to. Without one there
+            // is no home to send a landing to; fall back to a discard
+            // sink so pure-state reconcile still runs and the next
+            // scoped batch launches the builds.
+            match (scope.session.cloned(), scope.window) {
+                (Some(session), Some(window)) => {
+                    let route = route_canvas(session, window, id);
+                    fx.scope(route, |fx| canvas.sync_in_place(store, ui, fx));
+                }
+                _ => {
+                    let mut discard = imba::effect::Batch::new();
+                    canvas.sync_in_place(store, ui, &mut discard.effects());
+                }
             }
-            if let Some(mut canvas) = Self::take(store, id) {
-                // A headless sync: the row-list membership (placeholders
-                // for new files, retirement of removed) is pure state,
-                // and stamp-moved rows are marked OWED — the panel's
-                // paint probe issues their builds through a real sink.
-                let mut batch = imba::effect::Batch::new();
-                canvas.refresh(store, ui, &mut batch.effects());
-                Self::put(store, id, canvas);
-            }
+            Self::put(store, id, canvas);
         }
     }
 }
@@ -1500,7 +1507,72 @@ impl Canvases {
 /// The `himark::SyncObserver` that keeps `Canvases` current on the sync
 /// tick. Registered at the edge alongside the row minter and navigator.
 pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
-    std::sync::Arc::new(|store: &mut Store, ui: &imba::UiCtx| Canvases::sync(store, ui))
+    std::sync::Arc::new(
+        |store: &mut Store,
+         ui: &imba::UiCtx,
+         scope: himark::SyncScope<'_>,
+         fx: &mut himark::AppFx<'_>| { Canvases::sync(store, ui, scope, fx) },
+    )
+}
+
+/// Route a canvas's `CanvasCommand`s (feed reconcile, off-thread build
+/// landings) back to the store-held canvas as ordinary sessioned
+/// commands — the DIFF LANE's discipline: the app resolves the target
+/// from the id, no panel, no paint. `CanvasBuildLanded` re-derives the
+/// session at land time (the store is gathered for it), so its own
+/// child launches route on.
+fn route_canvas(
+    session: himark::SessionId,
+    window: himark::WindowId,
+    id: CanvasId,
+) -> impl Fn(CanvasCommand) -> himark::AppCommand + Clone {
+    move |command| {
+        himark::AppCommand::InSession(
+            session.clone(),
+            Box::new(himark::AppCommand::Landing(
+                window,
+                Box::new(CanvasBuildLanded { id, command }),
+            )),
+        )
+    }
+}
+
+/// A canvas command routed home by id (the diff lane's `DiffNormalized`
+/// shape, minus the layering that would let it be a first-class
+/// variant): take the store-held canvas, perform, put it back — its
+/// own launches re-route through the freshly-gathered session.
+struct CanvasBuildLanded {
+    id: CanvasId,
+    command: CanvasCommand,
+}
+
+impl himark::LandingCommand for CanvasBuildLanded {
+    fn perform(
+        self: Box<Self>,
+        app: &mut himark::Application,
+        store: &mut Store,
+        window: himark::WindowId,
+        fx: &mut himark::AppFx<'_>,
+    ) {
+        let CanvasBuildLanded { id, command } = *self;
+        let Some(mut canvas) = Canvases::take(store, id) else {
+            return;
+        };
+        let ui = app.ui_ctx();
+        match himark::Gathered::scope(store).cloned() {
+            Some(session) => {
+                let route = route_canvas(session, window, id);
+                fx.scope(route, |fx| canvas.perform(store, ui.as_ref(), command, fx));
+            }
+            // No session in scope — deliver without a re-route home;
+            // a build landing still applies, it just cannot relaunch.
+            None => {
+                let mut discard = imba::effect::Batch::new();
+                canvas.perform(store, ui.as_ref(), command, &mut discard.effects());
+            }
+        }
+        Canvases::put(store, id, canvas);
+    }
 }
 
 /// `Canvases` is SESSION state — it mirrors the session's `Changes` /
@@ -1615,9 +1687,9 @@ impl DiffCanvasView {
     }
 
     /// TEST SUPPORT: feed a fresh listing straight into the reconcile
-    /// (bypassing the Changes feed), then drain the owed relaunches the
-    /// way the panel's paint probe would; returns how many builds the
-    /// touch owed.
+    /// (bypassing the Changes feed); the reconcile relaunches stamp-
+    /// moved rows through the sink itself now, so this just counts the
+    /// builds it launched.
     #[doc(hidden)]
     pub fn reconcile_for_tests(&self, store: &mut Store, files: Vec<CanvasFile>) -> usize {
         let mut launched = 0;
@@ -1626,13 +1698,6 @@ impl DiffCanvasView {
             {
                 let mut fx = batch.effects();
                 canvas.reconcile(store, files, &mut fx);
-                let owed: Vec<ResourceLocation> = canvas.owed.iter().cloned().collect();
-                canvas.owed = rpds::HashTrieSetSync::new_sync();
-                for key in owed {
-                    if let Some(file) = canvas.files.get(&key).cloned() {
-                        canvas.relaunch(store, &key, &file, &mut fx);
-                    }
-                }
             }
             // The settle pulse rides the same channel — strip it, count
             // only real builds.

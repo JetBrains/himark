@@ -924,11 +924,21 @@ impl Application {
                 &mut fx,
                 |document, command| AppCommand::Entity(document, command),
             );
+            // Plugin store-state observers (e.g. hidiff's Canvases)
+            // sync against the fresh document/diff/changeset state —
+            // the SAME batch a feed landed in, with a REAL effects
+            // sink: the store reconciles and launches what it owes
+            // without any panel painting it (the push road).
+            crate::family_rows::SyncObservers::run(
+                &mut store,
+                &self.ui_ctx(),
+                crate::family_rows::SyncScope {
+                    window: scope.0,
+                    session: scope.1.as_ref(),
+                },
+                &mut fx,
+            );
         }
-        // Plugin store-state observers (e.g. hidiff's Canvases) sync
-        // against the fresh document/diff/changeset state — so a
-        // collection stays current without a panel painting it.
-        crate::family_rows::SyncObservers::run(&mut store, &self.ui_ctx());
         let probe_perform = probe.elapsed();
         self.commit(store);
         if validate_enabled() {

@@ -65,7 +65,23 @@ impl SessionFamilies {
 /// document/diff/changeset state — e.g. hidiff reconciling its
 /// `Canvases` when the change set moves, independent of any panel
 /// painting (docs/editor/diff-canvas.md §7).
-pub type SyncObserver = dyn Fn(&mut Store, &imba::UiCtx) + Send + Sync;
+/// The batch's scope, handed to a sync observer so it can route the
+/// effects it launches back to the same session (and window) the batch
+/// ran in — the feed landing that dirtied this state ran under exactly
+/// this scope (`AppCommand::dynamic_in`).
+#[derive(Clone, Copy)]
+pub struct SyncScope<'a> {
+    pub window: Option<crate::WindowId>,
+    pub session: Option<&'a crate::SessionId>,
+}
+
+/// A store-state observer with a REAL effects sink: it runs at the tail
+/// of every perform batch (after the diff/stripe lanes, so it sees the
+/// batch's fresh diffs), so a feed landing and the reconcile it owes —
+/// membership, row heights, off-thread builds — happen in the same
+/// batch. The push road, no paint involved.
+pub type SyncObserver =
+    dyn Fn(&mut Store, &imba::UiCtx, SyncScope<'_>, &mut crate::AppFx<'_>) + Send + Sync;
 
 #[derive(Clone, Default)]
 pub struct SyncObservers(rpds::VectorSync<Arc<SyncObserver>>);
@@ -79,13 +95,13 @@ impl SyncObservers {
 
     /// Run every registered observer against the store. Called once per
     /// sync tick, after the diff/stripe lanes.
-    pub fn run(store: &mut Store, ui: &imba::UiCtx) {
+    pub fn run(store: &mut Store, ui: &imba::UiCtx, scope: SyncScope<'_>, fx: &mut crate::AppFx<'_>) {
         let observers: Vec<Arc<SyncObserver>> = match store.get::<SyncObservers>() {
             Some(observers) => observers.0.iter().cloned().collect(),
             None => return,
         };
         for observer in observers {
-            observer(store, ui);
+            observer(store, ui, scope, fx);
         }
     }
 }
