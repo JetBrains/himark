@@ -1403,11 +1403,6 @@ fn a_seeded_attach_starts_settled_and_owes_no_marks_job() {
         Some(prepared.window.clone()),
     )
     .expect("the entry stands");
-    assert_eq!(
-        state.fold_phase,
-        fold::FoldPhase::Done,
-        "folds already minted"
-    );
     assert!(!state.marks_dirty, "washes already derived");
     assert_eq!(state.seen_generation, 1, "normalized at birth");
 
@@ -1580,4 +1575,64 @@ fn folds_at_the_end_of_the_diff_survive_every_edge_command() {
         drain(&mut view, effects);
         assert_aligned(&view);
     }
+}
+
+/// A removed fold is a standing BAN, not a missing strip: every marks
+/// landing re-derives the folds from the live diff (so a strip can
+/// never keep hiding a fresh edit), and the user's reveal must survive
+/// each re-derivation as subtracted negative space.
+#[test]
+fn a_removed_fold_survives_rederivation() {
+    let run: Vec<String> = (0..20).map(|n| format!("same {n}")).collect();
+    let left_source = format!("LEFT HEAD\n{}\nLEFT TAIL\n", run.join("\n"));
+    let right_source = format!("RIGHT HEAD\n{}\nRIGHT TAIL\n", run.join("\n"));
+    let mut view = pair(&left_source, &right_source, 240.0);
+
+    let strips = |view: &SplitDiffView| -> Vec<(crate::markup::IntervalId, Range<u32>)> {
+        let (lm, _) = view.state.mark_markups();
+        view.left
+            .document
+            .feature_markup(lm)
+            .map(|markup| {
+                markup
+                    .all_inlays_in(0..u32::MAX)
+                    .into_iter()
+                    .map(|interval| (interval.key.key, interval.range))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+    assert_eq!(strips(&view).len(), 1, "the run folds");
+
+    // A plain re-derivation re-mints the strip — the lane is live.
+    let ui = UiCtx::dont_use_too_slow();
+    let mut store = Store::new();
+    view.state.marks_dirty = true;
+    let effects = perform_collect(&mut view, &mut store, &ui, SplitDiffCommand::Resync);
+    drain(&mut view, effects);
+    assert_eq!(strips(&view).len(), 1, "a re-derivation re-mints the fold");
+
+    // The user removes it; the reveal records itself as a ban.
+    let (lm, _) = view.state.mark_markups();
+    let key = crate::markup::InlayKey {
+        layer: crate::markup::MarkupLayer::Markup(lm),
+        key: strips(&view)[0].0,
+    };
+    let effects = perform_collect(
+        &mut view,
+        &mut store,
+        &ui,
+        SplitDiffCommand::Left(EditorCommand::Inlay {
+            key,
+            command: Box::new(fold::FoldCommand::Remove),
+        }),
+    );
+    drain(&mut view, effects);
+    assert_eq!(strips(&view).len(), 0, "the strip is gone");
+
+    // Another full re-derivation — the ban holds the fold open.
+    view.state.marks_dirty = true;
+    let effects = perform_collect(&mut view, &mut store, &ui, SplitDiffCommand::Resync);
+    drain(&mut view, effects);
+    assert_eq!(strips(&view).len(), 0, "the ban survives the re-derivation");
 }

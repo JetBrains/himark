@@ -384,9 +384,9 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
 /// plain pane in a split) edits the same right document without a
 /// single command flowing through the diff pane. The pane must still
 /// re-dress on its own: normalize lands off-thread, the pane's PAINT
-/// probe answers the stale frame with a Resync, and the spacers follow
-/// the fresh diff. (Folds deliberately do NOT re-derive — they are the
-/// user's to toggle after the first dressing.)
+/// probe answers the stale frame with a Resync, and spacers AND folds
+/// follow the fresh diff — a strip must never keep covering a line the
+/// edit just changed (the diff would be lying).
 #[test]
 fn an_edit_from_another_editor_realigns_the_pair() {
     let store = &imba::store::Store::new();
@@ -448,6 +448,19 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         });
         shot.expect("the diff pane is open")
     };
+    let right_height = |app: &Application| {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() {
+                let right = panel.halves(app.store()).1;
+                shot = himark::OpenDocuments::document_ref(app.store(), right.document())
+                    .map(|document| document.content_height(right.editor()));
+            }
+        });
+        shot.expect("the diff pane is open")
+    };
+    let folded = right_height(&app);
+
     // The out-of-pane edit: a line lands in the MIDDLE of the folded
     // identical run of the RIGHT document, through the document road
     // (what any other editor's keystroke amounts to) — not one command
@@ -480,6 +493,16 @@ fn an_edit_from_another_editor_realigns_the_pair() {
 
     settle(&mut app, &mut surface, 40);
     assert_pair_aligned(&app);
+
+    // The folds re-derived with the fresh diff: the edited line split
+    // the folded run, so no strip swallows it — the face grew by at
+    // least the revealed line. A carried strip would keep covering the
+    // edit and the height flat.
+    let refreshed = right_height(&app);
+    assert!(
+        refreshed > folded + 14.0,
+        "the fold re-derives around the out-of-pane edit: {folded} -> {refreshed}"
+    );
 }
 
 #[test]

@@ -8,15 +8,6 @@ use text::Text;
 
 pub(crate) const FOLDS_ENABLED: bool = true;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum FoldPhase {
-    Waiting,
-
-    Owed,
-
-    Done,
-}
-
 pub(crate) const FOLD_CONTEXT: u32 = 3;
 
 pub(crate) const FOLD_MIN_LINES: u32 = 3;
@@ -29,6 +20,87 @@ pub struct FoldSpec {
     pub right: Range<u32>,
 
     pub lines: u32,
+}
+
+/// The banned set: intervals over the left document the derivation
+/// must never fold. Keys are internal; the set is kept canonical
+/// (sorted, disjoint, merged) by `ban`.
+pub(crate) type FoldBans = intervals::Intervals<crate::markup::IntervalId, ()>;
+
+/// Rewrite the banned set WITHIN `extent` to `extent \ keep`, leaving
+/// bans outside `extent` alone. `keep` empty bans the whole extent (a
+/// full Remove); `keep == extent` un-bans it (a full Hide).
+pub(crate) fn ban(bans: &mut FoldBans, extent: Range<u32>, keep: Range<u32>) {
+    use intervals::{IntervalQuery, Order};
+    let mut fresh: Vec<Range<u32>> = Vec::new();
+    for standing in bans.query(0..u32::MAX, Order::Ascending) {
+        // The parts of a standing ban OUTSIDE the extent survive.
+        if standing.range.start < extent.start {
+            fresh.push(standing.range.start..standing.range.end.min(extent.start));
+        }
+        if standing.range.end > extent.end {
+            fresh.push(standing.range.start.max(extent.end)..standing.range.end);
+        }
+    }
+    let keep = keep.start.clamp(extent.start, extent.end)..keep.end.clamp(extent.start, extent.end);
+    if keep.start >= keep.end {
+        fresh.push(extent.clone());
+    } else {
+        fresh.push(extent.start..keep.start);
+        fresh.push(keep.end..extent.end);
+    }
+    fresh.retain(|range| range.start < range.end);
+    fresh.sort_by_key(|range| range.start);
+    // Merge touching neighbours and rebuild — the set is user-action
+    // sized, and a canonical rebuild is what keeps it disjoint.
+    let mut merged: Vec<Range<u32>> = Vec::with_capacity(fresh.len());
+    for range in fresh {
+        match merged.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    let mut canonical = FoldBans::new();
+    canonical.insert(
+        merged
+            .into_iter()
+            .enumerate()
+            .map(|(n, range)| intervals::Interval {
+                range,
+                greedy_left: false,
+                greedy_right: false,
+                key: crate::markup::IntervalId(n as u32),
+                value: (),
+            }),
+    );
+    *bans = canonical;
+}
+
+/// `of \ bans`, in order — the pieces of a derived fold the user has
+/// not revealed.
+pub(crate) fn subtract_bans(of: &Range<u32>, bans: &FoldBans) -> Vec<Range<u32>> {
+    use intervals::{IntervalQuery, Order};
+    let mut pieces = Vec::new();
+    let mut at = of.start;
+    for ban in bans.query(of.clone(), Order::Ascending) {
+        if ban.range.end <= at {
+            continue;
+        }
+        if ban.range.start >= of.end {
+            break;
+        }
+        if ban.range.start > at {
+            pieces.push(at..ban.range.start.min(of.end));
+        }
+        at = at.max(ban.range.end);
+        if at >= of.end {
+            break;
+        }
+    }
+    if at < of.end {
+        pieces.push(at..of.end);
+    }
+    pieces
 }
 
 pub(crate) fn derive_folds(
@@ -266,6 +338,59 @@ mod tests {
         let diff = myersdiff::diff(&left, &right);
         let len = left.view().byte_count() as u32;
         assert!(derive_folds(&diff, &left, 0..len, FOLD_CONTEXT).is_empty());
+    }
+
+    fn ban_ranges(bans: &FoldBans) -> Vec<Range<u32>> {
+        use intervals::{IntervalQuery, Order};
+        bans.query(0..u32::MAX, Order::Ascending)
+            .map(|interval| interval.range)
+            .collect()
+    }
+
+    fn bans_of(ranges: &[Range<u32>]) -> FoldBans {
+        let mut bans = FoldBans::new();
+        for range in ranges {
+            ban(&mut bans, range.clone(), 0..0);
+        }
+        bans
+    }
+
+    #[test]
+    fn a_ban_is_the_extent_minus_the_kept_fold() {
+        let mut bans = FoldBans::new();
+        // A full Remove bans the whole extent.
+        ban(&mut bans, 10..50, 0..0);
+        assert_eq!(ban_ranges(&bans), vec![10..50]);
+        // A Hide gives the middle back to the derivation.
+        ban(&mut bans, 10..50, 20..40);
+        assert_eq!(ban_ranges(&bans), vec![10..20, 40..50]);
+        // A ban outside the extent survives a rewrite within it.
+        ban(&mut bans, 90..100, 0..0);
+        ban(&mut bans, 10..50, 15..50);
+        assert_eq!(ban_ranges(&bans), vec![10..15, 90..100]);
+        // A full Hide un-bans the extent entirely.
+        ban(&mut bans, 10..50, 10..50);
+        assert_eq!(ban_ranges(&bans), vec![90..100]);
+        // Touching pieces merge into one canonical range.
+        ban(&mut bans, 80..90, 0..0);
+        assert_eq!(ban_ranges(&bans), vec![80..100]);
+    }
+
+    #[test]
+    fn subtraction_keeps_the_unrevealed_pieces_in_order() {
+        assert_eq!(subtract_bans(&(0..100), &bans_of(&[])), vec![0..100]);
+        assert_eq!(
+            subtract_bans(&(0..100), &bans_of(&[40..60])),
+            vec![0..40, 60..100]
+        );
+        assert_eq!(
+            subtract_bans(&(0..100), &bans_of(&[0..100])),
+            Vec::<Range<u32>>::new()
+        );
+        assert_eq!(
+            subtract_bans(&(20..80), &bans_of(&[0..30, 50..60, 90..95])),
+            vec![30..50, 60..80]
+        );
     }
 }
 

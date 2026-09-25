@@ -65,7 +65,16 @@ pub struct DiffState {
 
     pair_seq: u64,
 
-    fold_phase: fold::FoldPhase,
+    /// The user's standing reveals, as intervals over the LEFT
+    /// document: ranges the fold derivation must never fold again.
+    /// This is the ONLY persistent fold state — the strips themselves
+    /// re-derive with every marks landing so they follow the diff (an
+    /// agent's reload lands as an ordinary edit, and a carried strip
+    /// would hide it); a reveal survives as banned negative space
+    /// instead of a pinned strip. Rolled forward with the diff through
+    /// left-document edits (`Intervals::edit`); an emptied ban banned
+    /// text that is gone, and drops itself.
+    fold_bans: intervals::Intervals<crate::markup::IntervalId, ()>,
 
     marks_dirty: bool,
 
@@ -108,13 +117,7 @@ impl DiffState {
             ui_synced_boundaries: 0,
             pair_repair_token: None,
             pair_seq: 0,
-            fold_phase: match fold::FOLDS_ENABLED {
-                true if seeded.is_some() => fold::FoldPhase::Done,
-
-                true if entry.generation() > 0 => fold::FoldPhase::Owed,
-                true => fold::FoldPhase::Waiting,
-                false => fold::FoldPhase::Done,
-            },
+            fold_bans: intervals::Intervals::new(),
             marks_dirty: seeded.is_none(),
             marks_window: seeded,
         })
@@ -261,6 +264,9 @@ impl SplitDiffView {
                 widen(span);
             }
             self.state.diff = a.invert().splice_compose_into(&self.state.diff);
+            // The fold bans are intervals over the left text — they
+            // ride the same roll.
+            self.state.fold_bans.edit(crate::markup::interval_steps(&a));
             self.state.left_revision = self.left.document.revision();
             rolled_any = true;
         }
@@ -303,6 +309,8 @@ impl SplitDiffView {
                 self.state.right_revision = self.right.document.revision();
                 self.state.marks_dirty = true;
                 self.state.marks_window = None;
+                // The bans' coordinates did not survive the jump.
+                self.state.fold_bans = intervals::Intervals::new();
                 self.state.align_pending = Some(0..self.left.document.text().byte_count() as u32);
                 (None, false)
             }
@@ -368,15 +376,6 @@ impl SplitDiffView {
         self.state.right_revision = self.right.document.revision();
         self.state.seen_generation = generation;
         self.state.marks_dirty = true;
-
-        // Folds derive ONCE (Waiting → Owed on the first adopted
-        // generation) and are the USER'S after that — they toggle
-        // strips open and closed, and a re-derive on every landed
-        // edit would snap their choices shut. Later landings carry
-        // the standing strips (positions transform with the text).
-        if self.state.fold_phase == fold::FoldPhase::Waiting {
-            self.state.fold_phase = fold::FoldPhase::Owed;
-        }
         if let Some(owed) = owed {
             self.sync_visible_owe_rest(owed);
         }
@@ -466,7 +465,7 @@ impl SplitDiffView {
                 .document
                 .feature_markup(self.state.right_marks)
                 .cloned(),
-            derive_folds: self.state.fold_phase == fold::FoldPhase::Owed,
+            fold_bans: self.state.fold_bans.clone(),
             window,
         });
         RepairDiffEffect {
@@ -562,6 +561,10 @@ impl SplitDiffView {
         let theme = crate::env::Themes::of(store);
 
         if matches!(command, fold::FoldCommand::Remove) {
+            // The reveal persists as a BAN, not as a missing strip: the
+            // next derivation (every marks landing) subtracts it, so
+            // the fold stays open however often the diff re-dresses.
+            fold::ban(&mut self.state.fold_bans, left_range.clone(), 0..0);
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
@@ -640,6 +643,11 @@ impl SplitDiffView {
             }
             fold::FoldCommand::Remove => unreachable!("handled above"),
         }
+
+        // Within this fold's maximal extent, the banned set is exactly
+        // what the user has revealed — a Reveal grows it, a Hide gives
+        // range back to the derivation.
+        fold::ban(&mut self.state.fold_bans, spec.left.clone(), start..end);
 
         if end > start {
             let lines = scan.count_lines(start, end);
@@ -831,25 +839,51 @@ fn mint_fold_strips(
     left_text: &Text,
     left_markup: &mut crate::markup::Markup,
     right_markup: &mut crate::markup::Markup,
+    bans: &fold::FoldBans,
 ) {
+    if !fold::FOLDS_ENABLED {
+        return;
+    }
     let len = left_text.byte_count().min(u32::MAX as usize) as u32;
     let specs = fold::derive_folds(diff, left_text, 0..len, fold::FOLD_CONTEXT);
-    for (n, spec) in specs.iter().enumerate() {
-        let key = crate::markup::IntervalId(u32::MAX - n as u32);
-        // The left pane carries a silent spacer for aligned heights;
-        // the right pane's strip is the shared, interactive face,
-        // projected onto the pane-wide (split-wide) overlay host.
-        let spacer = crate::markup::Inlay::new(
-            crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-            fold::FoldStrip::spacer(spec.lines),
-        );
-        let strip = crate::markup::Inlay::new(
-            crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-            fold::FoldStrip::new(spec.lines),
-        )
-        .over(crate::markup::INLAY_HOST);
-        left_markup.replace_inlay(key, spec.left.clone(), spacer);
-        right_markup.replace_inlay(key, spec.right.clone(), strip);
+    let mut scan = fold::LineScan::new(left_text);
+    let mut minted = 0u32;
+    for spec in &specs {
+        // The user's reveals are negative space: the derived fold is
+        // clipped by every ban, and each surviving piece must still be
+        // line-whole and worth a strip on its own.
+        for piece in fold::subtract_bans(&spec.left, bans) {
+            let start = match scan.line_start_at_or_after(piece.start, len) {
+                Some(byte) if byte < piece.end => byte,
+                _ => continue,
+            };
+            let end = match scan.line_end_at_or_before(piece.end, len) {
+                Some(byte) if byte > start => byte,
+                _ => continue,
+            };
+            let lines = scan.count_lines(start, end);
+            if lines < fold::FOLD_MIN_LINES {
+                continue;
+            }
+            let key = crate::markup::IntervalId(u32::MAX - minted);
+            minted += 1;
+            let offset = start - spec.left.start;
+            let right_start = spec.right.start + offset;
+            // The left pane carries a silent spacer for aligned heights;
+            // the right pane's strip is the shared, interactive face,
+            // projected onto the pane-wide (split-wide) overlay host.
+            let spacer = crate::markup::Inlay::new(
+                crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
+                fold::FoldStrip::spacer(lines),
+            );
+            let strip = crate::markup::Inlay::new(
+                crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
+                fold::FoldStrip::new(lines),
+            )
+            .over(crate::markup::INLAY_HOST);
+            left_markup.replace_inlay(key, start..end, spacer);
+            right_markup.replace_inlay(key, right_start..right_start + (end - start), strip);
+        }
     }
 }
 
@@ -866,9 +900,7 @@ pub fn prepare_marks(diff: &Operation, left_text: &Text) -> PreparedMarks {
     const BLOCK: u32 = 4 * 1024;
     let window = 0..len.div_ceil(BLOCK).saturating_mul(BLOCK);
     let (mut left, mut right) = derive_wash_markups(diff, left_text, &window);
-    if fold::FOLDS_ENABLED {
-        mint_fold_strips(diff, left_text, &mut left, &mut right);
-    }
+    mint_fold_strips(diff, left_text, &mut left, &mut right, &fold::FoldBans::new());
     PreparedMarks {
         left,
         right,
@@ -1008,9 +1040,6 @@ impl View for SplitDiffView {
                             });
                             self.state.marks_window = Some(marks.window);
                             self.state.marks_dirty = false;
-                            if marks.derived_folds {
-                                self.state.fold_phase = fold::FoldPhase::Done;
-                            }
                         }
 
                         let left_editor = self.left.editor;
@@ -1140,7 +1169,7 @@ struct MarksJob {
     left_current: Option<crate::markup::Markup>,
     right_current: Option<crate::markup::Markup>,
 
-    derive_folds: bool,
+    fold_bans: fold::FoldBans,
 }
 
 pub struct MarksLanding {
@@ -1149,8 +1178,6 @@ pub struct MarksLanding {
     right_markup: crate::markup::Markup,
     left_changed: Vec<Range<u32>>,
     right_changed: Vec<Range<u32>>,
-
-    derived_folds: bool,
 }
 
 enum PairSide {
@@ -1222,30 +1249,24 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
         let marks = effect.marks.map(|job| {
             let (mut left_markup, mut right_markup) =
                 derive_wash_markups(&effect.diff, &job.left_text, &job.window);
-            if job.derive_folds {
-                mint_fold_strips(
-                    &effect.diff,
-                    &job.left_text,
-                    &mut left_markup,
-                    &mut right_markup,
-                );
-            } else {
-                let carry = |from: Option<&crate::markup::Markup>,
-                             into: &mut crate::markup::Markup| {
-                    let Some(from) = from else { return };
-                    for hit in from.all_inlays_in(0..u32::MAX) {
-                        into.replace_inlay(hit.key.key, hit.range.clone(), hit.inlay.clone());
-                    }
-                };
-                carry(job.left_current.as_ref(), &mut left_markup);
-                carry(job.right_current.as_ref(), &mut right_markup);
-            }
+            // Every landing re-derives the folds with the washes — the
+            // dressing follows the diff, so a strip can never keep
+            // covering a run an edit (a keystroke, an agent's reload)
+            // just changed. The user's reveals persist as BANS the
+            // derivation subtracts, not as pinned strips.
+            mint_fold_strips(
+                &effect.diff,
+                &job.left_text,
+                &mut left_markup,
+                &mut right_markup,
+                &job.fold_bans,
+            );
             trace_diff(|| {
                 use intervals::IntervalQuery;
                 format!(
-                    "marks derived window={:?} folds={} left={} right={} changed=({},{})",
+                    "marks derived window={:?} bans={} left={} right={} changed=({},{})",
                     job.window,
-                    job.derive_folds,
+                    job.fold_bans.len(),
                     left_markup
                         .query(0..u32::MAX, intervals::Order::Ascending)
                         .count(),
@@ -1262,7 +1283,6 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
                 window: job.window,
                 left_markup,
                 right_markup,
-                derived_folds: job.derive_folds,
             }
         });
         SplitDiffCommand::PairRepaired {
