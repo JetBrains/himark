@@ -159,9 +159,18 @@ impl DiffViewState {
     }
 
     /// The inline face was built for an older dressing than the pane has
-    /// now adopted — it owes a rebuild off the fresh markup.
+    /// now adopted — it owes a refresh off the fresh markup.
     pub(crate) fn inline_stale(&self) -> bool {
         self.inline_editor.is_some() && self.inline_generation != self.seen_generation
+    }
+
+    /// The inline face still wears the whole-replace SEED — it was
+    /// built before the first honest normalize landed. That first
+    /// landing is the ONE transition allowed to rebuild the editor
+    /// wholesale (nobody meaningfully holds a caret in a face frames
+    /// old); every later adoption heals in place instead.
+    pub(crate) fn inline_wears_the_seed(&self) -> bool {
+        self.inline_generation == 0
     }
 
     /// Record that the inline face is now built for the adopted

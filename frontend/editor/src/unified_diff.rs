@@ -130,12 +130,21 @@ impl UnifiedDiffView {
         })
     }
 
-    /// The normalize lane landed a fresh dressing. The split face healed
-    /// in place; the inline face — a bounded build with no alignment
-    /// partner to re-fold its off-screen extent — is rebuilt from the
-    /// fresh markup, exactly the state it would have been born with had
-    /// the diff been dressed first. The rebuild is bounded, so this
-    /// stays O(viewport) (docs/no-diff-on-ui-thread, himark O(log n)).
+    /// The normalize lane landed a fresh generation and the inline face
+    /// wears an older dressing. TWO very different cases:
+    ///
+    /// The face still wears the whole-replace SEED (built at mount,
+    /// before the first honest diff): rebuild it wholesale — its one
+    /// giant before-card and foldless height are the seed's shape, and
+    /// a face frames old holds nobody's caret. This is the ONLY
+    /// rebuild.
+    ///
+    /// An honest generation replaced an honest one (a keystroke's own
+    /// landing included): heal IN PLACE, like the split face — folds
+    /// and washes already arrived through the shared marks markup the
+    /// inline editor shows, and the before-cards re-expand as inlay
+    /// surgery. The editor survives, and with it the caret: tearing it
+    /// down here is what snapped typing back to offset zero.
     fn refresh_inline_if_stale(
         &mut self,
         store: &mut Store,
@@ -145,12 +154,26 @@ impl UnifiedDiffView {
         if !self.split.state.inline_stale() {
             return;
         }
-        let Some(stale) = self.inline_editor.take() else {
-            return;
-        };
-        self.split.right.document.remove_editor(stale);
-        let editor = self.build_inline_editor(store, ui, fx);
-        self.inline_editor = Some(editor);
+        if self.split.state.inline_wears_the_seed() {
+            let Some(stale) = self.inline_editor.take() else {
+                return;
+            };
+            self.split.right.document.remove_editor(stale);
+            let editor = self.build_inline_editor(store, ui, fx);
+            self.inline_editor = Some(editor);
+        } else {
+            let Some(editor) = self.inline_editor else {
+                return;
+            };
+            let fonts = crate::env::ui_collection(store, ui);
+            let theme = crate::env::Themes::of(store);
+            let diff = self.split.state.diff_id();
+            let base = self.split.left.document.clone();
+            let right = &mut self.split.right.document;
+            fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                right.refresh_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx)
+            });
+        }
         self.split.state.note_inline_built();
         self.split
             .state

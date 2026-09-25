@@ -2543,6 +2543,47 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 
     let _ = himark::test_driver::mouse_move(&mut app, 550.0, card_y);
     assert_eq!(host_focus(&app), "Text", "hovering the card moves nothing");
+
+    // REGRESSION (2026-09-25): typing in the inline face composes an
+    // exact operation; the landing that normalizes it must HEAL the
+    // face in place — the old per-generation rebuild tore the inline
+    // editor down mid-typing, snapping the caret (and focus) to the
+    // top of the document.
+    let inline_of = |app: &Application| {
+        let mut shot = None;
+        app.for_each_plugin_panel(&mut |panel| {
+            if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
+                let store = app.store();
+                shot = canvas
+                    .probe_pair(store, &location("small.md", himark::ResourceType::document()))
+                    .and_then(|id| himark::OpenDocuments::diff_view_ref(store, id))
+                    .and_then(|pair| pair.state.as_ref())
+                    .and_then(|state| state.inline_editor());
+            }
+        });
+        shot.expect("the built row's inline face")
+    };
+    let standing = inline_of(&app);
+    assert!(himark::test_driver::type_text(&mut app, "x"));
+    for _ in 0..20 {
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        runner.run();
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+        }
+        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    }
+    assert_eq!(
+        inline_of(&app),
+        standing,
+        "the landing heals the typed-in face in place — no rebuild"
+    );
+    assert_eq!(
+        host_focus(&app),
+        "Text",
+        "the caret's focus survives the landing"
+    );
 }
 
 #[test]
