@@ -302,8 +302,56 @@ impl View for TerminalView {
     }
 }
 
+/// The terminal pane's navigation identity: its channel — same shape
+/// as the chat's, and for the same reason: a place is what makes
+/// leaving the pane walkable.
+#[derive(Clone, PartialEq)]
+pub struct TerminalPlace {
+    pub channel: String,
+}
+
+impl crate::Place for TerminalPlace {}
+
+/// The walk-back road: re-mint the pane off the family row while the
+/// terminal session still stands.
+pub struct TerminalNavigator;
+
+impl crate::Navigator for TerminalNavigator {
+    type Place = TerminalPlace;
+
+    fn navigate(
+        &self,
+        store: &mut Store,
+        _ui: &imba::UiCtx,
+        _window: crate::WindowId,
+        place: &TerminalPlace,
+        _fx: &mut crate::AppFx<'_>,
+    ) -> Option<crate::Panel> {
+        Terminals::session_ref(store, &place.channel)?;
+        Some(crate::Panel::Plugin(crate::family_rows::mint(
+            store,
+            &crate::FamilyRow::Terminal(place.channel.clone()),
+        )?))
+    }
+}
+
 impl PanelView for TerminalView {
-    type Place = crate::NoPlace;
+    type Place = TerminalPlace;
+
+    fn navigation_location(&self, _store: &Store) -> Option<TerminalPlace> {
+        Some(TerminalPlace {
+            channel: self.channel.clone(),
+        })
+    }
+
+    fn navigate_to(
+        &mut self,
+        _store: &mut Store,
+        place: &TerminalPlace,
+        _fx: &mut crate::AppFx<'_>,
+    ) -> bool {
+        place.channel == self.channel
+    }
 
     fn title(&self, store: &Store) -> String {
         let title = Terminals::session_ref(store, &self.channel)

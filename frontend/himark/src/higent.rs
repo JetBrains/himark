@@ -21,7 +21,7 @@ mod turn;
 pub use crate::SessionId;
 pub use cell::{Cell, CellCommand, CellKind};
 pub use chat::{ChatArea, ChatPanel, ChatPanelCommand, RowCommand};
-pub use chats::{ChatPane, Chats};
+pub use chats::{ChatNavigator, ChatPane, ChatPlace, Chats};
 pub use composer::ComposerCommand;
 pub use drawer::{
     toolbar_button, AddHost, AgentsCommand, AgentsPanel, ShareHost, ToggleAgentsView,

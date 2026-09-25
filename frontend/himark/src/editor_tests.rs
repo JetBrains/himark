@@ -4471,6 +4471,81 @@ mod dock_tests {
         );
     }
 
+    /// A chat pane is a real navigation stop: leaving it records its
+    /// place, and back re-mints it off the family row.
+    #[test]
+    fn back_returns_to_the_chat_panel() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(window, &mut app, surface.canvas());
+
+        let uri = "ahp-chat:/walkable".to_owned();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/walkable",
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
+        {
+            let ui = app.ui_ctx();
+            let mut store = app.store_mut();
+            let mut entity = crate::Windows::window(&store, window).expect("window");
+            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+            let _ = entity.open_panel(
+                &mut store,
+                &ui,
+                Box::new(crate::higent::ChatPane::new(uri.clone())),
+                &mut batch.effects(),
+            );
+            crate::Windows::put(&mut store, window, entity);
+        }
+        settle(&mut app, &mut surface);
+
+        let mounted_chat = |app: &crate::Application| -> Option<String> {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let mut found = None;
+            entity.workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                        found = Some(pane.chat().clone());
+                    }
+                }
+            });
+            found
+        };
+        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/walkable"));
+
+        // Navigate away through the recording road (install_panel).
+        {
+            let ui = app.ui_ctx();
+            let mut store = app.store_mut();
+            let mut entity = crate::Windows::window(&store, window).expect("window");
+            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+            let _ = entity.open_panel(
+                &mut store,
+                &ui,
+                Box::new(crate::workbench_node::ClosedPanel),
+                &mut batch.effects(),
+            );
+            crate::Windows::put(&mut store, window, entity);
+        }
+        settle(&mut app, &mut surface);
+        assert_eq!(mounted_chat(&app), None, "the chat pane was displaced");
+
+        assert!(app.perform_registered(window, "navigation.back"));
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            mounted_chat(&app).as_deref(),
+            Some("ahp-chat:/walkable"),
+            "back walks to the recorded chat place"
+        );
+    }
+
     #[test]
     fn new_session_leaves_the_previous_session_and_its_chat() {
         let mut app = Application::new(AppFonts::embedded());

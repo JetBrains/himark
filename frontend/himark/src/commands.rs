@@ -600,6 +600,11 @@ pub(crate) fn register_builtins(store: &mut Store) {
     Commands::register(store, Arc::new(SetTheme { dark: false }));
     Commands::register(store, Arc::new(ChatComposer));
 
+    // The panels himark itself owns answer navigation walks: a
+    // recorded chat/terminal place must be able to walk back.
+    crate::Navigators::register(store, crate::higent::ChatNavigator);
+    crate::Navigators::register(store, crate::terminal::TerminalNavigator);
+
     Commands::register(
         store,
         Arc::new(crate::new_session::OpenNewSession { host: None }),

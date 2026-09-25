@@ -237,11 +237,59 @@ impl imba::View for ChatPane {
     }
 }
 
+/// The chat pane's navigation identity: the chat uri. A recorded place
+/// is what makes leaving a chat WALKABLE — without one, a navigation
+/// away pushes nothing and back has nowhere to return.
+#[derive(Clone, PartialEq)]
+pub struct ChatPlace {
+    pub chat: Uri,
+}
+
+impl crate::Place for ChatPlace {}
+
+/// The walk-back road: re-mint the reference pane off the family row.
+/// A dismantled chat has no home to walk back to.
+pub struct ChatNavigator;
+
+impl crate::Navigator for ChatNavigator {
+    type Place = ChatPlace;
+
+    fn navigate(
+        &self,
+        store: &mut Store,
+        _ui: &UiCtx,
+        _window: WindowId,
+        place: &ChatPlace,
+        _fx: &mut crate::AppFx<'_>,
+    ) -> Option<crate::Panel> {
+        Chats::chat_ref(store, &place.chat)?;
+        Some(crate::Panel::Plugin(crate::family_rows::mint(
+            store,
+            &crate::FamilyRow::Chat(place.chat.clone()),
+        )?))
+    }
+}
+
 impl crate::PanelView for ChatPane {
-    type Place = crate::NoPlace;
+    type Place = ChatPlace;
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
         Some(crate::FamilyRow::Chat(self.chat.clone()))
+    }
+
+    fn navigation_location(&self, _store: &Store) -> Option<ChatPlace> {
+        Some(ChatPlace {
+            chat: self.chat.clone(),
+        })
+    }
+
+    fn navigate_to(
+        &mut self,
+        _store: &mut Store,
+        place: &ChatPlace,
+        _fx: &mut crate::AppFx<'_>,
+    ) -> bool {
+        place.chat == self.chat
     }
 
     fn title(&self, store: &Store) -> String {
