@@ -35,8 +35,9 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         &mut imba::effect::Batch::new().effects(),
     );
     let _ = editor;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(0, "# hi"),
+        &operation::Operation::insert_in(len, 0, "# hi"),
         store,
         ui,
         &fonts,

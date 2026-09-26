@@ -200,8 +200,9 @@ fn typing_mid_run_discards_the_write() {
     let landing = ran(launched(&mut store, script));
 
     let mut document = OpenDocuments::document(&store, plan).expect("the document");
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(0, "typed "),
+        &operation::Operation::insert_in(len, 0, "typed "),
         &store,
         ui,
         himark::test_document::test_fonts_collection(),

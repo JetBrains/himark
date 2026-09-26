@@ -1025,8 +1025,9 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         }
         let mut trial = document.clone();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let len = trial.text().byte_count() as u32;
             trial.edit(
-                &operation::Operation::insert_at(at as u32, "x"),
+                &operation::Operation::insert_in(len, at as u32, "x"),
                 store,
                 ui,
                 &fonts,

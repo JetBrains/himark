@@ -1363,11 +1363,13 @@ fn breaking_the_delimiter_dissolves_the_widget() {
         let mut document =
             himark::OpenDocuments::document(&mut store, document_id).expect("document");
         let mut batch = imba::effect::Batch::new();
+        let tail = document.text().byte_count() as u32 - 10 - "|---|---|".len() as u32;
         document.edit(
             &operation::Operation::from_ops([
                 operation::Op::Retain(10),
                 operation::Op::Delete("|---|---|".to_owned()),
                 operation::Op::Insert("not a delimiter".to_owned()),
+                operation::Op::Retain(tail),
             ]),
             &store,
             ui,
@@ -1414,11 +1416,13 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
     {
         let mut document = himark::OpenDocuments::document(&store, document_id).expect("document");
         let mut batch = imba::effect::Batch::new();
+        let tail = document.text().byte_count() as u32 - at - "left".len() as u32;
         document.edit(
             &Operation::from_ops([
                 Op::Retain(at),
                 Op::Delete("left".to_owned()),
                 Op::Insert("outside".to_owned()),
+                Op::Retain(tail),
             ]),
             &store,
             ui,
