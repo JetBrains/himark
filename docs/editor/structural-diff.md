@@ -54,11 +54,19 @@ The load-bearing decisions, up front:
    minimal exact edit); the three-way watch merge, being core, goes
    through the policy but passes no syntax, which degrades any policy
    to its text pass.
-4. **Every structural failure degrades to `similar`, silently.** No
-   tree, unparseable baseline, error-heavy tree, graph-limit
-   exceeded, or a failed exactness check — each falls back to the
-   current pipeline. The structural path is an upgrade, never a
-   requirement.
+4. **Myers runs FIRST, and gates the engine.** It is the fallback
+   anyway and 100–1000× cheaper, so `Structural::diff` computes it up
+   front and reads the CHANGE MASS off it: past
+   `MAX_STRUCTURAL_PIECES` / `MAX_STRUCTURAL_CHANGED_BYTES` the
+   structural pass is not attempted at all — a change that large
+   renders as "everything changed" under either engine, while
+   difftastic's per-region Dijkstra cost explodes (measured: 15.7s on
+   a 461KB global rename whose answer matched Myers piece for piece).
+5. **Every structural failure degrades to the precomputed Myers
+   result, silently.** Gated out, no tree, unparseable baseline,
+   error-heavy tree, graph-limit exceeded, or a failed exactness
+   check — each returns the Myers operation already in hand. The
+   structural path is an upgrade, never a requirement.
 
 ## The vendored crate
 

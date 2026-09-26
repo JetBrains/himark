@@ -45,13 +45,44 @@ const MAX_STRUCTURAL_BYTES: usize = 1024 * 1024;
 /// `ERROR`/`MISSING` nodes the tree is not trusted.
 const MAX_ERROR_RATIO: f64 = 0.05;
 
-pub fn diff(left: &Text, right: &Text, syntax: Option<&SyntaxInput>) -> Operation {
-    if let Some(input) = syntax {
-        if let Some(operation) = structural(left, right, input) {
-            return operation;
+/// Structural alignment buys READABILITY on a modest change — a
+/// re-indent, a moved block, a rewrite-in-place. Past this change
+/// mass the diff renders as "everything changed" under either engine,
+/// while difftastic's cost explodes (a Dijkstra per changed region:
+/// measured 15.7s on a 461KB global rename whose answer matched Myers
+/// piece for piece). Myers runs FIRST — it is the fallback anyway and
+/// 100-1000x cheaper — and its result is the gate.
+const MAX_STRUCTURAL_PIECES: usize = 256;
+const MAX_STRUCTURAL_CHANGED_BYTES: usize = 64 * 1024;
+
+fn worth_structural(myers: &Operation) -> bool {
+    let mut pieces = 0usize;
+    let mut changed = 0usize;
+    for op in myers.iter() {
+        match op {
+            operation::Op::Retain(_) => {}
+            operation::Op::Delete(text) | operation::Op::Insert(text) => {
+                pieces += 1;
+                changed += text.len();
+            }
+        }
+        if pieces > MAX_STRUCTURAL_PIECES || changed > MAX_STRUCTURAL_CHANGED_BYTES {
+            return false;
         }
     }
-    myersdiff::diff(left, right)
+    true
+}
+
+pub fn diff(left: &Text, right: &Text, syntax: Option<&SyntaxInput>) -> Operation {
+    let myers = myersdiff::diff(left, right);
+    if let Some(input) = syntax {
+        if worth_structural(&myers) {
+            if let Some(operation) = structural(left, right, input) {
+                return operation;
+            }
+        }
+    }
+    myers
 }
 
 /// The edge-installable `editor::diff::DiffPolicy`: structural where
@@ -125,12 +156,15 @@ impl editor::diff::DiffPolicy for Structural {
         target: &Text,
         syntax: Option<&editor::diff::DiffSyntax<'_>>,
     ) -> Operation {
+        let myers = myersdiff::diff(base, target);
         if let Some(syntax) = syntax {
-            if let Some(operation) = self.try_structural(base, target, syntax) {
-                return operation;
+            if worth_structural(&myers) {
+                if let Some(operation) = self.try_structural(base, target, syntax) {
+                    return operation;
+                }
             }
         }
-        myersdiff::diff(base, target)
+        myers
     }
 }
 
@@ -246,4 +280,41 @@ pub fn apply(operation: &Operation, left: &str) -> Option<String> {
         }
     }
     (at == left.len()).then_some(out)
+}
+
+#[cfg(test)]
+mod gate {
+    use super::*;
+    use operation::Op;
+
+    #[test]
+    fn a_modest_change_is_worth_structural() {
+        let op = Operation::from_ops([
+            Op::Retain(1000),
+            Op::Delete("old body".to_owned()),
+            Op::Insert("new body".to_owned()),
+            Op::Retain(1000),
+        ]);
+        assert!(worth_structural(&op));
+    }
+
+    #[test]
+    fn a_scattered_rewrite_gates_out() {
+        let mut ops = Vec::new();
+        for _ in 0..300 {
+            ops.push(Op::Retain(10));
+            ops.push(Op::Delete("x".to_owned()));
+            ops.push(Op::Insert("y".to_owned()));
+        }
+        assert!(!worth_structural(&Operation::from_ops(ops)));
+    }
+
+    #[test]
+    fn a_bulk_replacement_gates_out() {
+        let big = "x".repeat(65 * 1024);
+        assert!(!worth_structural(&Operation::from_ops([
+            Op::Delete(big.clone()),
+            Op::Insert(big),
+        ])));
+    }
 }

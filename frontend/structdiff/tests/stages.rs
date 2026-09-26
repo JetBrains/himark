@@ -100,7 +100,7 @@ fn stage_report(name: &str, base_src: &str, target_src: &str) {
         right_tree: hisitter::TsTree::of(target_tree.as_ref()).expect("ts target"),
         language: Some("rust"),
     };
-    let operation = time("difftastic engine (trees given)", || {
+    let operation = time("policy diff (myers-gated)", || {
         structdiff::diff(&base, &target, Some(&input))
     });
     let myers = time("myers fallback (same input)", || {
