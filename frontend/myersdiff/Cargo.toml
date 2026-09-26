@@ -8,4 +8,4 @@ publish = false
 editor = { path = "../editor" }
 operation = { path = "../operation" }
 text = { path = "../text" }
-similar = "2.6"
+similar = "3.2"
