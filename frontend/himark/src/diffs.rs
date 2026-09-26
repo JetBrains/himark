@@ -8,8 +8,7 @@ use crate::{AppCommand, AppFx};
 
 pub use documents::diffs::{
     adopt_base_location, land_base_built, land_normalized, rearm_base_asks,
-    DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect,
-    StripeBases,
+    DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, StripeBases,
 };
 
 /// Assemble the per-ask facade over a tracked pair: live documents +
@@ -139,10 +138,9 @@ pub(crate) fn sync_diff_lanes(store: &mut Store, fx: &mut AppFx<'_>) {
     });
 }
 
-pub fn sync_stripe_bases(store: &mut Store, fx: &mut AppFx<'_>) {
-    documents::diffs::sync_stripe_bases(store, fx, |document, base| AppCommand::BaseLocated {
-        document,
-        base,
+pub fn sync_stripe_bases(store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
+    documents::diffs::sync_stripe_bases(store, fx, |store, document, base, fx| {
+        land_base_located(store, ui, document, base, fx);
     });
 }
 

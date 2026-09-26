@@ -197,29 +197,6 @@ fn stamp_entries<'a>(
     }
 }
 
-#[derive(Clone, Default)]
-pub struct ChangeRefs(Arc<std::sync::Mutex<std::collections::HashMap<String, ResourceLocation>>>);
-
-impl ChangeRefs {
-    pub fn lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
-        self.0.lock().unwrap().get(abs_path).cloned()
-    }
-
-    fn replace_folder<I: Iterator<Item = (String, ResourceLocation)>>(
-        &self,
-        folder_prefix: &str,
-        fresh: I,
-    ) {
-        let mut map = self.0.lock().unwrap();
-        map.retain(|abs, _| {
-            !(abs.strip_prefix(folder_prefix)).is_some_and(|rest| rest.starts_with('/'))
-        });
-        for (abs, before) in fresh {
-            map.insert(abs, before);
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangesStatus {
     Computing,
@@ -296,6 +273,14 @@ pub struct Changes {
 
     generation: u64,
 
+    /// Working file (absolute path) → its BASE ref, denormalized from
+    /// the entries for the base-resolution road (`base_ref`).
+    /// IMMUTABLE store state like everything else — maintained by the
+    /// same mutations that adopt entries, read at effect LAUNCH on the
+    /// UI thread. (This replaced a shared Arc<Mutex<HashMap>> smuggled
+    /// to a worker-side handler; never bring that back.)
+    bases: rpds::HashTrieMapSync<String, ResourceLocation>,
+
     /// The change set OWNS its views (docs/model-view.md): the tree
     /// view records live on the model, keyed by minted id — the
     /// `Document.editors` shape. The dock holds a `ChangesPane`
@@ -303,20 +288,7 @@ pub struct Changes {
     views: rpds::HashTrieMapSync<ChangesViewId, ChangesView>,
 }
 
-#[derive(Clone, Default)]
-pub struct ChangesInstall {
-    refs: ChangeRefs,
-}
-
 impl Changes {
-    pub fn install(store: &mut Store, refs: ChangeRefs) {
-        store.put(ChangesInstall { refs });
-    }
-
-    pub fn installed(store: &Store) -> bool {
-        store.get::<ChangesInstall>().is_some()
-    }
-
     fn feed_for(&self, session: &str) -> Option<&SessionFeed> {
         self.session.as_ref().filter(|feed| feed.uri == session)
     }
@@ -357,9 +329,6 @@ impl Changes {
         folder: ResourceLocation,
         fx: &mut crate::AppFx<'_>,
     ) {
-        if !Self::installed(store) {
-            return;
-        }
         let known = store
             .get::<Changes>()
             .is_some_and(|changes| changes.folders.contains_key(&folder));
@@ -553,7 +522,7 @@ impl Changes {
         fresh
     }
 
-    fn adopt(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, state: &ChangesetState) {
+    fn adopt(&mut self, folder: &ResourceLocation, state: &ChangesetState) {
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
@@ -571,12 +540,12 @@ impl Changes {
             .collect();
         stamp_entries(entry.files.iter(), fresh.iter_mut(), self.generation + 1);
         entry.files = fresh.into_iter().collect();
-        Self::write_refs(refs, folder, &entry);
+        self.note_bases(folder, &entry);
         self.folders.insert_mut(folder.clone(), entry);
         self.generation += 1;
     }
 
-    fn session_failed(&mut self, refs: &ChangeRefs, session: &str, error: &str) {
+    fn session_failed(&mut self, session: &str, error: &str) {
         let riding: Vec<ResourceLocation> = self
             .folders
             .iter()
@@ -584,22 +553,22 @@ impl Changes {
             .map(|(folder, _)| folder.clone())
             .collect();
         for folder in riding {
-            self.adopt_error(refs, &folder, error.to_owned());
+            self.adopt_error(&folder, error.to_owned());
         }
     }
 
-    fn adopt_error(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, error: String) {
+    fn adopt_error(&mut self, folder: &ResourceLocation, error: String) {
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
         entry.status = ChangesStatus::Error(error);
         entry.files = rpds::VectorSync::new_sync();
-        Self::write_refs(refs, folder, &entry);
+        self.note_bases(folder, &entry);
         self.folders.insert_mut(folder.clone(), entry);
         self.generation += 1;
     }
 
-    fn fold(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, actions: &[StateAction]) {
+    fn fold(&mut self, folder: &ResourceLocation, actions: &[StateAction]) {
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
@@ -663,28 +632,46 @@ impl Changes {
             }
         }
         entry.files = files.into_iter().flatten().collect();
-        Self::write_refs(refs, folder, &entry);
+        self.note_bases(folder, &entry);
         self.folders.insert_mut(folder.clone(), entry);
         self.generation += 1;
     }
 
-    fn write_refs(refs: &ChangeRefs, folder: &ResourceLocation, entry: &FolderChanges) {
+    /// Re-derive the folder's slice of the BASES map from its fresh
+    /// entries: drop every key under the folder, insert the fresh refs.
+    fn note_bases(&mut self, folder: &ResourceLocation, entry: &FolderChanges) {
         let prefix = format!("/{}", folder.path().join("/"));
-        refs.replace_folder(
-            &prefix,
-            entry.files.iter().filter_map(|change| {
-                let before = change.before.clone()?;
-                Some((format!("/{}", change.working.path().join("/")), before))
-            }),
-        );
+        let stale: Vec<String> = self
+            .bases
+            .keys()
+            .filter(|abs| {
+                abs.strip_prefix(&prefix)
+                    .is_some_and(|rest| rest.starts_with('/'))
+            })
+            .cloned()
+            .collect();
+        for abs in stale {
+            self.bases.remove_mut(&abs);
+        }
+        for change in entry.files.iter() {
+            let Some(before) = change.before.clone() else {
+                continue;
+            };
+            self.bases
+                .insert_mut(format!("/{}", change.working.path().join("/")), before);
+        }
     }
-}
 
-fn installed_refs(store: &Store) -> ChangeRefs {
-    store
-        .get::<ChangesInstall>()
-        .map(|install| install.refs.clone())
-        .unwrap_or_default()
+    #[cfg(test)]
+    pub(crate) fn base_lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
+        self.bases.get(abs_path).cloned()
+    }
+
+    /// The base ref for a working file, by absolute path — read at
+    /// effect launch (UI thread, store in hand).
+    pub fn base_ref(store: &Store, abs_path: &str) -> Option<ResourceLocation> {
+        store.get::<Changes>()?.bases.get(abs_path).cloned()
+    }
 }
 
 pub(crate) struct Dispatched {
@@ -738,9 +725,8 @@ impl crate::DynamicCommand for SessionLanded {
             }
             Err(error) => {
                 eprintln!("[hichanges] session subscribe failed: {error}");
-                let refs = installed_refs(store);
                 store.update::<Changes>(|changes| {
-                    changes.session_failed(&refs, &self.session, error);
+                    changes.session_failed(&self.session, error);
                 });
                 crate::hihistory::History::session_failed(store, &self.session, error);
             }
@@ -865,12 +851,11 @@ impl crate::DynamicCommand for SnapshotLanded {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let refs = installed_refs(store);
         store.update::<Changes>(|changes| match &self.result {
-            Ok(state) => changes.adopt(&refs, &self.folder, state),
-            Err(error) => changes.adopt_error(&refs, &self.folder, error.clone()),
+            Ok(state) => changes.adopt(&self.folder, state),
+            Err(error) => changes.adopt_error(&self.folder, error.clone()),
         });
-        rearm_stripes(store, &self.folder, fx);
+        rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
         if self.result.is_ok() {
             relaunch_poll(store, window, &self.folder, fx);
         }
@@ -896,21 +881,25 @@ impl crate::DynamicCommand for Polled {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let refs = installed_refs(store);
-        store.update::<Changes>(|changes| changes.fold(&refs, &self.folder, &self.actions));
-        rearm_stripes(store, &self.folder, fx);
+        store.update::<Changes>(|changes| changes.fold(&self.folder, &self.actions));
+        rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
         relaunch_poll(store, window, &self.folder, fx);
     }
 }
 
-fn rearm_stripes(store: &mut Store, folder: &ResourceLocation, fx: &mut crate::AppFx<'_>) {
+fn rearm_stripes(
+    store: &mut Store,
+    ui: &UiCtx,
+    folder: &ResourceLocation,
+    fx: &mut crate::AppFx<'_>,
+) {
     let authority = folder.authority().clone();
     let prefix = format!("/{}/", folder.path().join("/"));
     crate::rearm_base_asks(store, &|location| {
         location.authority() == &authority
             && format!("/{}", location.path().join("/")).starts_with(&prefix)
     });
-    crate::sync_stripe_bases(store, fx);
+    crate::sync_stripe_bases(store, ui, fx);
 }
 
 fn relaunch_poll(

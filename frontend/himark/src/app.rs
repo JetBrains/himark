@@ -598,8 +598,17 @@ impl Application {
         self.setup(crate::watch::Watching::install);
     }
 
-    pub fn observe_stripe_bases(&mut self) {
-        self.setup(crate::diffs::StripeBases::install);
+    /// Install the edge's BASE RESOLVER: working location → base ref,
+    /// answered synchronously from store truth at ask time.
+    pub fn observe_stripe_bases(
+        &mut self,
+        resolve: std::sync::Arc<
+            dyn Fn(&imba::store::Store, &crate::ResourceLocation) -> Option<crate::ResourceLocation>
+                + Send
+                + Sync,
+        >,
+    ) {
+        self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
     }
 
     pub fn register_editor_command(&mut self, command: Arc<dyn crate::DynamicEditorCommand>) {
@@ -1316,7 +1325,7 @@ impl Application {
                         crate::Windows::put(store, window, entity);
 
                         crate::watch::sync_document_watches(store, fx);
-                        crate::diffs::sync_stripe_bases(store, fx);
+                        crate::diffs::sync_stripe_bases(store, ui, fx);
                     }
                     Some(ModalRequest::OpenLocations(locations)) => {
                         fx.scope(
@@ -1358,7 +1367,7 @@ impl Application {
                             crate::Windows::put(store, window, entity);
 
                             crate::watch::sync_document_watches(store, fx);
-                            crate::diffs::sync_stripe_bases(store, fx);
+                            crate::diffs::sync_stripe_bases(store, ui, fx);
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
@@ -1389,7 +1398,7 @@ impl Application {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
                             crate::watch::sync_document_watches(store, fx);
-                            crate::diffs::sync_stripe_bases(store, fx);
+                            crate::diffs::sync_stripe_bases(store, ui, fx);
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
@@ -1615,7 +1624,7 @@ impl Application {
                 };
 
                 crate::watch::sync_document_watches(store, fx);
-                crate::diffs::sync_stripe_bases(store, fx);
+                crate::diffs::sync_stripe_bases(store, ui, fx);
 
                 if opened.primary {
                     if let Some(mut entity) = crate::Windows::window(store, window) {

@@ -67,7 +67,6 @@ pub struct HimarkEngine {
 
     shared: Arc<Shared>,
 
-    change_refs: himark::hichanges::ChangeRefs,
 
     _document_channels: Arc<docsync::DocumentChannels>,
 
@@ -423,8 +422,6 @@ impl HimarkEngine {
         hiahp::registry::register_all(&mut app);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
-        let change_refs = himark::hichanges::ChangeRefs::default();
-        himark::hichanges::Changes::install(&mut app.store_mut(), change_refs.clone());
         himark::hicomments::Comments::install(&mut app.store_mut());
         himark::OpenDocuments::install_hook(
             &mut app.store_mut(),
@@ -590,7 +587,6 @@ impl HimarkEngine {
             host: None,
             agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
             seats,
-            change_refs,
             _document_channels: document_channels,
             resource_uris,
             shared: Arc::new(Shared {
@@ -987,10 +983,7 @@ impl HimarkEngine {
                 Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
             );
             self.app
-                .register_handler::<himark::FetchBaseEffect>(fsroute::RouteBase {
-                    refs: self.change_refs.clone(),
-                });
-            self.app.observe_stripe_bases();
+                .observe_stripe_bases(Arc::new(fsroute::resolve_base));
             self.app
                 .register_command(Arc::new(himark::hichanges::ToggleChangesView));
 

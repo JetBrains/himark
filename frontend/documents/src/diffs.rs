@@ -610,54 +610,61 @@ pub fn land_diff_markup(
     OpenDocuments::put_document(store, record.target, document);
 }
 
-pub struct FetchBaseEffect {
-    pub location: editor::ResourceLocation,
-}
-
-impl Effect for FetchBaseEffect {
-    type Result = Option<editor::ResourceLocation>;
-}
-
-#[derive(Clone, Default)]
-pub struct StripeBases;
+/// The edge-installed BASE RESOLVER: working location → its base ref,
+/// answered synchronously from store truth at effect launch (the UI
+/// thread has the store; a worker-side handler does not — the old
+/// async effect smuggled the data through an Arc<Mutex<HashMap>>,
+/// which is exactly the mutable shared state this codebase bans).
+#[derive(Clone)]
+pub struct StripeBases(
+    pub std::sync::Arc<
+        dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation>
+            + Send
+            + Sync,
+    >,
+);
 
 impl StripeBases {
-    pub fn install(store: &mut Store) {
-        store.put(StripeBases);
-    }
-
-    pub fn installed(store: &Store) -> bool {
-        store.get::<StripeBases>().is_some()
+    pub fn install(
+        store: &mut Store,
+        resolve: std::sync::Arc<
+            dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation>
+                + Send
+                + Sync,
+        >,
+    ) {
+        store.put(StripeBases(resolve));
     }
 }
 
 pub fn sync_stripe_bases<R: 'static>(
     store: &mut Store,
     fx: &mut imba::effect::Effects<'_, R>,
-    wrap: impl Fn(DocumentId, Option<editor::ResourceLocation>) -> R + Send + Clone + 'static,
+    mut land: impl FnMut(
+        &mut Store,
+        DocumentId,
+        Option<editor::ResourceLocation>,
+        &mut imba::effect::Effects<'_, R>,
+    ),
 ) {
-    if !StripeBases::installed(store) {
+    let Some(resolve) = store.get::<StripeBases>().map(|bases| bases.0.clone()) else {
         return;
-    }
-    for (document, entity) in OpenDocuments::list(store) {
-        if entity.base_requested() {
-            continue;
-        }
-        let Some(location) = entity.location().cloned() else {
-            continue;
-        };
-        if crate::is_synthetic(&location) {
-            continue;
-        }
+    };
+    let asks: Vec<(DocumentId, editor::ResourceLocation)> = OpenDocuments::list(store)
+        .into_iter()
+        .filter(|(_, entity)| !entity.base_requested())
+        .filter_map(|(document, entity)| {
+            let location = entity.location()?.clone();
+            (!crate::is_synthetic(&location)).then_some((document, location))
+        })
+        .collect();
+    for (document, location) in asks {
         OpenDocuments::set_base_requested(store, document);
         if probe() {
             eprintln!("[diffs] base ask for /{}", location.path().join("/"));
         }
-        let wrap = wrap.clone();
-        let _ = fx.push(
-            imba::effect::AnyEffect::new(FetchBaseEffect { location })
-                .map(move |base| wrap(document, base)),
-        );
+        let base = resolve(store, &location);
+        land(store, document, base, fx);
     }
 }
 
@@ -887,16 +894,37 @@ mod tests {
             0,
         );
 
-        let mut quiet = imba::effect::Batch::new();
-        sync_stripe_bases(&mut store, &mut quiet.effects(), Landed::Located);
-        assert_eq!(launches(quiet), 0, "no marker, no ask");
-        StripeBases::install(&mut store);
-        let mut first = imba::effect::Batch::new();
-        sync_stripe_bases(&mut store, &mut first.effects(), Landed::Located);
-        assert_eq!(launches(first), 1, "one ask for the located document");
-        let mut again = imba::effect::Batch::new();
-        sync_stripe_bases(&mut store, &mut again.effects(), Landed::Located);
-        assert_eq!(launches(again), 0, "asked once per open");
+        let mut landed: Vec<(DocumentId, Option<editor::ResourceLocation>)> = Vec::new();
+        let mut quiet = imba::effect::Batch::<Landed>::new();
+        sync_stripe_bases(&mut store, &mut quiet.effects(), |_, document, base, _| {
+            landed.push((document, base))
+        });
+        assert_eq!(landed.len(), 0, "no resolver installed, no ask");
+        StripeBases::install(
+            &mut store,
+            std::sync::Arc::new(|_: &Store, location: &editor::ResourceLocation| {
+                Some(editor::ResourceLocation::new(
+                    editor::ResourceType::document(),
+                    location.authority().clone(),
+                    vec![format!("{}@abc123", location.path().join("/"))],
+                ))
+            }),
+        );
+        let mut first = imba::effect::Batch::<Landed>::new();
+        sync_stripe_bases(&mut store, &mut first.effects(), |_, document, base, _| {
+            landed.push((document, base))
+        });
+        assert_eq!(landed.len(), 1, "one ask for the located document");
+        assert_eq!(
+            landed[0],
+            (target, Some(located("work.md@abc123"))),
+            "the resolver answered at launch, synchronously"
+        );
+        let mut again = imba::effect::Batch::<Landed>::new();
+        sync_stripe_bases(&mut store, &mut again.effects(), |_, document, base, _| {
+            landed.push((document, base))
+        });
+        assert_eq!(landed.len(), 1, "asked once per open");
 
         let base_location = located("work.md@abc123");
         assert_eq!(

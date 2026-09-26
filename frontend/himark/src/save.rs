@@ -202,13 +202,13 @@ impl DynamicCommand for SyncWatches {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        app: &mut crate::Application,
         store: &mut Store,
         _window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         crate::sync_document_watches(store, fx);
-        crate::sync_stripe_bases(store, fx);
+        crate::sync_stripe_bases(store, &app.ui_ctx(), fx);
     }
 }
 

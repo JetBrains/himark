@@ -215,7 +215,7 @@ impl DynamicCommand for OpenDiffPair {
         let ui = &app.ui_ctx();
         let _ = hidiff::open_opened_diff_pane(store, ui, self.window, self.pair.clone(), fx);
         himark::sync_document_watches(store, fx);
-        himark::sync_stripe_bases(store, fx);
+        himark::sync_stripe_bases(store, ui, fx);
     }
 }
 

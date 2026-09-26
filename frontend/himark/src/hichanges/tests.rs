@@ -139,9 +139,8 @@ impl crate::higent::ResourceUriMap for FileUris {
     }
 }
 
-fn mirror() -> (Changes, ChangeRefs, ResourceLocation) {
+fn mirror() -> (Changes, ResourceLocation) {
     let mut changes = Changes::default();
-    let refs = ChangeRefs::default();
     changes.uris = Some(Arc::new(FileUris));
     changes.folders.insert_mut(
         folder(),
@@ -153,7 +152,7 @@ fn mirror() -> (Changes, ChangeRefs, ResourceLocation) {
             files: rpds::VectorSync::new_sync(),
         },
     );
-    (changes, refs, folder())
+    (changes, folder())
 }
 
 #[test]
@@ -174,7 +173,7 @@ fn the_ref_codec_round_trips() {
 
 #[test]
 fn the_catalog_names_the_folders_channel() {
-    let (mut changes, _refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     let mut pending = changes.folders.get(&folder).unwrap().clone();
     pending.channel = None;
     changes.folders.insert_mut(folder.clone(), pending);
@@ -219,7 +218,7 @@ fn the_catalog_names_the_folders_channel() {
 
 #[test]
 fn a_lone_folder_takes_a_lone_foreign_entry() {
-    let (mut changes, _refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     let mut pending = changes.folders.get(&folder).unwrap().clone();
     pending.channel = None;
     changes.folders.insert_mut(folder.clone(), pending);
@@ -242,9 +241,8 @@ fn a_lone_folder_takes_a_lone_foreign_entry() {
 
 #[test]
 fn a_snapshot_adopts_into_digested_entries_and_refs() {
-    let (mut changes, refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     changes.adopt(
-        &refs,
         &folder,
         &ready(vec![
             wire_file("src/notes.md", Some("hihost-git:/one"), false, (2, 1)),
@@ -274,10 +272,10 @@ fn a_snapshot_adopts_into_digested_entries_and_refs() {
         .expect("the added file");
     assert!(added.before.is_none(), "an add has no old text");
 
-    assert!(refs.lookup("/tmp/repo/src/notes.md").is_some());
-    assert!(refs.lookup("/tmp/repo/gone.md").is_some());
+    assert!(changes.base_lookup("/tmp/repo/src/notes.md").is_some());
+    assert!(changes.base_lookup("/tmp/repo/gone.md").is_some());
     assert!(
-        refs.lookup("/tmp/repo/added.md").is_none(),
+        changes.base_lookup("/tmp/repo/added.md").is_none(),
         "no before, no ref"
     );
     assert_eq!(changes.generation, 1, "the landing bumped the generation");
@@ -285,15 +283,13 @@ fn a_snapshot_adopts_into_digested_entries_and_refs() {
 
 #[test]
 fn the_fold_mirrors_the_official_reducers() {
-    let (mut changes, refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     changes.adopt(
-        &refs,
         &folder,
         &ready(vec![wire_file("a.md", Some("r1"), false, (1, 1))]),
     );
 
     changes.fold(
-        &refs,
         &folder,
         &[StateAction::ChangesetContentChanged(Box::new(
             ChangesetContentChangedAction {
@@ -310,13 +306,12 @@ fn the_fold_mirrors_the_official_reducers() {
     assert_eq!(entry.files.len(), 2);
     assert_eq!(entry.status, ChangesStatus::Ready);
     assert!(
-        refs.lookup("/tmp/repo/a.md").is_none(),
+        changes.base_lookup("/tmp/repo/a.md").is_none(),
         "the replaced file's ref is gone"
     );
-    assert!(refs.lookup("/tmp/repo/b.md").is_some());
+    assert!(changes.base_lookup("/tmp/repo/b.md").is_some());
 
     changes.fold(
-        &refs,
         &folder,
         &[StateAction::ChangesetFileSet(ChangesetFileSetAction {
             file: wire_file("b.md", Some("r3"), false, (9, 9)),
@@ -331,7 +326,6 @@ fn the_fold_mirrors_the_official_reducers() {
         .unwrap();
     assert_eq!(b.added, Some(9));
     changes.fold(
-        &refs,
         &folder,
         &[StateAction::ChangesetFileRemoved(
             ChangesetFileRemovedAction {
@@ -342,7 +336,6 @@ fn the_fold_mirrors_the_official_reducers() {
     assert_eq!(changes.folders.get(&folder).unwrap().files.len(), 1);
 
     changes.fold(
-        &refs,
         &folder,
         &[StateAction::ChangesetStatusChanged(
             ChangesetStatusChangedAction {
@@ -356,22 +349,21 @@ fn the_fold_mirrors_the_official_reducers() {
         ChangesStatus::Computing
     );
     changes.fold(
-        &refs,
         &folder,
         &[StateAction::ChangesetCleared(ChangesetClearedAction {})],
     );
     let entry = changes.folders.get(&folder).unwrap();
     assert!(entry.files.is_empty());
     assert!(
-        refs.lookup("/tmp/repo/b.md").is_none(),
+        changes.base_lookup("/tmp/repo/b.md").is_none(),
         "cleared files clear their refs"
     );
 }
 
 #[test]
 fn a_failed_subscribe_reports_on_the_row() {
-    let (mut changes, refs, folder) = mirror();
-    changes.adopt_error(&refs, &folder, "not a repository".to_owned());
+    let (mut changes, folder) = mirror();
+    changes.adopt_error(&folder, "not a repository".to_owned());
     let entry = changes.folders.get(&folder).unwrap();
     assert_eq!(
         entry.status,
@@ -407,9 +399,8 @@ fn rows_of(node: &ForestNode<ResourceLocation>) -> Vec<(u8, String, bool)> {
 
 #[test]
 fn the_tree_nests_dirs_first_and_compacts_chains() {
-    let (mut changes, refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     changes.adopt(
-        &refs,
         &folder,
         &ready(vec![
             wire_file("top.md", Some("r0"), false, (1, 0)),
@@ -442,9 +433,8 @@ fn the_tree_nests_dirs_first_and_compacts_chains() {
 
 #[test]
 fn activation_pairs_carry_the_exact_locations() {
-    let (mut changes, refs, folder) = mirror();
+    let (mut changes, folder) = mirror();
     changes.adopt(
-        &refs,
         &folder,
         &ready(vec![
             wire_file("mod.md", Some("hihost-git:/base"), false, (1, 1)),

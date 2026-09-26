@@ -319,8 +319,6 @@ mod app {
             state.register_overlay_surface(peeker::overlay_surface());
             state.register_overlay_surface(palette::overlay_surface());
 
-            let change_refs = himark::hichanges::ChangeRefs::default();
-            himark::hichanges::Changes::install(&mut state.store_mut(), change_refs.clone());
             himark::hicomments::Comments::install(&mut state.store_mut());
             himark::OpenDocuments::install_hook(
                 &mut state.store_mut(),
@@ -480,10 +478,7 @@ mod app {
                         },
                     );
 
-                    state.register_handler::<himark::FetchBaseEffect>(hiahp::fsroute::RouteBase {
-                        refs: change_refs.clone(),
-                    });
-                    state.observe_stripe_bases();
+                    state.observe_stripe_bases(Arc::new(hiahp::fsroute::resolve_base));
 
                     hiahp::open::install_open_handlers(
                         &mut state,

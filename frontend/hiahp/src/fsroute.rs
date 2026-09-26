@@ -194,22 +194,23 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
     }
 }
 
-pub struct RouteBase {
-    pub refs: himark::hichanges::ChangeRefs,
-}
-
-impl EffectHandler<himark::FetchBaseEffect> for RouteBase {
-    async fn handle(&self, effect: himark::FetchBaseEffect) -> Option<ResourceLocation> {
-        if himark::hichanges::scoped(&effect.location) || !served(&effect.location) {
-            return None;
-        }
-        let before = self
-            .refs
-            .lookup(&format!("/{}", effect.location.path().join("/")))?;
-
-        let (origin, _) = himark::hichanges::raw_ref(&before)?;
-        (origin == effect.location.authority().as_str()).then_some(before)
+/// The BASE RESOLVER (installed as `StripeBases`): a working file's
+/// base ref, read straight off the `Changes` model at ask time —
+/// synchronous, store in hand, no worker hop. (This replaced an async
+/// handler fed through a shared Arc<Mutex<HashMap>>.)
+pub fn resolve_base(
+    store: &imba::store::Store,
+    location: &ResourceLocation,
+) -> Option<ResourceLocation> {
+    if himark::hichanges::scoped(location) || !served(location) {
+        return None;
     }
+    let before = himark::hichanges::Changes::base_ref(
+        store,
+        &format!("/{}", location.path().join("/")),
+    )?;
+    let (origin, _) = himark::hichanges::raw_ref(&before)?;
+    (origin == location.authority().as_str()).then_some(before)
 }
 
 pub struct RouteUnsubscribe {
