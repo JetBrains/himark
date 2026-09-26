@@ -22,6 +22,7 @@ use ahp_types::common::Uri;
 
 pub type TurnCommand = ListCommand<CellCommand>;
 
+#[derive(Clone)]
 pub(crate) enum CellSpec {
     Text(CellKind, String),
     Diff(DiffSpec),

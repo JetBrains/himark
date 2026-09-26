@@ -3,10 +3,10 @@
 
 use imba::effect::AnyEffect;
 use imba::store::Store;
-use imba::{UiCtx, View};
+use imba::UiCtx;
 
+use crate::higent::chat::{ChatPanel, ChatPanelCommand, ChatViewId};
 use crate::higent::{ChatUri, SessionUri};
-use crate::higent::chat::{ChatPanel, ChatPanelCommand};
 use crate::{AppCommand, WindowId};
 
 #[derive(Clone, Default)]
@@ -106,7 +106,7 @@ impl crate::LandingCommand for ChatLanding {
                     )),
                 )
             },
-            |fx| panel.perform(store, ui.as_ref(), command, fx),
+            |fx| panel.perform_model(store, ui.as_ref(), command, fx),
         );
         Chats::put(store, chat, panel);
     }
@@ -162,11 +162,18 @@ impl crate::DynamicCommand for EnsureChatFeed {
 #[derive(Clone)]
 pub struct ChatPane {
     chat: ChatUri,
+    view: ChatViewId,
 }
 
 impl ChatPane {
+    /// Storeless by design (family rows mint with `&Store`): the id
+    /// is allocated here, the view RECORD is built by the model on
+    /// the pane's first command (`ensure_view`).
     pub fn new(chat: ChatUri) -> Self {
-        Self { chat }
+        Self {
+            chat,
+            view: ChatViewId::mint(),
+        }
     }
 
     pub fn chat(&self) -> &ChatUri {
@@ -183,9 +190,19 @@ impl imba::View for ChatPane {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
         match Chats::chat_ref(store, &self.chat) {
-            Some(panel) => panel.focus_data(store, ui),
+            Some(panel) => panel.focus_data_view(store, ui, self.view),
             None => imba::focus::FocusData::default(),
         }
+    }
+
+    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
+        // The VIEW dies with its pane; the chat is session truth and
+        // its feed keeps landing.
+        let Some(mut panel) = Chats::chat(store, &self.chat) else {
+            return;
+        };
+        panel.destroy_view(store, self.view, fx);
+        Chats::put(store, self.chat.clone(), panel);
     }
 
     fn perform(
@@ -198,7 +215,7 @@ impl imba::View for ChatPane {
         let Some(mut panel) = Chats::chat(store, &self.chat) else {
             return;
         };
-        panel.perform(store, ui, command, fx);
+        panel.perform_in_view(store, ui, self.view, command, fx);
         Chats::put(store, self.chat.clone(), panel);
     }
 
@@ -210,22 +227,35 @@ impl imba::View for ChatPane {
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, Self::Command> =
-                    match Chats::chat_ref(store, &self.chat) {
-                        Some(panel) => imba::ThunkBox::new(
-                            arena,
-                            imba::Layout::layout(
-                                panel.display(arena, store, ui),
-                                arena,
-                                constraints,
-                            ),
-                        ),
+                let widget: imba::ThunkBox<'a, Self::Command> = match Chats::chat_ref(
+                    store,
+                    &self.chat,
+                )
+                .and_then(|panel| panel.display_view(arena, store, ui, self.view))
+                {
+                    Some(laid) => {
+                        imba::ThunkBox::new(arena, imba::Layout::layout(laid, arena, constraints))
+                    }
 
-                        None => imba::ThunkBox::new(
-                            arena,
-                            imba::leaf::leaf(constraints.max.width, constraints.max.height),
+                    // No view record yet (panes mint storeless): a
+                    // blank frame whose paint asks for Boot — the
+                    // perform road builds the view and subscribes.
+                    None => imba::ThunkBox::new(
+                        arena,
+                        imba::thunk_ext::ThunkExt::event(
+                            imba::leaf::leaf::<Self::Command>(
+                                constraints.max.width,
+                                constraints.max.height,
+                            ),
+                            |_arena, event, _size| match event {
+                                imba::event::Event::Paint { .. } => {
+                                    imba::event::EventResult::Command(ChatPanelCommand::Boot)
+                                }
+                                _ => imba::event::EventResult::Ignored,
+                            },
                         ),
-                    };
+                    ),
+                };
                 widget
             },
         )

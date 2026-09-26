@@ -34,6 +34,7 @@ pub struct ToolCallSpec {
     pub face: ToolFace,
 }
 
+#[derive(Clone)]
 pub enum ToolUpdate {
     Add(ToolCallSpec),
 
