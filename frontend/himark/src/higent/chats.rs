@@ -29,11 +29,6 @@ impl Chats {
         });
     }
 
-    pub fn remove(store: &mut Store, chat: &Uri) {
-        store.update::<Chats>(|chats| {
-            chats.chats.remove_mut(chat);
-        });
-    }
 
     pub fn open(
         store: &mut Store,
@@ -302,9 +297,13 @@ impl crate::PanelView for ChatPane {
         Chats::chat_ref(store, &self.chat).map(|panel| panel.footer_height(store, nominal_height))
     }
 
-    fn dismantle(&mut self, store: &mut Store) {
-        Chats::remove(store, &self.chat);
-    }
+    // Closing the PANE must not end the CONVERSATION: the pane is a
+    // reference view; the chat is session truth in `Chats`, its feed
+    // keeps landing turns, and ⌘I / the widget drawer / back all
+    // re-mint the pane from it. The chat dies with its session, not
+    // with a workbench slot. (The remove here was the sheet era's
+    // lifecycle — it made reopening impossible.)
+    fn dismantle(&mut self, _store: &mut Store) {}
 
     fn as_any(&self) -> &dyn std::any::Any {
         self

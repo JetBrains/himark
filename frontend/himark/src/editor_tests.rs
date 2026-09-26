@@ -4464,6 +4464,19 @@ mod dock_tests {
         settle(&mut app, &mut surface);
         assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
 
+        // CLOSED outright (dismantle runs), the command reopens it:
+        // closing the pane must not end the conversation.
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut surface);
+        assert_eq!(mounted_chat(&app), None, "the chat pane was closed");
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            mounted_chat(&app).as_deref(),
+            Some("ahp-chat:/volatile"),
+            "closing the pane did not kill the chat — \u{2318}I reopens it"
+        );
+
         // Displaced by another occupant, the command fronts it again.
         {
             let mut entity = crate::Windows::window(app.store(), window).expect("window");
