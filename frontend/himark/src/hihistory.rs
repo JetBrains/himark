@@ -37,10 +37,22 @@ const NOTE_KIND: &str = "changes-note";
 
 const PANEL_PAD: f32 = 6.0;
 
+/// One commit row: the wire commit plus the id of the CHANGE SET that
+/// is its content (docs/model-view.md — `Commit { change_set }`).
+/// Minted eagerly when the row lands; content lands on the SET,
+/// lazily. Deref keeps wire-field readers direct.
 #[derive(Clone)]
-pub struct CommitFiles {
-    pub status: ChangesStatus,
-    pub files: rpds::VectorSync<ChangeEntry>,
+pub struct Commit {
+    pub wire: history_wire::Commit,
+    pub change_set: crate::hichanges::ChangeSetId,
+}
+
+impl std::ops::Deref for Commit {
+    type Target = history_wire::Commit;
+
+    fn deref(&self) -> &Self::Target {
+        &self.wire
+    }
 }
 
 #[derive(Clone)]
@@ -50,10 +62,8 @@ pub struct FolderHistory {
     channel: Option<String>,
     pub status: ChangesStatus,
     pub head: history_wire::HistoryHead,
-    pub commits: rpds::VectorSync<history_wire::Commit>,
+    pub commits: rpds::VectorSync<Commit>,
     pub more: Option<String>,
-
-    pub commit_files: rpds::HashTrieMapSync<String, CommitFiles>,
 }
 
 impl FolderHistory {
@@ -90,6 +100,11 @@ impl History {
         self.folders.is_empty()
     }
 
+    /// A commit SET moved (content landed): the uniting views' cue.
+    pub(crate) fn nudge(&mut self) {
+        self.generation += 1;
+    }
+
     pub(crate) fn ensure_folder(
         store: &mut Store,
         folder: &ResourceLocation,
@@ -115,7 +130,6 @@ impl History {
                     head: history_wire::HistoryHead::default(),
                     commits: rpds::VectorSync::new_sync(),
                     more: None,
-                    commit_files: rpds::HashTrieMapSync::new_sync(),
                 },
             );
             history.generation += 1;
@@ -149,20 +163,64 @@ impl History {
         fresh
     }
 
-    fn adopt(&mut self, folder: &ResourceLocation, state: history_wire::HistoryState) {
+    /// Wrap wire commits into rows, minting each commit's CHANGE SET
+    /// eagerly (light) — the row references its set from birth.
+    fn commit_rows(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        commits: Vec<history_wire::Commit>,
+    ) -> Vec<Commit> {
+        let Some(entry) = History::folder(store, folder) else {
+            return Vec::new();
+        };
+        commits
+            .into_iter()
+            .map(|wire| {
+                let change_set = crate::hichanges::Changes::ensure_commit_set(
+                    store,
+                    folder,
+                    &wire.id,
+                    &entry.seat,
+                    &entry.session,
+                );
+                Commit { wire, change_set }
+            })
+            .collect()
+    }
+
+    /// A history snapshot / reset lands: mint the rows' sets, then
+    /// adopt.
+    pub(crate) fn land_state(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        state: history_wire::HistoryState,
+    ) {
+        let rows = Self::commit_rows(store, folder, state.commits.clone());
+        store.update::<History>(|history| history.adopt(folder, &state, rows));
+    }
+
+    fn adopt(
+        &mut self,
+        folder: &ResourceLocation,
+        state: &history_wire::HistoryState,
+        rows: Vec<Commit>,
+    ) {
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
         entry.status = match state.status {
             history_wire::HistoryStatus::Computing => ChangesStatus::Computing,
             history_wire::HistoryStatus::Ready => ChangesStatus::Ready,
-            history_wire::HistoryStatus::Error => {
-                ChangesStatus::Error(state.error.unwrap_or_else(|| "history error".to_owned()))
-            }
+            history_wire::HistoryStatus::Error => ChangesStatus::Error(
+                state
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "history error".to_owned()),
+            ),
         };
-        entry.head = state.head;
-        entry.commits = state.commits.into_iter().collect();
-        entry.more = state.more;
+        entry.head = state.head.clone();
+        entry.commits = rows.into_iter().collect();
+        entry.more = state.more.clone();
         self.folders.insert_mut(folder.clone(), entry);
         self.generation += 1;
     }
@@ -192,8 +250,13 @@ impl History {
         });
     }
 
-    fn fold(&mut self, folder: &ResourceLocation, actions: &[StateAction]) {
-        let mut moved = false;
+    /// Fold the channel's streamed actions — STORE-level, because
+    /// every incoming commit row mints its change set first.
+    pub(crate) fn fold_actions(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        actions: &[StateAction],
+    ) {
         for action in actions {
             let StateAction::Unknown(value) = action else {
                 continue;
@@ -203,119 +266,52 @@ impl History {
                 else {
                     continue;
                 };
-                self.adopt(folder, reset.state);
-                continue;
-            }
-            let Some(mut entry) = self.folders.get(folder).cloned() else {
-                continue;
-            };
-            if value["type"] == history_wire::HISTORY_APPENDED {
+                Self::land_state(store, folder, reset.state);
+            } else if value["type"] == history_wire::HISTORY_APPENDED {
                 let Ok(appended) =
                     serde_json::from_value::<history_wire::HistoryAppended>(value.clone())
                 else {
                     continue;
                 };
-                for commit in appended.commits {
-                    entry.commits.push_back_mut(commit);
-                }
-                entry.more = appended.more;
+                let rows = Self::commit_rows(store, folder, appended.commits);
+                store.update::<History>(|history| {
+                    let Some(mut entry) = history.folders.get(folder).cloned() else {
+                        return;
+                    };
+                    for commit in rows {
+                        entry.commits.push_back_mut(commit);
+                    }
+                    entry.more = appended.more.clone();
+                    history.folders.insert_mut(folder.clone(), entry);
+                    history.generation += 1;
+                });
             } else if value["type"] == history_wire::HISTORY_PREPENDED {
                 let Ok(prepended) =
                     serde_json::from_value::<history_wire::HistoryPrepended>(value.clone())
                 else {
                     continue;
                 };
-                let mut commits = rpds::VectorSync::new_sync();
-                for commit in prepended.commits {
-                    commits.push_back_mut(commit);
-                }
-                for commit in entry.commits.iter() {
-                    commits.push_back_mut(commit.clone());
-                }
-                entry.commits = commits;
-                entry.head = prepended.head;
-            } else {
-                continue;
-            }
-            self.folders.insert_mut(folder.clone(), entry);
-            moved = true;
-        }
-        if moved {
-            self.generation += 1;
-        }
-    }
-
-    fn adopt_commit_files(
-        &mut self,
-        uris: &dyn crate::higent::ResourceUriMap,
-        folder: &ResourceLocation,
-        commit: &str,
-        result: &Result<ChangesetState, String>,
-    ) {
-        let files = match result {
-            Ok(state) => CommitFiles {
-                status: ChangesStatus::of_wire(
-                    &state.status,
-                    state.error.as_ref().map(|error| error.message.as_str()),
-                ),
-                files: state
-                    .files
-                    .iter()
-                    .filter_map(|file| entry_of(uris, folder, file))
-                    .collect(),
-            },
-            Err(error) => CommitFiles {
-                status: ChangesStatus::Error(error.clone()),
-                files: rpds::VectorSync::new_sync(),
-            },
-        };
-        self.set_commit_files(folder, commit, files);
-    }
-
-    fn fold_commit_files(
-        &mut self,
-        uris: &dyn crate::higent::ResourceUriMap,
-        folder: &ResourceLocation,
-        commit: &str,
-        actions: &[StateAction],
-    ) {
-        let Some(mut held) = self
-            .folders
-            .get(folder)
-            .and_then(|entry| entry.commit_files.get(commit))
-            .cloned()
-        else {
-            return;
-        };
-        for action in actions {
-            match action {
-                StateAction::ChangesetContentChanged(content) => {
-                    held.files = content
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(uris, folder, file))
-                        .collect();
-                }
-                StateAction::ChangesetStatusChanged(status) => {
-                    held.status = ChangesStatus::of_wire(
-                        &status.status,
-                        status.error.as_ref().map(|error| error.message.as_str()),
-                    );
-                }
-                _ => {}
+                let rows = Self::commit_rows(store, folder, prepended.commits);
+                store.update::<History>(|history| {
+                    let Some(mut entry) = history.folders.get(folder).cloned() else {
+                        return;
+                    };
+                    let mut commits = rpds::VectorSync::new_sync();
+                    for commit in rows {
+                        commits.push_back_mut(commit);
+                    }
+                    for commit in entry.commits.iter() {
+                        commits.push_back_mut(commit.clone());
+                    }
+                    entry.commits = commits;
+                    entry.head = prepended.head.clone();
+                    history.folders.insert_mut(folder.clone(), entry);
+                    history.generation += 1;
+                });
             }
         }
-        self.set_commit_files(folder, commit, held);
     }
 
-    fn set_commit_files(&mut self, folder: &ResourceLocation, commit: &str, files: CommitFiles) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.commit_files.insert_mut(commit.to_owned(), files);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
-    }
 }
 
 pub(crate) fn subscribe_fresh(
@@ -374,10 +370,13 @@ impl crate::DynamicCommand for SnapshotLanded {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        store.update::<History>(|history| match &self.result {
-            Ok(state) => history.adopt(&self.folder, state.clone()),
-            Err(error) => history.adopt_error(&self.folder, error.clone()),
-        });
+        match &self.result {
+            Ok(state) => History::land_state(store, &self.folder, state.clone()),
+            Err(error) => {
+                let error = error.clone();
+                store.update::<History>(|history| history.adopt_error(&self.folder, error));
+            }
+        }
         if self.result.is_ok() {
             relaunch_poll(store, window, &self.folder, fx);
         }
@@ -403,7 +402,7 @@ impl crate::DynamicCommand for Polled {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        store.update::<History>(|history| history.fold(&self.folder, &self.actions));
+        History::fold_actions(store, &self.folder, &self.actions);
         relaunch_poll(store, window, &self.folder, fx);
     }
 }
@@ -460,12 +459,12 @@ impl crate::DynamicCommand for CommitFilesLanded {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(uris) = crate::hichanges::Changes::uris(store) else {
-            return;
-        };
-        store.update::<History>(|history| {
-            history.adopt_commit_files(&*uris, &self.folder, &self.commit, &self.result)
-        });
+        crate::hichanges::Changes::adopt_commit_state(
+            store,
+            &self.folder,
+            &self.commit,
+            &self.result,
+        );
         settle_commit_fetch(store, window, &self.folder, &self.commit, fx);
     }
 }
@@ -480,7 +479,7 @@ fn settle_commit_fetch(
     let Some(entry) = History::folder(store, folder) else {
         return;
     };
-    let Some(held) = entry.commit_files.get(commit) else {
+    let Some(held) = crate::hichanges::Changes::commit_set(store, folder, commit) else {
         return;
     };
     let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit) else {
@@ -533,12 +532,12 @@ impl crate::DynamicCommand for CommitFilesPolled {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(uris) = crate::hichanges::Changes::uris(store) else {
-            return;
-        };
-        store.update::<History>(|history| {
-            history.fold_commit_files(&*uris, &self.folder, &self.commit, &self.actions)
-        });
+        crate::hichanges::Changes::fold_commit_actions(
+            store,
+            &self.folder,
+            &self.commit,
+            &self.actions,
+        );
         settle_commit_fetch(store, window, &self.folder, &self.commit, fx);
     }
 }
@@ -565,23 +564,15 @@ impl crate::DynamicCommand for FetchCommitFiles {
         let Some(entry) = History::folder(store, &self.folder) else {
             return;
         };
-        if entry.commit_files.get(&self.commit).is_some() {
+        if crate::hichanges::Changes::commit_generation(store, &self.folder, &self.commit) > 0 {
             return;
         }
         let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit) else {
             return;
         };
         let channel = commit.changeset.clone();
-        store.update::<History>(|history| {
-            history.set_commit_files(
-                &self.folder,
-                &self.commit,
-                CommitFiles {
-                    status: ChangesStatus::Computing,
-                    files: rpds::VectorSync::new_sync(),
-                },
-            );
-        });
+        // Mark the SET computing (it exists from the row's birth).
+        crate::hichanges::Changes::mark_commit_computing(store, &self.folder, &self.commit);
         let landing = self.folder.clone();
         let commit_id = self.commit.clone();
         let scope = folder_scope(&self.folder);
@@ -746,6 +737,7 @@ impl DirSink for CommitSink<'_> {
 }
 
 fn graph_node(
+    store: &Store,
     folder: &ResourceLocation,
     history: Option<&FolderHistory>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
@@ -788,7 +780,9 @@ fn graph_node(
                     );
 
                     let trail: Vec<(String, skia_safe::Color)> = Vec::new();
-                    let children = match history.commit_files.get(&commit.id) {
+                    let held = crate::hichanges::Changes::commit_set(store, folder, &commit.id)
+                        .filter(|set| set.generation() > 0);
+                    let children = match held.as_ref() {
                         None => Vec::new(),
                         Some(files) => match (&files.status, files.files.is_empty()) {
                             (ChangesStatus::Error(message), _) => {
@@ -1101,6 +1095,7 @@ impl HistoryView {
                 .iter()
                 .map(|folder| {
                     graph_node(
+                        store,
                         folder,
                         History::folder(store, folder).as_ref(),
                         &mut items,
@@ -1217,9 +1212,9 @@ impl View for HistoryView {
                                 if let Some(RowItem::Commit { folder, id }) =
                                     self.items.get(&key).cloned()
                                 {
-                                    let entry = History::folder(store, &folder);
-                                    let unfetched = entry
-                                        .is_some_and(|entry| entry.commit_files.get(&id).is_none());
+                                    let unfetched = crate::hichanges::Changes::commit_generation(
+                                        store, &folder, &id,
+                                    ) == 0;
                                     if unfetched {
                                         self.request =
                                             Some(ModalRequest::Perform(AppCommand::Dynamic(

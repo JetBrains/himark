@@ -156,7 +156,10 @@ fn mirror() -> (Changes, ResourceLocation) {
             bases: rpds::HashTrieMapSync::new_sync(),
         },
     );
-    changes.by_folder.insert_mut(folder(), id);
+    changes.by_source.insert_mut(
+        ChangeSetSource::WorkingCopy { folder: folder() },
+        id,
+    );
     (changes, folder())
 }
 
@@ -181,7 +184,12 @@ fn the_catalog_names_the_folders_channel() {
     let (mut changes, folder) = mirror();
     let mut pending = changes.folder_set(&folder).unwrap().clone();
     pending.channel = None;
-    let id = *changes.by_folder.get(&folder).unwrap();
+    let id = *changes
+        .by_source
+        .get(&ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        })
+        .unwrap();
     changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
         uri: "hihost-fs:/local".to_owned(),
@@ -227,7 +235,12 @@ fn a_lone_folder_takes_a_lone_foreign_entry() {
     let (mut changes, folder) = mirror();
     let mut pending = changes.folder_set(&folder).unwrap().clone();
     pending.channel = None;
-    let id = *changes.by_folder.get(&folder).unwrap();
+    let id = *changes
+        .by_source
+        .get(&ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        })
+        .unwrap();
     changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
         uri: "hihost-fs:/local".to_owned(),

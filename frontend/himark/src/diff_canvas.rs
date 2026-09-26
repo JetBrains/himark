@@ -127,11 +127,10 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
 /// derives rows only when this moves (the ReconcileShell contract).
 pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
     match source {
-        // Per-SET staleness (docs/model-view.md): a working-copy
-        // canvas re-derives when ITS set moved, not when any folder
-        // in the session did.
+        // Per-SET staleness (docs/model-view.md): a canvas re-derives
+        // when ITS set moved, not when anything in the session did.
         CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, folder),
-        CanvasSource::Commit { .. } => crate::hihistory::History::generation(store),
+        CanvasSource::Commit { folder, id } => Changes::commit_generation(store, folder, id),
     }
 }
 
@@ -153,9 +152,10 @@ pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing
             (generation, listing)
         }
         CanvasSource::Commit { folder, id } => {
-            let generation = crate::hihistory::History::generation(store);
-            let held = crate::hihistory::History::folder(store, folder)
-                .and_then(|held| held.commit_files.get(id).cloned());
+            // Per-SET staleness: the commit's own ChangeSet carries
+            // the content and the generation (docs/model-view.md).
+            let generation = Changes::commit_generation(store, folder, id);
+            let held = Changes::commit_set(store, folder, id).filter(|set| set.generation() > 0);
             let listing = match held {
                 None => CanvasListing::Pending("fetching the commit…".to_owned()),
                 Some(commit) => listing_of(&commit.status, commit.files.iter(), |entry| {

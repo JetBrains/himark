@@ -216,7 +216,7 @@ impl ChangeSetId {
 
 /// What a change set IS: one folder's working copy, or one commit —
 /// `CanvasSource`'s shape, made the model's first-class identity.
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub enum ChangeSetSource {
     WorkingCopy {
         folder: ResourceLocation,
@@ -339,13 +339,12 @@ pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> b
 pub struct ChangeSets {
     sets: rpds::HashTrieMapSync<ChangeSetId, ChangeSet>,
 
-    /// Working-copy index: folder → its set. (Commit sets index by
-    /// source in stage B.)
-    by_folder: rpds::HashTrieMapSync<ResourceLocation, ChangeSetId>,
+    /// Source → set: the reuse lookup for BOTH flavors.
+    by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
 
     session: Option<SessionFeed>,
 
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    pub(crate) uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
     /// The COLLECTION tick: membership moves and any set's mutation
     /// bump it — the union tree view's staleness cue. Per-set
@@ -372,15 +371,21 @@ impl Changes {
     }
 
     fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
-        self.sets.get(self.by_folder.get(folder)?)
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.sets.get(self.by_source.get(&source)?)
     }
 
     /// Every working-copy set with its folder, iteration order
     /// unspecified.
     fn working_copies(&self) -> impl Iterator<Item = (&ResourceLocation, &ChangeSet)> {
-        self.by_folder
-            .iter()
-            .filter_map(|(folder, id)| Some((folder, self.sets.get(id)?)))
+        self.by_source.iter().filter_map(|(source, id)| {
+            let ChangeSetSource::WorkingCopy { folder } = source else {
+                return None;
+            };
+            Some((folder, self.sets.get(id)?))
+        })
     }
 
     /// Mutate one folder's set through clone-modify-insert, bumping
@@ -391,7 +396,18 @@ impl Changes {
         folder: &ResourceLocation,
         mutate: impl FnOnce(&mut ChangeSet),
     ) -> bool {
-        let Some(id) = self.by_folder.get(folder).copied() else {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.update_set_by_source(&source, mutate)
+    }
+
+    fn update_set_by_source(
+        &mut self,
+        source: &ChangeSetSource,
+        mutate: impl FnOnce(&mut ChangeSet),
+    ) -> bool {
+        let Some(id) = self.by_source.get(source).copied() else {
             return false;
         };
         let Some(mut set) = self.sets.get(&id).cloned() else {
@@ -404,12 +420,188 @@ impl Changes {
         true
     }
 
+    /// Mint — or find — the COMMIT-flavored set (eager and light: the
+    /// history row references it from birth; its files land lazily on
+    /// first ask). Never bumps the commit set's generation.
+    pub(crate) fn ensure_commit_set(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        revision: &str,
+        seat: &Arc<dyn AhpServer>,
+        session: &str,
+    ) -> ChangeSetId {
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        if let Some(id) = store
+            .get::<ChangeSets>()
+            .and_then(|changes| changes.by_source.get(&source).copied())
+        {
+            return id;
+        }
+        let id = ChangeSetId::mint();
+        let seat = seat.clone();
+        let session = session.to_owned();
+        store.update::<ChangeSets>(|changes| {
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: source.clone(),
+                    seat,
+                    session,
+                    channel: None,
+                    status: ChangesStatus::Computing,
+                    files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
+                },
+            );
+            changes.by_source.insert_mut(source, id);
+        });
+        id
+    }
+
+    pub fn commit_set(
+        store: &Store,
+        folder: &ResourceLocation,
+        revision: &str,
+    ) -> Option<ChangeSet> {
+        let changes = store.get::<ChangeSets>()?;
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        changes.sets.get(changes.by_source.get(&source)?).cloned()
+    }
+
+    /// The per-SET staleness cue for a commit canvas.
+    pub fn commit_generation(store: &Store, folder: &ResourceLocation, revision: &str) -> u64 {
+        Self::commit_set(store, folder, revision)
+            .map(|set| set.generation)
+            .unwrap_or(0)
+    }
+
+
+    /// THE UPDATE RULE (docs/model-view.md): a commit set's mutation
+    /// must reach every uniting HistoryView — their trees render the
+    /// sets' content. The History generation is their staleness cue;
+    /// the sync lane rolls the stale views at the batch tail.
+    fn nudge_uniting_histories(store: &mut Store) {
+        store.update::<crate::hihistory::History>(|history| history.nudge());
+    }
+
+    /// The fetch road armed: the set is COMPUTING until its snapshot
+    /// lands.
+    pub(crate) fn mark_commit_computing(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        revision: &str,
+    ) {
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        store.update::<ChangeSets>(|changes| {
+            changes.update_set_by_source(&source, |set| {
+                set.status = ChangesStatus::Computing;
+                set.files = rpds::VectorSync::new_sync();
+            });
+        });
+        Self::nudge_uniting_histories(store);
+    }
+
+    /// A commit set's content snapshot landed (the changeset channel
+    /// for `?commit=<sha>`): status + files onto the SET.
+    pub(crate) fn adopt_commit_state(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        revision: &str,
+        result: &Result<ChangesetState, String>,
+    ) {
+        let Some(uris) = store
+            .get::<ChangeSets>()
+            .and_then(|changes| changes.uris.clone())
+        else {
+            return;
+        };
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        store.update::<ChangeSets>(|changes| {
+            changes.update_set_by_source(&source, |set| match result {
+                Ok(state) => {
+                    set.status = ChangesStatus::of_wire(
+                        &state.status,
+                        state.error.as_ref().map(|error| error.message.as_str()),
+                    );
+                    set.files = state
+                        .files
+                        .iter()
+                        .filter_map(|file| entry_of(&*uris, folder, file))
+                        .collect();
+                }
+                Err(error) => {
+                    set.status = ChangesStatus::Error(error.clone());
+                    set.files = rpds::VectorSync::new_sync();
+                }
+            });
+        });
+        Self::nudge_uniting_histories(store);
+    }
+
+    /// Streamed updates for a commit set's changeset channel.
+    pub(crate) fn fold_commit_actions(
+        store: &mut Store,
+        folder: &ResourceLocation,
+        revision: &str,
+        actions: &[StateAction],
+    ) {
+        let Some(uris) = store
+            .get::<ChangeSets>()
+            .and_then(|changes| changes.uris.clone())
+        else {
+            return;
+        };
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        store.update::<ChangeSets>(|changes| {
+            changes.update_set_by_source(&source, |set| {
+                for action in actions {
+                    match action {
+                        StateAction::ChangesetContentChanged(content) => {
+                            set.files = content
+                                .files
+                                .iter()
+                                .filter_map(|file| entry_of(&*uris, folder, file))
+                                .collect();
+                        }
+                        StateAction::ChangesetStatusChanged(status) => {
+                            set.status = ChangesStatus::of_wire(
+                                &status.status,
+                                status.error.as_ref().map(|error| error.message.as_str()),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        });
+        Self::nudge_uniting_histories(store);
+    }
+
     pub fn set_ref(store: &Store, id: ChangeSetId) -> Option<&ChangeSet> {
         store.get::<ChangeSets>()?.sets.get(&id)
     }
 
     pub fn id_for_folder(store: &Store, folder: &ResourceLocation) -> Option<ChangeSetId> {
-        store.get::<ChangeSets>()?.by_folder.get(folder).copied()
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        store.get::<ChangeSets>()?.by_source.get(&source).copied()
     }
 
     /// The per-SET staleness cue for a working copy — 0 while absent
@@ -454,9 +646,11 @@ impl Changes {
         folder: ResourceLocation,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let known = store
-            .get::<Changes>()
-            .is_some_and(|changes| changes.by_folder.contains_key(&folder));
+        let known = store.get::<Changes>().is_some_and(|changes| {
+            changes.by_source.contains_key(&ChangeSetSource::WorkingCopy {
+                folder: folder.clone(),
+            })
+        });
         if known {
             return;
         }
@@ -490,7 +684,12 @@ impl Changes {
                     bases: rpds::HashTrieMapSync::new_sync(),
                 },
             );
-            changes.by_folder.insert_mut(folder.clone(), id);
+            changes.by_source.insert_mut(
+                ChangeSetSource::WorkingCopy {
+                    folder: folder.clone(),
+                },
+                id,
+            );
             changes.generation += 1;
         });
         crate::hihistory::History::ensure_folder(store, &folder, &seat, &session);

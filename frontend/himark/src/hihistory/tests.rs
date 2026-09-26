@@ -161,7 +161,8 @@ fn history_window(
     }
 }
 
-fn history_mirror() -> (History, ResourceLocation) {
+fn history_mirror() -> (imba::store::Store, ResourceLocation) {
+    let mut store = imba::store::Store::new();
     let mut history = History::default();
     let folder = folder();
     history.folders.insert_mut(
@@ -174,10 +175,17 @@ fn history_mirror() -> (History, ResourceLocation) {
             head: history_wire::HistoryHead::default(),
             commits: rpds::VectorSync::new_sync(),
             more: None,
-            commit_files: rpds::HashTrieMapSync::new_sync(),
         },
     );
-    (history, folder)
+    store.put(history);
+    let mut changes = crate::hichanges::Changes::default();
+    changes.uris = Some(Arc::new(FileUris));
+    store.put(changes);
+    (store, folder)
+}
+
+fn folder_entry(store: &imba::store::Store, folder: &ResourceLocation) -> FolderHistory {
+    History::folder(store, folder).expect("the mirror entry")
 }
 
 fn rows_of(node: &ForestNode<ResourceLocation>) -> Vec<(u8, String, bool)> {
@@ -194,21 +202,23 @@ fn rows_of(node: &ForestNode<ResourceLocation>) -> Vec<(u8, String, bool)> {
 
 #[test]
 fn the_history_folds_reset_appended_and_prepended() {
-    let (mut history, folder) = history_mirror();
-    history.adopt(
+    let (mut store, folder) = history_mirror();
+    History::land_state(
+        &mut store,
         &folder,
         history_window(
             vec![wire_commit("b", "second", &[("main", "branch")], true)],
             Some("1"),
         ),
     );
-    let entry = history.folders.get(&folder).unwrap();
+    let entry = folder_entry(&store, &folder);
     assert_eq!(entry.status, ChangesStatus::Ready);
     assert_eq!(entry.head.branch.as_deref(), Some("main"));
     assert_eq!(entry.commits.len(), 1);
     assert_eq!(entry.more.as_deref(), Some("1"));
 
-    history.fold(
+    History::fold_actions(
+        &mut store,
         &folder,
         &[StateAction::Unknown(history_wire::action_value(
             history_wire::HISTORY_APPENDED,
@@ -218,12 +228,13 @@ fn the_history_folds_reset_appended_and_prepended() {
             },
         ))],
     );
-    let entry = history.folders.get(&folder).unwrap();
+    let entry = folder_entry(&store, &folder);
     assert_eq!(entry.commits.len(), 2);
     assert_eq!(entry.commits.iter().last().unwrap().summary, "first");
     assert_eq!(entry.more, None);
 
-    history.fold(
+    History::fold_actions(
+        &mut store,
         &folder,
         &[StateAction::Unknown(history_wire::action_value(
             history_wire::HISTORY_PREPENDED,
@@ -238,12 +249,13 @@ fn the_history_folds_reset_appended_and_prepended() {
             },
         ))],
     );
-    let entry = history.folders.get(&folder).unwrap();
+    let entry = folder_entry(&store, &folder);
     assert_eq!(entry.commits.len(), 3);
     assert_eq!(entry.commits.first().unwrap().summary, "third");
     assert_eq!(entry.head.ahead, Some(2));
 
-    history.fold(
+    History::fold_actions(
+        &mut store,
         &folder,
         &[StateAction::Unknown(history_wire::action_value(
             history_wire::HISTORY_RESET,
@@ -252,15 +264,16 @@ fn the_history_folds_reset_appended_and_prepended() {
             },
         ))],
     );
-    let entry = history.folders.get(&folder).unwrap();
+    let entry = folder_entry(&store, &folder);
     assert_eq!(entry.commits.len(), 1);
     assert_eq!(entry.commits.first().unwrap().summary, "rewritten");
 }
 
 #[test]
 fn the_graph_lists_commits_refs_outgoing_and_paging() {
-    let (mut history, folder) = history_mirror();
-    history.adopt(
+    let (mut store, folder) = history_mirror();
+    History::land_state(
+        &mut store,
         &folder,
         history_window(
             vec![
@@ -272,8 +285,9 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
     );
     let mut items = rpds::HashTrieMapSync::new_sync();
     let node = graph_node(
+        &store,
         &folder,
-        history.folders.get(&folder),
+        History::folder(&store, &folder).as_ref(),
         &mut items,
         (skia_safe::Color::GREEN, skia_safe::Color::RED),
     );
@@ -303,8 +317,9 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
 
 #[test]
 fn fetched_commit_files_expand_with_pinned_sides() {
-    let (mut history, folder) = history_mirror();
-    history.adopt(
+    let (mut store, folder) = history_mirror();
+    History::land_state(
+        &mut store,
         &folder,
         history_window(vec![wire_commit("b", "second", &[], false)], None),
     );
@@ -324,11 +339,12 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         reviewed: None,
         meta: None,
     };
-    history.adopt_commit_files(&FileUris, &folder, "b", &Ok(ready(vec![file])));
+    crate::hichanges::Changes::adopt_commit_state(&mut store, &folder, "b", &Ok(ready(vec![file])));
     let mut items = rpds::HashTrieMapSync::new_sync();
     let node = graph_node(
+        &store,
         &folder,
-        history.folders.get(&folder),
+        History::folder(&store, &folder).as_ref(),
         &mut items,
         (skia_safe::Color::GREEN, skia_safe::Color::RED),
     );
@@ -356,8 +372,6 @@ fn fetched_commit_files_expand_with_pinned_sides() {
     assert_eq!(new_raw, "hihost-git:/a-commit-ref");
 
     // The pinned old side rides the canvas feed now.
-    let mut store = imba::store::Store::new();
-    store.put(history);
     let (_, listing) = crate::diff_canvas::canvas_files(
         &store,
         &crate::diff_canvas::CanvasSource::Commit {
