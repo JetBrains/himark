@@ -6,7 +6,6 @@ use std::sync::Arc;
 use super::state::{Host, HostStatus, Hosts, SessionChannel};
 use crate::higent::{HostId, ServerEvent};
 use crate::SessionId;
-use ahp_types::common::Uri;
 use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{AgentInfo, SessionSummary};
 use imba::store::Store;
@@ -107,7 +106,7 @@ impl Agents {
                     record.sessions = record
                         .sessions
                         .iter()
-                        .filter(|held| held.resource != session)
+                        .filter(|held| held.resource != session.as_str())
                         .cloned()
                         .collect();
                     record.states.remove_mut(&session);
@@ -116,7 +115,7 @@ impl Agents {
             ServerEvent::SessionChanged { session, changes } => {
                 Self::update_record(store, server, |record| {
                     let mut rows: Vec<SessionSummary> = record.sessions.iter().cloned().collect();
-                    let Some(at) = rows.iter().position(|held| held.resource == session) else {
+                    let Some(at) = rows.iter().position(|held| held.resource == session.as_str()) else {
                         return;
                     };
                     let moved = changes.modified_at.is_some();
@@ -132,7 +131,7 @@ impl Agents {
         }
     }
 
-    pub fn note_turn(store: &mut Store, server: HostId, chat: &Uri, turn: &str) {
+    pub fn note_turn(store: &mut Store, server: HostId, chat: &crate::higent::ChatUri, turn: &str) {
         let session = Hosts::host(store, server).and_then(|host| {
             host.states
                 .iter()
@@ -140,7 +139,7 @@ impl Agents {
                     channel
                         .chats
                         .iter()
-                        .any(|summary| &summary.resource == chat)
+                        .any(|summary| summary.resource == chat.as_str())
                 })
                 .map(|(session, _)| session.clone())
         });

@@ -5,25 +5,25 @@ use imba::effect::AnyEffect;
 use imba::store::Store;
 use imba::{UiCtx, View};
 
-use crate::higent::ahp_types::common::Uri;
+use crate::higent::{ChatUri, SessionUri};
 use crate::higent::chat::{ChatPanel, ChatPanelCommand};
 use crate::{AppCommand, WindowId};
 
 #[derive(Clone, Default)]
 pub struct Chats {
-    chats: rpds::HashTrieMapSync<Uri, ChatPanel>,
+    chats: rpds::HashTrieMapSync<ChatUri, ChatPanel>,
 }
 
 impl Chats {
-    pub fn chat_ref<'a>(store: &'a Store, chat: &Uri) -> Option<&'a ChatPanel> {
+    pub fn chat_ref<'a>(store: &'a Store, chat: &ChatUri) -> Option<&'a ChatPanel> {
         store.get::<Chats>()?.chats.get(chat)
     }
 
-    pub fn chat(store: &Store, chat: &Uri) -> Option<ChatPanel> {
+    pub fn chat(store: &Store, chat: &ChatUri) -> Option<ChatPanel> {
         Self::chat_ref(store, chat).cloned()
     }
 
-    pub fn put(store: &mut Store, chat: Uri, panel: ChatPanel) {
+    pub fn put(store: &mut Store, chat: ChatUri, panel: ChatPanel) {
         store.update::<Chats>(|chats| {
             chats.chats.insert_mut(chat, panel);
         });
@@ -34,8 +34,8 @@ impl Chats {
         store: &mut Store,
         ui: &imba::UiCtx,
         server: crate::higent::HostId,
-        session: Uri,
-        chat: Uri,
+        session: SessionUri,
+        chat: ChatUri,
     ) -> Box<dyn crate::DynPanelView> {
         Self::open_with(store, ui, server, session, chat, None)
     }
@@ -44,8 +44,8 @@ impl Chats {
         store: &mut Store,
         ui: &imba::UiCtx,
         server: crate::higent::HostId,
-        session: Uri,
-        chat: Uri,
+        session: SessionUri,
+        chat: ChatUri,
         initial_prompt: Option<String>,
     ) -> Box<dyn crate::DynPanelView> {
         let known = store
@@ -61,7 +61,7 @@ impl Chats {
         Box::new(ChatPane::new(chat))
     }
 
-    pub fn list(store: &Store) -> Vec<Uri> {
+    pub fn list(store: &Store) -> Vec<ChatUri> {
         store
             .get::<Chats>()
             .map(|chats| chats.chats.keys().cloned().collect())
@@ -74,7 +74,7 @@ impl Chats {
 }
 
 pub(crate) struct ChatLanding {
-    pub(crate) chat: Uri,
+    pub(crate) chat: ChatUri,
     pub(crate) command: ChatPanelCommand,
 }
 
@@ -113,7 +113,7 @@ impl crate::LandingCommand for ChatLanding {
 }
 
 pub(crate) struct EnsureChatFeed {
-    pub(crate) chat: Uri,
+    pub(crate) chat: ChatUri,
 }
 
 impl crate::DynamicCommand for EnsureChatFeed {
@@ -161,15 +161,15 @@ impl crate::DynamicCommand for EnsureChatFeed {
 
 #[derive(Clone)]
 pub struct ChatPane {
-    chat: Uri,
+    chat: ChatUri,
 }
 
 impl ChatPane {
-    pub fn new(chat: Uri) -> Self {
+    pub fn new(chat: ChatUri) -> Self {
         Self { chat }
     }
 
-    pub fn chat(&self) -> &Uri {
+    pub fn chat(&self) -> &ChatUri {
         &self.chat
     }
 }
@@ -237,7 +237,7 @@ impl imba::View for ChatPane {
 /// away pushes nothing and back has nowhere to return.
 #[derive(Clone, PartialEq)]
 pub struct ChatPlace {
-    pub chat: Uri,
+    pub chat: ChatUri,
 }
 
 impl crate::Place for ChatPlace {}

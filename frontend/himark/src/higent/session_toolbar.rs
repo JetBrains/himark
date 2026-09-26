@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use ::editor::theme::ComboChrome;
 use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
-use ahp_types::common::Uri;
+use crate::higent::SessionUri;
 use imba::{
     container::Container,
     effect::AnyEffect,
@@ -394,7 +394,7 @@ pub(crate) fn sync_effort_for_model(
 
 pub struct AddSessionFolders {
     pub server: HostId,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl crate::DynamicCommand for AddSessionFolders {
@@ -434,7 +434,7 @@ impl crate::DynamicCommand for AddSessionFolders {
 
 struct SessionFoldersPicked {
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     locations: Vec<crate::ResourceLocation>,
 }
 
@@ -465,7 +465,7 @@ impl crate::DynamicCommand for SessionFoldersPicked {
             fx.push(
                 AnyEffect::new(crate::higent::DispatchChatActionEffect {
                     seat: seat.clone(),
-                    channel: self.session.clone(),
+                    channel: self.session.as_channel(),
                     action: StateAction::SessionWorkingDirectorySet(
                         SessionWorkingDirectorySetAction { directory },
                     ),

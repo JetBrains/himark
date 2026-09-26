@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::higent::HostId;
-use ahp_types::common::Uri;
+use crate::higent::{ChatUri, SessionUri};
 use ahp_types::state::{AgentInfo, ChatSummary, SessionSummary};
 use imba::store::Store;
 
@@ -20,9 +20,9 @@ pub enum HostStatus {
 pub struct SessionChannel {
     pub provider: String,
     pub chats: rpds::VectorSync<ChatSummary>,
-    pub default_chat: Option<Uri>,
+    pub default_chat: Option<ChatUri>,
 
-    pub working_directories: rpds::VectorSync<Uri>,
+    pub working_directories: rpds::VectorSync<String>,
 
     pub config: Option<Arc<ahp_types::state::SessionConfigState>>,
 }
@@ -35,9 +35,9 @@ pub struct Host {
 
     pub sessions: rpds::VectorSync<SessionSummary>,
 
-    pub states: rpds::HashTrieMapSync<Uri, SessionChannel>,
+    pub states: rpds::HashTrieMapSync<SessionUri, SessionChannel>,
 
-    families: rpds::HashTrieMapSync<Uri, SessionState>,
+    families: rpds::HashTrieMapSync<SessionUri, SessionState>,
 
     uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 }
@@ -118,10 +118,10 @@ impl Host {
         }
     }
 
-    pub fn summary(&self, session: &Uri) -> Option<&SessionSummary> {
+    pub fn summary(&self, session: &SessionUri) -> Option<&SessionSummary> {
         self.sessions
             .iter()
-            .find(|summary| &summary.resource == session)
+            .find(|summary| summary.resource == session.as_str())
     }
 }
 
@@ -268,7 +268,7 @@ impl Hosts {
     }
 
     pub(crate) fn rekey_local_families(&mut self, previous: Option<HostId>, target: HostId) {
-        let fs: Uri = host_discovery::LOCAL_FS_SESSION.to_owned();
+        let fs = SessionUri::new(host_discovery::LOCAL_FS_SESSION);
         let mut sources = vec![HostId::LOCAL];
         if let Some(previous) = previous {
             sources.push(previous);

@@ -1549,7 +1549,7 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     assert!(engine.app.open_panel(
         engine.app.sole_window(),
         Box::new(himark::higent::ChatPane::new(
-            "test-chat:displacer".to_owned()
+            himark::higent::ChatUri::new("test-chat:displacer")
         ))
     ));
     settle(&mut engine);
@@ -3534,10 +3534,12 @@ fn the_seat_reconnects_after_a_host_restart() {
     ))
     .expect("a session");
 
-    let chat = drive(seat.subscribe_session(session.clone()))
-        .expect("the session subscribes")
-        .default_chat
-        .expect("the session carries its default chat");
+    let chat = himark::higent::ChatUri::new(
+        drive(seat.subscribe_session(session.clone()))
+            .expect("the session subscribes")
+            .default_chat
+            .expect("the session carries its default chat"),
+    );
     drive(seat.subscribe_chat(chat.clone())).expect("the chat subscribes");
 
     drive(seat.start_turn(chat.clone(), "before the crash".to_owned(), None, None))
@@ -3706,13 +3708,13 @@ fn a_document_channel_survives_reconnects() {
         "file://{}",
         file.canonicalize().expect("canonical").display()
     ));
-    let session = "hihost-fs:/local".to_owned();
+    let session = himark::higent::SessionUri::new("hihost-fs:/local");
     let opened_a = drive(alice_seat.open_document(session.clone(), Some(uri.clone()), None))
         .expect("alice opens");
     let opened_b =
         drive(bob_seat.open_document(session.clone(), Some(uri.clone()), None)).expect("bob opens");
     assert_eq!(opened_a.document, opened_b.document, "idempotent open");
-    let channel = opened_a.document;
+    let channel = himark::higent::ChannelUri::new(opened_a.document);
     let snapshot_a =
         drive(alice_seat.subscribe_document(channel.clone())).expect("alice subscribes");
     let snapshot_b = drive(bob_seat.subscribe_document(channel.clone())).expect("bob subscribes");
@@ -5034,13 +5036,13 @@ fn two_wire_clients_converge_on_one_document() {
     ));
 
     let opened_a =
-        block_on(alice_seat.open_document("hihost-fs:/local".to_owned(), Some(uri.clone()), None))
+        block_on(alice_seat.open_document(himark::higent::SessionUri::new("hihost-fs:/local"), Some(uri.clone()), None))
             .expect("alice opens");
     let opened_b =
-        block_on(bob_seat.open_document("hihost-fs:/local".to_owned(), Some(uri.clone()), None))
+        block_on(bob_seat.open_document(himark::higent::SessionUri::new("hihost-fs:/local"), Some(uri.clone()), None))
             .expect("bob opens");
     assert_eq!(opened_a.document, opened_b.document, "idempotent open");
-    let channel = opened_a.document;
+    let channel = himark::higent::ChannelUri::new(opened_a.document);
 
     let snapshot_a =
         block_on(alice_seat.subscribe_document(channel.clone())).expect("alice subscribes");
@@ -5238,7 +5240,7 @@ fn two_wire_clients_share_annotations() {
         }
     }
 
-    let session = "hihost-fs:/local".to_owned();
+    let session = himark::higent::SessionUri::new("hihost-fs:/local");
     let alice: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),

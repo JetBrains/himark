@@ -16,7 +16,7 @@ const LOCAL_AUTHORITY: &str = "local";
 pub fn seat_of_authority(
     directory: &SeatDirectory,
     authority: &str,
-) -> Option<(Arc<dyn himark::higent::AhpServer>, String)> {
+) -> Option<(Arc<dyn himark::higent::AhpServer>, himark::higent::SessionUri)> {
     if fs::scoped(authority) {
         let (server, session) = fs::parse(authority)?;
         let seat = directory.seat(server)?;
@@ -31,7 +31,7 @@ pub fn seat_of_authority(
 pub fn seat_of(
     directory: &SeatDirectory,
     location: &ResourceLocation,
-) -> Option<(Arc<dyn himark::higent::AhpServer>, String)> {
+) -> Option<(Arc<dyn himark::higent::AhpServer>, himark::higent::SessionUri)> {
     seat_of_authority(directory, location.authority().as_str())
 }
 

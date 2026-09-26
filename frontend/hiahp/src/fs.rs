@@ -34,10 +34,10 @@ impl SeatDirectory {
         *self.local.lock().expect("seat directory") = Some(server);
     }
 
-    pub fn local_seat(&self) -> Option<(Arc<dyn AhpServer>, String)> {
+    pub fn local_seat(&self) -> Option<(Arc<dyn AhpServer>, himark::higent::SessionUri)> {
         let server = (*self.local.lock().expect("seat directory"))?;
         let seat = self.seat(server)?;
-        Some((seat, host_discovery::LOCAL_FS_SESSION.to_owned()))
+        Some((seat, himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION)))
     }
 
     pub fn record(&self, server: HostId, seat: Arc<dyn AhpServer>) {

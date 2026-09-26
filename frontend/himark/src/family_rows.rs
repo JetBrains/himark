@@ -7,11 +7,11 @@ use imba::store::Store;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FamilyRow {
-    Terminal(String),
+    Terminal(crate::higent::ChannelUri),
 
     Pair(crate::DiffViewId),
 
-    Chat(crate::higent::ahp_types::common::Uri),
+    Chat(crate::higent::ChatUri),
 
     Canvas(crate::diff_canvas::CanvasSource),
 }

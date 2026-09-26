@@ -188,7 +188,7 @@ impl himark::higent::AhpServer for StreamSeat {
         &self,
         _working_directories: Vec<String>,
         _options: himark::higent::SessionOptions,
-    ) -> himark::higent::SeatFuture<Result<String, String>> {
+    ) -> himark::higent::SeatFuture<Result<himark::higent::SessionUri, String>> {
         unreachable!()
     }
     fn resolve_session_config(
@@ -200,42 +200,42 @@ impl himark::higent::AhpServer for StreamSeat {
     > {
         unreachable!()
     }
-    fn dispose_session(&self, _session: String) -> himark::higent::SeatFuture<Result<(), String>> {
+    fn dispose_session(&self, _session: himark::higent::SessionUri) -> himark::higent::SeatFuture<Result<(), String>> {
         unreachable!()
     }
     fn subscribe_session(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
     ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::SessionState, String>>
     {
         unreachable!()
     }
     fn poll_session(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn create_chat(&self, _session: String) -> himark::higent::SeatFuture<Result<String, String>> {
+    fn create_chat(&self, _session: himark::higent::SessionUri) -> himark::higent::SeatFuture<Result<himark::higent::ChatUri, String>> {
         unreachable!()
     }
     fn subscribe_chat(
         &self,
-        _chat: String,
+        _chat: himark::higent::ChatUri,
     ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChatState, String>>
     {
         unreachable!()
     }
     fn fetch_turns(
         &self,
-        _chat: String,
+        _chat: himark::higent::ChatUri,
         _cursor: Option<String>,
     ) -> himark::higent::SeatFuture<Result<himark::higent::TurnsPage, String>> {
         unreachable!()
     }
     fn start_turn(
         &self,
-        _chat: String,
+        _chat: himark::higent::ChatUri,
         _text: String,
         _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
         _model: Option<himark::higent::ahp_types::state::ModelSelection>,
@@ -244,16 +244,16 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn poll_chat(
         &self,
-        _chat: String,
+        _chat: himark::higent::ChatUri,
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn cancel_turn(&self, _chat: String, _turn_id: String) -> himark::higent::SeatFuture<()> {
+    fn cancel_turn(&self, _chat: himark::higent::ChatUri, _turn_id: himark::higent::TurnId) -> himark::higent::SeatFuture<()> {
         unreachable!()
     }
     fn dispatch_action(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
         _action: himark::higent::ahp_types::actions::StateAction,
     ) -> himark::higent::SeatFuture<Result<(), String>> {
         unreachable!()
@@ -267,14 +267,14 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn resource_read(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _uri: himark::higent::ResourceUri,
     ) -> himark::higent::SeatFuture<Option<String>> {
         unreachable!()
     }
     fn resource_write(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _uri: himark::higent::ResourceUri,
         _text: String,
     ) -> himark::higent::SeatFuture<bool> {
@@ -282,14 +282,14 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn resource_list(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _uri: himark::higent::ResourceUri,
     ) -> himark::higent::SeatFuture<Option<Vec<(String, bool)>>> {
         unreachable!()
     }
     fn resource_watch(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _uri: himark::higent::ResourceUri,
         _events: Arc<dyn Fn() + Send + Sync>,
     ) -> himark::higent::SeatFuture<Option<himark::higent::WatchHandle>> {
@@ -303,15 +303,15 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn search(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _ask: himark::higent::SearchAsk,
     ) -> himark::higent::SeatFuture<Option<himark::higent::SearchResult>> {
         unreachable!()
     }
     fn terminal_open(
         &self,
-        _session: String,
-        _channel: String,
+        _session: himark::higent::SessionUri,
+        _channel: himark::higent::ChannelUri,
         _cwd: Option<String>,
         _cols: u16,
         _rows: u16,
@@ -319,34 +319,34 @@ impl himark::higent::AhpServer for StreamSeat {
     ) -> himark::higent::SeatFuture<Option<himark::higent::TerminalHandle>> {
         unreachable!()
     }
-    fn terminal_input(&self, _channel: &String, _data: String) {
+    fn terminal_input(&self, _channel: &himark::higent::ChannelUri, _data: String) {
         unreachable!()
     }
-    fn terminal_resize(&self, _channel: &String, _cols: u16, _rows: u16) {
+    fn terminal_resize(&self, _channel: &himark::higent::ChannelUri, _cols: u16, _rows: u16) {
         unreachable!()
     }
-    fn terminal_dispose(&self, _channel: &String) {
+    fn terminal_dispose(&self, _channel: &himark::higent::ChannelUri) {
         unreachable!()
     }
     fn subscribe_changeset(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
     ) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChangesetState, String>>
     {
         unreachable!()
     }
     fn poll_changeset(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn unsubscribe_changeset(&self, _channel: &String) {
+    fn unsubscribe_changeset(&self, _channel: &himark::higent::ChannelUri) {
         unreachable!()
     }
     fn subscribe_annotations(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
     ) -> himark::higent::SeatFuture<
         Result<himark::higent::ahp_types::state::AnnotationsState, String>,
     > {
@@ -354,23 +354,23 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn poll_annotations(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
     fn dispatch_annotations(
         &self,
-        _session: &String,
+        _session: &himark::higent::SessionUri,
         _action: himark::higent::ahp_types::actions::StateAction,
     ) {
         unreachable!()
     }
-    fn unsubscribe_annotations(&self, _session: &String) {
+    fn unsubscribe_annotations(&self, _session: &himark::higent::SessionUri) {
         unreachable!()
     }
     fn open_document(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _uri: Option<himark::higent::ResourceUri>,
         _text: Option<String>,
     ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
@@ -378,25 +378,25 @@ impl himark::higent::AhpServer for StreamSeat {
     }
     fn subscribe_document(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
     ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
         unreachable!()
     }
     fn poll_document(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
     ) -> himark::higent::SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
         unreachable!()
     }
-    fn dispatch_document(&self, _channel: &String, _action: himark_ahp_ext_types::DocumentApplied) {
+    fn dispatch_document(&self, _channel: &himark::higent::ChannelUri, _action: himark_ahp_ext_types::DocumentApplied) {
         unreachable!()
     }
-    fn unsubscribe_document(&self, _channel: &String) -> himark::higent::SeatFuture<()> {
+    fn unsubscribe_document(&self, _channel: &himark::higent::ChannelUri) -> himark::higent::SeatFuture<()> {
         Box::pin(std::future::ready(()))
     }
     fn lsp(
         &self,
-        _session: String,
+        _session: himark::higent::SessionUri,
         _method: String,
         _params: serde_json::Value,
     ) -> himark::higent::SeatFuture<Result<serde_json::Value, String>> {
@@ -405,7 +405,7 @@ impl himark::higent::AhpServer for StreamSeat {
 
     fn subscribe_locations(
         &self,
-        _channel: String,
+        _channel: himark::higent::ChannelUri,
     ) -> himark::higent::SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let snapshot = self.snapshot.clone();
         Box::pin(std::future::ready(Ok(snapshot)))
@@ -461,7 +461,7 @@ impl himark::EffectHandler<himark::LspLocationsEffect> for StubLspLocations {
             seat: Arc::new(StreamSeat {
                 snapshot: self.snapshot.clone(),
             }),
-            channel: "ahp-locations:/test".to_owned(),
+            channel: himark::higent::ChannelUri::new("ahp-locations:/test"),
             resolve: Arc::new(|uri| {
                 let name = uri.strip_prefix("test:/")?;
                 Some(document_location(name))

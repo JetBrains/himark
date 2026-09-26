@@ -241,8 +241,8 @@ pub enum ChangeSetSource {
 #[derive(Clone)]
 pub(crate) struct SetFeed {
     pub(crate) seat: Arc<dyn AhpServer>,
-    pub(crate) session: String,
-    pub(crate) channel: Option<String>,
+    pub(crate) session: crate::higent::SessionUri,
+    pub(crate) channel: Option<crate::higent::ChannelUri>,
 }
 
 #[derive(Clone)]
@@ -308,7 +308,7 @@ impl ChangesStatus {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CatalogEntry {
-    pub(crate) uri: String,
+    pub(crate) uri: crate::higent::ChannelUri,
     pub(crate) description: Option<String>,
 
     pub(crate) kind: String,
@@ -316,7 +316,7 @@ pub(crate) struct CatalogEntry {
 
 #[derive(Clone)]
 struct SessionFeed {
-    uri: String,
+    uri: crate::higent::SessionUri,
     seat: Arc<dyn AhpServer>,
     catalog: rpds::VectorSync<CatalogEntry>,
 }
@@ -330,7 +330,7 @@ fn digest_catalog(changesets: &[crate::higent::ahp_types::state::Changeset]) -> 
                 && !entry.uri_template.contains('{')
         })
         .map(|entry| CatalogEntry {
-            uri: entry.uri_template.clone(),
+            uri: crate::higent::ChannelUri::new(entry.uri_template.clone()),
             description: entry.description.clone(),
             kind: entry.change_kind.clone(),
         })
@@ -339,7 +339,7 @@ fn digest_catalog(changesets: &[crate::higent::ahp_types::state::Changeset]) -> 
 
 pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> bool {
     let abs = format!("/{}", folder.path().join("/"));
-    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.ends_with(&abs)
+    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.as_str().ends_with(&abs)
 }
 
 /// The session's change sets, keyed by minted id
@@ -374,8 +374,8 @@ pub struct ChangeSets {
 pub type Changes = ChangeSets;
 
 impl Changes {
-    fn feed_for(&self, session: &str) -> Option<&SessionFeed> {
-        self.session.as_ref().filter(|feed| feed.uri == session)
+    fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {
+        self.session.as_ref().filter(|feed| feed.uri == *session)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -440,7 +440,7 @@ impl Changes {
         folder: &ResourceLocation,
         revision: &str,
         seat: &Arc<dyn AhpServer>,
-        session: &str,
+        session: &crate::higent::SessionUri,
     ) -> ChangeSetId {
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
@@ -833,7 +833,7 @@ impl Changes {
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
                 seat: seat.clone(),
-                channel: session.clone(),
+                channel: session.as_channel(),
                 action: StateAction::SessionWorkingDirectorySet(
                     crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
                         directory,
@@ -903,7 +903,7 @@ impl Changes {
         let Some(changes) = store.get::<Changes>() else {
             return;
         };
-        let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> = changes
+        let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> = changes
             .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
@@ -942,9 +942,9 @@ impl Changes {
 
     fn adopt_catalog(
         &mut self,
-        session: &str,
+        session: &crate::higent::SessionUri,
         entries: Vec<CatalogEntry>,
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> {
+    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> {
         let Some(mut feed) = self.feed_for(session).cloned() else {
             return Vec::new();
         };
@@ -958,7 +958,12 @@ impl Changes {
         let mut fresh = Vec::new();
         let lone_folder = self
             .working_copies()
-            .filter(|(_, entry)| entry.feed.as_ref().is_some_and(|feed| feed.session == session))
+            .filter(|(_, entry)| {
+                entry
+                    .feed
+                    .as_ref()
+                    .is_some_and(|feed| feed.session == *session)
+            })
             .count()
             == 1;
         let riding: Vec<(ResourceLocation, ChangeSet)> = self
@@ -969,7 +974,7 @@ impl Changes {
             let Some(feed) = entry.feed.clone() else {
                 continue;
             };
-            if feed.session != session || feed.channel.is_some() {
+            if feed.session != *session || feed.channel.is_some() {
                 continue;
             }
             let matched = changesets
@@ -1013,10 +1018,15 @@ impl Changes {
         });
     }
 
-    fn session_failed(&mut self, session: &str, error: &str) {
+    fn session_failed(&mut self, session: &crate::higent::SessionUri, error: &str) {
         let riding: Vec<ResourceLocation> = self
             .working_copies()
-            .filter(|(_, entry)| entry.feed.as_ref().is_some_and(|feed| feed.session == session))
+            .filter(|(_, entry)| {
+                entry
+                    .feed
+                    .as_ref()
+                    .is_some_and(|feed| feed.session == *session)
+            })
             .map(|(folder, _)| folder.clone())
             .collect();
         for folder in riding {
@@ -1142,7 +1152,7 @@ impl crate::DynamicCommand for Dispatched {
 }
 
 struct SessionLanded {
-    session: String,
+    session: crate::higent::SessionUri,
     result: Result<crate::higent::ahp_types::state::SessionState, String>,
 }
 
@@ -1178,7 +1188,7 @@ impl crate::DynamicCommand for SessionLanded {
 }
 
 struct SessionPolled {
-    session: String,
+    session: crate::higent::SessionUri,
     actions: Vec<StateAction>,
 }
 
@@ -1209,7 +1219,7 @@ impl crate::DynamicCommand for SessionPolled {
 fn subscribe_fresh(
     store: &mut Store,
     window: crate::WindowId,
-    session: &str,
+    session: &crate::higent::SessionUri,
     entries: Vec<CatalogEntry>,
     fx: &mut crate::AppFx<'_>,
 ) {
@@ -1245,7 +1255,7 @@ pub(crate) fn folder_scope(folder: &ResourceLocation) -> Option<crate::SessionId
 fn relaunch_session_poll(
     store: &Store,
     window: crate::WindowId,
-    session: &str,
+    session: &crate::higent::SessionUri,
     fx: &mut crate::AppFx<'_>,
 ) {
     let Some(feed) = store

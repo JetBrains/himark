@@ -6,7 +6,6 @@ use std::sync::Arc;
 use super::Agents;
 use crate::higent::{CreateChatEffect, HostId};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
-use ahp_types::common::Uri;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -56,7 +55,7 @@ impl DynamicCommand for NewChat {
 
 struct OpenCreatedChat {
     server: HostId,
-    created: Result<Uri, String>,
+    created: Result<crate::higent::ChatUri, String>,
 }
 
 impl DynamicCommand for OpenCreatedChat {

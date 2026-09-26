@@ -116,7 +116,7 @@ fn session_folders_ask_their_seat() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     );
     let (server, _) = ahp::parse(&encoded).expect("round-trips");
     directory.record(server, Arc::clone(&seat));
@@ -142,7 +142,7 @@ fn local_folders_ask_the_designated_backend() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, Arc::clone(&seat));
@@ -172,7 +172,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, Arc::clone(&seat));

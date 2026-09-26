@@ -12,7 +12,7 @@ use crate::{
     TreeLabel, TreeListCommand, TreeRow,
 };
 use imba::list::ListOps;
-use ahp_types::common::Uri;
+use crate::higent::SessionUri;
 use ahp_types::state::SessionSummary;
 use imba::{
     arena::Arena,
@@ -39,7 +39,7 @@ const PANEL_PAD: f32 = 6.0;
 enum AgentKey {
     Server(HostId),
     Folder(HostId, Vec<String>),
-    Session(HostId, Uri),
+    Session(HostId, SessionUri),
 
     NewSession(HostId),
 
@@ -294,7 +294,7 @@ impl AgentsPanel {
                         };
                         for summary in sessions {
                             slice.push_keyed(
-                                AgentKey::Session(server, summary.resource.clone()),
+                                AgentKey::Session(server, SessionUri::new(summary.resource.clone())),
                                 crate::TreeItemView::leaf(
                                     TreeLabel::new(session_label(summary), true, false)
                                         .with_badge(session_badge(summary, accent, stop, dim))

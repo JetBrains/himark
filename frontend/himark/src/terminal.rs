@@ -47,7 +47,7 @@ pub struct Session {
 
     told: Mutex<(u16, u16)>,
 
-    channel: Mutex<Option<String>>,
+    channel: Mutex<Option<crate::higent::ChannelUri>>,
 }
 
 const DEFAULT_COLS: u16 = 80;
@@ -71,11 +71,11 @@ impl Session {
         })
     }
 
-    pub fn set_channel(&self, uri: String) {
+    pub fn set_channel(&self, uri: crate::higent::ChannelUri) {
         *self.channel.lock().expect("channel lock") = Some(uri);
     }
 
-    pub fn channel(&self) -> Option<String> {
+    pub fn channel(&self) -> Option<crate::higent::ChannelUri> {
         self.channel.lock().expect("channel lock").clone()
     }
 
@@ -173,13 +173,13 @@ pub enum TerminalCommand {
 
 #[derive(Clone)]
 pub struct TerminalView {
-    channel: String,
+    channel: crate::higent::ChannelUri,
 
     number: u64,
 }
 
 impl TerminalView {
-    pub fn new(channel: String) -> Self {
+    pub fn new(channel: crate::higent::ChannelUri) -> Self {
         static NEXT: AtomicU64 = AtomicU64::new(1);
         Self {
             channel,
@@ -187,7 +187,7 @@ impl TerminalView {
         }
     }
 
-    pub fn channel(&self) -> &str {
+    pub fn channel(&self) -> &crate::higent::ChannelUri {
         &self.channel
     }
 }
@@ -307,7 +307,7 @@ impl View for TerminalView {
 /// leaving the pane walkable.
 #[derive(Clone, PartialEq)]
 pub struct TerminalPlace {
-    pub channel: String,
+    pub channel: crate::higent::ChannelUri,
 }
 
 impl crate::Place for TerminalPlace {}
@@ -380,34 +380,34 @@ impl PanelView for TerminalView {
 }
 
 #[derive(Clone, Default)]
-pub struct Terminals(rpds::HashTrieMapSync<String, Arc<Session>>);
+pub struct Terminals(rpds::HashTrieMapSync<crate::higent::ChannelUri, Arc<Session>>);
 
 impl Terminals {
-    pub fn put(store: &mut Store, channel: String, session: Arc<Session>) {
+    pub fn put(store: &mut Store, channel: crate::higent::ChannelUri, session: Arc<Session>) {
         store.update::<Terminals>(|terminals| {
             terminals.0.insert_mut(channel, session);
         });
     }
 
-    pub fn session(store: &Store, channel: &str) -> Option<Arc<Session>> {
+    pub fn session(store: &Store, channel: &crate::higent::ChannelUri) -> Option<Arc<Session>> {
         store
             .get::<Terminals>()
             .and_then(|terminals| terminals.0.get(channel).cloned())
     }
 
-    pub fn session_ref<'a>(store: &'a Store, channel: &str) -> Option<&'a Arc<Session>> {
+    pub fn session_ref<'a>(store: &'a Store, channel: &crate::higent::ChannelUri) -> Option<&'a Arc<Session>> {
         store
             .get::<Terminals>()
             .and_then(|terminals| terminals.0.get(channel))
     }
 
-    pub fn remove(store: &mut Store, channel: &str) {
+    pub fn remove(store: &mut Store, channel: &crate::higent::ChannelUri) {
         store.update::<Terminals>(|terminals| {
             terminals.0.remove_mut(channel);
         });
     }
 
-    pub fn list(store: &Store) -> Vec<String> {
+    pub fn list(store: &Store) -> Vec<crate::higent::ChannelUri> {
         store
             .get::<Terminals>()
             .map(|terminals| terminals.0.keys().cloned().collect())

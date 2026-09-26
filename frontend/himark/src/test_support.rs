@@ -52,7 +52,7 @@ pub fn seed_session_folders(
     });
     let id = crate::SessionId {
         host,
-        session: format!("test-session:/{minted}"),
+        session: crate::higent::SessionUri::new(format!("test-session:/{minted}")),
     };
     let uris = crate::higent::Hosts::uris(store, host).expect("installed above");
     let working_directories: Vec<String> = folders
@@ -82,7 +82,7 @@ pub fn seed_session_folders(
             project: None,
             working_directories: Some(working_directories),
             annotations: None,
-            resource: id.session.clone(),
+            resource: id.session.as_str().to_owned(),
             created_at: String::new(),
             modified_at: String::new(),
             changes: None,

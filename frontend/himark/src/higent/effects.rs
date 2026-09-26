@@ -8,7 +8,7 @@ use ahp_types::common::Uri;
 use ahp_types::state::{ChatState, SessionState, Turn};
 use imba::effect::Effect;
 
-use crate::higent::seat::{AhpServer, RootInfo, ServerEvent, SessionsPage};
+use crate::higent::seat::{AhpServer, RootInfo, ServerEvent, SessionsPage, ChannelUri, ChatUri, SessionUri, TurnId};
 
 pub struct ConnectServerEffect {
     pub seat: Arc<dyn AhpServer>,
@@ -50,7 +50,7 @@ pub struct CreateSessionEffect {
 }
 
 impl Effect for CreateSessionEffect {
-    type Result = Result<Uri, String>;
+    type Result = Result<SessionUri, String>;
 }
 
 pub struct ResolveSessionConfigEffect {
@@ -65,7 +65,7 @@ impl Effect for ResolveSessionConfigEffect {
 
 pub struct DisposeSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for DisposeSessionEffect {
@@ -74,7 +74,7 @@ impl Effect for DisposeSessionEffect {
 
 pub struct SubscribeSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for SubscribeSessionEffect {
@@ -83,7 +83,7 @@ impl Effect for SubscribeSessionEffect {
 
 pub struct PollSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for PollSessionEffect {
@@ -92,16 +92,16 @@ impl Effect for PollSessionEffect {
 
 pub struct CreateChatEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for CreateChatEffect {
-    type Result = Result<Uri, String>;
+    type Result = Result<ChatUri, String>;
 }
 
 pub struct SubscribeChatEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
 }
 
 impl Effect for SubscribeChatEffect {
@@ -117,7 +117,7 @@ pub struct TurnsPage {
 
 pub struct FetchTurnsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
 
     pub cursor: Option<String>,
 }
@@ -128,7 +128,7 @@ impl Effect for FetchTurnsEffect {
 
 pub struct StartTurnEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
     pub text: String,
 
     pub attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
@@ -142,12 +142,12 @@ impl Effect for StartTurnEffect {
 
 pub struct PollChatActionsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
 }
 
 pub struct SubscribeChangesetEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for SubscribeChangesetEffect {
@@ -156,7 +156,7 @@ impl Effect for SubscribeChangesetEffect {
 
 pub struct SubscribeHistoryEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for SubscribeHistoryEffect {
@@ -165,7 +165,7 @@ impl Effect for SubscribeHistoryEffect {
 
 pub struct PollChangesetEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for PollChangesetEffect {
@@ -178,7 +178,7 @@ impl Effect for PollChatActionsEffect {
 
 pub struct SubscribeLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for SubscribeLocationsEffect {
@@ -187,7 +187,7 @@ impl Effect for SubscribeLocationsEffect {
 
 pub struct PollLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for PollLocationsEffect {
@@ -198,7 +198,7 @@ impl Effect for PollLocationsEffect {
 /// its producer host-side.
 pub struct UnsubscribeLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
 }
 
 impl Effect for UnsubscribeLocationsEffect {
@@ -207,7 +207,7 @@ impl Effect for UnsubscribeLocationsEffect {
 
 pub struct SubscribeAnnotationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for SubscribeAnnotationsEffect {
@@ -216,7 +216,7 @@ impl Effect for SubscribeAnnotationsEffect {
 
 pub struct PollAnnotationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl Effect for PollAnnotationsEffect {
@@ -225,8 +225,8 @@ impl Effect for PollAnnotationsEffect {
 
 pub struct CancelTurnEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
-    pub turn_id: String,
+    pub chat: ChatUri,
+    pub turn_id: TurnId,
 }
 
 impl Effect for CancelTurnEffect {
@@ -235,7 +235,7 @@ impl Effect for CancelTurnEffect {
 
 pub struct DispatchChatActionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
     pub action: StateAction,
 }
 

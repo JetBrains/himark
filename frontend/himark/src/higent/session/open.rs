@@ -7,7 +7,7 @@ use super::{Agents, SessionChannel};
 use crate::higent::{HostId, PollSessionEffect, SubscribeSessionEffect};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
 use ahp_types::actions::StateAction;
-use ahp_types::common::Uri;
+use crate::higent::{ChatUri, SessionUri};
 use ahp_types::state::ChatSummary;
 use imba::effect::AnyEffect;
 use imba::store::Store;
@@ -16,7 +16,7 @@ pub fn open_session(
     store: &mut Store,
     window: crate::WindowId,
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     open_chat: bool,
     fx: &mut crate::AppFx<'_>,
 ) {
@@ -27,7 +27,7 @@ pub fn open_session_with(
     store: &mut Store,
     window: crate::WindowId,
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     open_chat: bool,
     initial_prompt: Option<String>,
     fx: &mut crate::AppFx<'_>,
@@ -55,7 +55,7 @@ pub fn open_session_with(
 
 pub struct OpenSubscribedSession {
     pub server: HostId,
-    pub session: Uri,
+    pub session: SessionUri,
 
     pub open_chat: bool,
 
@@ -97,7 +97,7 @@ impl DynamicCommand for OpenSubscribedSession {
             SessionChannel {
                 provider: state.provider.clone(),
                 chats: state.chats.iter().cloned().collect(),
-                default_chat: state.default_chat.clone(),
+                default_chat: state.default_chat.clone().map(ChatUri::new),
                 working_directories: state
                     .working_directories
                     .iter()
@@ -117,7 +117,7 @@ impl DynamicCommand for OpenSubscribedSession {
                 session: self.session.clone(),
                 open_chat: self.open_chat,
                 initial_prompt: self.initial_prompt.clone(),
-                default_chat: state.default_chat.clone(),
+                default_chat: state.default_chat.clone().map(ChatUri::new),
             }),
         );
     }
@@ -125,10 +125,10 @@ impl DynamicCommand for OpenSubscribedSession {
 
 struct EnterSessionWork {
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     open_chat: bool,
     initial_prompt: Option<String>,
-    default_chat: Option<Uri>,
+    default_chat: Option<ChatUri>,
 }
 
 impl DynamicCommand for EnterSessionWork {
@@ -184,7 +184,7 @@ fn relaunch_session_poll(
     store: &Store,
     window: crate::WindowId,
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     fx: &mut crate::AppFx<'_>,
 ) {
     let Some(seat) = crate::higent::Servers::seat(store, server) else {
@@ -207,7 +207,7 @@ fn relaunch_session_poll(
 
 struct ApplySessionActions {
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     actions: Vec<StateAction>,
 }
 
@@ -335,7 +335,7 @@ pub struct OpenCreatedSession {
     pub open_chat: bool,
 
     pub initial_prompt: Option<String>,
-    pub result: Result<Uri, String>,
+    pub result: Result<SessionUri, String>,
 }
 
 impl DynamicCommand for OpenCreatedSession {
@@ -371,7 +371,7 @@ impl DynamicCommand for OpenCreatedSession {
 
 pub(crate) struct OpenSessionRow {
     pub(crate) server: HostId,
-    pub(crate) session: Uri,
+    pub(crate) session: SessionUri,
 }
 
 impl DynamicCommand for OpenSessionRow {

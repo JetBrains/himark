@@ -30,7 +30,7 @@ pub struct ScriptCapture {
 pub struct ScriptAgent {
     pub seat: Arc<dyn himark::higent::AhpServer>,
 
-    pub session: String,
+    pub session: himark::higent::SessionUri,
 }
 
 async fn drive_turn(agent: &ScriptAgent, prompt: String) -> Result<String, String> {

@@ -51,7 +51,11 @@ fn mounted_titles(app: &Application) -> Vec<String> {
 
 /// A PTY-less terminal session: the cheap seedable family row now
 /// that result lists live in the session feed, not a family.
-fn seed_terminal_row(app: &mut Application, channel: &str, title: &str) -> String {
+fn seed_terminal_row(
+    app: &mut Application,
+    channel: &str,
+    title: &str,
+) -> himark::higent::ChannelUri {
     struct NullBackend;
     impl himark::terminal::TerminalBackend for NullBackend {
         fn write(&self, _bytes: &[u8]) {}
@@ -59,10 +63,11 @@ fn seed_terminal_row(app: &mut Application, channel: &str, title: &str) -> Strin
         fn hangup(&self) {}
     }
     let session = himark::terminal::Session::new(Box::new(NullBackend));
-    session.set_channel(channel.to_owned());
+    let channel = himark::higent::ChannelUri::new(channel);
+    session.set_channel(channel.clone());
     let _ = session.output(format!("\x1b]0;{title}\x07").as_bytes());
-    himark::terminal::Terminals::put(&mut app.store_mut(), channel.to_owned(), session);
-    channel.to_owned()
+    himark::terminal::Terminals::put(&mut app.store_mut(), channel.clone(), session);
+    channel
 }
 
 #[test]

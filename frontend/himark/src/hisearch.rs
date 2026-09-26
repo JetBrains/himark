@@ -983,7 +983,7 @@ mod tests {
     fn session() -> SessionId {
         SessionId {
             host: crate::higent::HostId::LOCAL,
-            session: "test".to_owned(),
+            session: crate::higent::SessionUri::new("test"),
         }
     }
 

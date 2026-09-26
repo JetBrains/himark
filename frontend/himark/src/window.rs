@@ -885,7 +885,7 @@ impl Window {
 
     pub(crate) fn adopt_local_host(&mut self, host: crate::higent::HostId) -> bool {
         let is_stale_local = |id: &crate::SessionId| {
-            id.session == host_discovery::LOCAL_FS_SESSION && id.host != host
+            id.session.as_str() == host_discovery::LOCAL_FS_SESSION && id.host != host
         };
         let mut changed = false;
         if is_stale_local(&self.current_session) {

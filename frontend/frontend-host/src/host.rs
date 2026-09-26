@@ -349,7 +349,7 @@ fn open_folder_session(
                     held.len() == dirs.len() && dirs.iter().all(|dir| held.contains(dir))
                 })
             })
-            .map(|summary| summary.resource.clone())
+            .map(|summary| himark::higent::SessionUri::new(summary.resource.clone()))
     });
     match existing {
         Some(session) => himark::higent::open_session(store, window, host, session, false, fx),
@@ -531,7 +531,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
 
 pub struct NewTerminalEffect {
     pub(crate) seat: Arc<dyn himark::higent::AhpServer>,
-    pub(crate) session: String,
+    pub(crate) session: himark::higent::SessionUri,
     pub(crate) cwd: Option<String>,
     pub(crate) window: himark::WindowId,
 }
@@ -547,7 +547,7 @@ pub(crate) struct SessionTerminalHandler {
 
 struct AhpBackend {
     seat: Arc<dyn himark::higent::AhpServer>,
-    channel: String,
+    channel: himark::higent::ChannelUri,
 }
 
 impl himark::terminal::TerminalBackend for AhpBackend {
@@ -565,7 +565,7 @@ impl himark::terminal::TerminalBackend for AhpBackend {
 
 impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
     async fn handle(&self, effect: NewTerminalEffect) -> Option<Arc<himark::terminal::Session>> {
-        let channel = format!("ahp-terminal:/{}", crate::hiahp::uuid_v4());
+        let channel = himark::higent::ChannelUri::new(format!("ahp-terminal:/{}", crate::hiahp::uuid_v4()));
         let session = himark::terminal::Session::new(Box::new(AhpBackend {
             seat: Arc::clone(&effect.seat),
             channel: channel.clone(),
@@ -671,7 +671,7 @@ impl DynamicCommand for OpenTerminal {
                         himark::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder)
                             .into_string()
                     });
-                Some((seat, host_discovery::LOCAL_FS_SESSION.to_owned(), cwd))
+                Some((seat, himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION), cwd))
             });
         let Some((seat, session, cwd)) = resolved else {
             return;

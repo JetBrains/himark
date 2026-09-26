@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::hichanges::{
-    dir_forest, empty_side, entry_of, entry_serves, folder_scope, CatalogEntry, ChangeEntry,
+    dir_forest, empty_side, entry_serves, folder_scope, CatalogEntry, ChangeEntry,
     ChangesStatus, DirSink, DirTrie, Dispatched,
 };
 use crate::higent::ahp_types::actions::StateAction;
@@ -58,8 +58,8 @@ impl std::ops::Deref for Commit {
 #[derive(Clone)]
 pub struct FolderHistory {
     seat: Arc<dyn AhpServer>,
-    session: String,
-    channel: Option<String>,
+    session: crate::higent::SessionUri,
+    channel: Option<crate::higent::ChannelUri>,
     pub status: ChangesStatus,
     pub head: history_wire::HistoryHead,
     pub commits: rpds::VectorSync<Commit>,
@@ -109,7 +109,7 @@ impl History {
         store: &mut Store,
         folder: &ResourceLocation,
         seat: &Arc<dyn AhpServer>,
-        session: &str,
+        session: &crate::higent::SessionUri,
     ) {
         let known = store
             .get::<History>()
@@ -118,7 +118,7 @@ impl History {
             return;
         }
         let seat = seat.clone();
-        let session = session.to_owned();
+        let session = session.clone();
         store.update::<History>(|history| {
             history.folders.insert_mut(
                 folder.clone(),
@@ -138,12 +138,12 @@ impl History {
 
     fn adopt_catalog(
         &mut self,
-        session: &str,
+        session: &crate::higent::SessionUri,
         entries: &[CatalogEntry],
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> {
+    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> {
         let mut fresh = Vec::new();
         for (folder, entry) in self.folders.clone().iter() {
-            if entry.session != session || entry.channel.is_some() {
+            if entry.session != *session || entry.channel.is_some() {
                 continue;
             }
             let Some(matched) = entries
@@ -236,12 +236,12 @@ impl History {
         self.generation += 1;
     }
 
-    pub(crate) fn session_failed(store: &mut Store, session: &str, error: &str) {
+    pub(crate) fn session_failed(store: &mut Store, session: &crate::higent::SessionUri, error: &str) {
         store.update::<History>(|history| {
             let riding: Vec<ResourceLocation> = history
                 .folders
                 .iter()
-                .filter(|(_, entry)| entry.session == session)
+                .filter(|(_, entry)| entry.session == *session)
                 .map(|(folder, _)| folder.clone())
                 .collect();
             for folder in riding {
@@ -317,7 +317,7 @@ impl History {
 pub(crate) fn subscribe_fresh(
     store: &mut Store,
     window: crate::WindowId,
-    session: &str,
+    session: &crate::higent::SessionUri,
     entries: &[CatalogEntry],
     fx: &mut crate::AppFx<'_>,
 ) {
@@ -493,7 +493,7 @@ fn settle_commit_fetch(
             fx.push(
                 AnyEffect::new(PollChangesetEffect {
                     seat: entry.seat.clone(),
-                    channel: wire.changeset.clone(),
+                    channel: crate::higent::ChannelUri::new(wire.changeset.clone()),
                 })
                 .map(move |actions| {
                     let polled = Arc::new(CommitFilesPolled {
@@ -508,7 +508,7 @@ fn settle_commit_fetch(
                 }),
             );
         }
-        _ => entry.seat.unsubscribe_changeset(&wire.changeset),
+        _ => entry.seat.unsubscribe_changeset(&crate::higent::ChannelUri::new(wire.changeset.clone())),
     }
 }
 
@@ -570,7 +570,7 @@ impl crate::DynamicCommand for FetchCommitFiles {
         let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit) else {
             return;
         };
-        let channel = commit.changeset.clone();
+        let channel = crate::higent::ChannelUri::new(commit.changeset.clone());
         // Mark the SET computing (it exists from the row's birth).
         crate::hichanges::Changes::mark_commit_computing(store, &self.folder, &self.commit);
         let landing = self.folder.clone();

@@ -3,7 +3,6 @@
 
 use super::state::Hosts;
 use crate::SessionId;
-use ahp_types::common::Uri;
 use imba::store::Store;
 
 pub fn session_folders(store: &Store, session: &SessionId) -> Vec<crate::ResourceLocation> {
@@ -13,7 +12,7 @@ pub fn session_folders(store: &Store, session: &SessionId) -> Vec<crate::Resourc
     let Some(host) = Hosts::host_ref(store, session.host) else {
         return Vec::new();
     };
-    let mirrored: Vec<Uri> = match host.states.get(&session.session) {
+    let mirrored: Vec<String> = match host.states.get(&session.session) {
         Some(channel) => channel.working_directories.iter().cloned().collect(),
         None => host
             .summary(&session.session)
@@ -30,7 +29,11 @@ pub fn all_session_folders(store: &Store) -> Vec<crate::ResourceLocation> {
     let mut seen = std::collections::HashSet::new();
     let mut folders = Vec::new();
     for (id, host) in Hosts::list(store) {
-        let mut sessions: Vec<Uri> = host.sessions.iter().map(|s| s.resource.clone()).collect();
+        let mut sessions: Vec<crate::higent::SessionUri> = host
+            .sessions
+            .iter()
+            .map(|s| crate::higent::SessionUri::new(s.resource.clone()))
+            .collect();
         for (session, _) in host.states.iter() {
             sessions.push(session.clone());
         }

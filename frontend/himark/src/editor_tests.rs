@@ -4406,14 +4406,14 @@ mod dock_tests {
             ) {
                 let target = crate::SessionId {
                     host: crate::higent::HostId::LOCAL,
-                    session: "ahp-session:/volatile".to_owned(),
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
 
-        let uri = "ahp-chat:/volatile".to_owned();
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4431,7 +4431,7 @@ mod dock_tests {
             entity.workbench().root.for_each_pane(&mut |panel| {
                 if let crate::Panel::Plugin(view) = panel {
                     if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
-                        found = Some(pane.chat().clone());
+                        found = Some(pane.chat().as_str().to_owned());
                     }
                 }
             });
@@ -4494,7 +4494,7 @@ mod dock_tests {
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
         crate::Window::draw(window, &mut app, surface.canvas());
 
-        let uri = "ahp-chat:/walkable".to_owned();
+        let uri = crate::higent::ChatUri::new("ahp-chat:/walkable");
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4525,7 +4525,7 @@ mod dock_tests {
             entity.workbench().root.for_each_pane(&mut |panel| {
                 if let crate::Panel::Plugin(view) = panel {
                     if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
-                        found = Some(pane.chat().clone());
+                        found = Some(pane.chat().as_str().to_owned());
                     }
                 }
             });
@@ -4584,13 +4584,13 @@ mod dock_tests {
             ) {
                 let target = crate::SessionId {
                     host: crate::higent::HostId::LOCAL,
-                    session: "ahp-session:/live".to_owned(),
+                    session: crate::higent::SessionUri::new("ahp-session:/live"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = "ahp-chat:/live".to_owned();
+        let uri = crate::higent::ChatUri::new("ahp-chat:/live");
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4888,7 +4888,7 @@ mod dock_tests {
         let mut entity = crate::Windows::window(&store, window).expect("window");
         let _ = entity.switch_to(crate::SessionId {
             host,
-            session: "test-session:/beta".to_owned(),
+            session: crate::higent::SessionUri::new("test-session:/beta"),
         });
         crate::Windows::put(&mut store, window, entity);
 
@@ -5105,7 +5105,7 @@ mod dock_tests {
             fn resize(&self, _cols: u16, _rows: u16, _w: f32, _h: f32) {}
             fn hangup(&self) {}
         }
-        let hidden = "test-terminal:1".to_owned();
+        let hidden = crate::higent::ChannelUri::new("test-terminal:1");
         let session = crate::terminal::Session::new(Box::new(NullBackend));
         session.set_channel(hidden.clone());
         crate::terminal::Terminals::put(&mut app.store_mut(), hidden.clone(), session);
@@ -5332,7 +5332,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new("ahp-chat:/a".to_owned())),
+            Box::new(crate::higent::ChatPane::new(crate::higent::ChatUri::new("ahp-chat:/a"))),
             &mut batch.effects(),
         );
         crate::Windows::put(&mut store, window, entity);
@@ -5343,7 +5343,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         entity.workbench().root.for_each_pane(&mut |panel| {
             if let crate::Panel::Plugin(view) = panel {
                 if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
-                    found = Some(pane.chat().clone());
+                    found = Some(pane.chat().as_str().to_owned());
                 }
             }
         });
@@ -5536,7 +5536,7 @@ fn the_at_completion_opens_finds_and_picks() {
         std::sync::Arc::new(|| {}),
     );
 
-    let uri = "ahp-chat:/completion".to_owned();
+    let uri = crate::higent::ChatUri::new("ahp-chat:/completion");
     let panel = crate::higent::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),

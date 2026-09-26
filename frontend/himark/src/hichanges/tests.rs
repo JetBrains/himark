@@ -28,47 +28,47 @@ impl crate::higent::AhpServer for InertSeat {
         connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
         list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
         poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
-        create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<String, String>>;
+        create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<crate::higent::SessionUri, String>>;
         resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-        dispose_session(session: String) -> crate::higent::SeatFuture<Result<(), String>>;
-        subscribe_session(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
-        poll_session(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-        create_chat(session: String) -> crate::higent::SeatFuture<Result<String, String>>;
-        subscribe_chat(chat: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
-        fetch_turns(chat: String, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
-        start_turn(chat: String, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
-        poll_chat(chat: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-        cancel_turn(chat: String, turn: String) -> crate::higent::SeatFuture<()>;
-        dispatch_action(chat: String, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
+        dispose_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<(), String>>;
+        subscribe_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
+        poll_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+        create_chat(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ChatUri, String>>;
+        subscribe_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
+        fetch_turns(chat: crate::higent::ChatUri, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
+        start_turn(chat: crate::higent::ChatUri, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
+        poll_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+        cancel_turn(chat: crate::higent::ChatUri, turn: crate::higent::TurnId) -> crate::higent::SeatFuture<()>;
+        dispatch_action(chat: crate::higent::ChannelUri, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
         read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
-        resource_read(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
-        resource_write(session: String, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
-        resource_list(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-        resource_watch(session: String, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
+        resource_read(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
+        resource_write(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
+        resource_list(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
+        resource_watch(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
         resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
-        search(session: String, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
-        terminal_input(channel: &String, data: String) -> ();
-        terminal_resize(channel: &String, cols: u16, rows: u16) -> ();
-        terminal_dispose(channel: &String) -> ();
-        subscribe_changeset(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
-        poll_changeset(channel: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-        unsubscribe_changeset(channel: &String) -> ();
-        subscribe_annotations(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
-        poll_annotations(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-        dispatch_annotations(session: &String, action: StateAction) -> ();
-        unsubscribe_annotations(session: &String) -> ();
-        open_document(session: String, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
-        subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
-        poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
-        dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
-        unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
-        lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
+        search(session: crate::higent::SessionUri, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
+        terminal_input(channel: &crate::higent::ChannelUri, data: String) -> ();
+        terminal_resize(channel: &crate::higent::ChannelUri, cols: u16, rows: u16) -> ();
+        terminal_dispose(channel: &crate::higent::ChannelUri) -> ();
+        subscribe_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
+        poll_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+        unsubscribe_changeset(channel: &crate::higent::ChannelUri) -> ();
+        subscribe_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
+        poll_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+        dispatch_annotations(session: &crate::higent::SessionUri, action: StateAction) -> ();
+        unsubscribe_annotations(session: &crate::higent::SessionUri) -> ();
+        open_document(session: crate::higent::SessionUri, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
+        subscribe_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
+        poll_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
+        dispatch_document(channel: &crate::higent::ChannelUri, action: crate::higent::seat::DocumentApplied) -> ();
+        unsubscribe_document(channel: &crate::higent::ChannelUri) -> crate::higent::SeatFuture<()>;
+        lsp(session: crate::higent::SessionUri, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
     }
 
     fn terminal_open(
         &self,
-        _session: String,
-        _channel: String,
+        _session: crate::higent::SessionUri,
+        _channel: crate::higent::ChannelUri,
         _cwd: Option<String>,
         _cols: u16,
         _rows: u16,
@@ -149,8 +149,8 @@ fn mirror() -> (Changes, ResourceLocation) {
             source: ChangeSetSource::WorkingCopy { folder: folder() },
             feed: Some(SetFeed {
                 seat: Arc::new(InertSeat),
-                session: "hihost-fs:/local".to_owned(),
-                channel: Some("hihost-changes://tmp/repo".to_owned()),
+                session: crate::higent::SessionUri::new("hihost-fs:/local"),
+                channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
             }),
             status: ChangesStatus::Computing,
             files: rpds::VectorSync::new_sync(),
@@ -195,20 +195,20 @@ fn the_catalog_names_the_folders_channel() {
         .unwrap();
     changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
-        uri: "hihost-fs:/local".to_owned(),
+        uri: crate::higent::SessionUri::new("hihost-fs:/local"),
         seat: Arc::new(InertSeat),
         catalog: rpds::VectorSync::new_sync(),
     });
     let fresh = changes.adopt_catalog(
-        "hihost-fs:/local",
+        &crate::higent::SessionUri::new("hihost-fs:/local"),
         vec![
             CatalogEntry {
-                uri: "hihost-changes://somewhere/else".to_owned(),
+                uri: crate::higent::ChannelUri::new("hihost-changes://somewhere/else"),
                 description: Some("/somewhere/else".to_owned()),
                 kind: "uncommitted".to_owned(),
             },
             CatalogEntry {
-                uri: "hihost-changes://tmp/repo".to_owned(),
+                uri: crate::higent::ChannelUri::new("hihost-changes://tmp/repo"),
                 description: Some("/tmp/repo".to_owned()),
                 kind: "uncommitted".to_owned(),
             },
@@ -216,16 +216,16 @@ fn the_catalog_names_the_folders_channel() {
     );
     assert_eq!(fresh.len(), 1);
     assert_eq!(fresh[0].0, folder);
-    assert_eq!(fresh[0].2, "hihost-changes://tmp/repo");
+    assert_eq!(fresh[0].2.as_str(), "hihost-changes://tmp/repo");
     assert_eq!(
-        changes.folder_set(&folder).unwrap().feed.as_ref().unwrap().channel.as_deref(),
+        changes.folder_set(&folder).unwrap().feed.as_ref().unwrap().channel.as_ref().map(|c| c.as_str()),
         Some("hihost-changes://tmp/repo")
     );
 
     let again = changes.adopt_catalog(
-        "hihost-fs:/local",
+        &crate::higent::SessionUri::new("hihost-fs:/local"),
         vec![CatalogEntry {
-            uri: "hihost-changes://tmp/repo".to_owned(),
+            uri: crate::higent::ChannelUri::new("hihost-changes://tmp/repo"),
             description: Some("/tmp/repo".to_owned()),
             kind: "uncommitted".to_owned(),
         }],
@@ -246,20 +246,20 @@ fn a_lone_folder_takes_a_lone_foreign_entry() {
         .unwrap();
     changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
-        uri: "hihost-fs:/local".to_owned(),
+        uri: crate::higent::SessionUri::new("hihost-fs:/local"),
         seat: Arc::new(InertSeat),
         catalog: rpds::VectorSync::new_sync(),
     });
     let fresh = changes.adopt_catalog(
-        "hihost-fs:/local",
+        &crate::higent::SessionUri::new("hihost-fs:/local"),
         vec![CatalogEntry {
-            uri: "vscode-changes:/session".to_owned(),
+            uri: crate::higent::ChannelUri::new("vscode-changes:/session"),
             description: None,
             kind: "uncommitted".to_owned(),
         }],
     );
     assert_eq!(fresh.len(), 1);
-    assert_eq!(fresh[0].2, "vscode-changes:/session");
+    assert_eq!(fresh[0].2.as_str(), "vscode-changes:/session");
 }
 
 #[test]

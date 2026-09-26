@@ -722,7 +722,11 @@ fn host_folders(store: &Store, host: HostId) -> Vec<crate::ResourceLocation> {
         if id != host {
             continue;
         }
-        let mut sessions: Vec<String> = entry.sessions.iter().map(|s| s.resource.clone()).collect();
+        let mut sessions: Vec<crate::higent::SessionUri> = entry
+            .sessions
+            .iter()
+            .map(|s| crate::higent::SessionUri::new(s.resource.clone()))
+            .collect();
         for (session, _) in entry.states.iter() {
             sessions.push(session.clone());
         }
@@ -1604,7 +1608,7 @@ impl crate::DynamicCommand for StartComposedSession {
                     fx.push(
                         AnyEffect::new(crate::higent::DispatchChatActionEffect {
                             seat: Arc::clone(&seat),
-                            channel: session.clone(),
+                            channel: session.as_channel(),
                             action: crate::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
                                 crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
                                     directory: directory.clone(),
@@ -1639,7 +1643,7 @@ impl crate::DynamicCommand for StartComposedSession {
                 fx.push(
                     AnyEffect::new(crate::higent::DispatchChatActionEffect {
                         seat,
-                        channel: session.clone(),
+                        channel: session.as_channel(),
                         action:
                             crate::higent::ahp_types::actions::StateAction::SessionConfigChanged(
                                 crate::higent::ahp_types::actions::SessionConfigChangedAction {
@@ -1924,7 +1928,7 @@ struct Placeholder {
     host: HostId,
     provider: String,
 
-    session: Option<String>,
+    session: Option<crate::higent::SessionUri>,
 
     applied: rpds::VectorSync<String>,
 
@@ -1933,7 +1937,10 @@ struct Placeholder {
 
 impl Placeholders {
     #[doc(hidden)]
-    pub fn session_of(store: &Store, window: crate::WindowId) -> Option<(HostId, String, String)> {
+    pub fn session_of(
+        store: &Store,
+        window: crate::WindowId,
+    ) -> Option<(HostId, String, crate::higent::SessionUri)> {
         let rows = store.get::<Placeholders>()?;
         let row = rows.0.get(&window)?;
         Some((row.host, row.provider.clone(), row.session.clone()?))
@@ -2073,7 +2080,7 @@ fn grant_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
 ) {
     let Some(seat) = Servers::seat(store, host) else {
@@ -2103,7 +2110,7 @@ fn revoke_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
 ) {
     let Some(seat) = Servers::seat(store, host) else {
@@ -2135,7 +2142,7 @@ fn revoke_folder(
 struct GrantPlaceholderFolder {
     host: HostId,
     seat: Arc<dyn crate::higent::AhpServer>,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
     revoke: bool,
 }
@@ -2178,7 +2185,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
                 seat: Arc::clone(&self.seat),
-                channel: self.session.clone(),
+                channel: self.session.as_channel(),
                 action,
             })
             .map(move |result| {
@@ -2194,7 +2201,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
 struct PlaceholderCreated {
     host: HostId,
     provider: String,
-    result: Result<String, String>,
+    result: Result<crate::higent::SessionUri, String>,
 }
 
 impl crate::DynamicCommand for PlaceholderCreated {

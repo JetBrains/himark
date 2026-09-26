@@ -323,7 +323,7 @@ impl ChatPanelCommand {
 
 #[derive(Clone)]
 struct ActiveStream {
-    turn: String,
+    turn: crate::higent::TurnId,
     cells: usize,
     parts: rpds::HashTrieMapSync<String, usize>,
     tools: rpds::HashTrieMapSync<String, ToolTrack>,
@@ -343,8 +343,8 @@ struct ToolTrack {
 pub struct ChatPanel {
     server: crate::higent::HostId,
 
-    session: ahp_types::common::Uri,
-    chat: ahp_types::common::Uri,
+    session: crate::higent::SessionUri,
+    chat: crate::higent::ChatUri,
     state: Link,
     title: String,
     rows: Rows,
@@ -428,8 +428,8 @@ impl ChatPanel {
         store: &imba::store::Store,
         ui: &UiCtx,
         server: crate::higent::HostId,
-        session: impl Into<ahp_types::common::Uri>,
-        chat: impl Into<ahp_types::common::Uri>,
+        session: impl Into<crate::higent::SessionUri>,
+        chat: impl Into<crate::higent::ChatUri>,
     ) -> Self {
         Self {
             server,
@@ -773,7 +773,7 @@ impl ChatPanel {
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
                 seat,
-                channel: self.chat.clone(),
+                channel: self.chat.as_channel(),
                 action,
             })
             .map(move |result| ChatPanelCommand::Dispatched {
@@ -792,7 +792,7 @@ impl ChatPanel {
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
                 seat,
-                channel: self.session.clone(),
+                channel: self.session.as_channel(),
                 action: StateAction::SessionIsReadChanged(
                     ahp_types::actions::SessionIsReadChangedAction { is_read: true },
                 ),
@@ -860,7 +860,7 @@ impl ChatPanel {
         let Some(track) = self
             .active
             .as_ref()
-            .filter(|active| active.turn == turn_id)
+            .filter(|active| active.turn.as_str() == turn_id)
             .and_then(|active| active.tools.get(tool_call_id))
         else {
             return;
@@ -931,7 +931,7 @@ impl ChatPanel {
                         .content_mut()
                         .splice_slice(range.unwrap_or(len..len), slice);
                     self.active = Some(ActiveStream {
-                        turn: action.turn_id,
+                        turn: crate::higent::TurnId::new(action.turn_id),
                         cells: 1,
                         parts: rpds::HashTrieMapSync::new_sync(),
                         tools: rpds::HashTrieMapSync::new_sync(),
@@ -954,7 +954,7 @@ impl ChatPanel {
                     if let (true, Some(id), Some(first), Some(active)) =
                         (minted, part_id, first, self.active.as_mut())
                     {
-                        if active.turn == action.turn_id {
+                        if active.turn.as_str() == action.turn_id {
                             active.parts.insert_mut(id, first);
                         }
                     }
@@ -992,7 +992,7 @@ impl ChatPanel {
                         fx,
                     );
                     if let (Some(index), Some(active)) = (index, self.active.as_mut()) {
-                        if active.turn == action.turn_id {
+                        if active.turn.as_str() == action.turn_id {
                             active.tools.insert_mut(
                                 action.tool_call_id,
                                 ToolTrack {
@@ -1014,7 +1014,7 @@ impl ChatPanel {
                     let display = self
                         .active
                         .as_mut()
-                        .filter(|active| active.turn == action.turn_id)
+                        .filter(|active| active.turn.as_str() == action.turn_id)
                         .and_then(|active| {
                             let mut track = active.tools.get(&action.tool_call_id)?.clone();
                             track.invocation = invocation.clone();
@@ -1049,7 +1049,7 @@ impl ChatPanel {
                             _ => None,
                         };
                         self.stack.set_ask(PermissionAsk::new(
-                            action.turn_id.clone(),
+                            crate::higent::TurnId::new(action.turn_id.clone()),
                             action.tool_call_id.clone(),
                             action
                                 .confirmation_title
@@ -1070,7 +1070,7 @@ impl ChatPanel {
                     let track = self
                         .active
                         .as_ref()
-                        .filter(|active| active.turn == action.turn_id)
+                        .filter(|active| active.turn.as_str() == action.turn_id)
                         .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
                     if let Some(track) = track {
                         let face = if action.approved {
@@ -1092,7 +1092,7 @@ impl ChatPanel {
                     let track = self
                         .active
                         .as_ref()
-                        .filter(|active| active.turn == action.turn_id)
+                        .filter(|active| active.turn.as_str() == action.turn_id)
                         .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
                     let Some(track) = track else {
                         continue;
@@ -1138,7 +1138,7 @@ impl ChatPanel {
                     if self
                         .active
                         .as_ref()
-                        .is_some_and(|active| active.turn == action.turn_id)
+                        .is_some_and(|active| active.turn.as_str() == action.turn_id)
                     {
                         self.active = None;
                         self.stack.clear_ask();
@@ -1210,7 +1210,7 @@ impl ChatPanel {
         let Some(active) = &self.active else {
             return;
         };
-        if active.turn != turn_id {
+        if active.turn.as_str() != turn_id {
             return;
         }
         let Some(cell) = active.parts.get(part_id).copied() else {
@@ -1235,7 +1235,7 @@ impl ChatPanel {
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> Option<usize> {
         let active = self.active.clone()?;
-        if active.turn != turn_id {
+        if active.turn.as_str() != turn_id {
             return None;
         }
 
@@ -1252,12 +1252,12 @@ impl ChatPanel {
             }
             return Some(group);
         }
-        let range = self.rows.content().row_range(&active.turn)?;
+        let range = self.rows.content().row_range(&active.turn.as_str().to_owned())?;
         let content_width = TurnView::content_width(self.panel_width());
         let index = active.cells;
         let opens_run = matches!(spec, CellSpec::Tools(_));
         let (cell, height) =
-            self.build_cell(store, ui, &active.turn, index, spec, content_width, fx);
+            self.build_cell(store, ui, active.turn.as_str(), index, spec, content_width, fx);
         fx.scope(ChatPanelCommand::Rows, |fx| {
             self.rows.perform(
                 store,
@@ -1715,7 +1715,7 @@ impl View for ChatPanel {
                         fx.push(
                             AnyEffect::new(DispatchChatActionEffect {
                                 seat,
-                                channel: self.session.clone(),
+                                channel: self.session.as_channel(),
                                 action: StateAction::SessionConfigChanged(
                                     ahp_types::actions::SessionConfigChangedAction {
                                         config,
@@ -2218,47 +2218,47 @@ mod tests {
             connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
             list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
             poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
-            create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<String, String>>;
+            create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<crate::higent::SessionUri, String>>;
             resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-            dispose_session(session: String) -> crate::higent::SeatFuture<Result<(), String>>;
-            subscribe_session(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
-            poll_session(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            create_chat(session: String) -> crate::higent::SeatFuture<Result<String, String>>;
-            subscribe_chat(chat: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
-            fetch_turns(chat: String, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
-            start_turn(chat: String, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
-            poll_chat(chat: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            cancel_turn(chat: String, turn: String) -> crate::higent::SeatFuture<()>;
-            dispatch_action(chat: String, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
+            dispose_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<(), String>>;
+            subscribe_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
+            poll_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            create_chat(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ChatUri, String>>;
+            subscribe_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
+            fetch_turns(chat: crate::higent::ChatUri, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
+            start_turn(chat: crate::higent::ChatUri, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
+            poll_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            cancel_turn(chat: crate::higent::ChatUri, turn: crate::higent::TurnId) -> crate::higent::SeatFuture<()>;
+            dispatch_action(chat: crate::higent::ChannelUri, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
             read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
-            resource_read(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
-            resource_write(session: String, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
-            resource_list(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-            resource_watch(session: String, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
+            resource_read(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
+            resource_write(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
+            resource_list(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
+            resource_watch(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
             resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
-            search(session: String, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
-            terminal_input(channel: &String, data: String) -> ();
-            terminal_resize(channel: &String, cols: u16, rows: u16) -> ();
-            terminal_dispose(channel: &String) -> ();
-            subscribe_changeset(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
-            poll_changeset(channel: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            unsubscribe_changeset(channel: &String) -> ();
-            subscribe_annotations(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
-            poll_annotations(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            dispatch_annotations(session: &String, action: StateAction) -> ();
-            unsubscribe_annotations(session: &String) -> ();
-            open_document(session: String, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
-            subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
-            poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
-            dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
-            unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
-            lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
+            search(session: crate::higent::SessionUri, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
+            terminal_input(channel: &crate::higent::ChannelUri, data: String) -> ();
+            terminal_resize(channel: &crate::higent::ChannelUri, cols: u16, rows: u16) -> ();
+            terminal_dispose(channel: &crate::higent::ChannelUri) -> ();
+            subscribe_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
+            poll_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            unsubscribe_changeset(channel: &crate::higent::ChannelUri) -> ();
+            subscribe_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
+            poll_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
+            dispatch_annotations(session: &crate::higent::SessionUri, action: StateAction) -> ();
+            unsubscribe_annotations(session: &crate::higent::SessionUri) -> ();
+            open_document(session: crate::higent::SessionUri, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
+            subscribe_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
+            poll_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
+            dispatch_document(channel: &crate::higent::ChannelUri, action: crate::higent::seat::DocumentApplied) -> ();
+            unsubscribe_document(channel: &crate::higent::ChannelUri) -> crate::higent::SeatFuture<()>;
+            lsp(session: crate::higent::SessionUri, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
         }
 
         fn terminal_open(
             &self,
-            _session: String,
-            _channel: String,
+            _session: crate::higent::SessionUri,
+            _channel: crate::higent::ChannelUri,
             _cwd: Option<String>,
             _cols: u16,
             _rows: u16,
@@ -2276,7 +2276,7 @@ mod tests {
         let mut panel = ChatPanel::new(store, ui, host, "s", "chat:1");
         panel.state = Link::Ready;
         panel.active = Some(ActiveStream {
-            turn: "t1".to_owned(),
+            turn: crate::higent::TurnId::new("t1"),
             cells: 0,
             parts: rpds::HashTrieMapSync::new_sync(),
             tools: rpds::HashTrieMapSync::new_sync(),

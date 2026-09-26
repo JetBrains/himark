@@ -204,7 +204,7 @@ pub fn open_locations(
 pub struct SessionId {
     pub host: crate::higent::HostId,
 
-    pub session: String,
+    pub session: crate::higent::SessionUri,
 }
 
 impl SessionId {
@@ -215,7 +215,7 @@ impl SessionId {
             .unwrap_or(crate::higent::HostId::LOCAL);
         SessionId {
             host,
-            session: host_discovery::LOCAL_FS_SESSION.to_owned(),
+            session: crate::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
         }
     }
 
@@ -227,13 +227,13 @@ impl SessionId {
         });
         SessionId {
             host: Self::local_default(store).host,
-            session: format!("scratch-space:{minted}"),
+            session: crate::higent::SessionUri::new(format!("scratch-space:{minted}")),
         }
     }
 
     pub fn names_session(&self) -> bool {
-        self.session != host_discovery::LOCAL_FS_SESSION
-            && !self.session.starts_with("scratch-space:")
+        self.session.as_str() != host_discovery::LOCAL_FS_SESSION
+            && !self.session.as_str().starts_with("scratch-space:")
     }
 }
 
@@ -259,7 +259,7 @@ impl Effect for FindEffect {
 #[derive(Clone)]
 pub struct LocationsChannel {
     pub seat: std::sync::Arc<dyn crate::higent::AhpServer>,
-    pub channel: String,
+    pub channel: crate::higent::ChannelUri,
     pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync>,
 }
 

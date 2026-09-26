@@ -28,7 +28,7 @@ pub enum StackCommand {
 
 #[derive(Clone)]
 pub(crate) struct PermissionAsk {
-    turn: String,
+    turn: crate::higent::TurnId,
     tool: String,
     title: String,
     invocation: String,
@@ -39,7 +39,7 @@ pub(crate) struct PermissionAsk {
 
 impl PermissionAsk {
     pub(crate) fn new(
-        turn: String,
+        turn: crate::higent::TurnId,
         tool: String,
         title: String,
         invocation: String,
@@ -105,7 +105,7 @@ impl WidgetStack {
         }
     }
 
-    pub(crate) fn ask_turn(&self) -> Option<String> {
+    pub(crate) fn ask_turn(&self) -> Option<crate::higent::TurnId> {
         self.ask.as_ref().map(|ask| ask.turn.clone())
     }
 
@@ -122,7 +122,7 @@ impl WidgetStack {
     ) -> Option<(String, String, ConfirmationOption)> {
         let ask = self.ask.as_ref()?;
         let option = ask.options.iter().nth(index).cloned()?;
-        Some((ask.turn.clone(), ask.tool.clone(), option))
+        Some((ask.turn.as_str().to_owned(), ask.tool.clone(), option))
     }
 
     pub(crate) fn permission_oracle(

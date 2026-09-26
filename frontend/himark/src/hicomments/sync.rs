@@ -19,7 +19,7 @@ use imba::store::Store;
 
 use crate::hicomments::{comments_markup, CommentView};
 
-type Uri = String;
+use crate::higent::SessionUri as Uri;
 
 pub type AnnotationId = String;
 
@@ -97,8 +97,8 @@ impl Comments {
         store.get::<CommentsInstall>().is_some()
     }
 
-    fn channel_for(&self, session: &str) -> Option<&ChannelFeed> {
-        self.channel.as_ref().filter(|feed| feed.session == session)
+    fn channel_for(&self, session: &Uri) -> Option<&ChannelFeed> {
+        self.channel.as_ref().filter(|feed| feed.session == *session)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -1071,7 +1071,7 @@ fn uri_of(
     store: &Store,
     server: crate::higent::HostId,
     location: &ResourceLocation,
-) -> Option<Uri> {
+) -> Option<String> {
     Some(
         crate::higent::Hosts::uris(store, server)?
             .uri_of(location)
