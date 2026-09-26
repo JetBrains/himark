@@ -197,6 +197,44 @@ impl ChangeSetId {
     }
 }
 
+/// A commit's identity in its repository — the revision/sha string
+/// off the wire, wrapped so it cannot be confused with the paths,
+/// uris and messages it travels beside.
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct Revision(String);
+
+impl Revision {
+    pub fn new(raw: impl Into<String>) -> Self {
+        Self(raw.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Display for Revision {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str(&self.0)
+    }
+}
+
+impl From<String> for Revision {
+    fn from(raw: String) -> Self {
+        Self(raw)
+    }
+}
+
+impl From<&str> for Revision {
+    fn from(raw: &str) -> Self {
+        Self(raw.to_owned())
+    }
+}
+
 /// What a change set IS: one folder's working copy, or one commit —
 /// `CanvasSource`'s shape, made the model's first-class identity.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -210,7 +248,7 @@ pub enum ChangeSetSource {
     #[allow(dead_code)]
     Commit {
         folder: ResourceLocation,
-        revision: String,
+        revision: Revision,
     },
 }
 
@@ -430,7 +468,7 @@ impl Changes {
     pub(crate) fn ensure_commit_set(
         store: &mut Store,
         folder: &ResourceLocation,
-        revision: &str,
+        revision: &Revision,
         seat: &Arc<dyn AhpServer>,
         session: &crate::higent::SessionUri,
     ) -> ChangeSetId {
@@ -472,7 +510,7 @@ impl Changes {
     pub fn commit_set(
         store: &Store,
         folder: &ResourceLocation,
-        revision: &str,
+        revision: &Revision,
     ) -> Option<ChangeSet> {
         let changes = store.get::<ChangeSets>()?;
         let source = ChangeSetSource::Commit {
@@ -483,7 +521,7 @@ impl Changes {
     }
 
     /// The per-SET staleness cue for a commit canvas.
-    pub fn commit_generation(store: &Store, folder: &ResourceLocation, revision: &str) -> u64 {
+    pub fn commit_generation(store: &Store, folder: &ResourceLocation, revision: &Revision) -> u64 {
         Self::commit_set(store, folder, revision)
             .map(|set| set.generation)
             .unwrap_or(0)
@@ -595,7 +633,7 @@ impl Changes {
     pub(crate) fn mark_commit_computing(
         store: &mut Store,
         folder: &ResourceLocation,
-        revision: &str,
+        revision: &Revision,
     ) {
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
@@ -617,7 +655,7 @@ impl Changes {
     pub(crate) fn adopt_commit_state(
         store: &mut Store,
         folder: &ResourceLocation,
-        revision: &str,
+        revision: &Revision,
         result: &Result<ChangesetState, String>,
     ) {
         let Some(uris) = store
@@ -658,7 +696,7 @@ impl Changes {
     pub(crate) fn fold_commit_actions(
         store: &mut Store,
         folder: &ResourceLocation,
-        revision: &str,
+        revision: &Revision,
         actions: &[StateAction],
     ) {
         let Some(uris) = store

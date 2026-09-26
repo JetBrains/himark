@@ -312,7 +312,7 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
             source: crate::diff_canvas::CanvasSource::Commit { id, .. },
             reveal: None,
             ..
-        }) if id == "b"
+        }) if id.as_str() == "b"
     ));
     let graph_key = folder.child(ResourceType::new("history-graph"), "graph");
     let more_key = graph_key.child(ResourceType::new("history-more"), "more");
@@ -343,7 +343,12 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         reviewed: None,
         meta: None,
     };
-    crate::hichanges::Changes::adopt_commit_state(&mut store, &folder, "b", &Ok(ready(vec![file])));
+    crate::hichanges::Changes::adopt_commit_state(
+        &mut store,
+        &folder,
+        &crate::hichanges::Revision::new("b"),
+        &Ok(ready(vec![file])),
+    );
     let mut items = rpds::HashTrieMapSync::new_sync();
     let node = graph_node(
         &store,
@@ -375,7 +380,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         panic!("a file row under the commit");
     };
     assert_eq!(row_folder, &folder, "the row names its canvas source");
-    assert_eq!(commit, "b");
+    assert_eq!(commit.as_str(), "b");
     let (_, new_raw) = crate::hichanges::raw_ref(new).expect("an after ref");
     assert_eq!(new_raw, "hihost-git:/a-commit-ref");
 
@@ -384,7 +389,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         &store,
         &crate::diff_canvas::CanvasSource::Commit {
             folder: folder.clone(),
-            id: "b".to_owned(),
+            id: crate::hichanges::Revision::new("b"),
         },
     );
     let crate::diff_canvas::CanvasListing::Ready(files) = listing else {

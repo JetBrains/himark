@@ -22,7 +22,7 @@ pub enum CanvasSource {
     /// One commit's changeset — a history view revision row.
     Commit {
         folder: ResourceLocation,
-        id: String,
+        id: crate::hichanges::Revision,
     },
 }
 
@@ -41,13 +41,13 @@ impl CanvasSource {
                 let summary = crate::hihistory::History::folder(store, folder).and_then(|held| {
                     held.commits
                         .iter()
-                        .find(|commit| commit.id == *id)
+                        .find(|commit| commit.id == id.as_str())
                         .map(|commit| commit.summary.clone())
                 });
                 match summary {
                     Some(summary) => summary,
                     None => {
-                        let short: String = id.chars().take(8).collect();
+                        let short: String = id.as_str().chars().take(8).collect();
                         format!("Commit {short}")
                     }
                 }
@@ -110,7 +110,7 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
         }),
         CanvasSource::Commit { folder, id } => {
             let held = crate::hihistory::History::folder(store, folder)?;
-            let commit = held.commits.iter().find(|commit| commit.id == *id)?;
+            let commit = held.commits.iter().find(|commit| commit.id == id.as_str())?;
             Some(CanvasBanner::Commit {
                 message: commit
                     .message

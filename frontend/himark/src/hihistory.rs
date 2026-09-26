@@ -154,7 +154,7 @@ impl History {
                 let change_set = crate::hichanges::Changes::ensure_commit_set(
                     store,
                     folder,
-                    &wire.id,
+                    &crate::hichanges::Revision::new(wire.id.clone()),
                     &entry.seat,
                     &entry.session,
                 );
@@ -416,7 +416,7 @@ fn relaunch_poll(
 
 struct CommitFilesLanded {
     folder: ResourceLocation,
-    commit: String,
+    commit: crate::hichanges::Revision,
     result: Result<ChangesetState, String>,
 }
 
@@ -448,7 +448,7 @@ fn settle_commit_fetch(
     store: &Store,
     window: crate::WindowId,
     folder: &ResourceLocation,
-    commit: &str,
+    commit: &crate::hichanges::Revision,
     fx: &mut crate::AppFx<'_>,
 ) {
     let Some(entry) = History::folder(store, folder) else {
@@ -457,7 +457,7 @@ fn settle_commit_fetch(
     let Some(held) = crate::hichanges::Changes::commit_set(store, folder, commit) else {
         return;
     };
-    let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit) else {
+    let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit.as_str()) else {
         return;
     };
     match held.status {
@@ -489,7 +489,7 @@ fn settle_commit_fetch(
 
 struct CommitFilesPolled {
     folder: ResourceLocation,
-    commit: String,
+    commit: crate::hichanges::Revision,
     actions: Vec<StateAction>,
 }
 
@@ -519,7 +519,7 @@ impl crate::DynamicCommand for CommitFilesPolled {
 
 pub struct FetchCommitFiles {
     pub folder: ResourceLocation,
-    pub commit: String,
+    pub commit: crate::hichanges::Revision,
 }
 
 impl crate::DynamicCommand for FetchCommitFiles {
@@ -542,7 +542,7 @@ impl crate::DynamicCommand for FetchCommitFiles {
         if crate::hichanges::Changes::commit_generation(store, &self.folder, &self.commit) > 0 {
             return;
         }
-        let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit) else {
+        let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit.as_str()) else {
             return;
         };
         let channel = crate::higent::ChannelUri::new(commit.changeset.clone());
@@ -685,7 +685,7 @@ impl DirSink for CommitSink<'_> {
             RowItem::Open {
                 source: crate::diff_canvas::CanvasSource::Commit {
                     folder: self.folder.clone(),
-                    id: self.commit.to_owned(),
+                    id: crate::hichanges::Revision::new(self.commit),
                 },
                 reveal: Some(new),
                 toggle: false,
@@ -735,7 +735,7 @@ pub(crate) fn graph_node(
                         RowItem::Open {
                             source: crate::diff_canvas::CanvasSource::Commit {
                                 folder: folder.clone(),
-                                id: commit.id.clone(),
+                                id: crate::hichanges::Revision::new(commit.id.clone()),
                             },
                             reveal: None,
                             toggle: true,
@@ -744,7 +744,11 @@ pub(crate) fn graph_node(
                     );
 
                     let trail: Vec<(String, skia_safe::Color)> = Vec::new();
-                    let held = crate::hichanges::Changes::commit_set(store, folder, &commit.id)
+                    let held = crate::hichanges::Changes::commit_set(
+                        store,
+                        folder,
+                        &crate::hichanges::Revision::new(commit.id.clone()),
+                    )
                         .filter(|set| set.generation() > 0);
                     let children = match held.as_ref() {
                         None => Vec::new(),
