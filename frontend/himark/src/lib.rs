@@ -61,8 +61,9 @@ mod workbench_node;
 mod workspace;
 
 pub use crate::diffs::{
-    gather_diff_view, rearm_base_asks, sync_stripe_bases, DiffHandle, DiffNormalizeEffect,
-    DiffNormalizeHandler, DiffView, DiffViewId, DressedViews, StripeBases,
+    build_diff_view, gather_diff_view, install_opened_pair, rearm_base_asks, rewrap_pair,
+    sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
+    DiffView, DiffViewId, DressedViews, StripeBases, OPEN_HALF_WIDTH,
 };
 pub use crate::family_rows::{
     mint, mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,
