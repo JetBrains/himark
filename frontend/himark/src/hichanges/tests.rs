@@ -147,13 +147,16 @@ fn mirror() -> (Changes, ResourceLocation) {
         id,
         ChangeSet {
             source: ChangeSetSource::WorkingCopy { folder: folder() },
-            seat: Arc::new(InertSeat),
-            session: "hihost-fs:/local".to_owned(),
-            channel: Some("hihost-changes://tmp/repo".to_owned()),
+            feed: Some(SetFeed {
+                seat: Arc::new(InertSeat),
+                session: "hihost-fs:/local".to_owned(),
+                channel: Some("hihost-changes://tmp/repo".to_owned()),
+            }),
             status: ChangesStatus::Computing,
             files: rpds::VectorSync::new_sync(),
             generation: 0,
             bases: rpds::HashTrieMapSync::new_sync(),
+            canvases: rpds::HashTrieMapSync::new_sync(),
         },
     );
     changes.by_source.insert_mut(
@@ -183,7 +186,7 @@ fn the_ref_codec_round_trips() {
 fn the_catalog_names_the_folders_channel() {
     let (mut changes, folder) = mirror();
     let mut pending = changes.folder_set(&folder).unwrap().clone();
-    pending.channel = None;
+    pending.feed.as_mut().unwrap().channel = None;
     let id = *changes
         .by_source
         .get(&ChangeSetSource::WorkingCopy {
@@ -215,7 +218,7 @@ fn the_catalog_names_the_folders_channel() {
     assert_eq!(fresh[0].0, folder);
     assert_eq!(fresh[0].2, "hihost-changes://tmp/repo");
     assert_eq!(
-        changes.folder_set(&folder).unwrap().channel.as_deref(),
+        changes.folder_set(&folder).unwrap().feed.as_ref().unwrap().channel.as_deref(),
         Some("hihost-changes://tmp/repo")
     );
 
@@ -234,7 +237,7 @@ fn the_catalog_names_the_folders_channel() {
 fn a_lone_folder_takes_a_lone_foreign_entry() {
     let (mut changes, folder) = mirror();
     let mut pending = changes.folder_set(&folder).unwrap().clone();
-    pending.channel = None;
+    pending.feed.as_mut().unwrap().channel = None;
     let id = *changes
         .by_source
         .get(&ChangeSetSource::WorkingCopy {

@@ -407,8 +407,6 @@ impl HimarkEngine {
 
         app.register_command(Arc::new(himark::OpenDiff));
         app.register_row_minter(himark::pair_row_minter());
-        app.register_sync_observer(himark::canvas_sync_observer());
-        app.register_session_family(himark::canvases_session_family());
         app.register_navigator(himark::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
         app.register_command(Arc::new(demo::OpenMonsterDemo));

@@ -61,9 +61,7 @@ mod workbench;
 mod workbench_node;
 mod workspace;
 
-pub use crate::diff_canvas::canvas::{
-    canvas_sync_observer, canvases_session_family, CanvasNavigator, Canvases, DiffCanvasView,
-};
+pub use crate::diff_canvas::canvas::{CanvasNavigator, Canvases, DiffCanvasView};
 pub use crate::diff_pane::{
     diff_panel, gathered_view, open_diff_documents, open_opened_diff_pane, pair_row_minter,
     DiffPanelView, DiffPlace, OpenDiff, PairPane,
@@ -74,8 +72,7 @@ pub use crate::diffs::{
     DiffView, DiffViewId, DressedViews, StripeBases, OPEN_HALF_WIDTH,
 };
 pub use crate::family_rows::{
-    mint, mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,
-    SessionFamilyValue, SyncObserver, SyncObservers, SyncScope,
+    mint, mint_unfronted, FamilyRow, RowMinter, RowMinters,
 };
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument, DiffSide,

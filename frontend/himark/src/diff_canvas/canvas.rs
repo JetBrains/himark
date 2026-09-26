@@ -1438,51 +1438,69 @@ impl CanvasId {
     }
 }
 
-/// The store-held canvases (the `OpenDocuments` discipline): at most
-/// one canvas per source, found — never rebuilt — on every open.
+/// Stateless FACADE over the sets' owned canvases
+/// (docs/model-view.md: `ChangeSet.canvases`): at most one canvas per
+/// source — and a source IS a set now, so reuse is the set lookup.
 /// Canvases live while views retain them; the working-copy canvas
 /// stays once opened.
-#[derive(Clone, Default)]
-pub struct Canvases(rpds::HashTrieMapSync<CanvasId, Canvas>);
+pub struct Canvases;
+
+use crate::hichanges::{ChangeSetId, ChangeSetSource, Changes};
+
+fn set_source(source: &CanvasSource) -> ChangeSetSource {
+    match source {
+        CanvasSource::WorkingCopy { folder } => ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        },
+        CanvasSource::Commit { folder, id } => ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: id.clone(),
+        },
+    }
+}
 
 impl Canvases {
     pub fn by_source(store: &Store, source: &CanvasSource) -> Option<CanvasId> {
-        store
-            .get::<Canvases>()?
-            .0
-            .iter()
-            .find(|(_, canvas)| canvas.source == *source)
-            .map(|(id, _)| *id)
+        let set = Changes::id_for_source(store, &set_source(source))?;
+        Changes::set_ref(store, set)?.canvases.keys().next().copied()
+    }
+
+    fn owner_of(store: &Store, id: CanvasId) -> Option<ChangeSetId> {
+        Changes::canvas_ids(store)
+            .into_iter()
+            .find(|(_, canvas)| *canvas == id)
+            .map(|(set, _)| set)
     }
 
     fn find_or_create(store: &mut Store, source: &CanvasSource) -> CanvasId {
-        if let Some(id) = Self::by_source(store, source) {
+        let set = Changes::ensure_set_for_source(store, &set_source(source));
+        if let Some(id) = Changes::set_ref(store, set)
+            .and_then(|held| held.canvases.keys().next().copied())
+        {
             return id;
         }
         let id = CanvasId::mint();
-        let canvas = Canvas::fresh(source.clone());
-        store.update::<Canvases>(|held| {
-            held.0.insert_mut(id, canvas);
-        });
+        Changes::put_canvas(store, set, id, Canvas::fresh(source.clone()));
         id
     }
 
     fn get<'a>(store: &'a Store, id: CanvasId) -> Option<&'a Canvas> {
-        store.get::<Canvases>()?.0.get(&id)
+        let set = Self::owner_of(store, id)?;
+        Changes::canvas_ref(store, set, id)
     }
 
     fn take(store: &mut Store, id: CanvasId) -> Option<Canvas> {
-        let canvas = Self::get(store, id)?.clone();
-        store.update::<Canvases>(|held| {
-            held.0.remove_mut(&id);
-        });
-        Some(canvas)
+        let set = Self::owner_of(store, id)?;
+        Changes::take_canvas(store, set, id)
     }
 
     fn put(store: &mut Store, id: CanvasId, canvas: Canvas) {
-        store.update::<Canvases>(|held| {
-            held.0.insert_mut(id, canvas);
+        // A put without a surviving owner re-homes by source (the set
+        // always exists — sources mint their sets).
+        let set = Self::owner_of(store, id).unwrap_or_else(|| {
+            Changes::ensure_set_for_source(store, &set_source(&canvas.source))
         });
+        Changes::put_canvas(store, set, id, canvas);
     }
 
     fn retain(store: &mut Store, id: CanvasId) {
@@ -1511,143 +1529,63 @@ impl Canvases {
             Self::put(store, id, canvas);
         }
     }
+}
 
-    /// Reconcile every store-held canvas against the current change set
-    /// / commit history — driven from the app's sync tick, so a
-    /// canvas's file list stays current even when no panel is painting
-    /// it. This is why `Canvases` is store state: clicking a file in
-    /// the changes view reveals it because the row is already there
-    /// (docs/editor/diff-canvas.md §7).
-    pub fn sync(
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        scope: crate::SyncScope<'_>,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let ids: Vec<CanvasId> = match store.get::<Canvases>() {
-            Some(canvases) => canvases.0.keys().copied().collect(),
-            None => return,
+/// The batch-tail canvas sweep — a DIRECT lane now (the sets own their
+/// canvases; no plugin observer, no window): reconcile every canvas in
+/// the gathered session, launching builds through the first-class
+/// sessioned command (`AppCommand::CanvasViewCommand`, the
+/// DiffViewCommand shape).
+pub(crate) fn sync_canvases(store: &mut Store, ui: &UiCtx, fx: &mut crate::AppFx<'_>) {
+    let Some(session) = crate::Gathered::scope(store).cloned() else {
+        return;
+    };
+    let dressed: Vec<crate::DiffViewId> = store
+        .get::<crate::DressedViews>()
+        .map(|dressed| dressed.0.clone())
+        .unwrap_or_default();
+    for (set, id) in Changes::canvas_ids(store) {
+        let Some(mut canvas) = Changes::take_canvas(store, set, id) else {
+            continue;
         };
-        let dressed: Vec<crate::DiffViewId> = store
-            .get::<crate::DressedViews>()
-            .map(|dressed| dressed.0.clone())
-            .unwrap_or_default();
-        for id in ids {
-            let Some(mut canvas) = Self::take(store, id) else {
-                continue;
-            };
-            // The reconcile launches through a REAL sink routed home by
-            // id (the diff lane's discipline) — but only when the batch
-            // gives a session AND window to route to. Without one there
-            // is no home to send a landing to; fall back to a discard
-            // sink so pure-state reconcile still runs and the next
-            // scoped batch launches the builds.
-            match (scope.session.cloned(), scope.window) {
-                (Some(session), Some(window)) => {
-                    let route = route_canvas(session, window, id);
-                    fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
-                }
-                _ => {
-                    let mut discard = imba::effect::Batch::new();
-                    canvas.sync_in_place(store, ui, &dressed, &mut discard.effects());
-                }
-            }
-            Self::put(store, id, canvas);
-        }
+        let route = route_canvas(session.clone(), set, id);
+        fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
+        Changes::put_canvas(store, set, id, canvas);
     }
 }
 
-/// The `crate::SyncObserver` that keeps `Canvases` current on the sync
-/// tick. Registered at the edge alongside the row minter and navigator.
-pub fn canvas_sync_observer() -> std::sync::Arc<crate::SyncObserver> {
-    std::sync::Arc::new(
-        |store: &mut Store,
-         ui: &imba::UiCtx,
-         scope: crate::SyncScope<'_>,
-         fx: &mut crate::AppFx<'_>| { Canvases::sync(store, ui, scope, fx) },
-    )
-}
-
-/// Route a canvas's `CanvasCommand`s (feed reconcile, off-thread build
-/// landings) back to the store-held canvas as ordinary sessioned
-/// commands — the DIFF LANE's discipline: the app resolves the target
-/// from the id, no panel, no paint. `CanvasBuildLanded` re-derives the
-/// session at land time (the store is gathered for it), so its own
-/// child launches route on.
+/// Map a canvas's commands home BY IDS — the first-class sessioned
+/// road (no window, no landing box, no session smuggling).
 fn route_canvas(
     session: crate::SessionId,
-    window: crate::WindowId,
-    id: CanvasId,
+    set: ChangeSetId,
+    canvas: CanvasId,
 ) -> impl Fn(CanvasCommand) -> crate::AppCommand + Clone {
-    move |command| {
-        crate::AppCommand::InSession(
-            session.clone(),
-            Box::new(crate::AppCommand::Landing(
-                window,
-                Box::new(CanvasBuildLanded { id, command }),
-            )),
-        )
+    move |command| crate::AppCommand::CanvasViewCommand {
+        session: session.clone(),
+        set,
+        canvas,
+        command: Box::new(command),
     }
 }
 
-/// A canvas command routed home by id (the diff lane's `DiffNormalized`
-/// shape, minus the layering that would let it be a first-class
-/// variant): take the store-held canvas, perform, put it back — its
-/// own launches re-route through the freshly-gathered session.
-struct CanvasBuildLanded {
+/// Perform one command against a SET-OWNED canvas — the panel-free
+/// road (`perform_diff_view`'s twin).
+pub(crate) fn perform_canvas(
+    store: &mut Store,
+    ui: &UiCtx,
+    session: crate::SessionId,
+    set: ChangeSetId,
     id: CanvasId,
     command: CanvasCommand,
-}
-
-impl crate::LandingCommand for CanvasBuildLanded {
-    fn perform(
-        self: Box<Self>,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let CanvasBuildLanded { id, command } = *self;
-        let Some(mut canvas) = Canvases::take(store, id) else {
-            return;
-        };
-        let ui = app.ui_ctx();
-        match crate::Gathered::scope(store).cloned() {
-            Some(session) => {
-                let route = route_canvas(session, window, id);
-                fx.scope(route, |fx| canvas.perform(store, ui.as_ref(), command, fx));
-            }
-            // No session in scope — deliver without a re-route home;
-            // a build landing still applies, it just cannot relaunch.
-            None => {
-                let mut discard = imba::effect::Batch::new();
-                canvas.perform(store, ui.as_ref(), command, &mut discard.effects());
-            }
-        }
-        Canvases::put(store, id, canvas);
-    }
-}
-
-/// `Canvases` is SESSION state — it mirrors the session's `Changes` /
-/// `History` feeds, so it gathers and scatters with them. A batch
-/// scoped to another session (or to none) never sees these canvases,
-/// which is what makes the staleness stamp sound: `seen` is only ever
-/// compared against the counters of the session that produced it.
-pub fn canvases_session_family() -> std::sync::Arc<crate::SessionFamilyMember> {
-    std::sync::Arc::new(crate::SessionFamilyMember {
-        key: "hidiff.canvases",
-        gather: |value, store| {
-            if let Some(canvases) = value.downcast_ref::<Canvases>() {
-                store.put(canvases.clone());
-            }
-        },
-        take: |store| {
-            store
-                .take::<Canvases>()
-                .filter(|canvases| !canvases.0.is_empty())
-                .map(|canvases| std::sync::Arc::new(canvases) as crate::SessionFamilyValue)
-        },
-    })
+    fx: &mut crate::AppFx<'_>,
+) {
+    let Some(mut canvas) = Changes::take_canvas(store, set, id) else {
+        return;
+    };
+    let route = route_canvas(session, set, id);
+    fx.scope(route, |fx| canvas.perform(store, ui, command, fx));
+    Changes::put_canvas(store, set, id, canvas);
 }
 
 /// The canvas PANEL — a REFERENCE view over the store-held canvas,

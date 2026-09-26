@@ -126,6 +126,15 @@ pub enum AppCommand {
         command: Box<::editor::UnifiedDiffCommand>,
     },
 
+    /// A command for a SET-OWNED canvas, routed by ids + session —
+    /// the DiffViewCommand shape (docs/model-view.md).
+    CanvasViewCommand {
+        session: crate::SessionId,
+        set: crate::hichanges::ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+        command: Box<crate::diff_canvas::canvas::CanvasCommand>,
+    },
+
     DiffNormalized {
         diff: ::editor::diff::DiffId,
         operation: operation::Operation,
@@ -537,7 +546,8 @@ impl Application {
                     crate::higent::Hosts::session_of_watch(store, subscription),
                 );
             }
-            AppCommand::DiffViewCommand { session, .. } => {
+            AppCommand::DiffViewCommand { session, .. }
+            | AppCommand::CanvasViewCommand { session, .. } => {
                 return (None, Some(session.clone()));
             }
             AppCommand::DiffNormalized { diff, .. } => {
@@ -625,14 +635,6 @@ impl Application {
 
     pub fn register_row_minter(&mut self, minter: std::sync::Arc<crate::RowMinter>) {
         self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
-    }
-
-    pub fn register_sync_observer(&mut self, observer: std::sync::Arc<crate::SyncObserver>) {
-        self.setup(|store| crate::family_rows::SyncObservers::register(store, observer));
-    }
-
-    pub fn register_session_family(&mut self, member: std::sync::Arc<crate::SessionFamilyMember>) {
-        self.setup(|store| crate::family_rows::SessionFamilies::register(store, member));
     }
 
     pub fn workshop(&self) -> &Arc<::editor::Workshop> {
@@ -954,20 +956,10 @@ impl Application {
             // the SAME batch — no paint probe.
             crate::hichanges::sync_changes_docks(&mut store, &self.ui_ctx());
             crate::hihistory::sync_history_docks(&mut store, &self.ui_ctx());
-            // Plugin store-state observers (e.g. hidiff's Canvases)
-            // sync against the fresh document/diff/changeset state —
-            // the SAME batch a feed landed in, with a REAL effects
-            // sink: the store reconciles and launches what it owes
-            // without any panel painting it (the push road).
-            crate::family_rows::SyncObservers::run(
-                &mut store,
-                &self.ui_ctx(),
-                crate::family_rows::SyncScope {
-                    window: scope.0,
-                    session: scope.1.as_ref(),
-                },
-                &mut fx,
-            );
+            // The canvases sync against the fresh document/diff/
+            // changeset state — the SAME batch a feed landed in, a
+            // direct lane over the sets that own them.
+            crate::diff_canvas::canvas::sync_canvases(&mut store, &self.ui_ctx(), &mut fx);
             // The dressed-views note is consumed above (the canvas
             // resized its touched rows); clear it AFTER consumption —
             // id-routed landings append to it mid-batch.
@@ -1218,6 +1210,7 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::BaseFetched { .. } => "base fetched",
         AppCommand::BaseBuilt { .. } => "base built",
         AppCommand::DiffViewCommand { .. } => "diff view",
+        AppCommand::CanvasViewCommand { .. } => "canvas view",
         AppCommand::DiffNormalized { .. } => "diff normalized",
         AppCommand::DocumentStored { .. } => "document stored",
         AppCommand::FileChanged(..) => "file changed",
@@ -1493,6 +1486,16 @@ impl Application {
                 command,
             } => {
                 crate::diffs::perform_diff_view(store, ui, session, view, *command, fx);
+            }
+            AppCommand::CanvasViewCommand {
+                session,
+                set,
+                canvas,
+                command,
+            } => {
+                crate::diff_canvas::canvas::perform_canvas(
+                    store, ui, session, set, canvas, *command, fx,
+                );
             }
             AppCommand::DiffNormalized {
                 diff,

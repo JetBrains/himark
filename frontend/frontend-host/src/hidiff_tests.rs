@@ -2779,7 +2779,6 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
-    app.register_sync_observer(himark::canvas_sync_observer());
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -2897,7 +2896,6 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
-    app.register_sync_observer(himark::canvas_sync_observer());
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -3662,20 +3660,13 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     let before = view.probe_rows(&app.store());
     assert_eq!(before.len(), 1, "seeded one row");
 
-    // The tick driver runs against every store-held canvas.
-    {
-        let ui = himark::test_document::test_ui();
-        let mut batch = imba::effect::Batch::<himark::AppCommand>::new();
-        himark::Canvases::sync(
-            &mut app.store_mut(),
-            &ui,
-            himark::SyncScope {
-                window: None,
-                session: None,
-            },
-            &mut batch.effects(),
-        );
-    }
+    // The tick driver runs against every set-owned canvas — the real
+    // batch tail (the sweep is a direct lane now).
+    let window = app.sole_window();
+    app.perform_batch(vec![himark::AppCommand::ViewportResized(
+        window,
+        skia_safe::Size::new(800.0, 600.0),
+    )]);
 
     // With no live Changes source the sync is a no-op: the row and its
     // registered pair survive intact (state not corrupted).

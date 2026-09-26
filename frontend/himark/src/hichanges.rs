@@ -234,15 +234,23 @@ pub enum ChangeSetSource {
 /// ONE set of changes (docs/model-view.md): the model payload — files,
 /// status, the feed channel — plus everything the set OWNS: its own
 /// generation, its base refs, and (per the hierarchy) its views.
+/// A set's WIRE side: the seat serving it, the owning AHP session and
+/// the claimed changeset channel. Optional on the set — a canvas may
+/// open a set the feeds have not routed yet (a DETACHED set);
+/// `ensure_folder` attaches the feed when the route exists.
+#[derive(Clone)]
+pub(crate) struct SetFeed {
+    pub(crate) seat: Arc<dyn AhpServer>,
+    pub(crate) session: String,
+    pub(crate) channel: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct ChangeSet {
     pub(crate) source: ChangeSetSource,
 
-    seat: Arc<dyn AhpServer>,
+    pub(crate) feed: Option<SetFeed>,
 
-    session: String,
-
-    channel: Option<String>,
     pub status: ChangesStatus,
     pub files: rpds::VectorSync<ChangeEntry>,
 
@@ -256,6 +264,10 @@ pub struct ChangeSet {
     /// launch on the UI thread. (This replaced a shared
     /// Arc<Mutex<HashMap>>; never bring that back.)
     bases: rpds::HashTrieMapSync<String, ResourceLocation>,
+
+    /// The set OWNS its canvases (docs/model-view.md hierarchy) —
+    /// canvas mutations never touch the set's `generation`.
+    pub(crate) canvases: rpds::HashTrieMapSync<crate::diff_canvas::canvas::CanvasId, crate::diff_canvas::canvas::Canvas>,
 }
 
 impl ChangeSet {
@@ -448,13 +460,16 @@ impl Changes {
                 id,
                 ChangeSet {
                     source: source.clone(),
-                    seat,
-                    session,
-                    channel: None,
+                    feed: Some(SetFeed {
+                        seat,
+                        session,
+                        channel: None,
+                    }),
                     status: ChangesStatus::Computing,
                     files: rpds::VectorSync::new_sync(),
                     generation: 0,
                     bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
                 },
             );
             changes.by_source.insert_mut(source, id);
@@ -489,6 +504,106 @@ impl Changes {
     /// the sync lane rolls the stale views at the batch tail.
     fn nudge_uniting_histories(store: &mut Store) {
         store.update::<crate::hihistory::History>(|history| history.nudge());
+    }
+
+    /// Mint — or find — the set for a source, WITHOUT a feed when the
+    /// feeds have not routed it yet (a canvas may open first; the
+    /// feed attaches at `ensure_folder`). Never bumps generations.
+    pub(crate) fn ensure_set_for_source(
+        store: &mut Store,
+        source: &ChangeSetSource,
+    ) -> ChangeSetId {
+        if let Some(id) = store
+            .get::<ChangeSets>()
+            .and_then(|changes| changes.by_source.get(source).copied())
+        {
+            return id;
+        }
+        let id = ChangeSetId::mint();
+        let source = source.clone();
+        store.update::<ChangeSets>(|changes| {
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: source.clone(),
+                    feed: None,
+                    status: ChangesStatus::Computing,
+                    files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
+                },
+            );
+            changes.by_source.insert_mut(source, id);
+        });
+        id
+    }
+
+    pub(crate) fn id_for_source(
+        store: &Store,
+        source: &ChangeSetSource,
+    ) -> Option<ChangeSetId> {
+        store.get::<ChangeSets>()?.by_source.get(source).copied()
+    }
+
+    /// The SET owns its canvases; these reach one by (set, canvas) —
+    /// canvas mutations never touch the set's generation.
+    pub(crate) fn canvas_ref(
+        store: &Store,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+    ) -> Option<&crate::diff_canvas::canvas::Canvas> {
+        store.get::<ChangeSets>()?.sets.get(&set)?.canvases.get(&canvas)
+    }
+
+    pub(crate) fn take_canvas(
+        store: &mut Store,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+    ) -> Option<crate::diff_canvas::canvas::Canvas> {
+        let held = Self::canvas_ref(store, set, canvas)?.clone();
+        store.update::<ChangeSets>(|changes| {
+            let Some(mut owner) = changes.sets.get(&set).cloned() else {
+                return;
+            };
+            owner.canvases.remove_mut(&canvas);
+            changes.sets.insert_mut(set, owner);
+        });
+        Some(held)
+    }
+
+    pub(crate) fn put_canvas(
+        store: &mut Store,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+        held: crate::diff_canvas::canvas::Canvas,
+    ) {
+        store.update::<ChangeSets>(|changes| {
+            let Some(mut owner) = changes.sets.get(&set).cloned() else {
+                return;
+            };
+            owner.canvases.insert_mut(canvas, held);
+            changes.sets.insert_mut(set, owner);
+        });
+    }
+
+    /// Every canvas in the gathered session, with its owning set —
+    /// the batch-tail sweep's domain.
+    pub(crate) fn canvas_ids(
+        store: &Store,
+    ) -> Vec<(ChangeSetId, crate::diff_canvas::canvas::CanvasId)> {
+        store
+            .get::<ChangeSets>()
+            .map(|changes| {
+                changes
+                    .sets
+                    .iter()
+                    .flat_map(|(set, held)| {
+                        held.canvases.keys().map(|canvas| (*set, *canvas))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// The fetch road armed: the set is COMPUTING until its snapshot
@@ -647,13 +762,18 @@ impl Changes {
         fx: &mut crate::AppFx<'_>,
     ) {
         let known = store.get::<Changes>().is_some_and(|changes| {
-            changes.by_source.contains_key(&ChangeSetSource::WorkingCopy {
-                folder: folder.clone(),
-            })
+            changes
+                .folder_set(&folder)
+                .is_some_and(|set| set.feed.is_some())
         });
         if known {
             return;
         }
+        let detached = store.get::<Changes>().is_some_and(|changes| {
+            changes.by_source.contains_key(&ChangeSetSource::WorkingCopy {
+                folder: folder.clone(),
+            })
+        });
         let Some((host, seat, session)) =
             crate::higent::seat::route_seat(store, folder.authority().as_str())
         else {
@@ -668,6 +788,18 @@ impl Changes {
             session: session.clone(),
         };
         store.update::<Changes>(|changes| {
+            if detached {
+                // The canvas opened this set before the feeds routed:
+                // attach the feed, keep the set (and its canvases).
+                changes.update_folder_set(&folder, |set| {
+                    set.feed = Some(SetFeed {
+                        seat: seat.clone(),
+                        session: session.clone(),
+                        channel: None,
+                    });
+                });
+                return;
+            }
             let id = ChangeSetId::mint();
             changes.sets.insert_mut(
                 id,
@@ -675,13 +807,16 @@ impl Changes {
                     source: ChangeSetSource::WorkingCopy {
                         folder: folder.clone(),
                     },
-                    seat: seat.clone(),
-                    session: session.clone(),
-                    channel: None,
+                    feed: Some(SetFeed {
+                        seat: seat.clone(),
+                        session: session.clone(),
+                        channel: None,
+                    }),
                     status: ChangesStatus::Computing,
                     files: rpds::VectorSync::new_sync(),
                     generation: 0,
                     bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
                 },
             );
             changes.by_source.insert_mut(
@@ -772,10 +907,9 @@ impl Changes {
             .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
-                entry
-                    .channel
-                    .clone()
-                    .map(|channel| (folder.clone(), entry.seat.clone(), channel))
+                let feed = entry.feed.as_ref()?;
+                let channel = feed.channel.clone()?;
+                Some((folder.clone(), feed.seat.clone(), channel))
             })
             .collect();
         if riding.is_empty() {
@@ -824,7 +958,7 @@ impl Changes {
         let mut fresh = Vec::new();
         let lone_folder = self
             .working_copies()
-            .filter(|(_, entry)| entry.session == session)
+            .filter(|(_, entry)| entry.feed.as_ref().is_some_and(|feed| feed.session == session))
             .count()
             == 1;
         let riding: Vec<(ResourceLocation, ChangeSet)> = self
@@ -832,7 +966,10 @@ impl Changes {
             .map(|(folder, entry)| (folder.clone(), entry.clone()))
             .collect();
         for (folder, entry) in riding {
-            if entry.session != session || entry.channel.is_some() {
+            let Some(feed) = entry.feed.clone() else {
+                continue;
+            };
+            if feed.session != session || feed.channel.is_some() {
                 continue;
             }
             let matched = changesets
@@ -842,11 +979,13 @@ impl Changes {
             let Some(matched) = matched else {
                 continue;
             };
-            let seat = entry.seat.clone();
+            let seat = feed.seat.clone();
             let channel = matched.uri.clone();
             let claimed = matched.uri.clone();
             self.update_folder_set(&folder, |set| {
-                set.channel = Some(claimed);
+                if let Some(feed) = &mut set.feed {
+                    feed.channel = Some(claimed);
+                }
             });
             fresh.push((folder, seat, channel));
         }
@@ -877,7 +1016,7 @@ impl Changes {
     fn session_failed(&mut self, session: &str, error: &str) {
         let riding: Vec<ResourceLocation> = self
             .working_copies()
-            .filter(|(_, entry)| entry.session == session)
+            .filter(|(_, entry)| entry.feed.as_ref().is_some_and(|feed| feed.session == session))
             .map(|(folder, _)| folder.clone())
             .collect();
         for folder in riding {
@@ -1215,14 +1354,17 @@ fn relaunch_poll(
     let Some(entry) = Changes::folder(store, folder) else {
         return;
     };
-    let Some(channel) = entry.channel else {
+    let Some(feed) = entry.feed else {
+        return;
+    };
+    let Some(channel) = feed.channel else {
         return;
     };
     let landing = folder.clone();
     let scope = folder_scope(folder);
     fx.push(
         AnyEffect::new(PollChangesetEffect {
-            seat: entry.seat,
+            seat: feed.seat,
             channel,
         })
         .map(move |actions| {
