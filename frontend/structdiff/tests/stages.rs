@@ -68,6 +68,24 @@ fn stage_report(name: &str, base_src: &str, target_src: &str) {
     let base = Text::from_string_exact(base_src.to_owned());
     let target = Text::from_string_exact(target_src.to_owned());
 
+    // The catch-up path: the STALE tree is edit-adjusted (the edit
+    // door's discipline) and tree-sitter reuses everything untouched.
+    {
+        let myers = myersdiff::diff(&base, &target);
+        let mut stale = rust
+            .parse(&base, 0..base.view().byte_count() as u32, None)
+            .expect("stale base parse");
+        stale.edit(&myers, &mut target.view(), 0);
+        time("catch-up parse (stale old tree)", || {
+            rust.parse(
+                &target,
+                0..target.view().byte_count() as u32,
+                Some(stale.as_ref()),
+            )
+            .expect("catch-up parse")
+        });
+    }
+
     let base_tree = time("tree-sitter parse (base)", || {
         rust.parse(&base, 0..base.view().byte_count() as u32, None)
             .expect("base parse")

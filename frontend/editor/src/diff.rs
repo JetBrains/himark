@@ -134,13 +134,24 @@ impl Diff {
     }
 }
 
+/// One side's tree for a policy diff. `fresh` means the tree matches
+/// the text byte-for-byte (a completed reparse). A STALE tree is still
+/// EDIT-ADJUSTED — the edit door moves its byte offsets with every
+/// edit — which is exactly what tree-sitter's incremental parse takes
+/// as `old`: a policy catches it up for pennies instead of parsing the
+/// whole file cold. Never hand a stale tree to alignment directly.
+pub struct DiffTree<'a> {
+    pub tree: &'a dyn crate::reparse::SyntaxTree,
+    pub fresh: bool,
+}
+
 /// Optional syntax context for a policy diff: the language name and
-/// whichever side trees the caller already has. A policy may parse a
-/// missing side itself, or ignore trees entirely.
+/// whichever side trees the caller already has. A policy may parse or
+/// catch up a side itself, or ignore trees entirely.
 pub struct DiffSyntax<'a> {
     pub language: &'a str,
-    pub base_tree: Option<&'a dyn crate::reparse::SyntaxTree>,
-    pub target_tree: Option<&'a dyn crate::reparse::SyntaxTree>,
+    pub base: Option<DiffTree<'a>>,
+    pub target: Option<DiffTree<'a>>,
 }
 
 /// How an `Operation` is derived from two texts. The editor and the

@@ -492,10 +492,12 @@ pub fn sync_diff_lanes<R: 'static>(
                     eprintln!("[diffs] normalize {id:?} at {now:?}");
                 }
                 let target_syntax = syntax_snapshot(&target_entity.document);
-                let language = target_syntax.as_ref().map(|(language, _)| language.clone());
+                let language = target_syntax
+                    .as_ref()
+                    .map(|snapshot| snapshot.language.clone());
                 let base_tree = base_syntax
-                    .filter(|(base_language, _)| Some(base_language) == language.as_ref())
-                    .map(|(_, tree)| tree);
+                    .filter(|snapshot| Some(&snapshot.language) == language.as_ref())
+                    .map(|snapshot| (snapshot.tree, snapshot.fresh));
                 let effect = DiffNormalizeEffect {
                     diff: id,
                     base_text: base_text.clone(),
@@ -509,7 +511,7 @@ pub fn sync_diff_lanes<R: 'static>(
                     target_revision,
                     language,
                     base_tree,
-                    target_tree: target_syntax.map(|(_, tree)| tree),
+                    target_tree: target_syntax.map(|snapshot| (snapshot.tree, snapshot.fresh)),
                     policy: policy.clone(),
                 };
                 fx.relaunch_erased(
@@ -735,26 +737,39 @@ pub struct DiffNormalizeEffect {
     pub(crate) previous: Option<editor::Markup>,
     pub(crate) base_revision: u64,
     pub(crate) target_revision: u64,
-    /// Target's language when its tree was fresh at capture — the
-    /// policy's cue to try structural alignment.
+    /// Target's language at capture — the policy's cue to try
+    /// structural alignment.
     pub(crate) language: Option<String>,
-    pub(crate) base_tree: Option<Box<dyn editor::SyntaxTree>>,
-    pub(crate) target_tree: Option<Box<dyn editor::SyntaxTree>>,
+    /// Side trees with their freshness — a stale one is edit-adjusted
+    /// and rides along for the policy's incremental catch-up parse.
+    pub(crate) base_tree: Option<(Box<dyn editor::SyntaxTree>, bool)>,
+    pub(crate) target_tree: Option<(Box<dyn editor::SyntaxTree>, bool)>,
     /// The edge-installed policy (`editor::env::Differ`), captured at
     /// launch so the handler needs no store access.
     pub(crate) policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 
-/// Language + deep tree clone, only when the tree matches the text
-/// exactly (no edits since the last completed reparse) — a stale tree
-/// would misalign the structural pass into pure fallback work.
-fn syntax_snapshot(document: &editor::Document) -> Option<(String, Box<dyn editor::SyntaxTree>)> {
-    if !document.edited_since_parse().is_empty() {
-        return None;
-    }
+/// Language + tree clone + freshness. FRESH means the tree matches the
+/// text exactly (no edits since the last completed reparse) and the
+/// policy may align on it directly. A STALE tree is still handed over:
+/// the edit door keeps it edit-adjusted, so it is exactly the `old`
+/// tree-sitter's incremental parse wants — the policy catches it up
+/// for pennies instead of parsing the whole file cold. Only alignment
+/// on a stale tree misaligns; catch-up parsing on it does not.
+fn syntax_snapshot(document: &editor::Document) -> Option<TreeSnapshot> {
     let syntax = document.syntax()?;
     let tree = syntax.tree.as_ref()?.clone_tree();
-    Some((syntax.language.clone(), tree))
+    Some(TreeSnapshot {
+        language: syntax.language.clone(),
+        tree,
+        fresh: document.edited_since_parse().is_empty(),
+    })
+}
+
+pub(crate) struct TreeSnapshot {
+    pub(crate) language: String,
+    pub(crate) tree: Box<dyn editor::SyntaxTree>,
+    pub(crate) fresh: bool,
 }
 
 pub struct Normalized {
@@ -785,8 +800,18 @@ impl EffectHandler<DiffNormalizeEffect> for DiffNormalizeHandler {
             .as_deref()
             .map(|language| editor::diff::DiffSyntax {
                 language,
-                base_tree: effect.base_tree.as_deref(),
-                target_tree: effect.target_tree.as_deref(),
+                base: effect.base_tree.as_ref().map(|(tree, fresh)| {
+                    editor::diff::DiffTree {
+                        tree: tree.as_ref(),
+                        fresh: *fresh,
+                    }
+                }),
+                target: effect.target_tree.as_ref().map(|(tree, fresh)| {
+                    editor::diff::DiffTree {
+                        tree: tree.as_ref(),
+                        fresh: *fresh,
+                    }
+                }),
             });
         let operation = effect
             .policy

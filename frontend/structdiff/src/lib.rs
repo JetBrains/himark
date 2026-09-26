@@ -67,10 +67,19 @@ impl Structural {
         Self { languages }
     }
 
-    fn parse(&self, language: &str, text: &Text) -> Option<Box<dyn editor::SyntaxTree>> {
+    /// Parse a side — INCREMENTALLY when the caller has an
+    /// edit-adjusted (stale) tree: tree-sitter reuses everything the
+    /// edits did not touch, so catching a keystroke up costs ~nothing,
+    /// where a cold parse re-reads the whole file.
+    fn parse(
+        &self,
+        language: &str,
+        text: &Text,
+        old: Option<&dyn editor::SyntaxTree>,
+    ) -> Option<Box<dyn editor::SyntaxTree>> {
         let language = self.languages.ensure(language)?;
         let len = text.view().byte_count() as u32;
-        language.parse(text, 0..len, None)
+        language.parse(text, 0..len, old)
     }
 
     fn try_structural(
@@ -80,18 +89,20 @@ impl Structural {
         syntax: &editor::diff::DiffSyntax<'_>,
     ) -> Option<Operation> {
         let parsed_base;
-        let base_tree = match syntax.base_tree.and_then(hisitter::TsTree::of) {
-            Some(tree) => tree,
-            None => {
-                parsed_base = self.parse(syntax.language, base)?;
+        let base_tree = match &syntax.base {
+            Some(side) if side.fresh => hisitter::TsTree::of(side.tree)?,
+            side => {
+                parsed_base =
+                    self.parse(syntax.language, base, side.as_ref().map(|side| side.tree))?;
                 hisitter::TsTree::of(parsed_base.as_ref())?
             }
         };
         let parsed_target;
-        let target_tree = match syntax.target_tree.and_then(hisitter::TsTree::of) {
-            Some(tree) => tree,
-            None => {
-                parsed_target = self.parse(syntax.language, target)?;
+        let target_tree = match &syntax.target {
+            Some(side) if side.fresh => hisitter::TsTree::of(side.tree)?,
+            side => {
+                parsed_target =
+                    self.parse(syntax.language, target, side.as_ref().map(|side| side.tree))?;
                 hisitter::TsTree::of(parsed_target.as_ref())?
             }
         };
