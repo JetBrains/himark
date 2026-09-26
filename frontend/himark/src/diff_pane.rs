@@ -1,45 +1,38 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::{
-    Application, DiffViewState, EditorIdView, OpenDocuments, SplitDiffCommand,
-    UnifiedDiffCommand, UnifiedDiffView,
-};
+//! The split-diff PANE faces: `PairPane` (the embedded face a canvas
+//! row wears) and `DiffPanelView` (the standalone workbench panel),
+//! both reference views over store-held `DiffView` records. Moved in
+//! from the dissolved hidiff plugin (docs/model-view.md stage C).
+
+use crate::{Application, DiffViewState, EditorIdView, OpenDocuments, SplitDiffCommand, UnifiedDiffCommand, UnifiedDiffView};
 use imba::{
     arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
 };
 
 
-pub mod canvas;
-pub use canvas::{
-    canvas_sync_observer, canvases_session_family, CanvasNavigator, Canvases, DiffCanvasView,
-};
-
-pub use himark::{
-    build_diff_view, install_opened_pair, rewrap_pair, teardown_diff_view, OPEN_HALF_WIDTH,
-};
-
 #[derive(Clone, Copy)]
 pub struct PairPane {
-    id: himark::DiffViewId,
+    id: crate::DiffViewId,
 }
 
 impl PairPane {
-    pub fn over(id: himark::DiffViewId) -> Self {
+    pub fn over(id: crate::DiffViewId) -> Self {
         Self { id }
     }
 
-    pub fn id(&self) -> himark::DiffViewId {
+    pub fn id(&self) -> crate::DiffViewId {
         self.id
     }
 }
 
-fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
-    himark::gather_diff_view(pair, store)
+fn gathered(pair: &crate::DiffView, store: &Store) -> Option<UnifiedDiffView> {
+    crate::gather_diff_view(pair, store)
 }
 
-pub fn gathered_view(store: &Store, id: himark::DiffViewId) -> Option<UnifiedDiffView> {
-    gathered(himark::OpenDocuments::diff_view_ref(store, id)?, store)
+pub fn gathered_view(store: &Store, id: crate::DiffViewId) -> Option<UnifiedDiffView> {
+    gathered(crate::OpenDocuments::diff_view_ref(store, id)?, store)
 }
 
 impl View for PairPane {
@@ -60,11 +53,11 @@ impl View for PairPane {
         command: UnifiedDiffCommand,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut pair) = himark::OpenDocuments::take_diff_view(store, self.id) else {
+        let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, self.id) else {
             return;
         };
         let Some(mut view) = gathered(&pair, store) else {
-            himark::OpenDocuments::put_diff_view(store, self.id, pair);
+            crate::OpenDocuments::put_diff_view(store, self.id, pair);
             return;
         };
 
@@ -73,7 +66,7 @@ impl View for PairPane {
         OpenDocuments::put_document(store, pair.left.document(), view.split.left.document);
         OpenDocuments::put_document(store, pair.right.document(), view.split.right.document);
         pair.state = Some(view.split.state);
-        himark::OpenDocuments::put_diff_view(store, self.id, pair);
+        crate::OpenDocuments::put_diff_view(store, self.id, pair);
     }
 
     fn display<'a>(
@@ -91,7 +84,7 @@ impl View for PairPane {
         // (the DiffCanvas.trace lesson).
         imba::laid(
             move |arena: &'a Arena, constraints: Constraints| GatheredThunk {
-                view: himark::OpenDocuments::diff_view_ref(store, self.id)
+                view: crate::OpenDocuments::diff_view_ref(store, self.id)
                     .and_then(|pair| gathered(pair, store))
                     .map(|view| &*arena.alloc(view)),
                 store,
@@ -162,14 +155,14 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
 /// handlers re-mint per call. The standing "open in full" command
 /// rides whichever side of the pair is focused.
 fn pane_focus_data<'w>(
-    id: himark::DiffViewId,
+    id: crate::DiffViewId,
     store: &'w Store,
     ui: &'w imba::UiCtx,
 ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
     use imba::event::EventResult;
     use imba::focus::FocusData;
     let mint = move || {
-        himark::OpenDocuments::diff_view_ref(store, id).and_then(|pair| gathered(pair, store))
+        crate::OpenDocuments::diff_view_ref(store, id).and_then(|pair| gathered(pair, store))
     };
     let Some(view) = mint() else {
         return FocusData::default();
@@ -187,20 +180,20 @@ fn pane_focus_data<'w>(
     // stale-true from before a face toggle, and checking them first
     // sent commands (cmd-enter's open-in-full among them) to an
     // editor whose caret was never placed.
-    let wrap: Option<fn(himark::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
-        himark::DiffLayout::Inline => {
+    let wrap: Option<fn(crate::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
+        crate::DiffLayout::Inline => {
             if view.inline_editor.is_some_and(|editor| {
-                view.split.right.document.focus(editor) != himark::EditorFocus::None
+                view.split.right.document.focus(editor) != crate::EditorFocus::None
             }) {
                 Some(UnifiedDiffCommand::Inline)
             } else {
                 None
             }
         }
-        himark::DiffLayout::Split => {
-            if view.split.left.focus() != himark::EditorFocus::None {
+        crate::DiffLayout::Split => {
+            if view.split.left.focus() != crate::EditorFocus::None {
                 Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
-            } else if view.split.right.focus() != himark::EditorFocus::None {
+            } else if view.split.right.focus() != crate::EditorFocus::None {
                 Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
             } else {
                 None
@@ -214,7 +207,7 @@ fn pane_focus_data<'w>(
         commands.push(imba::PresentableCommand::new(
             "workbench.open-in-full",
             "Open Working Copy",
-            wrap(himark::EditorCommand::Dynamic {
+            wrap(crate::EditorCommand::Dynamic {
                 id: "workbench.open-in-full",
                 payload: None,
             }),
@@ -283,7 +276,7 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
             return imba::event::EventResult::Ignored;
         };
         // No staleness probe here anymore: the batch-tail DRESSING
-        // sweep (himark::diffs::sync_diff_dressing) resyncs a lagging
+        // sweep (crate::diffs::sync_diff_dressing) resyncs a lagging
         // basis in the same batch that moved it — id-routed, no paint
         // (docs/model-view.md step 1).
         inner.handle_event(arena, event, viewport)
@@ -309,25 +302,25 @@ pub struct DiffPanelView {
 }
 
 impl DiffPanelView {
-    pub fn over(id: himark::DiffViewId) -> Self {
+    pub fn over(id: crate::DiffViewId) -> Self {
         Self {
             pane: ScrollView::new(PairPane { id }),
         }
     }
 
-    pub fn pair(&self) -> himark::DiffViewId {
+    pub fn pair(&self) -> crate::DiffViewId {
         self.pane.content().id
     }
 
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
-        himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)?
+        crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)?
             .state
             .as_ref()
     }
 
     #[doc(hidden)]
     pub fn halves(&self, store: &Store) -> (EditorIdView, EditorIdView) {
-        let pair = himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)
+        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)
             .expect("the pane's family row");
         (pair.left, pair.right)
     }
@@ -336,15 +329,15 @@ impl DiffPanelView {
         store: &mut Store,
         left: EditorIdView,
         right: EditorIdView,
-        handle: himark::DiffHandle,
-        right_extras: himark::MarkupId,
+        handle: crate::DiffHandle,
+        right_extras: crate::MarkupId,
         state: Option<DiffViewState>,
     ) -> Self {
-        let id = himark::DiffViewId::mint();
-        himark::OpenDocuments::put_diff_view(
+        let id = crate::DiffViewId::mint();
+        crate::OpenDocuments::put_diff_view(
             store,
             id,
-            himark::DiffView {
+            crate::DiffView {
                 left,
                 right,
                 diff: handle.id,
@@ -392,21 +385,21 @@ impl View for DiffPanelView {
 
 #[derive(Clone, PartialEq)]
 pub struct DiffPlace {
-    pub old: himark::ResourceLocation,
-    pub new: himark::ResourceLocation,
+    pub old: crate::ResourceLocation,
+    pub new: crate::ResourceLocation,
 }
 
-impl himark::Place for DiffPlace {}
+impl crate::Place for DiffPlace {}
 
-impl himark::PanelView for DiffPanelView {
+impl crate::PanelView for DiffPanelView {
     type Place = DiffPlace;
 
-    fn family_row(&self) -> Option<himark::FamilyRow> {
-        Some(himark::FamilyRow::Pair(self.pane.content().id))
+    fn family_row(&self) -> Option<crate::FamilyRow> {
+        Some(crate::FamilyRow::Pair(self.pane.content().id))
     }
 
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
-        let pair = himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)?;
+        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)?;
         Some(DiffPlace {
             old: OpenDocuments::location(store, pair.left.document())?,
             new: OpenDocuments::location(store, pair.right.document())?,
@@ -417,9 +410,9 @@ impl himark::PanelView for DiffPanelView {
         &mut self,
         store: &mut Store,
         place: &DiffPlace,
-        _fx: &mut himark::AppFx<'_>,
+        _fx: &mut crate::AppFx<'_>,
     ) -> bool {
-        let Some(pair) = himark::OpenDocuments::diff_view_ref(store, self.pane.content().id) else {
+        let Some(pair) = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id) else {
             return false;
         };
         let (left, right) = (pair.left, pair.right);
@@ -428,7 +421,7 @@ impl himark::PanelView for DiffPanelView {
     }
 
     fn title(&self, store: &Store) -> String {
-        let named = himark::OpenDocuments::diff_view_ref(store, self.pane.content().id)
+        let named = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)
             .and_then(|pair| OpenDocuments::location(store, pair.right.document()));
         match named {
             Some(location) => format!("Diff: {}", location.name()),
@@ -437,7 +430,7 @@ impl himark::PanelView for DiffPanelView {
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        himark::teardown_diff_view(store, self.pane.content().id);
+        crate::teardown_diff_view(store, self.pane.content().id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -448,17 +441,17 @@ impl himark::PanelView for DiffPanelView {
 pub fn open_diff_documents(
     store: &mut Store,
     ui: &imba::UiCtx,
-    window: himark::WindowId,
-    left: himark::DocumentId,
-    right: himark::DocumentId,
-    fx: &mut himark::AppFx<'_>,
+    window: crate::WindowId,
+    left: crate::DocumentId,
+    right: crate::DocumentId,
+    fx: &mut crate::AppFx<'_>,
 ) -> bool {
     let Some(panel) = diff_panel(store, ui, left, right) else {
         return false;
     };
-    let mut entity = himark::Windows::window(store, window).expect("the window entity");
+    let mut entity = crate::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
-    himark::Windows::put(store, window, entity);
+    crate::Windows::put(store, window, entity);
     opened
 }
 
@@ -474,34 +467,34 @@ pub fn open_diff_documents(
 pub fn open_opened_diff_pane(
     store: &mut Store,
     ui: &imba::UiCtx,
-    window: himark::WindowId,
-    pair: himark::OpenedDiffPair,
-    fx: &mut himark::AppFx<'_>,
+    window: crate::WindowId,
+    pair: crate::OpenedDiffPair,
+    fx: &mut crate::AppFx<'_>,
 ) -> bool {
-    let Some(id) = install_opened_pair(store, ui, pair, false) else {
+    let Some(id) = crate::install_opened_pair(store, ui, pair, false) else {
         return false;
     };
     let panel = DiffPanelView::over(id);
-    let mut entity = himark::Windows::window(store, window).expect("the window entity");
+    let mut entity = crate::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
-    himark::Windows::put(store, window, entity);
+    crate::Windows::put(store, window, entity);
     opened
 }
 
 pub fn diff_panel(
     store: &mut Store,
     ui: &imba::UiCtx,
-    left: himark::DocumentId,
-    right: himark::DocumentId,
+    left: crate::DocumentId,
+    right: crate::DocumentId,
 ) -> Option<DiffPanelView> {
-    let id = build_diff_view(store, ui, left, right, OPEN_HALF_WIDTH, false)?;
+    let id = crate::build_diff_view(store, ui, left, right, crate::OPEN_HALF_WIDTH, false)?;
     Some(DiffPanelView::over(id))
 }
 
-pub fn row_minter() -> std::sync::Arc<himark::RowMinter> {
+pub fn pair_row_minter() -> std::sync::Arc<crate::RowMinter> {
     std::sync::Arc::new(|_store, row| match row {
-        himark::FamilyRow::Pair(id) => {
-            Some(Box::new(DiffPanelView::over(*id)) as Box<dyn himark::DynPanelView>)
+        crate::FamilyRow::Pair(id) => {
+            Some(Box::new(DiffPanelView::over(*id)) as Box<dyn crate::DynPanelView>)
         }
         // Canvases open through the NAVIGATION road (CanvasNavigator)
         // — reuse is a store lookup, not a mint.
@@ -511,7 +504,7 @@ pub fn row_minter() -> std::sync::Arc<himark::RowMinter> {
 
 pub struct OpenDiff;
 
-impl himark::DynamicCommand for OpenDiff {
+impl crate::DynamicCommand for OpenDiff {
     fn id(&self) -> &'static str {
         "diff.open"
     }
@@ -522,8 +515,8 @@ impl himark::DynamicCommand for OpenDiff {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: himark::WindowId,
-        _fx: &mut himark::AppFx<'_>,
+        window: crate::WindowId,
+        _fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let recent = OpenDocuments::list_recent(store);
@@ -533,9 +526,3 @@ impl himark::DynamicCommand for OpenDiff {
         let _ = open_diff_documents(store, ui, window, older.0, newest.0, _fx);
     }
 }
-
-#[cfg(test)]
-pub(crate) mod tests;
-
-#[cfg(test)]
-mod monster_probe;

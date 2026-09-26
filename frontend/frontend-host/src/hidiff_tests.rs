@@ -1,7 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::*;
+use himark::diff_canvas::canvas::{self as canvas, DiffCanvasView};
+use himark::diff_pane::*;
 use himark::AppExt;
 use himark::{AppFonts, Application};
 use std::sync::{mpsc, Arc};
@@ -223,7 +224,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
                 .expect("left open");
             let document =
                 himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
-            editor::diff::fragments_from(state.diff(), document.text(), 0).collect()
+            himark::diff::fragments_from(state.diff(), document.text(), 0).collect()
         };
         assert!(
             fragments.is_empty(),
@@ -730,7 +731,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     );
     let theme = himark::Theme::embedded();
     let markdown_fonts = himark::test_document::test_fonts_collection().clone();
-    let sample = include_str!("../../demo/sample.md");
+    let sample = include_str!("../../plugins/demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
     for (name, body) in [
@@ -888,7 +889,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
                 .expect("document");
             let width = document.layout_width(entity.editor());
             assert!(
-                width > OPEN_HALF_WIDTH * 1.5,
+                width > himark::OPEN_HALF_WIDTH * 1.5,
                 "the half re-laid at the pane width (got {width})"
             );
             let live: Vec<(u32, i64)> = document
@@ -1149,7 +1150,7 @@ fn scrolling_after_a_theme_toggle_converges() {
                 himark::OpenDocuments::document_ref(app.store(), info).expect("document");
             document
                 .editor_ids()
-                .any(|editor| matches!(document.focus(editor), editor::EditorFocus::Inlay(_)))
+                .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
         }
     };
     let mut focused = false;
@@ -1223,7 +1224,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let editor = document.add_editor(
         360.0,
         None,
-        ::editor::EditorBuild::Complete,
+        himark::EditorBuild::Complete,
         &[],
         &store,
         &ui,
@@ -1241,7 +1242,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 
     let _ = perform(
         &mut document,
-        editor::EditorCommand::Viewport {
+        himark::EditorCommand::Viewport {
             width: 360.0,
             top: 0.0,
             bottom: 400.0,
@@ -1250,8 +1251,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     );
     let _ = perform(
         &mut document,
-        editor::EditorCommand::Click {
-            kind: editor::ClickKind::Set,
+        himark::EditorCommand::Click {
+            kind: himark::ClickKind::Set,
             point: skia_safe::Point::new(5.0, 50.0),
         },
     );
@@ -1259,11 +1260,11 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let filler = "filler words to reshape and push the budget over\n\n".repeat(60);
     let effects = perform(
         &mut document,
-        editor::EditorCommand::InsertText { text: filler },
+        himark::EditorCommand::InsertText { text: filler },
     );
     let held: Vec<_> = effects
         .into_iter()
-        .filter(|effect| effect.is::<editor::RepairEffect>())
+        .filter(|effect| effect.is::<himark::RepairEffect>())
         .collect();
     assert!(
         !held.is_empty(),
@@ -1272,8 +1273,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 
     let _ = perform(
         &mut document,
-        editor::EditorCommand::Click {
-            kind: editor::ClickKind::Set,
+        himark::EditorCommand::Click {
+            kind: himark::ClickKind::Set,
             point: skia_safe::Point::new(5.0, 300.0),
         },
     );
@@ -1365,7 +1366,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
                     himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
                 document
                     .editor_ids()
-                    .any(|editor| matches!(document.focus(editor), editor::EditorFocus::Inlay(_)))
+                    .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
             };
             if focused {
                 cell_focused = true;
@@ -1645,7 +1646,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             document.add_editor(
                 600.0,
                 None,
-                ::editor::EditorBuild::Bounded,
+                himark::EditorBuild::Bounded,
                 &[],
                 &store,
                 ui,
@@ -1657,7 +1658,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
         let editor = document.add_editor(
             420.0,
             None,
-            ::editor::EditorBuild::Bounded,
+            himark::EditorBuild::Bounded,
             &[],
             &store,
             ui,
@@ -2778,7 +2779,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
-    app.register_sync_observer(crate::canvas_sync_observer());
+    app.register_sync_observer(himark::canvas_sync_observer());
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -2896,7 +2897,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     himarkdown::register_handlers(&mut app);
-    app.register_sync_observer(crate::canvas_sync_observer());
+    app.register_sync_observer(himark::canvas_sync_observer());
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
         Arc::new(move |command| {
@@ -3665,7 +3666,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     {
         let ui = himark::test_document::test_ui();
         let mut batch = imba::effect::Batch::<himark::AppCommand>::new();
-        crate::Canvases::sync(
+        himark::Canvases::sync(
             &mut app.store_mut(),
             &ui,
             himark::SyncScope {

@@ -52,6 +52,7 @@ pub use tree_item::{
     TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
+pub mod diff_pane;
 mod family_rows;
 mod toolbar;
 mod watch;
@@ -60,6 +61,13 @@ mod workbench;
 mod workbench_node;
 mod workspace;
 
+pub use crate::diff_canvas::canvas::{
+    canvas_sync_observer, canvases_session_family, CanvasNavigator, Canvases, DiffCanvasView,
+};
+pub use crate::diff_pane::{
+    diff_panel, gathered_view, open_diff_documents, open_opened_diff_pane, pair_row_minter,
+    DiffPanelView, DiffPlace, OpenDiff, PairPane,
+};
 pub use crate::diffs::{
     build_diff_view, gather_diff_view, install_opened_pair, rearm_base_asks, rewrap_pair,
     sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,

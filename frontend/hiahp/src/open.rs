@@ -169,14 +169,14 @@ impl EffectHandler<himark::OpenDiffPairEffect> for OpenDiffPairHandler {
 pub struct DiffNavigator;
 
 impl himark::Navigator for DiffNavigator {
-    type Place = hidiff::DiffPlace;
+    type Place = himark::DiffPlace;
 
     fn navigate(
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
         window: himark::WindowId,
-        place: &hidiff::DiffPlace,
+        place: &himark::DiffPlace,
         fx: &mut AppFx<'_>,
     ) -> Option<himark::Panel> {
         // Resolve both sides on the UI thread — an open side hands over
@@ -213,7 +213,7 @@ impl DynamicCommand for OpenDiffPair {
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let _ = hidiff::open_opened_diff_pane(store, ui, self.window, self.pair.clone(), fx);
+        let _ = himark::open_opened_diff_pane(store, ui, self.window, self.pair.clone(), fx);
         himark::sync_document_watches(store, fx);
         himark::sync_stripe_bases(store, ui, fx);
     }

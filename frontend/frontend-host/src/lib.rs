@@ -405,11 +405,11 @@ impl HimarkEngine {
         app.register_overlay_surface(peeker::overlay_surface());
         app.register_overlay_surface(palette::overlay_surface());
 
-        app.register_command(Arc::new(hidiff::OpenDiff));
-        app.register_row_minter(hidiff::row_minter());
-        app.register_sync_observer(hidiff::canvas_sync_observer());
-        app.register_session_family(hidiff::canvases_session_family());
-        app.register_navigator(hidiff::CanvasNavigator);
+        app.register_command(Arc::new(himark::OpenDiff));
+        app.register_row_minter(himark::pair_row_minter());
+        app.register_sync_observer(himark::canvas_sync_observer());
+        app.register_session_family(himark::canvases_session_family());
+        app.register_navigator(himark::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
         app.register_command(Arc::new(demo::OpenMonsterDemo));
         app.register_command(Arc::new(demo::OpenWallOfTextDemo));
@@ -2034,3 +2034,9 @@ fn test_connector() -> Arc<dyn hiahp::transport::Connector> {
 mod findroute_tests;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod hidiff_tests;
+
+#[cfg(test)]
+mod hidiff_monster_probe;

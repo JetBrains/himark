@@ -11,10 +11,10 @@
 //! current file's name — buttons included — stays planted while its
 //! diff scrolls; collapsing a file folds its diff row away.
 
-use himark::diff_canvas::{
+use crate::diff_canvas::{
     canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
 };
-use himark::{env, ResourceLocation, UnifiedDiffCommand};
+use crate::{env, ResourceLocation, UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
@@ -47,11 +47,11 @@ pub enum CanvasCommand {
     /// An async landing for the commit banner's message box (the
     /// Bounded build's tail, the markdown reparse) — routed to the
     /// banner row wherever it currently sits.
-    BannerEditor(himark::EditorCommand),
+    BannerEditor(crate::EditorCommand),
 
     Landed {
         key: ResourceLocation,
-        prep: himark::OpenedDiffPair,
+        prep: crate::OpenedDiffPair,
     },
 
     /// A key-addressed row command — effect landings route by KEY,
@@ -76,7 +76,7 @@ pub struct Canvas {
     note: Option<String>,
     seen: Option<u64>,
     populated: bool,
-    request: Option<himark::PanelRequest>,
+    request: Option<crate::PanelRequest>,
 
     phases: rpds::HashTrieMapSync<ResourceLocation, RowPhase>,
 
@@ -94,9 +94,9 @@ pub struct Canvas {
     stash: rpds::HashTrieMapSync<ResourceLocation, (CanvasRow, f32)>,
 
     /// Built rows by their diff view — the DRESSING sweep names the
-    /// views it touched (himark::DressedViews) and the canvas resizes
+    /// views it touched (crate::DressedViews) and the canvas resizes
     /// exactly those rows, O(touched), no scan.
-    pairs: rpds::HashTrieMapSync<himark::DiffViewId, ResourceLocation>,
+    pairs: rpds::HashTrieMapSync<crate::DiffViewId, ResourceLocation>,
 
 }
 
@@ -272,7 +272,7 @@ impl Canvas {
 
     /// TEST SUPPORT: the registered `DiffViewId` backing a built row.
     #[doc(hidden)]
-    pub fn probe_pair(&self, key: &ResourceLocation) -> Option<himark::DiffViewId> {
+    pub fn probe_pair(&self, key: &ResourceLocation) -> Option<crate::DiffViewId> {
         let row = self
             .rows
             .content()
@@ -319,7 +319,7 @@ impl Canvas {
 
     /// Per Built row (parked ones included): (title, current face).
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, himark::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, crate::DiffLayout)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(title, diff)| {
@@ -438,7 +438,7 @@ impl Canvas {
         &mut self,
         store: &mut Store,
         ui: &imba::UiCtx,
-        dressed: &[himark::DiffViewId],
+        dressed: &[crate::DiffViewId],
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         if self.seen != Some(canvas_generation(store, &self.source)) {
@@ -515,14 +515,14 @@ impl Canvas {
             return;
         }
         let body = match view.layout {
-            himark::DiffLayout::Inline => match view
+            crate::DiffLayout::Inline => match view
                 .inline_editor
                 .map(|editor| view.split.right.document.content_height(editor))
             {
                 Some(height) => height,
                 None => return,
             },
-            himark::DiffLayout::Split => {
+            crate::DiffLayout::Split => {
                 let left = view.split.left.document.content_height(view.split.left.editor);
                 let right = view.split.right.document.content_height(view.split.right.editor);
                 left.max(right)
@@ -575,8 +575,8 @@ impl Canvas {
                 let theme = env::Themes::of(store);
                 let band = header_band(&theme);
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-                match himark::diff_canvas::canvas_banner(store, &self.source) {
-                    Some(himark::diff_canvas::CanvasBanner::Composer { .. }) => {
+                match crate::diff_canvas::canvas_banner(store, &self.source) {
+                    Some(crate::diff_canvas::CanvasBanner::Composer { .. }) => {
                         let message = fresh_composer_box(store, ui);
                         let height = composer_band(&theme, Some(&message));
                         slice.push_keyed_sized(
@@ -588,7 +588,7 @@ impl Canvas {
                             height,
                         );
                     }
-                    Some(himark::diff_canvas::CanvasBanner::Commit { message, author }) => {
+                    Some(crate::diff_canvas::CanvasBanner::Commit { message, author }) => {
                         let message = commit_banner_box(store, ui, &message, fx);
                         let height = commit_band(&theme, &message);
                         slice.push_keyed_sized(
@@ -853,10 +853,10 @@ impl Canvas {
         width: f32,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        let old = himark::DiffSideInput::resolve(store, file.old.clone());
-        let new = himark::DiffSideInput::resolve(store, file.new.clone());
+        let old = crate::DiffSideInput::resolve(store, file.old.clone());
+        let new = crate::DiffSideInput::resolve(store, file.new.clone());
         fx.push(
-            AnyEffect::new(himark::OpenDiffPairEffect { old, new, width }).map(move |prep| {
+            AnyEffect::new(crate::OpenDiffPairEffect { old, new, width }).map(move |prep| {
                 CanvasCommand::Landed {
                     key: key.clone(),
                     prep,
@@ -900,7 +900,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         file: CanvasFile,
-        prep: himark::OpenedDiffPair,
+        prep: crate::OpenedDiffPair,
     ) {
         let theme = env::Themes::of(store);
         let key = file.new.clone();
@@ -949,7 +949,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         key: ResourceLocation,
-        prep: himark::OpenedDiffPair,
+        prep: crate::OpenedDiffPair,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         let Some(file) = self.files.get(&key).cloned() else {
@@ -1129,8 +1129,8 @@ impl Canvas {
         match action {
             HeaderAction::OpenFile => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(himark::PanelRequest::Perform(std::sync::Arc::new(
-                        himark::diff_canvas::OpenCanvasFile {
+                    self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                        crate::diff_canvas::OpenCanvasFile {
                             location: file.new.clone(),
                             // Land on the caret the row's diff editor
                             // holds — cmd-enter continues where the
@@ -1143,8 +1143,8 @@ impl Canvas {
             }
             HeaderAction::OpenPane => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(himark::PanelRequest::Perform(std::sync::Arc::new(
-                        himark::hichanges::OpenDiffForPair {
+                    self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                        crate::hichanges::OpenDiffForPair {
                             old: file.old.clone(),
                             new: file.new.clone(),
                         },
@@ -1166,7 +1166,7 @@ impl Canvas {
         &self,
         store: &Store,
         key: &ResourceLocation,
-    ) -> Option<std::ops::Range<himark::LineCol>> {
+    ) -> Option<std::ops::Range<crate::LineCol>> {
         let pane = self
             .rows
             .content()
@@ -1180,7 +1180,7 @@ impl Canvas {
         else {
             return None;
         };
-        let view = himark::OpenDocuments::diff_view_ref(store, pane.id())?;
+        let view = crate::OpenDocuments::diff_view_ref(store, pane.id())?;
         let right = view.right;
         // The canvas shows the INLINE face by default, where the
         // user's caret lives on the inline editor; both it and the
@@ -1190,10 +1190,10 @@ impl Canvas {
             .as_ref()
             .and_then(|state| state.inline_editor())
             .unwrap_or_else(|| right.editor());
-        let document = himark::OpenDocuments::document_ref(store, right.document())?;
+        let document = crate::OpenDocuments::document_ref(store, right.document())?;
         let byte = document.caret_byte(editor);
         let mut text = document.text().view();
-        let at = himark::line_col_at(&mut text, byte as usize);
+        let at = crate::line_col_at(&mut text, byte as usize);
         Some(at..at)
     }
 
@@ -1264,7 +1264,7 @@ fn row_ask(command: &RowsCommand) -> Option<(usize, &RowCommand)> {
 fn mounted(
     store: &mut Store,
     ui: &UiCtx,
-    prep: himark::OpenedDiffPair,
+    prep: crate::OpenedDiffPair,
     fx: &mut Effects<'_, RowCommand>,
 ) -> Option<(crate::PairPane, f32)> {
     let theme = env::Themes::of(store);
@@ -1279,7 +1279,7 @@ fn mounted(
         pane.perform(
             store,
             ui,
-            UnifiedDiffCommand::SetLayout(himark::DiffLayout::Inline),
+            UnifiedDiffCommand::SetLayout(crate::DiffLayout::Inline),
             fx,
         )
     });
@@ -1351,8 +1351,8 @@ impl Canvas {
                     Some((_, RowCommand::Composer(ComposerCommand::Commit))) => {
                         let text = self.composer_text().unwrap_or_default();
                         if !text.trim().is_empty() {
-                            self.request = Some(himark::PanelRequest::Perform(
-                                std::sync::Arc::new(himark::hihistory::CommitHistory {
+                            self.request = Some(crate::PanelRequest::Perform(
+                                std::sync::Arc::new(crate::hihistory::CommitHistory {
                                     folder: self.source.folder().clone(),
                                     message: text,
                                 }),
@@ -1390,7 +1390,7 @@ impl Canvas {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
                     let text = note.clone();
-                    let font = himark::fonts::ui_text_font(ui, chrome.title_size);
+                    let font = crate::fonts::ui_text_font(ui, chrome.title_size);
                     let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let size = constraints.max;
@@ -1521,15 +1521,15 @@ impl Canvases {
     pub fn sync(
         store: &mut Store,
         ui: &imba::UiCtx,
-        scope: himark::SyncScope<'_>,
-        fx: &mut himark::AppFx<'_>,
+        scope: crate::SyncScope<'_>,
+        fx: &mut crate::AppFx<'_>,
     ) {
         let ids: Vec<CanvasId> = match store.get::<Canvases>() {
             Some(canvases) => canvases.0.keys().copied().collect(),
             None => return,
         };
-        let dressed: Vec<himark::DiffViewId> = store
-            .get::<himark::DressedViews>()
+        let dressed: Vec<crate::DiffViewId> = store
+            .get::<crate::DressedViews>()
             .map(|dressed| dressed.0.clone())
             .unwrap_or_default();
         for id in ids {
@@ -1557,14 +1557,14 @@ impl Canvases {
     }
 }
 
-/// The `himark::SyncObserver` that keeps `Canvases` current on the sync
+/// The `crate::SyncObserver` that keeps `Canvases` current on the sync
 /// tick. Registered at the edge alongside the row minter and navigator.
-pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
+pub fn canvas_sync_observer() -> std::sync::Arc<crate::SyncObserver> {
     std::sync::Arc::new(
         |store: &mut Store,
          ui: &imba::UiCtx,
-         scope: himark::SyncScope<'_>,
-         fx: &mut himark::AppFx<'_>| { Canvases::sync(store, ui, scope, fx) },
+         scope: crate::SyncScope<'_>,
+         fx: &mut crate::AppFx<'_>| { Canvases::sync(store, ui, scope, fx) },
     )
 }
 
@@ -1575,14 +1575,14 @@ pub fn canvas_sync_observer() -> std::sync::Arc<himark::SyncObserver> {
 /// session at land time (the store is gathered for it), so its own
 /// child launches route on.
 fn route_canvas(
-    session: himark::SessionId,
-    window: himark::WindowId,
+    session: crate::SessionId,
+    window: crate::WindowId,
     id: CanvasId,
-) -> impl Fn(CanvasCommand) -> himark::AppCommand + Clone {
+) -> impl Fn(CanvasCommand) -> crate::AppCommand + Clone {
     move |command| {
-        himark::AppCommand::InSession(
+        crate::AppCommand::InSession(
             session.clone(),
-            Box::new(himark::AppCommand::Landing(
+            Box::new(crate::AppCommand::Landing(
                 window,
                 Box::new(CanvasBuildLanded { id, command }),
             )),
@@ -1599,20 +1599,20 @@ struct CanvasBuildLanded {
     command: CanvasCommand,
 }
 
-impl himark::LandingCommand for CanvasBuildLanded {
+impl crate::LandingCommand for CanvasBuildLanded {
     fn perform(
         self: Box<Self>,
-        app: &mut himark::Application,
+        app: &mut crate::Application,
         store: &mut Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
     ) {
         let CanvasBuildLanded { id, command } = *self;
         let Some(mut canvas) = Canvases::take(store, id) else {
             return;
         };
         let ui = app.ui_ctx();
-        match himark::Gathered::scope(store).cloned() {
+        match crate::Gathered::scope(store).cloned() {
             Some(session) => {
                 let route = route_canvas(session, window, id);
                 fx.scope(route, |fx| canvas.perform(store, ui.as_ref(), command, fx));
@@ -1633,8 +1633,8 @@ impl himark::LandingCommand for CanvasBuildLanded {
 /// scoped to another session (or to none) never sees these canvases,
 /// which is what makes the staleness stamp sound: `seen` is only ever
 /// compared against the counters of the session that produced it.
-pub fn canvases_session_family() -> std::sync::Arc<himark::SessionFamilyMember> {
-    std::sync::Arc::new(himark::SessionFamilyMember {
+pub fn canvases_session_family() -> std::sync::Arc<crate::SessionFamilyMember> {
+    std::sync::Arc::new(crate::SessionFamilyMember {
         key: "hidiff.canvases",
         gather: |value, store| {
             if let Some(canvases) = value.downcast_ref::<Canvases>() {
@@ -1645,7 +1645,7 @@ pub fn canvases_session_family() -> std::sync::Arc<himark::SessionFamilyMember> 
             store
                 .take::<Canvases>()
                 .filter(|canvases| !canvases.0.is_empty())
-                .map(|canvases| std::sync::Arc::new(canvases) as himark::SessionFamilyValue)
+                .map(|canvases| std::sync::Arc::new(canvases) as crate::SessionFamilyValue)
         },
     })
 }
@@ -1657,7 +1657,7 @@ pub fn canvases_session_family() -> std::sync::Arc<himark::SessionFamilyMember> 
 pub struct DiffCanvasView {
     id: CanvasId,
     source: CanvasSource,
-    request: Option<himark::PanelRequest>,
+    request: Option<crate::PanelRequest>,
 }
 
 impl DiffCanvasView {
@@ -1690,7 +1690,7 @@ impl DiffCanvasView {
         ui: &UiCtx,
         source: CanvasSource,
         file: CanvasFile,
-        prep: himark::OpenedDiffPair,
+        prep: crate::OpenedDiffPair,
     ) -> Self {
         let view = Self::over(store, source);
         if let Some(mut canvas) = Canvases::take(store, view.id) {
@@ -1705,13 +1705,13 @@ impl DiffCanvasView {
     pub fn probe_pair(
         &self,
         store: &Store,
-        key: &himark::ResourceLocation,
-    ) -> Option<himark::DiffViewId> {
+        key: &crate::ResourceLocation,
+    ) -> Option<crate::DiffViewId> {
         self.canvas(store)?.probe_pair(key)
     }
 
     #[doc(hidden)]
-    pub fn probe_cover(&self, store: &Store, key: &himark::ResourceLocation) -> Option<usize> {
+    pub fn probe_cover(&self, store: &Store, key: &crate::ResourceLocation) -> Option<usize> {
         self.canvas(store)?.probe_cover(key)
     }
 
@@ -1730,7 +1730,7 @@ impl DiffCanvasView {
         store: &mut Store,
         ui: &imba::UiCtx,
         generation: u64,
-        listing: himark::diff_canvas::CanvasListing,
+        listing: crate::diff_canvas::CanvasListing,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.id) {
             let mut batch = imba::effect::Batch::new();
@@ -1776,8 +1776,8 @@ impl DiffCanvasView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        key: himark::ResourceLocation,
-        prep: himark::OpenedDiffPair,
+        key: crate::ResourceLocation,
+        prep: crate::OpenedDiffPair,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.id) {
             let mut batch = imba::effect::Batch::new();
@@ -1821,7 +1821,7 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, himark::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, crate::DiffLayout)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_layouts(store))
             .unwrap_or_default()
@@ -1942,7 +1942,7 @@ pub enum RowCommand {
 }
 
 pub enum ComposerCommand {
-    Message(himark::EditorCommand),
+    Message(crate::EditorCommand),
 
     /// A press on the well outside the editor's own face.
     Focus,
@@ -1973,12 +1973,12 @@ pub(crate) enum CanvasRow {
 #[derive(Clone)]
 pub(crate) enum BannerRow {
     Commit {
-        message: himark::EditorView,
+        message: crate::EditorView,
         author: String,
         focused: bool,
     },
     Composer {
-        message: himark::EditorView,
+        message: crate::EditorView,
         focused: bool,
     },
 }
@@ -2011,8 +2011,8 @@ pub(crate) struct DiffRow {
     built_width: Option<f32>,
 }
 
-fn header_band(theme: &himark::Theme) -> f32 {
-    let h1 = theme.resolve([himark::StyleId::Header(1)]);
+fn header_band(theme: &crate::Theme) -> f32 {
+    let h1 = theme.resolve([crate::StyleId::Header(1)]);
     h1.font_size.unwrap_or(48.0) + h1.block_gap.unwrap_or(24.0)
 }
 
@@ -2021,7 +2021,7 @@ fn header_band(theme: &himark::Theme) -> f32 {
 /// = pad × 0.75 above and below) and the TOOLBAR row under it, ruled
 /// off. The box grows UNBOUNDED with the message — a commit message
 /// is as long as its author wants it; the canvas just scrolls.
-fn composer_band(theme: &himark::Theme, message: Option<&himark::EditorView>) -> f32 {
+fn composer_band(theme: &crate::Theme, message: Option<&crate::EditorView>) -> f32 {
     let chat = theme.ui().chat.clone();
     let one_line = chat.title_size * 1.6;
     let grown = message
@@ -2034,16 +2034,16 @@ fn composer_band(theme: &himark::Theme, message: Option<&himark::EditorView>) ->
 /// A fresh commit box — the CHAT composer's input recipe
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
-fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> himark::EditorView {
+fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> crate::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
     let document =
-        himark::Document::new(himark::Text::from_string_exact(""), himark::Markup::new())
+        crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
             .with_syntax(
-                himark::Syntax::new("markdown", None, himark::Markup::new()),
+                crate::Syntax::new("markdown", None, crate::Markup::new()),
                 &[],
             );
-    let mut view = himark::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
+    let mut view = crate::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
 }
@@ -2058,22 +2058,22 @@ fn commit_banner_box(
     ui: &imba::UiCtx,
     message: &str,
     fx: &mut Effects<'_, CanvasCommand>,
-) -> himark::EditorView {
+) -> crate::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let mut document = himark::Document::new(
-        himark::Text::from_string_exact(message),
-        himark::Markup::new(),
+    let mut document = crate::Document::new(
+        crate::Text::from_string_exact(message),
+        crate::Markup::new(),
     )
     .with_syntax(
-        himark::Syntax::new("markdown", None, himark::Markup::new()),
+        crate::Syntax::new("markdown", None, crate::Markup::new()),
         &[],
     );
     fx.scope(CanvasCommand::BannerEditor, |fx| {
         let editor = document.add_editor(
             600.0,
             None,
-            himark::EditorBuild::Bounded,
+            crate::EditorBuild::Bounded,
             &[],
             store,
             ui,
@@ -2084,7 +2084,7 @@ fn commit_banner_box(
         if let Some(parsers) = env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
-        himark::EditorView {
+        crate::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -2095,7 +2095,7 @@ fn commit_banner_box(
     })
 }
 
-fn commit_band(theme: &himark::Theme, message: &himark::EditorView) -> f32 {
+fn commit_band(theme: &crate::Theme, message: &crate::EditorView) -> f32 {
     let chat = theme.ui().chat.clone();
     let line = chat.title_size * 1.5;
     // The full message and the author line under it — no truncation;
@@ -2103,7 +2103,7 @@ fn commit_band(theme: &himark::Theme, message: &himark::EditorView) -> f32 {
     message.content_height().max(line) + line + chat.pad * 2.0
 }
 
-fn reserved_body(theme: &himark::Theme, file: &CanvasFile) -> f32 {
+fn reserved_body(theme: &crate::Theme, file: &CanvasFile) -> f32 {
     let chrome = theme.ui().chat.clone();
     let line = chrome.title_size * 1.5;
     let known = file.added.is_some() || file.removed.is_some();
@@ -2208,7 +2208,7 @@ impl View for CanvasRow {
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if matches!(command, himark::EditorCommand::Click { .. }) && !*focused {
+                        if matches!(command, crate::EditorCommand::Click { .. }) && !*focused {
                             *focused = true;
                             message.focus_text();
                         }
@@ -2335,7 +2335,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let band = commit_band(&theme, message);
                 let line = chrome.title_size * 1.5;
                 let inset = chrome.pad;
-                let body_font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.9);
+                let body_font = crate::fonts::ui_text_font(ui, chrome.title_size * 0.9);
                 let dim = chrome.loader_color.0;
                 let editor_w = (width - inset * 2.0).max(120.0);
                 let content = message.content_height().max(line);
@@ -2411,8 +2411,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let editor_h = band - toolbar_h - box_pad * 2.0;
 
                 let combo = ui_theme.combo.clone();
-                let caps_font = himark::fonts::ui_font(ui, combo.label_size * 1.1);
-                let key_font = himark::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                let caps_font = crate::fonts::ui_font(ui, combo.label_size * 1.1);
+                let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
                 let label = "COMMIT";
                 let cell_width = label
                     .chars()
@@ -2561,7 +2561,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 }
                 RowBody::Failed(error) => {
                     let text = format!("{} — {error}", diff.file.title);
-                    let font = himark::fonts::ui_text_font(ui, chrome.title_size * 0.85);
+                    let font = crate::fonts::ui_text_font(ui, chrome.title_size * 0.85);
                     let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
@@ -2634,8 +2634,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     // them every frame.
                     let rewrap = match crate::gathered_view(store, pane.id()) {
                         Some(view) => match view.layout {
-                            himark::DiffLayout::Split => None,
-                            himark::DiffLayout::Inline => {
+                            crate::DiffLayout::Split => None,
+                            crate::DiffLayout::Inline => {
                                 let laid = view
                                     .split
                                     .right
@@ -2699,9 +2699,9 @@ impl HeaderFace {
     fn new(store: &Store, ui: &UiCtx, header: &HeaderRow, band: f32, width: f32) -> Self {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
-        let h1 = theme.resolve([himark::StyleId::Header(1)]);
+        let h1 = theme.resolve([crate::StyleId::Header(1)]);
         let size = h1.font_size.unwrap_or(48.0);
-        let mut title_font = himark::fonts::ui_text_font(ui, size);
+        let mut title_font = crate::fonts::ui_text_font(ui, size);
         if h1.bold {
             title_font.set_embolden(true);
         }
@@ -2735,7 +2735,7 @@ impl HeaderFace {
             title_font,
             title_size: size,
             title_color: h1.color.unwrap_or(chrome.text_color.0),
-            trail_font: himark::fonts::ui_text_font(ui, chrome.title_size),
+            trail_font: crate::fonts::ui_text_font(ui, chrome.title_size),
             shaper: imba::TextShaper::of(ui),
             added_color: chrome.added_color.0,
             removed_color: chrome.removed_color.0,
@@ -2917,7 +2917,7 @@ impl<'a> Widget<'a, RowCommand> for HeaderWidget {
 /// stands for.
 fn skeleton_layout<'a>(
     arena: &'a Arena,
-    theme: &himark::Theme,
+    theme: &crate::Theme,
     file: &CanvasFile,
     width: f32,
     height: f32,
@@ -3038,37 +3038,37 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for RewrapOnPaint
 
 // ---------------------------------------------------------------- panel
 
-use himark::diff_canvas::CanvasPlace;
+use crate::diff_canvas::CanvasPlace;
 
 /// Answers `CanvasPlace` navigations: find — or create — the source's
 /// store-held canvas and hand back a REFERENCE view of it. Reuse is
 /// the lookup; nothing is ever rebuilt for a second open.
 pub struct CanvasNavigator;
 
-impl himark::Navigator for CanvasNavigator {
+impl crate::Navigator for CanvasNavigator {
     type Place = CanvasPlace;
 
     fn navigate(
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
-        _window: himark::WindowId,
+        _window: crate::WindowId,
         place: &CanvasPlace,
-        _fx: &mut himark::AppFx<'_>,
-    ) -> Option<himark::Panel> {
+        _fx: &mut crate::AppFx<'_>,
+    ) -> Option<crate::Panel> {
         let view = DiffCanvasView::over(store, place.source.clone());
         if let Some(key) = &place.reveal {
             Canvases::set_reveal(store, view.id(), key.clone());
         }
-        Some(himark::Panel::Plugin(Box::new(view)))
+        Some(crate::Panel::Plugin(Box::new(view)))
     }
 }
 
-impl himark::PanelView for DiffCanvasView {
+impl crate::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
-    fn family_row(&self) -> Option<himark::FamilyRow> {
-        Some(himark::FamilyRow::Canvas(self.source.clone()))
+    fn family_row(&self) -> Option<crate::FamilyRow> {
+        Some(crate::FamilyRow::Canvas(self.source.clone()))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
@@ -3082,7 +3082,7 @@ impl himark::PanelView for DiffCanvasView {
         &mut self,
         store: &mut Store,
         place: &CanvasPlace,
-        _fx: &mut himark::AppFx<'_>,
+        _fx: &mut crate::AppFx<'_>,
     ) -> bool {
         if place.source != self.source {
             return false;
@@ -3099,7 +3099,7 @@ impl himark::PanelView for DiffCanvasView {
         self.source.title(store)
     }
 
-    fn take_request(&mut self) -> Option<himark::PanelRequest> {
+    fn take_request(&mut self) -> Option<crate::PanelRequest> {
         self.request.take()
     }
 

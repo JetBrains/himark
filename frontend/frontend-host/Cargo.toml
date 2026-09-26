@@ -12,13 +12,13 @@ crate-type = ["rlib", "staticlib"]
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
 structdiff = { path = "../structdiff" }
+myersdiff = { path = "../myersdiff" }
 hiahp = { path = "../hiahp" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }
 hiscript = { path = "../hiscript" }
 palette = { path = "../plugins/palette" }
 peeker = { path = "../plugins/peeker" }
-hidiff = { path = "../plugins/hidiff" }
 host-discovery = { path = "../../protocol/host-discovery" }
 tracing = "0.1"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }

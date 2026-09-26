@@ -6,6 +6,8 @@
 //! module only shapes it. The panel itself lives in `plugins/hidiff`
 //! (the workbench face rule) and is minted through `FamilyRow`.
 
+pub mod canvas;
+
 use imba::store::Store;
 
 use crate::hichanges::{empty_side, ChangeEntry, Changes, ChangesStatus};

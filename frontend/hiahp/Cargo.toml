@@ -10,7 +10,6 @@ path = "src/lib.rs"
 [dependencies]
 himark = { path = "../himark" }
 himarkdown = { path = "../plugins/himarkdown" }
-hidiff = { path = "../plugins/hidiff" }
 skia-safe = { version = "0.99.0", features = ["textlayout"] }
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
 host-discovery = { path = "../../protocol/host-discovery" }

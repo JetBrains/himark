@@ -1190,7 +1190,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     let canvas_probe = |engine: &HimarkEngine| {
         let mut shot = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 shot = Some(canvas.probe_rows(engine.app.store()));
             }
         });
@@ -1201,7 +1201,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         canvas_probe(engine).is_some_and(|rows| {
             rows.iter().any(|(title, phase, _)| {
-                title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
+                title == "README.md" && *phase == himark::diff_canvas::canvas::RowPhase::Built
             })
         })
     });
@@ -1228,7 +1228,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         let mut paint = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(panel) = panel.as_any().downcast_ref::<hidiff::DiffPanelView>() {
+            if let Some(panel) = panel.as_any().downcast_ref::<himark::DiffPanelView>() {
                 halves = Some(panel.halves(engine.app.store()));
             }
         });
@@ -1906,7 +1906,7 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
     let assert_aligned = |engine: &HimarkEngine, when: &str| {
         let mut checked = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            let Some(panel) = panel.as_any().downcast_ref::<hidiff::DiffPanelView>() else {
+            let Some(panel) = panel.as_any().downcast_ref::<himark::DiffPanelView>() else {
                 return;
             };
             let diff_state = panel.diff_state(engine.app.store()).expect("settled");
@@ -2739,12 +2739,12 @@ fn a_one_sided_diff_goes_quiet() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 built = canvas
                     .probe_rows(engine.app.store())
                     .iter()
                     .any(|(title, phase, _)| {
-                        title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
+                        title == "fresh.json" && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     });
             }
         });
@@ -2796,12 +2796,12 @@ fn a_one_sided_diff_goes_quiet() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 built |= canvas
                     .probe_rows(engine.app.store())
                     .iter()
                     .any(|(title, phase, _)| {
-                        title == "fresh.json" && *phase == hidiff::canvas::RowPhase::Built
+                        title == "fresh.json" && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     });
             }
         });
@@ -2823,7 +2823,7 @@ fn a_one_sided_diff_goes_quiet() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut mounted = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            mounted |= panel.as_any().is::<hidiff::DiffPanelView>();
+            mounted |= panel.as_any().is::<himark::DiffPanelView>();
         });
         mounted
     });
@@ -6696,13 +6696,13 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let _ = engine.draw(window, paint.canvas(), 900.0, 700.0, 1.0);
         let mut built = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 built = matches!(
                     canvas.source(),
                     himark::diff_canvas::CanvasSource::Commit { .. }
                 ) && canvas.probe_rows(engine.app.store()).iter().any(
                     |(title, phase, _)| {
-                        title == "README.md" && *phase == hidiff::canvas::RowPhase::Built
+                        title == "README.md" && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     },
                 );
             }
@@ -6714,7 +6714,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     {
         let mut banner = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 if matches!(
                     canvas.source(),
                     himark::diff_canvas::CanvasSource::Commit { .. }
@@ -6740,7 +6740,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         let commit_banner = |engine: &HimarkEngine| {
             let mut shot = None;
             engine.app.for_each_plugin_panel(&mut |panel| {
-                if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+                if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                     if matches!(
                         canvas.source(),
                         himark::diff_canvas::CanvasSource::Commit { .. }
@@ -6855,7 +6855,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
     let composer = |engine: &HimarkEngine| {
         let mut shot = None;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            if let Some(canvas) = panel.as_any().downcast_ref::<hidiff::DiffCanvasView>() {
+            if let Some(canvas) = panel.as_any().downcast_ref::<himark::DiffCanvasView>() {
                 if matches!(
                     canvas.source(),
                     himark::diff_canvas::CanvasSource::WorkingCopy { .. }
@@ -7044,7 +7044,7 @@ fn diff_resize_probe_over_real_code() {
     settle_until(&mut engine, "the diff pane mounted", |engine| {
         let mut mounted = false;
         engine.app.for_each_plugin_panel(&mut |panel| {
-            mounted |= panel.as_any().is::<hidiff::DiffPanelView>();
+            mounted |= panel.as_any().is::<himark::DiffPanelView>();
         });
         mounted
     });

@@ -1351,7 +1351,6 @@ dependencies = [
  "hicss",
  "hid",
  "hidart",
- "hidiff",
  "hielixir",
  "hielm",
  "hierlang",
@@ -1401,6 +1400,7 @@ dependencies = [
  "host-discovery",
  "humantime",
  "imba",
+ "myersdiff",
  "operation",
  "palette 0.1.0",
  "peeker",
@@ -1721,7 +1721,6 @@ dependencies = [
  "base64 0.22.1",
  "documents",
  "editor",
- "hidiff",
  "himark",
  "himark-ahp-ext-types",
  "himarkdown",
@@ -1831,21 +1830,6 @@ dependencies = [
  "hisitter",
  "imba",
  "tree-sitter-dart",
-]
-
-[[package]]
-name = "hidiff"
-version = "0.1.0"
-dependencies = [
- "demo",
- "editor",
- "himark",
- "himarkdown",
- "imba",
- "myersdiff",
- "operation",
- "rpds",
- "skia-safe",
 ]
 
 [[package]]
@@ -6336,7 +6320,6 @@ dependencies = [
  "hicss",
  "hid",
  "hidart",
- "hidiff",
  "hielixir",
  "hielm",
  "hierlang",

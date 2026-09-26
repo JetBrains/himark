@@ -309,11 +309,11 @@ mod app {
             himarkdown::register_handlers(&mut state);
             state.register_command(std::sync::Arc::new(palette::TogglePalette));
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
-            state.register_command(std::sync::Arc::new(hidiff::OpenDiff));
-            state.register_row_minter(hidiff::row_minter());
-            state.register_sync_observer(hidiff::canvas_sync_observer());
-            state.register_session_family(hidiff::canvases_session_family());
-            state.register_navigator(hidiff::CanvasNavigator);
+            state.register_command(std::sync::Arc::new(himark::OpenDiff));
+            state.register_row_minter(himark::pair_row_minter());
+            state.register_sync_observer(himark::canvas_sync_observer());
+            state.register_session_family(himark::canvases_session_family());
+            state.register_navigator(himark::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
             state.register_overlay_surface(peeker::overlay_surface());
