@@ -4270,6 +4270,174 @@ fn dump_chat_pane_snapshot() {
     }
 }
 
+/// The chat is MODEL truth (docs/model-view.md step 5): closing the
+/// pane kills only the VIEW, and a reopened pane rebuilds the WHOLE
+/// transcript from the spec records — including a reply that
+/// streamed while NO pane showed the chat (the feed and poll are
+/// chat-scoped, they must not die with a pane).
+#[test]
+fn a_reopened_chat_pane_keeps_the_whole_transcript() {
+    std::env::set_var("HIMARK_AGENT_LATENCY_MS", "0");
+    std::env::set_var("HIMARK_AHP_URL", "ws://127.0.0.1:9/unreachable");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let stub = agent_host::testing::fake_cli_command(dir.path());
+    let host = spawn_host(dir.path(), &stub);
+    let socket = host.socket.clone();
+
+    let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
+    let window = engine.add_window();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+
+    struct NoFind;
+    impl imba::effect::EffectHandler<himark::FindEffect> for NoFind {
+        async fn handle(&self, _effect: himark::FindEffect) -> Vec<himark::ResourceLocation> {
+            Vec::new()
+        }
+    }
+    engine.app.register_handler::<himark::FindEffect>(NoFind);
+
+    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+        std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
+            crate::hiahp::wire::test_runtime(),
+            crate::test_connector(),
+            format!("unix:{}", socket.display()),
+        ));
+    let _ours = engine.register_agent_server("himark Host", seat);
+    let workdir = dir.path().to_owned();
+    himark::higent::Agents::install_new_session(
+        &mut engine.app.store_mut(),
+        std::sync::Arc::new(move |server| {
+            std::sync::Arc::new(StubNewSession {
+                server,
+                directory: format!("file://{}", workdir.display()),
+            })
+        }),
+    );
+
+    let pump = |engine: &mut HimarkEngine, surface: &mut skia_safe::Surface| {
+        for _ in 0..6 {
+            let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+            settle(engine);
+        }
+    };
+    let wait_for = |engine: &mut HimarkEngine,
+                    surface: &mut skia_safe::Surface,
+                    what: &str,
+                    done: &mut dyn FnMut(&HimarkEngine) -> bool| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+        while !done(engine) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "never settled within 20s: {what}; transcript: {:?}; host log:\n{}",
+                chat_transcript(engine),
+                std::fs::read_to_string(dir.path().join("host-home/host.log")).unwrap_or_default()
+            );
+            pump(engine, surface);
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    };
+
+    assert!(engine.perform_command(window, "agent.toggle-agents"));
+    let plus_row = |engine: &HimarkEngine| -> Option<usize> {
+        let rows = drawer_rows(engine)?;
+        let settled = !rows.iter().any(|(label, _)| label.contains("connecting"));
+        rows.iter()
+            .position(|(label, depth)| *depth == 0 && label == "himark Host")
+            .and_then(|index| {
+                (rows.get(index + 1) == Some(&("+ New Session…".to_owned(), 1)))
+                    .then_some(index + 1)
+            })
+            .filter(|_| settled)
+    };
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the himark host row connected",
+        &mut |engine| plus_row(engine).is_some(),
+    );
+    let plus = plus_row(&engine).expect("the himark host row connected");
+    pick_drawer_row(&mut engine, plus);
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the chat over our host subscribed",
+        &mut |engine| shown_chat(engine).is_some_and(|chat| chat.ready()),
+    );
+
+    // Replies carrying "OK" — one per prompt the fake CLI answered.
+    let replies = |engine: &HimarkEngine| -> usize {
+        chat_transcript(engine)
+            .map(|rows| {
+                rows.iter()
+                    .filter(|(_, cells)| {
+                        cells
+                            .iter()
+                            .any(|(kind, text)| kind == "Agent" && text.contains("OK"))
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    };
+
+    assert!(himark::test_driver::type_text(&mut engine.app, "hello"));
+    let _ = himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers {
+            command: true,
+            ..Default::default()
+        },
+    );
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the first reply streamed home",
+        &mut |engine| replies(engine) >= 1,
+    );
+
+    // Phase 1: close the pane; reopen; the conversation survives.
+    assert!(engine.perform_command(window, "workbench.close"));
+    pump(&mut engine, &mut surface);
+    assert!(
+        shown_chat(&engine).is_none(),
+        "the chat pane closed"
+    );
+    assert!(engine.perform_command(window, "chat.composer"));
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the reopened pane rebuilt the transcript",
+        &mut |engine| replies(engine) >= 1,
+    );
+
+    // Phase 2: the turn STARTS, then the pane dies before anything
+    // streams — the reply lands chat-scoped and must be waiting in
+    // the transcript when the pane reopens.
+    // (Front the standing pane again: the mint road opens without
+    // focusing the leaf; the front-existing road focuses it.)
+    assert!(engine.perform_command(window, "chat.composer"));
+    pump(&mut engine, &mut surface);
+    assert!(himark::test_driver::type_text(&mut engine.app, "hello"));
+    let _ = himark::test_driver::key(
+        &mut engine.app,
+        imba::event::Key::Enter,
+        imba::event::Modifiers {
+            command: true,
+            ..Default::default()
+        },
+    );
+    assert!(engine.perform_command(window, "workbench.close"));
+    pump(&mut engine, &mut surface);
+    assert!(engine.perform_command(window, "chat.composer"));
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the pane-less reply reached the reopened transcript",
+        &mut |engine| replies(engine) >= 2,
+    );
+}
+
 #[test]
 fn the_chat_runs_through_the_himark_host() {
     std::env::set_var("HIMARK_AGENT_LATENCY_MS", "0");

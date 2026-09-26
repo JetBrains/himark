@@ -1592,7 +1592,12 @@ impl crate::DynamicCommand for StartComposedSession {
 
         if let Some((_, _, session)) =
             Placeholders::session_of(store, window).filter(|(host, provider, _)| {
-                *host == server && self.options.provider.as_deref() == Some(provider.as_str())
+                *host == server
+                    && self
+                        .options
+                        .provider
+                        .as_deref()
+                        .is_none_or(|picked| picked == provider.as_str())
             })
         {
             let applied: Vec<String> = store
@@ -1920,6 +1925,45 @@ fn bump_feed(store: &mut Store) {
     store.update::<ComposerFeed>(|feed| feed.generation = feed.generation.wrapping_add(1));
 }
 
+/// Dispose a PLACEHOLDER session — through the one guarded door: a
+/// session any window currently shows is the user's LIVE session
+/// (the composer rekeys the window onto its placeholder), and
+/// disposing it kills the host's chats and feeds mid-conversation.
+fn dispose_placeholder(
+    store: &Store,
+    window: crate::WindowId,
+    host: HostId,
+    session: crate::higent::SessionUri,
+    fx: &mut crate::app::AppFx<'_>,
+) {
+    let live = crate::Windows::list(store).into_iter().any(|id| {
+        crate::Windows::window_ref(store, id).is_some_and(|entity| {
+            let current = entity.current_session();
+            current.host == host && current.session == session
+        })
+    });
+    if live {
+        eprintln!("[new-session] NOT disposing {session}: a window lives in it");
+        return;
+    }
+    let Some(seat) = Servers::seat(store, host) else {
+        return;
+    };
+    fx.push(
+        AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
+            move |result| {
+                crate::app::AppCommand::Dynamic(
+                    window,
+                    Arc::new(PlaceholderDispatched {
+                        label: "dispose",
+                        result: result.map(|_| ()),
+                    }),
+                )
+            },
+        ),
+    );
+}
+
 #[derive(Clone, Default)]
 pub struct Placeholders(rpds::HashTrieMapSync<crate::WindowId, Placeholder>);
 
@@ -1998,20 +2042,8 @@ fn ensure_placeholder(
             }
         }
         Some(row) => {
-            if let (Some(session), Some(seat)) = (row.session, Servers::seat(store, row.host)) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
-                        move |result| {
-                            crate::app::AppCommand::Dynamic(
-                                window,
-                                Arc::new(PlaceholderDispatched {
-                                    label: "dispose",
-                                    result: result.map(|_| ()),
-                                }),
-                            )
-                        },
-                    ),
-                );
+            if let Some(session) = row.session {
+                dispose_placeholder(store, window, row.host, session, fx);
             }
             store.update::<Placeholders>(|rows| {
                 rows.0.remove_mut(&window);
@@ -2241,23 +2273,7 @@ impl crate::DynamicCommand for PlaceholderCreated {
         let Some(row) = standing.filter(|row| {
             row.host == self.host && row.provider == self.provider && row.session.is_none()
         }) else {
-            if let Some(seat) = Servers::seat(store, self.host) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect {
-                        seat,
-                        session: session.clone(),
-                    })
-                    .map(move |result| {
-                        crate::app::AppCommand::Dynamic(
-                            window,
-                            Arc::new(PlaceholderDispatched {
-                                label: "dispose",
-                                result: result.map(|_| ()),
-                            }),
-                        )
-                    }),
-                );
-            }
+            dispose_placeholder(store, window, self.host, session.clone(), fx);
             return;
         };
         store.update::<Placeholders>(|rows| {
@@ -2355,21 +2371,7 @@ impl crate::DynamicCommand for OpenNewSession {
         }
 
         if let Some((host, _, session)) = Placeholders::session_of(store, window) {
-            if let Some(seat) = Servers::seat(store, host) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
-                        move |result| {
-                            crate::app::AppCommand::Dynamic(
-                                window,
-                                Arc::new(PlaceholderDispatched {
-                                    label: "dispose",
-                                    result: result.map(|_| ()),
-                                }),
-                            )
-                        },
-                    ),
-                );
-            }
+            dispose_placeholder(store, window, host, session, fx);
         }
         store.update::<Placeholders>(|rows| {
             rows.0.remove_mut(&window);
