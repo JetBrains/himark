@@ -96,17 +96,21 @@ models (`Changes.views`, `History.views`) with dock reference panes
 `ModalView::as_any_mut` retired. The re-keying by `ChangeSetId` comes
 with the ChangeSets migration.
 
-### Step 4 — Canvases attach to their ChangeSet
+### Step 4 — Canvases attach to their ChangeSet (LANDED)
 
-A canvas is the other view of the same set: its STATE (rows as
-`DiffViewId`s, heights, phases, collapse stash, reveal) is owned by
-its ChangeSet exactly like the tree views — referenced by
-`(ChangeSetId, CanvasViewId)`. The FACE — row rendering, build
-effects, header chrome — stays in hidiff, a renderer over store-held
-state, precedent `DiffViewState` (documents holds it, hidiff renders
-it). The plugin session-family slot and `CanvasBuildLanded` routing
-shrink accordingly; the set's update rule (step 3) rolls canvas rows
-with the tree views.
+A canvas is the other view of the same set: `ChangeSet.canvases:
+Map<CanvasId, Canvas>`, referenced by both ids. RULING (2026-09-26):
+the hidiff plugin dissolved into himark rather than keeping a face
+crate — `CanvasRow`'s single `imba::View` impl cannot split perform
+(state) from display (face) across crates, and the face's real
+machinery was editor's `UnifiedDiffView` all along. `diff_pane`
+(PairPane, DiffPanelView) and `diff_canvas::canvas` are himark
+modules; the canvas sweep is a direct batch-tail lane; canvas effects
+ride the first-class sessioned `AppCommand::CanvasViewCommand`. The
+plugin mechanisms this had required (SyncObservers, SessionFamilies)
+retired with their only client. A set's wire side is
+`feed: Option<SetFeed>` — a canvas may open a DETACHED set;
+`ensure_folder` attaches the feed.
 
 ### Step 5 (later) — Split the chat into model and view
 
