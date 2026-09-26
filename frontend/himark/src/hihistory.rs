@@ -14,28 +14,19 @@ use crate::higent::{
     SubscribeHistoryEffect,
 };
 use crate::{
-    AppCommand, ForestList, ForestNode, ForestSearcher, ModalRequest, ResourceLocation,
-    ActivateTrigger, ListKeyCommand, ListKeyboardController, ResourceType, TreeListCommand,
+    AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyboardController, ResourceLocation,
+    ResourceType,
 };
-use imba::list::ListOps;
 use himark_ahp_ext_types::history as history_wire;
-use imba::tooltip::{TooltipCommand, TooltipView};
 use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
     effect::{AnyEffect, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
     store::Store,
     thunk_ext::ThunkExt,
-    UiCtx, View,
+    UiCtx,
 };
-use skia_safe::Size;
 
 const NOTE_KIND: &str = "changes-note";
 
-const PANEL_PAD: f32 = 6.0;
 
 /// One commit row: the wire commit plus the id of the CHANGE SET that
 /// is its content (docs/model-view.md — `Commit { change_set }`).
@@ -72,37 +63,22 @@ impl FolderHistory {
     }
 }
 
+/// The commit-list MODEL per folder. History manages the commit
+/// change sets — minting them as rows land, populating them from
+/// commits — while the tree views over them live on the `ChangeSets`
+/// collection (crate::changes_view).
 #[derive(Clone, Default)]
 pub struct History {
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
-
-    generation: u64,
-
-    /// The model OWNS its views (docs/model-view.md): the history
-    /// view records live here, keyed by minted id. View mutations
-    /// never touch `generation`.
-    views: rpds::HashTrieMapSync<HistoryViewId, HistoryView>,
 }
 
 impl History {
-    pub fn generation(store: &Store) -> u64 {
-        store
-            .get::<History>()
-            .map(|history| history.generation)
-            .unwrap_or(0)
-    }
-
     pub fn folder(store: &Store, folder: &ResourceLocation) -> Option<FolderHistory> {
         store.get::<History>()?.folders.get(folder).cloned()
     }
 
     pub(crate) fn is_empty(&self) -> bool {
         self.folders.is_empty()
-    }
-
-    /// A commit SET moved (content landed): the uniting views' cue.
-    pub(crate) fn nudge(&mut self) {
-        self.generation += 1;
     }
 
     pub(crate) fn ensure_folder(
@@ -132,8 +108,8 @@ impl History {
                     more: None,
                 },
             );
-            history.generation += 1;
         });
+        crate::hichanges::Changes::nudge_folder(store, folder);
     }
 
     fn adopt_catalog(
@@ -159,7 +135,6 @@ impl History {
             self.folders.insert_mut(folder.clone(), entry);
             fresh.push((folder.clone(), seat, channel));
         }
-        self.generation += 1;
         fresh
     }
 
@@ -222,7 +197,6 @@ impl History {
         entry.commits = rows.into_iter().collect();
         entry.more = state.more.clone();
         self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
     }
 
     fn adopt_error(&mut self, folder: &ResourceLocation, error: String) {
@@ -233,7 +207,6 @@ impl History {
         entry.commits = rpds::VectorSync::new_sync();
         entry.more = None;
         self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
     }
 
     pub(crate) fn session_failed(store: &mut Store, session: &crate::higent::SessionUri, error: &str) {
@@ -248,6 +221,7 @@ impl History {
                 history.adopt_error(&folder, error.to_owned());
             }
         });
+        crate::hichanges::Changes::nudge_all(store);
     }
 
     /// Fold the channel's streamed actions — STORE-level, because
@@ -283,7 +257,6 @@ impl History {
                     }
                     entry.more = appended.more.clone();
                     history.folders.insert_mut(folder.clone(), entry);
-                    history.generation += 1;
                 });
             } else if value["type"] == history_wire::HISTORY_PREPENDED {
                 let Ok(prepended) =
@@ -306,7 +279,6 @@ impl History {
                     entry.commits = commits;
                     entry.head = prepended.head.clone();
                     history.folders.insert_mut(folder.clone(), entry);
-                    history.generation += 1;
                 });
             }
         }
@@ -333,6 +305,7 @@ pub(crate) fn subscribe_fresh(
     store.update::<History>(|history| {
         fresh = history.adopt_catalog(session, &histories);
     });
+    crate::hichanges::Changes::nudge_all(store);
     for (folder, seat, channel) in fresh {
         let landing = folder.clone();
         let scope = folder_scope(&folder);
@@ -377,6 +350,7 @@ impl crate::DynamicCommand for SnapshotLanded {
                 store.update::<History>(|history| history.adopt_error(&self.folder, error));
             }
         }
+        crate::hichanges::Changes::nudge_folder(store, &self.folder);
         if self.result.is_ok() {
             relaunch_poll(store, window, &self.folder, fx);
         }
@@ -403,6 +377,7 @@ impl crate::DynamicCommand for Polled {
         fx: &mut crate::AppFx<'_>,
     ) {
         History::fold_actions(store, &self.folder, &self.actions);
+        crate::hichanges::Changes::nudge_folder(store, &self.folder);
         relaunch_poll(store, window, &self.folder, fx);
     }
 }
@@ -681,27 +656,7 @@ impl crate::DynamicCommand for CommitHistory {
     }
 }
 
-#[derive(Clone)]
-enum RowItem {
-    Branch,
-
-    Commit {
-        folder: ResourceLocation,
-        id: String,
-    },
-
-    File {
-        folder: ResourceLocation,
-        commit: String,
-        new: ResourceLocation,
-    },
-
-    More {
-        folder: ResourceLocation,
-    },
-
-    Note,
-}
+use crate::changes_view::RowItem;
 
 struct CommitSink<'a> {
     items: &'a mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
@@ -711,7 +666,7 @@ struct CommitSink<'a> {
 
 impl DirSink for CommitSink<'_> {
     fn branch(&mut self, key: &ResourceLocation) {
-        self.items.insert_mut(key.clone(), RowItem::Branch);
+        self.items.insert_mut(key.clone(), RowItem::Branch { select: true });
     }
 
     fn file_key(&self, entry: &ChangeEntry, at: &ResourceLocation) -> ResourceLocation {
@@ -727,16 +682,20 @@ impl DirSink for CommitSink<'_> {
             .unwrap_or_else(|| empty_side(&entry.working));
         self.items.insert_mut(
             key.clone(),
-            RowItem::File {
-                folder: self.folder.clone(),
-                commit: self.commit.to_owned(),
-                new,
+            RowItem::Open {
+                source: crate::diff_canvas::CanvasSource::Commit {
+                    folder: self.folder.clone(),
+                    id: self.commit.to_owned(),
+                },
+                reveal: Some(new),
+                toggle: false,
+                select: true,
             },
         );
     }
 }
 
-fn graph_node(
+pub(crate) fn graph_node(
     store: &Store,
     folder: &ResourceLocation,
     history: Option<&FolderHistory>,
@@ -744,7 +703,7 @@ fn graph_node(
     counts: (skia_safe::Color, skia_safe::Color),
 ) -> ForestNode<ResourceLocation> {
     let key = folder.child(ResourceType::new("history-graph"), "graph");
-    items.insert_mut(key.clone(), RowItem::Branch);
+    items.insert_mut(key.clone(), RowItem::Branch { select: true });
     let note = |text: &str,
                 under: &ResourceLocation,
                 items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>| {
@@ -773,9 +732,14 @@ fn graph_node(
                     let commit_key = folder.child(ResourceType::new("history-commit"), &commit.id);
                     items.insert_mut(
                         commit_key.clone(),
-                        RowItem::Commit {
-                            folder: folder.clone(),
-                            id: commit.id.clone(),
+                        RowItem::Open {
+                            source: crate::diff_canvas::CanvasSource::Commit {
+                                folder: folder.clone(),
+                                id: commit.id.clone(),
+                            },
+                            reveal: None,
+                            toggle: true,
+                            select: true,
                         },
                     );
 
@@ -833,7 +797,7 @@ fn graph_node(
                     let more_key = key.child(ResourceType::new("history-more"), "more");
                     items.insert_mut(
                         more_key.clone(),
-                        RowItem::More {
+                        RowItem::Grow {
                             folder: folder.clone(),
                         },
                     );
@@ -967,7 +931,7 @@ impl imba::View for CommitTip {
     }
 }
 
-fn commit_tip(
+pub(crate) fn commit_tip(
     rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
     point: skia_safe::Point,
@@ -985,573 +949,6 @@ fn commit_tip(
     let entry = History::folder(store, &folder)?;
     let commit = entry.commits.iter().find(|commit| commit.id == id)?;
     Some((anchor, CommitTip::of(commit)))
-}
-
-type Rows = TooltipView<
-    ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
-    CommitTip,
->;
-
-pub enum HistoryCommand {
-    Rows(TooltipCommand<ListKeyCommand<TreeListCommand>>),
-
-    AutoGrow,
-
-
-    Dismiss,
-}
-
-pub struct HistoryView {
-    list: Rows,
-    items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-    workspace: crate::SessionId,
-    window: crate::WindowId,
-
-    seen: u64,
-
-    grown: rpds::HashTrieMapSync<ResourceLocation, String>,
-    request: Option<ModalRequest>,
-}
-
-impl Clone for HistoryView {
-    fn clone(&self) -> Self {
-        Self {
-            list: self.list.clone(),
-            items: self.items.clone(),
-            workspace: self.workspace.clone(),
-            window: self.window,
-            seen: self.seen,
-            grown: self.grown.clone(),
-
-            request: None,
-        }
-    }
-}
-
-impl HistoryView {
-    pub fn open(
-        store: &Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        workspace: crate::SessionId,
-    ) -> Self {
-        let mut section = Self {
-            list: TooltipView::new(
-                ListKeyboardController::searchable(
-                    ForestList::new(store),
-                    ForestSearcher::default(),
-                    store,
-                    ui,
-                    crate::env::Fonts::of(store),
-                )
-                .with_folds(),
-                commit_tip,
-            ),
-            items: rpds::HashTrieMapSync::new_sync(),
-            workspace,
-            window,
-            seen: 0,
-            grown: rpds::HashTrieMapSync::new_sync(),
-            request: None,
-        };
-        section.refresh(store, ui);
-        section
-    }
-
-    pub(crate) fn stale(&self, store: &Store) -> bool {
-        History::generation(store) != self.seen
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.list.view().inner().forest.rows_trailed()
-    }
-
-    #[doc(hidden)]
-    pub fn cursor_name(&self) -> Option<String> {
-        self.list
-            .view()
-            .inner()
-            .list()
-            .cursor()
-            .map(|key| key.name().to_owned())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    pub(crate) fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = History::generation(store);
-        let mut items = rpds::HashTrieMapSync::new_sync();
-        let themes = crate::env::Themes::of(store);
-        let ui_theme = themes.ui();
-        let counts = (ui_theme.chat.added_color.0, ui_theme.chat.removed_color.0);
-        let _accent = ui_theme.peeker.accent.0;
-        let _dim = ui_theme.peeker.dim_text.0;
-        let nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .map(|folder| {
-                    graph_node(
-                        store,
-                        folder,
-                        History::folder(store, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    )
-                })
-                .collect();
-
-        for (key, item) in items.iter() {
-            if matches!(item, RowItem::Commit { .. }) && !self.items.contains_key(key) {
-                self.list
-                    .view_mut()
-                    .inner_mut()
-                    .forest
-                    .preset_collapsed(key);
-            }
-        }
-        self.items = items;
-        self.list.view_mut().inner_mut().set(&nodes, store, ui);
-    }
-
-    fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
-        let Some(key) = self.list.view().inner().list().key_at(index).cloned() else {
-            return;
-        };
-        self.activate_key(&key, store, ui);
-    }
-
-    fn activate_key(&mut self, key: &ResourceLocation, store: &Store, ui: &UiCtx) {
-        if !matches!(self.items.get(key), Some(RowItem::Note) | None) {
-            self.list
-                .view_mut()
-                .inner_mut()
-                .list_mut()
-                .select_only(key.clone());
-        }
-        match self.items.get(key).cloned() {
-            Some(RowItem::Branch) => self.list.view_mut().inner_mut().toggle(key, store, ui),
-            Some(RowItem::Commit { folder, id }) => {
-                self.list.view_mut().inner_mut().toggle(key, store, ui);
-
-                // OpenDiffCanvas also ensures the commit's file
-                // fetch — one request feeds the tree AND the canvas.
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::Commit { folder, id },
-                        reveal: None,
-                    }),
-                )));
-            }
-            Some(RowItem::More { folder }) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(GrowHistory { folder }),
-                )));
-            }
-            Some(RowItem::File {
-                folder,
-                commit,
-                new,
-            }) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::Commit { folder, id: commit },
-                        reveal: Some(new),
-                    }),
-                )));
-            }
-            Some(RowItem::Note) | None => {}
-        }
-    }
-}
-
-impl View for HistoryView {
-    type Command = HistoryCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, HistoryCommand> {
-        use imba::focus::FocusData;
-        // The key table is the controller's; the surface keeps only
-        // its own dismissal.
-        let searching = self.list.view().searching();
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.list.focus_data(store, ui).map(HistoryCommand::Rows))
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match command {
-            HistoryCommand::Rows(command) => {
-                match &command {
-                    // The bespoke lazy fold: expanding an unfetched
-                    // commit launches its file listing first.
-                    TooltipCommand::Host(ListKeyCommand::Fold { expand, .. }) => {
-                        let expand = *expand;
-                        if expand {
-                            if let Some(key) = self.list.view().inner().list().cursor().cloned() {
-                                if let Some(RowItem::Commit { folder, id }) =
-                                    self.items.get(&key).cloned()
-                                {
-                                    let unfetched = crate::hichanges::Changes::commit_generation(
-                                        store, &folder, &id,
-                                    ) == 0;
-                                    if unfetched {
-                                        self.request =
-                                            Some(ModalRequest::Perform(AppCommand::Dynamic(
-                                                self.window,
-                                                Arc::new(FetchCommitFiles { folder, commit: id }),
-                                            )));
-                                    }
-                                }
-                            }
-                        }
-                        return self
-                            .list
-                            .view_mut()
-                            .inner_mut()
-                            .fold_cursor(expand, store, ui);
-                    }
-                    TooltipCommand::Host(ListKeyCommand::Inner(inner)) => {
-                        if let Some(index) = crate::tree_toggle(inner) {
-                            return self.activate(index, store, ui);
-                        }
-                    }
-                    _ => {}
-                }
-                if let Some((index, trigger)) = Rows::activated(&command) {
-                    let searching = self.list.view().searching();
-                    self.activate(index, store, ui);
-                    match trigger {
-                        // The deliberate pick ends the search in the
-                        // same stroke.
-                        ActivateTrigger::Enter if searching => {
-                            return self.perform(
-                                store,
-                                ui,
-                                HistoryCommand::Rows(TooltipCommand::Host(ListKeyCommand::Clear)),
-                                fx,
-                            );
-                        }
-                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
-                    }
-                }
-                fx.scope(HistoryCommand::Rows, |fx| {
-                    self.list.perform(store, ui, command, fx)
-                });
-            }
-            HistoryCommand::AutoGrow => {
-                for folder in crate::higent::session_folders(store, &self.workspace) {
-                    let Some(entry) = History::folder(store, &folder) else {
-                        continue;
-                    };
-                    let Some(more) = entry.more else { continue };
-                    if self.grown.get(&folder).map(String::as_str) == Some(more.as_str()) {
-                        continue;
-                    }
-                    self.grown.insert_mut(folder.clone(), more);
-                    self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(GrowHistory { folder }),
-                    )));
-
-                    break;
-                }
-            }
-            HistoryCommand::Dismiss => {
-                self.request = Some(ModalRequest::Close);
-            }
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut section = container(arena, size);
-
-            let band = PANEL_PAD;
-
-            let rows = imba::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
-            )
-            .map(HistoryCommand::Rows);
-            section.place(0.0, band, rows);
-
-            // The key table lives in the controller's own overlay;
-            // the surface keeps only its dismissal.
-            let searching = self.list.view().searching();
-            let keymap = leaf::<HistoryCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                    _ => EventResult::Ignored,
-                },
-            );
-            section.place(0.0, 0.0, keymap);
-
-            let rows_height = (size.height - band).max(1.0);
-            let near_tail = {
-                let list = self.list.view().inner();
-                list.scroll_y() + rows_height
-                    >= list.list().total_height() - 2.0 * crate::ui::space::XL
-            };
-            let pageable = crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .any(|folder| {
-                    History::folder(store, folder).is_some_and(|entry| {
-                        entry.more.as_deref().is_some_and(|more| {
-                            self.grown.get(folder).map(String::as_str) != Some(more)
-                        })
-                    })
-                });
-            let grow = near_tail && pageable;
-            section.wrap(move |inner| GrowShell { inner, grow })
-        })
-    }
-}
-
-/// The load-more probe is genuinely LAYOUT-BOUND (it reads the laid
-/// viewport's nearness to the tail), so it stays on paint. The data
-/// staleness probe is gone — the sync lane pushes refreshes.
-struct GrowShell<Inner> {
-    inner: Inner,
-
-    grow: bool,
-}
-
-impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryCommand>
-    for GrowShell<Inner>
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, HistoryCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: skia_safe::Rect,
-    ) -> EventResult<HistoryCommand> {
-        let mut result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) && self.grow {
-            result = result.merge(EventResult::Command(HistoryCommand::AutoGrow));
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, HistoryCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
-/// The PUSH lane for the history dock — the changes dock's twin
-/// (hichanges::sync_changes_docks): refresh a mounted, stale
-/// `HistoryView` at the tail of the batch its feed landed in.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct HistoryViewId(u64);
-
-impl HistoryViewId {
-    fn mint() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
-
-impl History {
-    fn mint_view(store: &mut Store, view: HistoryView) -> HistoryViewId {
-        let id = HistoryViewId::mint();
-        store.update::<History>(|history| {
-            history.views.insert_mut(id, view);
-        });
-        id
-    }
-
-    pub fn view_ref(store: &Store, id: HistoryViewId) -> Option<&HistoryView> {
-        store.get::<History>()?.views.get(&id)
-    }
-
-    fn take_view(store: &mut Store, id: HistoryViewId) -> Option<HistoryView> {
-        let view = Self::view_ref(store, id)?.clone();
-        store.update::<History>(|history| {
-            history.views.remove_mut(&id);
-        });
-        Some(view)
-    }
-
-    fn put_view(store: &mut Store, id: HistoryViewId, view: HistoryView) {
-        store.update::<History>(|history| {
-            history.views.insert_mut(id, view);
-        });
-    }
-
-    fn remove_view(store: &mut Store, id: HistoryViewId) {
-        store.update::<History>(|history| {
-            history.views.remove_mut(&id);
-        });
-    }
-
-    fn view_ids(store: &Store) -> Vec<HistoryViewId> {
-        store
-            .get::<History>()
-            .map(|history| history.views.keys().copied().collect())
-            .unwrap_or_default()
-    }
-}
-
-/// The dock's reference view over a store-held history record.
-pub struct HistoryPane {
-    view: HistoryViewId,
-    request: Option<ModalRequest>,
-}
-
-impl HistoryPane {
-    pub fn view(&self) -> HistoryViewId {
-        self.view
-    }
-}
-
-impl Clone for HistoryPane {
-    fn clone(&self) -> Self {
-        Self {
-            view: self.view,
-            request: None,
-        }
-    }
-}
-
-impl imba::View for HistoryPane {
-    type Command = HistoryCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, HistoryCommand> {
-        match History::view_ref(store, self.view) {
-            Some(view) => view.focus_data(store, ui),
-            None => imba::focus::FocusData::default(),
-        }
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
-        let Some(mut view) = History::take_view(store, self.view) else {
-            return;
-        };
-        view.perform(store, ui, command, fx);
-        // Requests are the PANE's ask (`take_request` has no store):
-        // pull what the record minted into the reference view.
-        if let Some(request) = view.request.take() {
-            self.request = Some(request);
-        }
-        History::put_view(store, self.view, view);
-    }
-
-    fn destroy(
-        &mut self,
-        store: &mut Store,
-        _fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
-        History::remove_view(store, self.view);
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
-            move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, HistoryCommand> =
-                    match History::view_ref(store, self.view) {
-                        Some(view) => imba::ThunkBox::new(
-                            arena,
-                            imba::Layout::layout(view.display(arena, store, ui), arena, constraints),
-                        ),
-                        None => imba::ThunkBox::new(
-                            arena,
-                            leaf(constraints.max.width, constraints.max.height),
-                        ),
-                    };
-                widget
-            },
-        )
-    }
-}
-
-impl crate::ModalView for HistoryPane {
-    fn clone_modal(&self) -> Box<dyn crate::ModalView> {
-        Box::new(self.clone())
-    }
-
-    fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
-    let Some(scope) = crate::Gathered::scope(store).cloned() else {
-        return;
-    };
-    for id in History::view_ids(store) {
-        let stale = History::view_ref(store, id)
-            .is_some_and(|view| view.workspace == scope && view.stale(store));
-        if !stale {
-            continue;
-        }
-        if let Some(mut view) = History::take_view(store, id) {
-            view.refresh(store, ui);
-            History::put_view(store, id, view);
-        }
-    }
 }
 
 pub struct ToggleHistoryView;
@@ -1582,17 +979,23 @@ impl crate::DynamicCommand for ToggleHistoryView {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let view = History::mint_view(store, HistoryView::open(store, &_app.ui_ctx(), window, workspace));
+        let view = crate::hichanges::Changes::mint_view(
+            store,
+            crate::changes_view::ChangesView::open(
+                store,
+                &_app.ui_ctx(),
+                window,
+                workspace,
+                crate::changes_view::ViewSets::History,
+            ),
+        );
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(HistoryPane {
-                        view,
-                        request: None,
-                    }),
+                    Box::new(crate::changes_view::ChangesPane::new(view)),
                     owner,
                     fx,
                 )

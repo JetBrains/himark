@@ -1,7 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::diff_canvas::canvas::{self as canvas, DiffCanvasView};
 use himark::diff_pane::*;
 use himark::AppExt;
 use himark::{AppFonts, Application};

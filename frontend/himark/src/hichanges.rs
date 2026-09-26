@@ -7,29 +7,12 @@ use std::sync::Arc;
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
-use crate::{
-    AppCommand, Authority, ForestList, ForestNode, ForestSearcher, ModalRequest, ModalView,
-    ActivateTrigger, ListKeyCommand, ListKeyboardController, ResourceLocation, ResourceType,
-    TreeListCommand,
-};
-use imba::list::ListOps;
+use crate::{AppCommand, Authority, ForestNode, ResourceLocation, ResourceType};
 use himark_ahp_ext_types::history as history_wire;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::{AnyEffect, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
-use skia_safe::Size;
+use imba::{effect::AnyEffect, store::Store, UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
 
-const PANEL_PAD: f32 = 6.0;
 
 const REF_PREFIX: &str = "ahpref\u{1f}";
 
@@ -358,15 +341,25 @@ pub struct ChangeSets {
 
     pub(crate) uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
-    /// The COLLECTION tick: membership moves and any set's mutation
-    /// bump it — the union tree view's staleness cue. Per-set
-    /// staleness reads the set's own generation.
-    generation: u64,
+    /// The unified tree VIEWS over this collection's sets — one per
+    /// mounted dock, changes- or history-flavored only by the data
+    /// they derive rows from (crate::changes_view). The collection
+    /// is the views' point of gravity: a uniting view spans many
+    /// sets, so the views cannot live inside one.
+    pub(crate) views: rpds::HashTrieMapSync<
+        crate::changes_view::ChangesViewId,
+        crate::changes_view::ChangesView,
+    >,
 
-    /// The union tree views over the session's working-copy sets.
-    /// TRANSITIONAL home (stage A2 splits the tree into per-set
-    /// sections owned by their sets, per the hierarchy).
-    views: rpds::HashTrieMapSync<ChangesViewId, ChangesView>,
+    /// THE UPDATE RULE's index — the many-to-many `ChangeSetId ↔
+    /// ChangesViewId` join: a set mutation marks exactly its viewers
+    /// stale; the batch-tail lane rolls them.
+    pub(crate) viewers: rpds::HashTrieMapSync<
+        ChangeSetId,
+        rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
+    >,
+
+    pub(crate) stale: rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
 }
 
 /// Transitional alias — the store slot and the wide call-site surface
@@ -428,7 +421,6 @@ impl Changes {
         mutate(&mut set);
         set.generation += 1;
         self.sets.insert_mut(id, set);
-        self.generation += 1;
         true
     }
 
@@ -497,14 +489,6 @@ impl Changes {
             .unwrap_or(0)
     }
 
-
-    /// THE UPDATE RULE (docs/model-view.md): a commit set's mutation
-    /// must reach every uniting HistoryView — their trees render the
-    /// sets' content. The History generation is their staleness cue;
-    /// the sync lane rolls the stale views at the batch tail.
-    fn nudge_uniting_histories(store: &mut Store) {
-        store.update::<crate::hihistory::History>(|history| history.nudge());
-    }
 
     /// Mint — or find — the set for a source, WITHOUT a feed when the
     /// feeds have not routed it yet (a canvas may open first; the
@@ -623,7 +607,9 @@ impl Changes {
                 set.files = rpds::VectorSync::new_sync();
             });
         });
-        Self::nudge_uniting_histories(store);
+        if let Some(id) = Self::id_for_source(store, &source) {
+            Self::nudge_set(store, id);
+        }
     }
 
     /// A commit set's content snapshot landed (the changeset channel
@@ -663,7 +649,9 @@ impl Changes {
                 }
             });
         });
-        Self::nudge_uniting_histories(store);
+        if let Some(id) = Self::id_for_source(store, &source) {
+            Self::nudge_set(store, id);
+        }
     }
 
     /// Streamed updates for a commit set's changeset channel.
@@ -705,7 +693,9 @@ impl Changes {
                 }
             });
         });
-        Self::nudge_uniting_histories(store);
+        if let Some(id) = Self::id_for_source(store, &source) {
+            Self::nudge_set(store, id);
+        }
     }
 
     pub fn set_ref(store: &Store, id: ChangeSetId) -> Option<&ChangeSet> {
@@ -726,13 +716,6 @@ impl Changes {
             .get::<ChangeSets>()
             .and_then(|changes| changes.folder_set(folder))
             .map(|set| set.generation)
-            .unwrap_or(0)
-    }
-
-    pub fn generation(store: &Store) -> u64 {
-        store
-            .get::<Changes>()
-            .map(|changes| changes.generation)
             .unwrap_or(0)
     }
 
@@ -825,9 +808,9 @@ impl Changes {
                 },
                 id,
             );
-            changes.generation += 1;
         });
         crate::hihistory::History::ensure_folder(store, &folder, &seat, &session);
+        Changes::nudge_folder(store, &folder);
 
         let directory = uris.uri_of(&folder).into_string();
         fx.push(
@@ -922,6 +905,9 @@ impl Changes {
                 });
             }
         });
+        for (folder, _, _) in &riding {
+            Changes::nudge_folder(store, folder);
+        }
         for (folder, seat, channel) in riding {
             let landing = folder.clone();
             let scope = folder_scope(&folder);
@@ -994,7 +980,6 @@ impl Changes {
             });
             fresh.push((folder, seat, channel));
         }
-        self.generation += 1;
         fresh
     }
 
@@ -1181,6 +1166,7 @@ impl crate::DynamicCommand for SessionLanded {
                 store.update::<Changes>(|changes| {
                     changes.session_failed(&self.session, error);
                 });
+                Changes::nudge_all(store);
                 crate::hihistory::History::session_failed(store, &self.session, error);
             }
         }
@@ -1227,6 +1213,7 @@ fn subscribe_fresh(
     store.update::<Changes>(|changes| {
         fresh = changes.adopt_catalog(session, entries.clone());
     });
+    Changes::nudge_all(store);
 
     crate::hihistory::subscribe_fresh(store, window, session, &entries, fx);
     for (folder, seat, channel) in fresh {
@@ -1308,6 +1295,7 @@ impl crate::DynamicCommand for SnapshotLanded {
             Ok(state) => changes.adopt(&self.folder, state),
             Err(error) => changes.adopt_error(&self.folder, error.clone()),
         });
+        Changes::nudge_folder(store, &self.folder);
         rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
         if self.result.is_ok() {
             relaunch_poll(store, window, &self.folder, fx);
@@ -1335,6 +1323,7 @@ impl crate::DynamicCommand for Polled {
         fx: &mut crate::AppFx<'_>,
     ) {
         store.update::<Changes>(|changes| changes.fold(&self.folder, &self.actions));
+        Changes::nudge_folder(store, &self.folder);
         rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
         relaunch_poll(store, window, &self.folder, fx);
     }
@@ -1422,14 +1411,7 @@ impl crate::DynamicCommand for OpenDiffForPair {
     }
 }
 
-#[derive(Clone)]
-enum RowItem {
-    Branch,
-
-    File { new: ResourceLocation },
-
-    Note,
-}
+use crate::changes_view::RowItem;
 
 #[derive(Default)]
 pub(crate) struct DirTrie {
@@ -1447,13 +1429,25 @@ impl DirTrie {
     }
 }
 
-fn folder_node(
+pub(crate) fn folder_node(
     folder: &ResourceLocation,
     changes: Option<&FolderChanges>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     counts: (skia_safe::Color, skia_safe::Color),
 ) -> ForestNode<ResourceLocation> {
-    items.insert_mut(folder.clone(), RowItem::Branch);
+    // The workspace folder ROOT opens the diff canvas
+    // (docs/editor/diff-canvas.md §6); the chevron expands either way.
+    items.insert_mut(
+        folder.clone(),
+        RowItem::Open {
+            source: crate::diff_canvas::CanvasSource::WorkingCopy {
+                folder: folder.clone(),
+            },
+            reveal: None,
+            toggle: false,
+            select: false,
+        },
+    );
     let note = |text: &str, items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>| {
         let key = folder.child(ResourceType::new(NOTE_KIND), text);
         items.insert_mut(key.clone(), RowItem::Note);
@@ -1481,10 +1475,12 @@ fn folder_node(
                 }
                 struct Sink<'a> {
                     items: &'a mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
+                    folder: &'a ResourceLocation,
                 }
                 impl DirSink for Sink<'_> {
                     fn branch(&mut self, key: &ResourceLocation) {
-                        self.items.insert_mut(key.clone(), RowItem::Branch);
+                        self.items
+                            .insert_mut(key.clone(), RowItem::Branch { select: false });
                     }
 
                     fn file_key(
@@ -1495,15 +1491,23 @@ fn folder_node(
                         entry.working.clone()
                     }
                     fn file(&mut self, entry: &ChangeEntry, key: &ResourceLocation) {
+                        // A file row REVEALS itself in the folder's
+                        // canvas — the canvas row keys are these
+                        // same locations.
                         self.items.insert_mut(
                             key.clone(),
-                            RowItem::File {
-                                new: entry.working.clone(),
+                            RowItem::Open {
+                                source: crate::diff_canvas::CanvasSource::WorkingCopy {
+                                    folder: self.folder.clone(),
+                                },
+                                reveal: Some(entry.working.clone()),
+                                toggle: false,
+                                select: true,
                             },
                         );
                     }
                 }
-                dir_forest(folder, trie, counts, &mut Sink { items })
+                dir_forest(folder, trie, counts, &mut Sink { items, folder })
             }
         },
     };
@@ -1583,464 +1587,6 @@ pub(crate) fn dir_forest(
     children
 }
 
-type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
-
-pub enum ChangesCommand {
-    Rows(ListKeyCommand<TreeListCommand>),
-
-    Refetch(ResourceLocation),
-
-
-    Dismiss,
-}
-
-pub struct ChangesView {
-    list: Rows,
-    items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-
-    workspace: crate::SessionId,
-
-    window: crate::WindowId,
-
-    seen: u64,
-    request: Option<ModalRequest>,
-}
-
-impl Clone for ChangesView {
-    fn clone(&self) -> Self {
-        Self {
-            list: self.list.clone(),
-            items: self.items.clone(),
-            workspace: self.workspace.clone(),
-            window: self.window,
-            seen: self.seen,
-
-            request: None,
-        }
-    }
-}
-
-impl ChangesView {
-    pub fn open(
-        store: &Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        workspace: crate::SessionId,
-    ) -> Self {
-        let mut panel = Self {
-            list: ListKeyboardController::searchable(
-                ForestList::new(store),
-                ForestSearcher::default(),
-                store,
-                ui,
-                crate::env::Fonts::of(store),
-            )
-            .with_folds(),
-            items: rpds::HashTrieMapSync::new_sync(),
-            workspace,
-            window,
-            seen: 0,
-            request: None,
-        };
-        panel.refresh(store, ui);
-        panel
-    }
-
-    pub fn row_count(&self) -> usize {
-        self.list.inner().list().len()
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.list.inner().forest.rows_trailed()
-    }
-
-    fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = Changes::generation(store);
-        let mut items = rpds::HashTrieMapSync::new_sync();
-        let chat = crate::env::Themes::of(store).ui().chat.clone();
-        let counts = (chat.added_color.0, chat.removed_color.0);
-        let nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .map(|folder| {
-                    folder_node(
-                        folder,
-                        Changes::folder(store, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    )
-                })
-                .collect();
-        self.items = items;
-        self.list.inner_mut().set(&nodes, store, ui);
-    }
-
-    pub fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
-        let Some(key) = self.list.inner().list().key_at(index).cloned() else {
-            return;
-        };
-        self.activate_key(&key, store, ui);
-    }
-
-    fn activate_key(&mut self, key: &ResourceLocation, store: &Store, ui: &UiCtx) {
-        match self.items.get(key).cloned() {
-            Some(RowItem::Branch) => {
-                // The workspace folder ROOT opens the diff canvas
-                // (docs/editor/diff-canvas.md §6); inner directories keep
-                // toggling. The chevron expands either way.
-                if crate::higent::session_folders(store, &self.workspace).contains(key) {
-                    self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                            source: crate::diff_canvas::CanvasSource::WorkingCopy {
-                                folder: key.clone(),
-                            },
-                            reveal: None,
-                        }),
-                    )));
-                    return;
-                }
-                self.list.inner_mut().toggle(key, store, ui)
-            }
-            Some(RowItem::File { new }) => {
-                self.list.inner_mut().list_mut().select_only(key.clone());
-
-                // A file row REVEALS itself in the folder's canvas —
-                // the canvas row keys are these same locations.
-                let folder = crate::higent::session_folders(store, &self.workspace)
-                    .into_iter()
-                    .find(|folder| {
-                        folder.authority() == new.authority()
-                            && new.path().starts_with(folder.path())
-                    });
-                let Some(folder) = folder else {
-                    return;
-                };
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::WorkingCopy { folder },
-                        reveal: Some(new),
-                    }),
-                )));
-            }
-            Some(RowItem::Note) | None => {}
-        }
-    }
-}
-
-impl View for ChangesView {
-    type Command = ChangesCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, ChangesCommand> {
-        use imba::focus::FocusData;
-        // The key table is the controller's; the surface keeps only
-        // its own dismissal.
-        let searching = self.list.searching();
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.list.focus_data(store, ui).map(ChangesCommand::Rows))
-    }
-
-    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
-        fx.scope(ChangesCommand::Rows, |fx| self.list.clear(store, ui, fx));
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match command {
-            ChangesCommand::Rows(command) => {
-                match &command {
-                    ListKeyCommand::Fold { expand, .. } => {
-                        return self.list.inner_mut().fold_cursor(*expand, store, ui);
-                    }
-                    ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = crate::tree_action(inner) {
-                            if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
-                                return self.perform(
-                                    store,
-                                    ui,
-                                    ChangesCommand::Refetch(folder),
-                                    fx,
-                                );
-                            }
-                        }
-                        if let Some(index) = crate::tree_toggle(inner) {
-                            return self.activate(index, store, ui);
-                        }
-                    }
-                    _ => {}
-                }
-                if let Some((index, trigger)) = Rows::activated(&command) {
-                    let searching = self.list.searching();
-                    self.activate(index, store, ui);
-                    match trigger {
-                        // The deliberate pick ends the search in the
-                        // same stroke.
-                        ActivateTrigger::Enter if searching => {
-                            return self.perform(
-                                store,
-                                ui,
-                                ChangesCommand::Rows(ListKeyCommand::Clear),
-                                fx,
-                            );
-                        }
-                        ActivateTrigger::Enter | ActivateTrigger::Click => {}
-                    }
-                }
-                fx.scope(ChangesCommand::Rows, |fx| {
-                    self.list.perform(store, ui, command, fx)
-                });
-            }
-
-            ChangesCommand::Refetch(folder) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(RefetchChanges {
-                        folder: Some(folder),
-                    }),
-                )));
-            }
-            ChangesCommand::Dismiss => {
-                self.request = Some(ModalRequest::Close);
-            }
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut overlay = container(arena, size);
-
-            // The commit composer lives in the diff canvas's first
-            // row and REFRESH rides each repository's root row — the
-            // dock is just the tree.
-            let band = PANEL_PAD;
-            let rows = imba::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(size.width, size.height - band)),
-            )
-            .map(ChangesCommand::Rows);
-            overlay.place(0.0, band, rows);
-
-            // The key table lives in the controller's own overlay;
-            // the surface keeps only its dismissal.
-            let searching = self.list.searching();
-            let keymap = leaf::<ChangesCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                    _ => EventResult::Ignored,
-                },
-            );
-            overlay.place(0.0, 0.0, keymap);
-            overlay
-        })
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct ChangesViewId(u64);
-
-impl ChangesViewId {
-    fn mint() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
-
-impl Changes {
-    fn mint_view(store: &mut Store, view: ChangesView) -> ChangesViewId {
-        let id = ChangesViewId::mint();
-        store.update::<Changes>(|changes| {
-            changes.views.insert_mut(id, view);
-        });
-        id
-    }
-
-    pub fn view_ref(store: &Store, id: ChangesViewId) -> Option<&ChangesView> {
-        store.get::<Changes>()?.views.get(&id)
-    }
-
-    fn take_view(store: &mut Store, id: ChangesViewId) -> Option<ChangesView> {
-        let view = Self::view_ref(store, id)?.clone();
-        store.update::<Changes>(|changes| {
-            changes.views.remove_mut(&id);
-        });
-        Some(view)
-    }
-
-    fn put_view(store: &mut Store, id: ChangesViewId, view: ChangesView) {
-        store.update::<Changes>(|changes| {
-            changes.views.insert_mut(id, view);
-        });
-    }
-
-    fn remove_view(store: &mut Store, id: ChangesViewId) {
-        store.update::<Changes>(|changes| {
-            changes.views.remove_mut(&id);
-        });
-    }
-
-    fn view_ids(store: &Store) -> Vec<ChangesViewId> {
-        store
-            .get::<Changes>()
-            .map(|changes| changes.views.keys().copied().collect())
-            .unwrap_or_default()
-    }
-}
-
-/// The dock's REFERENCE view over a store-held changes record — holds
-/// only the id (and the request it pulled out, `take_request` having
-/// no store). Its death removes the record: tree rows are pure
-/// derivation, nothing is lost on close.
-pub struct ChangesPane {
-    view: ChangesViewId,
-    request: Option<ModalRequest>,
-}
-
-impl ChangesPane {
-    pub fn view(&self) -> ChangesViewId {
-        self.view
-    }
-}
-
-impl Clone for ChangesPane {
-    fn clone(&self) -> Self {
-        Self {
-            view: self.view,
-            request: None,
-        }
-    }
-}
-
-impl View for ChangesPane {
-    type Command = ChangesCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, ChangesCommand> {
-        match Changes::view_ref(store, self.view) {
-            Some(view) => view.focus_data(store, ui),
-            None => imba::focus::FocusData::default(),
-        }
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
-        let Some(mut view) = Changes::take_view(store, self.view) else {
-            return;
-        };
-        view.perform(store, ui, command, fx);
-        // Requests are the PANE's ask (`take_request` has no store):
-        // pull what the record minted into the reference view.
-        if let Some(request) = view.request.take() {
-            self.request = Some(request);
-        }
-        Changes::put_view(store, self.view, view);
-    }
-
-    fn destroy(
-        &mut self,
-        store: &mut Store,
-        _fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
-        Changes::remove_view(store, self.view);
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
-            move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, ChangesCommand> =
-                    match Changes::view_ref(store, self.view) {
-                        Some(view) => imba::ThunkBox::new(
-                            arena,
-                            imba::Layout::layout(view.display(arena, store, ui), arena, constraints),
-                        ),
-                        None => imba::ThunkBox::new(
-                            arena,
-                            leaf(constraints.max.width, constraints.max.height),
-                        ),
-                    };
-                widget
-            },
-        )
-    }
-}
-
-impl ModalView for ChangesPane {
-    fn clone_modal(&self) -> Box<dyn ModalView> {
-        Box::new(self.clone())
-    }
-
-    fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
-/// The PUSH lane for the changes dock: at the batch tail, refresh any
-/// window's mounted `ChangesView` whose feed generation moved — the
-/// same batch the feed landed in, no paint probe. Scope-guarded: only
-/// a view of the GATHERED session compares against its generation.
-pub(crate) fn sync_changes_docks(store: &mut Store, ui: &UiCtx) {
-    let Some(scope) = crate::Gathered::scope(store).cloned() else {
-        return;
-    };
-    let generation = Changes::generation(store);
-    for id in Changes::view_ids(store) {
-        let stale = Changes::view_ref(store, id)
-            .is_some_and(|view| view.workspace == scope && view.seen != generation);
-        if !stale {
-            continue;
-        }
-        if let Some(mut view) = Changes::take_view(store, id) {
-            view.refresh(store, ui);
-            Changes::put_view(store, id, view);
-        }
-    }
-}
-
 pub struct ToggleChangesView;
 
 impl crate::DynamicCommand for ToggleChangesView {
@@ -2070,17 +1616,23 @@ impl crate::DynamicCommand for ToggleChangesView {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let view = Changes::mint_view(store, ChangesView::open(store, &_app.ui_ctx(), window, workspace));
+        let view = Changes::mint_view(
+            store,
+            crate::changes_view::ChangesView::open(
+                store,
+                &_app.ui_ctx(),
+                window,
+                workspace,
+                crate::changes_view::ViewSets::WorkingCopies,
+            ),
+        );
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(ChangesPane {
-                        view,
-                        request: None,
-                    }),
+                    Box::new(crate::changes_view::ChangesPane::new(view)),
                     owner,
                     fx,
                 )

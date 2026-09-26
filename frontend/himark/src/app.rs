@@ -954,8 +954,7 @@ impl Application {
             // The dock tree views ride the push road too: a changes /
             // history feed landing refreshes a mounted stale view in
             // the SAME batch — no paint probe.
-            crate::hichanges::sync_changes_docks(&mut store, &self.ui_ctx());
-            crate::hihistory::sync_history_docks(&mut store, &self.ui_ctx());
+            crate::changes_view::sync_changes_views(&mut store, &self.ui_ctx());
             // The canvases sync against the fresh document/diff/
             // changeset state — the SAME batch a feed landed in, a
             // direct lane over the sets that own them.

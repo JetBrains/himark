@@ -308,11 +308,15 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
     let commit_key = folder.child(ResourceType::new("history-commit"), "b");
     assert!(matches!(
         items.get(&commit_key),
-        Some(RowItem::Commit { id, .. }) if id == "b"
+        Some(RowItem::Open {
+            source: crate::diff_canvas::CanvasSource::Commit { id, .. },
+            reveal: None,
+            ..
+        }) if id == "b"
     ));
     let graph_key = folder.child(ResourceType::new("history-graph"), "graph");
     let more_key = graph_key.child(ResourceType::new("history-more"), "more");
-    assert!(matches!(items.get(&more_key), Some(RowItem::More { .. })));
+    assert!(matches!(items.get(&more_key), Some(RowItem::Grow { .. })));
 }
 
 #[test]
@@ -358,10 +362,14 @@ fn fetched_commit_files_expand_with_pinned_sides() {
     let file_key = commit_key
         .child(ResourceType::directory(), "src")
         .child(ResourceType::document(), "lib.rs");
-    let Some(RowItem::File {
-        folder: row_folder,
-        commit,
-        new,
+    let Some(RowItem::Open {
+        source:
+            crate::diff_canvas::CanvasSource::Commit {
+                folder: row_folder,
+                id: commit,
+            },
+        reveal: Some(new),
+        ..
     }) = items.get(&file_key)
     else {
         panic!("a file row under the commit");

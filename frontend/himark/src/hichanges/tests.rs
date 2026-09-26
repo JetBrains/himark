@@ -301,7 +301,11 @@ fn a_snapshot_adopts_into_digested_entries_and_refs() {
         changes.base_lookup("/tmp/repo/added.md").is_none(),
         "no before, no ref"
     );
-    assert_eq!(changes.generation, 1, "the landing bumped the generation");
+    assert_eq!(
+        changes.folder_set(&folder).expect("the set").generation(),
+        1,
+        "the landing bumped the set's generation"
+    );
 }
 
 #[test]
@@ -480,7 +484,9 @@ fn activation_pairs_carry_the_exact_locations() {
         )
     };
     match items.get(&key("mod.md")) {
-        Some(RowItem::File { new }) => {
+        Some(RowItem::Open {
+            reveal: Some(new), ..
+        }) => {
             assert_eq!(new, &key("mod.md"), "the new side IS the working copy");
         }
         other => panic!("expected a paired file row, got {:?}", other.is_some()),
