@@ -142,16 +142,21 @@ impl crate::higent::ResourceUriMap for FileUris {
 fn mirror() -> (Changes, ResourceLocation) {
     let mut changes = Changes::default();
     changes.uris = Some(Arc::new(FileUris));
-    changes.folders.insert_mut(
-        folder(),
-        FolderChanges {
+    let id = ChangeSetId::mint();
+    changes.sets.insert_mut(
+        id,
+        ChangeSet {
+            source: ChangeSetSource::WorkingCopy { folder: folder() },
             seat: Arc::new(InertSeat),
             session: "hihost-fs:/local".to_owned(),
             channel: Some("hihost-changes://tmp/repo".to_owned()),
             status: ChangesStatus::Computing,
             files: rpds::VectorSync::new_sync(),
+            generation: 0,
+            bases: rpds::HashTrieMapSync::new_sync(),
         },
     );
+    changes.by_folder.insert_mut(folder(), id);
     (changes, folder())
 }
 
@@ -174,9 +179,10 @@ fn the_ref_codec_round_trips() {
 #[test]
 fn the_catalog_names_the_folders_channel() {
     let (mut changes, folder) = mirror();
-    let mut pending = changes.folders.get(&folder).unwrap().clone();
+    let mut pending = changes.folder_set(&folder).unwrap().clone();
     pending.channel = None;
-    changes.folders.insert_mut(folder.clone(), pending);
+    let id = *changes.by_folder.get(&folder).unwrap();
+    changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
         uri: "hihost-fs:/local".to_owned(),
         seat: Arc::new(InertSeat),
@@ -201,7 +207,7 @@ fn the_catalog_names_the_folders_channel() {
     assert_eq!(fresh[0].0, folder);
     assert_eq!(fresh[0].2, "hihost-changes://tmp/repo");
     assert_eq!(
-        changes.folders.get(&folder).unwrap().channel.as_deref(),
+        changes.folder_set(&folder).unwrap().channel.as_deref(),
         Some("hihost-changes://tmp/repo")
     );
 
@@ -219,9 +225,10 @@ fn the_catalog_names_the_folders_channel() {
 #[test]
 fn a_lone_folder_takes_a_lone_foreign_entry() {
     let (mut changes, folder) = mirror();
-    let mut pending = changes.folders.get(&folder).unwrap().clone();
+    let mut pending = changes.folder_set(&folder).unwrap().clone();
     pending.channel = None;
-    changes.folders.insert_mut(folder.clone(), pending);
+    let id = *changes.by_folder.get(&folder).unwrap();
+    changes.sets.insert_mut(id, pending);
     changes.session = Some(SessionFeed {
         uri: "hihost-fs:/local".to_owned(),
         seat: Arc::new(InertSeat),
@@ -250,7 +257,7 @@ fn a_snapshot_adopts_into_digested_entries_and_refs() {
             wire_file("gone.md", Some("hihost-git:/two"), true, (0, 5)),
         ]),
     );
-    let entry = changes.folders.get(&folder).expect("the mirror entry");
+    let entry = changes.folder_set(&folder).expect("the mirror entry");
     assert_eq!(entry.status, ChangesStatus::Ready);
     assert_eq!(entry.files.len(), 3);
     let modified = entry
@@ -302,7 +309,7 @@ fn the_fold_mirrors_the_official_reducers() {
             },
         ))],
     );
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     assert_eq!(entry.files.len(), 2);
     assert_eq!(entry.status, ChangesStatus::Ready);
     assert!(
@@ -317,7 +324,7 @@ fn the_fold_mirrors_the_official_reducers() {
             file: wire_file("b.md", Some("r3"), false, (9, 9)),
         })],
     );
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     assert_eq!(entry.files.len(), 2, "an upsert replaces, never duplicates");
     let b = entry
         .files
@@ -333,7 +340,7 @@ fn the_fold_mirrors_the_official_reducers() {
             },
         )],
     );
-    assert_eq!(changes.folders.get(&folder).unwrap().files.len(), 1);
+    assert_eq!(changes.folder_set(&folder).unwrap().files.len(), 1);
 
     changes.fold(
         &folder,
@@ -345,14 +352,14 @@ fn the_fold_mirrors_the_official_reducers() {
         )],
     );
     assert_eq!(
-        changes.folders.get(&folder).unwrap().status,
+        changes.folder_set(&folder).unwrap().status,
         ChangesStatus::Computing
     );
     changes.fold(
         &folder,
         &[StateAction::ChangesetCleared(ChangesetClearedAction {})],
     );
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     assert!(entry.files.is_empty());
     assert!(
         changes.base_lookup("/tmp/repo/b.md").is_none(),
@@ -364,7 +371,7 @@ fn the_fold_mirrors_the_official_reducers() {
 fn a_failed_subscribe_reports_on_the_row() {
     let (mut changes, folder) = mirror();
     changes.adopt_error(&folder, "not a repository".to_owned());
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     assert_eq!(
         entry.status,
         ChangesStatus::Error("not a repository".to_owned())
@@ -409,7 +416,7 @@ fn the_tree_nests_dirs_first_and_compacts_chains() {
             wire_file("docs/guide.md", Some("r2"), false, (0, 3)),
         ]),
     );
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     let mut items = rpds::HashTrieMapSync::new_sync();
     let node = folder_node(
         &folder,
@@ -441,7 +448,7 @@ fn activation_pairs_carry_the_exact_locations() {
             wire_file("new.md", None, false, (2, 0)),
         ]),
     );
-    let entry = changes.folders.get(&folder).unwrap();
+    let entry = changes.folder_set(&folder).unwrap();
     let mut items = rpds::HashTrieMapSync::new_sync();
     let _ = folder_node(
         &folder,

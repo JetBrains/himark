@@ -204,8 +204,40 @@ pub enum ChangesStatus {
     Error(String),
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ChangeSetId(u64);
+
+impl ChangeSetId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// What a change set IS: one folder's working copy, or one commit —
+/// `CanvasSource`'s shape, made the model's first-class identity.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum ChangeSetSource {
+    WorkingCopy {
+        folder: ResourceLocation,
+    },
+    /// Minted eagerly (and light) when a history window lands; the
+    /// file entries land lazily on first ask. (Stage B of the
+    /// migration constructs these.)
+    #[allow(dead_code)]
+    Commit {
+        folder: ResourceLocation,
+        revision: String,
+    },
+}
+
+/// ONE set of changes (docs/model-view.md): the model payload — files,
+/// status, the feed channel — plus everything the set OWNS: its own
+/// generation, its base refs, and (per the hierarchy) its views.
 #[derive(Clone)]
-pub struct FolderChanges {
+pub struct ChangeSet {
+    pub(crate) source: ChangeSetSource,
+
     seat: Arc<dyn AhpServer>,
 
     session: String,
@@ -213,7 +245,42 @@ pub struct FolderChanges {
     channel: Option<String>,
     pub status: ChangesStatus,
     pub files: rpds::VectorSync<ChangeEntry>,
+
+    /// The SET's generation — bumped by every mutation of this set,
+    /// compared by this set's views (tree sections, canvases) and by
+    /// its entries' `updated` stamps. Never session-wide again.
+    generation: u64,
+
+    /// Working file (absolute path) → its BASE ref, denormalized from
+    /// THIS set's entries (replaced whole per landing). Read at effect
+    /// launch on the UI thread. (This replaced a shared
+    /// Arc<Mutex<HashMap>>; never bring that back.)
+    bases: rpds::HashTrieMapSync<String, ResourceLocation>,
 }
+
+impl ChangeSet {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Re-derive THIS set's base refs from its entries, whole — the
+    /// set owns its slice, no cross-set scrubbing.
+    fn note_bases(&mut self) {
+        let mut bases = rpds::HashTrieMapSync::new_sync();
+        for change in self.files.iter() {
+            let Some(before) = change.before.clone() else {
+                continue;
+            };
+            bases.insert_mut(format!("/{}", change.working.path().join("/")), before);
+        }
+        self.bases = bases;
+    }
+}
+
+/// Transitional alias — the tests and older call sites named the
+/// per-folder record `FolderChanges`; it IS the working-copy
+/// `ChangeSet` now.
+pub type FolderChanges = ChangeSet;
 
 impl ChangesStatus {
     pub(crate) fn of_wire(status: &ChangesetStatus, error: Option<&str>) -> ChangesStatus {
@@ -263,30 +330,37 @@ pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> b
     entry.description.as_deref() == Some(abs.as_str()) || entry.uri.ends_with(&abs)
 }
 
+/// The session's change sets, keyed by minted id
+/// (docs/model-view.md): one record per working copy, one per commit.
+/// Session-family state — the AHP changeset/history channels are
+/// session-level (docs/ahp/vcs.md), so the collection gathers with
+/// its session.
 #[derive(Clone, Default)]
-pub struct Changes {
-    folders: rpds::HashTrieMapSync<ResourceLocation, FolderChanges>,
+pub struct ChangeSets {
+    sets: rpds::HashTrieMapSync<ChangeSetId, ChangeSet>,
+
+    /// Working-copy index: folder → its set. (Commit sets index by
+    /// source in stage B.)
+    by_folder: rpds::HashTrieMapSync<ResourceLocation, ChangeSetId>,
 
     session: Option<SessionFeed>,
 
     uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
+    /// The COLLECTION tick: membership moves and any set's mutation
+    /// bump it — the union tree view's staleness cue. Per-set
+    /// staleness reads the set's own generation.
     generation: u64,
 
-    /// Working file (absolute path) → its BASE ref, denormalized from
-    /// the entries for the base-resolution road (`base_ref`).
-    /// IMMUTABLE store state like everything else — maintained by the
-    /// same mutations that adopt entries, read at effect LAUNCH on the
-    /// UI thread. (This replaced a shared Arc<Mutex<HashMap>> smuggled
-    /// to a worker-side handler; never bring that back.)
-    bases: rpds::HashTrieMapSync<String, ResourceLocation>,
-
-    /// The change set OWNS its views (docs/model-view.md): the tree
-    /// view records live on the model, keyed by minted id — the
-    /// `Document.editors` shape. The dock holds a `ChangesPane`
-    /// reference; view mutations never touch `generation`.
+    /// The union tree views over the session's working-copy sets.
+    /// TRANSITIONAL home (stage A2 splits the tree into per-set
+    /// sections owned by their sets, per the hierarchy).
     views: rpds::HashTrieMapSync<ChangesViewId, ChangesView>,
 }
+
+/// Transitional alias — the store slot and the wide call-site surface
+/// named the collection `Changes`.
+pub type Changes = ChangeSets;
 
 impl Changes {
     fn feed_for(&self, session: &str) -> Option<&SessionFeed> {
@@ -294,7 +368,58 @@ impl Changes {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.folders.is_empty() && self.session.is_none()
+        self.sets.is_empty() && self.session.is_none()
+    }
+
+    fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
+        self.sets.get(self.by_folder.get(folder)?)
+    }
+
+    /// Every working-copy set with its folder, iteration order
+    /// unspecified.
+    fn working_copies(&self) -> impl Iterator<Item = (&ResourceLocation, &ChangeSet)> {
+        self.by_folder
+            .iter()
+            .filter_map(|(folder, id)| Some((folder, self.sets.get(id)?)))
+    }
+
+    /// Mutate one folder's set through clone-modify-insert, bumping
+    /// BOTH generations: the set's own (its views' cue) and the
+    /// collection tick (the union tree's cue).
+    fn update_folder_set(
+        &mut self,
+        folder: &ResourceLocation,
+        mutate: impl FnOnce(&mut ChangeSet),
+    ) -> bool {
+        let Some(id) = self.by_folder.get(folder).copied() else {
+            return false;
+        };
+        let Some(mut set) = self.sets.get(&id).cloned() else {
+            return false;
+        };
+        mutate(&mut set);
+        set.generation += 1;
+        self.sets.insert_mut(id, set);
+        self.generation += 1;
+        true
+    }
+
+    pub fn set_ref(store: &Store, id: ChangeSetId) -> Option<&ChangeSet> {
+        store.get::<ChangeSets>()?.sets.get(&id)
+    }
+
+    pub fn id_for_folder(store: &Store, folder: &ResourceLocation) -> Option<ChangeSetId> {
+        store.get::<ChangeSets>()?.by_folder.get(folder).copied()
+    }
+
+    /// The per-SET staleness cue for a working copy — 0 while absent
+    /// (the canvas keeps probing until the set exists).
+    pub fn folder_generation(store: &Store, folder: &ResourceLocation) -> u64 {
+        store
+            .get::<ChangeSets>()
+            .and_then(|changes| changes.folder_set(folder))
+            .map(|set| set.generation)
+            .unwrap_or(0)
     }
 
     pub fn generation(store: &Store) -> u64 {
@@ -304,8 +429,8 @@ impl Changes {
             .unwrap_or(0)
     }
 
-    pub fn folder(store: &Store, folder: &ResourceLocation) -> Option<FolderChanges> {
-        store.get::<Changes>()?.folders.get(folder).cloned()
+    pub fn folder(store: &Store, folder: &ResourceLocation) -> Option<ChangeSet> {
+        store.get::<Changes>()?.folder_set(folder).cloned()
     }
 
     pub(crate) fn uris(store: &Store) -> Option<Arc<dyn crate::higent::ResourceUriMap>> {
@@ -331,7 +456,7 @@ impl Changes {
     ) {
         let known = store
             .get::<Changes>()
-            .is_some_and(|changes| changes.folders.contains_key(&folder));
+            .is_some_and(|changes| changes.by_folder.contains_key(&folder));
         if known {
             return;
         }
@@ -349,16 +474,23 @@ impl Changes {
             session: session.clone(),
         };
         store.update::<Changes>(|changes| {
-            changes.folders.insert_mut(
-                folder.clone(),
-                FolderChanges {
+            let id = ChangeSetId::mint();
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: ChangeSetSource::WorkingCopy {
+                        folder: folder.clone(),
+                    },
                     seat: seat.clone(),
                     session: session.clone(),
                     channel: None,
                     status: ChangesStatus::Computing,
                     files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
                 },
             );
+            changes.by_folder.insert_mut(folder.clone(), id);
             changes.generation += 1;
         });
         crate::hihistory::History::ensure_folder(store, &folder, &seat, &session);
@@ -408,7 +540,7 @@ impl Changes {
     pub fn script_summary(store: &Store) -> Option<String> {
         let changes = store.get::<Changes>()?;
         let mut lines = Vec::new();
-        for (folder, entry) in changes.folders.iter() {
+        for (folder, entry) in changes.working_copies() {
             for file in entry.files.iter() {
                 let status = match file.before.is_some() {
                     true => "M",
@@ -438,8 +570,7 @@ impl Changes {
             return;
         };
         let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> = changes
-            .folders
-            .iter()
+            .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
                 entry
@@ -453,12 +584,10 @@ impl Changes {
         }
         store.update::<Changes>(|changes| {
             for (folder, _, _) in &riding {
-                if let Some(mut entry) = changes.folders.get(folder).cloned() {
-                    entry.status = ChangesStatus::Computing;
-                    changes.folders.insert_mut(folder.clone(), entry);
-                }
+                changes.update_folder_set(folder, |set| {
+                    set.status = ChangesStatus::Computing;
+                });
             }
-            changes.generation += 1;
         });
         for (folder, seat, channel) in riding {
             let landing = folder.clone();
@@ -495,60 +624,60 @@ impl Changes {
             .collect();
         let mut fresh = Vec::new();
         let lone_folder = self
-            .folders
-            .iter()
+            .working_copies()
             .filter(|(_, entry)| entry.session == session)
             .count()
             == 1;
-        for (folder, entry) in self.folders.clone().iter() {
+        let riding: Vec<(ResourceLocation, ChangeSet)> = self
+            .working_copies()
+            .map(|(folder, entry)| (folder.clone(), entry.clone()))
+            .collect();
+        for (folder, entry) in riding {
             if entry.session != session || entry.channel.is_some() {
                 continue;
             }
             let matched = changesets
                 .iter()
-                .find(|candidate| entry_serves(folder, candidate))
+                .find(|candidate| entry_serves(&folder, candidate))
                 .or_else(|| (lone_folder && changesets.len() == 1).then(|| &changesets[0]));
             let Some(matched) = matched else {
                 continue;
             };
-            let mut entry = entry.clone();
-            entry.channel = Some(matched.uri.clone());
             let seat = entry.seat.clone();
             let channel = matched.uri.clone();
-            self.folders.insert_mut(folder.clone(), entry);
-            fresh.push((folder.clone(), seat, channel));
+            let claimed = matched.uri.clone();
+            self.update_folder_set(&folder, |set| {
+                set.channel = Some(claimed);
+            });
+            fresh.push((folder, seat, channel));
         }
         self.generation += 1;
         fresh
     }
 
     fn adopt(&mut self, folder: &ResourceLocation, state: &ChangesetState) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.status = ChangesStatus::of_wire(
-            &state.status,
-            state.error.as_ref().map(|error| error.message.as_str()),
-        );
         let Some(uris) = self.uris.clone() else {
             return;
         };
-        let mut fresh: Vec<ChangeEntry> = state
-            .files
-            .iter()
-            .filter_map(|file| entry_of(&*uris, folder, file))
-            .collect();
-        stamp_entries(entry.files.iter(), fresh.iter_mut(), self.generation + 1);
-        entry.files = fresh.into_iter().collect();
-        self.note_bases(folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
+        self.update_folder_set(folder, |set| {
+            set.status = ChangesStatus::of_wire(
+                &state.status,
+                state.error.as_ref().map(|error| error.message.as_str()),
+            );
+            let mut fresh: Vec<ChangeEntry> = state
+                .files
+                .iter()
+                .filter_map(|file| entry_of(&*uris, folder, file))
+                .collect();
+            stamp_entries(set.files.iter(), fresh.iter_mut(), set.generation + 1);
+            set.files = fresh.into_iter().collect();
+            set.note_bases();
+        });
     }
 
     fn session_failed(&mut self, session: &str, error: &str) {
         let riding: Vec<ResourceLocation> = self
-            .folders
-            .iter()
+            .working_copies()
             .filter(|(_, entry)| entry.session == session)
             .map(|(folder, _)| folder.clone())
             .collect();
@@ -558,25 +687,20 @@ impl Changes {
     }
 
     fn adopt_error(&mut self, folder: &ResourceLocation, error: String) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.status = ChangesStatus::Error(error);
-        entry.files = rpds::VectorSync::new_sync();
-        self.note_bases(folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
+        self.update_folder_set(folder, |set| {
+            set.status = ChangesStatus::Error(error);
+            set.files = rpds::VectorSync::new_sync();
+            set.note_bases();
+        });
     }
 
     fn fold(&mut self, folder: &ResourceLocation, actions: &[StateAction]) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
         let Some(uris) = self.uris.clone() else {
             return;
         };
-
-        let stamp = self.generation + 1;
+        self.update_folder_set(folder, |set| {
+        let entry = set;
+        let stamp = entry.generation + 1;
         let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
         let mut files: Vec<Option<ChangeEntry>> = entry.files.iter().cloned().map(Some).collect();
         let mut by_id: std::collections::HashMap<String, usize> = files
@@ -632,45 +756,26 @@ impl Changes {
             }
         }
         entry.files = files.into_iter().flatten().collect();
-        self.note_bases(folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
-    }
-
-    /// Re-derive the folder's slice of the BASES map from its fresh
-    /// entries: drop every key under the folder, insert the fresh refs.
-    fn note_bases(&mut self, folder: &ResourceLocation, entry: &FolderChanges) {
-        let prefix = format!("/{}", folder.path().join("/"));
-        let stale: Vec<String> = self
-            .bases
-            .keys()
-            .filter(|abs| {
-                abs.strip_prefix(&prefix)
-                    .is_some_and(|rest| rest.starts_with('/'))
-            })
-            .cloned()
-            .collect();
-        for abs in stale {
-            self.bases.remove_mut(&abs);
-        }
-        for change in entry.files.iter() {
-            let Some(before) = change.before.clone() else {
-                continue;
-            };
-            self.bases
-                .insert_mut(format!("/{}", change.working.path().join("/")), before);
-        }
+        entry.note_bases();
+        });
     }
 
     #[cfg(test)]
     pub(crate) fn base_lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
-        self.bases.get(abs_path).cloned()
+        self.sets
+            .values()
+            .find_map(|set| set.bases.get(abs_path).cloned())
     }
 
     /// The base ref for a working file, by absolute path — read at
-    /// effect launch (UI thread, store in hand).
+    /// effect launch (UI thread, store in hand). Each working-copy
+    /// set owns its slice; the sets are few.
     pub fn base_ref(store: &Store, abs_path: &str) -> Option<ResourceLocation> {
-        store.get::<Changes>()?.bases.get(abs_path).cloned()
+        store
+            .get::<Changes>()?
+            .sets
+            .values()
+            .find_map(|set| set.bases.get(abs_path).cloned())
     }
 }
 

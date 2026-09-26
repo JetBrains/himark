@@ -127,7 +127,10 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
 /// derives rows only when this moves (the ReconcileShell contract).
 pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
     match source {
-        CanvasSource::WorkingCopy { .. } => Changes::generation(store),
+        // Per-SET staleness (docs/model-view.md): a working-copy
+        // canvas re-derives when ITS set moved, not when any folder
+        // in the session did.
+        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, folder),
         CanvasSource::Commit { .. } => crate::hihistory::History::generation(store),
     }
 }
@@ -138,7 +141,7 @@ pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
 pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing) {
     match source {
         CanvasSource::WorkingCopy { folder } => {
-            let generation = Changes::generation(store);
+            let generation = Changes::folder_generation(store, folder);
             let listing = match Changes::folder(store, folder) {
                 None => CanvasListing::Pending("no changes source".to_owned()),
                 Some(changes) => listing_of(&changes.status, changes.files.iter(), |entry| {

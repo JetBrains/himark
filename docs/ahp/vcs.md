@@ -42,8 +42,9 @@ committing dispatches the history extension's commit; the emptied
 changes list and the new head arrive as ordinary channel updates —
 nothing predicts, the views render what the host re-answers.
 
-The panel mirrors before-refs into the shared `ChangeRefs` table as
-listings land — the join the stripes machinery reads (below).
+Each working-copy `ChangeSet` re-derives its own base-ref slice as
+listings land (`ChangeSet.bases`, immutable store state) — the join
+the stripes machinery reads at ask time (below).
 
 ## The History view
 
