@@ -53,6 +53,14 @@ impl UnifiedDiffView {
         self.split.state.dressed()
     }
 
+    /// Dressed now, or ever before. The canvas row's placeholder
+    /// stands only until the FIRST dressing — a later edit undresses
+    /// the face for a beat, and the once-shown diff must keep
+    /// showing through it (stub -> diff happens once).
+    pub fn ever_dressed(&self) -> bool {
+        self.split.state.ever_dressed()
+    }
+
     pub fn new(split: SplitDiffView) -> Self {
         let layout = split.state.unified_layout();
         let inline_editor = split.state.inline_editor();

@@ -61,6 +61,15 @@ pub enum CanvasCommand {
         key: ResourceLocation,
         command: RowCommand,
     },
+
+    /// A key-addressed command for a row's PARKED successor (the
+    /// off-row rebuild a succession is dressing) — after the
+    /// promotion the same pane rides the row, so a late landing
+    /// falls through to `ToRow`.
+    ToPending {
+        key: ResourceLocation,
+        command: RowCommand,
+    },
 }
 
 /// The canvas STATE, store-held in `Canvases` (the `OpenDocuments`
@@ -98,6 +107,20 @@ pub struct Canvas {
     /// exactly those rows, O(touched), no scan.
     pairs: rpds::HashTrieMapSync<crate::DiffViewId, ResourceLocation>,
 
+    /// Relaunched builds for rows whose diff the user has already
+    /// SEEN (`ever_dressed`): the fresh pane dresses off-row while
+    /// the old view keeps showing, and the batch-tail sync promotes
+    /// it once whole — stub → diff happens exactly once per row,
+    /// never again on a relaunch.
+    successions: rpds::HashTrieMapSync<ResourceLocation, Succession>,
+}
+
+/// One parked rebuild: the successor pane and the width it was
+/// built at (it lands into the row's standing geometry).
+#[derive(Clone)]
+struct Succession {
+    pane: crate::PairPane,
+    built_width: f32,
 }
 
 /// A row's lifecycle, panel-tracked — the test oracle.
@@ -128,6 +151,7 @@ impl Canvas {
             note: None,
             seen: None,
             populated: false,
+            successions: rpds::HashTrieMapSync::new_sync(),
             request: None,
             phases: rpds::HashTrieMapSync::new_sync(),
             reveal: None,
@@ -434,6 +458,105 @@ impl Canvas {
     /// ran just before us — the list's paint SetHeight only corrects
     /// the VISIBLE part on a resize, never a model change like a fold
     /// landing); an armed reveal lands.
+    /// Perform a command against a PARKED successor. Promoted (or
+    /// torn down) meanwhile: a Diff command falls through to the row
+    /// — after a promotion the same pane rides it.
+    fn to_pending(
+        &mut self,
+        key: ResourceLocation,
+        command: RowCommand,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let RowCommand::Diff(command) = command else {
+            return;
+        };
+        match self.successions.get(&key).cloned() {
+            Some(mut next) => {
+                let route = key.clone();
+                fx.scope(
+                    move |command| CanvasCommand::ToPending {
+                        key: route.clone(),
+                        command: RowCommand::Diff(command),
+                    },
+                    |fx| next.pane.perform(store, ui, command, fx),
+                );
+                self.successions.insert_mut(key, next);
+            }
+            None => self.to_row(key, RowCommand::Diff(command), store, ui, fx),
+        }
+    }
+
+    /// Swap a DRESSED successor into its row — the one visible
+    /// transition of a relaunch, diff-for-diff, no skeleton between.
+    fn promote(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        key: &ResourceLocation,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
+        let Some(next) = self.successions.get(key).cloned() else {
+            return;
+        };
+        self.successions.remove_mut(key);
+        let Some(file) = self.files.get(key).cloned() else {
+            crate::teardown_diff_view(store, next.pane.id());
+            return;
+        };
+        // The old pane dies only now — the swap is dressed-for-dressed.
+        self.teardown_row(store, key);
+        self.pairs.insert_mut(next.pane.id(), key.clone());
+        let diff = CanvasRow::Diff(DiffRow {
+            file: file.clone(),
+            body: RowBody::Built { pane: next.pane },
+            rewrap_ask: None,
+            built_width: Some(next.built_width),
+        });
+        let theme = env::Themes::of(store);
+        let Some(header_range) = self.rows.content().row_range(&CanvasKey::File(key.clone()))
+        else {
+            return;
+        };
+        let start = header_range.start;
+        let expanded = self
+            .rows
+            .content()
+            .row_range(&CanvasKey::Diff(key.clone()))
+            .is_some();
+        let header = CanvasRow::Header(HeaderRow {
+            file,
+            collapsed: !expanded,
+            built: true,
+        });
+        let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
+        slice.push_keyed_sized(CanvasKey::File(key.clone()), header, header_band(&theme));
+        if expanded {
+            let height = self
+                .rows
+                .content()
+                .row_range(&CanvasKey::Diff(key.clone()))
+                .and_then(|range| self.rows.content().height_at(range.start))
+                .unwrap_or(0.0);
+            slice.push_keyed_sized(CanvasKey::Diff(key.clone()), diff, height);
+            slice.cover(CanvasKey::File(key.clone()), 0..2);
+            self.rows
+                .content_mut()
+                .splice_slice(start..start + 2, slice);
+            // The successor is dressed: settle to its honest height.
+            self.resize_key(key, store, ui, fx);
+        } else {
+            let height = self.stash.get(key).map(|(_, held)| *held).unwrap_or(0.0);
+            slice.cover(CanvasKey::File(key.clone()), 0..1);
+            self.stash.insert_mut(key.clone(), (diff, height));
+            self.rows
+                .content_mut()
+                .splice_slice(start..start + 1, slice);
+        }
+        fx.settle();
+    }
+
     fn sync_in_place(
         &mut self,
         store: &mut Store,
@@ -443,6 +566,21 @@ impl Canvas {
     ) {
         if self.seen != Some(canvas_generation(store, &self.source)) {
             self.refresh(store, ui, fx);
+        }
+        // A parked successor that answers DRESSED promotes now —
+        // checked directly (not off the dressed list) so a
+        // succession can never stall on a missed signal.
+        let ready: Vec<ResourceLocation> = self
+            .successions
+            .iter()
+            .filter(|(_, next)| {
+                crate::gathered_view(store, next.pane.id())
+                    .is_some_and(|view| view.dressed())
+            })
+            .map(|(key, _)| key.clone())
+            .collect();
+        for key in ready {
+            self.promote(store, ui, &key, fx);
         }
         // The dressing sweep names the views it re-dressed this batch;
         // resize exactly OUR rows among them — O(touched), no scan.
@@ -765,19 +903,31 @@ impl Canvas {
     /// (docs/editor/diff-canvas.md §7). Covers the live row and a
     /// collapsed row parked in the stash.
     fn teardown_row(&mut self, store: &mut Store, key: &ResourceLocation) {
-        let pane = self
+        if let Some(next) = self.successions.get(key).cloned() {
+            self.successions.remove_mut(key);
+            crate::teardown_diff_view(store, next.pane.id());
+        }
+        if let Some(pane) = self.row_pane(key) {
+            self.pairs.remove_mut(&pane.id());
+            crate::teardown_diff_view(store, pane.id());
+        }
+    }
+
+    /// The row's standing BUILT pane — live in the list or parked in
+    /// the collapse stash.
+    fn row_pane(&self, key: &ResourceLocation) -> Option<crate::PairPane> {
+        let row = self
             .rows
             .content()
             .row_range(&CanvasKey::Diff(key.clone()))
             .and_then(|range| self.rows.content().view_at(range.start))
-            .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()));
-        if let Some(CanvasRow::Diff(DiffRow {
-            body: RowBody::Built { pane },
-            ..
-        })) = pane
-        {
-            self.pairs.remove_mut(&pane.id());
-            crate::teardown_diff_view(store, pane.id());
+            .or_else(|| self.stash.get(key).map(|(row, _)| row.clone()))?;
+        match row {
+            CanvasRow::Diff(DiffRow {
+                body: RowBody::Built { pane },
+                ..
+            }) => Some(pane),
+            _ => None,
         }
     }
 
@@ -955,6 +1105,36 @@ impl Canvas {
         let Some(file) = self.files.get(&key).cloned() else {
             return;
         };
+        // A row whose diff the user has SEEN never falls back to the
+        // skeleton: the rebuild mounts OFF-ROW, dresses there, and
+        // the batch-tail sync promotes it whole (stub → diff is one
+        // transition, once). A failed prep falls through — an honest
+        // failure face beats a silently stale diff.
+        if !prep.failed {
+            let shown = self.row_pane(&key).is_some_and(|standing| {
+                crate::gathered_view(store, standing.id())
+                    .is_some_and(|view| view.ever_dressed())
+            });
+            if shown {
+                let built_width = prep.width;
+                let route = key.clone();
+                let parked = fx.scope(
+                    move |command: RowCommand| CanvasCommand::ToPending {
+                        key: route.clone(),
+                        command,
+                    },
+                    |fx| mounted(store, ui, prep, fx),
+                );
+                if let Some((pane, _)) = parked {
+                    if let Some(previous) = self.successions.get(&key).cloned() {
+                        crate::teardown_diff_view(store, previous.pane.id());
+                    }
+                    self.successions
+                        .insert_mut(key, Succession { pane, built_width });
+                }
+                return;
+            }
+        }
         // A relaunch (a stale row rebuilding) replaces a Built row:
         // untrack the standing diff before the fresh mount, or it
         // leaks a tracked pair + editors (docs/editor/diff-canvas.md §7).
@@ -1319,6 +1499,9 @@ impl Canvas {
         match command {
             CanvasCommand::Landed { key, prep } => self.land(store, ui, key, prep, fx),
             CanvasCommand::ToRow { key, command } => self.to_row(key, command, store, ui, fx),
+            CanvasCommand::ToPending { key, command } => {
+                self.to_pending(key, command, store, ui, fx)
+            }
             CanvasCommand::BannerEditor(command) => {
                 if let Some(range) = self.rows.content().row_range(&CanvasKey::Banner) {
                     let rows = ScrollCommand::Content(ListCommand::Child(
@@ -2542,13 +2725,18 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     // face and its reserved band until the view answers
                     // DRESSED — loader → diff is one swap, not a
                     // striptease of markup, folds and heights arriving
-                    // separately. The list clips the row, and the
-                    // container reports the reserved size, so the
-                    // taller undressed body neither bleeds nor fights
-                    // the list's visible-resize measure.
-                    let dressed = crate::gathered_view(store, pane.id())
-                        .is_none_or(|view| view.dressed());
-                    if !dressed {
+                    // separately. ONE swap only: an edit undresses the
+                    // face for a beat while its marks re-land, and a
+                    // row that has shown its diff keeps showing it
+                    // through the re-dress (`ever_dressed`) — no blink
+                    // back to the skeleton under the user's caret.
+                    // The list clips the row, and the container
+                    // reports the reserved size, so the taller
+                    // undressed body neither bleeds nor fights the
+                    // list's visible-resize measure.
+                    let presentable = crate::gathered_view(store, pane.id())
+                        .is_none_or(|view| view.dressed() || view.ever_dressed());
+                    if !presentable {
                         let body_height =
                             (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
                         let mut face = imba::container::container(

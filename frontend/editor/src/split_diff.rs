@@ -72,6 +72,12 @@ pub struct DiffViewState {
 
     align_pending: Option<Range<u32>>,
 
+    /// Latched the first time the face is fully dressed. An edit
+    /// makes the face momentarily UNDRESSED again (marks re-land),
+    /// but a host that staged a placeholder must not bring it back —
+    /// stub -> diff happens once; re-dressings heal on screen.
+    ever_dressed: bool,
+
     #[cfg(any(test, feature = "test-support"))]
     pub ui_synced_boundaries: u64,
 
@@ -115,6 +121,7 @@ impl DiffViewState {
             align_pending: Some(0..left.text().byte_count() as u32),
             unified_layout: crate::unified_diff::DiffLayout::Split,
             inline_editor: None,
+            ever_dressed: false,
             inline_generation: entry.generation(),
             #[cfg(any(test, feature = "test-support"))]
             ui_synced_boundaries: 0,
@@ -194,6 +201,15 @@ impl DiffViewState {
     /// generation (called after a build or a rebuild).
     pub(crate) fn note_inline_built(&mut self) {
         self.inline_generation = self.seen_generation;
+        if self.dressed() {
+            self.ever_dressed = true;
+        }
+    }
+
+    /// Presentable now or at least once before — the placeholder
+    /// gate for hosts: it may stand only until this flips.
+    pub(crate) fn ever_dressed(&self) -> bool {
+        self.ever_dressed
     }
 
     pub(crate) fn right_marks(&self) -> crate::markup::MarkupId {
@@ -1072,6 +1088,9 @@ impl View for SplitDiffView {
                             });
                             self.state.marks_window = Some(marks.window);
                             self.state.marks_dirty = false;
+                            if self.state.dressed() {
+                                self.state.ever_dressed = true;
+                            }
                         }
 
                         let left_editor = self.left.editor;
