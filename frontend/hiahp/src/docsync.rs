@@ -233,7 +233,11 @@ impl StoreHandle {
         if landed.await.is_err() {
             return false;
         }
-        match self.server.store_document(himark::higent::ChannelUri::new(self.channel), uri).await {
+        match self
+            .server
+            .store_document(himark::higent::ChannelUri::new(self.channel), uri)
+            .await
+        {
             Ok(()) => true,
             Err(error) => {
                 tracing::warn!(%error, "docsync: the host could not store the document");
@@ -441,11 +445,16 @@ async fn life(
     // unsubscribes, awaited — the one subscription dies with the life
     // that made it. A leaked subscription re-subscribes later and
     // every broadcast arrives twice: the character-doubling bug.
-    let snapshot = match server.subscribe_document(himark::higent::ChannelUri::new(opened.document.clone())).await {
+    let snapshot = match server
+        .subscribe_document(himark::higent::ChannelUri::new(opened.document.clone()))
+        .await
+    {
         Ok(snapshot) => snapshot,
         Err(error) => {
             tracing::warn!(%error, "docsync: could not subscribe the channel");
-            server.unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone())).await;
+            server
+                .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+                .await;
             channels.post(GiveUp {
                 channels: Arc::clone(channels),
                 location: location.clone(),
@@ -454,7 +463,9 @@ async fn life(
         }
     };
     if stopped.try_recv().is_ok() {
-        server.unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone())).await;
+        server
+            .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+            .await;
         return;
     }
 
@@ -476,7 +487,9 @@ async fn life(
     let Some((state, version, edits)) = adopted else {
         // Adoption declined (no registered document), or the document
         // closed while we were connecting: release the channel.
-        server.unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone())).await;
+        server
+            .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+            .await;
         return;
     };
 
@@ -548,7 +561,9 @@ async fn life(
                 },
             };
             if actions.send(applied).await.is_err() {
-                server.unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone())).await;
+                server
+                    .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+                    .await;
                 return;
             }
         }

@@ -8,7 +8,9 @@ use ahp_types::common::Uri;
 use ahp_types::state::{ChatState, SessionState, Turn};
 use imba::effect::Effect;
 
-use crate::higent::seat::{AhpServer, RootInfo, ServerEvent, SessionsPage, ChannelUri, ChatUri, SessionUri, TurnId};
+use crate::higent::seat::{
+    AhpServer, ChannelUri, ChatUri, RootInfo, ServerEvent, SessionUri, SessionsPage, TurnId,
+};
 
 pub struct ConnectServerEffect {
     pub seat: Arc<dyn AhpServer>,

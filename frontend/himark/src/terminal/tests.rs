@@ -78,7 +78,11 @@ fn dismantle_hangs_up_exactly_once() {
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
     let mut store = Store::new();
-    Terminals::put(&mut store, crate::higent::ChannelUri::new("test-term:1"), session.clone());
+    Terminals::put(
+        &mut store,
+        crate::higent::ChannelUri::new("test-term:1"),
+        session.clone(),
+    );
     let mut panel = TerminalView::new(crate::higent::ChannelUri::new("test-term:1"));
     PanelView::dismantle(&mut panel, &mut store);
     session.hangup();
@@ -133,7 +137,9 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     );
     assert!(app.open_panel(
         app.sole_window(),
-        Box::new(TerminalView::new(crate::higent::ChannelUri::new("test-term:g")))
+        Box::new(TerminalView::new(crate::higent::ChannelUri::new(
+            "test-term:g"
+        )))
     ));
     session.output(b"$ echo himark\r\n\x1b[32mhimark\x1b[0m\r\n$ ");
 
@@ -187,7 +193,9 @@ fn dump_terminal_screenshot() {
     );
     assert!(app.open_panel(
         app.sole_window(),
-        Box::new(TerminalView::new(crate::higent::ChannelUri::new("test-term:s")))
+        Box::new(TerminalView::new(crate::higent::ChannelUri::new(
+            "test-term:s"
+        )))
     ));
     let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     session.output(

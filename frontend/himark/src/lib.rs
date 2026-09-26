@@ -3,6 +3,7 @@
 
 mod app;
 mod app_ext;
+pub mod changes_view;
 pub mod combo;
 mod commands;
 pub mod completion;
@@ -14,7 +15,6 @@ mod find;
 mod focus;
 pub mod fonts;
 mod forest;
-pub mod changes_view;
 pub mod hichanges;
 pub mod hicomments;
 pub mod hifiles;
@@ -24,13 +24,13 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod hover;
 mod keymap;
+mod list_keyboard;
 pub mod locations;
 mod modal;
 mod navigation;
 pub mod new_session;
 pub mod rows;
 mod save;
-mod list_keyboard;
 mod startup_profile;
 mod state;
 mod stats;
@@ -72,9 +72,7 @@ pub use crate::diffs::{
     sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
     DiffView, DiffViewId, DressedViews, StripeBases, OPEN_HALF_WIDTH,
 };
-pub use crate::family_rows::{
-    mint, mint_unfronted, FamilyRow, RowMinter, RowMinters,
-};
+pub use crate::family_rows::{mint, mint_unfronted, FamilyRow, RowMinter, RowMinters};
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument, DiffSide,
     DiffSideInput, FindEffect, ListDirectoryEffect, LocationsChannel, LspLocationsEffect,
@@ -103,9 +101,7 @@ pub use modal::{dock_scope, modal_scope, side_scope, ModalRequest, ModalView, Re
 pub use navigation::{
     EditorPlace, NavigationLocation, Navigator, Navigators, NoPlace, Place, RecentLocations,
 };
-pub use rows::{
-    label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow,
-};
+pub use rows::{label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow};
 pub use save::{SaveAll, SaveDocument};
 pub use state::{AppState, Gathered};
 pub use stats::Stats;
@@ -114,8 +110,8 @@ pub use toc::{
     ToggleToc,
 };
 pub use toolbar::{
-    composer_button, toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton, ToolbarButtons,
-    ToolbarCommand, ToolbarRequest, ToolbarSide,
+    composer_button, toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton,
+    ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,
 };
 pub use watch::{
     refetch_document, sync_document_watches, FileChanged, ReloadDocument, SubscribeEffect,

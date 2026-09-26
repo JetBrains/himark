@@ -591,8 +591,7 @@ impl ChatPanel {
 
     #[doc(hidden)]
     pub fn completion_open(&self) -> bool {
-        self.first_view()
-            .is_some_and(|view| view.completion.open())
+        self.first_view().is_some_and(|view| view.completion.open())
     }
 
     #[doc(hidden)]
@@ -1257,7 +1256,12 @@ impl ChatPanel {
                         } else {
                             denied_tool_face(&track.display_name)
                         };
-                        self.update_tool_call(&action.turn_id, &action.tool_call_id, face, &mut ops);
+                        self.update_tool_call(
+                            &action.turn_id,
+                            &action.tool_call_id,
+                            face,
+                            &mut ops,
+                        );
                     }
                 }
                 StateAction::ChatToolCallComplete(action) => {
@@ -1726,9 +1730,11 @@ impl ChatPanel {
                                         },
                                     ),
                                 })
-                                .map(|result| ChatPanelCommand::Dispatched {
-                                    undo_queue: None,
-                                    result,
+                                .map(|result| {
+                                    ChatPanelCommand::Dispatched {
+                                        undo_queue: None,
+                                        result,
+                                    }
                                 }),
                             );
                         }
@@ -1816,255 +1822,262 @@ impl ChatPanel {
         id: ChatViewId,
     ) -> Option<impl imba::Layout<'a, ChatPanelCommand> + imba::LayoutValue + 'a> {
         let view = self.views.get(&id)?;
-        Some(imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let theme = env::Themes::of(store);
-            let chrome = theme.ui().chat.clone();
-            view.panel_width
-                .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
+        Some(imba::laid(
+            move |_arena: &'a Arena, constraints: Constraints| {
+                let size = constraints.max;
+                let theme = env::Themes::of(store);
+                let chrome = theme.ui().chat.clone();
+                view.panel_width
+                    .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
 
-            let band_h = view.composer.band_height(&chrome, size.height);
-            let stack_h = self.stack.height(&chrome);
+                let band_h = view.composer.band_height(&chrome, size.height);
+                let stack_h = self.stack.height(&chrome);
 
-            let toolbar_h = theme.ui().toolbar.height;
-            let rows_height = (size.height - band_h - stack_h - toolbar_h).max(1.0);
-            view.rows_height
-                .store(rows_height.to_bits(), Ordering::Relaxed);
+                let toolbar_h = theme.ui().toolbar.height;
+                let rows_height = (size.height - band_h - stack_h - toolbar_h).max(1.0);
+                view.rows_height
+                    .store(rows_height.to_bits(), Ordering::Relaxed);
 
-            let mut panel = container(arena, size);
+                let mut panel = container(arena, size);
 
-            panel.place(
-                0.0,
-                0.0,
-                imba::Layout::layout(
-                    view.rows.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(size.width, rows_height),
-                        max: Size::new(size.width, rows_height),
-                    },
-                )
-                .map(ChatPanelCommand::Rows)
-                .focus_scope(view.focus == ChatArea::Transcript),
-            );
-
-            let status = match &self.state {
-                Link::Idle | Link::Subscribing => "connecting…".to_owned(),
-                Link::Failed(error) => format!("failed: {error}"),
-                Link::Ready if self.pending.is_some() => "thinking…".to_owned(),
-                Link::Ready if self.active.is_some() => "responding…".to_owned(),
-                Link::Ready => String::new(),
-            };
-            let composer_empty = view.composer.is_empty();
-            panel.place(
-                0.0,
-                rows_height + stack_h,
-                view.composer
-                    .layout(
+                panel.place(
+                    0.0,
+                    0.0,
+                    imba::Layout::layout(
+                        view.rows.display(arena, store, ui),
                         arena,
-                        store,
-                        ui,
-                        size.width,
-                        size.height,
-                        ComposerProps {
-                            focused: view.focus == ChatArea::Composer,
+                        Constraints {
+                            min: Size::new(size.width, rows_height),
+                            max: Size::new(size.width, rows_height),
                         },
                     )
-                    .map(ChatPanelCommand::Composer),
-            );
-
-            if stack_h > 0.0 {
-                panel.place(
-                    0.0,
-                    rows_height,
-                    self.stack
-                        .layout(arena, ui, &chrome, size.width)
-                        .map(ChatPanelCommand::Stack),
+                    .map(ChatPanelCommand::Rows)
+                    .focus_scope(view.focus == ChatArea::Transcript),
                 );
-            }
 
-            let toolbar_cells_right = view.toolbar.place(
-                arena,
-                &mut panel,
-                store,
-                ui,
-                size.height - toolbar_h + 1.0,
-                toolbar_h - 1.0,
-            );
-
-            // The footer's edges: a hairline between the transcript
-            // and the composer band, and one above the toolbar row
-            // (whose placement already reserves the pixel).
-            {
-                let rule = theme.ui().toolbar.rule.0;
-                let hairline =
-                    move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_anti_alias(false);
-                        paint.set_color(rule);
-                        canvas.draw_rect(rect, &paint);
-                    };
-                panel.place(
-                    0.0,
-                    rows_height,
-                    leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                );
-                panel.place(
-                    0.0,
-                    size.height - toolbar_h,
-                    leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                );
-            }
-
-            {
-                let ui_theme = theme.ui();
-                let busy = self.busy();
-                let sendable = !composer_empty && matches!(self.state, Link::Ready);
-                let stop = busy && composer_empty;
-                let label = if stop {
-                    "STOP"
-                } else if busy {
-                    "STEER"
-                } else {
-                    "SEND"
+                let status = match &self.state {
+                    Link::Idle | Link::Subscribing => "connecting…".to_owned(),
+                    Link::Failed(error) => format!("failed: {error}"),
+                    Link::Ready if self.pending.is_some() => "thinking…".to_owned(),
+                    Link::Ready if self.active.is_some() => "responding…".to_owned(),
+                    Link::Ready => String::new(),
                 };
-                let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                let pad = ui_theme.combo.pad;
-                let cell_width = label
-                    .chars()
-                    .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                    .sum::<f32>()
-                    + imba::text_advance(ui, &key_font, "⌘⏎")
-                    + ui_theme.combo.gap
-                    + pad * 2.0;
-                let accent = if stop {
-                    chrome.stop_color.0
-                } else {
-                    chrome.accent.0
-                };
-                let on_accent = chrome.on_accent.0;
-                let accent_soft = ui_theme.peeker.dim_text.0;
-                let gap = ui_theme.combo.gap;
-                // The cell's two texts as a Row of `Text`s at exact
-                // baseline parity: the old per-char loop advanced by
-                // glyph width + 1.5 (= `.tracking(1.5)`) from x =
-                // left + pad, and drew the key hint a `gap` after the
-                // label's last advance (= the Row's `.gap`). Each text
-                // pads down so its baseline lands on the old
-                // mid + font.size() * 0.35 line. The accent fill and
-                // left rule stay a backdrop painter; the press is
-                // `.on_click`, minting Stop or Submit like the old
-                // event closure.
-                let cell_h = toolbar_h - 1.0;
-                let mid = cell_h * 0.5;
-                let caps_ascent = -caps_font.metrics().1.ascent;
-                let key_ascent = -key_font.metrics().1.ascent;
-                let mut row = imba::Row::new(arena).gap(gap).child(
-                    imba::text(ui, label, caps_font.clone(), on_accent)
-                        .tracking(1.5)
-                        .pad_insets(imba::Insets {
-                            left: 0.0,
-                            top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        }),
-                );
-                if !stop {
-                    row = row.child(
-                        imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                            imba::Insets {
-                                left: 0.0,
-                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
+                let composer_empty = view.composer.is_empty();
+                panel.place(
+                    0.0,
+                    rows_height + stack_h,
+                    view.composer
+                        .layout(
+                            arena,
+                            store,
+                            ui,
+                            size.width,
+                            size.height,
+                            ComposerProps {
+                                focused: view.focus == ChatArea::Composer,
                             },
-                        ),
+                        )
+                        .map(ChatPanelCommand::Composer),
+                );
+
+                if stack_h > 0.0 {
+                    panel.place(
+                        0.0,
+                        rows_height,
+                        self.stack
+                            .layout(arena, ui, &chrome, size.width)
+                            .map(ChatPanelCommand::Stack),
                     );
                 }
-                let cell = row
-                    .pad_insets(imba::Insets {
-                        left: pad,
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: 0.0,
-                    })
-                    .sized(cell_width, cell_h)
-                    .backdrop(
-                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                            let mut paint = skia_safe::Paint::default();
-                            let mut fill = accent;
-                            if !sendable && !busy {
-                                fill = fill.with_a(0x50);
-                            }
-                            paint.set_color(fill.with_a(fill.a() / 3));
-                            canvas.draw_rect(rect, &paint);
-                            paint.set_anti_alias(false);
-                            paint.set_color(fill);
-                            canvas.draw_rect(
-                                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                                &paint,
-                            );
-                        },
-                    )
-                    .on_click(move || {
-                        ChatPanelCommand::Composer(match stop {
-                            true => ComposerCommand::Stop,
-                            false => ComposerCommand::Submit,
-                        })
-                    });
-                panel.place_boxed(
-                    size.width - cell_width,
+
+                let toolbar_cells_right = view.toolbar.place(
+                    arena,
+                    &mut panel,
+                    store,
+                    ui,
                     size.height - toolbar_h + 1.0,
-                    cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                    toolbar_h - 1.0,
                 );
 
-                // The shortcut legend (or the link's status) sits on
-                // the toolbar, right against the SEND cell. The ⌘⏎
-                // hint already lives on the cell itself.
-                let legend = match status.is_empty() {
-                    true => "⎋ chat".to_owned(),
-                    false => status.clone(),
-                };
-                let legend_w = imba::text_advance(ui, &key_font, &legend);
-                let legend_x = size.width - cell_width - gap - legend_w;
-                // Squeezed out by the combo cells? The legend yields.
-                if legend_x >= toolbar_cells_right + gap {
-                    panel.place_boxed(
-                        legend_x,
-                        size.height - toolbar_h + 1.0,
-                        imba::text(ui, legend, key_font.clone(), accent_soft)
+                // The footer's edges: a hairline between the transcript
+                // and the composer band, and one above the toolbar row
+                // (whose placement already reserves the pixel).
+                {
+                    let rule = theme.ui().toolbar.rule.0;
+                    let hairline =
+                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_anti_alias(false);
+                            paint.set_color(rule);
+                            canvas.draw_rect(rect, &paint);
+                        };
+                    panel.place(
+                        0.0,
+                        rows_height,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                    panel.place(
+                        0.0,
+                        size.height - toolbar_h,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                }
+
+                {
+                    let ui_theme = theme.ui();
+                    let busy = self.busy();
+                    let sendable = !composer_empty && matches!(self.state, Link::Ready);
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    let pad = ui_theme.combo.pad;
+                    let cell_width = label
+                        .chars()
+                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                        .sum::<f32>()
+                        + imba::text_advance(ui, &key_font, "⌘⏎")
+                        + ui_theme.combo.gap
+                        + pad * 2.0;
+                    let accent = if stop {
+                        chrome.stop_color.0
+                    } else {
+                        chrome.accent.0
+                    };
+                    let on_accent = chrome.on_accent.0;
+                    let accent_soft = ui_theme.peeker.dim_text.0;
+                    let gap = ui_theme.combo.gap;
+                    // The cell's two texts as a Row of `Text`s at exact
+                    // baseline parity: the old per-char loop advanced by
+                    // glyph width + 1.5 (= `.tracking(1.5)`) from x =
+                    // left + pad, and drew the key hint a `gap` after the
+                    // label's last advance (= the Row's `.gap`). Each text
+                    // pads down so its baseline lands on the old
+                    // mid + font.size() * 0.35 line. The accent fill and
+                    // left rule stay a backdrop painter; the press is
+                    // `.on_click`, minting Stop or Submit like the old
+                    // event closure.
+                    let cell_h = toolbar_h - 1.0;
+                    let mid = cell_h * 0.5;
+                    let caps_ascent = -caps_font.metrics().1.ascent;
+                    let key_ascent = -key_font.metrics().1.ascent;
+                    let mut row = imba::Row::new(arena).gap(gap).child(
+                        imba::text(ui, label, caps_font.clone(), on_accent)
+                            .tracking(1.5)
                             .pad_insets(imba::Insets {
                                 left: 0.0,
-                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
                                 right: 0.0,
                                 bottom: 0.0,
-                            })
-                            .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
+                            }),
                     );
-                }
-            }
-            let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
-            let toolbar_stale =
-                super::Agents::channel(store, &self.session_id()).is_some_and(|channel| {
-                    super::SessionToolbar::fingerprint(store, self.server, &channel)
-                        != view.toolbar.synced
-                });
+                    if !stop {
+                        row = row.child(
+                            imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                                imba::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                },
+                            ),
+                        );
+                    }
+                    let cell = row
+                        .pad_insets(imba::Insets {
+                            left: pad,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: 0.0,
+                        })
+                        .sized(cell_width, cell_h)
+                        .backdrop(
+                            move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                                let mut paint = skia_safe::Paint::default();
+                                let mut fill = accent;
+                                if !sendable && !busy {
+                                    fill = fill.with_a(0x50);
+                                }
+                                paint.set_color(fill.with_a(fill.a() / 3));
+                                canvas.draw_rect(rect, &paint);
+                                paint.set_anti_alias(false);
+                                paint.set_color(fill);
+                                canvas.draw_rect(
+                                    skia_safe::Rect::from_xywh(
+                                        rect.left,
+                                        rect.top,
+                                        1.0,
+                                        rect.height(),
+                                    ),
+                                    &paint,
+                                );
+                            },
+                        )
+                        .on_click(move || {
+                            ChatPanelCommand::Composer(match stop {
+                                true => ComposerCommand::Stop,
+                                false => ComposerCommand::Submit,
+                            })
+                        });
+                    panel.place_boxed(
+                        size.width - cell_width,
+                        size.height - toolbar_h + 1.0,
+                        cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                    );
 
-            let rows_height_ = rows_height;
-            let focus = view.focus;
-            let boot = matches!(self.state, Link::Idle);
-            let strip_top = size.height - toolbar_h + 1.0;
-            panel.wrap_realized(move |panel| ChatWidget {
-                panel,
-                rows_height: rows_height_,
-                focus,
-                boot,
-                toolbar_stale,
-                strip_origin,
-                strip_top,
-            })
-        }))
+                    // The shortcut legend (or the link's status) sits on
+                    // the toolbar, right against the SEND cell. The ⌘⏎
+                    // hint already lives on the cell itself.
+                    let legend = match status.is_empty() {
+                        true => "⎋ chat".to_owned(),
+                        false => status.clone(),
+                    };
+                    let legend_w = imba::text_advance(ui, &key_font, &legend);
+                    let legend_x = size.width - cell_width - gap - legend_w;
+                    // Squeezed out by the combo cells? The legend yields.
+                    if legend_x >= toolbar_cells_right + gap {
+                        panel.place_boxed(
+                            legend_x,
+                            size.height - toolbar_h + 1.0,
+                            imba::text(ui, legend, key_font.clone(), accent_soft)
+                                .pad_insets(imba::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                })
+                                .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
+                        );
+                    }
+                }
+                let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
+                let toolbar_stale =
+                    super::Agents::channel(store, &self.session_id()).is_some_and(|channel| {
+                        super::SessionToolbar::fingerprint(store, self.server, &channel)
+                            != view.toolbar.synced
+                    });
+
+                let rows_height_ = rows_height;
+                let focus = view.focus;
+                let boot = matches!(self.state, Link::Idle);
+                let strip_top = size.height - toolbar_h + 1.0;
+                panel.wrap_realized(move |panel| ChatWidget {
+                    panel,
+                    rows_height: rows_height_,
+                    focus,
+                    boot,
+                    toolbar_stale,
+                    strip_origin,
+                    strip_top,
+                })
+            },
+        ))
     }
 }
 
@@ -2778,11 +2791,7 @@ mod tests {
             &mut batch.effects(),
         );
 
-        assert_eq!(
-            panel.turns.len(),
-            1,
-            "the MODEL transcript holds the turn"
-        );
+        assert_eq!(panel.turns.len(), 1, "the MODEL transcript holds the turn");
         assert_eq!(panel.turns[0].cells.len(), 2, "message + cancel notice");
         for id in [a, b] {
             let view = panel.views.get(&id).expect("the view record");

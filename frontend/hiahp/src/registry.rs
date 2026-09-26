@@ -40,7 +40,10 @@ impl EffectHandler<PollServerEffect> for HandlePollServer {
 pub struct HandleCreateSession;
 
 impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
-    async fn handle(&self, effect: CreateSessionEffect) -> Result<himark::higent::SessionUri, String> {
+    async fn handle(
+        &self,
+        effect: CreateSessionEffect,
+    ) -> Result<himark::higent::SessionUri, String> {
         effect
             .seat
             .create_session(effect.working_directories, effect.options)

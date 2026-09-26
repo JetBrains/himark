@@ -13,7 +13,6 @@ use imba::{effect::AnyEffect, store::Store, UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
 
-
 const REF_PREFIX: &str = "ahpref\u{1f}";
 
 const EMPTY_AUTHORITY: &str = "changes-empty";
@@ -288,7 +287,10 @@ pub struct ChangeSet {
 
     /// The set OWNS its canvases (docs/model-view.md hierarchy) —
     /// canvas mutations never touch the set's `generation`.
-    pub(crate) canvases: rpds::HashTrieMapSync<crate::diff_canvas::canvas::CanvasId, crate::diff_canvas::canvas::Canvas>,
+    pub(crate) canvases: rpds::HashTrieMapSync<
+        crate::diff_canvas::canvas::CanvasId,
+        crate::diff_canvas::canvas::Canvas,
+    >,
 }
 
 impl ChangeSet {
@@ -384,10 +386,8 @@ pub struct ChangeSets {
     /// they derive rows from (crate::changes_view). The collection
     /// is the views' point of gravity: a uniting view spans many
     /// sets, so the views cannot live inside one.
-    pub(crate) views: rpds::HashTrieMapSync<
-        crate::changes_view::ChangesViewId,
-        crate::changes_view::ChangesView,
-    >,
+    pub(crate) views:
+        rpds::HashTrieMapSync<crate::changes_view::ChangesViewId, crate::changes_view::ChangesView>,
 
     /// THE UPDATE RULE's index — the many-to-many `ChangeSetId ↔
     /// ChangesViewId` join: a set mutation marks exactly its viewers
@@ -527,7 +527,6 @@ impl Changes {
             .unwrap_or(0)
     }
 
-
     /// Mint — or find — the set for a source, WITHOUT a feed when the
     /// feeds have not routed it yet (a canvas may open first; the
     /// feed attaches at `ensure_folder`). Never bumps generations.
@@ -561,10 +560,7 @@ impl Changes {
         id
     }
 
-    pub(crate) fn id_for_source(
-        store: &Store,
-        source: &ChangeSetSource,
-    ) -> Option<ChangeSetId> {
+    pub(crate) fn id_for_source(store: &Store, source: &ChangeSetSource) -> Option<ChangeSetId> {
         store.get::<ChangeSets>()?.by_source.get(source).copied()
     }
 
@@ -575,7 +571,12 @@ impl Changes {
         set: ChangeSetId,
         canvas: crate::diff_canvas::canvas::CanvasId,
     ) -> Option<&crate::diff_canvas::canvas::Canvas> {
-        store.get::<ChangeSets>()?.sets.get(&set)?.canvases.get(&canvas)
+        store
+            .get::<ChangeSets>()?
+            .sets
+            .get(&set)?
+            .canvases
+            .get(&canvas)
     }
 
     pub(crate) fn take_canvas(
@@ -620,9 +621,7 @@ impl Changes {
                 changes
                     .sets
                     .iter()
-                    .flat_map(|(set, held)| {
-                        held.canvases.keys().map(|canvas| (*set, *canvas))
-                    })
+                    .flat_map(|(set, held)| held.canvases.keys().map(|canvas| (*set, *canvas)))
                     .collect()
             })
             .unwrap_or_default()
@@ -791,9 +790,11 @@ impl Changes {
             return;
         }
         let detached = store.get::<Changes>().is_some_and(|changes| {
-            changes.by_source.contains_key(&ChangeSetSource::WorkingCopy {
-                folder: folder.clone(),
-            })
+            changes
+                .by_source
+                .contains_key(&ChangeSetSource::WorkingCopy {
+                    folder: folder.clone(),
+                })
         });
         let Some((host, seat, session)) =
             crate::higent::seat::route_seat(store, folder.authority().as_str())
@@ -924,7 +925,11 @@ impl Changes {
         let Some(changes) = store.get::<Changes>() else {
             return;
         };
-        let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> = changes
+        let riding: Vec<(
+            ResourceLocation,
+            Arc<dyn AhpServer>,
+            crate::higent::ChannelUri,
+        )> = changes
             .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
@@ -968,7 +973,11 @@ impl Changes {
         &mut self,
         session: &crate::higent::SessionUri,
         entries: Vec<CatalogEntry>,
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> {
+    ) -> Vec<(
+        ResourceLocation,
+        Arc<dyn AhpServer>,
+        crate::higent::ChannelUri,
+    )> {
         let Some(mut feed) = self.feed_for(session).cloned() else {
             return Vec::new();
         };
@@ -1070,64 +1079,67 @@ impl Changes {
             return;
         };
         self.update_folder_set(folder, |set| {
-        let entry = set;
-        let stamp = entry.generation + 1;
-        let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
-        let mut files: Vec<Option<ChangeEntry>> = entry.files.iter().cloned().map(Some).collect();
-        let mut by_id: std::collections::HashMap<String, usize> = files
-            .iter()
-            .enumerate()
-            .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
-            .collect();
-        for action in actions {
-            match action {
-                StateAction::ChangesetContentChanged(content) => {
-                    let mut fresh: Vec<ChangeEntry> = content
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(&*uris, folder, file))
-                        .collect();
-                    stamp_entries(previous.iter(), fresh.iter_mut(), stamp);
-                    files = fresh.into_iter().map(Some).collect();
-                    by_id = files
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
-                        .collect();
-                }
-                StateAction::ChangesetStatusChanged(status) => {
-                    entry.status = ChangesStatus::of_wire(
-                        &status.status,
-                        status.error.as_ref().map(|error| error.message.as_str()),
-                    );
-                }
-                StateAction::ChangesetFileSet(set) => {
-                    if let Some(at) = by_id.remove(&set.file.id) {
-                        files[at] = None;
+            let entry = set;
+            let stamp = entry.generation + 1;
+            let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
+            let mut files: Vec<Option<ChangeEntry>> =
+                entry.files.iter().cloned().map(Some).collect();
+            let mut by_id: std::collections::HashMap<String, usize> = files
+                .iter()
+                .enumerate()
+                .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
+                .collect();
+            for action in actions {
+                match action {
+                    StateAction::ChangesetContentChanged(content) => {
+                        let mut fresh: Vec<ChangeEntry> = content
+                            .files
+                            .iter()
+                            .filter_map(|file| entry_of(&*uris, folder, file))
+                            .collect();
+                        stamp_entries(previous.iter(), fresh.iter_mut(), stamp);
+                        files = fresh.into_iter().map(Some).collect();
+                        by_id = files
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(at, slot)| {
+                                slot.as_ref().map(|file| (file.id.clone(), at))
+                            })
+                            .collect();
                     }
-                    if let Some(mut fresh) = entry_of(&*uris, folder, &set.file) {
-                        // The host resends a file exactly when it
-                        // changed — stamp unconditionally; value
-                        // equality cannot see a same-stats edit.
-                        fresh.updated = stamp;
-                        by_id.insert(fresh.id.clone(), files.len());
-                        files.push(Some(fresh));
+                    StateAction::ChangesetStatusChanged(status) => {
+                        entry.status = ChangesStatus::of_wire(
+                            &status.status,
+                            status.error.as_ref().map(|error| error.message.as_str()),
+                        );
                     }
-                }
-                StateAction::ChangesetFileRemoved(removed) => {
-                    if let Some(at) = by_id.remove(&removed.file_id) {
-                        files[at] = None;
+                    StateAction::ChangesetFileSet(set) => {
+                        if let Some(at) = by_id.remove(&set.file.id) {
+                            files[at] = None;
+                        }
+                        if let Some(mut fresh) = entry_of(&*uris, folder, &set.file) {
+                            // The host resends a file exactly when it
+                            // changed — stamp unconditionally; value
+                            // equality cannot see a same-stats edit.
+                            fresh.updated = stamp;
+                            by_id.insert(fresh.id.clone(), files.len());
+                            files.push(Some(fresh));
+                        }
                     }
+                    StateAction::ChangesetFileRemoved(removed) => {
+                        if let Some(at) = by_id.remove(&removed.file_id) {
+                            files[at] = None;
+                        }
+                    }
+                    StateAction::ChangesetCleared(_) => {
+                        files.clear();
+                        by_id.clear();
+                    }
+                    _ => {}
                 }
-                StateAction::ChangesetCleared(_) => {
-                    files.clear();
-                    by_id.clear();
-                }
-                _ => {}
             }
-        }
-        entry.files = files.into_iter().flatten().collect();
-        entry.note_bases();
+            entry.files = files.into_iter().flatten().collect();
+            entry.note_bases();
         });
     }
 

@@ -1548,9 +1548,9 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
 
     assert!(engine.app.open_panel(
         engine.app.sole_window(),
-        Box::new(himark::higent::ChatPane::new(
-            himark::higent::ChatUri::new("test-chat:displacer")
-        ))
+        Box::new(himark::higent::ChatPane::new(himark::higent::ChatUri::new(
+            "test-chat:displacer"
+        )))
     ));
     settle(&mut engine);
     let mut mounted = false;
@@ -2744,7 +2744,8 @@ fn a_one_sided_diff_goes_quiet() {
                     .probe_rows(engine.app.store())
                     .iter()
                     .any(|(title, phase, _)| {
-                        title == "fresh.json" && *phase == himark::diff_canvas::canvas::RowPhase::Built
+                        title == "fresh.json"
+                            && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     });
             }
         });
@@ -2801,7 +2802,8 @@ fn a_one_sided_diff_goes_quiet() {
                     .probe_rows(engine.app.store())
                     .iter()
                     .any(|(title, phase, _)| {
-                        title == "fresh.json" && *phase == himark::diff_canvas::canvas::RowPhase::Built
+                        title == "fresh.json"
+                            && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     });
             }
         });
@@ -5035,12 +5037,18 @@ fn two_wire_clients_converge_on_one_document() {
         format!("unix:{}", socket.display()),
     ));
 
-    let opened_a =
-        block_on(alice_seat.open_document(himark::higent::SessionUri::new("hihost-fs:/local"), Some(uri.clone()), None))
-            .expect("alice opens");
-    let opened_b =
-        block_on(bob_seat.open_document(himark::higent::SessionUri::new("hihost-fs:/local"), Some(uri.clone()), None))
-            .expect("bob opens");
+    let opened_a = block_on(alice_seat.open_document(
+        himark::higent::SessionUri::new("hihost-fs:/local"),
+        Some(uri.clone()),
+        None,
+    ))
+    .expect("alice opens");
+    let opened_b = block_on(bob_seat.open_document(
+        himark::higent::SessionUri::new("hihost-fs:/local"),
+        Some(uri.clone()),
+        None,
+    ))
+    .expect("bob opens");
     assert_eq!(opened_a.document, opened_b.document, "idempotent open");
     let channel = himark::higent::ChannelUri::new(opened_a.document);
 
@@ -6468,7 +6476,8 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             settle(engine);
         }
     };
-    let mounted = |engine: &HimarkEngine| -> Option<himark::higent::ChatPanel> { shown_chat(engine) };
+    let mounted =
+        |engine: &HimarkEngine| -> Option<himark::higent::ChatPanel> { shown_chat(engine) };
     let current = |engine: &HimarkEngine| -> himark::SessionId {
         himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
             .expect("window")
@@ -6704,7 +6713,8 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     himark::diff_canvas::CanvasSource::Commit { .. }
                 ) && canvas.probe_rows(engine.app.store()).iter().any(
                     |(title, phase, _)| {
-                        title == "README.md" && *phase == himark::diff_canvas::canvas::RowPhase::Built
+                        title == "README.md"
+                            && *phase == himark::diff_canvas::canvas::RowPhase::Built
                     },
                 );
             }

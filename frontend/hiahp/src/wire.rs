@@ -608,7 +608,9 @@ fn pump_root(
                     feed.push(ServerEvent::SessionAdded(params.summary));
                 }
                 ahp::SubscriptionEvent::SessionRemoved(params) => {
-                    feed.push(ServerEvent::SessionRemoved(himark::higent::SessionUri::new(params.session)));
+                    feed.push(ServerEvent::SessionRemoved(
+                        himark::higent::SessionUri::new(params.session),
+                    ));
                 }
                 ahp::SubscriptionEvent::SessionSummaryChanged(params) => {
                     feed.push(ServerEvent::SessionChanged {
@@ -809,7 +811,10 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn dispose_session(&self, session: himark::higent::SessionUri) -> SeatFuture<Result<(), String>> {
+    fn dispose_session(
+        &self,
+        session: himark::higent::SessionUri,
+    ) -> SeatFuture<Result<(), String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -821,7 +826,10 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn subscribe_session(&self, session: himark::higent::SessionUri) -> SeatFuture<Result<SessionState, String>> {
+    fn subscribe_session(
+        &self,
+        session: himark::higent::SessionUri,
+    ) -> SeatFuture<Result<SessionState, String>> {
         let session = session.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -836,7 +844,10 @@ impl AhpServer for WireHost {
         self.poll_channel(session)
     }
 
-    fn create_chat(&self, session: himark::higent::SessionUri) -> SeatFuture<Result<himark::higent::ChatUri, String>> {
+    fn create_chat(
+        &self,
+        session: himark::higent::SessionUri,
+    ) -> SeatFuture<Result<himark::higent::ChatUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let chat = format!("ahp-chat:/{}", uuid_v4());
@@ -858,7 +869,10 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn subscribe_chat(&self, chat: himark::higent::ChatUri) -> SeatFuture<Result<ChatState, String>> {
+    fn subscribe_chat(
+        &self,
+        chat: himark::higent::ChatUri,
+    ) -> SeatFuture<Result<ChatState, String>> {
         let chat = chat.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1032,7 +1046,10 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_annotations(&self, session: himark::higent::SessionUri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_annotations(
+        &self,
+        session: himark::higent::SessionUri,
+    ) -> SeatFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(annotations_channel(&session))
     }
@@ -1138,7 +1155,11 @@ impl AhpServer for WireHost {
         })
     }
 
-    fn dispatch_document(&self, channel: &himark::higent::ChannelUri, action: himark_ahp_ext_types::DocumentApplied) {
+    fn dispatch_document(
+        &self,
+        channel: &himark::higent::ChannelUri,
+        action: himark_ahp_ext_types::DocumentApplied,
+    ) {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             let mut value = serde_json::to_value(&action).expect("an action serializes");
@@ -1224,7 +1245,11 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn dispatch_action(&self, channel: himark::higent::ChannelUri, action: StateAction) -> SeatFuture<Result<(), String>> {
+    fn dispatch_action(
+        &self,
+        channel: himark::higent::ChannelUri,
+        action: StateAction,
+    ) -> SeatFuture<Result<(), String>> {
         let channel = channel.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let _ = active
@@ -1236,7 +1261,11 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn cancel_turn(&self, chat: himark::higent::ChatUri, turn_id: himark::higent::TurnId) -> SeatFuture<()> {
+    fn cancel_turn(
+        &self,
+        chat: himark::higent::ChatUri,
+        turn_id: himark::higent::TurnId,
+    ) -> SeatFuture<()> {
         let chat = chat.into_string();
         let turn_id = turn_id.into_string();
         let dispatched = self.run_ask(move |active| async move {
@@ -1434,7 +1463,9 @@ impl AhpServer for WireHost {
                     }
                 }
             });
-            Ok(Some(himark::higent::WatchHandle { channel: himark::higent::ChannelUri::new(channel) }))
+            Ok(Some(himark::higent::WatchHandle {
+                channel: himark::higent::ChannelUri::new(channel),
+            }))
         });
         Box::pin(async move {
             asked.await.unwrap_or_else(|error| {
@@ -1546,7 +1577,10 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_locations(&self, channel: himark::higent::ChannelUri) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    fn poll_locations(
+        &self,
+        channel: himark::higent::ChannelUri,
+    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let channel = channel.into_string();
         let polled = self.poll_channel(channel);
         Box::pin(async move {
@@ -1646,7 +1680,9 @@ impl AhpServer for WireHost {
                     }
                 }
             });
-            Ok(Some(himark::higent::TerminalHandle { channel: himark::higent::ChannelUri::new(channel) }))
+            Ok(Some(himark::higent::TerminalHandle {
+                channel: himark::higent::ChannelUri::new(channel),
+            }))
         });
         Box::pin(async move {
             asked.await.unwrap_or_else(|error| {

@@ -71,8 +71,8 @@ pub use reparse::{
 };
 pub use reparse::{ReparseEffect, ReparseHandler};
 pub use split_diff::{
-    prepare_marks, DiffViewState, PreparedMarks, RepairDiffEffect, RepairDiffHandler, SplitDiffCommand,
-    SplitDiffEffects, SplitDiffView,
+    prepare_marks, DiffViewState, PreparedMarks, RepairDiffEffect, RepairDiffHandler,
+    SplitDiffCommand, SplitDiffEffects, SplitDiffView,
 };
 pub use text::Text;
 pub use theme::{StyleId as ThemeStyleId, Theme};

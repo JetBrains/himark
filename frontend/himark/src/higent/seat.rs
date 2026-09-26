@@ -110,7 +110,11 @@ pub trait AhpServer: Send + Sync + 'static {
     fn poll_chat(&self, chat: ChatUri) -> SeatFuture<Vec<StateAction>>;
     fn cancel_turn(&self, chat: ChatUri, turn_id: TurnId) -> SeatFuture<()>;
 
-    fn dispatch_action(&self, channel: ChannelUri, action: StateAction) -> SeatFuture<Result<(), String>>;
+    fn dispatch_action(
+        &self,
+        channel: ChannelUri,
+        action: StateAction,
+    ) -> SeatFuture<Result<(), String>>;
     fn read_file_edit(
         &self,
         before: Option<Uri>,
@@ -119,12 +123,21 @@ pub trait AhpServer: Send + Sync + 'static {
 
     fn resource_read(&self, session: SessionUri, uri: ResourceUri) -> SeatFuture<Option<String>>;
 
-    fn resource_read_bytes(&self, session: SessionUri, uri: ResourceUri) -> SeatFuture<Option<Vec<u8>>> {
+    fn resource_read_bytes(
+        &self,
+        session: SessionUri,
+        uri: ResourceUri,
+    ) -> SeatFuture<Option<Vec<u8>>> {
         let _ = (session, uri);
         Box::pin(std::future::ready(None))
     }
 
-    fn resource_write(&self, session: SessionUri, uri: ResourceUri, text: String) -> SeatFuture<bool>;
+    fn resource_write(
+        &self,
+        session: SessionUri,
+        uri: ResourceUri,
+        text: String,
+    ) -> SeatFuture<bool>;
 
     fn resource_list(
         &self,
@@ -146,7 +159,11 @@ pub trait AhpServer: Send + Sync + 'static {
     /// locations@1 `searchLocations`: answers the minted
     /// `ahp-locations:/…` channel; results stream as channel actions;
     /// unsubscribing cancels the walk (docs/ahp/ahp-locations.md).
-    fn search_locations(&self, session: SessionUri, ask: LocationsAsk) -> SeatFuture<Result<ChannelUri, String>> {
+    fn search_locations(
+        &self,
+        session: SessionUri,
+        ask: LocationsAsk,
+    ) -> SeatFuture<Result<ChannelUri, String>> {
         let _ = (session, ask);
         Box::pin(std::future::ready(Err(
             "locations@1 searchLocations not served".to_owned(),
@@ -178,7 +195,10 @@ pub trait AhpServer: Send + Sync + 'static {
     /// Typed poll: only `locations/extend` bodies come back, in
     /// arrival order. A seat that never served the subscribe is
     /// never polled.
-    fn poll_locations(&self, channel: ChannelUri) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    fn poll_locations(
+        &self,
+        channel: ChannelUri,
+    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let _ = channel;
         Box::pin(std::future::pending())
     }
@@ -245,14 +265,24 @@ pub trait AhpServer: Send + Sync + 'static {
         channel: ChannelUri,
     ) -> SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
 
-    fn poll_document(&self, channel: ChannelUri)
-        -> SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
+    fn poll_document(
+        &self,
+        channel: ChannelUri,
+    ) -> SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
 
-    fn dispatch_document(&self, channel: &ChannelUri, action: himark_ahp_ext_types::DocumentApplied);
+    fn dispatch_document(
+        &self,
+        channel: &ChannelUri,
+        action: himark_ahp_ext_types::DocumentApplied,
+    );
 
     /// documents@1 storeDocument: the host dumps the mirror — its own
     /// text, the source of truth — to the resource.
-    fn store_document(&self, channel: ChannelUri, uri: ResourceUri) -> SeatFuture<Result<(), String>> {
+    fn store_document(
+        &self,
+        channel: ChannelUri,
+        uri: ResourceUri,
+    ) -> SeatFuture<Result<(), String>> {
         let _ = (channel, uri);
         Box::pin(std::future::ready(Err(
             "documents@1 storeDocument not served".to_owned(),
@@ -341,7 +371,10 @@ pub fn authority(server: HostId, session: &SessionUri) -> String {
 pub fn parse(authority: &str) -> Option<(HostId, SessionUri)> {
     let rest = authority.strip_prefix(PREFIX)?;
     let (server, session) = rest.split_once(':')?;
-    Some((HostId::from_raw(server.parse().ok()?), SessionUri::new(session)))
+    Some((
+        HostId::from_raw(server.parse().ok()?),
+        SessionUri::new(session),
+    ))
 }
 
 pub fn scoped(authority: &str) -> bool {

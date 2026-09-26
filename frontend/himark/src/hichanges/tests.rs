@@ -159,10 +159,9 @@ fn mirror() -> (Changes, ResourceLocation) {
             canvases: rpds::HashTrieMapSync::new_sync(),
         },
     );
-    changes.by_source.insert_mut(
-        ChangeSetSource::WorkingCopy { folder: folder() },
-        id,
-    );
+    changes
+        .by_source
+        .insert_mut(ChangeSetSource::WorkingCopy { folder: folder() }, id);
     (changes, folder())
 }
 
@@ -218,7 +217,15 @@ fn the_catalog_names_the_folders_channel() {
     assert_eq!(fresh[0].0, folder);
     assert_eq!(fresh[0].2.as_str(), "hihost-changes://tmp/repo");
     assert_eq!(
-        changes.folder_set(&folder).unwrap().feed.as_ref().unwrap().channel.as_ref().map(|c| c.as_str()),
+        changes
+            .folder_set(&folder)
+            .unwrap()
+            .feed
+            .as_ref()
+            .unwrap()
+            .channel
+            .as_ref()
+            .map(|c| c.as_str()),
         Some("hihost-changes://tmp/repo")
     );
 

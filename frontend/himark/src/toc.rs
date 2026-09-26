@@ -509,8 +509,7 @@ pub struct OutlineView {
 
     launched: Option<(u64, u64)>,
     lane: Option<imba::effect::CancellationToken>,
-    pub(crate) search:
-        ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>,
+    pub(crate) search: ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>,
     request: Option<ModalRequest>,
 }
 
@@ -671,7 +670,8 @@ impl View for OutlineView {
                     }
                     _ => {}
                 }
-                type Search = ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>;
+                type Search =
+                    ListKeyboardController<ForestList<OutlineKey>, ForestSearcher<OutlineKey>>;
                 if let Some((index, trigger)) = Search::activated(&command) {
                     if let Some(key) = self.search.inner().list().key_at(index).copied() {
                         let searching = self.search.searching();

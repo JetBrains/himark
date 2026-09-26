@@ -7,8 +7,8 @@ use imba::View as _;
 use crate::{AppCommand, AppFx};
 
 pub use documents::diffs::{
-    adopt_base_location, land_base_built, land_normalized, rearm_base_asks,
-    DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, StripeBases,
+    adopt_base_location, land_base_built, land_normalized, rearm_base_asks, DiffHandle,
+    DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId, StripeBases,
 };
 
 /// Assemble the per-ask facade over a tracked pair: live documents +
@@ -103,8 +103,7 @@ pub(crate) fn sync_diff_dressing(store: &mut Store, ui: &imba::UiCtx, fx: &mut A
                 // Never gathered: no face was built, nothing owes.
                 return false;
             };
-            let Some(left) = crate::OpenDocuments::document_ref(store, pair.left.document())
-            else {
+            let Some(left) = crate::OpenDocuments::document_ref(store, pair.left.document()) else {
                 return false;
             };
             let Some(right) = crate::OpenDocuments::document_ref(store, pair.right.document())
@@ -229,7 +228,9 @@ pub fn rewrap_pair(
     let right_editor = view.split.right.editor;
     let inline = view.inline_editor;
     fx.scope(
-        |c: crate::EditorCommand| crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Left(c)),
+        |c: crate::EditorCommand| {
+            crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Left(c))
+        },
         |fx| {
             view.split
                 .left
@@ -238,7 +239,9 @@ pub fn rewrap_pair(
         },
     );
     fx.scope(
-        |c: crate::EditorCommand| crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Right(c)),
+        |c: crate::EditorCommand| {
+            crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Right(c))
+        },
         |fx| {
             view.split
                 .right
@@ -268,7 +271,6 @@ pub fn rewrap_pair(
     pair.state = Some(view.split.state);
     crate::OpenDocuments::put_diff_view(store, id, pair);
 }
-
 
 fn register_or_reuse(store: &mut Store, side: crate::DiffSide) -> crate::DocumentId {
     match side {
@@ -401,4 +403,3 @@ pub fn build_diff_view(
     );
     Some(id)
 }
-

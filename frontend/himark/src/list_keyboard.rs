@@ -128,7 +128,10 @@ pub enum ListKeyCommand<C> {
     /// command, uniformly — the controller carries no fold policy
     /// (the eager trees answer with `Forest::fold_cursor`, the lazy
     /// ones with their own states).
-    Fold { index: usize, expand: bool },
+    Fold {
+        index: usize,
+        expand: bool,
+    },
 
     // — the search lane, only reachable with a Searcher: —
     Input(::editor::EditorCommand),
@@ -347,8 +350,7 @@ where
             InputKey::PageDown => select(self.inner.page_index(1)),
             InputKey::Enter => match self.inner.cursor_index() {
                 Some(index) => EventResult::Command(ListKeyCommand::Inner(
-                    self.inner
-                        .activate_command(index, ActivateTrigger::Enter),
+                    self.inner.activate_command(index, ActivateTrigger::Enter),
                 )),
                 None => EventResult::Handled,
             },
@@ -549,30 +551,28 @@ where
                 if searching {
                     let fill = chrome.background.0;
                     let rule = chrome.rule.0;
-                    let backdrop =
-                        imba::leaf::leaf::<Self::Command>(pill_width, pill_height).paint_instead(
-                            move |_arena, canvas, rect| {
-                                let mut paint = Paint::default();
-                                paint.set_anti_alias(true);
-                                paint.set_color(fill);
-                                canvas.draw_round_rect(rect, 6.0, 6.0, &paint);
-                                let mut edge = Paint::default();
-                                edge.set_anti_alias(true);
-                                edge.set_color(rule);
-                                edge.set_style(skia_safe::paint::Style::Stroke);
-                                canvas.draw_round_rect(
-                                    Rect::from_xywh(
-                                        rect.left + 0.5,
-                                        rect.top + 0.5,
-                                        rect.width() - 1.0,
-                                        rect.height() - 1.0,
-                                    ),
-                                    6.0,
-                                    6.0,
-                                    &edge,
-                                );
-                            },
-                        );
+                    let backdrop = imba::leaf::leaf::<Self::Command>(pill_width, pill_height)
+                        .paint_instead(move |_arena, canvas, rect| {
+                            let mut paint = Paint::default();
+                            paint.set_anti_alias(true);
+                            paint.set_color(fill);
+                            canvas.draw_round_rect(rect, 6.0, 6.0, &paint);
+                            let mut edge = Paint::default();
+                            edge.set_anti_alias(true);
+                            edge.set_color(rule);
+                            edge.set_style(skia_safe::paint::Style::Stroke);
+                            canvas.draw_round_rect(
+                                Rect::from_xywh(
+                                    rect.left + 0.5,
+                                    rect.top + 0.5,
+                                    rect.width() - 1.0,
+                                    rect.height() - 1.0,
+                                ),
+                                6.0,
+                                6.0,
+                                &edge,
+                            );
+                        });
                     pill.place(0.0, 0.0, backdrop);
                 }
                 pill.place(8.0, ((pill_height - input_height) * 0.5).max(0.0), input);
@@ -591,9 +591,7 @@ where
             // tree; the per-surface duplicates are gone.
             let keymap = imba::leaf::leaf::<Self::Command>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
-                    Event::Paint { .. } if stale => {
-                        EventResult::Command(ListKeyCommand::Refresh)
-                    }
+                    Event::Paint { .. } if stale => EventResult::Command(ListKeyCommand::Refresh),
                     Event::KeyDown { key, .. } => self.table_key(*key),
                     _ => EventResult::Ignored,
                 },

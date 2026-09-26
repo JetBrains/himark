@@ -291,9 +291,14 @@ impl ScriptedSeat {
 }
 
 impl himark::higent::AhpServer for ScriptedSeat {
-    fn create_chat(&self, session: himark::higent::SessionUri) -> himark::higent::SeatFuture<Result<himark::higent::ChatUri, String>> {
+    fn create_chat(
+        &self,
+        session: himark::higent::SessionUri,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ChatUri, String>> {
         assert_eq!(session.as_str(), "session:test");
-        Box::pin(std::future::ready(Ok(himark::higent::ChatUri::new("chat:script"))))
+        Box::pin(std::future::ready(Ok(himark::higent::ChatUri::new(
+            "chat:script",
+        ))))
     }
 
     fn subscribe_chat(
@@ -323,7 +328,10 @@ impl himark::higent::AhpServer for ScriptedSeat {
         Box::pin(std::future::ready(Ok(())))
     }
 
-    fn poll_chat(&self, _chat: himark::higent::ChatUri) -> himark::higent::SeatFuture<Vec<StateAction>> {
+    fn poll_chat(
+        &self,
+        _chat: himark::higent::ChatUri,
+    ) -> himark::higent::SeatFuture<Vec<StateAction>> {
         let batch = self
             .feed
             .lock()

@@ -6,11 +6,13 @@
 //! both reference views over store-held `DiffView` records. Moved in
 //! from the dissolved hidiff plugin (docs/model-view.md stage C).
 
-use crate::{Application, DiffViewState, EditorIdView, OpenDocuments, SplitDiffCommand, UnifiedDiffCommand, UnifiedDiffView};
+use crate::{
+    Application, DiffViewState, EditorIdView, OpenDocuments, SplitDiffCommand, UnifiedDiffCommand,
+    UnifiedDiffView,
+};
 use imba::{
     arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
 };
-
 
 #[derive(Clone, Copy)]
 pub struct PairPane {

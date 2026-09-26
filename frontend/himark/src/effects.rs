@@ -126,10 +126,9 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers.register::<crate::diffs::DiffNormalizeEffect>(crate::diffs::DiffNormalizeHandler);
     handlers.register::<crate::toc::OutlineEffect>(crate::toc::OutlineHandler);
     handlers.register::<crate::find::FindScanEffect>(crate::find::FindScanHandler);
-    handlers
-        .register::<crate::list_keyboard::SpeedSearchEffect>(
-            crate::list_keyboard::SpeedSearchHandler,
-        );
+    handlers.register::<crate::list_keyboard::SpeedSearchEffect>(
+        crate::list_keyboard::SpeedSearchHandler,
+    );
     handlers.register::<crate::list_keyboard::AnnounceSelect>(
         crate::list_keyboard::AnnounceSelectHandler,
     );

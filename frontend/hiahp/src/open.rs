@@ -318,4 +318,3 @@ impl DynamicCommand for FetchFailed {
         eprintln!("[himark] fetch failed: {:?}", self.location);
     }
 }
-

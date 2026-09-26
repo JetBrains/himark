@@ -15,8 +15,8 @@ use imba::{
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
 use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
-use imba::list::{ActivateTrigger, ListOps};
 use ::editor::theme::ComboChrome;
+use imba::list::{ActivateTrigger, ListOps};
 
 const MENU_MAX_ROWS: usize = 9;
 
@@ -174,12 +174,10 @@ impl<C> ComboCommand<C> {
     pub fn picks(&self) -> bool {
         match self {
             ComboCommand::Pick(_) => true,
-            ComboCommand::Menu(command) =>
-
-                matches!(
-                    command.as_ref(),
-                    ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Activate(..)))
-                ),
+            ComboCommand::Menu(command) => matches!(
+                command.as_ref(),
+                ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Activate(..)))
+            ),
             _ => false,
         }
     }

@@ -444,7 +444,11 @@ fn cursor_walks_and_enter_opens() {
     };
     let enter = |view: &SessionTreeView| {
         let index = view.tree.list.cursor_index().expect("a cursor row");
-        TreeCommand::Rows(view.tree.list.activate_command(index, ActivateTrigger::Enter))
+        TreeCommand::Rows(
+            view.tree
+                .list
+                .activate_command(index, ActivateTrigger::Enter),
+        )
     };
     let fold = |view: &SessionTreeView, expand| {
         let index = view.tree.list.cursor_index().expect("a cursor row");

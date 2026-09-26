@@ -732,9 +732,14 @@ impl<T: Clone, K: Clone + Eq + Hash> ListView<T, K> {
         }
         let keyed = |index: &usize| self.key_at(*index).is_some();
         if direction >= 0 {
-            (landed..len).find(keyed).or_else(|| (0..landed).rev().find(keyed))
+            (landed..len)
+                .find(keyed)
+                .or_else(|| (0..landed).rev().find(keyed))
         } else {
-            (0..=landed).rev().find(keyed).or_else(|| (landed..len).find(keyed))
+            (0..=landed)
+                .rev()
+                .find(keyed)
+                .or_else(|| (landed..len).find(keyed))
         }
     }
 

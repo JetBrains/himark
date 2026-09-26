@@ -67,7 +67,6 @@ pub struct HimarkEngine {
 
     shared: Arc<Shared>,
 
-
     _document_channels: Arc<docsync::DocumentChannels>,
 
     drain_chunk: usize,

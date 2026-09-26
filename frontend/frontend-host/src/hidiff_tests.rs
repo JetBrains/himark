@@ -1826,9 +1826,16 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
         .view()
         .byte_count();
     let covers = himark::OpenDocuments::document_ref(&store, new)
-        .and_then(|document| document.diff(state.diff_id()).map(|e| e.operation().new_len()))
+        .and_then(|document| {
+            document
+                .diff(state.diff_id())
+                .map(|e| e.operation().new_len())
+        })
         .expect("the entry rides the target");
-    assert_eq!(covers as usize, live_len, "the seed covers the live text exactly");
+    assert_eq!(
+        covers as usize, live_len,
+        "the seed covers the live text exactly"
+    );
 }
 
 #[test]
@@ -2556,7 +2563,10 @@ fn a_full_click_on_host_text_keeps_host_focus() {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
                 let store = app.store();
                 shot = canvas
-                    .probe_pair(store, &location("small.md", himark::ResourceType::document()))
+                    .probe_pair(
+                        store,
+                        &location("small.md", himark::ResourceType::document()),
+                    )
                     .and_then(|id| himark::OpenDocuments::diff_view_ref(store, id))
                     .and_then(|pair| pair.state.as_ref())
                     .and_then(|state| state.inline_editor());
@@ -2863,7 +2873,8 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let mut trace: Vec<f32> = vec![reserved];
     for _ in 0..40 {
-        let _ = himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
+        let _ =
+            himark::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(0.0));
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);

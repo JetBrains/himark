@@ -115,7 +115,10 @@ impl Agents {
             ServerEvent::SessionChanged { session, changes } => {
                 Self::update_record(store, server, |record| {
                     let mut rows: Vec<SessionSummary> = record.sessions.iter().cloned().collect();
-                    let Some(at) = rows.iter().position(|held| held.resource == session.as_str()) else {
+                    let Some(at) = rows
+                        .iter()
+                        .position(|held| held.resource == session.as_str())
+                    else {
                         return;
                     };
                     let moved = changes.modified_at.is_some();

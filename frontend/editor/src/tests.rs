@@ -1396,10 +1396,7 @@ mod injected_syntax {
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
         document.edit(
-            &Operation::insert_in(
-                crate::text_cursor::byte_count(document.text()),
-                0, "AA",
-            ),
+            &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 0, "AA"),
             store,
             ui,
             &test_fonts(),
@@ -1413,10 +1410,7 @@ mod injected_syntax {
         );
 
         document.edit(
-            &Operation::insert_in(
-                crate::text_cursor::byte_count(document.text()),
-                13, "yy",
-            ),
+            &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 13, "yy"),
             store,
             ui,
             &test_fonts(),
@@ -1430,10 +1424,7 @@ mod injected_syntax {
         );
 
         document.edit(
-            &Operation::insert_in(
-                crate::text_cursor::byte_count(document.text()),
-                10, "zz",
-            ),
+            &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 10, "zz"),
             store,
             ui,
             &test_fonts(),
@@ -1460,10 +1451,7 @@ mod injected_syntax {
         let key = document.add_syntax(7..12, payload(&[(0..3, StyleId::Keyword)]));
 
         document.edit(
-            &Operation::delete_in(
-                crate::text_cursor::byte_count(document.text()),
-                5, "x l",
-            ),
+            &Operation::delete_in(crate::text_cursor::byte_count(document.text()), 5, "x l"),
             store,
             ui,
             &test_fonts(),
@@ -1627,7 +1615,8 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
         let _ = document.edit(
             &operation::Operation::insert_in(
                 crate::text_cursor::byte_count(document.text()),
-                at + i, "x",
+                at + i,
+                "x",
             ),
             store,
             ui,
@@ -3802,7 +3791,8 @@ mod folding {
         document.edit(
             &Operation::insert_in(
                 crate::text_cursor::byte_count(document.text()),
-                0, "// note\n",
+                0,
+                "// note\n",
             ),
             store,
             ui,
@@ -4170,10 +4160,7 @@ mod gutter_stripes {
         // Typing ABOVE the standing hunk shifts its stripe the same
         // frame — the markup rides the edit door.
         document.edit(
-            &Operation::insert_in(
-                crate::text_cursor::byte_count(document.text()),
-                0, "zero\n",
-            ),
+            &Operation::insert_in(crate::text_cursor::byte_count(document.text()), 0, "zero\n"),
             store,
             ui,
             &test_fonts(),

@@ -118,9 +118,9 @@ type RowsCommand = himark::ListKeyCommand<
 >;
 
 fn rows_list() -> Rows {
-    himark::ListKeyboardController::new(imba::scroll::ScrollView::new(
-        imba::list::ListView::empty(),
-    ))
+    himark::ListKeyboardController::new(
+        imba::scroll::ScrollView::new(imba::list::ListView::empty()),
+    )
 }
 
 impl Peeker {

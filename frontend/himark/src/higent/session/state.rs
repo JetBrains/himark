@@ -61,7 +61,6 @@ pub(crate) struct SessionState {
     documents: crate::OpenDocuments,
 
     scratch_names: documents::ScratchMint,
-
 }
 
 impl SessionState {
@@ -101,7 +100,6 @@ impl SessionState {
             && self.terminals.is_empty()
             && self.documents.is_empty()
             && self.scratch_names.is_empty()
-
     }
 }
 

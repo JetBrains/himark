@@ -395,7 +395,10 @@ impl Terminals {
             .and_then(|terminals| terminals.0.get(channel).cloned())
     }
 
-    pub fn session_ref<'a>(store: &'a Store, channel: &crate::higent::ChannelUri) -> Option<&'a Arc<Session>> {
+    pub fn session_ref<'a>(
+        store: &'a Store,
+        channel: &crate::higent::ChannelUri,
+    ) -> Option<&'a Arc<Session>> {
         store
             .get::<Terminals>()
             .and_then(|terminals| terminals.0.get(channel))

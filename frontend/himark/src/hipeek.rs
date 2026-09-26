@@ -25,17 +25,17 @@ use imba::{
 use skia_safe::{Paint, Rect, Size};
 
 use crate::forest::ForestList;
+use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
     files_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation, LocationKey,
     LocationsFeeds,
 };
-use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::tree_item::{tree_toggle, TreeListCommand};
-use imba::list::{ActivateTrigger, ListOps};
 use crate::{
     AppRequests, Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayKey, InlayMode,
     LocationsChannel,
 };
+use imba::list::{ActivateTrigger, ListOps};
 
 const PEEK_HEIGHT: f32 = 280.0;
 
@@ -425,8 +425,7 @@ impl View for PeekView {
                     }
                     ListKeyCommand::Inner(inner) => {
                         if let Some(index) = tree_toggle(inner) {
-                            let Some(key) = self.tree.inner().list().key_at(index).cloned()
-                            else {
+                            let Some(key) = self.tree.inner().list().key_at(index).cloned() else {
                                 return;
                             };
                             self.tree.inner_mut().list_mut().select_only(key.clone());

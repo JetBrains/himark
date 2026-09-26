@@ -1,7 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::{AppCommand, Application, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView};
+use himark::{
+    AppCommand, Application, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView,
+};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -18,8 +20,7 @@ use skia_safe::{Paint, Size};
 /// Keys-only controller over the raw label list — the palette's own
 /// input does the filtering; the table does the movement
 /// (docs/ui/list-keyboard.md).
-type Rows =
-    ListKeyboardController<ScrollView<ListView<himark::LabelRow, usize>>>;
+type Rows = ListKeyboardController<ScrollView<ListView<himark::LabelRow, usize>>>;
 type RowsCommand = ListKeyCommand<ScrollCommand<ListCommand<std::convert::Infallible>>>;
 
 #[derive(Clone)]

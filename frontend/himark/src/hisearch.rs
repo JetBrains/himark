@@ -21,15 +21,15 @@ use imba::{
 use skia_safe::Size;
 
 use crate::forest::{ForestList, ForestSearcher};
+use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
     locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey,
     LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
 };
 use crate::modal::RequestSlot;
-use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::tree_item::{tree_toggle, TreeListCommand};
-use imba::list::{ActivateTrigger, ListOps};
 use crate::{AppRequests, EditorCommand, EditorView, ModalRequest, SessionId, WindowId};
+use imba::list::{ActivateTrigger, ListOps};
 
 /// The dock owner id — the toggle command's, shared by everything
 /// that lands content into this tab.

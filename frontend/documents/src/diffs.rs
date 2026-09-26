@@ -20,9 +20,7 @@ fn whole_replace(base: &editor::Text, target: &editor::Text) -> Operation {
     let mut ops = Vec::with_capacity(2);
     let base_len = base.byte_count();
     if base_len > 0 {
-        ops.push(operation::Op::Delete(
-            base.view().byte_string(0, base_len),
-        ));
+        ops.push(operation::Op::Delete(base.view().byte_string(0, base_len)));
     }
     let target_len = target.byte_count();
     if target_len > 0 {
@@ -617,10 +615,8 @@ pub fn land_diff_markup(
 /// which is exactly the mutable shared state this codebase bans).
 #[derive(Clone)]
 pub struct StripeBases(
-    pub std::sync::Arc<
-        dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation>
-            + Send
-            + Sync,
+    pub  std::sync::Arc<
+        dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation> + Send + Sync,
     >,
 );
 
@@ -821,18 +817,20 @@ impl EffectHandler<DiffNormalizeEffect> for DiffNormalizeHandler {
             .as_deref()
             .map(|language| editor::diff::DiffSyntax {
                 language,
-                base: effect.base_tree.as_ref().map(|(tree, fresh)| {
-                    editor::diff::DiffTree {
+                base: effect
+                    .base_tree
+                    .as_ref()
+                    .map(|(tree, fresh)| editor::diff::DiffTree {
                         tree: tree.as_ref(),
                         fresh: *fresh,
-                    }
-                }),
-                target: effect.target_tree.as_ref().map(|(tree, fresh)| {
-                    editor::diff::DiffTree {
+                    }),
+                target: effect
+                    .target_tree
+                    .as_ref()
+                    .map(|(tree, fresh)| editor::diff::DiffTree {
                         tree: tree.as_ref(),
                         fresh: *fresh,
-                    }
-                }),
+                    }),
             });
         let operation = effect
             .policy

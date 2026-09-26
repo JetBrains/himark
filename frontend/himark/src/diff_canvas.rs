@@ -110,7 +110,10 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
         }),
         CanvasSource::Commit { folder, id } => {
             let held = crate::hihistory::History::folder(store, folder)?;
-            let commit = held.commits.iter().find(|commit| commit.id == id.as_str())?;
+            let commit = held
+                .commits
+                .iter()
+                .find(|commit| commit.id == id.as_str())?;
             Some(CanvasBanner::Commit {
                 message: commit
                     .message

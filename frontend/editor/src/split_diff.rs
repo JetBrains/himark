@@ -948,7 +948,13 @@ pub fn prepare_marks(diff: &Operation, left_text: &Text) -> PreparedMarks {
     const BLOCK: u32 = 4 * 1024;
     let window = 0..len.div_ceil(BLOCK).saturating_mul(BLOCK);
     let (mut left, mut right) = derive_wash_markups(diff, left_text, &window);
-    mint_fold_strips(diff, left_text, &mut left, &mut right, &crate::diff::FoldBans::new());
+    mint_fold_strips(
+        diff,
+        left_text,
+        &mut left,
+        &mut right,
+        &crate::diff::FoldBans::new(),
+    );
     PreparedMarks {
         left,
         right,

@@ -574,8 +574,7 @@ impl Canvas {
             .successions
             .iter()
             .filter(|(_, next)| {
-                crate::gathered_view(store, next.pane.id())
-                    .is_some_and(|view| view.dressed())
+                crate::gathered_view(store, next.pane.id()).is_some_and(|view| view.dressed())
             })
             .map(|(key, _)| key.clone())
             .collect();
@@ -661,15 +660,25 @@ impl Canvas {
                 None => return,
             },
             crate::DiffLayout::Split => {
-                let left = view.split.left.document.content_height(view.split.left.editor);
-                let right = view.split.right.document.content_height(view.split.right.editor);
+                let left = view
+                    .split
+                    .left
+                    .document
+                    .content_height(view.split.left.editor);
+                let right = view
+                    .split
+                    .right
+                    .document
+                    .content_height(view.split.right.editor);
                 left.max(right)
             }
         };
         let want = body + env::Themes::of(store).ui().chat.gap;
         if (want - self.rows.content().height_at(index).unwrap_or(0.0)).abs() > 0.5 {
             let rows = ScrollCommand::Content(ListCommand::SetHeight(index, want));
-            fx.scope(CanvasCommand::Rows, |fx| self.rows.perform(store, ui, rows, fx));
+            fx.scope(CanvasCommand::Rows, |fx| {
+                self.rows.perform(store, ui, rows, fx)
+            });
         }
     }
 
@@ -1112,8 +1121,7 @@ impl Canvas {
         // failure face beats a silently stale diff.
         if !prep.failed {
             let shown = self.row_pane(&key).is_some_and(|standing| {
-                crate::gathered_view(store, standing.id())
-                    .is_some_and(|view| view.ever_dressed())
+                crate::gathered_view(store, standing.id()).is_some_and(|view| view.ever_dressed())
             });
             if shown {
                 let built_width = prep.width;
@@ -1479,7 +1487,6 @@ fn mounted(
     Some((pane, height))
 }
 
-
 impl Canvas {
     fn focus_data<'w>(
         &'w self,
@@ -1534,12 +1541,12 @@ impl Canvas {
                     Some((_, RowCommand::Composer(ComposerCommand::Commit))) => {
                         let text = self.composer_text().unwrap_or_default();
                         if !text.trim().is_empty() {
-                            self.request = Some(crate::PanelRequest::Perform(
-                                std::sync::Arc::new(crate::hihistory::CommitHistory {
+                            self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
+                                crate::hihistory::CommitHistory {
                                     folder: self.source.folder().clone(),
                                     message: text,
-                                }),
-                            ));
+                                },
+                            )));
                         }
                     }
                     _ => {}
@@ -1645,7 +1652,11 @@ fn set_source(source: &CanvasSource) -> ChangeSetSource {
 impl Canvases {
     pub fn by_source(store: &Store, source: &CanvasSource) -> Option<CanvasId> {
         let set = Changes::id_for_source(store, &set_source(source))?;
-        Changes::set_ref(store, set)?.canvases.keys().next().copied()
+        Changes::set_ref(store, set)?
+            .canvases
+            .keys()
+            .next()
+            .copied()
     }
 
     fn owner_of(store: &Store, id: CanvasId) -> Option<ChangeSetId> {
@@ -1657,8 +1668,8 @@ impl Canvases {
 
     fn find_or_create(store: &mut Store, source: &CanvasSource) -> CanvasId {
         let set = Changes::ensure_set_for_source(store, &set_source(source));
-        if let Some(id) = Changes::set_ref(store, set)
-            .and_then(|held| held.canvases.keys().next().copied())
+        if let Some(id) =
+            Changes::set_ref(store, set).and_then(|held| held.canvases.keys().next().copied())
         {
             return id;
         }
@@ -1680,9 +1691,8 @@ impl Canvases {
     fn put(store: &mut Store, id: CanvasId, canvas: Canvas) {
         // A put without a surviving owner re-homes by source (the set
         // always exists — sources mint their sets).
-        let set = Self::owner_of(store, id).unwrap_or_else(|| {
-            Changes::ensure_set_for_source(store, &set_source(&canvas.source))
-        });
+        let set = Self::owner_of(store, id)
+            .unwrap_or_else(|| Changes::ensure_set_for_source(store, &set_source(&canvas.source)));
         Changes::put_canvas(store, set, id, canvas);
     }
 
@@ -2158,12 +2168,11 @@ fn composer_band(theme: &crate::Theme, message: Option<&crate::EditorView>) -> f
 fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> crate::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let document =
-        crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
-            .with_syntax(
-                crate::Syntax::new("markdown", None, crate::Markup::new()),
-                &[],
-            );
+    let document = crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
+        .with_syntax(
+            crate::Syntax::new("markdown", None, crate::Markup::new()),
+            &[],
+        );
     let mut view = crate::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
@@ -2737,8 +2746,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     let presentable = crate::gathered_view(store, pane.id())
                         .is_none_or(|view| view.dressed() || view.ever_dressed());
                     if !presentable {
-                        let body_height =
-                            (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
+                        let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
                         let mut face = imba::container::container(
                             arena,
                             Size::new(width, body_height + chrome.gap),

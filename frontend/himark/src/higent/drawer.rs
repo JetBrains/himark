@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::higent::SessionUri;
 use crate::higent::{
     ConnectServerEffect, HostId, ListSessionsEffect, PollServerEffect, RootInfo, ServerEvent,
     SessionsPage,
@@ -11,9 +12,8 @@ use crate::{
     ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView,
     TreeLabel, TreeListCommand, TreeRow,
 };
-use imba::list::ListOps;
-use crate::higent::SessionUri;
 use ahp_types::state::SessionSummary;
+use imba::list::ListOps;
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -294,7 +294,10 @@ impl AgentsPanel {
                         };
                         for summary in sessions {
                             slice.push_keyed(
-                                AgentKey::Session(server, SessionUri::new(summary.resource.clone())),
+                                AgentKey::Session(
+                                    server,
+                                    SessionUri::new(summary.resource.clone()),
+                                ),
                                 crate::TreeItemView::leaf(
                                     TreeLabel::new(session_label(summary), true, false)
                                         .with_badge(session_badge(summary, accent, stop, dim))

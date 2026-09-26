@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use crate::hichanges::{
-    dir_forest, empty_side, entry_serves, folder_scope, CatalogEntry, ChangeEntry,
-    ChangesStatus, DirSink, DirTrie, Dispatched,
+    dir_forest, empty_side, entry_serves, folder_scope, CatalogEntry, ChangeEntry, ChangesStatus,
+    DirSink, DirTrie, Dispatched,
 };
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::ChangesetState;
@@ -26,7 +26,6 @@ use imba::{
 };
 
 const NOTE_KIND: &str = "changes-note";
-
 
 /// One commit row: the wire commit plus the id of the CHANGE SET that
 /// is its content (docs/model-view.md — `Commit { change_set }`).
@@ -116,7 +115,11 @@ impl History {
         &mut self,
         session: &crate::higent::SessionUri,
         entries: &[CatalogEntry],
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, crate::higent::ChannelUri)> {
+    ) -> Vec<(
+        ResourceLocation,
+        Arc<dyn AhpServer>,
+        crate::higent::ChannelUri,
+    )> {
         let mut fresh = Vec::new();
         for (folder, entry) in self.folders.clone().iter() {
             if entry.session != *session || entry.channel.is_some() {
@@ -209,7 +212,11 @@ impl History {
         self.folders.insert_mut(folder.clone(), entry);
     }
 
-    pub(crate) fn session_failed(store: &mut Store, session: &crate::higent::SessionUri, error: &str) {
+    pub(crate) fn session_failed(
+        store: &mut Store,
+        session: &crate::higent::SessionUri,
+        error: &str,
+    ) {
         store.update::<History>(|history| {
             let riding: Vec<ResourceLocation> = history
                 .folders
@@ -283,7 +290,6 @@ impl History {
             }
         }
     }
-
 }
 
 pub(crate) fn subscribe_fresh(
@@ -483,7 +489,9 @@ fn settle_commit_fetch(
                 }),
             );
         }
-        _ => entry.seat.unsubscribe_changeset(&crate::higent::ChannelUri::new(wire.changeset.clone())),
+        _ => entry
+            .seat
+            .unsubscribe_changeset(&crate::higent::ChannelUri::new(wire.changeset.clone())),
     }
 }
 
@@ -542,7 +550,11 @@ impl crate::DynamicCommand for FetchCommitFiles {
         if crate::hichanges::Changes::commit_generation(store, &self.folder, &self.commit) > 0 {
             return;
         }
-        let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit.as_str()) else {
+        let Some(commit) = entry
+            .commits
+            .iter()
+            .find(|held| held.id == self.commit.as_str())
+        else {
             return;
         };
         let channel = crate::higent::ChannelUri::new(commit.changeset.clone());
@@ -666,7 +678,8 @@ struct CommitSink<'a> {
 
 impl DirSink for CommitSink<'_> {
     fn branch(&mut self, key: &ResourceLocation) {
-        self.items.insert_mut(key.clone(), RowItem::Branch { select: true });
+        self.items
+            .insert_mut(key.clone(), RowItem::Branch { select: true });
     }
 
     fn file_key(&self, entry: &ChangeEntry, at: &ResourceLocation) -> ResourceLocation {
@@ -749,7 +762,7 @@ pub(crate) fn graph_node(
                         folder,
                         &crate::hichanges::Revision::new(commit.id.clone()),
                     )
-                        .filter(|set| set.generation() > 0);
+                    .filter(|set| set.generation() > 0);
                     let children = match held.as_ref() {
                         None => Vec::new(),
                         Some(files) => match (&files.status, files.files.is_empty()) {

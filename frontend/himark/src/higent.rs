@@ -29,9 +29,9 @@ pub use drawer::{
 pub use effects::*;
 pub use file_edit::{snapshot, DiffCounts, FileEditRefs, FileSnapshotRef};
 pub use seat::{
-    AhpServer, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap, RootInfo, SearchAsk,
-    SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers, SessionOptions,
-    SessionsPage, TerminalEvent, TerminalHandle, WatchHandle, ChannelUri, ChatUri, SessionUri, TurnId,
+    AhpServer, ChannelUri, ChatUri, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap,
+    RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,
+    SessionOptions, SessionUri, SessionsPage, TerminalEvent, TerminalHandle, TurnId, WatchHandle,
 };
 pub use session::{
     all_session_folders, open_session, open_session_with, session_folders, Agents, Host,

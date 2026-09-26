@@ -565,7 +565,8 @@ impl himark::terminal::TerminalBackend for AhpBackend {
 
 impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
     async fn handle(&self, effect: NewTerminalEffect) -> Option<Arc<himark::terminal::Session>> {
-        let channel = himark::higent::ChannelUri::new(format!("ahp-terminal:/{}", crate::hiahp::uuid_v4()));
+        let channel =
+            himark::higent::ChannelUri::new(format!("ahp-terminal:/{}", crate::hiahp::uuid_v4()));
         let session = himark::terminal::Session::new(Box::new(AhpBackend {
             seat: Arc::clone(&effect.seat),
             channel: channel.clone(),
@@ -671,7 +672,11 @@ impl DynamicCommand for OpenTerminal {
                         himark::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder)
                             .into_string()
                     });
-                Some((seat, himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION), cwd))
+                Some((
+                    seat,
+                    himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                    cwd,
+                ))
             });
         let Some((seat, session, cwd)) = resolved else {
             return;

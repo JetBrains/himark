@@ -3,7 +3,6 @@
 
 use super::*;
 
-
 #[test]
 fn revisions_are_positions_in_the_log() {
     let mut log = EditLog::new();

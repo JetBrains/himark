@@ -479,10 +479,7 @@ impl Document {
             for id in ids {
                 if let Some(diff) = self.diffs.get(&id) {
                     if diff.operation.new_len() != operation.old_len() {
-                        debug_assert!(
-                            false,
-                            "a live diff must cover the text its edit rewrites"
-                        );
+                        debug_assert!(false, "a live diff must cover the text its edit rewrites");
                         continue;
                     }
                     let mut diff = diff.clone();
@@ -2630,10 +2627,12 @@ impl Document {
                     byte_count,
                 );
             } else {
-                let completed = Operation::from_ops(operation.iter().chain(
-                    (operation.old_len() < byte_count)
-                        .then(|| Op::Retain(byte_count - operation.old_len())),
-                ));
+                let completed = Operation::from_ops(
+                    operation.iter().chain(
+                        (operation.old_len() < byte_count)
+                            .then(|| Op::Retain(byte_count - operation.old_len())),
+                    ),
+                );
                 self.edit(&completed, store, ui, &fonts, theme, fx);
                 if take_focus {
                     self.set_focus(editor, EditorFocus::Inlay(key));

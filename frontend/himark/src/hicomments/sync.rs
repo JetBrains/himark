@@ -98,7 +98,9 @@ impl Comments {
     }
 
     fn channel_for(&self, session: &Uri) -> Option<&ChannelFeed> {
-        self.channel.as_ref().filter(|feed| feed.session == *session)
+        self.channel
+            .as_ref()
+            .filter(|feed| feed.session == *session)
     }
 
     pub(crate) fn is_empty(&self) -> bool {

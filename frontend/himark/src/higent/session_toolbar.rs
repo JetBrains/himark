@@ -4,9 +4,9 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
+use crate::higent::SessionUri;
 use ::editor::theme::ComboChrome;
 use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
-use crate::higent::SessionUri;
 use imba::{
     container::Container,
     effect::AnyEffect,

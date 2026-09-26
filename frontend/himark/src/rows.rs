@@ -212,9 +212,8 @@ mod tests {
             &[],
             None,
         );
-        let mut list = ScrollView::new(
-            ListView::from_slice(slice).with_selection(selection_style(&store)),
-        );
+        let mut list =
+            ScrollView::new(ListView::from_slice(slice).with_selection(selection_style(&store)));
         list.content_mut().select_only(250);
         assert_eq!(list.scroll_y(), 0.0);
 

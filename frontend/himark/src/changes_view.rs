@@ -27,8 +27,8 @@ use crate::{
     ListKeyboardController, ModalRequest, ResourceLocation, TreeListCommand,
 };
 use imba::list::ListOps;
-use imba::tooltip::{TooltipCommand, TooltipView};
 use imba::thunk_ext::ThunkExt;
+use imba::tooltip::{TooltipCommand, TooltipView};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -50,7 +50,9 @@ const PANEL_PAD: f32 = 6.0;
 pub(crate) enum RowItem {
     /// A toggling branch row. `select` mirrors the builder's habit:
     /// history rows move the selection, changes directories don't.
-    Branch { select: bool },
+    Branch {
+        select: bool,
+    },
 
     /// A row that opens (or reveals inside) a diff canvas.
     Open {
@@ -61,7 +63,9 @@ pub(crate) enum RowItem {
     },
 
     /// The history tail row: grow the folder's commit page.
-    Grow { folder: ResourceLocation },
+    Grow {
+        folder: ResourceLocation,
+    },
 
     Note,
 }
@@ -209,8 +213,7 @@ impl ChangesView {
         // A commit row arrives collapsed; only rows the view has
         // never shown are preset, so a user's expansion survives.
         for (key, item) in items.iter() {
-            if matches!(item, RowItem::Open { toggle: true, .. }) && !self.items.contains_key(key)
-            {
+            if matches!(item, RowItem::Open { toggle: true, .. }) && !self.items.contains_key(key) {
                 self.list
                     .view_mut()
                     .inner_mut()
@@ -304,14 +307,16 @@ impl View for ChangesView {
         let searching = self.list.view().searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => {
-                    EventResult::Command(ChangesViewCommand::Dismiss)
-                }
+                InputKey::Escape if !searching => EventResult::Command(ChangesViewCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
         };
-        own.merge_under(self.list.focus_data(store, ui).map(ChangesViewCommand::Rows))
+        own.merge_under(
+            self.list
+                .focus_data(store, ui)
+                .map(ChangesViewCommand::Rows),
+        )
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
@@ -796,11 +801,7 @@ impl View for ChangesPane {
         Changes::put_view(store, self.view, view);
     }
 
-    fn destroy(
-        &mut self,
-        store: &mut Store,
-        _fx: &mut imba::effect::Effects<'_, Self::Command>,
-    ) {
+    fn destroy(&mut self, store: &mut Store, _fx: &mut imba::effect::Effects<'_, Self::Command>) {
         Changes::remove_view(store, self.view);
     }
 
@@ -816,7 +817,11 @@ impl View for ChangesPane {
                     match Changes::view_ref(store, self.view) {
                         Some(view) => imba::ThunkBox::new(
                             arena,
-                            imba::Layout::layout(view.display(arena, store, ui), arena, constraints),
+                            imba::Layout::layout(
+                                view.display(arena, store, ui),
+                                arena,
+                                constraints,
+                            ),
                         ),
                         None => imba::ThunkBox::new(
                             arena,

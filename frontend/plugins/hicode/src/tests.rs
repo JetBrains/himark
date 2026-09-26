@@ -200,7 +200,10 @@ impl himark::higent::AhpServer for StreamSeat {
     > {
         unreachable!()
     }
-    fn dispose_session(&self, _session: himark::higent::SessionUri) -> himark::higent::SeatFuture<Result<(), String>> {
+    fn dispose_session(
+        &self,
+        _session: himark::higent::SessionUri,
+    ) -> himark::higent::SeatFuture<Result<(), String>> {
         unreachable!()
     }
     fn subscribe_session(
@@ -216,7 +219,10 @@ impl himark::higent::AhpServer for StreamSeat {
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn create_chat(&self, _session: himark::higent::SessionUri) -> himark::higent::SeatFuture<Result<himark::higent::ChatUri, String>> {
+    fn create_chat(
+        &self,
+        _session: himark::higent::SessionUri,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::ChatUri, String>> {
         unreachable!()
     }
     fn subscribe_chat(
@@ -248,7 +254,11 @@ impl himark::higent::AhpServer for StreamSeat {
     ) -> himark::higent::SeatFuture<Vec<himark::higent::ahp_types::actions::StateAction>> {
         unreachable!()
     }
-    fn cancel_turn(&self, _chat: himark::higent::ChatUri, _turn_id: himark::higent::TurnId) -> himark::higent::SeatFuture<()> {
+    fn cancel_turn(
+        &self,
+        _chat: himark::higent::ChatUri,
+        _turn_id: himark::higent::TurnId,
+    ) -> himark::higent::SeatFuture<()> {
         unreachable!()
     }
     fn dispatch_action(
@@ -388,10 +398,17 @@ impl himark::higent::AhpServer for StreamSeat {
     ) -> himark::higent::SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
         unreachable!()
     }
-    fn dispatch_document(&self, _channel: &himark::higent::ChannelUri, _action: himark_ahp_ext_types::DocumentApplied) {
+    fn dispatch_document(
+        &self,
+        _channel: &himark::higent::ChannelUri,
+        _action: himark_ahp_ext_types::DocumentApplied,
+    ) {
         unreachable!()
     }
-    fn unsubscribe_document(&self, _channel: &himark::higent::ChannelUri) -> himark::higent::SeatFuture<()> {
+    fn unsubscribe_document(
+        &self,
+        _channel: &himark::higent::ChannelUri,
+    ) -> himark::higent::SeatFuture<()> {
         Box::pin(std::future::ready(()))
     }
     fn lsp(

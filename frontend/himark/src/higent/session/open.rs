@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use super::{Agents, SessionChannel};
+use crate::higent::{ChatUri, SessionUri};
 use crate::higent::{HostId, PollSessionEffect, SubscribeSessionEffect};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
 use ahp_types::actions::StateAction;
-use crate::higent::{ChatUri, SessionUri};
 use ahp_types::state::ChatSummary;
 use imba::effect::AnyEffect;
 use imba::store::Store;

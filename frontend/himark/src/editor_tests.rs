@@ -3441,12 +3441,22 @@ mod toc {
             use imba::list::{ActivateTrigger, ListOps};
             let step = view.search.step_index(1).expect("a stepped row");
             let select = crate::OutlineCommand::List(view.search.select_command(step));
-            view.perform(&mut store, &ui, select, &mut imba::effect::Batch::new().effects());
+            view.perform(
+                &mut store,
+                &ui,
+                select,
+                &mut imba::effect::Batch::new().effects(),
+            );
             let at = view.search.cursor_index().expect("a cursor row");
             let pick = crate::OutlineCommand::List(
                 view.search.activate_command(at, ActivateTrigger::Enter),
             );
-            view.perform(&mut store, &ui, pick, &mut imba::effect::Batch::new().effects());
+            view.perform(
+                &mut store,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
         }
         let Some(crate::ModalRequest::Perform(command)) = crate::ModalView::take_request(&mut view)
         else {
@@ -3523,7 +3533,12 @@ mod toc {
             let at = toc.search.cursor_index().expect("a cursor row");
             let pick =
                 crate::TocCommand::List(toc.search.activate_command(at, ActivateTrigger::Enter));
-            toc.perform(&mut scratch, &ui, pick, &mut imba::effect::Batch::new().effects());
+            toc.perform(
+                &mut scratch,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
         }
         let Some(crate::ModalRequest::OpenLocations(locations)) =
             crate::ModalView::take_request(&mut toc)
@@ -3544,12 +3559,22 @@ mod toc {
             // The band row is the only cursor stop; Up clamps onto it.
             if let Some(step) = band.search.step_index(-1) {
                 let select = crate::TocCommand::List(band.search.select_command(step));
-                band.perform(&mut scratch, &ui, select, &mut imba::effect::Batch::new().effects());
+                band.perform(
+                    &mut scratch,
+                    &ui,
+                    select,
+                    &mut imba::effect::Batch::new().effects(),
+                );
             }
             let at = band.search.cursor_index().expect("a cursor row");
             let pick =
                 crate::TocCommand::List(band.search.activate_command(at, ActivateTrigger::Enter));
-            band.perform(&mut scratch, &ui, pick, &mut imba::effect::Batch::new().effects());
+            band.perform(
+                &mut scratch,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
         }
         assert!(
             crate::ModalView::take_request(&mut band).is_none(),
@@ -3652,10 +3677,10 @@ mod toc {
             crate::ModalView::take_request(&mut toc).is_none(),
             "folding is not a pick"
         );
-        let pick = crate::TocCommand::List(
-            toc.search
-                .activate_command(toc.search.cursor_index().expect("a cursor row"), ActivateTrigger::Enter),
-        );
+        let pick = crate::TocCommand::List(toc.search.activate_command(
+            toc.search.cursor_index().expect("a cursor row"),
+            ActivateTrigger::Enter,
+        ));
         drive(&mut toc, pick);
         assert_eq!(toc.visible_rows(), 3, "Enter on a directory unfolds");
     }
@@ -5332,7 +5357,9 @@ fn switching_workspaces_stashes_the_chat_panel() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new(crate::higent::ChatUri::new("ahp-chat:/a"))),
+            Box::new(crate::higent::ChatPane::new(crate::higent::ChatUri::new(
+                "ahp-chat:/a",
+            ))),
             &mut batch.effects(),
         );
         crate::Windows::put(&mut store, window, entity);
