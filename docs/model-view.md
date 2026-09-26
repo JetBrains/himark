@@ -115,12 +115,21 @@ retired with their only client. A set's wire side is
 `feed: Option<SetFeed>` — a canvas may open a DETACHED set;
 `ensure_folder` attaches the feed.
 
-### Step 5 (later) — Split the chat into model and view
+### Step 5 — Split the chat into model and view (LANDED)
 
-`ChatPanel` fuses the conversation MODEL (turns, actions, the feed
+`ChatPanel` fused the conversation MODEL (turns, actions, the feed
 subscription, session link) with VIEW furniture (laid cells, composer
-box, toolbar, scroll). Split: `Chats` keeps the transcript model; a
-chat-view registry beside it holds per-view state, keyed by view id;
+box, toolbar, scroll) — and the laid list's width-bound heights made
+it single-mount: two windows fought over one layout. LANDED
+(2026-09-26): `ChatPanel` is the model — the transcript as cell
+SPECS kept current by the stream fold, the ask stack, the feed —
+owning `ChatView` records (laid rows, scroll, focus, completion,
+toolbar, per-view composer DRAFT), one per mount. A model mutation
+rolls every view in the same batch (`ViewOp`); only tail-following
+views chase it. `ChatPane` is a thin `(chat, view)` reference; the
+view dies with the pane, the chat and its poll live on with the
+session. Shared drafts (across views or the wire) are deliberately
+POSTPONED — per-view for now. The original sketch, for the record:
 `ChatPane` references the view id. Then two panes can show one
 conversation, and feed landings roll transcript + views model-locally
 instead of performing through one fused record. Deferred: the cell
