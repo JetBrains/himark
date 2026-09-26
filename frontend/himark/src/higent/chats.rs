@@ -51,7 +51,10 @@ impl Chats {
             .get::<Chats>()
             .is_some_and(|chats| chats.chats.contains_key(&chat));
         if !known {
-            eprintln!("[higent] minting a FRESH chat record: {chat}");
+            eprintln!(
+                "[higent] minting a FRESH chat record: {chat}\n{}",
+                std::backtrace::Backtrace::force_capture()
+            );
             let mut panel = ChatPanel::new(store, ui, server, session, chat.clone());
             if let Some(prompt) = initial_prompt {
                 panel = panel.with_initial_prompt(prompt);
