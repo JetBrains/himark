@@ -71,30 +71,33 @@ list of commits (per folder), each commit REFERENCING its change set
 by `ChangeSetId` — an id reference, weak, like every cross-collection
 link. Its VIEW is a single tree UNITING all those change sets.
 
-### Step 3 — Views are owned by their model, referenced by both ids
+### Step 3 — ONE tree view, owned by the collection (LANDED, re-ruled)
 
-`Document.editors` literally: the owning record holds
-`views: Map<ViewId, ViewState>`, and a reference is BOTH ids —
-`(ChangeSetId, ChangesViewId)`, as an editor is
-`(DocumentId, EditorId)`. The dock holds thin reference panes; a
-pane's `destroy` removes its record (tree rows are pure derivation).
-In a multi-folder session the changes tree is one section-view per
-working-copy set, composed by the pane.
+RULING (2026-09-26): HistoryView and ChangesView were never different
+— each shows an arbitrary amount of change sets at once — so they are
+ONE concrete type, `changes_view::ChangesView`: a keyed tree
+(ForestList) where a set's rows are locatable by key. No trait; the
+changes/history difference is the DATA a view derives rows from
+(`ViewSets::WorkingCopies | History`) and the `RowItem` behaviour the
+node builders mint (open canvas / toggle / grow page). One
+`ChangesPane` fronts both docks.
 
-The single uniting history tree is owned by the History model (the
-commit list), keyed by `HistoryViewId` — the one view that belongs to
-a LIST of sets rather than a single set.
+Because a uniting view spans MANY sets, the views cannot live inside
+one `ChangeSet`: they live on the **`ChangeSets` collection** — the
+point of gravity — beside the many-to-many
+`ChangeSetId ↔ ChangesViewId` JOIN. `ChangeSets` is session state
+(gathered/parked with the session), so the views are session-scoped
+with it. History just manages the commit sets, populating them from
+commits.
 
-**The update rule:** whenever a ChangeSet is updated, it updates ALL
-its views in the same mutation — its owned ChangesViews (and canvas
-views), AND every HistoryView uniting it. No window walks, no
-downcasts, no paint probes.
-
-*Landed intermediate:* the tree-view records already moved into the
-models (`Changes.views`, `History.views`) with dock reference panes
-(`ChangesPane`, `HistoryPane`) and model-local sync;
-`ModalView::as_any_mut` retired. The re-keying by `ChangeSetId` comes
-with the ChangeSets migration.
+**The update rule (landed):** a set's content landing calls
+`nudge_set` — the join marks exactly its viewers stale; a
+folder-structural shift (catalog adopt, commit page, status) routes
+through the folder's working-copy ANCHOR set via `nudge_folder`. The
+single `sync_changes_views` batch-tail lane rolls the stale views of
+the gathered session and re-registers their join rows. The
+generation counters that cued the twin views are gone. No window
+walks, no downcasts, no paint probes.
 
 ### Step 4 — Canvases attach to their ChangeSet (LANDED)
 
