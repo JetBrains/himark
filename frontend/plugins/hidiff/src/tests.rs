@@ -486,8 +486,8 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         );
         himark::OpenDocuments::put_document(&mut store, right_id, document);
     }
-    // The keystroke's own batch (any batch) runs the diff lanes; the
-    // pane hears NOTHING — its paint probe must notice on its own.
+    // The keystroke's own batch (any batch) runs the diff lanes and
+    // the dressing sweep; the pane hears nothing through its panel.
     let window = app.sole_window();
     app.perform_batch(vec![himark::AppCommand::ViewportResized(window, size)]);
 
@@ -2967,8 +2967,19 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         for _ in 0..rounds {
             let _ = himark::test_driver::animate(app, imba::anim::AnimationClock::from_millis(0.0));
             runner.run();
+            let mut drained = false;
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
+                drained = true;
+            }
+            if !drained {
+                // A quiet round still runs a batch: the batch-tail
+                // lanes (diff, dressing, canvas) are what converge the
+                // state now — paint no longer carries probes.
+                app.perform_batch(vec![himark::AppCommand::ViewportResized(
+                    app.sole_window(),
+                    size,
+                )]);
             }
             let _ = himark::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
         }
@@ -3449,7 +3460,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 /// so the row's PAINT probe must notice the stale pair on its own and
 /// resync — spacers, marks, folds, the adopted generation.
 #[test]
-fn an_unfocused_canvas_row_resyncs_from_its_paint_probe() {
+fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let store = &imba::store::Store::new();
     let ui = himark::test_document::test_ui();
     let fonts = AppFonts::embedded();
@@ -3573,12 +3584,25 @@ fn an_unfocused_canvas_row_resyncs_from_its_paint_probe() {
     }
     assert!(stale_now(&app), "the edit leaves the row's pair stale");
 
-    // Paint alone converges it: the probe answers Resync, the Resync's
-    // batch runs the diff lanes, the landing is adopted next frame.
-    settle(&mut app, &mut surface, 30);
+    // NO paint from here. The batch-tail DRESSING sweep answers the
+    // staleness itself: it resyncs the store-held view, the marks land
+    // id-routed (AppCommand::DiffViewCommand), and the basis converges
+    // with the row never painting once.
+    let window = app.sole_window();
+    for _ in 0..30 {
+        runner.run();
+        let mut drained = false;
+        while let Ok(command) = arriving.try_recv() {
+            app.perform_batch(vec![command]);
+            drained = true;
+        }
+        if !drained {
+            app.perform_batch(vec![himark::AppCommand::ViewportResized(window, size)]);
+        }
+    }
     assert!(
         !stale_now(&app),
-        "the unfocused row resynced from its paint probe"
+        "the unfocused row resynced from the dressing sweep, paint-free"
     );
 }
 

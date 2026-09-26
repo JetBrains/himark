@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::{
-    Application, DiffViewState, EditorIdView, EditorView, OpenDocuments, SplitDiffCommand,
-    SplitDiffView, UnifiedDiffCommand, UnifiedDiffView,
+    Application, DiffViewState, EditorIdView, OpenDocuments, SplitDiffCommand,
+    UnifiedDiffCommand, UnifiedDiffView,
 };
 use imba::{
     arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
@@ -32,48 +32,9 @@ impl PairPane {
 }
 
 fn gathered(pair: &himark::DiffView, store: &Store) -> Option<UnifiedDiffView> {
-    {
-        let left = pair.left;
-        let right = pair.right;
-        let left_view = EditorView {
-            document: OpenDocuments::document(store, left.document())?,
-            editor: left.editor(),
-            reports_geometry: true,
-
-            location: OpenDocuments::location(store, left.document()),
-            gutter_width: 0.0,
-            base: None,
-        };
-        let right_view = EditorView {
-            document: OpenDocuments::document(store, right.document())?,
-            editor: right.editor(),
-            reports_geometry: true,
-            location: OpenDocuments::location(store, right.document()),
-            gutter_width: 0.0,
-            base: None,
-        };
-        let state = match &pair.state {
-            Some(state) => state.clone(),
-
-            None => DiffViewState::attach(
-                pair.diff,
-                &left_view.document,
-                &right_view.document,
-                OpenDocuments::diff_handle(store, pair.diff)?.base_markup,
-                pair.right_extras,
-                None,
-            )?,
-        };
-        Some(UnifiedDiffView::new(SplitDiffView::new(
-            left_view, right_view, state,
-        )))
-    }
+    himark::gather_diff_view(pair, store)
 }
 
-/// Reconstruct a tracked pair's `UnifiedDiffView` from the store — the
-/// read side of the registered-diff mechanism (documents live in
-/// `OpenDocuments`, the view is gathered per ask). Used by the diff
-/// canvas rows for layout/probe reads.
 pub fn gathered_view(store: &Store, id: himark::DiffViewId) -> Option<UnifiedDiffView> {
     gathered(himark::OpenDocuments::diff_view_ref(store, id)?, store)
 }
@@ -415,28 +376,14 @@ impl<'a> Widget<'a, UnifiedDiffCommand> for GatheredSplit<'a> {
         event: &imba::event::Event<'_>,
         viewport: skia_safe::Rect,
     ) -> imba::event::EventResult<UnifiedDiffCommand> {
-        let (Some(view), Some(inner)) = (self.view, &self.inner) else {
+        let (Some(_view), Some(inner)) = (self.view, &self.inner) else {
             return imba::event::EventResult::Ignored;
         };
-        let result = inner.handle_event(arena, event, viewport);
-        // The staleness probe (the ReconcileShell pattern): the pair's
-        // documents are REGISTERED documents any editor may move — a
-        // split editor's keystroke never sends this face a command.
-        // Paint is the one signal every visible face receives each
-        // frame, so a stale frame answers with Resync and the pane
-        // rolls forward, adopts the landed generation, and re-dresses
-        // (spacers, marks, folds, the inline face).
-        if matches!(event, imba::event::Event::Paint { .. })
-            && view
-                .split
-                .state
-                .stale(&view.split.left.document, &view.split.right.document)
-        {
-            return result.merge(imba::event::EventResult::Command(UnifiedDiffCommand::Split(
-                SplitDiffCommand::Resync,
-            )));
-        }
-        result
+        // No staleness probe here anymore: the batch-tail DRESSING
+        // sweep (himark::diffs::sync_diff_dressing) resyncs a lagging
+        // basis in the same batch that moved it — id-routed, no paint
+        // (docs/model-view.md step 1).
+        inner.handle_event(arena, event, viewport)
     }
 
     fn layout_data<'w>(

@@ -206,6 +206,20 @@ impl OpenDocuments {
 
     /// The STANDALONE pairs — the family rows a peeker can front.
     /// Canvas-embedded pairs stay with their canvas.
+    /// Every tracked diff view — the dressing sweep's domain.
+    pub fn diff_view_ids(store: &Store) -> Vec<DiffViewId> {
+        store
+            .get::<OpenDocuments>()
+            .map(|docs| {
+                docs.diffs
+                    .diff_views
+                    .keys()
+                    .map(|id| DiffViewId(*id))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     pub fn pair_ids(store: &Store) -> Vec<DiffViewId> {
         store
             .get::<OpenDocuments>()

@@ -93,6 +93,11 @@ pub struct Canvas {
     /// just stops holding their rows.
     stash: rpds::HashTrieMapSync<ResourceLocation, (CanvasRow, f32)>,
 
+    /// Built rows by their diff view — the DRESSING sweep names the
+    /// views it touched (himark::DressedViews) and the canvas resizes
+    /// exactly those rows, O(touched), no scan.
+    pairs: rpds::HashTrieMapSync<himark::DiffViewId, ResourceLocation>,
+
 }
 
 /// A row's lifecycle, panel-tracked — the test oracle.
@@ -128,6 +133,7 @@ impl Canvas {
             reveal: None,
             refs: 0,
             stash: rpds::HashTrieMapSync::new_sync(),
+            pairs: rpds::HashTrieMapSync::new_sync(),
         }
     }
 
@@ -432,10 +438,19 @@ impl Canvas {
         &mut self,
         store: &mut Store,
         ui: &imba::UiCtx,
+        dressed: &[himark::DiffViewId],
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         if self.seen != Some(canvas_generation(store, &self.source)) {
             self.refresh(store, ui, fx);
+        }
+        // The dressing sweep names the views it re-dressed this batch;
+        // resize exactly OUR rows among them — O(touched), no scan.
+        for id in dressed {
+            let Some(key) = self.pairs.get(id).cloned() else {
+                continue;
+            };
+            self.resize_key(&key, store, ui, fx);
         }
         if self.populated {
             if let Some(key) = self.reveal.take() {
@@ -465,6 +480,19 @@ impl Canvas {
         };
         // Re-resolve the index by key: an interleaved splice may have
         // shifted it since the command that triggered this.
+        let key = key.clone();
+        self.resize_key(&key, store, ui, fx);
+    }
+
+    /// Resize ONE built row (by key) to its diff's current body height
+    /// — a rope point update, the only height writer besides `land`.
+    fn resize_key(
+        &mut self,
+        key: &ResourceLocation,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, CanvasCommand>,
+    ) {
         let key = key.clone();
         let Some(range) = self.rows.content().row_range(&CanvasKey::Diff(key)) else {
             return;
@@ -736,7 +764,7 @@ impl Canvas {
     /// now that they ARE registered documents
     /// (docs/editor/diff-canvas.md §7). Covers the live row and a
     /// collapsed row parked in the stash.
-    fn teardown_row(&self, store: &mut Store, key: &ResourceLocation) {
+    fn teardown_row(&mut self, store: &mut Store, key: &ResourceLocation) {
         let pane = self
             .rows
             .content()
@@ -748,6 +776,7 @@ impl Canvas {
             ..
         })) = pane
         {
+            self.pairs.remove_mut(&pane.id());
             crate::teardown_diff_view(store, pane.id());
         }
     }
@@ -954,6 +983,7 @@ impl Canvas {
                     // height: the only height move is the final one
                     // (`resize_row`, once the view answers dressed).
                     Some((pane, height)) => {
+                        self.pairs.insert_mut(pane.id(), key.clone());
                         let dressed = crate::gathered_view(store, pane.id())
                             .is_none_or(|view| view.dressed());
                         let height = match dressed {
@@ -1498,6 +1528,10 @@ impl Canvases {
             Some(canvases) => canvases.0.keys().copied().collect(),
             None => return,
         };
+        let dressed: Vec<himark::DiffViewId> = store
+            .get::<himark::DressedViews>()
+            .map(|dressed| dressed.0.clone())
+            .unwrap_or_default();
         for id in ids {
             let Some(mut canvas) = Self::take(store, id) else {
                 continue;
@@ -1511,11 +1545,11 @@ impl Canvases {
             match (scope.session.cloned(), scope.window) {
                 (Some(session), Some(window)) => {
                     let route = route_canvas(session, window, id);
-                    fx.scope(route, |fx| canvas.sync_in_place(store, ui, fx));
+                    fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
                 }
                 _ => {
                     let mut discard = imba::effect::Batch::new();
-                    canvas.sync_in_place(store, ui, &mut discard.effects());
+                    canvas.sync_in_place(store, ui, &dressed, &mut discard.effects());
                 }
             }
             Self::put(store, id, canvas);

@@ -117,6 +117,15 @@ pub enum AppCommand {
         built: Document,
     },
 
+    /// A command for a STORE-HELD diff view, routed by id + session —
+    /// the dressing's own road (docs/model-view.md step 1): marks-job
+    /// landings and resyncs reach the view with no panel involved.
+    DiffViewCommand {
+        session: crate::SessionId,
+        view: crate::DiffViewId,
+        command: Box<::editor::UnifiedDiffCommand>,
+    },
+
     DiffNormalized {
         diff: ::editor::diff::DiffId,
         operation: operation::Operation,
@@ -528,6 +537,9 @@ impl Application {
                     crate::higent::Hosts::session_of_watch(store, subscription),
                 );
             }
+            AppCommand::DiffViewCommand { session, .. } => {
+                return (None, Some(session.clone()));
+            }
             AppCommand::DiffNormalized { diff, .. } => {
                 let diff = *diff;
                 if store
@@ -924,6 +936,10 @@ impl Application {
                 &mut fx,
                 |document, command| AppCommand::Entity(document, command),
             );
+            // The DRESSING sweep: any view whose basis lags its pair
+            // resyncs NOW, id-routed — a normalize landing and its
+            // re-dress share a batch, and no face waits for paint.
+            crate::diffs::sync_diff_dressing(&mut store, &self.ui_ctx(), &mut fx);
             // The dock tree views ride the push road too: a changes /
             // history feed landing refreshes a mounted stale view in
             // the SAME batch — no paint probe.
@@ -943,6 +959,10 @@ impl Application {
                 },
                 &mut fx,
             );
+            // The dressed-views note is consumed above (the canvas
+            // resized its touched rows); clear it AFTER consumption —
+            // id-routed landings append to it mid-batch.
+            store.put(crate::diffs::DressedViews::default());
         }
         let probe_perform = probe.elapsed();
         self.commit(store);
@@ -1188,6 +1208,7 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::BaseLocated { .. } => "base located",
         AppCommand::BaseFetched { .. } => "base fetched",
         AppCommand::BaseBuilt { .. } => "base built",
+        AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::DiffNormalized { .. } => "diff normalized",
         AppCommand::DocumentStored { .. } => "document stored",
         AppCommand::FileChanged(..) => "file changed",
@@ -1456,6 +1477,13 @@ impl Application {
                 built,
             } => {
                 crate::diffs::land_base_built(store, ui, document, base, built, fx);
+            }
+            AppCommand::DiffViewCommand {
+                session,
+                view,
+                command,
+            } => {
+                crate::diffs::perform_diff_view(store, ui, session, view, *command, fx);
             }
             AppCommand::DiffNormalized {
                 diff,
