@@ -67,6 +67,11 @@ pub struct History {
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
 
     generation: u64,
+
+    /// The model OWNS its views (docs/model-view.md): the history
+    /// view records live here, keyed by minted id. View mutations
+    /// never touch `generation`.
+    views: rpds::HashTrieMapSync<HistoryViewId, HistoryView>,
 }
 
 impl History {
@@ -1385,40 +1390,145 @@ impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryComman
 /// The PUSH lane for the history dock — the changes dock's twin
 /// (hichanges::sync_changes_docks): refresh a mounted, stale
 /// `HistoryView` at the tail of the batch its feed landed in.
-pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
-    let Some(scope) = crate::Gathered::scope(store).cloned() else {
-        return;
-    };
-    let windows = match store.get::<crate::Windows>() {
-        Some(windows) => windows.ids(),
-        None => return,
-    };
-    for window in windows {
-        let Some(mut entity) = crate::Windows::window(store, window) else {
-            continue;
-        };
-        let stale = entity
-            .dock_panel_mut()
-            .and_then(|panel| panel.as_any_mut().downcast_mut::<HistoryView>())
-            .is_some_and(|view| view.workspace == scope && view.stale(store));
-        if !stale {
-            continue;
-        }
-        if let Some(view) = entity
-            .dock_panel_mut()
-            .and_then(|panel| panel.as_any_mut().downcast_mut::<HistoryView>())
-        {
-            view.refresh(store, ui);
-        }
-        crate::Windows::put(store, window, entity);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct HistoryViewId(u64);
+
+impl HistoryViewId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
     }
 }
 
-impl crate::ModalView for HistoryView {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
+impl History {
+    fn mint_view(store: &mut Store, view: HistoryView) -> HistoryViewId {
+        let id = HistoryViewId::mint();
+        store.update::<History>(|history| {
+            history.views.insert_mut(id, view);
+        });
+        id
     }
 
+    pub fn view_ref(store: &Store, id: HistoryViewId) -> Option<&HistoryView> {
+        store.get::<History>()?.views.get(&id)
+    }
+
+    fn take_view(store: &mut Store, id: HistoryViewId) -> Option<HistoryView> {
+        let view = Self::view_ref(store, id)?.clone();
+        store.update::<History>(|history| {
+            history.views.remove_mut(&id);
+        });
+        Some(view)
+    }
+
+    fn put_view(store: &mut Store, id: HistoryViewId, view: HistoryView) {
+        store.update::<History>(|history| {
+            history.views.insert_mut(id, view);
+        });
+    }
+
+    fn remove_view(store: &mut Store, id: HistoryViewId) {
+        store.update::<History>(|history| {
+            history.views.remove_mut(&id);
+        });
+    }
+
+    fn view_ids(store: &Store) -> Vec<HistoryViewId> {
+        store
+            .get::<History>()
+            .map(|history| history.views.keys().copied().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// The dock's reference view over a store-held history record.
+pub struct HistoryPane {
+    view: HistoryViewId,
+    request: Option<ModalRequest>,
+}
+
+impl HistoryPane {
+    pub fn view(&self) -> HistoryViewId {
+        self.view
+    }
+}
+
+impl Clone for HistoryPane {
+    fn clone(&self) -> Self {
+        Self {
+            view: self.view,
+            request: None,
+        }
+    }
+}
+
+impl imba::View for HistoryPane {
+    type Command = HistoryCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, HistoryCommand> {
+        match History::view_ref(store, self.view) {
+            Some(view) => view.focus_data(store, ui),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        let Some(mut view) = History::take_view(store, self.view) else {
+            return;
+        };
+        view.perform(store, ui, command, fx);
+        // Requests are the PANE's ask (`take_request` has no store):
+        // pull what the record minted into the reference view.
+        if let Some(request) = view.request.take() {
+            self.request = Some(request);
+        }
+        History::put_view(store, self.view, view);
+    }
+
+    fn destroy(
+        &mut self,
+        store: &mut Store,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        History::remove_view(store, self.view);
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+        imba::laid(
+            move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
+                let widget: imba::ThunkBox<'a, HistoryCommand> =
+                    match History::view_ref(store, self.view) {
+                        Some(view) => imba::ThunkBox::new(
+                            arena,
+                            imba::Layout::layout(view.display(arena, store, ui), arena, constraints),
+                        ),
+                        None => imba::ThunkBox::new(
+                            arena,
+                            leaf(constraints.max.width, constraints.max.height),
+                        ),
+                    };
+                widget
+            },
+        )
+    }
+}
+
+impl crate::ModalView for HistoryPane {
     fn clone_modal(&self) -> Box<dyn crate::ModalView> {
         Box::new(self.clone())
     }
@@ -1429,6 +1539,23 @@ impl crate::ModalView for HistoryView {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
+    }
+}
+
+pub(crate) fn sync_history_docks(store: &mut Store, ui: &UiCtx) {
+    let Some(scope) = crate::Gathered::scope(store).cloned() else {
+        return;
+    };
+    for id in History::view_ids(store) {
+        let stale = History::view_ref(store, id)
+            .is_some_and(|view| view.workspace == scope && view.stale(store));
+        if !stale {
+            continue;
+        }
+        if let Some(mut view) = History::take_view(store, id) {
+            view.refresh(store, ui);
+            History::put_view(store, id, view);
+        }
     }
 }
 
@@ -1460,11 +1587,21 @@ impl crate::DynamicCommand for ToggleHistoryView {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = HistoryView::open(store, &_app.ui_ctx(), window, workspace);
+        let view = History::mint_view(store, HistoryView::open(store, &_app.ui_ctx(), window, workspace));
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(HistoryPane {
+                        view,
+                        request: None,
+                    }),
+                    owner,
+                    fx,
+                )
+            },
         );
         crate::Windows::put(store, window, entity);
     }

@@ -58,54 +58,55 @@ basis in the same mutation. The paint stale-probe retires; only
 layout-bound repair (rewrap, viewport heal) stays on paint. This
 completes the push doctrine for diffs and is the smallest step.
 
-### Step 2 — Name the ChangeSets model
+### Step 2 — The ChangeSets model (ruled 2026-09-26)
 
-`Changes` (working-copy sets per folder) and `History` (commit sets
-per folder) are one model wearing two coats — `CanvasSource::
-{WorkingCopy, Commit}` already names both shapes, and
-`canvas_generation` already dispatches over them. Introduce
-`ChangeSets` as the single surface: per-folder working-copy set +
-commit sets, each with its generation, fed by the changeset/history
-subscriptions. (This can start as a facade over the two structs;
-physical unification can lag.)
+A **ChangeSet is one set of changes with its own minted `ChangeSetId`:
+one per folder's WORKING COPY, one per COMMIT** — `CanvasSource`'s
+shape made first-class. `ChangeSets` is the session-family collection
+of these records; each record carries its file entries and its OWN
+generation (today's session-wide `Changes.generation` splits per set).
 
-### Step 3 — Tree views become ChangeSets-adjacent records
+**History is the tricky one, and it splits cleanly:** its MODEL is the
+list of commits (per folder), each commit REFERENCING its change set
+by `ChangeSetId` — an id reference, weak, like every cross-collection
+link. Its VIEW is a single tree UNITING all those change sets.
 
-`ChangesView` / `HistoryView` (rows, items, `seen`) move off the
-Window dock into a view-state registry beside ChangeSets in the
-session family, keyed by a minted view id. The dock slot becomes a
-thin reference pane. Consequences, all simplifications:
+### Step 3 — Views are owned by their model, referenced by both ids
 
-- `sync_changes_docks` / `sync_history_docks` stop walking windows and
-  downcasting (`ModalView::as_any_mut` retires — it exists only for
-  this); the generation bump rolls sibling view records model-locally.
-- Session gather/scatter isolation comes free, as it already does for
-  `Canvases` and `Chats`.
-- Lifecycle: tree-view records DIE on pane close — their rows are pure
-  derivation, rebuilding is cheap. (The chat rule — state survives the
-  pane — does not generalize; it holds only where the record IS the
-  model.)
+`Document.editors` literally: the owning record holds
+`views: Map<ViewId, ViewState>`, and a reference is BOTH ids —
+`(ChangeSetId, ChangesViewId)`, as an editor is
+`(DocumentId, EditorId)`. The dock holds thin reference panes; a
+pane's `destroy` removes its record (tree rows are pure derivation).
+In a multi-folder session the changes tree is one section-view per
+working-copy set, composed by the pane.
 
-### Step 4 — Canvases join the same registry
+The single uniting history tree is owned by the History model (the
+commit list), keyed by `HistoryViewId` — the one view that belongs to
+a LIST of sets rather than a single set.
 
-A canvas is the other view of the same ChangeSets model. Split what
-hidiff's `Canvas` holds today:
+**The update rule:** whenever a ChangeSet is updated, it updates ALL
+its views in the same mutation — its owned ChangesViews (and canvas
+views), AND every HistoryView uniting it. No window walks, no
+downcasts, no paint probes.
 
-- **View STATE** — the row list (keys, `DiffViewId`s, heights,
-  phases, collapse stash, reveal, refs) is plain data over documents-
-  level ids. It moves beside ChangeSets, next to the tree views.
-  `himark::diff_canvas` already holds the shared canvas types
-  (`CanvasSource`, `CanvasFile`, `canvas_files`) precisely because of
-  this layering seam — the state follows them.
-- **The FACE** — row rendering (`RowFrame`), the build effects and
-  landings, header chrome — stays in hidiff, a renderer over the
-  store-held state, exactly as it renders `DiffViewState` today.
+*Landed intermediate:* the tree-view records already moved into the
+models (`Changes.views`, `History.views`) with dock reference panes
+(`ChangesPane`, `HistoryPane`) and model-local sync;
+`ModalView::as_any_mut` retired. The re-keying by `ChangeSetId` comes
+with the ChangeSets migration.
 
-The plugin session-family slot (`canvases_session_family`) and the
-`CanvasBuildLanded` routing shrink accordingly: the state is reachable
-through ChangeSets like any other record, and the sync observer's
-reconcile becomes a model-local roll beside the tree views' — one
-generation bump, all views of the set roll together.
+### Step 4 — Canvases attach to their ChangeSet
+
+A canvas is the other view of the same set: its STATE (rows as
+`DiffViewId`s, heights, phases, collapse stash, reveal) is owned by
+its ChangeSet exactly like the tree views — referenced by
+`(ChangeSetId, CanvasViewId)`. The FACE — row rendering, build
+effects, header chrome — stays in hidiff, a renderer over store-held
+state, precedent `DiffViewState` (documents holds it, hidiff renders
+it). The plugin session-family slot and `CanvasBuildLanded` routing
+shrink accordingly; the set's update rule (step 3) rolls canvas rows
+with the tree views.
 
 ### Step 5 (later) — Split the chat into model and view
 
@@ -121,12 +122,13 @@ piece of work.
 
 ## Ordering and risks
 
-Order: 1 → 3 → 4, with 2 starting as a facade whenever 3 needs a name
-to hang registries on; 5 later. Step 1 is independent and pays
-immediately (a paint probe dies). Step 3 kills `as_any_mut`. Step 4
-has the one real design risk — the state/face split across the
-himark/hidiff seam — mitigated by the precedent that already works:
-`DiffViewState` lives in documents while hidiff renders it.
+Order: 1 (LANDED — the dressing sweep) → 3's intermediate (LANDED —
+views inside the models, panes, `as_any_mut` gone) → 2's ChangeSets
+migration re-keying views by `(ChangeSetId, ViewId)` → 4 (canvases
+attach); 5 later. Step 4's one real design risk — the state/face
+split across the himark/hidiff seam — is mitigated by the precedent
+that already works: `DiffViewState` lives in documents while hidiff
+renders it.
 
 Non-goals: palette/peeker and other EPHEMERAL modals keep their
 current life — they die on dismiss and have no model to live beside.

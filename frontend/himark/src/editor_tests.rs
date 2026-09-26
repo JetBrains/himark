@@ -1764,10 +1764,6 @@ fn palette_commands_follow_the_modal_focus() {
         }
     }
     impl ModalView for TestModal {
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
-        }
-
         fn clone_modal(&self) -> Box<dyn ModalView> {
             Box::new(self.clone())
         }
@@ -2156,10 +2152,6 @@ fn switching_dismisses_the_overlays_first() {
         }
     }
     impl crate::ModalView for NullModal {
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
-        }
-
         fn clone_modal(&self) -> Box<dyn crate::ModalView> {
             Box::new(self.clone())
         }
@@ -4203,10 +4195,6 @@ mod dock_tests {
     }
 
     impl ModalView for DockStub {
-        fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-            self
-        }
-
         fn take_request(&mut self) -> Option<ModalRequest> {
             self.request.lock().unwrap().take()
         }

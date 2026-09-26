@@ -307,10 +307,6 @@ impl View for TocView {
 }
 
 impl ModalView for TocView {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }
@@ -789,10 +785,6 @@ impl View for OutlineView {
 }
 
 impl ModalView for OutlineView {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

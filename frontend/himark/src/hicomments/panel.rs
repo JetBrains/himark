@@ -536,10 +536,6 @@ impl<'a, Inner: Widget<'a, CommentsCommand>> Widget<'a, CommentsCommand> for Rec
 }
 
 impl ModalView for CommentsView {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }

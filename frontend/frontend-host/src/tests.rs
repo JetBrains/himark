@@ -1136,7 +1136,10 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hichanges::ChangesView>()
+                            .downcast_ref::<himark::hichanges::ChangesPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             },
@@ -2708,7 +2711,10 @@ fn a_one_sided_diff_goes_quiet() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hichanges::ChangesView>()
+                            .downcast_ref::<himark::hichanges::ChangesPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             })
@@ -6625,7 +6631,10 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hihistory::HistoryView>()
+                            .downcast_ref::<himark::hihistory::HistoryPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hihistory::History::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             },
@@ -6768,7 +6777,10 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hihistory::HistoryView>()
+                            .downcast_ref::<himark::hihistory::HistoryPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hihistory::History::view_ref(engine.app.store(), pane.view())
                     })
                     .and_then(|view| view.cursor_name())
             },
@@ -6820,7 +6832,10 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hichanges::ChangesView>()
+                            .downcast_ref::<himark::hichanges::ChangesPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             })
@@ -6912,7 +6927,10 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hichanges::ChangesView>()
+                            .downcast_ref::<himark::hichanges::ChangesPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             })
@@ -7003,7 +7021,10 @@ fn diff_resize_probe_over_real_code() {
                     .dock_panel()
                     .and_then(|side| {
                         side.as_any()
-                            .downcast_ref::<himark::hichanges::ChangesView>()
+                            .downcast_ref::<himark::hichanges::ChangesPane>()
+                    })
+                    .and_then(|pane| {
+                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
                     })
                     .map(|view| view.rows())
             })

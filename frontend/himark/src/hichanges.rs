@@ -295,6 +295,12 @@ pub struct Changes {
     uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
     generation: u64,
+
+    /// The change set OWNS its views (docs/model-view.md): the tree
+    /// view records live on the model, keyed by minted id — the
+    /// `Document.editors` shape. The dock holds a `ChangesPane`
+    /// reference; view mutations never touch `generation`.
+    views: rpds::HashTrieMapSync<ChangesViewId, ChangesView>,
 }
 
 #[derive(Clone, Default)]
@@ -1413,11 +1419,148 @@ impl View for ChangesView {
     }
 }
 
-impl ModalView for ChangesView {
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ChangesViewId(u64);
+
+impl ChangesViewId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+impl Changes {
+    fn mint_view(store: &mut Store, view: ChangesView) -> ChangesViewId {
+        let id = ChangesViewId::mint();
+        store.update::<Changes>(|changes| {
+            changes.views.insert_mut(id, view);
+        });
+        id
     }
 
+    pub fn view_ref(store: &Store, id: ChangesViewId) -> Option<&ChangesView> {
+        store.get::<Changes>()?.views.get(&id)
+    }
+
+    fn take_view(store: &mut Store, id: ChangesViewId) -> Option<ChangesView> {
+        let view = Self::view_ref(store, id)?.clone();
+        store.update::<Changes>(|changes| {
+            changes.views.remove_mut(&id);
+        });
+        Some(view)
+    }
+
+    fn put_view(store: &mut Store, id: ChangesViewId, view: ChangesView) {
+        store.update::<Changes>(|changes| {
+            changes.views.insert_mut(id, view);
+        });
+    }
+
+    fn remove_view(store: &mut Store, id: ChangesViewId) {
+        store.update::<Changes>(|changes| {
+            changes.views.remove_mut(&id);
+        });
+    }
+
+    fn view_ids(store: &Store) -> Vec<ChangesViewId> {
+        store
+            .get::<Changes>()
+            .map(|changes| changes.views.keys().copied().collect())
+            .unwrap_or_default()
+    }
+}
+
+/// The dock's REFERENCE view over a store-held changes record — holds
+/// only the id (and the request it pulled out, `take_request` having
+/// no store). Its death removes the record: tree rows are pure
+/// derivation, nothing is lost on close.
+pub struct ChangesPane {
+    view: ChangesViewId,
+    request: Option<ModalRequest>,
+}
+
+impl ChangesPane {
+    pub fn view(&self) -> ChangesViewId {
+        self.view
+    }
+}
+
+impl Clone for ChangesPane {
+    fn clone(&self) -> Self {
+        Self {
+            view: self.view,
+            request: None,
+        }
+    }
+}
+
+impl View for ChangesPane {
+    type Command = ChangesCommand;
+
+    fn focus_data<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w UiCtx,
+    ) -> imba::focus::FocusData<'w, ChangesCommand> {
+        match Changes::view_ref(store, self.view) {
+            Some(view) => view.focus_data(store, ui),
+            None => imba::focus::FocusData::default(),
+        }
+    }
+
+    fn perform(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: Self::Command,
+        fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        let Some(mut view) = Changes::take_view(store, self.view) else {
+            return;
+        };
+        view.perform(store, ui, command, fx);
+        // Requests are the PANE's ask (`take_request` has no store):
+        // pull what the record minted into the reference view.
+        if let Some(request) = view.request.take() {
+            self.request = Some(request);
+        }
+        Changes::put_view(store, self.view, view);
+    }
+
+    fn destroy(
+        &mut self,
+        store: &mut Store,
+        _fx: &mut imba::effect::Effects<'_, Self::Command>,
+    ) {
+        Changes::remove_view(store, self.view);
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+        imba::laid(
+            move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
+                let widget: imba::ThunkBox<'a, ChangesCommand> =
+                    match Changes::view_ref(store, self.view) {
+                        Some(view) => imba::ThunkBox::new(
+                            arena,
+                            imba::Layout::layout(view.display(arena, store, ui), arena, constraints),
+                        ),
+                        None => imba::ThunkBox::new(
+                            arena,
+                            leaf(constraints.max.width, constraints.max.height),
+                        ),
+                    };
+                widget
+            },
+        )
+    }
+}
+
+impl ModalView for ChangesPane {
     fn clone_modal(&self) -> Box<dyn ModalView> {
         Box::new(self.clone())
     }
@@ -1440,28 +1583,16 @@ pub(crate) fn sync_changes_docks(store: &mut Store, ui: &UiCtx) {
         return;
     };
     let generation = Changes::generation(store);
-    let windows = match store.get::<crate::Windows>() {
-        Some(windows) => windows.ids(),
-        None => return,
-    };
-    for window in windows {
-        let Some(mut entity) = crate::Windows::window(store, window) else {
-            continue;
-        };
-        let stale = entity
-            .dock_panel_mut()
-            .and_then(|panel| panel.as_any_mut().downcast_mut::<ChangesView>())
+    for id in Changes::view_ids(store) {
+        let stale = Changes::view_ref(store, id)
             .is_some_and(|view| view.workspace == scope && view.seen != generation);
         if !stale {
             continue;
         }
-        if let Some(view) = entity
-            .dock_panel_mut()
-            .and_then(|panel| panel.as_any_mut().downcast_mut::<ChangesView>())
-        {
+        if let Some(mut view) = Changes::take_view(store, id) {
             view.refresh(store, ui);
+            Changes::put_view(store, id, view);
         }
-        crate::Windows::put(store, window, entity);
     }
 }
 
@@ -1494,11 +1625,21 @@ impl crate::DynamicCommand for ToggleChangesView {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = ChangesView::open(store, &_app.ui_ctx(), window, workspace);
+        let view = Changes::mint_view(store, ChangesView::open(store, &_app.ui_ctx(), window, workspace));
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(ChangesPane {
+                        view,
+                        request: None,
+                    }),
+                    owner,
+                    fx,
+                )
+            },
         );
         crate::Windows::put(store, window, entity);
     }
