@@ -4411,6 +4411,38 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         &mut |engine| replies(engine) >= 1,
     );
 
+    // Phase 1b: the USER's exact road — the chat leaf is DISPLACED
+    // by a document (not closed), and cmd-I walks back to the chat.
+    assert!(engine.perform_command(window, "workbench.new-document"));
+    pump(&mut engine, &mut surface);
+    assert!(
+        shown_chat(&engine).is_none(),
+        "the document displaced the chat pane"
+    );
+    assert!(engine.perform_command(window, "chat.composer"));
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the displaced-and-fronted pane rebuilt the transcript",
+        &mut |engine| replies(engine) >= 1,
+    );
+
+    // Phase 1b: the USER's exact road — the chat leaf is DISPLACED
+    // by a document (not closed), and cmd-I fronts the chat again.
+    assert!(engine.perform_command(window, "workbench.new-document"));
+    pump(&mut engine, &mut surface);
+    assert!(
+        shown_chat(&engine).is_none(),
+        "the document displaced the chat pane"
+    );
+    assert!(engine.perform_command(window, "chat.composer"));
+    wait_for(
+        &mut engine,
+        &mut surface,
+        "the displaced-and-fronted pane rebuilt the transcript",
+        &mut |engine| replies(engine) >= 1,
+    );
+
     // Phase 2: the turn STARTS, then the pane dies before anything
     // streams — the reply lands chat-scoped and must be waiting in
     // the transcript when the pane reopens.

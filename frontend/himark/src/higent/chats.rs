@@ -140,6 +140,7 @@ impl crate::DynamicCommand for EnsureChatFeed {
         };
         let session = panel.session_id();
         Chats::put(store, self.chat.clone(), panel);
+        eprintln!("[higent] chat feed SUBSCRIBES anew: {}", self.chat);
         let chat = self.chat.clone();
         let landing = self.chat.clone();
         fx.push(

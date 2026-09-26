@@ -760,6 +760,16 @@ impl ChatPanel {
         if self.views.contains_key(&id) {
             return;
         }
+        eprintln!(
+            "[higent] view rebuild for {}: {} turns, cells {:?}",
+            self.chat,
+            self.turns.len(),
+            self
+                .turns
+                .iter()
+                .map(|record| record.cells.len())
+                .collect::<Vec<_>>()
+        );
         let seat = self.seat(store);
         let mut view = ChatView::new(store, ui);
         fx.scope(
@@ -930,6 +940,12 @@ impl ChatPanel {
     ) {
         match result {
             Ok(state) => {
+                eprintln!(
+                    "[higent] chat snapshot for {}: {} wire turns over {} held",
+                    self.chat,
+                    state.turns.len(),
+                    self.turns.len()
+                );
                 self.state = Link::Ready;
                 self.title = state.title.clone();
 
