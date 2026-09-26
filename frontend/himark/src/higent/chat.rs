@@ -392,6 +392,8 @@ struct ToolTrack {
     invocation: String,
 
     call: Option<String>,
+
+    completed: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -618,7 +620,7 @@ impl ChatPanel {
         self.server
     }
 
-    pub(crate) fn session_id(&self) -> crate::SessionId {
+    pub fn session_id(&self) -> crate::SessionId {
         crate::SessionId {
             host: self.server,
             session: self.session.clone(),
@@ -637,10 +639,17 @@ impl ChatPanel {
         self.views.values().next()
     }
 
-    pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
-        let Some(view) = self.first_view() else {
-            return Vec::new();
-        };
+    /// TEST SUPPORT: every view's transcript — the multi-mount
+    /// oracle (a model mutation must reach them all identically).
+    #[doc(hidden)]
+    pub fn view_transcripts(&self) -> Vec<Vec<(String, Vec<(String, String)>)>> {
+        self.views
+            .values()
+            .map(|view| Self::rows_oracle(view))
+            .collect()
+    }
+
+    fn rows_oracle(view: &ChatView) -> Vec<(String, Vec<(String, String)>)> {
         view.rows
             .content()
             .rows()
@@ -667,6 +676,10 @@ impl ChatPanel {
                 ChatRow::Turn(turn) => (turn.id().to_owned(), turn.cells_oracle()),
             })
             .collect()
+    }
+
+    pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
+        self.first_view().map(Self::rows_oracle).unwrap_or_default()
     }
 
     #[doc(hidden)]
@@ -1309,6 +1322,41 @@ impl ChatPanel {
         for action in actions {
             match action {
                 StateAction::ChatTurnStarted(action) => {
+                    // IDEMPOTENT: a start for a turn we already hold
+                    // is a REPLAY (a doubled stream, a re-delivered
+                    // batch) — it must never mint a second record
+                    // with the same id, or every later part lands in
+                    // one copy while the other shows as a lost reply.
+                    if self.turns.iter().any(|record| record.id == action.turn_id) {
+                        eprintln!(
+                            "[higent] duplicate turn start {} — replay absorbed",
+                            action.turn_id
+                        );
+                        if self
+                            .active
+                            .as_ref()
+                            .is_none_or(|active| active.turn.as_str() != action.turn_id)
+                        {
+                            let (kind, text) = message_cell(&action.message);
+                            let cells = vec![CellSpec::Text(kind, text)];
+                            self.update_record(&action.turn_id, |record| {
+                                record.cells = cells.clone();
+                            });
+                            ops.push(ViewOp::SpliceTurn {
+                                replace: Some(action.turn_id.clone()),
+                                key: action.turn_id.clone(),
+                                cells,
+                            });
+                            self.active = Some(ActiveStream {
+                                turn: crate::higent::TurnId::new(action.turn_id),
+                                cells: 1,
+                                parts: rpds::HashTrieMapSync::new_sync(),
+                                tools: rpds::HashTrieMapSync::new_sync(),
+                                group: None,
+                            });
+                        }
+                        continue;
+                    }
                     let (kind, text) = message_cell(&action.message);
                     let cells = vec![CellSpec::Text(kind, text)];
                     let replace = self.pending.take().map(|(key, _)| key);
@@ -1338,13 +1386,47 @@ impl ChatPanel {
                     });
                 }
                 StateAction::ChatResponsePart(action) => {
+                    use ahp_types::state::ResponsePart;
+                    let base = match &action.part {
+                        ResponsePart::Markdown(part) => Some((&part.id, &part.content)),
+                        ResponsePart::Reasoning(part) => Some((&part.id, &part.content)),
+                        _ => None,
+                    };
+                    let resync = base.and_then(|(id, content)| {
+                        self.active
+                            .as_ref()
+                            .filter(|active| active.turn.as_str() == action.turn_id)
+                            .and_then(|active| active.parts.get(id).copied())
+                            .map(|cell| (cell, content.clone()))
+                    });
+                    if let Some((cell, content)) = resync {
+                        // A part we already hold is a REPLAY marker:
+                        // rewind its cell to the part's base — the
+                        // replayed deltas rebuild it to one copy.
+                        eprintln!("[higent] replayed response part — cell rewound");
+                        let turn = action.turn_id.clone();
+                        let mut cells = None;
+                        self.update_record(&turn, |record| {
+                            if let Some(CellSpec::Text(_, text)) = record.cells.get_mut(cell) {
+                                *text = content.clone();
+                            }
+                            cells = Some(record.cells.clone());
+                        });
+                        if let Some(cells) = cells {
+                            ops.push(ViewOp::SpliceTurn {
+                                replace: Some(turn.clone()),
+                                key: turn,
+                                cells,
+                            });
+                        }
+                        continue;
+                    }
                     let first = self.active.as_ref().map(|active| active.cells);
                     let specs = part_cells(&action.part);
                     let minted = !specs.is_empty();
                     for spec in specs {
                         self.append_stream_spec(&action.turn_id, spec, &mut ops);
                     }
-                    use ahp_types::state::ResponsePart;
                     let part_id = match &action.part {
                         ResponsePart::Markdown(part) => Some(part.id.clone()),
                         ResponsePart::Reasoning(part) => Some(part.id.clone()),
@@ -1365,6 +1447,18 @@ impl ChatPanel {
                     self.append_delta(&action.turn_id, &action.part_id, action.content, &mut ops);
                 }
                 StateAction::ChatToolCallStart(action) => {
+                    if self
+                        .active
+                        .as_ref()
+                        .filter(|active| active.turn.as_str() == action.turn_id)
+                        .is_some_and(|active| active.tools.contains_key(&action.tool_call_id))
+                    {
+                        eprintln!(
+                            "[higent] duplicate tool start {} — ignored",
+                            action.tool_call_id
+                        );
+                        continue;
+                    }
                     let index = self.append_stream_spec(
                         &action.turn_id,
                         CellSpec::Tools(vec![ToolCallSpec {
@@ -1383,6 +1477,7 @@ impl ChatPanel {
                                     display_name: action.display_name,
                                     invocation: String::new(),
                                     call: None,
+                                    completed: false,
                                 },
                             );
                         }
@@ -1481,6 +1576,17 @@ impl ChatPanel {
                     );
                     self.update_tool_call(&action.turn_id, &action.tool_call_id, face, &mut ops);
 
+                    if track.completed {
+                        // A replayed completion: the face re-set is
+                        // idempotent, the result diffs are not.
+                        continue;
+                    }
+                    if let Some(active) = self.active.as_mut() {
+                        if let Some(mut held) = active.tools.get(&action.tool_call_id).cloned() {
+                            held.completed = true;
+                            active.tools.insert_mut(action.tool_call_id.clone(), held);
+                        }
+                    }
                     for spec in result_diff_specs(&action.result) {
                         self.append_stream_spec(&action.turn_id, spec, &mut ops);
                     }
@@ -3312,6 +3418,80 @@ mod tests {
             &mut batch.effects(),
         );
         assert_eq!(sleeping(&panel), 2, "the painted row woke");
+    }
+
+    /// A doubled or re-delivered stream folds ONCE: repeated starts,
+    /// parts and tool calls are noise — the transcript neither
+    /// duplicates, doubles its text, nor wipes a live turn.
+    #[test]
+    fn a_replayed_stream_folds_once() {
+        let mut store = Store::new();
+        let ui = ::editor::test_document::test_ui();
+        let mut host = crate::higent::HostId::LOCAL;
+        store.update::<crate::higent::Servers>(|servers| {
+            host = servers.mint(Arc::new(InertSeat));
+        });
+        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:7");
+        panel.state = Link::Ready;
+        let mut batch = imba::effect::Batch::new();
+
+        let stream = streamed_reply("t1");
+        panel.apply_actions(&mut store, ui, streamed_reply("t1"), &mut batch.effects());
+        let held = panel.turns.get(0).expect("the turn").cells.clone();
+
+        // The exact same actions land again — an overlapping
+        // subscription, a reconnect replay, a re-poll.
+        panel.apply_actions(&mut store, ui, stream, &mut batch.effects());
+
+        assert_eq!(panel.turns.len(), 1, "no duplicate record");
+        let replayed = &panel.turns.get(0).expect("the turn").cells;
+        assert_eq!(replayed.len(), held.len(), "no duplicate cells");
+        let text = |cells: &Vec<CellSpec>| -> String {
+            cells
+                .iter()
+                .filter_map(|cell| match cell {
+                    CellSpec::Text(_, text) => Some(text.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        assert_eq!(text(replayed), text(&held), "no doubled content");
+
+        // A duplicate START arriving MID-stream must not wipe the
+        // live fold: the still-arriving delta lands in its cell.
+        use crate::higent::ahp_types::actions::ChatDeltaAction;
+        let mut mid = streamed_reply("t2");
+        let late_delta = StateAction::ChatDelta(ChatDeltaAction {
+            turn_id: "t2".to_owned(),
+            part_id: "p1".to_owned(),
+            content: " and more".to_owned(),
+            meta: None,
+        });
+        let dup_start = mid.remove(0);
+        let start = match &dup_start {
+            StateAction::ChatTurnStarted(action) => {
+                StateAction::ChatTurnStarted(action.clone())
+            }
+            _ => unreachable!(),
+        };
+        panel.apply_actions(&mut store, ui, vec![start], &mut batch.effects());
+        panel.apply_actions(&mut store, ui, mid, &mut batch.effects());
+        panel.apply_actions(
+            &mut store,
+            ui,
+            vec![dup_start, late_delta],
+            &mut batch.effects(),
+        );
+        let t2 = panel
+            .turns
+            .iter()
+            .find(|record| record.id == "t2")
+            .expect("t2");
+        assert_eq!(t2.cells.len(), 2, "prompt + one reply cell: {:?}", t2.cells.len());
+        assert!(
+            matches!(&t2.cells[1], CellSpec::Text(_, text) if text == "the reply and more"),
+            "the late delta landed in ITS cell through the replayed start"
+        );
     }
 
     /// An explicit STOP is just a stop — it drops a standing steer.
