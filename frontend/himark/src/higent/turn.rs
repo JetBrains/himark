@@ -99,11 +99,21 @@ impl TurnView {
         self.cells.rows().map(|cell| cell.oracle()).collect()
     }
 
-    pub(crate) fn append(&mut self, key: CellKey, cell: Cell, height: f32) {
-        let len = self.cells.len();
+    /// Put a cell where its key belongs: a part goes after the parts
+    /// (before the tail, if the turn already ended), the tail goes last.
+    /// Two keyed lookups — never a walk over the cells.
+    pub(crate) fn place(&mut self, key: CellKey, cell: Cell, height: f32) {
+        let at = match key {
+            CellKey::Prompt | CellKey::Part(_) => self
+                .cell_at(&CellKey::Life)
+                .or_else(|| self.cell_at(&CellKey::Usage))
+                .unwrap_or(self.cells.len()),
+            CellKey::Life => self.cell_at(&CellKey::Usage).unwrap_or(self.cells.len()),
+            CellKey::Usage => self.cells.len(),
+        };
         let mut slice = imba::list::ListSlice::new();
         slice.push_keyed_sized(key, cell, height);
-        self.cells.splice_slice(len..len, slice);
+        self.cells.splice_slice(at..at, slice);
     }
 }
 
@@ -161,18 +171,33 @@ impl View for TurnView {
 /// one cell per part in the order it arrived, then how the turn ended
 /// and what it spent. Pure dressing — the model holds none of it.
 pub(crate) fn dress(turn: &crate::higent::chat::model::Turn) -> DressedCells {
-    use crate::higent::chat::model::{Life, Part};
     let mut cells = DressedCells::new_sync();
     let (voice, text) = turn.prompt.clone();
     cells.push_back_mut((CellKey::Prompt, CellSpec::Text(voice, text)));
     for (id, part) in turn.parts() {
-        let spec = match part {
-            Part::Said { voice, text } => CellSpec::Text(*voice, text.clone()),
-            Part::Tool(call) => CellSpec::Tools(vec![tool_spec_of(call)]),
-            Part::Edit(refs) => CellSpec::Diff(DiffSpec::of(refs)),
-        };
-        cells.push_back_mut((CellKey::Part(id.clone()), spec));
+        cells.push_back_mut((CellKey::Part(id.clone()), dress_part(part)));
     }
+    for cell in dress_tail(turn).iter().cloned() {
+        cells.push_back_mut(cell);
+    }
+    cells
+}
+
+/// ONE part's cell — what a part landing re-dresses. Never the turn.
+pub(crate) fn dress_part(part: &crate::higent::chat::model::Part) -> CellSpec {
+    use crate::higent::chat::model::Part;
+    match part {
+        Part::Said { voice, text } => CellSpec::Text(*voice, text.clone()),
+        Part::Tool(call) => CellSpec::Tools(vec![tool_spec_of(call)]),
+        Part::Edit(refs) => CellSpec::Diff(DiffSpec::of(refs)),
+    }
+}
+
+/// The cells after the parts: how the turn ended (when it did not
+/// simply complete) and what it spent. At most two.
+pub(crate) fn dress_tail(turn: &crate::higent::chat::model::Turn) -> DressedCells {
+    use crate::higent::chat::model::Life;
+    let mut cells = DressedCells::new_sync();
     match &turn.life {
         Life::Live | Life::Complete => {}
         Life::Cancelled => cells.push_back_mut((
@@ -315,14 +340,4 @@ pub(crate) fn tool_output(content: &[ahp_types::state::ToolResultContent]) -> St
         })
         .collect::<Vec<_>>()
         .join("\n")
-}
-
-fn human_size(bytes: i64) -> String {
-    if bytes >= 1_000_000 {
-        format!("{:.1} MB", bytes as f64 / 1_000_000.0)
-    } else if bytes >= 1_000 {
-        format!("{:.1} KB", bytes as f64 / 1_000.0)
-    } else {
-        format!("{bytes} B")
-    }
 }

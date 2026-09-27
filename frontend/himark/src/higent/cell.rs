@@ -29,6 +29,16 @@ pub enum CellKind {
     Error,
 }
 
+// Per thread: a cell is mounted where it is displayed, and a process-wide
+// counter would mix one window's (or one test's) work into another's.
+thread_local! {
+    static MOUNTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+fn note_mount() {
+    MOUNTED.with(|mounted| mounted.set(mounted.get() + 1));
+}
+
 pub enum CellCommand {
     Editor(EditorCommand),
 
@@ -36,7 +46,10 @@ pub enum CellCommand {
 
     Rewrap(f32),
 
-    ResolveDiff(Result<crate::higent::FileEditContents, String>),
+    ResolveDiff(Result<crate::higent::BuiltFileEdit, String>),
+
+    /// The off-thread markdown build landed.
+    ResolveText(crate::BuiltDocument),
 
     Diff(crate::UnifiedDiffCommand),
 
@@ -62,6 +75,16 @@ pub(crate) struct DiffHeader {
 #[derive(Clone)]
 enum CellBody {
     Markdown(EditorView),
+
+    /// A markdown cell whose DOCUMENT is being built off the UI thread
+    /// (`BuildDocumentEffect` — the text and the parse in the handler,
+    /// the editor mounted at the landing). Streamed deltas land in the
+    /// buffer meanwhile; `grown` says the landing has catching up to do.
+    PendingText {
+        markdown: String,
+        width: f32,
+        grown: bool,
+    },
 
     PendingDiff {
         header: DiffHeader,
@@ -95,23 +118,29 @@ fn markdown_document(text: crate::Text) -> crate::Document {
     )
 }
 
+/// One side of an edit as a document with its syntax. The parsers are
+/// HANDED IN: this runs in the workshop's bare build store (off the UI
+/// thread), which knows no languages.
 pub(crate) fn side_document(
     text: crate::Text,
     extension: &str,
+    parsers: &std::sync::Arc<crate::SyntaxLanguages>,
     store: &Store,
     ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &crate::Theme,
 ) -> crate::Document {
-    if let Some(parsers) = env::Parsers::of(store) {
-        let language = if !extension.is_empty() && parsers.knows(extension) {
-            extension
-        } else {
-            "markdown"
-        };
-        return crate::Document::from_language(text, language, &parsers, store, ui, fonts, theme);
+    let language = if !extension.is_empty() && parsers.knows(extension) {
+        extension
+    } else {
+        "markdown"
+    };
+    // A registry that knows no markdown either (a bare unit-test store)
+    // still gets a document — plain, with markdown's own markup.
+    if !parsers.knows(language) {
+        return markdown_document(text);
     }
-    markdown_document(text)
+    crate::Document::from_language(text, language, parsers, store, ui, fonts, theme)
 }
 
 pub(crate) fn document_text(document: &crate::Document) -> String {
@@ -148,6 +177,45 @@ impl Cell {
         )
     }
 
+    /// How many cells this thread has MOUNTED editors for — a markdown
+    /// cell's one, a diff cell's pair — whether the document came built
+    /// off-thread (`resolve_text`, `resolve_diff`) or was built in place
+    /// (`build_text`). The perf contract reads it: a streamed turn
+    /// mounts a cell per PART, never per delta and never a whole turn
+    /// again, and walking back to a chat mounts nothing at all.
+    #[doc(hidden)]
+    pub fn documents_mounted() -> u64 {
+        MOUNTED.with(std::cell::Cell::get)
+    }
+
+    /// A markdown cell at BIRTH: no document, no parse, no layout — a
+    /// band at an estimated height while the build runs off-thread.
+    pub(crate) fn pending_text(
+        store: &Store,
+        kind: CellKind,
+        markdown: &str,
+        content_width: f32,
+    ) -> (Self, f32) {
+        let theme = env::Themes::of(store);
+        let chrome = theme.ui().chat.clone();
+        let width = Self::editor_width(kind, &chrome, content_width);
+        let lines = markdown.lines().count().clamp(1, 40) as f32;
+        let height = (lines * chrome.title_size * 1.5).max(chrome.min_cell_height)
+            + chrome.pad * 2.0
+            + chrome.gap;
+        (
+            Self {
+                kind,
+                body: CellBody::PendingText {
+                    markdown: markdown.to_owned(),
+                    width,
+                    grown: false,
+                },
+            },
+            height,
+        )
+    }
+
     pub(crate) fn build_text(
         store: &Store,
         ui: &UiCtx,
@@ -156,6 +224,7 @@ impl Cell {
         content_width: f32,
         fx: &mut Effects<'_, EditorCommand>,
     ) -> (Self, f32) {
+        note_mount();
         let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
@@ -240,11 +309,63 @@ impl Cell {
         chrome.title_size * 1.8
     }
 
+    /// The built document lands: mount its editor at this cell's width
+    /// and replay whatever streamed in while the build ran.
+    fn resolve_text(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        built: crate::BuiltDocument,
+        fx: &mut Effects<'_, CellCommand>,
+    ) {
+        let CellBody::PendingText {
+            markdown,
+            width,
+            grown,
+        } = self.body.clone()
+        else {
+            return;
+        };
+        note_mount();
+        let fonts = env::ui_collection(store, ui);
+        let theme = env::Themes::of(store);
+        let mut document = built.document;
+        let editor = fx.scope(CellCommand::Editor, |fx| {
+            document.add_editor(
+                width,
+                None,
+                ::editor::EditorBuild::Bounded,
+                &[],
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            )
+        });
+        self.body = CellBody::Markdown(EditorView {
+            document,
+            editor,
+            reports_geometry: false,
+            location: None,
+            gutter_width: 0.0,
+            base: None,
+        });
+        // The stream did not wait for the build: catch the cell up.
+        if grown {
+            let text = crate::Text::from_string_exact(&markdown);
+            self.perform(store, ui, CellCommand::Rewrite(text), fx);
+        }
+    }
+
+    /// Mount a pair that was BUILT off-thread: two documents with their
+    /// syntax, the diff installed, the marks prepared. All that is left
+    /// here is layout at this cell's width — no Text, no parse, no diff.
     fn resolve_diff(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        result: Result<crate::higent::FileEditContents, String>,
+        result: Result<crate::higent::BuiltFileEdit, String>,
         fx: &mut Effects<'_, CellCommand>,
     ) {
         let CellBody::PendingDiff { header, width } = self.body.clone() else {
@@ -252,7 +373,6 @@ impl Cell {
         };
         let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
-        let _chrome = theme.ui().chat.clone();
         match result {
             Err(error) => {
                 let markdown = format!("**{}** — contents unavailable: {error}", header.title);
@@ -261,31 +381,16 @@ impl Cell {
                 });
                 *self = cell;
             }
-            Ok(contents) => {
-                let before_text =
-                    crate::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
-                let after_text =
-                    crate::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
-                let extension = header.title.rsplit('.').next().unwrap_or("").to_lowercase();
-                let mut before_doc =
-                    side_document(before_text.clone(), &extension, store, ui, &fonts, &theme);
-                let mut after_doc =
-                    side_document(after_text, &extension, store, ui, &fonts, &theme);
-
-                // The seeded pair road (the hidiff recipe, cell-owned
-                // documents): operation, THE diff markup, and the
-                // prepared marks — washes, word tints, fold strips —
-                // all settled before the first frame.
-                let operation =
-                    ::editor::env::Differ::of(store).diff(&before_text, after_doc.text(), None);
-                let diff_id = after_doc.add_diff(operation.clone(), before_doc.revision());
-                after_doc.install_normalized_diff(
-                    diff_id,
-                    operation.clone(),
-                    before_doc.revision(),
-                );
-                let hunks = after_doc.diff(diff_id).expect("just added").markup();
-                let prepared = crate::prepare_marks(&operation, before_doc.text());
+            Ok(built) => {
+                note_mount();
+                let crate::higent::BuiltFileEdit {
+                    before: mut before_doc,
+                    after: mut after_doc,
+                    diff: diff_id,
+                    hunks,
+                    left_marks,
+                    prepared,
+                } = built;
 
                 let gutter = theme.ui().editor_gutter.width;
                 // Diff bodies run edge-to-edge — the fold strips and
@@ -294,17 +399,6 @@ impl Cell {
                 let mut throwaway = imba::effect::Batch::new();
                 let quiet = &mut throwaway.effects();
 
-                let left_marks = before_doc.add_markup();
-                before_doc.replace_markup(
-                    left_marks,
-                    prepared.left.clone(),
-                    &[],
-                    store,
-                    ui,
-                    &fonts,
-                    &theme,
-                    quiet,
-                );
                 let left_editor = before_doc.add_editor(
                     editor_width,
                     None,
@@ -341,25 +435,6 @@ impl Cell {
                     &theme,
                     quiet,
                 );
-
-                if let Some(parsers) = env::Parsers::of(store) {
-                    fx.scope(
-                        |command: EditorCommand| {
-                            CellCommand::Diff(crate::UnifiedDiffCommand::Split(
-                                crate::SplitDiffCommand::Left(command),
-                            ))
-                        },
-                        |fx| before_doc.launch_reparse(parsers.clone(), fx),
-                    );
-                    fx.scope(
-                        |command: EditorCommand| {
-                            CellCommand::Diff(crate::UnifiedDiffCommand::Split(
-                                crate::SplitDiffCommand::Right(command),
-                            ))
-                        },
-                        |fx| after_doc.launch_reparse(parsers, fx),
-                    );
-                }
 
                 let state = crate::DiffViewState::attach(
                     diff_id,
@@ -405,6 +480,7 @@ impl Cell {
         let kind = format!("{:?}", self.kind);
         match &self.body {
             CellBody::Markdown(editor) => (kind, document_text(&editor.document)),
+            CellBody::PendingText { markdown, .. } => (kind, markdown.clone()),
             CellBody::PendingDiff { header, .. } => {
                 (kind, format!("[diff {} pending]", header.title))
             }
@@ -425,14 +501,20 @@ impl Cell {
     fn editor_view(&self) -> Option<&EditorView> {
         match &self.body {
             CellBody::Markdown(view) => Some(view),
-            CellBody::Tools(_) | CellBody::PendingDiff { .. } | CellBody::Diff { .. } => None,
+            CellBody::Tools(_)
+            | CellBody::PendingText { .. }
+            | CellBody::PendingDiff { .. }
+            | CellBody::Diff { .. } => None,
         }
     }
 
     fn editor_view_mut(&mut self) -> Option<&mut EditorView> {
         match &mut self.body {
             CellBody::Markdown(editor) => Some(editor),
-            CellBody::Diff { .. } | CellBody::PendingDiff { .. } | CellBody::Tools(_) => None,
+            CellBody::Diff { .. }
+            | CellBody::PendingText { .. }
+            | CellBody::PendingDiff { .. }
+            | CellBody::Tools(_) => None,
         }
     }
 
@@ -508,6 +590,14 @@ impl View for Cell {
                 });
             }
             CellCommand::Rewrite(text) => {
+                if let CellBody::PendingText {
+                    markdown, grown, ..
+                } = &mut self.body
+                {
+                    *markdown = text.to_string();
+                    *grown = true;
+                    return;
+                }
                 let CellBody::Markdown(editor) = &mut self.body else {
                     return;
                 };
@@ -618,6 +708,14 @@ impl View for Cell {
                 });
             }
             CellCommand::Append(chunk) => {
+                if let CellBody::PendingText {
+                    markdown, grown, ..
+                } = &mut self.body
+                {
+                    markdown.push_str(&chunk);
+                    *grown = true;
+                    return;
+                }
                 let CellBody::Markdown(editor) = &mut self.body else {
                     return;
                 };
@@ -635,6 +733,7 @@ impl View for Cell {
                 });
             }
             CellCommand::ResolveDiff(result) => self.resolve_diff(store, ui, result, fx),
+            CellCommand::ResolveText(built) => self.resolve_text(store, ui, built, fx),
             CellCommand::Tool(update) => {
                 let CellBody::Tools(group) = &mut self.body else {
                     return;
@@ -824,6 +923,9 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                 Some(view),
                 Cell::header_band(&chrome),
             ),
+            // A cell whose build has not landed: the band stands empty
+            // at its estimated height until the document arrives.
+            CellBody::PendingText { .. } => (None, None, None, 0.0),
             CellBody::Tools(_) => unreachable!("handled above"),
         };
         let editor_target = match &cell.body {

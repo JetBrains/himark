@@ -3,7 +3,7 @@
 
 pub use ahp_types;
 
-mod cell;
+pub mod cell;
 mod chat;
 mod chats;
 mod composer;
@@ -27,7 +27,9 @@ pub use drawer::{
     toolbar_button, AddHost, AgentsCommand, AgentsPanel, ShareHost, ToggleAgentsView,
 };
 pub use effects::*;
-pub use file_edit::{snapshot, DiffCounts, FileEditRefs, FileSnapshotRef};
+pub use file_edit::{
+    build_file_edit, snapshot, BuiltFileEdit, DiffCounts, FileEditRefs, FileSnapshotRef,
+};
 pub use seat::{
     AhpServer, ChannelUri, ChatUri, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap,
     RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,

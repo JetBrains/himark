@@ -33,6 +33,69 @@ pub fn document_for(
     himarkdown::document_from_markdown(source, store, ui, fonts, theme)
 }
 
+/// Building a document from text in hand (Text, layout, syntax) is not a
+/// filesystem capability — the chat's cells build off-thread with no host
+/// in sight. It installs at boot, on its own.
+pub fn install_build_handler(
+    app: &mut himark::Application,
+    languages: Arc<himark::SyntaxLanguages>,
+    diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
+) {
+    let workshop = Arc::clone(app.workshop());
+    let caller = app.effect_caller();
+    app.register_handler::<himark::BuildDocumentEffect>(BuildDocumentHandler(
+        Arc::clone(&workshop),
+        Arc::clone(&languages),
+    ));
+    app.register_handler::<himark::higent::BuildFileEditEffect>(BuildFileEditHandler {
+        caller,
+        workshop,
+        languages,
+        diff_policy,
+    });
+}
+
+/// The chat's diff cell, built off the UI thread: fetch both sides over
+/// the seat, then run the seeded pair recipe (two parses, the diff, the
+/// marks) in the workshop. The cell only lays the editors.
+struct BuildFileEditHandler {
+    caller: imba::effect::EffectCaller,
+    workshop: Arc<::himark::Workshop>,
+    languages: Arc<himark::SyntaxLanguages>,
+    diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
+}
+
+impl EffectHandler<himark::higent::BuildFileEditEffect> for BuildFileEditHandler {
+    async fn handle(
+        &self,
+        effect: himark::higent::BuildFileEditEffect,
+    ) -> Result<himark::higent::BuiltFileEdit, String> {
+        let contents = self
+            .caller
+            .call(himark::higent::FetchFileEditEffect {
+                seat: effect.seat,
+                before: effect.before,
+                after: effect.after,
+            })
+            .await
+            .ok_or_else(|| "the build was cancelled".to_owned())??;
+        let fonts = self.workshop.fonts();
+        let theme = self.workshop.theme();
+        Ok(self.workshop.with_ctx(|store, ui| {
+            himark::higent::build_file_edit(
+                &effect.name,
+                &contents,
+                &self.languages,
+                &self.diff_policy,
+                store,
+                ui,
+                &fonts,
+                &theme,
+            )
+        }))
+    }
+}
+
 pub fn install_open_handlers(
     app: &mut himark::Application,
     languages: Arc<himark::SyntaxLanguages>,
@@ -45,10 +108,6 @@ pub fn install_open_handlers(
         workshop: Arc::clone(&workshop),
         languages: Arc::clone(&languages),
     });
-    app.register_handler::<himark::BuildDocumentEffect>(BuildDocumentHandler(
-        Arc::clone(&workshop),
-        Arc::clone(&languages),
-    ));
     let _ = &diff_policy;
     let shop = DiffOpenShop {
         caller,

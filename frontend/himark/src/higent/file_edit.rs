@@ -77,6 +77,88 @@ impl FileEditRefs {
     }
 }
 
+/// Both sides of a file edit, BUILT: two documents with their syntax,
+/// the diff operation installed and normalized on the after side, the
+/// hunk markup, and the prepared marks (washes, word tints, fold
+/// strips). Everything the seeded pair road needs EXCEPT the editors —
+/// layout belongs to the mount, at the cell's own width.
+///
+/// Built off the UI thread by `BuildFileEditEffect`: a chat turn brings
+/// hundreds of edits, and parsing two files plus diffing them per edit
+/// is not frame work (docs/model-view.md, the open road's rule).
+#[derive(Clone)]
+pub struct BuiltFileEdit {
+    pub before: crate::Document,
+    pub after: crate::Document,
+    pub diff: ::editor::diff::DiffId,
+    /// The after side's hunk markup, minted by the diff install.
+    pub hunks: ::editor::MarkupId,
+    /// The before side's wash markup, already filled in.
+    pub left_marks: ::editor::MarkupId,
+    pub prepared: ::editor::PreparedMarks,
+}
+
+/// The seeded pair recipe, off-thread. `name` names the language (the
+/// edited file's own name); `parsers` and `differ` are passed in because
+/// the build context is the workshop's bare store, not the app's.
+pub fn build_file_edit(
+    name: &str,
+    contents: &crate::higent::FileEditContents,
+    parsers: &std::sync::Arc<crate::SyntaxLanguages>,
+    differ: &std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
+    store: &imba::store::Store,
+    ui: &imba::UiCtx,
+    fonts: &skia_safe::textlayout::FontCollection,
+    theme: &crate::Theme,
+) -> BuiltFileEdit {
+    let before_text = crate::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
+    let after_text = crate::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
+    let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
+    let mut before = crate::higent::cell::side_document(
+        before_text.clone(),
+        &extension,
+        parsers,
+        store,
+        ui,
+        fonts,
+        theme,
+    );
+    let mut after = crate::higent::cell::side_document(
+        after_text, &extension, parsers, store, ui, fonts, theme,
+    );
+
+    let operation = differ.diff(&before_text, after.text(), None);
+    let prepared = ::editor::prepare_marks(&operation, before.text());
+    let diff = after.add_diff(operation.clone(), before.revision());
+    after.install_normalized_diff(diff, operation, before.revision());
+    let hunks = after.diff(diff).expect("just added").markup();
+
+    // The before side's washes and fold spacers, settled here too — the
+    // mount only hands the markup to its editor.
+    let mut throwaway = imba::effect::Batch::new();
+    let quiet = &mut throwaway.effects();
+    let left_marks = before.add_markup();
+    before.replace_markup(
+        left_marks,
+        prepared.left.clone(),
+        &[],
+        store,
+        ui,
+        fonts,
+        theme,
+        quiet,
+    );
+
+    BuiltFileEdit {
+        before,
+        after,
+        diff,
+        hunks,
+        left_marks,
+        prepared,
+    }
+}
+
 pub fn snapshot(uri: &str, content_uri: &str) -> FileSnapshotRef {
     FileSnapshotRef {
         uri: uri.to_owned(),

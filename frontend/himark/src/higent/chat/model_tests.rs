@@ -161,6 +161,37 @@ fn tool_done(turn: &str, tool: &str, ok: bool, said: &str) -> StateAction {
     })
 }
 
+/// A completion carrying file edits: (path, content uri) per side pair —
+/// the same uri before and after keeps the helper short.
+fn tool_done_with_edits(turn: &str, tool: &str, edits: Vec<(&str, &str)>) -> StateAction {
+    let content = edits
+        .into_iter()
+        .map(|(path, uri)| {
+            ahp_types::state::ToolResultContent::FileEdit(
+                crate::higent::FileEditRefs {
+                    before: Some(crate::higent::snapshot(path, uri)),
+                    after: Some(crate::higent::snapshot(path, uri)),
+                    counts: crate::higent::DiffCounts::default(),
+                }
+                .to_content(),
+            )
+        })
+        .collect();
+    StateAction::ChatToolCallComplete(ChatToolCallCompleteAction {
+        turn_id: turn.to_owned(),
+        tool_call_id: tool.to_owned(),
+        result: ToolCallResult {
+            success: true,
+            past_tense_message: StringOrMarkdown::Plain("edited".to_owned()),
+            content: Some(content),
+            structured_content: None,
+            error: None,
+        },
+        requires_result_confirmation: None,
+        meta: None,
+    })
+}
+
 fn complete(turn: &str) -> StateAction {
     StateAction::ChatTurnComplete(ChatTurnCompleteAction {
         turn_id: turn.to_owned(),
@@ -504,6 +535,39 @@ fn a_markdown_part_joins_the_live_turn() {
             turn: TurnId::new("t1"),
             part: PartId::new("p1")
         }
+    );
+}
+
+/// A completion moves its call AND every edit it carried: the change
+/// names them all, so a view lays each edit's cell without walking the
+/// turn.
+#[test]
+fn a_completion_names_its_call_and_its_edits() {
+    let (_, change) = fold(
+        &Conversation::default(),
+        vec![
+            started("t1", "hi"),
+            tool_start("t1", "tool-1", "Edit"),
+            tool_done_with_edits(
+                "t1",
+                "tool-1",
+                vec![
+                    ("src/a.rs", "ahp-content:/a1"),
+                    ("src/b.rs", "ahp-content:/b1"),
+                ],
+            ),
+        ],
+    );
+    let Change::Parts { turn, parts } = change else {
+        panic!("a completion names its parts: {change:?}");
+    };
+    assert_eq!(turn, TurnId::new("t1"));
+    assert_eq!(
+        parts
+            .iter()
+            .map(|part| part.as_str().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["tool-1", "edit:ahp-content:/a1", "edit:ahp-content:/b1"]
     );
 }
 

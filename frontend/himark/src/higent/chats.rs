@@ -230,18 +230,22 @@ pub struct ChatPane {
     /// window happens to be on when a command arrives.
     session: crate::SessionId,
     chat: ChatUri,
-    view: ChatViewId,
+    /// The mount, CLAIMED on the pane's first command — the warm one a
+    /// previous pane parked when it closed, else a fresh one. Minting
+    /// an id here instead would re-lay the whole transcript on every
+    /// walk back to the chat.
+    view: Option<ChatViewId>,
 }
 
 impl ChatPane {
-    /// Storeless by design (family rows mint with `&Store`): the id
-    /// is allocated here, the view RECORD is built by the model on
-    /// the pane's first command (`ensure_view`).
+    /// Storeless by design (family rows mint with `&Store`): the mount
+    /// is CLAIMED from the model on the pane's first command
+    /// (`claim_view`), which adopts the parked one when there is one.
     pub fn new(session: crate::SessionId, chat: ChatUri) -> Self {
         Self {
             session,
             chat,
-            view: ChatViewId::mint(),
+            view: None,
         }
     }
 
@@ -254,6 +258,20 @@ impl ChatPane {
     pub fn chat(&self) -> &ChatUri {
         &self.chat
     }
+
+    /// The pane goes, the MOUNT stays — parked and still fed, so the
+    /// walk back re-displays it instead of rebuilding every cell's
+    /// document. The chat itself is session truth either way.
+    fn park(&mut self, store: &mut Store) {
+        let Some(view) = self.view.take() else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
+            return;
+        };
+        panel.park_view(view);
+        Chats::put(store, self.chat.clone(), panel);
+    }
 }
 
 impl imba::View for ChatPane {
@@ -264,20 +282,14 @@ impl imba::View for ChatPane {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
-        match Chats::chat_ref(store, &self.session, &self.chat) {
-            Some(panel) => panel.focus_data_view(store, ui, self.view),
-            None => imba::focus::FocusData::default(),
+        match (self.view, Chats::chat_ref(store, &self.session, &self.chat)) {
+            (Some(view), Some(panel)) => panel.focus_data_view(store, ui, view),
+            _ => imba::focus::FocusData::default(),
         }
     }
 
-    fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        // The VIEW dies with its pane; the chat is session truth and
-        // its feed keeps landing.
-        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
-            return;
-        };
-        panel.destroy_view(store, self.view, fx);
-        Chats::put(store, self.chat.clone(), panel);
+    fn destroy(&mut self, store: &mut Store, _fx: &mut imba::effect::Effects<'_, Self::Command>) {
+        self.park(store);
     }
 
     fn perform(
@@ -290,7 +302,15 @@ impl imba::View for ChatPane {
         let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
             return;
         };
-        panel.perform_in_view(store, ui, self.view, command, fx);
+        let view = match self.view {
+            Some(view) => view,
+            None => {
+                let view = panel.claim_view(store, ui, fx);
+                self.view = Some(view);
+                view
+            }
+        };
+        panel.perform_in_view(store, ui, view, command, fx);
         Chats::put(store, self.chat.clone(), panel);
     }
 
@@ -302,34 +322,33 @@ impl imba::View for ChatPane {
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
-                let widget: imba::ThunkBox<'a, Self::Command> =
-                    match Chats::chat_ref(store, &self.session, &self.chat)
-                        .and_then(|panel| panel.display_view(arena, store, ui, self.view))
-                    {
-                        Some(laid) => imba::ThunkBox::new(
-                            arena,
-                            imba::Layout::layout(laid, arena, constraints),
-                        ),
+                let widget: imba::ThunkBox<'a, Self::Command> = match self.view.and_then(|view| {
+                    Chats::chat_ref(store, &self.session, &self.chat)
+                        .and_then(|panel| panel.display_view(arena, store, ui, view))
+                }) {
+                    Some(laid) => {
+                        imba::ThunkBox::new(arena, imba::Layout::layout(laid, arena, constraints))
+                    }
 
-                        // No view record yet (panes mint storeless): a
-                        // blank frame whose paint asks for Boot — the
-                        // perform road builds the view and subscribes.
-                        None => imba::ThunkBox::new(
-                            arena,
-                            imba::thunk_ext::ThunkExt::event(
-                                imba::leaf::leaf::<Self::Command>(
-                                    constraints.max.width,
-                                    constraints.max.height,
-                                ),
-                                |_arena, event, _size| match event {
-                                    imba::event::Event::Paint { .. } => {
-                                        imba::event::EventResult::Command(ChatPanelCommand::Boot)
-                                    }
-                                    _ => imba::event::EventResult::Ignored,
-                                },
+                    // No view record yet (panes mint storeless): a
+                    // blank frame whose paint asks for Boot — the
+                    // perform road builds the view and subscribes.
+                    None => imba::ThunkBox::new(
+                        arena,
+                        imba::thunk_ext::ThunkExt::event(
+                            imba::leaf::leaf::<Self::Command>(
+                                constraints.max.width,
+                                constraints.max.height,
                             ),
+                            |_arena, event, _size| match event {
+                                imba::event::Event::Paint { .. } => {
+                                    imba::event::EventResult::Command(ChatPanelCommand::Boot)
+                                }
+                                _ => imba::event::EventResult::Ignored,
+                            },
                         ),
-                    };
+                    ),
+                };
                 widget
             },
         )
@@ -408,7 +427,15 @@ impl crate::PanelView for ChatPane {
     // re-mint the pane from it. The chat dies with its session, not
     // with a workbench slot. (The remove here was the sheet era's
     // lifecycle — it made reopening impossible.)
-    fn dismantle(&mut self, _store: &mut Store) {}
+    fn dismantle(&mut self, store: &mut Store) {
+        self.park(store);
+    }
+
+    /// Walked away from, or displaced by another panel: the instance
+    /// goes, the laid mount stays parked for the walk back.
+    fn displaced(&mut self, store: &mut Store) {
+        self.park(store);
+    }
 
     fn as_any(&self) -> &dyn std::any::Any {
         self

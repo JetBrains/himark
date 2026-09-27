@@ -1334,7 +1334,7 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        entity.mount_focused(widget);
+                        entity.mount_focused(store, widget);
                         crate::Windows::put(store, window, entity);
                     }
                     None => {
@@ -1368,7 +1368,7 @@ impl Application {
                             crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
-                            entity.mount_focused(widget);
+                            entity.mount_focused(store, widget);
                             crate::Windows::put(store, window, entity);
                         }
                     }
@@ -1399,7 +1399,7 @@ impl Application {
                             crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
-                            entity.mount_focused(widget);
+                            entity.mount_focused(store, widget);
                             crate::Windows::put(store, window, entity);
                         }
                     }

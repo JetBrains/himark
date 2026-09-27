@@ -23,14 +23,26 @@ fn resolved(before: &str, after: &str) -> Cell {
         },
         640.0,
     );
+    // The pair is BUILT off the UI thread in production (the handler
+    // behind `BuildFileEditEffect`); here the test plays that part.
+    let built = crate::higent::build_file_edit(
+        "sample.md",
+        &crate::higent::FileEditContents {
+            before: Some(before.to_owned()),
+            after: Some(after.to_owned()),
+        },
+        &std::sync::Arc::new(crate::SyntaxLanguages::new()),
+        &(std::sync::Arc::new(myersdiff::Myers) as std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
+        &store,
+        &ui,
+        &env::ui_collection(&store, &ui),
+        &env::Themes::of(&store),
+    );
     let mut batch = imba::effect::Batch::new();
     cell.perform(
         &mut store,
         &ui,
-        CellCommand::ResolveDiff(Ok(crate::higent::FileEditContents {
-            before: Some(before.to_owned()),
-            after: Some(after.to_owned()),
-        })),
+        CellCommand::ResolveDiff(Ok(built)),
         &mut batch.effects(),
     );
     cell

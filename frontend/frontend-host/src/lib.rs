@@ -417,6 +417,11 @@ impl HimarkEngine {
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
         hiahp::registry::register_all(&mut app);
+        hiahp::open::install_build_handler(
+            &mut app,
+            Arc::new(syntax_languages()),
+            Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
+        );
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
         himark::hicomments::Comments::install(&mut app.store_mut());

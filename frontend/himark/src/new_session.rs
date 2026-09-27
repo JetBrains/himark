@@ -1950,17 +1950,15 @@ fn dispose_placeholder(
         return;
     };
     fx.push(
-        AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
-            move |result| {
-                crate::app::AppCommand::Dynamic(
-                    window,
-                    Arc::new(PlaceholderDispatched {
-                        label: "dispose",
-                        result: result.map(|_| ()),
-                    }),
-                )
-            },
-        ),
+        AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(move |result| {
+            crate::app::AppCommand::Dynamic(
+                window,
+                Arc::new(PlaceholderDispatched {
+                    label: "dispose",
+                    result: result.map(|_| ()),
+                }),
+            )
+        }),
     );
 }
 

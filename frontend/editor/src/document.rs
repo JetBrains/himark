@@ -115,8 +115,15 @@ impl DocumentToken {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    static BORN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 impl Document {
     pub fn new(text: Text, markup: Markup) -> Self {
+        #[cfg(any(test, feature = "test-support"))]
+        BORN.with(|born| born.set(born.get() + 1));
         let mut markups = rpds::HashTrieMapSync::new_sync();
         if !markup.is_empty() {
             let mut markup = markup;
@@ -186,6 +193,14 @@ impl Document {
             markup.push_styled_covering(0..byte_count, crate::theme::StyleId::SourceCode);
         }
         Self::new(text, markup).with_syntax(root, &sites)
+    }
+
+    /// How many documents THIS THREAD has minted. A document is a text,
+    /// a parse and a layout; the tests that guard the UI thread read it
+    /// across a frame and expect it not to move.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn born_on_this_thread() -> u64 {
+        BORN.with(std::cell::Cell::get)
     }
 
     #[cfg(any(test, feature = "test-support"))]

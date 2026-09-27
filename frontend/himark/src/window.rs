@@ -1270,10 +1270,9 @@ impl Window {
     }
 
     pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
-        let _ = store;
         let displaced = self.workbench_mut().root.replace_focused_panel(panel);
 
-        self.stash_displaced(displaced);
+        self.stash_displaced(store, displaced);
     }
 
     pub fn focused_document_id(&self) -> Option<crate::DocumentId> {
@@ -1287,8 +1286,11 @@ impl Window {
         )
     }
 
-    fn stash_displaced(&mut self, displaced: Panel) {
-        let _ = displaced;
+    /// The displaced panel's last word before it is dropped: a pane
+    /// that parked state elsewhere (the chat's laid mount) hands it over
+    /// now, so the walk back adopts it.
+    fn stash_displaced(&mut self, store: &mut Store, mut displaced: Panel) {
+        displaced.displaced(store);
     }
 
     pub fn unmount_all_widgets(
@@ -1331,12 +1333,12 @@ impl Window {
         }
     }
 
-    pub fn mount_focused(&mut self, widget: Box<dyn crate::DynPanelView>) {
+    pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn crate::DynPanelView>) {
         let displaced = self
             .workbench_mut()
             .root
             .replace_focused_panel(Panel::Plugin(widget));
-        self.stash_displaced(displaced);
+        self.stash_displaced(store, displaced);
     }
 
     pub fn open_panel<R: 'static>(
@@ -1358,12 +1360,11 @@ impl Window {
             return false;
         }
 
-        let _ = store;
         let displaced =
             std::mem::replace(self.workbench_mut().root.focused_pane_mut(), Panel::blank());
         match self.workbench_mut().root.close_focused() {
             true => {
-                self.stash_displaced(displaced);
+                self.stash_displaced(store, displaced);
                 true
             }
             false => {
@@ -1676,7 +1677,7 @@ impl Window {
             crate::close_editor(store, view.document(), view.editor());
             crate::OpenDocuments::remove_if_editorless(store, ui, view.document(), fx);
         }
-        self.stash_displaced(displaced);
+        self.stash_displaced(store, displaced);
     }
 
     pub fn show_document(

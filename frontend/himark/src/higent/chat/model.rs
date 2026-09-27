@@ -150,6 +150,10 @@ impl Turn {
         self.order.len()
     }
 
+    pub fn part(&self, id: &PartId) -> Option<&Part> {
+        self.parts.get(id)
+    }
+
     /// Put a part at its place: a new one joins the end, a known one is
     /// replaced where it already stands.
     fn with_part(&self, id: PartId, part: Part) -> Self {
@@ -258,8 +262,14 @@ pub enum Change {
     Nothing,
     /// A turn joined the tail, or replaced itself where it stood.
     Said(TurnId),
-    /// One part landed or was re-dressed: re-lay that turn's cells.
+    /// One part landed or was re-dressed: that cell, nothing else.
     Part { turn: TurnId, part: PartId },
+    /// Several parts at once — a tool completion re-dresses its call
+    /// and lands the edits it carried. Every part named, in order.
+    Parts {
+        turn: TurnId,
+        parts: VectorSync<PartId>,
+    },
     /// Streamed text joined a part that already stands.
     Grew {
         turn: TurnId,
@@ -575,7 +585,14 @@ impl Conversation {
                             .fold(dressed, |turn, (id, edit)| turn.with_part(id, edit)),
                     )
                 }) {
-                    Some(next) => (next, Change::Part { turn, part }),
+                    Some(next) => {
+                        let mut parts = VectorSync::new_sync();
+                        parts.push_back_mut(part);
+                        for (id, _) in edits.iter() {
+                            parts.push_back_mut(id.clone());
+                        }
+                        (next, Change::Parts { turn, parts })
+                    }
                     None => self.nothing(),
                 }
             }

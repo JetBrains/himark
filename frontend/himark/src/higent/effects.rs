@@ -260,3 +260,19 @@ pub struct FileEditContents {
 impl Effect for FetchFileEditEffect {
     type Result = Result<FileEditContents, String>;
 }
+
+/// Both sides of a file edit, fetched AND built (two documents with
+/// syntax, the diff, the prepared marks) off the UI thread — the chat's
+/// diff cell only mounts the result. A coding turn brings hundreds of
+/// edits; none of this is frame work.
+pub struct BuildFileEditEffect {
+    pub seat: Arc<dyn AhpServer>,
+    pub before: Option<Uri>,
+    pub after: Option<Uri>,
+    /// The edited file's name — it names the language.
+    pub name: String,
+}
+
+impl Effect for BuildFileEditEffect {
+    type Result = Result<crate::higent::BuiltFileEdit, String>;
+}

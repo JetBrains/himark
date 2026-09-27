@@ -21,6 +21,15 @@ pub trait PanelView: imba::CloneDynView + Clone + Sized + 'static {
 
     fn dismantle(&mut self, store: &mut Store);
 
+    /// The pane LEFT ITS SLOT without being closed: another panel took
+    /// the slot, or the slot walked elsewhere. The instance is dropped
+    /// right after — a pane that keeps state outside itself (the chat's
+    /// laid mount) hands it back here, so the walk back adopts it
+    /// instead of rebuilding. Closing is `dismantle`; this is not.
+    fn displaced(&mut self, store: &mut Store) {
+        let _ = store;
+    }
+
     fn take_request(&mut self) -> Option<PanelRequest> {
         None
     }
@@ -69,6 +78,7 @@ pub trait DynPanelView: imba::CloneDynView {
     fn clone_panel(&self) -> Box<dyn DynPanelView>;
     fn title(&self, store: &Store) -> String;
     fn dismantle(&mut self, store: &mut Store);
+    fn displaced(&mut self, store: &mut Store);
     fn take_request(&mut self) -> Option<PanelRequest>;
     fn family_row(&self) -> Option<crate::FamilyRow>;
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32>;
@@ -98,6 +108,9 @@ impl<P: PanelView> DynPanelView for P {
     }
     fn dismantle(&mut self, store: &mut Store) {
         PanelView::dismantle(self, store)
+    }
+    fn displaced(&mut self, store: &mut Store) {
+        PanelView::displaced(self, store)
     }
     fn take_request(&mut self) -> Option<PanelRequest> {
         PanelView::take_request(self)
@@ -253,6 +266,14 @@ impl Panel {
     pub fn dismantle(&mut self, store: &mut Store) {
         if let Self::Plugin(view) = self {
             view.dismantle(store);
+        }
+    }
+
+    /// The panel left its slot and is about to be dropped (see
+    /// `PanelView::displaced`).
+    pub fn displaced(&mut self, store: &mut Store) {
+        if let Self::Plugin(view) = self {
+            view.displaced(store);
         }
     }
 

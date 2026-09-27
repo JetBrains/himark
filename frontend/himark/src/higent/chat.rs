@@ -15,10 +15,9 @@
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::higent::{
-    CancelTurnEffect, DispatchChatActionEffect, FetchFileEditEffect, FetchTurnsEffect,
-    PollChatActionsEffect, TurnsPage,
+    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect, TurnsPage,
 };
-use crate::{env, fonts::ui_text_font, EditorCommand};
+use crate::{env, fonts::ui_text_font};
 use ahp_types::actions::{
     ChatPendingMessageRemovedAction, ChatToolCallConfirmedAction, StateAction,
 };
@@ -52,7 +51,8 @@ pub enum RowCommand {
     /// A SLEEPING row painted: build me at the row's real width.
     Wake,
 
-    Append {
+    /// A cell joins the turn where its key belongs.
+    Place {
         key: crate::higent::turn::CellKey,
         cell: Cell,
         height: f32,
@@ -106,8 +106,8 @@ impl View for ChatRow {
             (ChatRow::Turn(turn), RowCommand::Turn(command)) => {
                 fx.scope(RowCommand::Turn, |fx| turn.perform(store, ui, command, fx))
             }
-            (ChatRow::Turn(turn), RowCommand::Append { key, cell, height }) => {
-                turn.append(key, cell, height);
+            (ChatRow::Turn(turn), RowCommand::Place { key, cell, height }) => {
+                turn.place(key, cell, height);
             }
 
             _ => {}
@@ -329,9 +329,11 @@ pub enum ChatPanelCommand {
 
     Focus(ChatArea, Option<Box<ChatPanelCommand>>),
 
+    /// A command for one cell, addressed by KEY: a landing that was in
+    /// flight while the row changed shape still finds its cell.
     Cell {
         turn: crate::higent::TurnId,
-        cell: usize,
+        cell: crate::higent::turn::CellKey,
         command: CellCommand,
     },
     Composer(ComposerCommand),
@@ -406,10 +408,27 @@ enum ViewOp {
     Loader {
         armed: bool,
     },
-    /// One turn re-lays: a turn we did not hold joins the tail, a turn
-    /// we did is replaced where it stands. The op carries the MODEL
+    /// One turn re-lays whole: a turn we did not hold joins the tail, a
+    /// turn we did is replaced where it stands (a replayed start RESETS
+    /// its parts, so the old cells must go). The op carries the MODEL
     /// turn — every view dresses it at its own width.
     Row(model::Turn),
+    /// ONE cell of a turn moved: placed if the row lacks it, re-dressed
+    /// in place if it stands. Every other cell keeps the document it
+    /// already has — a cell is a document, a parse and a layout, and a
+    /// streamed turn must never mint them again. The op carries the
+    /// SPEC, dressed once; the views only lay it.
+    Cell {
+        turn: crate::higent::TurnId,
+        key: crate::higent::turn::CellKey,
+        spec: CellSpec,
+    },
+    /// A turn ended: the cells after its parts (how it ended, what it
+    /// spent) join the row. At most two.
+    Tail {
+        turn: crate::higent::TurnId,
+        cells: crate::higent::turn::DressedCells,
+    },
     /// Streamed text joined one part. The view hops from the part id to
     /// its cell and appends — no counting, no re-lay.
     Grew {
@@ -449,6 +468,13 @@ pub struct ChatPanel {
     minted: u64,
 
     views: rpds::HashTrieMapSync<ChatViewId, ChatView>,
+
+    /// The mounts panes LEFT BEHIND, warm: each stays in `views` and
+    /// keeps taking ops, so walking back to the chat lays nothing. The
+    /// next pane claims the newest (`claim_view`) and dismantles the
+    /// rest. Opens and closes alternate, so this holds at most one
+    /// mount per window that ever showed the chat.
+    parked: rpds::VectorSync<ChatViewId>,
 }
 
 impl Clone for ChatPanel {
@@ -467,6 +493,7 @@ impl Clone for ChatPanel {
             initial_prompt: self.initial_prompt.clone(),
             minted: self.minted,
             views: self.views.clone(),
+            parked: self.parked.clone(),
         }
     }
 }
@@ -560,6 +587,7 @@ impl ChatPanel {
             initial_prompt: None,
             minted: 0,
             views: rpds::HashTrieMapSync::new_sync(),
+            parked: rpds::VectorSync::new_sync(),
         }
     }
 
@@ -769,6 +797,42 @@ impl ChatPanel {
         self.views.insert_mut(id, view);
     }
 
+    /// The mount a fresh pane takes: the one the last pane PARKED
+    /// (laid, and fed every op since — nothing to rebuild), else a new
+    /// one, built here. Any other parked mount is dismantled now: this
+    /// is the road that has effects to spend, and a pane that comes
+    /// back adopts whichever mount is warm.
+    pub(crate) fn claim_view(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) -> ChatViewId {
+        let parked = std::mem::replace(&mut self.parked, rpds::VectorSync::new_sync());
+        let claimed = parked.last().copied();
+        for stale in parked.iter().copied().filter(|id| Some(*id) != claimed) {
+            self.destroy_view(store, stale, fx);
+        }
+        match claimed {
+            Some(id) => id,
+            None => {
+                let id = ChatViewId::mint();
+                self.ensure_view(store, ui, id, fx);
+                id
+            }
+        }
+    }
+
+    /// A pane let go of its mount: it stays in `views`, warm and fed,
+    /// for the walk back. Teardown carries no effects (`dismantle` and
+    /// `displaced` have the store and nothing else), so parking only
+    /// MARKS; the next claim dismantles what it does not adopt.
+    pub(crate) fn park_view(&mut self, id: ChatViewId) {
+        if self.views.contains_key(&id) && !self.parked.iter().any(|parked| *parked == id) {
+            self.parked.push_back_mut(id);
+        }
+    }
+
     pub(crate) fn destroy_view(
         &mut self,
         store: &mut Store,
@@ -779,6 +843,14 @@ impl ChatPanel {
             return;
         };
         self.views.remove_mut(&id);
+        if self.parked.iter().any(|parked| *parked == id) {
+            self.parked = self
+                .parked
+                .iter()
+                .copied()
+                .filter(|parked| *parked != id)
+                .collect();
+        }
         fx.scope(ChatPanelCommand::Rows, |fx| view.rows.destroy(store, fx));
         fx.scope(ChatPanelCommand::Composer, |fx| {
             view.composer.destroy(store, fx)
@@ -1092,9 +1164,7 @@ impl ChatPanel {
             let (next, change) = self.conversation.fold(&action);
             let moved = change != model::Change::Nothing;
             self.conversation = next;
-            if let Some(op) = self.op_of(&change) {
-                ops.push(op);
-            }
+            self.ops_of(&change, &mut ops);
             if ends && moved {
                 self.stack.clear_ask();
                 steer = self.steering.take().or(steer);
@@ -1115,15 +1185,31 @@ impl ChatPanel {
         }
     }
 
-    /// The op a change asks the views for.
-    fn op_of(&self, change: &model::Change) -> Option<ViewOp> {
-        match change {
+    /// The ops a change asks the views for — dressed here ONCE, laid by
+    /// every view at its own width.
+    fn ops_of(&self, change: &model::Change, ops: &mut Vec<ViewOp>) {
+        let cell = |turn: &crate::higent::TurnId, part: &model::PartId| {
+            let spec = crate::higent::turn::dress_part(self.conversation.turn(turn)?.part(part)?);
+            Some(ViewOp::Cell {
+                turn: turn.clone(),
+                key: crate::higent::turn::CellKey::Part(part.clone()),
+                spec,
+            })
+        };
+        let op = match change {
             model::Change::Nothing => None,
-            model::Change::Said(turn)
-            | model::Change::Part { turn, .. }
-            | model::Change::Retired(turn) => {
-                self.conversation.turn(turn).cloned().map(ViewOp::Row)
+            // A start RESETS the turn: the row re-lays whole.
+            model::Change::Said(turn) => self.conversation.turn(turn).cloned().map(ViewOp::Row),
+            // A part landed or was re-dressed: THAT cell moves.
+            model::Change::Part { turn, part } => cell(turn, part),
+            model::Change::Parts { turn, parts } => {
+                ops.extend(parts.iter().filter_map(|part| cell(turn, part)));
+                None
             }
+            model::Change::Retired(turn) => self.conversation.turn(turn).map(|turn| ViewOp::Tail {
+                turn: turn.id.clone(),
+                cells: crate::higent::turn::dress_tail(turn),
+            }),
             model::Change::Grew { turn, part, text } => Some(ViewOp::Grew {
                 turn: turn.clone(),
                 part: part.clone(),
@@ -1133,7 +1219,8 @@ impl ChatPanel {
                 turns: self.conversation.turns().cloned().collect(),
                 has_more: self.conversation.older().is_some(),
             }),
-        }
+        };
+        ops.extend(op);
     }
 
     /// The panel's own furniture: the permission ask a tool call
@@ -1277,7 +1364,8 @@ impl ChatPanel {
         ));
         let (next, change) = self.conversation.fold(&action);
         self.conversation = next;
-        let ops: Vec<ViewOp> = self.op_of(&change).into_iter().collect();
+        let mut ops: Vec<ViewOp> = Vec::new();
+        self.ops_of(&change, &mut ops);
         self.roll(store, ui, &ops, fx);
 
         let chat = self.chat.clone();
@@ -1323,7 +1411,8 @@ impl ChatPanel {
         });
         let (next, change) = self.conversation.fold(&action);
         self.conversation = next;
-        let ops: Vec<ViewOp> = self.op_of(&change).into_iter().collect();
+        let mut ops: Vec<ViewOp> = Vec::new();
+        self.ops_of(&change, &mut ops);
         self.roll(store, ui, &ops, fx);
     }
 
@@ -1405,7 +1494,11 @@ impl ChatPanel {
         command: ChatPanelCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        self.ensure_view(store, ui, id, fx);
+        // A view is minted by `claim_view` and nowhere else: a landing
+        // addressed to a mount that was dismantled is simply late.
+        if !self.views.contains_key(&id) {
+            return;
+        }
         match command {
             ChatPanelCommand::InView(id, inner) => {
                 self.perform_in_view(store, ui, id, *inner, fx);
@@ -1980,36 +2073,53 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
-        key: &crate::higent::TurnId,
-        index: usize,
+        turn: &crate::higent::TurnId,
+        key: &crate::higent::turn::CellKey,
         spec: CellSpec,
         content_width: f32,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> (Cell, f32) {
-        let turn_key = key.clone();
+        let turn_key = turn.clone();
+        let cell_key = key.clone();
         match spec {
-            CellSpec::Text(kind, markdown) => fx.scope(
-                move |command: EditorCommand| ChatPanelCommand::Cell {
-                    turn: turn_key.clone(),
-                    cell: index,
-                    command: CellCommand::Editor(command),
-                },
-                |fx| Cell::build(store, ui, kind, &markdown, content_width, fx),
-            ),
+            // A markdown cell is a TEXT, a PARSE and a LAYOUT. None of
+            // that belongs on the UI thread: the cell is born as a band
+            // at an estimated height and `BuildDocumentEffect` builds
+            // the document off-thread — the landing only mounts it.
+            CellSpec::Text(kind, markdown) => {
+                let (cell, height) = Cell::pending_text(store, kind, &markdown, content_width);
+                fx.push(
+                    AnyEffect::new(crate::BuildDocumentEffect {
+                        location: cell_location(),
+                        text: markdown,
+                    })
+                    .map(move |built| ChatPanelCommand::Cell {
+                        turn: turn_key.clone(),
+                        cell: cell_key.clone(),
+                        command: CellCommand::ResolveText(built),
+                    }),
+                );
+                (cell, height)
+            }
             CellSpec::Tools(specs) => Cell::tools(store, ui, specs, content_width),
+            // A diff cell is TWO documents, a parse each, a diff and its
+            // marks. The cell is born as a header band and
+            // `BuildFileEditEffect` fetches both sides and builds the
+            // pair off-thread — the landing only lays the editors.
             CellSpec::Diff(spec) => {
                 let Some(seat) = seat.clone() else {
                     return Cell::pending_diff(store, spec.header, content_width);
                 };
                 fx.push(
-                    AnyEffect::new(FetchFileEditEffect {
+                    AnyEffect::new(crate::higent::BuildFileEditEffect {
                         seat,
                         before: spec.before,
                         after: spec.after,
+                        name: spec.header.title.clone(),
                     })
                     .map(move |result| ChatPanelCommand::Cell {
                         turn: turn_key.clone(),
-                        cell: index,
+                        cell: cell_key.clone(),
                         command: CellCommand::ResolveDiff(result),
                     }),
                 );
@@ -2029,9 +2139,9 @@ impl ChatView {
         let content_width = TurnView::content_width(self.panel_width());
         let mut cells = ListSlice::new();
         let mut total = 0.0;
-        for (index, (key, spec)) in crate::higent::turn::dress(turn).iter().cloned().enumerate() {
+        for (key, spec) in crate::higent::turn::dress(turn).iter().cloned() {
             let (cell, height) =
-                self.build_cell(store, ui, seat, &turn.id, index, spec, content_width, fx);
+                self.build_cell(store, ui, seat, &turn.id, &key, spec, content_width, fx);
             total += height;
             cells.push_keyed_sized(key, cell, height);
         }
@@ -2105,22 +2215,76 @@ impl ChatView {
             .splice(0..1, [(ChatRow::Loader { armed }, height)]);
     }
 
+    /// ONE cell moved: a row that lacks it builds it and puts it where
+    /// its key belongs; a row that has it re-dresses it in place. A row
+    /// still asleep waits for its wake, which dresses the whole turn
+    /// from the model anyway.
+    fn place_cell(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        turn: &crate::higent::TurnId,
+        key: &crate::higent::turn::CellKey,
+        spec: CellSpec,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(range) = self.rows.content().row_range(turn) else {
+            return;
+        };
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+            return;
+        };
+        if row.cell_at(key).is_some() {
+            for command in redress(&spec) {
+                self.route_cell(store, ui, turn.clone(), key.clone(), command, fx);
+            }
+            return;
+        }
+        let content_width = TurnView::content_width(self.panel_width());
+        let (cell, height) = self.build_cell(store, ui, seat, turn, key, spec, content_width, fx);
+        fx.scope(ChatPanelCommand::Rows, |fx| {
+            self.rows.perform(
+                store,
+                ui,
+                ScrollCommand::Content(ListCommand::Child(
+                    range.start,
+                    RowCommand::Place {
+                        key: key.clone(),
+                        cell,
+                        height,
+                    },
+                )),
+                fx,
+            )
+        });
+    }
+
+    /// From a turn and a cell key to the cell, in two keyed hops — and
+    /// whatever the cell sends back (an editor effect's landing) is
+    /// addressed the same way, so it finds the cell however the row has
+    /// moved meanwhile.
     fn route_cell(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
         turn: crate::higent::TurnId,
-        cell: usize,
+        key: crate::higent::turn::CellKey,
         command: CellCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
         let Some(range) = self.rows.content().row_range(&turn) else {
             return;
         };
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+            return;
+        };
+        let Some(cell) = row.cell_at(&key) else {
+            return;
+        };
         let index = range.start;
-        let key = turn.clone();
         fx.scope(
-            move |command: RowsCommand| lift_rows_command(&key, command),
+            move |command: RowsCommand| lift_rows_command(&turn, &key, command),
             |fx| {
                 self.rows.perform(
                     store,
@@ -2319,23 +2483,25 @@ impl ChatView {
                     .content_mut()
                     .splice_slice(range.unwrap_or(len..len), slice);
             }
+            ViewOp::Cell { turn, key, spec } => {
+                self.place_cell(store, ui, seat, turn, key, spec.clone(), fx);
+            }
+            ViewOp::Tail { turn, cells } => {
+                for (key, spec) in cells.iter().cloned() {
+                    self.place_cell(store, ui, seat, turn, &key, spec, fx);
+                }
+            }
             ViewOp::Grew { turn, part, text } => {
                 // From the part id straight to its cell: no counting.
                 let Some(range) = self.rows.content().row_range(turn) else {
                     return;
                 };
-                let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
-                    return;
-                };
-                let Some(cell) = row.cell_at(&crate::higent::turn::CellKey::Part(part.clone()))
-                else {
-                    return;
-                };
+                let _ = range;
                 self.route_cell(
                     store,
                     ui,
                     turn.clone(),
-                    cell,
+                    crate::higent::turn::CellKey::Part(part.clone()),
                     CellCommand::Append(text.clone()),
                     fx,
                 );
@@ -2344,15 +2510,49 @@ impl ChatView {
     }
 }
 
-fn lift_rows_command(turn: &crate::higent::TurnId, command: RowsCommand) -> ChatPanelCommand {
+/// The name a chat cell's document carries: the build road picks its
+/// parser off the extension, and a cell is always markdown.
+fn cell_location() -> crate::ResourceLocation {
+    crate::ResourceLocation::new(
+        crate::ResourceType::document(),
+        ::editor::Authority::new("chat"),
+        vec!["cell.md".to_owned()],
+    )
+}
+
+/// How a cell that already stands takes a new spec — in place, never
+/// by minting a document again.
+fn redress(spec: &CellSpec) -> Vec<CellCommand> {
+    match spec {
+        CellSpec::Text(_, text) => vec![CellCommand::Rewrite(crate::Text::from_string_exact(text))],
+        CellSpec::Tools(specs) => specs
+            .iter()
+            .map(|spec| {
+                CellCommand::Tool(crate::higent::tool_group::ToolUpdate::Face {
+                    id: spec.id.clone(),
+                    face: spec.face.clone(),
+                })
+            })
+            .collect(),
+        // A diff cell resolves itself through its own landing.
+        CellSpec::Diff(_) => Vec::new(),
+    }
+}
+
+/// What a routed cell sends back, lifted to the cell's OWN address.
+fn lift_rows_command(
+    turn: &crate::higent::TurnId,
+    key: &crate::higent::turn::CellKey,
+    command: RowsCommand,
+) -> ChatPanelCommand {
     if let ScrollCommand::Content(ListCommand::Child(
         _,
-        RowCommand::Turn(ListCommand::Child(cell, command)),
+        RowCommand::Turn(ListCommand::Child(_, command)),
     )) = command
     {
         return ChatPanelCommand::Cell {
             turn: turn.clone(),
-            cell,
+            cell: key.clone(),
             command,
         };
     }

@@ -22,6 +22,9 @@ use himark::higent::ahp_types::state::{
 };
 use himark::higent::{ChannelUri, ChatUri, SessionUri, TurnId};
 
+use himark::higent::cell::Cell;
+use himark::AppExt;
+
 use crate::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
 /// The scripted wire side of ONE chat: the snapshot to answer, the
@@ -40,6 +43,8 @@ struct Script {
     /// A snapshot the host has not answered YET: a real subscribe is
     /// in flight for a while, and the user types into that window.
     held_snapshot: Arc<Mutex<bool>>,
+    /// What the content uris of file edits resolve to.
+    contents: Arc<Mutex<std::collections::HashMap<String, String>>>,
 }
 
 impl Script {
@@ -53,7 +58,16 @@ impl Script {
             parked: Arc::new(Mutex::new(Vec::new())),
             sent: Arc::new(Mutex::new(Vec::new())),
             held_snapshot: Arc::new(Mutex::new(false)),
+            contents: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
+    }
+
+    /// Serve a content uri (both sides of a file edit come this way).
+    fn serve(&self, uri: &str, text: String) {
+        self.contents
+            .lock()
+            .expect("contents")
+            .insert(uri.to_owned(), text);
     }
 
     /// Park the next subscribe: the snapshot lands only on `release`.
@@ -230,6 +244,24 @@ impl himark::higent::AhpServer for ScriptedSeat {
         Box::pin(std::future::ready(Ok(())))
     }
 
+    /// The content road behind a file edit: both sides of the edit,
+    /// served by uri the way a host serves `ahp-content:` refs.
+    fn read_file_edit(
+        &self,
+        before: Option<String>,
+        after: Option<String>,
+    ) -> himark::higent::SeatFuture<Result<himark::higent::FileEditContents, String>> {
+        let contents = Arc::clone(&self.script.contents);
+        let side = move |uri: Option<String>| -> Option<String> {
+            let uri = uri?;
+            contents.lock().expect("contents").get(&uri).cloned()
+        };
+        Box::pin(std::future::ready(Ok(himark::higent::FileEditContents {
+            before: side(before),
+            after: side(after),
+        })))
+    }
+
     unreached! {
         connect() -> himark::higent::SeatFuture<Result<himark::higent::RootInfo, String>>;
         list_sessions(cursor: Option<String>) -> himark::higent::SeatFuture<Result<himark::higent::SessionsPage, String>>;
@@ -238,7 +270,6 @@ impl himark::higent::AhpServer for ScriptedSeat {
         resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
         dispose_session(session: SessionUri) -> himark::higent::SeatFuture<Result<(), String>>;
         create_chat(session: SessionUri) -> himark::higent::SeatFuture<Result<ChatUri, String>>;
-        read_file_edit(before: Option<String>, after: Option<String>) -> himark::higent::SeatFuture<Result<himark::higent::FileEditContents, String>>;
         resource_read(session: SessionUri, uri: himark::higent::ResourceUri) -> himark::higent::SeatFuture<Option<String>>;
         resource_write(session: SessionUri, uri: himark::higent::ResourceUri, text: String) -> himark::higent::SeatFuture<bool>;
         resource_list(session: SessionUri, uri: himark::higent::ResourceUri) -> himark::higent::SeatFuture<Option<Vec<(String, bool)>>>;
@@ -768,4 +799,302 @@ fn the_stop_button_cancels_the_turn_in_flight() {
             .map(|turn| turn.as_str().to_owned()),
         Some("t-live".to_owned())
     );
+}
+
+/// THE STREAMING CONTRACT, in structure rather than stopwatch: a cell
+/// is a document — a text, a parse, a layout. A PART mounts exactly
+/// one; a DELTA mounts nothing and builds nothing, on any thread; a
+/// turn is never laid twice.
+#[test]
+fn a_long_stream_costs_a_cell_per_part_and_never_a_turn() {
+    let (mut engine, window, script) = boot(chat_page(
+        CHAT,
+        (0..8)
+            .map(|at| completed_turn(&format!("t{at}"), &format!("prompt {at}"), "a reply"))
+            .collect(),
+        None,
+    ));
+    paint(&mut engine, window);
+
+    script.feed(vec![StateAction::ChatTurnStarted(ChatTurnStartedAction {
+        turn_id: "t-long".to_owned(),
+        started_at: String::new(),
+        message: message("the long prompt"),
+        queued_message_id: None,
+        meta: None,
+    })]);
+    settle_until(&mut engine, window, "the turn opened", |engine| {
+        !turn_text(&transcript(engine), "t-long").is_empty()
+    });
+    paint(&mut engine, window);
+
+    // A PART mints its cell: one mount, once.
+    let mounted = Cell::documents_mounted();
+    script.feed(vec![StateAction::ChatResponsePart(
+        ChatResponsePartAction {
+            turn_id: "t-long".to_owned(),
+            part: ResponsePart::Markdown(MarkdownResponsePart {
+                id: "p1".to_owned(),
+                content: "first words".to_owned(),
+            }),
+            meta: None,
+        },
+    )]);
+    settle_until(&mut engine, window, "the part mounted", |engine| {
+        let _ = engine;
+        Cell::documents_mounted() > mounted
+    });
+    paint(&mut engine, window);
+    assert_eq!(
+        Cell::documents_mounted() - mounted,
+        1,
+        "a part mounts ONE cell, not a turn's worth"
+    );
+
+    // …and then HUNDREDS of deltas grow it: no mount, no document born
+    // anywhere (the background runner runs on this thread here too).
+    let mounted = Cell::documents_mounted();
+    let born = himark::Document::born_on_this_thread();
+    for step in 0..300 {
+        script.feed(vec![StateAction::ChatDelta(ChatDeltaAction {
+            turn_id: "t-long".to_owned(),
+            part_id: "p1".to_owned(),
+            content: format!(" {step}"),
+            meta: None,
+        })]);
+        settle_until(&mut engine, window, "the delta landed", |engine| {
+            turn_text(&transcript(engine), "t-long").contains(&format!(" {step}"))
+        });
+    }
+    paint(&mut engine, window);
+    assert_eq!(
+        Cell::documents_mounted() - mounted,
+        0,
+        "300 deltas re-mounted a cell — a delta is an APPEND"
+    );
+    assert_eq!(
+        himark::Document::born_on_this_thread() - born,
+        0,
+        "300 deltas built a document — a delta is an APPEND"
+    );
+}
+
+/// Walking away from a chat and back (⌘I, a file, ⌘I) lays nothing:
+/// the mount is furniture the model keeps, parked by the pane that
+/// leaves and claimed by the pane that comes back.
+#[test]
+fn walking_back_to_a_chat_rebuilds_nothing() {
+    let (mut engine, window, _script) = boot(chat_page(
+        CHAT,
+        (0..8)
+            .map(|at| completed_turn(&format!("t{at}"), &format!("prompt {at}"), "a reply"))
+            .collect(),
+        None,
+    ));
+    paint(&mut engine, window);
+    assert_eq!(transcript(&engine).len(), 8, "the page is laid");
+
+    let mounted = Cell::documents_mounted();
+    let born = himark::Document::born_on_this_thread();
+    let chat = ChatUri::new(CHAT);
+    let (home, _) = himark::higent::Chats::found(engine.app.store(), &chat).expect("the record");
+    for _ in 0..3 {
+        let pane = himark::higent::ChatPane::new(home.clone(), chat.clone());
+        assert!(engine.app.open_panel(window_id(window), Box::new(pane)));
+        paint(&mut engine, window);
+    }
+    assert_eq!(transcript(&engine).len(), 8, "the same page stands");
+    assert_eq!(
+        Cell::documents_mounted() - mounted,
+        0,
+        "walking back re-mounted cells — the mount is kept, not re-laid"
+    );
+    assert_eq!(
+        himark::Document::born_on_this_thread() - born,
+        0,
+        "walking back built documents — the mount is kept, not re-laid"
+    );
+}
+
+fn window_id(window: u64) -> himark::WindowId {
+    himark::WindowId::from_raw(window)
+}
+
+/// HUNDREDS of file edits — the shape a real coding turn takes. Every
+/// completed edit tool call mounts a DIFF cell: two side documents with
+/// their syntax, a diff, prepared marks. That is built on the
+/// background runner and NEVER on the UI thread; the frame only lays
+/// two editors. The runner is driven by hand here, so the thread rule
+/// is checked by counting documents born across each `drain`.
+#[test]
+fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
+    const EDITS: usize = 150;
+
+    let (mut engine, window, script) = boot(chat_page(
+        CHAT,
+        vec![completed_turn("t-old", "older prompt", "older reply")],
+        None,
+    ));
+    paint(&mut engine, window);
+
+    for step in 0..EDITS {
+        script.serve(
+            &format!("ahp-content:/before-{step}"),
+            edited_source(step, false),
+        );
+        script.serve(
+            &format!("ahp-content:/after-{step}"),
+            edited_source(step, true),
+        );
+    }
+
+    script.feed(vec![StateAction::ChatTurnStarted(ChatTurnStartedAction {
+        turn_id: "t-edits".to_owned(),
+        started_at: String::new(),
+        message: message("edit the whole tree"),
+        queued_message_id: None,
+        meta: None,
+    })]);
+    settle_until(&mut engine, window, "the turn opened", |engine| {
+        !turn_text(&transcript(engine), "t-edits").is_empty()
+    });
+    paint(&mut engine, window);
+
+    let mounted = Cell::documents_mounted();
+    let born = himark::Document::born_on_this_thread();
+    // Two clocks: `draw` + `drain` is a FRAME — painting plus the
+    // landings the UI thread absorbs. `run_pending` is the background
+    // runner, another thread in production.
+    let mut frames: Vec<std::time::Duration> = Vec::new();
+    let mut background: Vec<std::time::Duration> = Vec::new();
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    for step in 0..EDITS {
+        script.feed(edit_tool_call("t-edits", step));
+        let landed = format!("[diff file{step}.rs +");
+        let started = std::time::Instant::now();
+        loop {
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(30),
+                "edit {step} never landed"
+            );
+            let work = std::time::Instant::now();
+            engine.worker().run_pending();
+            background.push(work.elapsed());
+
+            let born_before = himark::Document::born_on_this_thread();
+            let frame = std::time::Instant::now();
+            let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+            engine.drain();
+            frames.push(frame.elapsed());
+            assert_eq!(
+                himark::Document::born_on_this_thread(),
+                born_before,
+                "edit {step}: a document was built on the UI THREAD"
+            );
+
+            if transcript(&engine)
+                .iter()
+                .filter(|(id, _)| id == "t-edits")
+                .flat_map(|(_, cells)| cells.iter())
+                .any(|(_, text)| text.contains(&landed))
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+    }
+
+    assert_eq!(
+        Cell::documents_mounted() - mounted,
+        EDITS as u64,
+        "{EDITS} edits, each mounted once — never a turn re-laid"
+    );
+    assert_eq!(
+        himark::Document::born_on_this_thread() - born,
+        2 * EDITS as u64,
+        "{EDITS} edits, two sides each, built once on the runner"
+    );
+
+    let ms = |samples: &mut Vec<std::time::Duration>| -> (f64, f64, f64) {
+        samples.sort();
+        (
+            samples[samples.len() / 2].as_secs_f64() * 1000.0,
+            samples[samples.len() * 95 / 100].as_secs_f64() * 1000.0,
+            samples[samples.len() - 1].as_secs_f64() * 1000.0,
+        )
+    };
+    let (p50, p95, worst) = ms(&mut frames);
+    let background_total = background.iter().sum::<std::time::Duration>().as_secs_f64() * 1000.0;
+    eprintln!(
+        "chat-edits: edits={EDITS}, frames={}, frame p50={p50:.3}ms p95={p95:.3}ms max={worst:.3}ms, background total={background_total:.1}ms",
+        frames.len()
+    );
+    imba::perf::record("chat-edits", "frame_p50_ms", p50);
+    imba::perf::record("chat-edits", "frame_p95_ms", p95);
+    imba::perf::record("chat-edits", "frame_max_ms", worst);
+    imba::perf::record("chat-edits", "background_total_ms", background_total);
+}
+
+/// One edit tool call, started and completed in a batch, its result a
+/// file edit whose sides the scripted seat serves.
+fn edit_tool_call(turn: &str, step: usize) -> Vec<StateAction> {
+    let tool = format!("edit-{step}");
+    vec![
+        StateAction::ChatToolCallStart(ChatToolCallStartAction {
+            turn_id: turn.to_owned(),
+            tool_call_id: tool.clone(),
+            tool_name: "edit".to_owned(),
+            display_name: "Edit".to_owned(),
+            intention: None,
+            contributor: None,
+            meta: None,
+        }),
+        StateAction::ChatToolCallComplete(ChatToolCallCompleteAction {
+            turn_id: turn.to_owned(),
+            tool_call_id: tool,
+            result: ToolCallResult {
+                success: true,
+                past_tense_message: himark::higent::ahp_types::common::StringOrMarkdown::Plain(
+                    format!("edited file{step}.rs"),
+                ),
+                content: Some(vec![
+                    himark::higent::ahp_types::state::ToolResultContent::FileEdit(
+                        himark::higent::FileEditRefs {
+                            before: Some(himark::higent::snapshot(
+                                &format!("src/file{step}.rs"),
+                                &format!("ahp-content:/before-{step}"),
+                            )),
+                            after: Some(himark::higent::snapshot(
+                                &format!("src/file{step}.rs"),
+                                &format!("ahp-content:/after-{step}"),
+                            )),
+                            counts: himark::higent::DiffCounts {
+                                added: Some(1),
+                                removed: Some(1),
+                            },
+                        }
+                        .to_content(),
+                    ),
+                ]),
+                structured_content: None,
+                error: None,
+            },
+            requires_result_confirmation: None,
+            meta: None,
+        }),
+    ]
+}
+
+/// A file's two sides: same shape, one line apart — enough source for a
+/// real parse and a real diff.
+fn edited_source(step: usize, after: bool) -> String {
+    let mut text = String::new();
+    for line in 0..400 {
+        if line == 7 && after {
+            text.push_str(&format!("    let answer = {step} + 1; // edited\n"));
+            continue;
+        }
+        text.push_str(&format!("    let value{line} = {line} * {step};\n"));
+    }
+    format!("fn file{step}() {{\n{text}}}\n")
 }
