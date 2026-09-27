@@ -35,7 +35,8 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
         FamilyRow::Terminal(channel) => Some(Box::new(crate::terminal::TerminalView::new(
             channel.clone(),
         ))),
-        FamilyRow::Chat(chat) => Some(Box::new(crate::higent::ChatPane::new(chat.clone()))),
+        FamilyRow::Chat(chat) => crate::higent::ChatPane::of_chat(store, chat.clone())
+            .map(|pane| Box::new(pane) as Box<dyn crate::DynPanelView>),
         row => store
             .get::<RowMinters>()?
             .0
@@ -56,11 +57,15 @@ pub fn mint_unfronted(store: &Store, fronted: &[FamilyRow]) -> Vec<Box<dyn crate
             .into_iter()
             .map(FamilyRow::Pair),
     );
-    rows.extend(
-        crate::higent::Chats::list(store)
-            .into_iter()
-            .map(FamilyRow::Chat),
-    );
+    // The chats of the session this batch is gathered FOR — the family
+    // rows are a session's own furniture.
+    if let Some(session) = crate::Gathered::scope(store) {
+        rows.extend(
+            crate::higent::Chats::list(store, session)
+                .into_iter()
+                .map(FamilyRow::Chat),
+        );
+    }
     rows.retain(|row| !fronted.contains(row));
     rows.iter().filter_map(|row| mint(store, row)).collect()
 }

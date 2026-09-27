@@ -1,9 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use ahp_types::state::{
-    Message, MessageKind, ResponsePart, ToolCallState, Turn, TurnState, UsageInfo,
-};
 use imba::{
     arena::Arena,
     constraints::Constraints,
@@ -16,6 +13,7 @@ use imba::{
 use skia_safe::Size;
 
 use crate::higent::cell::{Cell, CellCommand, CellKind, DiffHeader};
+use crate::higent::chat::model::PartId;
 use crate::higent::tool_group::{ToolCallSpec, ToolFace};
 use crate::higent::FileEditRefs;
 use ahp_types::common::Uri;
@@ -38,7 +36,7 @@ pub(crate) struct DiffSpec {
 }
 
 impl DiffSpec {
-    fn of(refs: &FileEditRefs) -> Self {
+    pub(crate) fn of(refs: &FileEditRefs) -> Self {
         Self {
             header: DiffHeader {
                 title: refs.display_name(),
@@ -51,18 +49,42 @@ impl DiffSpec {
     }
 }
 
+/// A cell's place in a turn. Keyed, never counted: a streamed delta
+/// reaches its own cell by PART, so no arithmetic can land it in
+/// someone else's text.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum CellKey {
+    /// The message that opened the turn.
+    Prompt,
+    Part(PartId),
+    /// How the turn ended, when it did not simply complete.
+    Life,
+    /// What the turn spent.
+    Usage,
+}
+
 #[derive(Clone)]
 pub struct TurnView {
     id: String,
-    cells: ListView<Cell, ()>,
+    cells: ListView<Cell, CellKey>,
 }
 
 impl TurnView {
-    pub(crate) fn new(id: impl Into<String>, laid_width: f32, cells: Vec<(Cell, f32)>) -> Self {
+    pub(crate) fn new(
+        id: impl Into<String>,
+        laid_width: f32,
+        cells: imba::list::ListSlice<Cell, CellKey>,
+    ) -> Self {
         Self {
             id: id.into(),
-            cells: ListView::from_rope_at(laid_width, imba::list::measured(cells)),
+            cells: ListView::from_slice_at(laid_width, cells),
         }
+    }
+
+    /// Where a cell sits right now — the O(1) hop a delta takes from
+    /// its part id to the cell it grows.
+    pub(crate) fn cell_at(&self, key: &CellKey) -> Option<usize> {
+        self.cells.row_range(key).map(|range| range.start)
     }
 
     pub fn id(&self) -> &str {
@@ -77,9 +99,11 @@ impl TurnView {
         self.cells.rows().map(|cell| cell.oracle()).collect()
     }
 
-    pub(crate) fn append(&mut self, cell: Cell, height: f32) {
+    pub(crate) fn append(&mut self, key: CellKey, cell: Cell, height: f32) {
         let len = self.cells.len();
-        self.cells.splice(len..len, [(cell, height)]);
+        let mut slice = imba::list::ListSlice::new();
+        slice.push_keyed_sized(key, cell, height);
+        self.cells.splice_slice(len..len, slice);
     }
 }
 
@@ -133,221 +157,63 @@ impl View for TurnView {
     }
 }
 
-pub(crate) fn turn_cells(turn: &Turn) -> Vec<CellSpec> {
-    let (kind, text) = message_cell(&turn.message);
-    let mut cells = vec![CellSpec::Text(kind, text)];
-    for part in &turn.response_parts {
-        for spec in part_cells(part) {
-            push_spec(&mut cells, spec);
-        }
+/// The cells a turn SHOWS, keyed by what they came from: the prompt,
+/// one cell per part in the order it arrived, then how the turn ended
+/// and what it spent. Pure dressing — the model holds none of it.
+pub(crate) fn dress(turn: &crate::higent::chat::model::Turn) -> DressedCells {
+    use crate::higent::chat::model::{Life, Part};
+    let mut cells = DressedCells::new_sync();
+    let (voice, text) = turn.prompt.clone();
+    cells.push_back_mut((CellKey::Prompt, CellSpec::Text(voice, text)));
+    for (id, part) in turn.parts() {
+        let spec = match part {
+            Part::Said { voice, text } => CellSpec::Text(*voice, text.clone()),
+            Part::Tool(call) => CellSpec::Tools(vec![tool_spec_of(call)]),
+            Part::Edit(refs) => CellSpec::Diff(DiffSpec::of(refs)),
+        };
+        cells.push_back_mut((CellKey::Part(id.clone()), spec));
     }
-    match turn.state {
-        TurnState::Complete => {}
-        TurnState::Cancelled => cells.push(CellSpec::Text(
-            CellKind::Notice,
-            "*Turn cancelled.*".to_owned(),
+    match &turn.life {
+        Life::Live | Life::Complete => {}
+        Life::Cancelled => cells.push_back_mut((
+            CellKey::Life,
+            CellSpec::Text(CellKind::Notice, "*Turn cancelled.*".to_owned()),
         )),
-        TurnState::Error => {
-            let detail = turn
-                .error
-                .as_ref()
-                .map(|error| format!("**Turn failed** ({}): {}", error.error_type, error.message))
-                .unwrap_or_else(|| "**Turn failed.**".to_owned());
-            cells.push(CellSpec::Text(CellKind::Error, detail));
-        }
+        Life::Failed(said) => cells.push_back_mut((
+            CellKey::Life,
+            CellSpec::Text(CellKind::Error, format!("**Turn failed** {said}")),
+        )),
     }
-    if let Some(usage) = &turn.usage {
-        if let Some((kind, text)) = usage_cell(usage) {
-            cells.push(CellSpec::Text(kind, text));
-        }
+    if let Some(spent) = &turn.usage {
+        cells.push_back_mut((
+            CellKey::Usage,
+            CellSpec::Text(CellKind::Notice, spent.clone()),
+        ));
     }
     cells
 }
 
-pub(crate) fn push_spec(cells: &mut Vec<CellSpec>, spec: CellSpec) {
-    if let (CellSpec::Tools(calls), Some(CellSpec::Tools(open))) = (&spec, cells.last_mut()) {
-        open.extend(calls.iter().cloned());
-        return;
-    }
-    cells.push(spec);
-}
+pub(crate) type DressedCells = rpds::VectorSync<(CellKey, CellSpec)>;
 
-pub(crate) fn usage_cell(usage: &UsageInfo) -> Option<(CellKind, String)> {
-    let mut bits = Vec::new();
-    if let Some(model) = &usage.model {
-        bits.push(model.clone());
-    }
-    if let Some(input) = usage.input_tokens {
-        bits.push(format!("{input} in"));
-    }
-    if let Some(output) = usage.output_tokens {
-        bits.push(format!("{output} out"));
-    }
-    (!bits.is_empty()).then(|| (CellKind::Notice, format!("*{}*", bits.join(" · "))))
-}
-
-pub(crate) fn message_cell(message: &Message) -> (CellKind, String) {
-    match message.origin.kind {
-        MessageKind::User => (CellKind::User, message.text.clone()),
-        MessageKind::Agent => (CellKind::Agent, message.text.clone()),
-        MessageKind::Tool | MessageKind::SystemNotification => {
-            (CellKind::Notice, format!("*{}*", message.text))
-        }
-    }
-}
-
-pub(crate) fn part_cells(part: &ResponsePart) -> Vec<CellSpec> {
-    if let ResponsePart::ToolCall(part) = part {
-        let mut cells = vec![CellSpec::Tools(vec![tool_call_spec(&part.tool_call)])];
-        if let ToolCallState::Completed(state) = &part.tool_call {
-            for block in state.content.as_deref().unwrap_or_default() {
-                use ahp_types::state::ToolResultContent;
-                if let ToolResultContent::FileEdit(edit) = block {
-                    if let Some(refs) = FileEditRefs::parse(edit) {
-                        cells.push(CellSpec::Diff(DiffSpec::of(&refs)));
-                    }
-                }
-            }
-        }
-        return cells;
-    }
-    part_cell(part)
-        .map(|(kind, text)| CellSpec::Text(kind, text))
-        .into_iter()
-        .collect()
-}
-
-fn part_cell(part: &ResponsePart) -> Option<(CellKind, String)> {
-    match part {
-        ResponsePart::ToolCall(_) => None,
-        ResponsePart::Markdown(part) => Some((CellKind::Agent, part.content.clone())),
-
-        ResponsePart::Reasoning(part) if part.content.trim().is_empty() => None,
-        ResponsePart::Reasoning(part) => Some((CellKind::Reasoning, part.content.clone())),
-        ResponsePart::SystemNotification(part) => {
-            Some((CellKind::Notice, format!("*{}*", part.content.as_text())))
-        }
-        ResponsePart::InputRequest(part) => {
-            let question = part
-                .request
-                .message
-                .clone()
-                .unwrap_or_else(|| "The agent asked for input.".to_owned());
-            let status = if part.response.is_some() {
-                "answered"
-            } else {
-                "unanswered"
-            };
-            Some((
-                CellKind::Notice,
-                format!("*Input request ({status}): {question}*"),
-            ))
-        }
-        ResponsePart::ContentRef(part) => {
-            let kind = part.content_type.as_deref().unwrap_or("content");
-            let size = part
-                .size_hint
-                .map(|bytes| format!(", {}", human_size(bytes)))
-                .unwrap_or_default();
-            Some((
-                CellKind::Notice,
-                format!("*\\[{kind}{size}\\] — stored by reference: `{}`*", part.uri),
-            ))
-        }
-
-        ResponsePart::Unknown(_) => Some((
-            CellKind::Notice,
-            "*This turn carries a response part this build does not understand yet.*".to_owned(),
-        )),
-    }
-}
-
-pub(crate) fn tool_call_spec(state: &ToolCallState) -> ToolCallSpec {
-    let (id, display_name) = tool_identity(state);
-    let face = tool_face(state, &display_name);
+fn tool_spec_of(call: &crate::higent::chat::model::ToolCall) -> ToolCallSpec {
+    use crate::higent::chat::model::ToolStatus;
+    let face = match &call.status {
+        ToolStatus::Streaming => streaming_tool_face(&call.display),
+        ToolStatus::Waiting => pending_tool_face(&call.display, &call.invocation),
+        ToolStatus::Running => running_tool_face(&call.display, &call.invocation),
+        ToolStatus::Denied => denied_tool_face(&call.display),
+        ToolStatus::Done { ok, said, output } => completed_tool_face_with(
+            &call.display,
+            call.input.as_deref(),
+            said,
+            output.clone(),
+            *ok,
+        ),
+    };
     ToolCallSpec {
-        id,
-        display_name,
+        id: call.id.as_str().to_owned(),
+        display_name: call.display.clone(),
         face,
-    }
-}
-
-fn tool_identity(state: &ToolCallState) -> (String, String) {
-    match state {
-        ToolCallState::Streaming(state) => (state.tool_call_id.clone(), state.display_name.clone()),
-        ToolCallState::PendingConfirmation(state) => {
-            (state.tool_call_id.clone(), state.display_name.clone())
-        }
-        ToolCallState::Running(state) => (state.tool_call_id.clone(), state.display_name.clone()),
-        ToolCallState::AuthRequired(state) => {
-            (state.tool_call_id.clone(), state.display_name.clone())
-        }
-        ToolCallState::PendingResultConfirmation(state) => {
-            (state.tool_call_id.clone(), state.display_name.clone())
-        }
-        ToolCallState::Completed(state) => (state.tool_call_id.clone(), state.display_name.clone()),
-        ToolCallState::Cancelled(state) => (state.tool_call_id.clone(), state.display_name.clone()),
-        ToolCallState::Unknown(_) => (String::new(), "Tool call".to_owned()),
-    }
-}
-
-fn tool_face(state: &ToolCallState, display_name: &str) -> ToolFace {
-    match state {
-        ToolCallState::Streaming(_) => streaming_tool_face(display_name),
-        ToolCallState::PendingConfirmation(state) => {
-            pending_tool_face(display_name, state.invocation_message.as_text())
-        }
-        ToolCallState::Running(state) => {
-            running_tool_face(display_name, state.invocation_message.as_text())
-        }
-        ToolCallState::AuthRequired(_) => ToolFace {
-            line: format!("{display_name} — waiting for authentication"),
-            markdown: text(format!("**{display_name}** — waiting for authentication")),
-            failed: false,
-            live: true,
-        },
-        ToolCallState::PendingResultConfirmation(_) => ToolFace {
-            line: format!("{display_name} — result awaiting review"),
-            markdown: text(format!("**{display_name}** — result awaiting review")),
-            failed: false,
-            live: true,
-        },
-        ToolCallState::Completed(state) => {
-            let call = match &state.tool_input {
-                Some(ahp_types::state::ToolInput::Inline(text)) => Some(text.as_str()),
-                _ => None,
-            };
-            completed_tool_face_with(
-                display_name,
-                call,
-                state.past_tense_message.as_text(),
-                state
-                    .content
-                    .as_deref()
-                    .map(tool_output)
-                    .unwrap_or_default(),
-                state.success,
-            )
-        }
-        ToolCallState::Cancelled(state) => {
-            let reason = state
-                .reason_message
-                .as_ref()
-                .map(|reason| format!(" — {}", reason.as_text()))
-                .unwrap_or_default();
-            ToolFace {
-                line: one_line(&format!("{display_name} — cancelled{reason}")),
-                markdown: text(format!("**{display_name}** — cancelled{reason}")),
-                failed: false,
-                live: false,
-            }
-        }
-        ToolCallState::Unknown(_) => ToolFace {
-            line: "Tool call — in a state this build does not understand yet".to_owned(),
-            markdown: text("**Tool call** — in a state this build does not understand yet"),
-            failed: false,
-            live: false,
-        },
     }
 }
 
@@ -391,25 +257,7 @@ pub(crate) fn denied_tool_face(display_name: &str) -> ToolFace {
     }
 }
 
-pub(crate) fn completed_tool_face(
-    display_name: &str,
-    call: Option<&str>,
-    result: &ahp_types::state::ToolCallResult,
-) -> ToolFace {
-    completed_tool_face_with(
-        display_name,
-        call,
-        result.past_tense_message.as_text(),
-        result
-            .content
-            .as_deref()
-            .map(tool_output)
-            .unwrap_or_default(),
-        result.success,
-    )
-}
-
-fn completed_tool_face_with(
+pub(crate) fn completed_tool_face_with(
     display_name: &str,
     call: Option<&str>,
     past_tense: &str,
@@ -457,23 +305,7 @@ fn one_line(text: &str) -> String {
     format!("{}…", cut.trim_end())
 }
 
-pub(crate) fn result_diff_specs(result: &ahp_types::state::ToolCallResult) -> Vec<CellSpec> {
-    use ahp_types::state::ToolResultContent;
-    result
-        .content
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .filter_map(|block| match block {
-            ToolResultContent::FileEdit(edit) => {
-                FileEditRefs::parse(edit).map(|refs| CellSpec::Diff(DiffSpec::of(&refs)))
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-fn tool_output(content: &[ahp_types::state::ToolResultContent]) -> String {
+pub(crate) fn tool_output(content: &[ahp_types::state::ToolResultContent]) -> String {
     use ahp_types::state::ToolResultContent;
     content
         .iter()

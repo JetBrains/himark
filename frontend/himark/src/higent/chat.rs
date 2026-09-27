@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::higent::{
     CancelTurnEffect, DispatchChatActionEffect, FetchFileEditEffect, FetchTurnsEffect,
-    PollChatActionsEffect, StartTurnEffect, TurnsPage,
+    PollChatActionsEffect, TurnsPage,
 };
 use crate::{env, fonts::ui_text_font, EditorCommand};
 use ahp_types::actions::{
@@ -41,15 +41,10 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::higent::cell::{Cell, CellCommand, CellKind};
+use crate::higent::cell::{Cell, CellCommand};
 use crate::higent::composer::{Composer, ComposerCommand, ComposerProps};
 use crate::higent::stack::{PermissionAsk, StackCommand, WidgetStack};
-use crate::higent::tool_group::{ToolCallSpec, ToolFace, ToolUpdate};
-use crate::higent::turn::{
-    completed_tool_face, denied_tool_face, message_cell, part_cells, pending_tool_face,
-    result_diff_specs, running_tool_face, streaming_tool_face, turn_cells, usage_cell, CellSpec,
-    TurnCommand, TurnView,
-};
+use crate::higent::turn::{CellSpec, TurnCommand, TurnView};
 
 pub enum RowCommand {
     Activate,
@@ -57,19 +52,25 @@ pub enum RowCommand {
     /// A SLEEPING row painted: build me at the row's real width.
     Wake,
 
-    Append { cell: Cell, height: f32 },
+    Append {
+        key: crate::higent::turn::CellKey,
+        cell: Cell,
+        height: f32,
+    },
     Turn(TurnCommand),
 }
 
 #[derive(Clone)]
 enum ChatRow {
-    Loader { armed: bool },
+    Loader {
+        armed: bool,
+    },
 
-    /// An off-viewport turn holds its SPECS, not its editors —
+    /// An off-viewport turn holds the MODEL turn, not its editors —
     /// opening a chat is O(visible), not O(history). The first paint
     /// wakes it (the loader's arm pattern); the height correction
     /// rides the settle pulse, above the anchor.
-    Sleeping(std::sync::Arc<TurnRecord>),
+    Sleeping(model::Turn),
 
     Turn(TurnView),
 }
@@ -105,8 +106,8 @@ impl View for ChatRow {
             (ChatRow::Turn(turn), RowCommand::Turn(command)) => {
                 fx.scope(RowCommand::Turn, |fx| turn.perform(store, ui, command, fx))
             }
-            (ChatRow::Turn(turn), RowCommand::Append { cell, height }) => {
-                turn.append(cell, height);
+            (ChatRow::Turn(turn), RowCommand::Append { key, cell, height }) => {
+                turn.append(key, cell, height);
             }
 
             _ => {}
@@ -308,7 +309,7 @@ enum Link {
     Failed(String),
 }
 
-type Transcript = ListView<ChatRow, String>;
+type Transcript = ListView<ChatRow, crate::higent::TurnId>;
 type Rows = ScrollView<Transcript>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
@@ -329,7 +330,7 @@ pub enum ChatPanelCommand {
     Focus(ChatArea, Option<Box<ChatPanelCommand>>),
 
     Cell {
-        turn: String,
+        turn: crate::higent::TurnId,
         cell: usize,
         command: CellCommand,
     },
@@ -340,9 +341,13 @@ pub enum ChatPanelCommand {
     Snapshot(Result<ChatState, String>),
     Older(Result<TurnsPage, String>),
 
-    Accepted {
-        placeholder: String,
-        result: Result<(), String>,
+    /// The host took the turn we dispatched. Nothing to do — the row
+    /// has been on screen since we folded our own action.
+    Sent,
+    /// The host refused it: the turn we minted failed.
+    SendFailed {
+        turn: crate::higent::TurnId,
+        error: String,
     },
 
     Actions(Vec<StateAction>),
@@ -375,27 +380,6 @@ impl ChatPanelCommand {
     }
 }
 
-#[derive(Clone)]
-struct ActiveStream {
-    turn: crate::higent::TurnId,
-    cells: usize,
-    parts: rpds::HashTrieMapSync<String, usize>,
-    tools: rpds::HashTrieMapSync<String, ToolTrack>,
-
-    group: Option<usize>,
-}
-
-#[derive(Clone)]
-struct ToolTrack {
-    cell: usize,
-    display_name: String,
-    invocation: String,
-
-    call: Option<String>,
-
-    completed: bool,
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ChatViewId(u64);
 
@@ -406,52 +390,33 @@ impl ChatViewId {
     }
 }
 
-/// One turn of the MODEL transcript: the data a view lays, kept
-/// current by the stream fold so a fresh view can be built at any
-/// moment without replaying the wire.
-#[derive(Clone)]
-struct TurnRecord {
-    id: String,
-    cells: Vec<CellSpec>,
-}
-
 /// One model mutation, as every view consumes it — each view lays
 /// the same op at its own width.
 enum ViewOp {
+    /// The whole conversation re-lays: a subscribe snapshot landed.
     Reset {
-        turns: rpds::VectorSync<std::sync::Arc<TurnRecord>>,
+        turns: rpds::VectorSync<model::Turn>,
         has_more: bool,
     },
+    /// A page of older turns joined the top.
     Prepend {
-        turns: Vec<std::sync::Arc<TurnRecord>>,
+        turns: rpds::VectorSync<model::Turn>,
         has_more: bool,
     },
     Loader {
         armed: bool,
     },
-    SpliceTurn {
-        replace: Option<String>,
-        key: String,
-        cells: Vec<CellSpec>,
+    /// One turn re-lays: a turn we did not hold joins the tail, a turn
+    /// we did is replaced where it stands. The op carries the MODEL
+    /// turn — every view dresses it at its own width.
+    Row(model::Turn),
+    /// Streamed text joined one part. The view hops from the part id to
+    /// its cell and appends — no counting, no re-lay.
+    Grew {
+        turn: crate::higent::TurnId,
+        part: model::PartId,
+        text: String,
     },
-    AppendCell {
-        turn: String,
-        index: usize,
-        spec: CellSpec,
-    },
-    Cell {
-        turn: String,
-        cell: usize,
-        command: CellUpdate,
-    },
-}
-
-/// The model-emitted cell mutations (the view-only cell commands —
-/// editor scrolls, resolved diffs — never ride an op).
-#[derive(Clone)]
-enum CellUpdate {
-    Append(String),
-    Tool(ToolUpdate),
 }
 
 /// The conversation MODEL: session truth, owner of its views.
@@ -463,22 +428,16 @@ pub struct ChatPanel {
     state: Link,
     title: String,
 
-    /// The transcript as SPECS — what new ListViews are built from.
-    /// A persistent vector of SHARED records: the take/put clone on
-    /// every command must be structural, never O(conversation).
-    turns: rpds::VectorSync<std::sync::Arc<TurnRecord>>,
+    /// THE conversation: turns by id, the turn in flight, the cursor
+    /// behind the window. Every wire action folds into this and
+    /// nothing else — see `model`.
+    conversation: model::Conversation,
 
     stack: WidgetStack,
-
-    cursor: Option<String>,
 
     fetch_token: Option<CancellationToken>,
 
     poll_token: Option<CancellationToken>,
-
-    active: Option<ActiveStream>,
-
-    pending: Option<(String, String)>,
 
     /// A STEERED prompt: sent while a turn ran, so the run was
     /// cancelled and this fires the moment the turn ends — the
@@ -500,13 +459,10 @@ impl Clone for ChatPanel {
             chat: self.chat.clone(),
             state: self.state.clone(),
             title: self.title.clone(),
-            turns: self.turns.clone(),
+            conversation: self.conversation.clone(),
             stack: self.stack.clone(),
-            cursor: self.cursor.clone(),
             fetch_token: self.fetch_token,
             poll_token: self.poll_token,
-            active: self.active.clone(),
-            pending: self.pending.clone(),
             steering: self.steering.clone(),
             initial_prompt: self.initial_prompt.clone(),
             minted: self.minted,
@@ -561,12 +517,11 @@ const EAGER_TAIL: usize = 12;
 /// A sleeping row's reserved band — a line-count estimate off the
 /// SPECS. Wrong is fine: the wake's correction lands above the
 /// anchor and rides the settle pulse.
-fn sleeping_height(record: &TurnRecord, chrome: &crate::theme::ChatChrome) -> f32 {
+fn sleeping_height(turn: &model::Turn, chrome: &crate::theme::ChatChrome) -> f32 {
     let line = chrome.title_size * 1.5;
-    let body: f32 = record
-        .cells
+    let body: f32 = crate::higent::turn::dress(turn)
         .iter()
-        .map(|cell| match cell {
+        .map(|(_, cell)| match cell {
             CellSpec::Text(_, text) => {
                 (text.lines().count().clamp(1, 40) as f32) * line + chrome.gap
             }
@@ -597,13 +552,10 @@ impl ChatPanel {
             chat: chat.into(),
             state: Link::Idle,
             title: "Agent Chat".to_owned(),
-            turns: rpds::VectorSync::new_sync(),
+            conversation: model::Conversation::default(),
             stack: WidgetStack::new(),
-            cursor: None,
             fetch_token: None,
             poll_token: None,
-            active: None,
-            pending: None,
             steering: None,
             initial_prompt: None,
             minted: 0,
@@ -655,12 +607,11 @@ impl ChatPanel {
             .rows()
             .map(|row| match row {
                 ChatRow::Loader { .. } => ("…".to_owned(), Vec::new()),
-                ChatRow::Sleeping(record) => (
-                    record.id.clone(),
-                    record
-                        .cells
+                ChatRow::Sleeping(turn) => (
+                    turn.id.as_str().to_owned(),
+                    crate::higent::turn::dress(&turn)
                         .iter()
-                        .map(|cell| match cell {
+                        .map(|(_, cell)| match cell {
                             CellSpec::Text(kind, text) => (format!("{kind:?}"), text.clone()),
                             CellSpec::Tools(specs) => (
                                 "Tool".to_owned(),
@@ -676,6 +627,22 @@ impl ChatPanel {
                 ChatRow::Turn(turn) => (turn.id().to_owned(), turn.cells_oracle()),
             })
             .collect()
+    }
+
+    /// How many turns this conversation carries — the counter the
+    /// registry compares across a write-back.
+    pub fn turn_count(&self) -> usize {
+        self.conversation.len()
+    }
+
+    /// The tail turn and the turn in flight: what a shrinking
+    /// write-back needs to name what it would drop. Both are O(1).
+    pub fn tail_turn(&self) -> Option<&str> {
+        self.conversation.tail().map(|turn| turn.id.as_str())
+    }
+
+    pub fn live_turn(&self) -> Option<&str> {
+        self.conversation.live().map(|turn| turn.as_str())
     }
 
     pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
@@ -750,7 +717,7 @@ impl ChatPanel {
     }
 
     fn busy(&self) -> bool {
-        self.pending.is_some() || self.active.is_some()
+        self.conversation.is_running()
     }
 
     fn seat(&self, store: &Store) -> Option<std::sync::Arc<dyn crate::higent::AhpServer>> {
@@ -774,23 +741,25 @@ impl ChatPanel {
             return;
         }
         eprintln!(
-            "[higent] view rebuild for {}: {} turns, cells {:?}",
+            "[higent] view rebuild for {}: {} turns",
             self.chat,
-            self.turns.len(),
-            self
-                .turns
-                .iter()
-                .map(|record| record.cells.len())
-                .collect::<Vec<_>>()
+            self.conversation.len()
         );
         let seat = self.seat(store);
         let mut view = ChatView::new(store, ui);
         fx.scope(
             move |command| ChatPanelCommand::InView(id, Box::new(command)),
             |fx| {
-                let lead_loader = self.cursor.is_some();
-                let slice =
-                    view.build_page(store, ui, &seat, &self.turns, lead_loader, EAGER_TAIL, fx);
+                let lead_loader = self.conversation.older().is_some();
+                let slice = view.build_page(
+                    store,
+                    ui,
+                    &seat,
+                    self.conversation.turns(),
+                    lead_loader,
+                    EAGER_TAIL,
+                    fx,
+                );
                 let len = view.rows.content().len();
                 view.rows.content_mut().splice_slice(0..len, slice);
                 view.has_loader = lead_loader;
@@ -854,20 +823,6 @@ impl ChatPanel {
     // ------------------------------------------------------------------
     // The model fold: wire state in, spec transcript + view ops out.
 
-    fn update_record(&mut self, turn: &str, mutate: impl FnOnce(&mut TurnRecord)) -> bool {
-        let Some(at) = self.turns.iter().position(|record| record.id == turn) else {
-            return false;
-        };
-        let mut held = self.turns.get(at).expect("indexed").clone();
-        mutate(std::sync::Arc::make_mut(&mut held));
-        self.turns.set_mut(at, held);
-        true
-    }
-
-    fn record(&self, turn: &str) -> Option<&std::sync::Arc<TurnRecord>> {
-        self.turns.iter().find(|record| record.id == turn)
-    }
-
     fn load_older(
         &mut self,
         store: &mut Store,
@@ -877,7 +832,7 @@ impl ChatPanel {
         if self.fetch_token.is_some() {
             return;
         }
-        let Some(cursor) = self.cursor.clone() else {
+        let Some(cursor) = self.conversation.older().cloned() else {
             return;
         };
         let Some(seat) = self.seat(store) else {
@@ -896,6 +851,8 @@ impl ChatPanel {
         );
     }
 
+    /// The page behind the cursor. The model puts those turns before
+    /// everything it holds; a turn it already holds keeps its place.
     fn apply_older(
         &mut self,
         store: &mut Store,
@@ -906,29 +863,27 @@ impl ChatPanel {
         self.fetch_token = None;
         match result {
             Ok(page) => {
-                self.cursor = page.next_cursor.clone();
-                let records: Vec<std::sync::Arc<TurnRecord>> = page
-                    .turns
-                    .iter()
-                    .map(|turn| {
-                        std::sync::Arc::new(TurnRecord {
-                            id: turn.id.clone(),
-                            cells: turn_cells(turn),
-                        })
-                    })
+                let before: rpds::HashTrieMapSync<crate::higent::TurnId, ()> = self
+                    .conversation
+                    .turns()
+                    .map(|turn| (turn.id.clone(), ()))
                     .collect();
-                let mut fresh: rpds::VectorSync<std::sync::Arc<TurnRecord>> =
-                    records.iter().cloned().collect();
-                for held in self.turns.iter() {
-                    fresh.push_back_mut(held.clone());
-                }
-                self.turns = fresh;
+                let (next, _) = self.conversation.prepended(&page.turns, page.next_cursor);
+                self.conversation = next;
+                // Only the turns that were NOT already held join the top.
+                let landed: rpds::VectorSync<model::Turn> = self
+                    .conversation
+                    .turns()
+                    .filter(|turn| !before.contains_key(&turn.id))
+                    .cloned()
+                    .collect();
+                let has_more = self.conversation.older().is_some();
                 self.roll(
                     store,
                     ui,
                     &[ViewOp::Prepend {
-                        turns: records,
-                        has_more: self.cursor.is_some(),
+                        turns: landed,
+                        has_more,
                     }],
                     fx,
                 );
@@ -944,6 +899,9 @@ impl ChatPanel {
         }
     }
 
+    /// The subscribe snapshot. The model merges it: the wire window is
+    /// the host's tail, the turn in flight is adopted, and history we
+    /// hold beyond the window is ours to keep.
     fn apply_snapshot(
         &mut self,
         store: &mut Store,
@@ -951,135 +909,47 @@ impl ChatPanel {
         result: Result<ChatState, String>,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        match result {
-            Ok(state) => {
-                eprintln!(
-                    "[higent] chat snapshot for {}: {} wire turns over {} held",
-                    self.chat,
-                    state.turns.len(),
-                    self.turns.len()
-                );
-                self.state = Link::Ready;
-                self.title = state.title.clone();
-
-                if let Some(turn) = state
-                    .turns
-                    .iter()
-                    .rev()
-                    .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
-                {
-                    crate::higent::session::Agents::note_turn(
-                        store,
-                        self.server,
-                        &self.chat,
-                        &turn.id,
-                    );
-                }
-                self.stack
-                    .seed_queue(state.queued_messages.iter().flatten().cloned());
-                let paged: Vec<std::sync::Arc<TurnRecord>> = state
-                    .turns
-                    .iter()
-                    .map(|turn| {
-                        std::sync::Arc::new(TurnRecord {
-                            id: turn.id.clone(),
-                            cells: turn_cells(turn),
-                        })
-                    })
-                    .collect();
-                let mut changed = true;
-                if self.turns.is_empty() {
-                    self.cursor = state.turns_next_cursor.clone();
-                    self.turns = paged.into_iter().collect();
-                } else {
-                    // A LIVE transcript never resets: the snapshot is
-                    // the host's TAIL WINDOW (its last few turns, the
-                    // in-flight turn not among them). A re-subscribe —
-                    // a reconnect, any road — refreshes the turns the
-                    // page names and appends the ones we missed; it
-                    // must not drop the history we hold beyond the
-                    // window, nor the streaming turn's cells.
-                    eprintln!(
-                        "[higent] chat snapshot MERGES: {} held, {} paged",
-                        self.turns.len(),
-                        paged.len(),
-                    );
-                    changed = false;
-                    let streaming = self
-                        .active
-                        .as_ref()
-                        .map(|active| active.turn.as_str().to_owned());
-                    for record in paged {
-                        if streaming.as_deref() == Some(record.id.as_str()) {
-                            // The page lags the stream we are folding
-                            // live — never regress the active turn.
-                            continue;
-                        }
-                        match self.turns.iter().position(|held| held.id == record.id) {
-                            Some(at) => {
-                                let held = self.turns.get(at).expect("indexed");
-                                // The wire page can be POORER than the
-                                // local fold — a host rebuilt from a
-                                // lagging transcript file serves turns
-                                // missing their replies and tool calls.
-                                // A known turn adopts the wire row only
-                                // when it carries at least as much.
-                                if record.cells.len() >= held.cells.len() {
-                                    self.turns.set_mut(at, record);
-                                    changed = true;
-                                }
-                            }
-                            None => {
-                                self.turns.push_back_mut(record);
-                                changed = true;
-                            }
-                        }
-                    }
-                    // The local pending placeholder stays the tail.
-                    if let Some((key, _)) = &self.pending {
-                        if let Some(at) =
-                            self.turns.iter().position(|held| &held.id == key)
-                        {
-                            let held = self.turns.get(at).expect("indexed").clone();
-                            self.turns = self
-                                .turns
-                                .iter()
-                                .filter(|record| &record.id != key)
-                                .cloned()
-                                .collect();
-                            self.turns.push_back_mut(held);
-                            let _ = at;
-                        }
-                    }
-                }
-                if !changed {
-                    self.mark_read(store, fx);
-                    self.relaunch_poll(store, fx);
-                    if let Some(prompt) = self.initial_prompt.take() {
-                        let _ = self.send_text(store, ui, prompt, None, None, fx);
-                    }
-                    return;
-                }
-                self.roll(
-                    store,
-                    ui,
-                    &[ViewOp::Reset {
-                        turns: self.turns.clone(),
-                        has_more: self.cursor.is_some(),
-                    }],
-                    fx,
-                );
-
-                self.mark_read(store, fx);
-                self.relaunch_poll(store, fx);
-
-                if let Some(prompt) = self.initial_prompt.take() {
-                    let _ = self.send_text(store, ui, prompt, None, None, fx);
-                }
-            }
+        let state = match result {
+            Ok(state) => state,
             Err(error) => {
                 self.state = Link::Failed(error);
+                return;
             }
+        };
+        eprintln!(
+            "[higent] chat snapshot for {}: {} wire turns over {} held",
+            self.chat,
+            state.turns.len(),
+            self.conversation.len()
+        );
+        self.state = Link::Ready;
+        self.title = state.title.clone();
+        if let Some(turn) = state
+            .turns
+            .iter()
+            .rev()
+            .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
+        {
+            crate::higent::session::Agents::note_turn(store, self.server, &self.chat, &turn.id);
+        }
+        self.stack
+            .seed_queue(state.queued_messages.iter().flatten().cloned());
+
+        let (next, _) = self.conversation.landed(&state);
+        self.conversation = next;
+        self.roll(
+            store,
+            ui,
+            &[ViewOp::Reset {
+                turns: self.conversation.turns().cloned().collect(),
+                has_more: self.conversation.older().is_some(),
+            }],
+            fx,
+        );
+        self.mark_read(store, fx);
+        self.relaunch_poll(store, fx);
+        if let Some(prompt) = self.initial_prompt.take() {
+            let _ = self.send_text(store, ui, prompt, None, None, fx);
         }
     }
 
@@ -1152,13 +1022,19 @@ impl ChatPanel {
         self.stack.clear_ask();
     }
 
+    /// The turn STOP cancels: the stream we fold, else the turn
+    /// holding a permission ask (it outlives the stream), else the
+    /// turn the wire last told us was in flight. With none of these
+    /// the button has nothing to name — and does nothing.
+    pub fn cancel_target(&self) -> Option<crate::higent::TurnId> {
+        self.conversation
+            .live()
+            .cloned()
+            .or_else(|| self.stack.ask_turn())
+    }
+
     fn stop(&mut self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
-        let turn = self
-            .active
-            .as_ref()
-            .map(|active| active.turn.clone())
-            .or_else(|| self.stack.ask_turn());
-        let Some(turn_id) = turn else {
+        let Some(turn_id) = self.cancel_target() else {
             return;
         };
         let Some(seat) = self.seat(store) else {
@@ -1192,124 +1068,10 @@ impl ChatPanel {
         );
     }
 
-    /// Fold-prim: a streamed cell joins the active turn — the model
-    /// spec grows and the op carries it to every view.
-    fn append_stream_spec(
-        &mut self,
-        turn_id: &str,
-        spec: CellSpec,
-        ops: &mut Vec<ViewOp>,
-    ) -> Option<usize> {
-        let active = self.active.clone()?;
-        if active.turn.as_str() != turn_id {
-            return None;
-        }
-
-        if let (CellSpec::Tools(specs), Some(group)) = (&spec, active.group) {
-            self.update_record(turn_id, |record| {
-                if let Some(CellSpec::Tools(held)) = record.cells.get_mut(group) {
-                    held.extend(specs.iter().cloned());
-                }
-            });
-            for spec in specs.iter().cloned() {
-                ops.push(ViewOp::Cell {
-                    turn: turn_id.to_owned(),
-                    cell: group,
-                    command: CellUpdate::Tool(ToolUpdate::Add(spec)),
-                });
-            }
-            return Some(group);
-        }
-        let index = active.cells;
-        let opens_run = matches!(spec, CellSpec::Tools(_));
-        let landed = self.update_record(turn_id, |record| {
-            record.cells.push(spec.clone());
-        });
-        if !landed {
-            return None;
-        }
-        ops.push(ViewOp::AppendCell {
-            turn: turn_id.to_owned(),
-            index,
-            spec,
-        });
-        if let Some(active) = &mut self.active {
-            active.cells += 1;
-            active.group = opens_run.then_some(index);
-        }
-        Some(index)
-    }
-
-    /// Fold-prim: streamed text joins its cell's spec and every
-    /// view's laid cell.
-    fn append_delta(
-        &mut self,
-        turn_id: &str,
-        part_id: &str,
-        content: String,
-        ops: &mut Vec<ViewOp>,
-    ) {
-        let Some(active) = &self.active else {
-            return;
-        };
-        if active.turn.as_str() != turn_id {
-            return;
-        }
-        let Some(cell) = active.parts.get(part_id).copied() else {
-            return;
-        };
-        let mut landed = false;
-        self.update_record(turn_id, |record| {
-            if let Some(CellSpec::Text(_, text)) = record.cells.get_mut(cell) {
-                text.push_str(&content);
-                landed = true;
-            }
-        });
-        if !landed {
-            eprintln!("[higent] delta missed its cell: {turn_id}#{cell}");
-            return;
-        }
-        ops.push(ViewOp::Cell {
-            turn: turn_id.to_owned(),
-            cell,
-            command: CellUpdate::Append(content),
-        });
-    }
-
-    /// Fold-prim: a tool call's face moved.
-    fn update_tool_call(
-        &mut self,
-        turn_id: &str,
-        tool_call_id: &str,
-        face: ToolFace,
-        ops: &mut Vec<ViewOp>,
-    ) {
-        let Some(track) = self
-            .active
-            .as_ref()
-            .filter(|active| active.turn.as_str() == turn_id)
-            .and_then(|active| active.tools.get(tool_call_id))
-        else {
-            return;
-        };
-        let cell = track.cell;
-        self.update_record(turn_id, |record| {
-            if let Some(CellSpec::Tools(held)) = record.cells.get_mut(cell) {
-                if let Some(spec) = held.iter_mut().find(|spec| spec.id == tool_call_id) {
-                    spec.face = face.clone();
-                }
-            }
-        });
-        ops.push(ViewOp::Cell {
-            turn: turn_id.to_owned(),
-            cell,
-            command: CellUpdate::Tool(ToolUpdate::Face {
-                id: tool_call_id.to_owned(),
-                face,
-            }),
-        });
-    }
-
+    /// Fold a batch of wire actions into the conversation, then carry
+    /// what each one MOVED to the views. The conversation is the only
+    /// state that folds; the asks and the queue are panel furniture and
+    /// ride beside it.
     fn apply_actions(
         &mut self,
         store: &mut Store,
@@ -1320,347 +1082,134 @@ impl ChatPanel {
         let mut ops: Vec<ViewOp> = Vec::new();
         let mut steer: Option<String> = None;
         for action in actions {
-            match action {
-                StateAction::ChatTurnStarted(action) => {
-                    // IDEMPOTENT: a start for a turn we already hold
-                    // is a REPLAY (a doubled stream, a re-delivered
-                    // batch) — it must never mint a second record
-                    // with the same id, or every later part lands in
-                    // one copy while the other shows as a lost reply.
-                    if self.turns.iter().any(|record| record.id == action.turn_id) {
-                        eprintln!(
-                            "[higent] duplicate turn start {} — replay absorbed",
-                            action.turn_id
-                        );
-                        if self
-                            .active
-                            .as_ref()
-                            .is_none_or(|active| active.turn.as_str() != action.turn_id)
-                        {
-                            let (kind, text) = message_cell(&action.message);
-                            let cells = vec![CellSpec::Text(kind, text)];
-                            self.update_record(&action.turn_id, |record| {
-                                record.cells = cells.clone();
-                            });
-                            ops.push(ViewOp::SpliceTurn {
-                                replace: Some(action.turn_id.clone()),
-                                key: action.turn_id.clone(),
-                                cells,
-                            });
-                            self.active = Some(ActiveStream {
-                                turn: crate::higent::TurnId::new(action.turn_id),
-                                cells: 1,
-                                parts: rpds::HashTrieMapSync::new_sync(),
-                                tools: rpds::HashTrieMapSync::new_sync(),
-                                group: None,
-                            });
-                        }
-                        continue;
-                    }
-                    let (kind, text) = message_cell(&action.message);
-                    let cells = vec![CellSpec::Text(kind, text)];
-                    let replace = self.pending.take().map(|(key, _)| key);
-                    if let Some(key) = &replace {
-                        self.turns = self
-                            .turns
-                            .iter()
-                            .filter(|record| &record.id != key)
-                            .cloned()
-                            .collect();
-                    }
-                    self.turns.push_back_mut(std::sync::Arc::new(TurnRecord {
-                        id: action.turn_id.clone(),
-                        cells: cells.clone(),
-                    }));
-                    ops.push(ViewOp::SpliceTurn {
-                        replace,
-                        key: action.turn_id.clone(),
-                        cells,
-                    });
-                    self.active = Some(ActiveStream {
-                        turn: crate::higent::TurnId::new(action.turn_id),
-                        cells: 1,
-                        parts: rpds::HashTrieMapSync::new_sync(),
-                        tools: rpds::HashTrieMapSync::new_sync(),
-                        group: None,
-                    });
-                }
-                StateAction::ChatResponsePart(action) => {
-                    use ahp_types::state::ResponsePart;
-                    let base = match &action.part {
-                        ResponsePart::Markdown(part) => Some((&part.id, &part.content)),
-                        ResponsePart::Reasoning(part) => Some((&part.id, &part.content)),
-                        _ => None,
-                    };
-                    let resync = base.and_then(|(id, content)| {
-                        self.active
-                            .as_ref()
-                            .filter(|active| active.turn.as_str() == action.turn_id)
-                            .and_then(|active| active.parts.get(id).copied())
-                            .map(|cell| (cell, content.clone()))
-                    });
-                    if let Some((cell, content)) = resync {
-                        // A part we already hold is a REPLAY marker:
-                        // rewind its cell to the part's base — the
-                        // replayed deltas rebuild it to one copy.
-                        eprintln!("[higent] replayed response part — cell rewound");
-                        let turn = action.turn_id.clone();
-                        let mut cells = None;
-                        self.update_record(&turn, |record| {
-                            if let Some(CellSpec::Text(_, text)) = record.cells.get_mut(cell) {
-                                *text = content.clone();
-                            }
-                            cells = Some(record.cells.clone());
-                        });
-                        if let Some(cells) = cells {
-                            ops.push(ViewOp::SpliceTurn {
-                                replace: Some(turn.clone()),
-                                key: turn,
-                                cells,
-                            });
-                        }
-                        continue;
-                    }
-                    let first = self.active.as_ref().map(|active| active.cells);
-                    let specs = part_cells(&action.part);
-                    let minted = !specs.is_empty();
-                    for spec in specs {
-                        self.append_stream_spec(&action.turn_id, spec, &mut ops);
-                    }
-                    let part_id = match &action.part {
-                        ResponsePart::Markdown(part) => Some(part.id.clone()),
-                        ResponsePart::Reasoning(part) => Some(part.id.clone()),
-                        _ => None,
-                    };
-                    if let (true, Some(id), Some(first), Some(active)) =
-                        (minted, part_id, first, self.active.as_mut())
-                    {
-                        if active.turn.as_str() == action.turn_id {
-                            active.parts.insert_mut(id, first);
-                        }
-                    }
-                }
-                StateAction::ChatDelta(action) => {
-                    self.append_delta(&action.turn_id, &action.part_id, action.content, &mut ops);
-                }
-                StateAction::ChatReasoning(action) => {
-                    self.append_delta(&action.turn_id, &action.part_id, action.content, &mut ops);
-                }
-                StateAction::ChatToolCallStart(action) => {
-                    if self
-                        .active
-                        .as_ref()
-                        .filter(|active| active.turn.as_str() == action.turn_id)
-                        .is_some_and(|active| active.tools.contains_key(&action.tool_call_id))
-                    {
-                        eprintln!(
-                            "[higent] duplicate tool start {} — ignored",
-                            action.tool_call_id
-                        );
-                        continue;
-                    }
-                    let index = self.append_stream_spec(
-                        &action.turn_id,
-                        CellSpec::Tools(vec![ToolCallSpec {
-                            id: action.tool_call_id.clone(),
-                            display_name: action.display_name.clone(),
-                            face: streaming_tool_face(&action.display_name),
-                        }]),
-                        &mut ops,
-                    );
-                    if let (Some(index), Some(active)) = (index, self.active.as_mut()) {
-                        if active.turn.as_str() == action.turn_id {
-                            active.tools.insert_mut(
-                                action.tool_call_id,
-                                ToolTrack {
-                                    cell: index,
-                                    display_name: action.display_name,
-                                    invocation: String::new(),
-                                    call: None,
-                                    completed: false,
-                                },
-                            );
-                        }
-                    }
-                }
-                StateAction::ChatToolCallReady(action) => {
-                    let invocation = action.invocation_message.as_text().to_owned();
-                    let call = match &action.tool_input {
-                        Some(ToolInput::Inline(text)) => Some(text.clone()),
-                        _ => None,
-                    };
-                    let display = self
-                        .active
-                        .as_mut()
-                        .filter(|active| active.turn.as_str() == action.turn_id)
-                        .and_then(|active| {
-                            let mut track = active.tools.get(&action.tool_call_id)?.clone();
-                            track.invocation = invocation.clone();
-                            track.call = call;
-                            let display = track.display_name.clone();
-                            active.tools.insert_mut(action.tool_call_id.clone(), track);
-                            Some(display)
-                        });
-                    let Some(display) = display else {
-                        continue;
-                    };
-                    if action.confirmed.is_some() {
-                        self.update_tool_call(
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            running_tool_face(&display, &invocation),
-                            &mut ops,
-                        );
-                    } else {
-                        self.update_tool_call(
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            pending_tool_face(&display, &invocation),
-                            &mut ops,
-                        );
-                        let input = match &action.tool_input {
-                            Some(ToolInput::Inline(text)) => Some(text.clone()),
-                            _ => None,
-                        };
-                        self.stack.set_ask(PermissionAsk::new(
-                            crate::higent::TurnId::new(action.turn_id.clone()),
-                            action.tool_call_id.clone(),
-                            action
-                                .confirmation_title
-                                .as_ref()
-                                .map(|title| title.as_text().to_owned())
-                                .unwrap_or_else(|| display.clone()),
-                            invocation,
-                            input,
-                            action
-                                .options
-                                .clone()
-                                .unwrap_or_else(default_confirmation_options),
-                        ));
-                    }
-                }
-                StateAction::ChatToolCallConfirmed(action) => {
-                    self.stack.clear_ask_for_tool(&action.tool_call_id);
-                    let track = self
-                        .active
-                        .as_ref()
-                        .filter(|active| active.turn.as_str() == action.turn_id)
-                        .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
-                    if let Some(track) = track {
-                        let face = if action.approved {
-                            running_tool_face(&track.display_name, &track.invocation)
-                        } else {
-                            denied_tool_face(&track.display_name)
-                        };
-                        self.update_tool_call(
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            face,
-                            &mut ops,
-                        );
-                    }
-                }
-                StateAction::ChatToolCallComplete(action) => {
-                    let track = self
-                        .active
-                        .as_ref()
-                        .filter(|active| active.turn.as_str() == action.turn_id)
-                        .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
-                    let Some(track) = track else {
-                        continue;
-                    };
-                    let face = completed_tool_face(
-                        &track.display_name,
-                        track.call.as_deref(),
-                        &action.result,
-                    );
-                    self.update_tool_call(&action.turn_id, &action.tool_call_id, face, &mut ops);
-
-                    if track.completed {
-                        // A replayed completion: the face re-set is
-                        // idempotent, the result diffs are not.
-                        continue;
-                    }
-                    if let Some(active) = self.active.as_mut() {
-                        if let Some(mut held) = active.tools.get(&action.tool_call_id).cloned() {
-                            held.completed = true;
-                            active.tools.insert_mut(action.tool_call_id.clone(), held);
-                        }
-                    }
-                    for spec in result_diff_specs(&action.result) {
-                        self.append_stream_spec(&action.turn_id, spec, &mut ops);
-                    }
-                }
-                StateAction::ChatPendingMessageSet(action)
-                    if matches!(action.kind, PendingMessageKind::Queued) =>
-                {
-                    self.stack.insert_queued(action.id, action.message);
-                }
-                StateAction::ChatPendingMessageRemoved(action) => {
-                    self.stack.remove_queued(&action.id);
-                }
-                StateAction::ChatUsage(action) => {
-                    if let Some((kind, markdown)) = usage_cell(&action.usage) {
-                        self.append_stream_spec(
-                            &action.turn_id,
-                            CellSpec::Text(kind, markdown),
-                            &mut ops,
-                        );
-                    }
-                }
-                StateAction::ChatTurnComplete(action) => {
-                    if self
-                        .active
-                        .as_ref()
-                        .is_some_and(|active| active.turn.as_str() == action.turn_id)
-                    {
-                        self.active = None;
-                        self.stack.clear_ask();
-                        steer = self.steering.take().or(steer);
-                    }
-
+            self.furniture(&action);
+            let ends = matches!(
+                action,
+                StateAction::ChatTurnComplete(_)
+                    | StateAction::ChatTurnCancelled(_)
+                    | StateAction::ChatError(_)
+            );
+            let (next, change) = self.conversation.fold(&action);
+            let moved = change != model::Change::Nothing;
+            self.conversation = next;
+            if let Some(op) = self.op_of(&change) {
+                ops.push(op);
+            }
+            if ends && moved {
+                self.stack.clear_ask();
+                steer = self.steering.take().or(steer);
+                if let StateAction::ChatTurnComplete(done) = &action {
                     crate::higent::session::Agents::note_turn(
                         store,
                         self.server,
                         &self.chat,
-                        &action.turn_id,
+                        &done.turn_id,
                     );
-                    self.mark_read(store, fx);
                 }
-                StateAction::ChatTurnCancelled(action) => {
-                    self.append_stream_spec(
-                        &action.turn_id,
-                        CellSpec::Text(CellKind::Notice, "*Turn cancelled.*".to_owned()),
-                        &mut ops,
-                    );
-                    self.active = None;
-                    self.stack.clear_ask();
-                    steer = self.steering.take().or(steer);
-                    self.mark_read(store, fx);
-                }
-                StateAction::ChatError(action) => {
-                    let markdown = format!(
-                        "**Turn failed** ({}): {}",
-                        action.error.error_type, action.error.message
-                    );
-                    self.append_stream_spec(
-                        &action.turn_id,
-                        CellSpec::Text(CellKind::Error, markdown),
-                        &mut ops,
-                    );
-                    self.active = None;
-                    self.stack.clear_ask();
-                    steer = self.steering.take().or(steer);
-                    self.mark_read(store, fx);
-                }
-
-                _ => {}
+                self.mark_read(store, fx);
             }
         }
         self.roll(store, ui, &ops, fx);
         if let Some(text) = steer {
             let _ = self.send_text(store, ui, text, None, None, fx);
         }
+    }
+
+    /// The op a change asks the views for.
+    fn op_of(&self, change: &model::Change) -> Option<ViewOp> {
+        match change {
+            model::Change::Nothing => None,
+            model::Change::Said(turn)
+            | model::Change::Part { turn, .. }
+            | model::Change::Retired(turn) => {
+                self.conversation.turn(turn).cloned().map(ViewOp::Row)
+            }
+            model::Change::Grew { turn, part, text } => Some(ViewOp::Grew {
+                turn: turn.clone(),
+                part: part.clone(),
+                text: text.clone(),
+            }),
+            model::Change::Page => Some(ViewOp::Reset {
+                turns: self.conversation.turns().cloned().collect(),
+                has_more: self.conversation.older().is_some(),
+            }),
+        }
+    }
+
+    /// The panel's own furniture: the permission ask a tool call
+    /// raises, and the queue the host keeps beside the transcript.
+    fn furniture(&mut self, action: &StateAction) {
+        match action {
+            StateAction::ChatToolCallReady(ready) if ready.confirmed.is_none() => {
+                let display = self
+                    .conversation
+                    .live()
+                    .filter(|live| live.as_str() == ready.turn_id)
+                    .and_then(|live| self.conversation.turn(live))
+                    .and_then(|turn| turn.tool(&model::PartId::new(ready.tool_call_id.clone())))
+                    .map(|call| call.display.clone());
+                let Some(display) = display else {
+                    return;
+                };
+                let invocation = ready.invocation_message.as_text().to_owned();
+                let input = match &ready.tool_input {
+                    Some(ToolInput::Inline(text)) => Some(text.clone()),
+                    _ => None,
+                };
+                self.stack.set_ask(PermissionAsk::new(
+                    crate::higent::TurnId::new(ready.turn_id.clone()),
+                    ready.tool_call_id.clone(),
+                    ready
+                        .confirmation_title
+                        .as_ref()
+                        .map(|title| title.as_text().to_owned())
+                        .unwrap_or_else(|| display.clone()),
+                    invocation,
+                    input,
+                    ready
+                        .options
+                        .clone()
+                        .unwrap_or_else(default_confirmation_options),
+                ));
+            }
+            StateAction::ChatToolCallConfirmed(answered) => {
+                self.stack.clear_ask_for_tool(&answered.tool_call_id);
+            }
+            StateAction::ChatPendingMessageSet(set)
+                if matches!(set.kind, PendingMessageKind::Queued) =>
+            {
+                self.stack
+                    .insert_queued(set.id.clone(), set.message.clone());
+            }
+            StateAction::ChatPendingMessageRemoved(gone) => {
+                self.stack.remove_queued(&gone.id);
+            }
+            _ => {}
+        }
+    }
+
+    /// The composer's road: send what was typed, then — on a view
+    /// re-read AFTER the model rolled — clear the draft and follow
+    /// the tail.
+    pub(crate) fn submit(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        id: ChatViewId,
+        text: String,
+        attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
+        model: Option<ahp_types::state::ModelSelection>,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        if !self.send_text(store, ui, text, attachments, model, fx) {
+            return;
+        }
+        let Some(mut view) = self.views.get(&id).cloned() else {
+            return;
+        };
+        view.composer.clear(store, ui);
+        view.reveal_tail(store);
+        self.views.insert_mut(id, view);
     }
 
     /// Send a prompt. Returns true when the text was CONSUMED (sent
@@ -1705,88 +1254,79 @@ impl ChatPanel {
             self.stop(store, fx);
             return true;
         }
+        // WRITE-AHEAD, the protocol's own shape: the client MINTS the
+        // turn id, folds its own `chat/turnStarted`, and dispatches
+        // that very action. The row is on screen before the host has
+        // heard of it, and the host's echo re-applies the same action
+        // and changes nothing — there is no placeholder to reconcile,
+        // and nothing that can leave the composer stuck.
         self.minted += 1;
-        let key = format!("local-{}", self.minted);
-        let cells = vec![
-            CellSpec::Text(CellKind::User, text.clone()),
-            CellSpec::Text(CellKind::Notice, "*Thinking…*".to_owned()),
-        ];
-        self.turns.push_back_mut(std::sync::Arc::new(TurnRecord {
-            id: key.clone(),
-            cells: cells.clone(),
-        }));
-        self.pending = Some((key.clone(), text.clone()));
-        self.roll(
-            store,
-            ui,
-            &[ViewOp::SpliceTurn {
-                replace: None,
-                key: key.clone(),
-                cells,
-            }],
-            fx,
-        );
-        let placeholder = key;
+        let turn = crate::higent::TurnId::new(format!(
+            "himark-{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_millis())
+                .unwrap_or_default(),
+            self.minted
+        ));
+        let action = StateAction::ChatTurnStarted(model::Conversation::opening(
+            &turn,
+            &text,
+            attachments,
+            model,
+        ));
+        let (next, change) = self.conversation.fold(&action);
+        self.conversation = next;
+        let ops: Vec<ViewOp> = self.op_of(&change).into_iter().collect();
+        self.roll(store, ui, &ops, fx);
+
+        let chat = self.chat.clone();
+        let failed = turn.clone();
         fx.push(
-            AnyEffect::new(StartTurnEffect {
+            AnyEffect::new(DispatchChatActionEffect {
                 seat,
-                chat: self.chat.clone(),
-                text,
-                attachments,
-                model,
+                channel: chat.as_channel(),
+                action,
             })
-            .map(move |result| ChatPanelCommand::Accepted {
-                placeholder: placeholder.clone(),
-                result,
+            .map(move |result| match result {
+                Ok(()) => ChatPanelCommand::Sent,
+                Err(error) => ChatPanelCommand::SendFailed {
+                    turn: failed.clone(),
+                    error,
+                },
             }),
         );
         true
     }
 
+    /// A send the host never took: the turn we minted is FAILED, said
+    /// the way the protocol says a turn fails.
     fn apply_send_failed(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        placeholder: String,
+        turn: crate::higent::TurnId,
         error: String,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        let sent = match &self.pending {
-            Some((key, text)) if *key == placeholder => text.clone(),
-            _ => String::new(),
-        };
-        self.pending = None;
-        let cells = vec![
-            CellSpec::Text(CellKind::User, sent),
-            CellSpec::Text(
-                CellKind::Error,
-                format!("**The message was not delivered:** {error}"),
-            ),
-        ];
-        let cells_for_record = cells.clone();
-        if !self.update_record(&placeholder, |record| {
-            record.cells = cells_for_record;
-        }) {
-            return;
-        }
-        self.roll(
-            store,
-            ui,
-            &[ViewOp::SpliceTurn {
-                replace: Some(placeholder.clone()),
-                key: placeholder,
-                cells,
-            }],
-            fx,
-        );
+        eprintln!("[higent] the send was not delivered: {error}");
+        let action = StateAction::ChatError(ahp_types::actions::ChatErrorAction {
+            turn_id: turn.as_str().to_owned(),
+            duration: 0,
+            error: ahp_types::state::ErrorInfo {
+                error_type: "not-delivered".to_owned(),
+                message: error,
+                stack: None,
+                meta: None,
+            },
+            meta: None,
+        });
+        let (next, change) = self.conversation.fold(&action);
+        self.conversation = next;
+        let ops: Vec<ViewOp> = self.op_of(&change).into_iter().collect();
+        self.roll(store, ui, &ops, fx);
     }
 
-    // ------------------------------------------------------------------
-    // The two roads in: chat-scoped landings (model) and pane
-    // commands (a view id in hand).
-
-    /// The landing road: feed results and other chat-scoped commands.
-    /// A view-addressed command (`InView`) finds its record here.
     pub(crate) fn perform_model(
         &mut self,
         store: &mut Store,
@@ -1804,6 +1344,7 @@ impl ChatPanel {
                     crate::AppRequests::push(
                         store,
                         std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
+                            session: self.session_id(),
                             chat: self.chat.clone(),
                         }),
                     );
@@ -1811,13 +1352,9 @@ impl ChatPanel {
             }
             ChatPanelCommand::Snapshot(result) => self.apply_snapshot(store, ui, result, fx),
             ChatPanelCommand::Older(result) => self.apply_older(store, ui, result, fx),
-            ChatPanelCommand::Accepted {
-                placeholder,
-                result,
-            } => {
-                if let Err(error) = result {
-                    self.apply_send_failed(store, ui, placeholder, error, fx);
-                }
+            ChatPanelCommand::Sent => {}
+            ChatPanelCommand::SendFailed { turn, error } => {
+                self.apply_send_failed(store, ui, turn, error, fx)
             }
             ChatPanelCommand::Actions(actions) => {
                 self.apply_actions(store, ui, actions, fx);
@@ -1937,8 +1474,6 @@ impl ChatPanel {
                 }
                 let text = view.composer.text().trim().to_owned();
                 if view.completion.open() {
-                    let editor = view.composer.editor();
-                    let _ = editor;
                     fx.scope(
                         move |command| ChatPanelCommand::InView(id, Box::new(command)),
                         |fx| {
@@ -1954,12 +1489,21 @@ impl ChatPanel {
                 }
                 let attachments = view.completion_attachments(store, self.server, &text);
                 let model = view.toolbar.model_selection();
-                let consumed = self.send_text(store, ui, text, attachments, model, fx);
-                if consumed {
-                    view.composer.clear(store, ui);
-                    view.reveal_tail(store);
-                }
+                // The view goes BACK before the send: `send_text` rolls
+                // the echo row into every mounted view, and a clone
+                // taken before that roll would carry the pre-send rows
+                // right back over it — the user's own message would
+                // then appear only when the next op reached the view.
                 self.views.insert_mut(id, view);
+                self.submit(store, ui, id, text, attachments, model, fx);
+            }
+
+            // The STOP button lives in the composer band, so its click
+            // arrives view-scoped — but stopping is MODEL work, and
+            // the composer's own road drops it on the floor.
+            ChatPanelCommand::Composer(ComposerCommand::Stop) => {
+                self.steering = None;
+                self.stop(store, fx);
             }
 
             ChatPanelCommand::Composer(command) => {
@@ -2179,8 +1723,7 @@ impl ChatPanel {
                 let status = match &self.state {
                     Link::Idle | Link::Subscribing => "connecting…".to_owned(),
                     Link::Failed(error) => format!("failed: {error}"),
-                    Link::Ready if self.pending.is_some() => "thinking…".to_owned(),
-                    Link::Ready if self.active.is_some() => "responding…".to_owned(),
+                    Link::Ready if self.conversation.is_running() => "responding…".to_owned(),
                     Link::Ready => String::new(),
                 };
                 let composer_empty = view.composer.is_empty();
@@ -2437,13 +1980,13 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
-        key: &str,
+        key: &crate::higent::TurnId,
         index: usize,
         spec: CellSpec,
         content_width: f32,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> (Cell, f32) {
-        let turn_key = key.to_owned();
+        let turn_key = key.clone();
         match spec {
             CellSpec::Text(kind, markdown) => fx.scope(
                 move |command: EditorCommand| ChatPanelCommand::Cell {
@@ -2480,20 +2023,19 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
-        key: &str,
-        cells: Vec<CellSpec>,
+        turn: &model::Turn,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> (TurnView, f32) {
         let content_width = TurnView::content_width(self.panel_width());
-        let mut rows = Vec::with_capacity(cells.len());
+        let mut cells = ListSlice::new();
         let mut total = 0.0;
-        for (index, spec) in cells.into_iter().enumerate() {
+        for (index, (key, spec)) in crate::higent::turn::dress(turn).iter().cloned().enumerate() {
             let (cell, height) =
-                self.build_cell(store, ui, seat, key, index, spec, content_width, fx);
+                self.build_cell(store, ui, seat, &turn.id, index, spec, content_width, fx);
             total += height;
-            rows.push((cell, height));
+            cells.push_keyed_sized(key, cell, height);
         }
-        (TurnView::new(key, content_width, rows), total)
+        (TurnView::new(turn.id.as_str(), content_width, cells), total)
     }
 
     /// Only the tail's `eager` turns build their editors now — the
@@ -2504,17 +2046,17 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
-        turns: impl IntoIterator<Item = &'t std::sync::Arc<TurnRecord>>,
+        turns: impl IntoIterator<Item = &'t model::Turn>,
         lead_loader: bool,
         eager: usize,
         fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> ListSlice<ChatRow, String> {
+    ) -> ListSlice<ChatRow, crate::higent::TurnId> {
         let chrome = env::Themes::of(store).ui().chat.clone();
         let mut slice = ListSlice::new();
         if lead_loader {
             slice.push_sized(ChatRow::Loader { armed: true }, chrome.loader_height);
         }
-        let turns: Vec<&std::sync::Arc<TurnRecord>> = turns.into_iter().collect();
+        let turns: Vec<&model::Turn> = turns.into_iter().collect();
         let asleep = turns.len().saturating_sub(eager);
         for (at, record) in turns.into_iter().enumerate() {
             if at < asleep {
@@ -2525,8 +2067,7 @@ impl ChatView {
                 );
                 continue;
             }
-            let (view, height) =
-                self.build_turn(store, ui, seat, &record.id, record.cells.clone(), fx);
+            let (view, height) = self.build_turn(store, ui, seat, record, fx);
             slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
         }
         slice
@@ -2545,11 +2086,12 @@ impl ChatView {
         let Some(ChatRow::Sleeping(record)) = self.rows.content().view_at(index) else {
             return;
         };
-        let (view, height) =
-            self.build_turn(store, ui, seat, &record.id, record.cells.clone(), fx);
+        let (view, height) = self.build_turn(store, ui, seat, &record, fx);
         let mut slice = ListSlice::new();
         slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
-        self.rows.content_mut().splice_slice(index..index + 1, slice);
+        self.rows
+            .content_mut()
+            .splice_slice(index..index + 1, slice);
         fx.settle();
     }
 
@@ -2567,7 +2109,7 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        turn: String,
+        turn: crate::higent::TurnId,
         cell: usize,
         command: CellCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
@@ -2764,72 +2306,52 @@ impl ChatView {
                 self.has_loader = *has_more;
             }
             ViewOp::Loader { armed } => self.set_loader(store, *armed),
-            ViewOp::SpliceTurn {
-                replace,
-                key,
-                cells,
-            } => {
-                let (view, height) = self.build_turn(store, ui, seat, key, cells.clone(), fx);
+            ViewOp::Row(turn) => {
+                // A turn we hold is replaced where it stands; one we do
+                // not joins the tail. The key is the turn id, so this is
+                // the same op either way.
+                let (view, height) = self.build_turn(store, ui, seat, turn, fx);
                 let mut slice = ListSlice::new();
-                slice.push_keyed_sized(key.clone(), ChatRow::Turn(view), height);
-                let range = replace
-                    .as_ref()
-                    .and_then(|key| self.rows.content().row_range(key));
+                slice.push_keyed_sized(turn.id.clone(), ChatRow::Turn(view), height);
+                let range = self.rows.content().row_range(&turn.id);
                 let len = self.rows.content().len();
                 self.rows
                     .content_mut()
                     .splice_slice(range.unwrap_or(len..len), slice);
             }
-            ViewOp::AppendCell { turn, index, spec } => {
+            ViewOp::Grew { turn, part, text } => {
+                // From the part id straight to its cell: no counting.
                 let Some(range) = self.rows.content().row_range(turn) else {
                     return;
                 };
-                let content_width = TurnView::content_width(self.panel_width());
-                let (cell, height) = self.build_cell(
+                let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+                    return;
+                };
+                let Some(cell) = row.cell_at(&crate::higent::turn::CellKey::Part(part.clone()))
+                else {
+                    return;
+                };
+                self.route_cell(
                     store,
                     ui,
-                    seat,
-                    turn,
-                    *index,
-                    spec.clone(),
-                    content_width,
+                    turn.clone(),
+                    cell,
+                    CellCommand::Append(text.clone()),
                     fx,
                 );
-                fx.scope(ChatPanelCommand::Rows, |fx| {
-                    self.rows.perform(
-                        store,
-                        ui,
-                        ScrollCommand::Content(ListCommand::Child(
-                            range.start,
-                            RowCommand::Append { cell, height },
-                        )),
-                        fx,
-                    )
-                });
-            }
-            ViewOp::Cell {
-                turn,
-                cell,
-                command,
-            } => {
-                let command = match command {
-                    CellUpdate::Append(content) => CellCommand::Append(content.clone()),
-                    CellUpdate::Tool(update) => CellCommand::Tool(update.clone()),
-                };
-                self.route_cell(store, ui, turn.clone(), *cell, command, fx);
             }
         }
     }
 }
 
-fn lift_rows_command(turn: &str, command: RowsCommand) -> ChatPanelCommand {
+fn lift_rows_command(turn: &crate::higent::TurnId, command: RowsCommand) -> ChatPanelCommand {
     if let ScrollCommand::Content(ListCommand::Child(
         _,
         RowCommand::Turn(ListCommand::Child(cell, command)),
     )) = command
     {
         return ChatPanelCommand::Cell {
-            turn: turn.to_owned(),
+            turn: turn.clone(),
             cell,
             command,
         };
@@ -2970,565 +2492,10 @@ impl<'a> Widget<'a, ChatPanelCommand>
     }
 }
 
+pub mod model;
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::higent::ahp_types::actions::ChatTurnCancelledAction;
-    use crate::higent::ahp_types::state::{Message, MessageKind, MessageOrigin};
-    use std::sync::Arc;
+mod panel_tests;
 
-    struct InertSeat;
-
-    macro_rules! unreached {
-        ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
-            $(fn $name(&self, $($arg: $ty),*) -> $out {
-                $(let _ = $arg;)*
-                unreachable!("the steering tests never reach the seat")
-            })*
-        };
-    }
-
-    impl crate::higent::AhpServer for InertSeat {
-        unreached! {
-            connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
-            list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
-            poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
-            create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<crate::higent::SessionUri, String>>;
-            resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-            dispose_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<(), String>>;
-            subscribe_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
-            poll_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            create_chat(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ChatUri, String>>;
-            subscribe_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
-            fetch_turns(chat: crate::higent::ChatUri, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
-            start_turn(chat: crate::higent::ChatUri, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
-            poll_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            cancel_turn(chat: crate::higent::ChatUri, turn: crate::higent::TurnId) -> crate::higent::SeatFuture<()>;
-            dispatch_action(chat: crate::higent::ChannelUri, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
-            read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
-            resource_read(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
-            resource_write(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
-            resource_list(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-            resource_watch(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
-            resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
-            search(session: crate::higent::SessionUri, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
-            terminal_input(channel: &crate::higent::ChannelUri, data: String) -> ();
-            terminal_resize(channel: &crate::higent::ChannelUri, cols: u16, rows: u16) -> ();
-            terminal_dispose(channel: &crate::higent::ChannelUri) -> ();
-            subscribe_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
-            poll_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            unsubscribe_changeset(channel: &crate::higent::ChannelUri) -> ();
-            subscribe_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
-            poll_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            dispatch_annotations(session: &crate::higent::SessionUri, action: StateAction) -> ();
-            unsubscribe_annotations(session: &crate::higent::SessionUri) -> ();
-            open_document(session: crate::higent::SessionUri, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
-            subscribe_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
-            poll_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
-            dispatch_document(channel: &crate::higent::ChannelUri, action: crate::higent::seat::DocumentApplied) -> ();
-            unsubscribe_document(channel: &crate::higent::ChannelUri) -> crate::higent::SeatFuture<()>;
-            lsp(session: crate::higent::SessionUri, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
-        }
-
-        fn terminal_open(
-            &self,
-            _session: crate::higent::SessionUri,
-            _channel: crate::higent::ChannelUri,
-            _cwd: Option<String>,
-            _cols: u16,
-            _rows: u16,
-            _events: Arc<dyn Fn(crate::higent::TerminalEvent) + Send + Sync>,
-        ) -> crate::higent::SeatFuture<Option<crate::higent::TerminalHandle>> {
-            unreachable!("the steering tests never reach the seat")
-        }
-    }
-
-    fn running_panel(store: &mut Store, ui: &UiCtx) -> ChatPanel {
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(store, ui, host, "s", "chat:1");
-        panel.state = Link::Ready;
-        panel.active = Some(ActiveStream {
-            turn: crate::higent::TurnId::new("t1"),
-            cells: 0,
-            parts: rpds::HashTrieMapSync::new_sync(),
-            tools: rpds::HashTrieMapSync::new_sync(),
-            group: None,
-        });
-        panel
-    }
-
-    fn queued(id: &str) -> Message {
-        Message {
-            text: format!("queued {id}"),
-            origin: MessageOrigin {
-                kind: MessageKind::User,
-            },
-            attachments: None,
-            model: None,
-            agent: None,
-            meta: None,
-        }
-    }
-
-    /// The Claude Code Esc-with-prompt shape: a prompt at a running
-    /// agent DROPS the queue, cancels the turn, and fires the moment
-    /// the turn ends — never parked in a queue nothing drains.
-    #[test]
-    fn a_prompt_at_a_running_agent_steers() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut panel = running_panel(&mut store, ui);
-        panel.stack.insert_queued("q1".to_owned(), queued("q1"));
-        let mut batch = imba::effect::Batch::new();
-
-        let _ = panel.send_text(
-            &mut store,
-            ui,
-            "steer me".to_owned(),
-            None,
-            None,
-            &mut batch.effects(),
-        );
-        assert_eq!(panel.steering.as_deref(), Some("steer me"));
-        assert!(
-            panel.stack.queue_oracle().is_empty(),
-            "the standing queue dropped"
-        );
-        assert!(panel.pending.is_none(), "no turn starts under the cancel");
-
-        // The cancel lands: the steered prompt fires as a REAL send.
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                turn_id: "t1".to_owned(),
-                duration: 0,
-                meta: None,
-            })],
-            &mut batch.effects(),
-        );
-        assert!(panel.steering.is_none());
-        assert_eq!(
-            panel.pending.as_ref().map(|(_, text)| text.as_str()),
-            Some("steer me"),
-            "the steered prompt became the next turn"
-        );
-    }
-
-    /// The reason for the split: one conversation, MANY mounts. A
-    /// model mutation must reach every view — each lays it at its
-    /// own width, none fight over a shared laid list.
-    #[test]
-    fn a_model_mutation_rolls_every_view() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:2");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-
-        let a = ChatViewId::mint();
-        let b = ChatViewId::mint();
-        panel.ensure_view(&mut store, ui, a, &mut batch.effects());
-        panel.ensure_view(&mut store, ui, b, &mut batch.effects());
-
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnStarted(
-                crate::higent::ahp_types::actions::ChatTurnStartedAction {
-                    turn_id: "t1".to_owned(),
-                    started_at: String::new(),
-                    message: queued("hello"),
-                    queued_message_id: None,
-                    meta: None,
-                },
-            )],
-            &mut batch.effects(),
-        );
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                turn_id: "t1".to_owned(),
-                duration: 0,
-                meta: None,
-            })],
-            &mut batch.effects(),
-        );
-
-        assert_eq!(panel.turns.len(), 1, "the MODEL transcript holds the turn");
-        assert_eq!(panel.turns[0].cells.len(), 2, "message + cancel notice");
-        for id in [a, b] {
-            let view = panel.views.get(&id).expect("the view record");
-            let rows: Vec<ChatRow> = view.rows.content().rows().collect();
-            assert_eq!(rows.len(), 1, "the turn row reached view {id:?}");
-            let ChatRow::Turn(turn) = &rows[0] else {
-                panic!("a turn row");
-            };
-            assert_eq!(
-                turn.cells_oracle().len(),
-                2,
-                "both cells laid in view {id:?}"
-            );
-        }
-    }
-
-    fn streamed_reply(turn: &str) -> Vec<StateAction> {
-        use crate::higent::ahp_types::actions::{ChatDeltaAction, ChatResponsePartAction};
-        use crate::higent::ahp_types::state::{MarkdownResponsePart, ResponsePart};
-        vec![
-            StateAction::ChatTurnStarted(
-                crate::higent::ahp_types::actions::ChatTurnStartedAction {
-                    turn_id: turn.to_owned(),
-                    started_at: String::new(),
-                    message: queued("the prompt"),
-                    queued_message_id: None,
-                    meta: None,
-                },
-            ),
-            StateAction::ChatResponsePart(ChatResponsePartAction {
-                turn_id: turn.to_owned(),
-                part: ResponsePart::Markdown(MarkdownResponsePart {
-                    id: "p1".to_owned(),
-                    content: "the ".to_owned(),
-                }),
-                meta: None,
-            }),
-            StateAction::ChatDelta(ChatDeltaAction {
-                turn_id: turn.to_owned(),
-                part_id: "p1".to_owned(),
-                content: "reply".to_owned(),
-                meta: None,
-            }),
-        ]
-    }
-
-    fn reply_cells(panel: &ChatPanel, view: ChatViewId) -> Vec<(String, String)> {
-        let view = panel.views.get(&view).expect("the view record");
-        let rows: Vec<ChatRow> = view.rows.content().rows().collect();
-        assert_eq!(rows.len(), 1, "one turn row");
-        let ChatRow::Turn(turn) = &rows[0] else {
-            panic!("a turn row");
-        };
-        turn.cells_oracle()
-    }
-
-    /// The reopen contract: a pane's death takes its VIEW; the
-    /// conversation is model truth, and a fresh view minted later
-    /// rebuilds the WHOLE transcript — prompt, streamed reply,
-    /// deltas — from the spec records alone.
-    #[test]
-    fn a_fresh_view_rebuilds_the_streamed_reply() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:3");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-
-        // The mounted view the user watches the reply stream into.
-        let watching = ChatViewId::mint();
-        panel.ensure_view(&mut store, ui, watching, &mut batch.effects());
-        panel.apply_actions(&mut store, ui, streamed_reply("t1"), &mut batch.effects());
-        let seen = reply_cells(&panel, watching);
-
-        // The pane closes: the view dies, the chat lives. Reopen:
-        // a FRESH view builds from the model transcript alone.
-        panel.destroy_view(&mut store, watching, &mut batch.effects());
-        let reopened = ChatViewId::mint();
-        panel.ensure_view(&mut store, ui, reopened, &mut batch.effects());
-        let rebuilt = reply_cells(&panel, reopened);
-        assert_eq!(rebuilt, seen, "the reopened view shows what was seen");
-        assert!(
-            rebuilt.iter().any(|(_, text)| text.contains("the reply")),
-            "the streamed reply survived the reopen: {rebuilt:?}"
-        );
-    }
-
-    /// The user's report: a turn STARTED while no pane showed the
-    /// chat (the feed keeps landing); the reply must be in the model
-    /// when a view finally opens.
-    #[test]
-    fn a_reply_streamed_with_no_view_open_is_not_lost() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:4");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-
-        // No views at all: the whole turn lands chat-scoped.
-        panel.apply_actions(&mut store, ui, streamed_reply("t1"), &mut batch.effects());
-
-        let opened = ChatViewId::mint();
-        panel.ensure_view(&mut store, ui, opened, &mut batch.effects());
-        let rebuilt = reply_cells(&panel, opened);
-        assert!(
-            rebuilt.iter().any(|(_, text)| text.contains("the reply")),
-            "the viewless stream reached the transcript: {rebuilt:?}"
-        );
-    }
-
-    /// A re-subscribe lands a SNAPSHOT — the host's tail window,
-    /// not the conversation. It must merge into a live transcript:
-    /// refresh what it names, append what we missed, and never drop
-    /// the history we hold beyond the window.
-    #[test]
-    fn a_re_snapshot_merges_and_never_drops_history() {
-        use crate::higent::ahp_types::state::{ChatState, Turn, TurnState};
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:5");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-
-        // A locally-accumulated conversation: one settled turn and
-        // one STREAMING turn (its cells exist only client-side).
-        panel.apply_actions(&mut store, ui, streamed_reply("t1"), &mut batch.effects());
-        panel.apply_actions(&mut store, ui, streamed_reply("t2"), &mut batch.effects());
-        assert_eq!(panel.turns.len(), 2);
-
-        // The re-subscribe answers a tail window naming only t2 —
-        // and without the streamed parts the client already folded
-        // into it... the wire page carries the message alone.
-        let wire_turn = Turn {
-            id: "t2".to_owned(),
-            started_at: None,
-            duration: None,
-            message: queued("the prompt"),
-            response_parts: vec![],
-            usage: None,
-            state: TurnState::Complete,
-            error: None,
-        };
-        let page = ChatState {
-            resource: "chat:5".to_owned(),
-            title: "chat".to_owned(),
-            status: 0,
-            activity: None,
-            modified_at: String::new(),
-            origin: None,
-            interactivity: None,
-            working_directories: None,
-            turns: vec![wire_turn],
-            turns_next_cursor: Some("1".to_owned()),
-            active_turn: None,
-            steering_message: None,
-            queued_messages: None,
-            draft: None,
-            meta: None,
-        };
-        panel.apply_snapshot(&mut store, ui, Ok(page), &mut batch.effects());
-
-        assert_eq!(
-            panel.turns.len(),
-            2,
-            "t1 survived a tail window that no longer names it"
-        );
-        assert!(
-            panel.turns[1]
-                .cells
-                .iter()
-                .any(|cell| matches!(cell, CellSpec::Text(_, text) if text.contains("the reply"))),
-            "a POORER wire row (prompt-only backfill) did not replace t2's local fold"
-        );
-        assert_eq!(panel.turns[0].id, "t1");
-        assert!(
-            panel.turns[0]
-                .cells
-                .iter()
-                .any(|cell| matches!(cell, CellSpec::Text(_, text) if text.contains("the reply"))),
-            "t1's streamed reply survived the re-snapshot"
-        );
-    }
-
-    /// Opening a chat is O(viewport): only the tail builds editors;
-    /// older turns SLEEP at estimated heights and wake on paint.
-    #[test]
-    fn opening_a_long_chat_builds_only_the_tail() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:6");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-        for turn in 0..EAGER_TAIL + 3 {
-            panel.apply_actions(
-                &mut store,
-                ui,
-                streamed_reply(&format!("t{turn}")),
-                &mut batch.effects(),
-            );
-            panel.apply_actions(
-                &mut store,
-                ui,
-                vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                    turn_id: format!("t{turn}"),
-                    duration: 0,
-                    meta: None,
-                })],
-                &mut batch.effects(),
-            );
-        }
-
-        let id = ChatViewId::mint();
-        panel.ensure_view(&mut store, ui, id, &mut batch.effects());
-        let sleeping = |panel: &ChatPanel| -> usize {
-            panel
-                .views
-                .get(&id)
-                .expect("the view")
-                .rows
-                .content()
-                .rows()
-                .filter(|row| matches!(row, ChatRow::Sleeping(_)))
-                .count()
-        };
-        assert_eq!(sleeping(&panel), 3, "only the tail built its editors");
-
-        // The first paint of a sleeping row wakes it.
-        panel.perform_in_view(
-            &mut store,
-            ui,
-            id,
-            ChatPanelCommand::Rows(ScrollCommand::Content(ListCommand::Child(
-                0,
-                RowCommand::Wake,
-            ))),
-            &mut batch.effects(),
-        );
-        assert_eq!(sleeping(&panel), 2, "the painted row woke");
-    }
-
-    /// A doubled or re-delivered stream folds ONCE: repeated starts,
-    /// parts and tool calls are noise — the transcript neither
-    /// duplicates, doubles its text, nor wipes a live turn.
-    #[test]
-    fn a_replayed_stream_folds_once() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(&store, ui, host, "s", "chat:7");
-        panel.state = Link::Ready;
-        let mut batch = imba::effect::Batch::new();
-
-        let stream = streamed_reply("t1");
-        panel.apply_actions(&mut store, ui, streamed_reply("t1"), &mut batch.effects());
-        let held = panel.turns.get(0).expect("the turn").cells.clone();
-
-        // The exact same actions land again — an overlapping
-        // subscription, a reconnect replay, a re-poll.
-        panel.apply_actions(&mut store, ui, stream, &mut batch.effects());
-
-        assert_eq!(panel.turns.len(), 1, "no duplicate record");
-        let replayed = &panel.turns.get(0).expect("the turn").cells;
-        assert_eq!(replayed.len(), held.len(), "no duplicate cells");
-        let text = |cells: &Vec<CellSpec>| -> String {
-            cells
-                .iter()
-                .filter_map(|cell| match cell {
-                    CellSpec::Text(_, text) => Some(text.clone()),
-                    _ => None,
-                })
-                .collect()
-        };
-        assert_eq!(text(replayed), text(&held), "no doubled content");
-
-        // A duplicate START arriving MID-stream must not wipe the
-        // live fold: the still-arriving delta lands in its cell.
-        use crate::higent::ahp_types::actions::ChatDeltaAction;
-        let mut mid = streamed_reply("t2");
-        let late_delta = StateAction::ChatDelta(ChatDeltaAction {
-            turn_id: "t2".to_owned(),
-            part_id: "p1".to_owned(),
-            content: " and more".to_owned(),
-            meta: None,
-        });
-        let dup_start = mid.remove(0);
-        let start = match &dup_start {
-            StateAction::ChatTurnStarted(action) => {
-                StateAction::ChatTurnStarted(action.clone())
-            }
-            _ => unreachable!(),
-        };
-        panel.apply_actions(&mut store, ui, vec![start], &mut batch.effects());
-        panel.apply_actions(&mut store, ui, mid, &mut batch.effects());
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![dup_start, late_delta],
-            &mut batch.effects(),
-        );
-        let t2 = panel
-            .turns
-            .iter()
-            .find(|record| record.id == "t2")
-            .expect("t2");
-        assert_eq!(t2.cells.len(), 2, "prompt + one reply cell: {:?}", t2.cells.len());
-        assert!(
-            matches!(&t2.cells[1], CellSpec::Text(_, text) if text == "the reply and more"),
-            "the late delta landed in ITS cell through the replayed start"
-        );
-    }
-
-    /// An explicit STOP is just a stop — it drops a standing steer.
-    #[test]
-    fn an_explicit_stop_drops_the_steer() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut panel = running_panel(&mut store, ui);
-        let mut batch = imba::effect::Batch::new();
-
-        let _ = panel.send_text(
-            &mut store,
-            ui,
-            "steer me".to_owned(),
-            None,
-            None,
-            &mut batch.effects(),
-        );
-        assert!(panel.steering.is_some());
-        panel.perform_model(
-            &mut store,
-            ui,
-            ChatPanelCommand::Composer(ComposerCommand::Stop),
-            &mut batch.effects(),
-        );
-        assert!(panel.steering.is_none(), "STOP is not a steer");
-
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                turn_id: "t1".to_owned(),
-                duration: 0,
-                meta: None,
-            })],
-            &mut batch.effects(),
-        );
-        assert!(panel.pending.is_none(), "nothing fires after a plain stop");
-    }
-}
+#[cfg(test)]
+mod model_tests;

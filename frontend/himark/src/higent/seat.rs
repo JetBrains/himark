@@ -579,6 +579,15 @@ impl From<String> for TurnId {
     }
 }
 
+/// Keyed lookups take a wire `&str` without minting an id — the
+/// derived `Hash` is the inner `String`'s, which is `str`'s, so the
+/// `Borrow` contract holds.
+impl std::borrow::Borrow<str> for TurnId {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
 impl From<&str> for TurnId {
     fn from(raw: &str) -> Self {
         Self(raw.to_owned())

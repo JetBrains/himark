@@ -111,6 +111,14 @@ impl Agents {
                         .collect();
                     record.states.remove_mut(&session);
                 });
+                // The session is the LIFETIME of its chats.
+                crate::higent::Chats::forget_session(
+                    store,
+                    &crate::SessionId {
+                        host: server,
+                        session,
+                    },
+                );
             }
             ServerEvent::SessionChanged { session, changes } => {
                 Self::update_record(store, server, |record| {

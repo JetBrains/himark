@@ -4536,7 +4536,13 @@ mod dock_tests {
             let _ = entity.open_panel(
                 &mut store,
                 &ui,
-                Box::new(crate::higent::ChatPane::new(uri.clone())),
+                Box::new(crate::higent::ChatPane::new(
+                    crate::SessionId {
+                        host: crate::higent::HostId::LOCAL,
+                        session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    },
+                    uri.clone(),
+                )),
                 &mut batch.effects(),
             );
             crate::Windows::put(&mut store, window, entity);
@@ -4632,7 +4638,13 @@ mod dock_tests {
             let _ = entity.open_panel(
                 &mut store,
                 &ui,
-                Box::new(crate::higent::ChatPane::new(uri)),
+                Box::new(crate::higent::ChatPane::new(
+                    crate::SessionId {
+                        host: crate::higent::HostId::LOCAL,
+                        session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    },
+                    uri,
+                )),
                 &mut batch.effects(),
             );
             crate::Windows::put(&mut store, window, entity);
@@ -5357,9 +5369,10 @@ fn switching_workspaces_stashes_the_chat_panel() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new(crate::higent::ChatUri::new(
-                "ahp-chat:/a",
-            ))),
+            Box::new(crate::higent::ChatPane::new(
+                first.clone(),
+                crate::higent::ChatUri::new("ahp-chat:/a"),
+            )),
             &mut batch.effects(),
         );
         crate::Windows::put(&mut store, window, entity);
@@ -5580,7 +5593,7 @@ fn the_at_completion_opens_finds_and_picks() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new(uri.clone())),
+            Box::new(crate::higent::ChatPane::new(session.clone(), uri.clone())),
             &mut batch.effects(),
         );
         crate::Windows::put(&mut store, window, entity);
@@ -5589,7 +5602,9 @@ fn the_at_completion_opens_finds_and_picks() {
     crate::Window::draw(window, &mut app, surface.canvas());
 
     let panel = |app: &Application| -> crate::higent::ChatPanel {
-        crate::higent::Chats::chat(app.store(), &uri).expect("the panel")
+        crate::higent::Chats::found(app.store(), &uri)
+            .expect("the panel")
+            .1
     };
     let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {

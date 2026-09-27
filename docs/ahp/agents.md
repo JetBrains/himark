@@ -423,21 +423,79 @@ Rules:
 
 ## The chat panel
 
-`ChatPanel` is an ordinary `PanelView`:
+`ChatPanel` is an ordinary `PanelView` over the conversation MODEL:
 
 ```
 ChatPanel                      (server, chat) — the address
- ├─ ScrollView<ListView<TurnView, String>>     rows: one per turn (+ active turn tail)
- │    TurnView = ListView<PartCell, String>    cells: message, parts, footer
- └─ composer: EditorView::input + status strip
+ ├─ conversation: model::Conversation           the protocol's state, as persistent values
+ ├─ views: {ChatViewId → ChatView}              one MOUNT each, laid at its own width
+ │    ScrollView<ListView<ChatRow, TurnId>>     rows: one per turn, keyed by turn id
+ │      TurnView = ListView<Cell, CellKey>      cells: prompt, parts, life, usage
+ └─ (per mount) composer: EditorView::input + status strip
 ```
+
+### The model is the protocol's own shape
+
+`higent/chat/model.rs` holds the conversation the way AHP defines it —
+the reference reducer in the `ahp` crate is the contract — because that
+shape makes the hard cases IMPOSSIBLE rather than handled:
+
+```
+Conversation { said: Vector<TurnId>, turns: Map<TurnId, Turn>, live: Option<TurnId>, older: cursor }
+Turn         { id, prompt, order: Vector<PartId>, parts: Map<PartId, Part>, life, usage }
+Part         = Said { voice, text } | Tool(ToolCall) | Edit(FileEditRefs)
+```
+
+- **A turn IS its id.** Landing a turn we hold REPLACES it where it
+  stands, so a re-delivered page, a cursor the host serves
+  inclusively, or a doubled subscription cannot mint a second copy —
+  and there is no positional index to go stale and misfile a reply
+  into the middle of the conversation.
+- **Only the turn in flight (`live`) takes a stream.** Parts, deltas,
+  tool calls and usage are out of scope for any other turn (the
+  protocol's own `NoOp`), so a settled turn is immutable.
+- **A turn start RESETS the live turn's parts.** A replayed stream
+  therefore rebuilds it to exactly one copy: no rewind marker, no
+  completion latch, no cell arithmetic.
+- **Parts are keyed by part id**, so `chat/delta` grows its own text
+  and nothing counts cells.
+- Every fold is PURE: `fold(&self, action) -> (Conversation, Change)`.
+  `Change` (`Said | Part | Grew | Retired | Page | Nothing`) is what a
+  mount applies — one row or one cell, never a sweep. All of it is
+  rpds; nothing on this road walks the transcript.
+
+### Sending is WRITE-AHEAD (there is no `startTurn` command)
+
+AHP has no send command: the client MINTS the turn id, folds its own
+`chat/turnStarted`, and dispatches that very action. So the row is on
+screen before the host has heard of it, and the host's echo re-applies
+the same action and changes nothing. There is no local placeholder to
+reconcile, no "pending" flag to strand the composer, and STOP always
+has `live` to cancel. A dispatch the host refuses folds a
+`chat/error` for the turn we minted.
+
+### Mounts sync by CHANGE, not by diffing
+
+`roll` carries each op to every mount; each dresses the model at its
+own width (`turn::dress` — the only road from a turn to its cells):
+
+| Change | op | cost |
+|---|---|---|
+| `Said` / `Part` / `Retired` | `Row(turn)` — replace where it stands, else append | O(parts of that turn) |
+| `Grew` | `Grew{turn, part, text}` — part id → cell, append through the edit door | O(1) hops |
+| `Page` | `Reset` / `Prepend` | O(viewport) / O(page) |
+
+A fresh mount builds straight from the model, tail eager and the rest
+`Sleeping` — so ⌘I away and back costs the viewport, and a reply that
+streamed with no mount open is still there.
 
 - **Mount = boot** (the mount-reconcile): an idle panel's first
   paint answers `Boot` → `SubscribeChatEffect`; the snapshot landing
   builds the turn rows from `ChatState.turns`, remembers
   `turns_next_cursor`, and starts the poll.
-- **`TurnView`** builds its inner list from the `Turn`:
-  - the MESSAGE cell — a markdown editor over the message text,
+- **`turn::dress`** lays a turn's cells from the MODEL turn:
+  - the PROMPT cell (`CellKey::Prompt`) — a markdown editor over the
+    message text,
     washed as the user bubble (`user` origin) or plain
     (agent/tool/system origins render as notices);
   - one cell per response part: markdown/reasoning → editors
@@ -463,8 +521,9 @@ ChatPanel                      (server, chat) — the address
     numbers, gutter stripes classified against the operation, and the
     stripe click's before-card, all riding the standing machinery
     (docs/editor/diff-stripes.md §5–6) with zero registry involvement;
-  - the FOOTER cell when the turn did not complete cleanly:
-    cancelled / error banner.
+  - the LIFE cell (`CellKey::Life`) when the turn did not complete
+    cleanly: cancelled / error banner, and the USAGE cell
+    (`CellKey::Usage`) for what it spent.
   Cells append/rewrite exactly like the anonymous-document recipe
   (decision 7); a cell laid at a stale width reports its rewrap once
   on paint.
@@ -488,8 +547,8 @@ ChatPanel                      (server, chat) — the address
   the turn's CURRENT row through the outer list's structure keys
   (`row_range`, O(log n)) at perform time and routes down the ordinary
   child dance (which re-measures both levels' heights). A landing for
-  a replaced turn (the write-ahead placeholder) resolves to nothing
-  and drops — the guard rule as ever.
+  a turn that is gone resolves to nothing and drops — the guard rule
+  as ever.
 - **Follow-tail**: appends keep the scroll pinned to the bottom only
   while it was already near it — reading back never fights the
   stream.
@@ -521,8 +580,8 @@ ChatPanel                      (server, chat) — the address
     queue on natural completion — `pendingMessageRemoved` + the next
     `turnStarted` carrying `queuedMessageId`; a Stop leaves the queue
     paused (docs/ahp/agent-host.md §4c).
-- **The stream applies at CELL granularity**: `chat/turnStarted`
-  replaces the write-ahead placeholder with the echoed turn, each
+- **The stream applies at CELL granularity**: `chat/turnStarted` folds
+  to the turn itself (ours already, when we sent it), each
   `chat/responsePart` / `chat/usage` grows the SAME row by one built
   cell (`RowCommand::Append` through the list dance), and
   `chat/turnComplete`/`turnCancelled`/`error` close it — releasing

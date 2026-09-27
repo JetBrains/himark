@@ -1548,9 +1548,15 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
 
     assert!(engine.app.open_panel(
         engine.app.sole_window(),
-        Box::new(himark::higent::ChatPane::new(himark::higent::ChatUri::new(
-            "test-chat:displacer"
-        )))
+        Box::new(himark::higent::ChatPane::new(
+            himark::higent::Chats::found(
+                engine.app.store(),
+                &himark::higent::ChatUri::new("test-chat:displacer"),
+            )
+            .map(|(session, _)| session)
+            .unwrap_or_else(|| himark::SessionId::local_default(engine.app.store())),
+            himark::higent::ChatUri::new("test-chat:displacer"),
+        ))
     ));
     settle(&mut engine);
     let mut mounted = false;
@@ -3062,7 +3068,7 @@ fn shown_chat(engine: &HimarkEngine) -> Option<himark::higent::ChatPanel> {
             uri = Some(pane.chat().clone());
         }
     });
-    himark::higent::Chats::chat(engine.app.store(), &uri?)
+    himark::higent::Chats::found(engine.app.store(), &uri?).map(|(_, chat)| chat)
 }
 
 fn chat_transcript(engine: &HimarkEngine) -> Option<Vec<(String, Vec<(String, String)>)>> {
@@ -4399,10 +4405,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     // Phase 1: close the pane; reopen; the conversation survives.
     assert!(engine.perform_command(window, "workbench.close"));
     pump(&mut engine, &mut surface);
-    assert!(
-        shown_chat(&engine).is_none(),
-        "the chat pane closed"
-    );
+    assert!(shown_chat(&engine).is_none(), "the chat pane closed");
     assert!(engine.perform_command(window, "chat.composer"));
     wait_for(
         &mut engine,
@@ -4787,9 +4790,10 @@ fn the_chat_runs_through_the_himark_host() {
 
     let title = {
         let store = engine.app.store();
-        let chats = himark::higent::Chats::list(store);
+        let chats = himark::higent::Hosts::every_chat(store);
         assert_eq!(chats.len(), 1, "the displaced chat's row survives");
-        himark::PanelView::title(&himark::higent::ChatPane::new(chats[0].clone()), store)
+        let (session, chat) = chats[0].clone();
+        himark::PanelView::title(&himark::higent::ChatPane::new(session, chat), store)
     };
     assert!(engine.perform_command(window, "peeker.toggle"));
     pump(&mut engine, &mut surface);

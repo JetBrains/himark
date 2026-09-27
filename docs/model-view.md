@@ -42,7 +42,7 @@ mutates the document and every editor's state in one place.
 | `OpenDocuments` documents | editors | `Document.editors` | done — the exemplar |
 | `Diffs` records (documents/diffs.rs:80) | diff views | `Diffs.diff_views: Map<DiffViewId, DiffView>` with `DiffViewState` inside — ALREADY adjacent | done structurally; the update-locality dividend is uncollected (step 1) |
 | ChangeSets — today split as `Changes` (hichanges) + `History` (hihistory), session family | tree views AND canvases | trees live on the Window dock as `Box<dyn ModalView>`; canvases live in hidiff's own session-family value | steps 2–4 |
-| `Chats` (session family) | chat view | `ChatPanel` fuses transcript model + view furniture in one record; `ChatPane` is a uri reference | step 5, later |
+| `Chats` (session family) | chat view | `ChatPanel` owns `model::Conversation` + one `ChatView` per mount; `ChatPane` is a `(session, chat)` reference | LANDED (step 5, then the model rewrite) |
 
 ## The plan
 
@@ -114,6 +114,41 @@ plugin mechanisms this had required (SyncObservers, SessionFamilies)
 retired with their only client. A set's wire side is
 `feed: Option<SetFeed>` — a canvas may open a DETACHED set;
 `ensure_folder` attaches the feed.
+
+### Step 6 — The chat model IS the protocol (LANDED)
+
+Step 5's model held the transcript as cell SPECS, kept current by a
+hand-rolled fold: a `Vec<TurnRecord>` with an id→index map beside it,
+an `ActiveStream` carrying part→cell and tool→cell indices, and a
+LOCAL placeholder turn (`local-N` + a `pending` flag) standing in for a
+send until the host answered. Every hard case was a special case on top
+— a replay marker to rewind a doubled part, a latch so a replayed
+completion would not re-append its diffs, a guard so a duplicate start
+would not mint a second record — and the cases that were missed cost
+the user their messages: a placeholder that never resolved held the
+panel `busy()`, so the next prompt was swallowed as a steer; an
+older-turns page that overlapped the window put a second row under one
+turn id, and the reply landed in the copy in the middle of the
+transcript.
+
+LANDED (2026-09-27): the model is the protocol's own state
+(`higent/chat/model.rs`, contract = the `ahp` crate's reference
+reducer). A turn is its id, parts are keyed by part id inside their
+turn, only the turn in flight takes a stream, and a turn start resets
+that turn's parts — so duplicates, doubling and misfiled replies are
+not expressible rather than guarded. Sending is write-ahead per the
+protocol (the client mints the turn id and dispatches its own
+`chat/turnStarted`), which deleted the placeholder road entirely. Cells
+are DERIVED (`turn::dress`), keyed by `CellKey`, and a fold returns
+what CHANGED so a mount updates one row or one cell. See
+docs/ahp/agents.md §The chat panel.
+
+Also landed with it: a chat record is reached by its OWN `SessionId`
+through `Hosts` instead of riding the gathered session component. It
+lives in its session's family (the session is the lifetime of its
+chats) but is never gathered as a store component — two roads
+disagreeing about which session the batch was gathered for is what made
+a just-sent message show for one frame and vanish.
 
 ### Step 5 — Split the chat into model and view (LANDED)
 

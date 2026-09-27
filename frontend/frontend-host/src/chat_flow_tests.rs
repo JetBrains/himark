@@ -22,7 +22,7 @@ use himark::higent::ahp_types::state::{
 };
 use himark::higent::{ChannelUri, ChatUri, SessionUri, TurnId};
 
-use crate::{AppFonts, HimarkEngine};
+use crate::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
 /// The scripted wire side of ONE chat: the snapshot to answer, the
 /// poll batches the test feeds, the older pages behind the cursor.
@@ -34,6 +34,12 @@ struct Script {
     batches: Arc<Mutex<std::collections::VecDeque<Vec<StateAction>>>>,
     older: Arc<Mutex<std::collections::HashMap<String, himark::higent::TurnsPage>>>,
     parked: Arc<Mutex<Vec<std::task::Waker>>>,
+    /// Every turn the app STARTED on the host, in order: the id the
+    /// client minted and the prompt it carried.
+    sent: Arc<Mutex<Vec<(String, String)>>>,
+    /// A snapshot the host has not answered YET: a real subscribe is
+    /// in flight for a while, and the user types into that window.
+    held_snapshot: Arc<Mutex<bool>>,
 }
 
 impl Script {
@@ -45,7 +51,41 @@ impl Script {
             batches: Arc::new(Mutex::new(std::collections::VecDeque::new())),
             older: Arc::new(Mutex::new(std::collections::HashMap::new())),
             parked: Arc::new(Mutex::new(Vec::new())),
+            sent: Arc::new(Mutex::new(Vec::new())),
+            held_snapshot: Arc::new(Mutex::new(false)),
         }
+    }
+
+    /// Park the next subscribe: the snapshot lands only on `release`.
+    fn hold_snapshot(&self) {
+        *self.held_snapshot.lock().expect("held") = true;
+    }
+
+    fn release_snapshot(&self) {
+        *self.held_snapshot.lock().expect("held") = false;
+        for waker in self.parked.lock().expect("parked").drain(..) {
+            waker.wake();
+        }
+    }
+
+    fn sent(&self) -> Vec<(String, String)> {
+        self.sent.lock().expect("sent").clone()
+    }
+
+    /// What a conforming host does with a dispatched turn: echo the
+    /// very action back into the ordered stream.
+    fn echo_send(&self) {
+        let sent = self.sent();
+        let Some((turn, text)) = sent.last().cloned() else {
+            return;
+        };
+        self.feed(vec![StateAction::ChatTurnStarted(ChatTurnStartedAction {
+            turn_id: turn,
+            started_at: String::new(),
+            message: message(&text),
+            queued_message_id: None,
+            meta: None,
+        })]);
     }
 
     fn feed(&self, batch: Vec<StateAction>) {
@@ -116,8 +156,19 @@ impl himark::higent::AhpServer for ScriptedSeat {
         chat: ChatUri,
     ) -> himark::higent::SeatFuture<Result<ChatState, String>> {
         assert_eq!(chat, self.script.chat);
-        let snapshot = self.script.snapshot.lock().expect("snapshot").clone();
-        Box::pin(std::future::ready(Ok(snapshot)))
+        let script = self.script.clone();
+        Box::pin(std::future::poll_fn(move |cx| {
+            if *script.held_snapshot.lock().expect("held") {
+                script
+                    .parked
+                    .lock()
+                    .expect("parked")
+                    .push(cx.waker().clone());
+                return std::task::Poll::Pending;
+            }
+            let snapshot = script.snapshot.lock().expect("snapshot").clone();
+            std::task::Poll::Ready(Ok(snapshot))
+        }))
     }
 
     fn poll_chat(&self, chat: ChatUri) -> himark::higent::SeatFuture<Vec<StateAction>> {
@@ -155,18 +206,27 @@ impl himark::higent::AhpServer for ScriptedSeat {
         _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
         _model: Option<himark::higent::ahp_types::state::ModelSelection>,
     ) -> himark::higent::SeatFuture<Result<(), String>> {
-        Box::pin(std::future::ready(Ok(())))
+        unreachable!("sending is write-ahead: the client dispatches chat/turnStarted")
     }
 
     fn cancel_turn(&self, _chat: ChatUri, _turn: TurnId) -> himark::higent::SeatFuture<()> {
         Box::pin(std::future::ready(()))
     }
 
+    /// The SEND road: the client mints the turn and dispatches its own
+    /// `chat/turnStarted`. The host records the prompt it was handed.
     fn dispatch_action(
         &self,
         _channel: ChannelUri,
-        _action: StateAction,
+        action: StateAction,
     ) -> himark::higent::SeatFuture<Result<(), String>> {
+        if let StateAction::ChatTurnStarted(started) = &action {
+            self.script
+                .sent
+                .lock()
+                .expect("sent")
+                .push((started.turn_id.clone(), started.message.text.clone()));
+        }
         Box::pin(std::future::ready(Ok(())))
     }
 
@@ -340,7 +400,6 @@ fn long_turn_stream(turn: &str) -> Vec<Vec<StateAction>> {
     batches
 }
 
-
 fn settle(engine: &mut HimarkEngine) {
     for _ in 0..4 {
         engine.worker().run_pending();
@@ -392,7 +451,7 @@ impl himark::DynamicCommand for OpenScripted {
 }
 
 fn chat_record(engine: &HimarkEngine) -> Option<himark::higent::ChatPanel> {
-    himark::higent::Chats::chat(engine.app.store(), &ChatUri::new(CHAT))
+    himark::higent::Chats::found(engine.app.store(), &ChatUri::new(CHAT)).map(|(_, chat)| chat)
 }
 
 fn transcript(engine: &HimarkEngine) -> Vec<(String, Vec<(String, String)>)> {
@@ -420,9 +479,7 @@ fn script_host(engine: &HimarkEngine) -> himark::higent::HostId {
 const CHAT: &str = "ahp-chat:/scripted";
 const SESSION: &str = "ahp-session:/scripted";
 
-fn boot(
-    snapshot: ChatState,
-) -> (HimarkEngine, u64, Script) {
+fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
     let script = Script::new(CHAT, SESSION, snapshot);
@@ -517,15 +574,8 @@ fn two_windows_hold_one_conversation() {
     settle(&mut engine);
 
     let views = chat_record(&engine).expect("the chat").view_transcripts();
-    assert!(
-        views.len() >= 2,
-        "two mounts, two views: {}",
-        views.len()
-    );
-    let text: Vec<String> = views
-        .iter()
-        .map(|rows| turn_text(rows, "t-live"))
-        .collect();
+    assert!(views.len() >= 2, "two mounts, two views: {}", views.len());
+    let text: Vec<String> = views.iter().map(|rows| turn_text(rows, "t-live")).collect();
     assert!(
         text.iter().all(|held| held == &text[0]),
         "every view holds the same conversation: {text:?}"
@@ -561,9 +611,12 @@ fn a_displaced_pane_misses_nothing_mid_stream() {
     });
 
     assert!(engine.perform_command(window, "chat.composer"));
-    settle_until(&mut engine, window, "the reopened pane holds it all", |engine| {
-        turn_text(&transcript(engine), "t-mid").contains("the closing word")
-    });
+    settle_until(
+        &mut engine,
+        window,
+        "the reopened pane holds it all",
+        |engine| turn_text(&transcript(engine), "t-mid").contains("the closing word"),
+    );
     let text = turn_text(&transcript(&engine), "t-mid");
     assert!(text.contains("chapter 0 1 2"), "the head survived: {text}");
 }
@@ -600,5 +653,119 @@ fn a_replayed_stream_folds_to_one_copy() {
         replayed.len(),
         once.len(),
         "no duplicate turns: {replayed:?}"
+    );
+}
+
+/// Everything the transcript says, in row order.
+fn said(engine: &HimarkEngine) -> String {
+    transcript(engine)
+        .iter()
+        .flat_map(|(_, cells)| cells.iter())
+        .map(|(_, text)| text.clone())
+        .collect::<Vec<_>>()
+        .join("|")
+}
+
+fn paint(engine: &mut HimarkEngine, window: u64) {
+    let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
+    let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
+    settle(engine);
+}
+
+/// THE USER'S OWN MESSAGE, typed and submitted through the real input
+/// road: it must be on screen the moment it is sent — before the host
+/// has said anything — and it must STILL be there after the poll, the
+/// host's own record of the turn, and the reply.
+#[test]
+fn a_typed_message_is_on_screen_at_once_and_stays() {
+    let (mut engine, window, script) = boot(chat_page(
+        CHAT,
+        vec![completed_turn("t-old", "older prompt", "older reply")],
+        None,
+    ));
+    paint(&mut engine, window);
+
+    assert!(
+        engine.text_input(window, "my own message"),
+        "the composer took the typing"
+    );
+    paint(&mut engine, window);
+    // The composer sends on ⌘Enter; a bare Enter is a newline.
+    assert!(
+        engine.key_down(window, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND),
+        "the composer took the submit"
+    );
+    paint(&mut engine, window);
+
+    let sent = script.sent();
+    assert_eq!(sent.len(), 1, "the host was handed one turn: {sent:?}");
+    assert_eq!(sent[0].1, "my own message", "with the prompt we typed");
+    let mine = sent[0].0.clone();
+    assert!(
+        said(&engine).contains("my own message"),
+        "AT ONCE on screen: {:?}",
+        transcript(&engine)
+    );
+
+    // The host echoes the action we dispatched — same turn id — and
+    // streams its reply into that turn.
+    script.echo_send();
+    script.feed(vec![StateAction::ChatResponsePart(
+        ChatResponsePartAction {
+            turn_id: mine.clone(),
+            part: ResponsePart::Markdown(MarkdownResponsePart {
+                id: "p1".to_owned(),
+                content: "the answer".to_owned(),
+            }),
+            meta: None,
+        },
+    )]);
+    script.feed(vec![StateAction::ChatTurnComplete(
+        ChatTurnCompleteAction {
+            turn_id: mine,
+            duration: 1,
+            meta: None,
+        },
+    )]);
+    settle_until(&mut engine, window, "the reply landed", |engine| {
+        said(engine).contains("the answer")
+    });
+    paint(&mut engine, window);
+
+    let said = said(&engine);
+    assert!(
+        said.contains("my own message"),
+        "the message SURVIVED the wire: {said}"
+    );
+    assert_eq!(
+        said.matches("my own message").count(),
+        1,
+        "and it is there exactly once: {said}"
+    );
+}
+
+/// The STOP button: with a turn in flight the click must reach the
+/// model and cancel THAT turn.
+#[test]
+fn the_stop_button_cancels_the_turn_in_flight() {
+    let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
+    paint(&mut engine, window);
+    script.feed(vec![StateAction::ChatTurnStarted(ChatTurnStartedAction {
+        turn_id: "t-live".to_owned(),
+        started_at: String::new(),
+        message: message("a running prompt"),
+        queued_message_id: None,
+        meta: None,
+    })]);
+    settle_until(&mut engine, window, "the turn is in flight", |engine| {
+        chat_record(engine).is_some_and(|chat| chat.cancel_target().is_some())
+    });
+
+    assert_eq!(
+        chat_record(&engine)
+            .expect("the chat")
+            .cancel_target()
+            .map(|turn| turn.as_str().to_owned()),
+        Some("t-live".to_owned())
     );
 }

@@ -9,23 +9,80 @@ use crate::higent::chat::{ChatPanel, ChatPanelCommand, ChatViewId};
 use crate::higent::{ChatUri, SessionUri};
 use crate::{AppCommand, WindowId};
 
+/// The conversations, ONE home for all of them: the global store.
+///
+/// The conversations of ONE session, held in that session's family —
+/// the session is the lifetime of its chats.
+///
+/// The family is never gathered into the store as a component. It used
+/// to be, and that was the bug: a command gathered for session A holds
+/// A's chats, and the roads that touch a chat do not agree on which
+/// session that is. The pane's own commands are scoped to the WINDOW's
+/// current session (a file in another session focused, a session being
+/// entered while the window still points at the previous one), while
+/// the chat's feed landings are scoped to the chat's own. Two scopes
+/// meant two families, each holding a different version of the same
+/// conversation, and whichever gather came last won: a message showed
+/// for one frame and vanished, a reply went missing on the walk back
+/// with ⌘I, and re-entering a session minted a FRESH record over a
+/// live one.
+///
+/// So every road reaches a chat by its OWN `SessionId`, through
+/// `Hosts` — which every gather carries whole, scope or no scope.
 #[derive(Clone, Default)]
 pub struct Chats {
     chats: rpds::HashTrieMapSync<ChatUri, ChatPanel>,
 }
 
 impl Chats {
-    pub fn chat_ref<'a>(store: &'a Store, chat: &ChatUri) -> Option<&'a ChatPanel> {
-        store.get::<Chats>()?.chats.get(chat)
+    pub fn chat_ref<'a>(
+        store: &'a Store,
+        session: &crate::SessionId,
+        chat: &ChatUri,
+    ) -> Option<&'a ChatPanel> {
+        crate::higent::Hosts::chats_of(store, session)?
+            .chats
+            .get(chat)
     }
 
-    pub fn chat(store: &Store, chat: &ChatUri) -> Option<ChatPanel> {
-        Self::chat_ref(store, chat).cloned()
+    pub fn chat(store: &Store, session: &crate::SessionId, chat: &ChatUri) -> Option<ChatPanel> {
+        Self::chat_ref(store, session, chat).cloned()
     }
 
+    /// The chat and the session that owns it, for the cold roads that
+    /// hold a uri and nothing else.
+    pub fn found(store: &Store, chat: &ChatUri) -> Option<(crate::SessionId, ChatPanel)> {
+        let session = crate::higent::Hosts::session_of_chat(store, chat)?;
+        let panel = Self::chat(store, &session, chat)?;
+        Some((session, panel))
+    }
+
+    pub(crate) fn holds(&self, chat: &ChatUri) -> bool {
+        self.chats.contains_key(chat)
+    }
+
+    pub(crate) fn uris(&self) -> Vec<ChatUri> {
+        self.chats.keys().cloned().collect()
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.chats.is_empty()
+    }
+
+    /// File a record back. The family is the PANEL's own session, so a
+    /// write-back cannot land in the family a command happened to be
+    /// gathered for.
     pub fn put(store: &mut Store, chat: ChatUri, panel: ChatPanel) {
-        store.update::<Chats>(|chats| {
+        let session = panel.session_id();
+        crate::higent::Hosts::update_chats(store, &session, |chats| {
             chats.chats.insert_mut(chat, panel);
+        });
+    }
+
+    /// The session let go: its conversations go with it.
+    pub fn forget_session(store: &mut Store, session: &crate::SessionId) {
+        crate::higent::Hosts::update_chats(store, session, |chats| {
+            chats.chats = rpds::HashTrieMapSync::new_sync();
         });
     }
 
@@ -47,36 +104,32 @@ impl Chats {
         chat: ChatUri,
         initial_prompt: Option<String>,
     ) -> Box<dyn crate::DynPanelView> {
-        let known = store
-            .get::<Chats>()
-            .is_some_and(|chats| chats.chats.contains_key(&chat));
+        let home = crate::SessionId {
+            host: server,
+            session: session.clone(),
+        };
+        let known = Self::chat_ref(store, &home, &chat).is_some();
         if !known {
-            eprintln!(
-                "[higent] minting a FRESH chat record: {chat}\n{}",
-                std::backtrace::Backtrace::force_capture()
-            );
-            let mut panel = ChatPanel::new(store, ui, server, session, chat.clone());
+            eprintln!("[higent] minting a chat record: {chat}");
+            let mut panel = ChatPanel::new(store, ui, server, session.clone(), chat.clone());
             if let Some(prompt) = initial_prompt {
                 panel = panel.with_initial_prompt(prompt);
             }
             Self::put(store, chat.clone(), panel);
         }
-        Box::new(ChatPane::new(chat))
+        Box::new(ChatPane::new(home, chat))
     }
 
-    pub fn list(store: &Store) -> Vec<ChatUri> {
-        store
-            .get::<Chats>()
-            .map(|chats| chats.chats.keys().cloned().collect())
+    /// Every chat of one session.
+    pub fn list(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
+        crate::higent::Hosts::chats_of(store, session)
+            .map(Chats::uris)
             .unwrap_or_default()
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.chats.is_empty()
     }
 }
 
 pub(crate) struct ChatLanding {
+    pub(crate) session: crate::SessionId,
     pub(crate) chat: ChatUri,
     pub(crate) command: ChatPanelCommand,
 }
@@ -89,20 +142,25 @@ impl crate::LandingCommand for ChatLanding {
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(mut panel) = Chats::chat(store, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
             return;
         };
         let ui = app.ui_ctx();
-        let ChatLanding { chat, command } = *self;
+        let ChatLanding {
+            session,
+            chat,
+            command,
+        } = *self;
         let scope_chat = chat.clone();
-        let session = panel.session_id();
+        let scope_session = session.clone();
         fx.scope(
             move |command: ChatPanelCommand| {
                 AppCommand::InSession(
-                    session.clone(),
+                    scope_session.clone(),
                     Box::new(AppCommand::Landing(
                         window,
                         Box::new(ChatLanding {
+                            session: scope_session.clone(),
                             chat: scope_chat.clone(),
                             command,
                         }),
@@ -116,6 +174,7 @@ impl crate::LandingCommand for ChatLanding {
 }
 
 pub(crate) struct EnsureChatFeed {
+    pub(crate) session: crate::SessionId,
     pub(crate) chat: ChatUri,
 }
 
@@ -133,7 +192,7 @@ impl crate::DynamicCommand for EnsureChatFeed {
         window: WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(mut panel) = Chats::chat(store, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
             return;
         };
         let Some(seat) = crate::higent::Servers::seat(store, panel.server()) else {
@@ -141,18 +200,20 @@ impl crate::DynamicCommand for EnsureChatFeed {
             Chats::put(store, self.chat.clone(), panel);
             return;
         };
-        let session = panel.session_id();
         Chats::put(store, self.chat.clone(), panel);
         eprintln!("[higent] chat feed SUBSCRIBES anew: {}", self.chat);
         let chat = self.chat.clone();
         let landing = self.chat.clone();
+        let session = self.session.clone();
+        let scope = self.session.clone();
         fx.push(
             AnyEffect::new(crate::higent::SubscribeChatEffect { seat, chat }).map(move |result| {
                 AppCommand::InSession(
-                    session.clone(),
+                    scope.clone(),
                     Box::new(AppCommand::Landing(
                         window,
                         Box::new(ChatLanding {
+                            session: session.clone(),
                             chat: landing.clone(),
                             command: ChatPanelCommand::Snapshot(result),
                         }),
@@ -165,6 +226,9 @@ impl crate::DynamicCommand for EnsureChatFeed {
 
 #[derive(Clone)]
 pub struct ChatPane {
+    /// The session that OWNS this chat — not whichever session the
+    /// window happens to be on when a command arrives.
+    session: crate::SessionId,
     chat: ChatUri,
     view: ChatViewId,
 }
@@ -173,11 +237,18 @@ impl ChatPane {
     /// Storeless by design (family rows mint with `&Store`): the id
     /// is allocated here, the view RECORD is built by the model on
     /// the pane's first command (`ensure_view`).
-    pub fn new(chat: ChatUri) -> Self {
+    pub fn new(session: crate::SessionId, chat: ChatUri) -> Self {
         Self {
+            session,
             chat,
             view: ChatViewId::mint(),
         }
+    }
+
+    /// Mint a pane for a chat whose session the caller does not hold.
+    pub fn of_chat(store: &Store, chat: ChatUri) -> Option<Self> {
+        let session = crate::higent::Hosts::session_of_chat(store, &chat)?;
+        Some(Self::new(session, chat))
     }
 
     pub fn chat(&self) -> &ChatUri {
@@ -193,7 +264,7 @@ impl imba::View for ChatPane {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
-        match Chats::chat_ref(store, &self.chat) {
+        match Chats::chat_ref(store, &self.session, &self.chat) {
             Some(panel) => panel.focus_data_view(store, ui, self.view),
             None => imba::focus::FocusData::default(),
         }
@@ -202,7 +273,7 @@ impl imba::View for ChatPane {
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         // The VIEW dies with its pane; the chat is session truth and
         // its feed keeps landing.
-        let Some(mut panel) = Chats::chat(store, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
             return;
         };
         panel.destroy_view(store, self.view, fx);
@@ -216,7 +287,7 @@ impl imba::View for ChatPane {
         command: Self::Command,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut panel) = Chats::chat(store, &self.chat) else {
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
             return;
         };
         panel.perform_in_view(store, ui, self.view, command, fx);
@@ -232,7 +303,7 @@ impl imba::View for ChatPane {
         imba::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let widget: imba::ThunkBox<'a, Self::Command> =
-                    match Chats::chat_ref(store, &self.chat)
+                    match Chats::chat_ref(store, &self.session, &self.chat)
                         .and_then(|panel| panel.display_view(arena, store, ui, self.view))
                     {
                         Some(laid) => imba::ThunkBox::new(
@@ -290,7 +361,7 @@ impl crate::Navigator for ChatNavigator {
         place: &ChatPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> Option<crate::Panel> {
-        Chats::chat_ref(store, &place.chat)?;
+        crate::higent::Hosts::session_of_chat(store, &place.chat)?;
         Some(crate::Panel::Plugin(crate::family_rows::mint(
             store,
             &crate::FamilyRow::Chat(place.chat.clone()),
@@ -321,13 +392,14 @@ impl crate::PanelView for ChatPane {
     }
 
     fn title(&self, store: &Store) -> String {
-        Chats::chat_ref(store, &self.chat)
+        Chats::chat_ref(store, &self.session, &self.chat)
             .map(|panel| panel.title_text())
             .unwrap_or_else(|| "Agent Chat".to_owned())
     }
 
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
-        Chats::chat_ref(store, &self.chat).map(|panel| panel.footer_height(store, nominal_height))
+        Chats::chat_ref(store, &self.session, &self.chat)
+            .map(|panel| panel.footer_height(store, nominal_height))
     }
 
     // Closing the PANE must not end the CONVERSATION: the pane is a

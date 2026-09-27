@@ -247,7 +247,17 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         cells.push((cell, height));
     }
     let declared: f32 = cells.iter().map(|(_, height)| height).sum();
-    let turn = crate::higent::TurnView::new("turn", 640.0, cells);
+    let mut slice = imba::list::ListSlice::new();
+    for (at, (cell, height)) in cells.into_iter().enumerate() {
+        slice.push_keyed_sized(
+            crate::higent::turn::CellKey::Part(crate::higent::chat::model::PartId::new(format!(
+                "p{at}"
+            ))),
+            cell,
+            height,
+        );
+    }
+    let turn = crate::higent::TurnView::new("turn", 640.0, slice);
     let mut scroll = ScrollView::new(turn);
     let width = 640.0f32;
     let view_h = 700.0f32;

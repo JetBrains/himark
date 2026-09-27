@@ -1071,10 +1071,10 @@ impl Window {
             return;
         }
         let session = self.current_session();
-        let Some(chat) = crate::higent::Chats::list(store).into_iter().find(|chat| {
-            crate::higent::Chats::chat_ref(store, chat)
-                .is_some_and(|panel| panel.session_id() == session)
-        }) else {
+        let Some(chat) = crate::higent::Chats::list(store, &session)
+            .into_iter()
+            .next()
+        else {
             return;
         };
         let Some(pane) = crate::family_rows::mint(store, &crate::FamilyRow::Chat(chat)) else {
