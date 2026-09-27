@@ -78,6 +78,14 @@ impl crate::higent::AhpServer for InertSeat {
     }
 }
 
+/// The session the test's folder belongs to.
+fn home() -> crate::SessionId {
+    crate::SessionId {
+        host: crate::higent::HostId::LOCAL,
+        session: crate::higent::SessionUri::new("hihost-fs:/local"),
+    }
+}
+
 fn folder() -> ResourceLocation {
     ResourceLocation::new(
         ResourceType::directory(),
@@ -502,9 +510,12 @@ fn activation_pairs_carry_the_exact_locations() {
     // The PAIR itself now rides the canvas feed — the same entries,
     // normalized the way activation consumes them.
     let mut store = imba::store::Store::new();
-    store.put(changes);
+    crate::higent::Hosts::update_family(&mut store, &home(), |family| {
+        family.changes = changes;
+    });
     let (_, listing) = crate::diff_canvas::canvas_files(
         &store,
+        &home(),
         &crate::diff_canvas::CanvasSource::WorkingCopy {
             folder: folder.clone(),
         },

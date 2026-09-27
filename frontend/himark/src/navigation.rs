@@ -130,23 +130,32 @@ pub struct RecentLocations(Vec<crate::ResourceLocation>);
 impl RecentLocations {
     const CAP: usize = 100;
 
-    pub fn touch(store: &mut Store, location: &crate::ResourceLocation) {
-        store.update::<RecentLocations>(|recents| {
-            recents.0.retain(|listed| listed != location);
-            recents.0.insert(0, location.clone());
-            recents.0.truncate(Self::CAP);
+    /// Recents belong to the session you are working in, and are
+    /// addressed by it — the store carries no ambient answer.
+    pub fn touch(
+        store: &mut Store,
+        session: &crate::SessionId,
+        location: &crate::ResourceLocation,
+    ) {
+        crate::higent::Hosts::update_family(store, session, |family| {
+            let recents = &mut family.recents.0;
+            recents.retain(|listed| listed != location);
+            recents.insert(0, location.clone());
+            recents.truncate(Self::CAP);
         });
     }
 
     pub fn replace(
         store: &mut Store,
+        session: &crate::SessionId,
         old: &crate::ResourceLocation,
         new: &crate::ResourceLocation,
     ) {
-        store.update::<RecentLocations>(|recents| {
-            recents.0.retain(|listed| listed != old && listed != new);
-            recents.0.insert(0, new.clone());
-            recents.0.truncate(Self::CAP);
+        crate::higent::Hosts::update_family(store, session, |family| {
+            let recents = &mut family.recents.0;
+            recents.retain(|listed| listed != old && listed != new);
+            recents.insert(0, new.clone());
+            recents.truncate(Self::CAP);
         });
     }
 
@@ -154,10 +163,9 @@ impl RecentLocations {
         self.0.is_empty()
     }
 
-    pub fn list(store: &Store) -> Vec<crate::ResourceLocation> {
-        store
-            .get::<RecentLocations>()
-            .map(|recents| recents.0.clone())
+    pub fn list(store: &Store, session: &crate::SessionId) -> Vec<crate::ResourceLocation> {
+        crate::higent::Hosts::family(store, session)
+            .map(|family| family.recents.0.clone())
             .unwrap_or_default()
     }
 }

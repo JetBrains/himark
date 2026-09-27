@@ -78,6 +78,8 @@ pub enum CanvasCommand {
 /// nothing is ever rebuilt for a second click.
 #[derive(Clone)]
 pub struct Canvas {
+    /// The session that owns this canvas's folder.
+    home: crate::SessionId,
     source: CanvasSource,
     rows: ScrollView<CanvasRows>,
     files: rpds::HashTrieMapSync<ResourceLocation, CanvasFile>,
@@ -143,8 +145,9 @@ fn sticky_style() -> imba::list::StickySource {
 }
 
 impl Canvas {
-    fn fresh(source: CanvasSource) -> Self {
+    fn fresh(home: crate::SessionId, source: CanvasSource) -> Self {
         Self {
+            home,
             source,
             rows: ScrollView::new(ListView::empty().with_sticky(sticky_style())),
             files: rpds::HashTrieMapSync::new_sync(),
@@ -447,7 +450,7 @@ impl Canvas {
         ui: &imba::UiCtx,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        let (generation, listing) = canvas_files(store, &self.source);
+        let (generation, listing) = canvas_files(store, &self.home, &self.source);
         self.adopt(store, ui, generation, listing, fx);
     }
 
@@ -564,7 +567,7 @@ impl Canvas {
         dressed: &[crate::DiffViewId],
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
-        if self.seen != Some(canvas_generation(store, &self.source)) {
+        if self.seen != Some(canvas_generation(store, &self.home, &self.source)) {
             self.refresh(store, ui, fx);
         }
         // A parked successor that answers DRESSED promotes now —
@@ -722,7 +725,7 @@ impl Canvas {
                 let theme = env::Themes::of(store);
                 let band = header_band(&theme);
                 let mut slice: ListSlice<CanvasRow, CanvasKey> = ListSlice::new();
-                match crate::diff_canvas::canvas_banner(store, &self.source) {
+                match crate::diff_canvas::canvas_banner(store, &self.home, &self.source) {
                     Some(crate::diff_canvas::CanvasBanner::Composer { .. }) => {
                         let message = fresh_composer_box(store, ui);
                         let height = composer_band(&theme, Some(&message));
@@ -1543,6 +1546,7 @@ impl Canvas {
                         if !text.trim().is_empty() {
                             self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
                                 crate::hihistory::CommitHistory {
+                                    home: self.home.clone(),
                                     folder: self.source.folder().clone(),
                                     message: text,
                                 },
@@ -1650,61 +1654,76 @@ fn set_source(source: &CanvasSource) -> ChangeSetSource {
 }
 
 impl Canvases {
-    pub fn by_source(store: &Store, source: &CanvasSource) -> Option<CanvasId> {
-        let set = Changes::id_for_source(store, &set_source(source))?;
-        Changes::set_ref(store, set)?
+    pub fn by_source(
+        store: &Store,
+        home: &crate::SessionId,
+        source: &CanvasSource,
+    ) -> Option<CanvasId> {
+        let set = Changes::id_for_source(store, home, &set_source(source))?;
+        Changes::set_ref(store, home, set)?
             .canvases
             .keys()
             .next()
             .copied()
     }
 
-    fn owner_of(store: &Store, id: CanvasId) -> Option<ChangeSetId> {
-        Changes::canvas_ids(store)
+    fn owner_of(store: &Store, home: &crate::SessionId, id: CanvasId) -> Option<ChangeSetId> {
+        Changes::canvas_ids(store, home)
             .into_iter()
             .find(|(_, canvas)| *canvas == id)
             .map(|(set, _)| set)
     }
 
-    fn find_or_create(store: &mut Store, source: &CanvasSource) -> CanvasId {
-        let set = Changes::ensure_set_for_source(store, &set_source(source));
+    fn find_or_create(
+        store: &mut Store,
+        home: &crate::SessionId,
+        source: &CanvasSource,
+    ) -> CanvasId {
+        let set = Changes::ensure_set_for_source(store, home, &set_source(source));
         if let Some(id) =
-            Changes::set_ref(store, set).and_then(|held| held.canvases.keys().next().copied())
+            Changes::set_ref(store, home, set).and_then(|held| held.canvases.keys().next().copied())
         {
             return id;
         }
         let id = CanvasId::mint();
-        Changes::put_canvas(store, set, id, Canvas::fresh(source.clone()));
+        Changes::put_canvas(
+            store,
+            home,
+            set,
+            id,
+            Canvas::fresh(home.clone(), source.clone()),
+        );
         id
     }
 
-    fn get<'a>(store: &'a Store, id: CanvasId) -> Option<&'a Canvas> {
-        let set = Self::owner_of(store, id)?;
-        Changes::canvas_ref(store, set, id)
+    fn get<'a>(store: &'a Store, home: &crate::SessionId, id: CanvasId) -> Option<&'a Canvas> {
+        let set = Self::owner_of(store, home, id)?;
+        Changes::canvas_ref(store, home, set, id)
     }
 
-    fn take(store: &mut Store, id: CanvasId) -> Option<Canvas> {
-        let set = Self::owner_of(store, id)?;
-        Changes::take_canvas(store, set, id)
+    fn take(store: &mut Store, home: &crate::SessionId, id: CanvasId) -> Option<Canvas> {
+        let set = Self::owner_of(store, home, id)?;
+        Changes::take_canvas(store, home, set, id)
     }
 
-    fn put(store: &mut Store, id: CanvasId, canvas: Canvas) {
+    fn put(store: &mut Store, home: &crate::SessionId, id: CanvasId, canvas: Canvas) {
         // A put without a surviving owner re-homes by source (the set
         // always exists — sources mint their sets).
-        let set = Self::owner_of(store, id)
-            .unwrap_or_else(|| Changes::ensure_set_for_source(store, &set_source(&canvas.source)));
-        Changes::put_canvas(store, set, id, canvas);
+        let set = Self::owner_of(store, home, id).unwrap_or_else(|| {
+            Changes::ensure_set_for_source(store, home, &set_source(&canvas.source))
+        });
+        Changes::put_canvas(store, home, set, id, canvas);
     }
 
-    fn retain(store: &mut Store, id: CanvasId) {
-        if let Some(mut canvas) = Self::take(store, id) {
+    fn retain(store: &mut Store, home: &crate::SessionId, id: CanvasId) {
+        if let Some(mut canvas) = Self::take(store, home, id) {
             canvas.refs += 1;
-            Self::put(store, id, canvas);
+            Self::put(store, home, id, canvas);
         }
     }
 
-    fn release(store: &mut Store, id: CanvasId) {
-        let Some(mut canvas) = Self::take(store, id) else {
+    fn release(store: &mut Store, home: &crate::SessionId, id: CanvasId) {
+        let Some(mut canvas) = Self::take(store, home, id) else {
             return;
         };
         canvas.refs = canvas.refs.saturating_sub(1);
@@ -1712,14 +1731,19 @@ impl Canvases {
         // which stays around once opened (its diffs keep serving the
         // next open for free).
         if canvas.refs > 0 || matches!(canvas.source, CanvasSource::WorkingCopy { .. }) {
-            Self::put(store, id, canvas);
+            Self::put(store, home, id, canvas);
         }
     }
 
-    pub fn set_reveal(store: &mut Store, id: CanvasId, key: ResourceLocation) {
-        if let Some(mut canvas) = Self::take(store, id) {
+    pub fn set_reveal(
+        store: &mut Store,
+        home: &crate::SessionId,
+        id: CanvasId,
+        key: ResourceLocation,
+    ) {
+        if let Some(mut canvas) = Self::take(store, home, id) {
             canvas.reveal = Some(key);
-            Self::put(store, id, canvas);
+            Self::put(store, home, id, canvas);
         }
     }
 }
@@ -1737,13 +1761,13 @@ pub(crate) fn sync_canvases(store: &mut Store, ui: &UiCtx, fx: &mut crate::AppFx
         .get::<crate::DressedViews>()
         .map(|dressed| dressed.0.clone())
         .unwrap_or_default();
-    for (set, id) in Changes::canvas_ids(store) {
-        let Some(mut canvas) = Changes::take_canvas(store, set, id) else {
+    for (set, id) in Changes::canvas_ids(store, &session) {
+        let Some(mut canvas) = Changes::take_canvas(store, &session, set, id) else {
             continue;
         };
         let route = route_canvas(session.clone(), set, id);
         fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
-        Changes::put_canvas(store, set, id, canvas);
+        Changes::put_canvas(store, &session, set, id, canvas);
     }
 }
 
@@ -1773,12 +1797,12 @@ pub(crate) fn perform_canvas(
     command: CanvasCommand,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(mut canvas) = Changes::take_canvas(store, set, id) else {
+    let Some(mut canvas) = Changes::take_canvas(store, &session, set, id) else {
         return;
     };
-    let route = route_canvas(session, set, id);
+    let route = route_canvas(session.clone(), set, id);
     fx.scope(route, |fx| canvas.perform(store, ui, command, fx));
-    Changes::put_canvas(store, set, id, canvas);
+    Changes::put_canvas(store, &session, set, id, canvas);
 }
 
 /// The canvas PANEL — a REFERENCE view over the store-held canvas,
@@ -1787,16 +1811,19 @@ pub(crate) fn perform_canvas(
 #[derive(Clone)]
 pub struct DiffCanvasView {
     id: CanvasId,
+    /// The session that owns this canvas's folder.
+    home: crate::SessionId,
     source: CanvasSource,
     request: Option<crate::PanelRequest>,
 }
 
 impl DiffCanvasView {
-    pub fn over(store: &mut Store, source: CanvasSource) -> Self {
-        let id = Canvases::find_or_create(store, &source);
-        Canvases::retain(store, id);
+    pub fn over(store: &mut Store, home: crate::SessionId, source: CanvasSource) -> Self {
+        let id = Canvases::find_or_create(store, &home, &source);
+        Canvases::retain(store, &home, id);
         Self {
             id,
+            home,
             source,
             request: None,
         }
@@ -1811,7 +1838,7 @@ impl DiffCanvasView {
     }
 
     fn canvas<'a>(&self, store: &'a Store) -> Option<&'a Canvas> {
-        Canvases::get(store, self.id)
+        Canvases::get(store, &self.home, self.id)
     }
 
     /// TEST SUPPORT: a view over a canvas seeded with one BUILT row.
@@ -1819,14 +1846,15 @@ impl DiffCanvasView {
     pub fn seeded_for_tests(
         store: &mut Store,
         ui: &UiCtx,
+        home: crate::SessionId,
         source: CanvasSource,
         file: CanvasFile,
         prep: crate::OpenedDiffPair,
     ) -> Self {
-        let view = Self::over(store, source);
-        if let Some(mut canvas) = Canvases::take(store, view.id) {
+        let view = Self::over(store, home, source);
+        if let Some(mut canvas) = Canvases::take(store, &view.home, view.id) {
             canvas.seed_built_for_tests(store, ui, file, prep);
-            Canvases::put(store, view.id, canvas);
+            Canvases::put(store, &view.home, view.id, canvas);
         }
         view
     }
@@ -1863,10 +1891,10 @@ impl DiffCanvasView {
         generation: u64,
         listing: crate::diff_canvas::CanvasListing,
     ) {
-        if let Some(mut canvas) = Canvases::take(store, self.id) {
+        if let Some(mut canvas) = Canvases::take(store, &self.home, self.id) {
             let mut batch = imba::effect::Batch::new();
             canvas.adopt(store, ui, generation, listing, &mut batch.effects());
-            Canvases::put(store, self.id, canvas);
+            Canvases::put(store, &self.home, self.id, canvas);
         }
     }
 
@@ -1877,7 +1905,7 @@ impl DiffCanvasView {
     #[doc(hidden)]
     pub fn reconcile_for_tests(&self, store: &mut Store, files: Vec<CanvasFile>) -> usize {
         let mut launched = 0;
-        if let Some(mut canvas) = Canvases::take(store, self.id) {
+        if let Some(mut canvas) = Canvases::take(store, &self.home, self.id) {
             let mut batch = imba::effect::Batch::new();
             {
                 let mut fx = batch.effects();
@@ -1896,7 +1924,7 @@ impl DiffCanvasView {
                     )
                 })
                 .count();
-            Canvases::put(store, self.id, canvas);
+            Canvases::put(store, &self.home, self.id, canvas);
         }
         launched
     }
@@ -1910,10 +1938,10 @@ impl DiffCanvasView {
         key: crate::ResourceLocation,
         prep: crate::OpenedDiffPair,
     ) {
-        if let Some(mut canvas) = Canvases::take(store, self.id) {
+        if let Some(mut canvas) = Canvases::take(store, &self.home, self.id) {
             let mut batch = imba::effect::Batch::new();
             canvas.land(store, ui, key, prep, &mut batch.effects());
-            Canvases::put(store, self.id, canvas);
+            Canvases::put(store, &self.home, self.id, canvas);
         }
     }
 
@@ -2008,7 +2036,7 @@ impl View for DiffCanvasView {
         command: Self::Command,
         fx: &mut Effects<'_, Self::Command>,
     ) {
-        let Some(mut canvas) = Canvases::take(store, self.id) else {
+        let Some(mut canvas) = Canvases::take(store, &self.home, self.id) else {
             return;
         };
         canvas.perform(store, ui, command, fx);
@@ -2017,7 +2045,7 @@ impl View for DiffCanvasView {
         if let Some(request) = canvas.request.take() {
             self.request = Some(request);
         }
-        Canvases::put(store, self.id, canvas);
+        Canvases::put(store, &self.home, self.id, canvas);
     }
 
     fn display<'a>(
@@ -3190,9 +3218,9 @@ impl crate::Navigator for CanvasNavigator {
         place: &CanvasPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> Option<crate::Panel> {
-        let view = DiffCanvasView::over(store, place.source.clone());
+        let view = DiffCanvasView::over(store, place.home.clone(), place.source.clone());
         if let Some(key) = &place.reveal {
-            Canvases::set_reveal(store, view.id(), key.clone());
+            Canvases::set_reveal(store, &view.home, view.id(), key.clone());
         }
         Some(crate::Panel::Plugin(Box::new(view)))
     }
@@ -3207,6 +3235,7 @@ impl crate::PanelView for DiffCanvasView {
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
         Some(CanvasPlace {
+            home: self.home.clone(),
             source: self.source.clone(),
             reveal: None,
         })
@@ -3224,13 +3253,13 @@ impl crate::PanelView for DiffCanvasView {
         // Reuse IN PLACE: arm the reveal on the shared canvas — the
         // paint probe picks it up next frame.
         if let Some(key) = &place.reveal {
-            Canvases::set_reveal(store, self.id, key.clone());
+            Canvases::set_reveal(store, &self.home, self.id, key.clone());
         }
         true
     }
 
     fn title(&self, store: &Store) -> String {
-        self.source.title(store)
+        self.source.title(store, &self.home)
     }
 
     fn take_request(&mut self) -> Option<crate::PanelRequest> {
@@ -3240,7 +3269,7 @@ impl crate::PanelView for DiffCanvasView {
     fn dismantle(&mut self, store: &mut Store) {
         // Row documents and editors are ROW-owned — they die with the
         // canvas when the collection lets go of it.
-        Canvases::release(store, self.id);
+        Canvases::release(store, &self.home, self.id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

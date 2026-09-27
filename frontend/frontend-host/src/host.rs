@@ -531,7 +531,9 @@ impl himark::DynamicCommand for ShowWorkingCopy {
 
 pub struct NewTerminalEffect {
     pub(crate) seat: Arc<dyn himark::higent::AhpServer>,
-    pub(crate) session: himark::higent::SessionUri,
+    /// The session that will OWN the terminal — carried so the landing
+    /// files it in that session's family, whatever the batch's scope.
+    pub(crate) home: himark::SessionId,
     pub(crate) cwd: Option<String>,
     pub(crate) window: himark::WindowId,
 }
@@ -596,7 +598,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
         effect
             .seat
             .terminal_open(
-                effect.session.clone(),
+                effect.home.session.clone(),
                 channel,
                 effect.cwd.clone(),
                 80,
@@ -657,7 +659,7 @@ impl DynamicCommand for OpenTerminal {
                         .summary(&key.session)
                         .and_then(|summary| summary.working_directories.as_ref()?.first().cloned())
                 });
-                Some((seat, key.session.clone(), cwd))
+                Some((seat, key.clone(), cwd))
             })
             .or_else(|| {
                 let server = store
@@ -674,27 +676,40 @@ impl DynamicCommand for OpenTerminal {
                     });
                 Some((
                     seat,
-                    himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                    himark::SessionId {
+                        host: server,
+                        session: himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                    },
                     cwd,
                 ))
             });
-        let Some((seat, session, cwd)) = resolved else {
+        let Some((seat, home, cwd)) = resolved else {
             return;
         };
+        let landing = home.clone();
         let _ = fx.push(
             AnyEffect::new(NewTerminalEffect {
                 seat,
-                session,
+                home,
                 cwd,
                 window,
             })
-            .map(move |session| AppCommand::Dynamic(window, Arc::new(ShowTerminal { session }))),
+            .map(move |session| {
+                AppCommand::Dynamic(
+                    window,
+                    Arc::new(ShowTerminal {
+                        session,
+                        home: landing.clone(),
+                    }),
+                )
+            }),
         );
     }
 }
 
 struct ShowTerminal {
     session: Option<Arc<himark::terminal::Session>>,
+    home: himark::SessionId,
 }
 
 impl DynamicCommand for ShowTerminal {
@@ -721,15 +736,18 @@ impl DynamicCommand for ShowTerminal {
         };
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
 
-        himark::terminal::Terminals::put(store, channel.clone(), session.clone());
+        himark::terminal::Terminals::put(store, &self.home, channel.clone(), session.clone());
         if !entity.open_panel(
             store,
             ui,
-            Box::new(himark::terminal::TerminalView::new(channel.clone())),
+            Box::new(himark::terminal::TerminalView::new(
+                self.home.clone(),
+                channel.clone(),
+            )),
             fx,
         ) {
             session.hangup();
-            himark::terminal::Terminals::remove(store, &channel);
+            himark::terminal::Terminals::remove(store, &self.home, &channel);
         }
         himark::Windows::put(store, window, entity);
     }

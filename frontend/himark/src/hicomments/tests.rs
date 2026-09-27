@@ -150,6 +150,7 @@ fn remove_comment_clears_the_card_and_returns_focus() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(RemoveComment {
+            home: app.sole_window_session(),
             document,
             key: inlays[0].0,
             annotation: None,
@@ -315,7 +316,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1);
     let ids: Vec<crate::hicomments::AnnotationId> =
-        crate::hicomments::Comments::records(app.store())
+        crate::hicomments::Comments::records(app.store(), &app.sole_window_session())
             .into_iter()
             .map(|(id, _)| id)
             .collect();
@@ -323,12 +324,15 @@ fn sending_never_consumes_what_it_cannot_deliver() {
 
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
-        std::sync::Arc::new(crate::hicomments::SendComments { ids: ids.clone() }),
+        std::sync::Arc::new(crate::hicomments::SendComments {
+            home: app.sole_window_session(),
+            ids: ids.clone(),
+        }),
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "the card stands");
     assert_eq!(
-        crate::hicomments::Comments::records(app.store()).len(),
+        crate::hicomments::Comments::records(app.store(), &app.sole_window_session()).len(),
         1,
         "the record stands"
     );
@@ -336,6 +340,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(crate::hicomments::sync::Sent {
+            home: app.sole_window_session(),
             ids: ids.clone(),
             result: Err("wire died".to_owned()),
         }),
@@ -346,12 +351,13 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(crate::hicomments::sync::Sent {
+            home: app.sole_window_session(),
             ids,
             result: Ok(()),
         }),
     )));
     assert!(
-        crate::hicomments::Comments::records(app.store()).is_empty(),
+        crate::hicomments::Comments::records(app.store(), &app.sole_window_session()).is_empty(),
         "the sent comment's record is consumed"
     );
     let survives = crate::OpenDocuments::list(app.store())

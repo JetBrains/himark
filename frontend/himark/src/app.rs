@@ -266,7 +266,9 @@ pub(crate) fn fresh_workbench_root(
 
     let location = crate::next_scratch_location(store);
     let name = location.name().to_owned();
-    crate::RecentLocations::touch(store, &location);
+    if let Some(session) = crate::Gathered::scope(store).cloned() {
+        crate::RecentLocations::touch(store, &session, &location);
+    }
     let scratch_id = OpenDocuments::register(store, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
     let editor_id = entity_scope(scratch_id, fx, |fx| {

@@ -53,17 +53,17 @@ pub(crate) struct SessionState {
     /// carries whole).
     chats: crate::higent::Chats,
 
-    trees: crate::hifiles::SessionTree,
+    pub(crate) trees: crate::hifiles::SessionTree,
 
-    recents: crate::RecentLocations,
+    pub(crate) recents: crate::RecentLocations,
 
-    changes: crate::hichanges::Changes,
+    pub(crate) changes: crate::hichanges::Changes,
 
-    history: crate::hihistory::History,
+    pub(crate) history: crate::hihistory::History,
 
-    comments: crate::hicomments::Comments,
+    pub(crate) comments: crate::hicomments::Comments,
 
-    terminals: crate::terminal::Terminals,
+    pub(crate) terminals: crate::terminal::Terminals,
 
     documents: crate::OpenDocuments,
 
@@ -72,31 +72,42 @@ pub(crate) struct SessionState {
 
 impl SessionState {
     fn gather_into(&self, store: &mut Store) {
-        store.put(self.trees.clone());
-        store.put(self.recents.clone());
-        store.put(self.changes.clone());
-        store.put(self.history.clone());
-        store.put(self.comments.clone());
-        store.put(self.terminals.clone());
         store.put(self.documents.clone());
         store.put(self.scratch_names.clone());
     }
 
-    /// The projected components come back out of the store; the chats
-    /// were never in it, so they are carried over from the family that
-    /// stood before this batch.
+    /// Only DOCUMENTS are projected now (they live in the `documents`
+    /// crate, which is session-blind by design and does its own store
+    /// reads; `command_scope` derives their owner instead). Everything
+    /// else is session-ADDRESSED and was never in the store, so it is
+    /// carried over from the family that stood before this batch.
     fn take_from(store: &mut Store, held: Option<&SessionState>) -> Self {
         Self {
+            // Session-addressed state was never projected: it is carried
+            // over from the family that stood before this batch.
             chats: held.map(|held| held.chats.clone()).unwrap_or_default(),
-            trees: store.take().unwrap_or_default(),
-            recents: store.take().unwrap_or_default(),
-            changes: store.take().unwrap_or_default(),
-            history: store.take().unwrap_or_default(),
-            comments: store.take().unwrap_or_default(),
-            terminals: store.take().unwrap_or_default(),
+            trees: held.map(|held| held.trees.clone()).unwrap_or_default(),
+            recents: held.map(|held| held.recents.clone()).unwrap_or_default(),
+            terminals: held.map(|held| held.terminals.clone()).unwrap_or_default(),
+            history: held.map(|held| held.history.clone()).unwrap_or_default(),
+            comments: held.map(|held| held.comments.clone()).unwrap_or_default(),
+            changes: held.map(|held| held.changes.clone()).unwrap_or_default(),
             documents: store.take().unwrap_or_default(),
             scratch_names: store.take().unwrap_or_default(),
         }
+    }
+
+    /// The projected components this batch wrote, by name — what a
+    /// scopeless scatter is about to drop on the floor.
+    fn orphans(&self) -> Vec<&'static str> {
+        let mut named = Vec::new();
+        if !self.documents.is_empty() {
+            named.push("documents");
+        }
+        if !self.scratch_names.is_empty() {
+            named.push("scratch names");
+        }
+        named
     }
 
     fn is_empty(&self) -> bool {
@@ -239,28 +250,67 @@ impl Hosts {
 
     /// A session's conversations, reached by its own id whatever the
     /// batch was gathered for.
-    pub(crate) fn chats_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::higent::Chats> {
-        Some(
-            &store
-                .get::<Hosts>()?
-                .entries
-                .get(&session.host)?
-                .families
-                .get(&session.session)?
-                .chats,
-        )
+    /// A session's own state, addressed by its id. `Hosts` rides EVERY
+    /// gather whole, so this road works under any scope — or none.
+    /// That is the point: state reached this way cannot be filed into
+    /// the family a batch happened to be gathered for, and cannot be
+    /// dropped by a scopeless scatter.
+    /// `HostId::LOCAL` is a PLACEHOLDER until the local seat registers
+    /// and `rekey_local_families` moves the family to the real id — and
+    /// it moves the family, not the ids panes and landings already hold.
+    /// So an address naming the placeholder resolves to the live local
+    /// host, and vice versa: the id a caller carries never goes stale.
+    fn addressed(store: &Store, session: &crate::SessionId) -> crate::SessionId {
+        let live = store
+            .get::<crate::higent::LocalHost>()
+            .and_then(|local| local.0);
+        let Some(live) = live else {
+            return session.clone();
+        };
+        let known = |host: HostId| {
+            store.get::<Hosts>().is_some_and(|hosts| {
+                hosts
+                    .entries
+                    .get(&host)
+                    .is_some_and(|row| row.families.contains_key(&session.session))
+            })
+        };
+        if session.host == HostId::LOCAL && !known(HostId::LOCAL) {
+            return crate::SessionId {
+                host: live,
+                session: session.session.clone(),
+            };
+        }
+        if session.host == live && !known(live) && known(HostId::LOCAL) {
+            return crate::SessionId {
+                host: HostId::LOCAL,
+                session: session.session.clone(),
+            };
+        }
+        session.clone()
     }
 
-    /// Mutate a session's conversations in place. The family is minted
-    /// if this is the session's first chat.
-    pub(crate) fn update_chats(
+    pub(crate) fn family<'a>(
+        store: &'a Store,
+        session: &crate::SessionId,
+    ) -> Option<&'a SessionState> {
+        let session = Self::addressed(store, session);
+        store
+            .get::<Hosts>()?
+            .entries
+            .get(&session.host)?
+            .families
+            .get(&session.session)
+    }
+
+    /// Mutate a session's own state in place. The family is minted if
+    /// this is the session's first.
+    pub(crate) fn update_family(
         store: &mut Store,
         session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::higent::Chats),
+        mutate: impl FnOnce(&mut SessionState),
     ) {
+        let session = &Self::addressed(store, session);
         store.update::<Hosts>(|hosts| {
             let mut host = match hosts.entries.get(&session.host) {
                 Some(host) => host.clone(),
@@ -274,11 +324,35 @@ impl Hosts {
                 .get(&session.session)
                 .cloned()
                 .unwrap_or_default();
-            mutate(&mut family.chats);
+            mutate(&mut family);
             host.families.insert_mut(session.session.clone(), family);
             hosts.entries.insert_mut(session.host, host);
             hosts.generation += 1;
         });
+    }
+
+    pub(crate) fn chats_of<'a>(
+        store: &'a Store,
+        session: &crate::SessionId,
+    ) -> Option<&'a crate::higent::Chats> {
+        Self::family(store, session).map(|family| &family.chats)
+    }
+
+    pub(crate) fn update_chats(
+        store: &mut Store,
+        session: &crate::SessionId,
+        mutate: impl FnOnce(&mut crate::higent::Chats),
+    ) {
+        Self::update_family(store, session, |family| mutate(&mut family.chats));
+    }
+
+    /// Which session owns a terminal — the cold road, for a family row
+    /// or a walk back that holds a channel and nothing else.
+    pub(crate) fn session_of_terminal(
+        store: &Store,
+        channel: &crate::higent::ChannelUri,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |families| families.terminals.holds(channel))
     }
 
     /// Which session owns a chat — the COLD road, for the places that
@@ -395,11 +469,26 @@ impl Hosts {
     /// scatter into. The CHAT records are safe — they live in the
     /// global store now, one home whatever the gather — but anything
     /// else written here would be dropped on the floor.
+    /// A batch gathered without a session scope has no family to
+    /// scatter into, so whatever it wrote to a PROJECTED component is
+    /// dropped here. Session-ADDRESSED state (chats, trees, recents,
+    /// terminals) is not projected and cannot be lost this way; the
+    /// rest can, and it must never be lost QUIETLY — a `debug_assert`
+    /// alone is invisible in the build the user runs.
     pub(crate) fn assert_no_family_orphans(store: &mut Store) {
         let orphans = SessionState::take_from(store, None);
+        let named = orphans.orphans();
+        if !named.is_empty() {
+            eprintln!(
+                "[state] DROPPED a session-family write made with no session scope: {}\n{}",
+                named.join(", "),
+                std::backtrace::Backtrace::force_capture()
+            );
+        }
         debug_assert!(
-            orphans.is_empty(),
-            "a session-family write happened in a batch gathered without a session scope"
+            named.is_empty(),
+            "a session-family write happened in a batch gathered without a session scope: {}",
+            named.join(", ")
         );
     }
 }

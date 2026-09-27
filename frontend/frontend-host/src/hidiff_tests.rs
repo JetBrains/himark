@@ -1,3 +1,11 @@
+/// The session these canvas tests work in.
+fn canvas_home() -> himark::SessionId {
+    himark::SessionId {
+        host: himark::higent::HostId::LOCAL,
+        session: himark::higent::SessionUri::new("hihost-fs:/local"),
+    }
+}
+
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -2270,6 +2278,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2389,6 +2398,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             DiffCanvasView::seeded_for_tests(
                 &mut store,
                 &ui,
+                canvas_home(),
                 himark::diff_canvas::CanvasSource::WorkingCopy {
                     folder: location("proj", himark::ResourceType::directory()),
                 },
@@ -2477,6 +2487,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2650,6 +2661,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2844,6 +2856,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2962,6 +2975,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3095,6 +3109,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3252,6 +3267,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3387,6 +3403,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3519,6 +3536,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3656,6 +3674,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3837,6 +3856,7 @@ fn seeded_working_canvas(
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3897,6 +3917,7 @@ fn a_retired_file_leaves_no_orphan_row() {
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
+            canvas_home(),
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3972,7 +3993,7 @@ fn membership_follows_every_adopted_listing() {
     };
     let view = {
         let mut store = app.store_mut();
-        DiffCanvasView::over(&mut store, source)
+        DiffCanvasView::over(&mut store, canvas_home(), source)
     };
 
     let mut lcg: u64 = 0x5eed_cafe;
@@ -4069,7 +4090,7 @@ fn membership_minimal_repro() {
     };
     let view = {
         let mut store = app.store_mut();
-        DiffCanvasView::over(&mut store, source)
+        DiffCanvasView::over(&mut store, canvas_home(), source)
     };
     let ui = himark::test_document::test_ui();
     let ready = |names: &[&str], gen: u64| {

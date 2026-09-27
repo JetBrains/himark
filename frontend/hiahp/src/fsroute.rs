@@ -211,8 +211,11 @@ pub fn resolve_base(
     if himark::hichanges::scoped(location) || !served(location) {
         return None;
     }
-    let before =
-        himark::hichanges::Changes::base_ref(store, &format!("/{}", location.path().join("/")))?;
+    let before = himark::hichanges::Changes::base_ref(
+        store,
+        &himark::SessionId::working(store),
+        &format!("/{}", location.path().join("/")),
+    )?;
     let (origin, _) = himark::hichanges::raw_ref(&before)?;
     (origin == location.authority().as_str()).then_some(before)
 }

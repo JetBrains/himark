@@ -34,16 +34,17 @@ impl CanvasSource {
         }
     }
 
-    pub fn title(&self, store: &Store) -> String {
+    pub fn title(&self, store: &Store, home: &crate::SessionId) -> String {
         match self {
             CanvasSource::WorkingCopy { folder } => format!("Changes — {}", folder.name()),
             CanvasSource::Commit { folder, id } => {
-                let summary = crate::hihistory::History::folder(store, folder).and_then(|held| {
-                    held.commits
-                        .iter()
-                        .find(|commit| commit.id == id.as_str())
-                        .map(|commit| commit.summary.clone())
-                });
+                let summary =
+                    crate::hihistory::History::folder(store, home, folder).and_then(|held| {
+                        held.commits
+                            .iter()
+                            .find(|commit| commit.id == id.as_str())
+                            .map(|commit| commit.summary.clone())
+                    });
                 match summary {
                     Some(summary) => summary,
                     None => {
@@ -103,13 +104,17 @@ pub enum CanvasBanner {
     },
 }
 
-pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanner> {
+pub fn canvas_banner(
+    store: &Store,
+    home: &crate::SessionId,
+    source: &CanvasSource,
+) -> Option<CanvasBanner> {
     match source {
         CanvasSource::WorkingCopy { folder } => Some(CanvasBanner::Composer {
             folder: folder.clone(),
         }),
         CanvasSource::Commit { folder, id } => {
-            let held = crate::hihistory::History::folder(store, folder)?;
+            let held = crate::hihistory::History::folder(store, home, folder)?;
             let commit = held
                 .commits
                 .iter()
@@ -130,23 +135,27 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
 
 /// The per-frame staleness probe — O(1), no listing built. The panel
 /// derives rows only when this moves (the ReconcileShell contract).
-pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
+pub fn canvas_generation(store: &Store, home: &crate::SessionId, source: &CanvasSource) -> u64 {
     match source {
         // Per-SET staleness (docs/model-view.md): a canvas re-derives
         // when ITS set moved, not when anything in the session did.
-        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, folder),
-        CanvasSource::Commit { folder, id } => Changes::commit_generation(store, folder, id),
+        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, home, folder),
+        CanvasSource::Commit { folder, id } => Changes::commit_generation(store, home, folder, id),
     }
 }
 
 /// The staleness probe + the listing, in one read. The generation is
 /// the owning store's (`Changes` / `History`) — the panel re-derives
 /// on movement, the ReconcileShell contract.
-pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing) {
+pub fn canvas_files(
+    store: &Store,
+    home: &crate::SessionId,
+    source: &CanvasSource,
+) -> (u64, CanvasListing) {
     match source {
         CanvasSource::WorkingCopy { folder } => {
-            let generation = Changes::folder_generation(store, folder);
-            let listing = match Changes::folder(store, folder) {
+            let generation = Changes::folder_generation(store, home, folder);
+            let listing = match Changes::folder(store, home, folder) {
                 None => CanvasListing::Pending("no changes source".to_owned()),
                 Some(changes) => listing_of(&changes.status, changes.files.iter(), |entry| {
                     // The working-copy pair diffs the LIVE file — the
@@ -159,8 +168,9 @@ pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing
         CanvasSource::Commit { folder, id } => {
             // Per-SET staleness: the commit's own ChangeSet carries
             // the content and the generation (docs/model-view.md).
-            let generation = Changes::commit_generation(store, folder, id);
-            let held = Changes::commit_set(store, folder, id).filter(|set| set.generation() > 0);
+            let generation = Changes::commit_generation(store, home, folder, id);
+            let held =
+                Changes::commit_set(store, home, folder, id).filter(|set| set.generation() > 0);
             let listing = match held {
                 None => CanvasListing::Pending("fetching the commit…".to_owned()),
                 Some(commit) => listing_of(&commit.status, commit.files.iter(), |entry| {
@@ -244,6 +254,9 @@ fn tree_order(a: &[String], b: &[String]) -> std::cmp::Ordering {
 /// the reveal is a delivery, not an identity.
 #[derive(Clone)]
 pub struct CanvasPlace {
+    /// The session that owns the folder — a walk back has to land in
+    /// the same family the canvas read from.
+    pub home: crate::SessionId,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -260,6 +273,8 @@ impl crate::Place for CanvasPlace {}
 /// canvas is found by source in the store; a fresh view of it costs
 /// nothing). An armed reveal rides the place.
 pub struct OpenDiffCanvas {
+    /// The session that owns the folder this canvas shows.
+    pub home: crate::SessionId,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -284,6 +299,7 @@ impl crate::DynamicCommand for OpenDiffCanvas {
         if let CanvasSource::Commit { folder, id } = &self.source {
             crate::DynamicCommand::perform(
                 &crate::hihistory::FetchCommitFiles {
+                    home: self.home.clone(),
                     folder: folder.clone(),
                     commit: id.clone(),
                 },
@@ -297,6 +313,7 @@ impl crate::DynamicCommand for OpenDiffCanvas {
             return;
         };
         let place = CanvasPlace {
+            home: self.home.clone(),
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };

@@ -363,7 +363,7 @@ impl Completion {
         }
         self.source = SourceState::Path {
             folders: Arc::new(crate::higent::session_folders(store, session)),
-            recents: Arc::new(crate::RecentLocations::list(store)),
+            recents: Arc::new(crate::RecentLocations::list(store, session)),
             found: Arc::new(Vec::new()),
             rows: Arc::new(Vec::new()),
         };

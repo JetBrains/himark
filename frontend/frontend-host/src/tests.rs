@@ -1139,7 +1139,11 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             },
@@ -1565,7 +1569,7 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     });
     assert!(!mounted, "the terminal handle dropped with the pane");
     assert_eq!(
-        himark::terminal::Terminals::list(engine.app.store()).len(),
+        himark::terminal::Terminals::list(engine.app.store(), &engine_session(&engine)).len(),
         1,
         "the PTY session survives in the family"
     );
@@ -2594,7 +2598,8 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
                 })
     });
     assert!(
-        himark::RecentLocations::list(engine.app.store()).contains(&picked),
+        himark::RecentLocations::list(engine.app.store(), &engine_session(&engine))
+            .contains(&picked),
         "the recents follow the re-point"
     );
 }
@@ -2720,7 +2725,11 @@ fn a_one_sided_diff_goes_quiet() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             })
@@ -3059,6 +3068,14 @@ fn drawer_rows(engine: &HimarkEngine) -> Option<Vec<(String, usize)>> {
         .as_any()
         .downcast_ref::<himark::higent::AgentsPanel>()?;
     Some(panel.rows())
+}
+
+/// The session the engine's sole window is working in — the owner a
+/// test names when it reaches session-addressed state.
+fn engine_session(engine: &HimarkEngine) -> himark::SessionId {
+    himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
+        .expect("the window entity")
+        .current_session()
 }
 
 fn shown_chat(engine: &HimarkEngine) -> Option<himark::higent::ChatPanel> {
@@ -6849,7 +6866,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             },
@@ -6996,7 +7017,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .and_then(|view| view.cursor_name())
             },
@@ -7051,7 +7076,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             })
@@ -7146,7 +7175,11 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             })
@@ -7240,7 +7273,11 @@ fn diff_resize_probe_over_real_code() {
                             .downcast_ref::<himark::changes_view::ChangesPane>()
                     })
                     .and_then(|pane| {
-                        himark::hichanges::Changes::view_ref(engine.app.store(), pane.view())
+                        himark::hichanges::Changes::view_ref(
+                            engine.app.store(),
+                            pane.home(),
+                            pane.view(),
+                        )
                     })
                     .map(|view| view.rows())
             })

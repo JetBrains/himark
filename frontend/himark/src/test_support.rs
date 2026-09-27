@@ -121,6 +121,14 @@ impl Application {
         *windows.first().expect("a window")
     }
 
+    /// The session the sole window is working in — the owner a test
+    /// names when it reaches session-addressed state.
+    pub fn sole_window_session(&self) -> crate::SessionId {
+        crate::Windows::window_ref(self.store(), self.sole_window())
+            .expect("the window entity")
+            .current_session()
+    }
+
     fn workbench(&self) -> &crate::Workbench {
         crate::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")

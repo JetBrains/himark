@@ -61,6 +61,7 @@ impl crate::DynamicEditorCommand for AddComment {
         };
 
         let host = crate::OpenDocuments::by_location(store, location);
+        let home = card_home(store, location);
 
         let annotation = {
             let mut view = document.text().view();
@@ -69,7 +70,16 @@ impl crate::DynamicEditorCommand for AddComment {
             sync::Comments::created(store, location, range)
         };
 
-        let view = CommentView::new(host, width, store, ui, &fonts, &theme, annotation.clone());
+        let view = CommentView::new(
+            home.clone(),
+            host,
+            width,
+            store,
+            ui,
+            &fonts,
+            &theme,
+            annotation.clone(),
+        );
         let markup = comments_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -90,7 +100,7 @@ impl crate::DynamicEditorCommand for AddComment {
 
         document.set_focus(editor, EditorFocus::Inlay(key));
         if let (Some(id), Some(host)) = (annotation, host) {
-            sync::Comments::card_born(store, &id, host, key);
+            sync::Comments::card_born(store, &home, &id, host, key);
 
             AppRequests::push(
                 store,
@@ -124,12 +134,25 @@ impl crate::DynamicCommand for EnsureComments {
     }
 }
 
+/// Which session a card belongs to: the one that ROUTES the location
+/// when it is session-served, else the session the batch is working in,
+/// else the local workspace. A card always has a home — a plain file's
+/// comments belong to the local session, not to nothing.
+fn card_home(store: &imba::store::Store, location: &crate::ResourceLocation) -> crate::SessionId {
+    if let Some((host, session)) = crate::higent::seat::route(store, location.authority().as_str())
+    {
+        return crate::SessionId { host, session };
+    }
+    crate::SessionId::working(store)
+}
+
 fn comments_markup() -> crate::MarkupId {
     static ID: std::sync::OnceLock<crate::MarkupId> = std::sync::OnceLock::new();
     *ID.get_or_init(crate::MarkupId::mint)
 }
 
 pub struct RemoveComment {
+    pub home: crate::SessionId,
     pub document: crate::DocumentId,
     pub key: InlayKey,
 
@@ -152,7 +175,7 @@ impl crate::DynamicCommand for RemoveComment {
     ) {
         let ui = app.ui_ctx();
         if let Some(annotation) = &self.annotation {
-            sync::Comments::removed(store, annotation);
+            sync::Comments::removed(store, &self.home, annotation);
         }
         let Some(mut doc) = crate::OpenDocuments::document(store, self.document) else {
             return;
@@ -169,6 +192,7 @@ impl crate::DynamicCommand for RemoveComment {
 }
 
 pub struct SendComments {
+    pub home: crate::SessionId,
     pub ids: Vec<AnnotationId>,
 }
 
@@ -186,7 +210,7 @@ impl crate::DynamicCommand for SendComments {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::send_to_agent(store, window, self.ids.clone(), fx);
+        sync::Comments::send_to_agent(store, &self.home, window, self.ids.clone(), fx);
     }
 }
 
@@ -213,6 +237,9 @@ fn markdown_comment_document(text: crate::Text) -> Document {
 pub struct CommentView {
     editor: EditorView,
 
+    /// The session that owns this card's thread.
+    home: crate::SessionId,
+
     host: Option<crate::DocumentId>,
 
     key: Option<InlayKey>,
@@ -230,6 +257,7 @@ pub struct CommentView {
 
 impl CommentView {
     fn new(
+        home: crate::SessionId,
         host: Option<crate::DocumentId>,
         width: f32,
         store: &imba::store::Store,
@@ -251,6 +279,7 @@ impl CommentView {
         let reported_revision = editor.document.revision();
         Self {
             editor,
+            home,
             host,
             key: None,
             annotation,
@@ -262,6 +291,7 @@ impl CommentView {
     }
 
     pub(crate) fn materialized(
+        home: crate::SessionId,
         host: Option<crate::DocumentId>,
         width: f32,
         store: &imba::store::Store,
@@ -301,6 +331,7 @@ impl CommentView {
         let reported_revision = editor.document.revision();
         Self {
             editor,
+            home,
             host,
             key: None,
             annotation: Some(annotation),
@@ -473,7 +504,12 @@ impl View for CommentView {
                     let revision = self.editor.document.revision();
                     if revision != self.reported_revision {
                         self.reported_revision = revision;
-                        sync::Comments::text_edited(store, annotation, self.text_rope());
+                        sync::Comments::text_edited(
+                            store,
+                            &self.home,
+                            annotation,
+                            self.text_rope(),
+                        );
                     }
                 }
             }
@@ -500,6 +536,7 @@ impl View for CommentView {
                 AppRequests::push(
                     store,
                     Arc::new(RemoveComment {
+                        home: self.home.clone(),
                         document,
                         key,
                         annotation: self.annotation.clone(),
@@ -513,6 +550,7 @@ impl View for CommentView {
                 AppRequests::push(
                     store,
                     Arc::new(SendComments {
+                        home: self.home.clone(),
                         ids: vec![annotation.clone()],
                     }),
                 );
@@ -521,10 +559,10 @@ impl View for CommentView {
                 let Some(annotation) = &self.annotation else {
                     return;
                 };
-                let resolved = sync::Comments::record(store, annotation)
+                let resolved = sync::Comments::record(store, &self.home, annotation)
                     .map(|record| record.resolved)
                     .unwrap_or(false);
-                sync::Comments::resolve(store, annotation, !resolved);
+                sync::Comments::resolve(store, &self.home, annotation, !resolved);
             }
         }
     }
@@ -588,7 +626,7 @@ impl View for CommentView {
                 let resolved = self
                     .annotation
                     .as_ref()
-                    .and_then(|id| sync::Comments::record(store, id))
+                    .and_then(|id| sync::Comments::record(store, &self.home, id))
                     .map(|record| record.resolved)
                     .unwrap_or(false);
                 let check = imba::leaf::leaf(close, close)

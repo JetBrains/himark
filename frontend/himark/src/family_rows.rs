@@ -32,9 +32,11 @@ impl RowMinters {
 
 pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
     match row {
-        FamilyRow::Terminal(channel) => Some(Box::new(crate::terminal::TerminalView::new(
-            channel.clone(),
-        ))),
+        FamilyRow::Terminal(channel) => crate::higent::Hosts::session_of_terminal(store, channel)
+            .map(|home| {
+                Box::new(crate::terminal::TerminalView::new(home, channel.clone()))
+                    as Box<dyn crate::DynPanelView>
+            }),
         FamilyRow::Chat(chat) => crate::higent::ChatPane::of_chat(store, chat.clone())
             .map(|pane| Box::new(pane) as Box<dyn crate::DynPanelView>),
         row => store
@@ -47,11 +49,13 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
 
 pub fn mint_unfronted(store: &Store, fronted: &[FamilyRow]) -> Vec<Box<dyn crate::DynPanelView>> {
     let mut rows: Vec<FamilyRow> = Vec::new();
-    rows.extend(
-        crate::terminal::Terminals::list(store)
-            .into_iter()
-            .map(FamilyRow::Terminal),
-    );
+    if let Some(session) = crate::Gathered::scope(store) {
+        rows.extend(
+            crate::terminal::Terminals::list(store, session)
+                .into_iter()
+                .map(FamilyRow::Terminal),
+        );
+    }
     rows.extend(
         crate::OpenDocuments::pair_ids(store)
             .into_iter()

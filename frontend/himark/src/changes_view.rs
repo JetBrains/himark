@@ -150,7 +150,12 @@ impl ChangesView {
                     crate::env::Fonts::of(store),
                 )
                 .with_folds(),
-                crate::hihistory::commit_tip,
+                {
+                    let home = workspace.clone();
+                    move |rows, store, point| {
+                        crate::hihistory::commit_tip(rows, store, &home, point)
+                    }
+                },
             ),
             items: rpds::HashTrieMapSync::new_sync(),
             workspace,
@@ -196,14 +201,15 @@ impl ChangesView {
                 .map(|folder| match self.sets {
                     ViewSets::WorkingCopies => crate::hichanges::folder_node(
                         folder,
-                        Changes::folder(store, folder).as_ref(),
+                        Changes::folder(store, &self.workspace, folder).as_ref(),
                         &mut items,
                         counts,
                     ),
                     ViewSets::History => crate::hihistory::graph_node(
                         store,
+                        &self.workspace,
                         folder,
-                        History::folder(store, folder).as_ref(),
+                        History::folder(store, &self.workspace, folder).as_ref(),
                         &mut items,
                         counts,
                     ),
@@ -232,9 +238,9 @@ impl ChangesView {
     fn displayed_sets(&self, store: &Store) -> Vec<crate::hichanges::ChangeSetId> {
         let mut sets = Vec::new();
         for folder in crate::higent::session_folders(store, &self.workspace) {
-            sets.extend(Changes::id_for_folder(store, &folder));
+            sets.extend(Changes::id_for_folder(store, &self.workspace, &folder));
             if self.sets == ViewSets::History {
-                if let Some(entry) = History::folder(store, &folder) {
+                if let Some(entry) = History::folder(store, &self.workspace, &folder) {
                     sets.extend(entry.commits.iter().map(|commit| commit.change_set));
                 }
             }
@@ -279,13 +285,20 @@ impl ChangesView {
                 }
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas { source, reveal }),
+                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                        home: self.workspace.clone(),
+                        source,
+                        reveal,
+                    }),
                 )));
             }
             Some(RowItem::Grow { folder }) => {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(crate::hihistory::GrowHistory { folder }),
+                    Arc::new(crate::hihistory::GrowHistory {
+                        home: self.workspace.clone(),
+                        folder,
+                    }),
                 )));
             }
             Some(RowItem::Note) | None => {}
@@ -350,13 +363,18 @@ impl View for ChangesView {
                                     ..
                                 }) = self.items.get(&key).cloned()
                                 {
-                                    let unfetched =
-                                        Changes::commit_generation(store, &folder, &id) == 0;
+                                    let unfetched = Changes::commit_generation(
+                                        store,
+                                        &self.workspace,
+                                        &folder,
+                                        &id,
+                                    ) == 0;
                                     if unfetched {
                                         self.request =
                                             Some(ModalRequest::Perform(AppCommand::Dynamic(
                                                 self.window,
                                                 Arc::new(crate::hihistory::FetchCommitFiles {
+                                                    home: self.workspace.clone(),
                                                     folder,
                                                     commit: id,
                                                 }),
@@ -418,6 +436,7 @@ impl View for ChangesView {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
                     Arc::new(crate::hichanges::RefetchChanges {
+                        home: Some(self.workspace.clone()),
                         folder: Some(folder),
                     }),
                 )));
@@ -425,7 +444,7 @@ impl View for ChangesView {
 
             ChangesViewCommand::AutoGrow => {
                 for folder in crate::higent::session_folders(store, &self.workspace) {
-                    let Some(entry) = History::folder(store, &folder) else {
+                    let Some(entry) = History::folder(store, &self.workspace, &folder) else {
                         continue;
                     };
                     let Some(more) = entry.more else { continue };
@@ -435,7 +454,10 @@ impl View for ChangesView {
                     self.grown.insert_mut(folder.clone(), more);
                     self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                         self.window,
-                        Arc::new(crate::hihistory::GrowHistory { folder }),
+                        Arc::new(crate::hihistory::GrowHistory {
+                            home: self.workspace.clone(),
+                            folder,
+                        }),
                     )));
 
                     break;
@@ -498,7 +520,7 @@ impl View for ChangesView {
                 && crate::higent::session_folders(store, &self.workspace)
                     .iter()
                     .any(|folder| {
-                        History::folder(store, folder).is_some_and(|entry| {
+                        History::folder(store, &self.workspace, folder).is_some_and(|entry| {
                             entry.more.as_deref().is_some_and(|more| {
                                 self.grown.get(folder).map(String::as_str) != Some(more)
                             })
@@ -565,35 +587,47 @@ impl ChangesViewId {
 /// records themselves, the many-to-many set↔view join, and the
 /// stale marks the batch-tail lane consumes.
 impl ChangeSets {
-    pub fn mint_view(store: &mut Store, view: ChangesView) -> ChangesViewId {
+    pub fn mint_view(
+        store: &mut Store,
+        home: &crate::SessionId,
+        view: ChangesView,
+    ) -> ChangesViewId {
         let id = ChangesViewId::mint();
-        store.update::<Changes>(|views| {
+        Self::update(store, home, |views| {
             views.views.insert_mut(id, view);
         });
-        Self::register(store, id);
+        Self::register(store, home, id);
         id
     }
 
-    pub fn view_ref(store: &Store, id: ChangesViewId) -> Option<&ChangesView> {
-        store.get::<Changes>()?.views.get(&id)
+    pub fn view_ref<'a>(
+        store: &'a Store,
+        home: &crate::SessionId,
+        id: ChangesViewId,
+    ) -> Option<&'a ChangesView> {
+        Self::of(store, home)?.views.get(&id)
     }
 
-    fn take_view(store: &mut Store, id: ChangesViewId) -> Option<ChangesView> {
-        let view = Self::view_ref(store, id)?.clone();
-        store.update::<Changes>(|views| {
+    fn take_view(
+        store: &mut Store,
+        home: &crate::SessionId,
+        id: ChangesViewId,
+    ) -> Option<ChangesView> {
+        let view = Self::view_ref(store, home, id)?.clone();
+        Self::update(store, home, |views| {
             views.views.remove_mut(&id);
         });
         Some(view)
     }
 
-    fn put_view(store: &mut Store, id: ChangesViewId, view: ChangesView) {
-        store.update::<Changes>(|views| {
+    fn put_view(store: &mut Store, home: &crate::SessionId, id: ChangesViewId, view: ChangesView) {
+        Self::update(store, home, |views| {
             views.views.insert_mut(id, view);
         });
     }
 
-    fn remove_view(store: &mut Store, id: ChangesViewId) {
-        store.update::<Changes>(|views| {
+    fn remove_view(store: &mut Store, home: &crate::SessionId, id: ChangesViewId) {
+        Self::update(store, home, |views| {
             views.views.remove_mut(&id);
             views.stale.remove_mut(&id);
             let orphaned: Vec<crate::hichanges::ChangeSetId> = views
@@ -619,20 +653,19 @@ impl ChangeSets {
         });
     }
 
-    fn view_ids(store: &Store) -> Vec<ChangesViewId> {
-        store
-            .get::<Changes>()
+    fn view_ids(store: &Store, home: &crate::SessionId) -> Vec<ChangesViewId> {
+        Self::of(store, home)
             .map(|views| views.views.keys().copied().collect())
             .unwrap_or_default()
     }
 
     /// Rebuild the join rows for one view from what it now displays.
-    fn register(store: &mut Store, id: ChangesViewId) {
-        let displayed = match Self::view_ref(store, id) {
+    fn register(store: &mut Store, home: &crate::SessionId, id: ChangesViewId) {
+        let displayed = match Self::view_ref(store, home, id) {
             Some(view) => view.displayed_sets(store),
             None => return,
         };
-        store.update::<Changes>(|views| {
+        Self::update(store, home, |views| {
             // Drop the view's old rows…
             let stale_rows: Vec<crate::hichanges::ChangeSetId> = views
                 .viewers
@@ -665,8 +698,12 @@ impl ChangeSets {
 
     /// The update rule: a change set moved — mark exactly its
     /// uniting views stale. The batch-tail lane rolls them.
-    pub(crate) fn nudge_set(store: &mut Store, set: crate::hichanges::ChangeSetId) {
-        store.update::<Changes>(|views| {
+    pub(crate) fn nudge_set(
+        store: &mut Store,
+        home: &crate::SessionId,
+        set: crate::hichanges::ChangeSetId,
+    ) {
+        Self::update(store, home, |views| {
             let Some(viewing) = views.viewers.get(&set).cloned() else {
                 return;
             };
@@ -682,16 +719,20 @@ impl ChangeSets {
     /// on it. No anchor yet means no view derived rows from the
     /// folder either, but the views still show its placeholder
     /// notes, so fall back to marking everything.
-    pub(crate) fn nudge_folder(store: &mut Store, folder: &ResourceLocation) {
-        match Changes::id_for_folder(store, folder) {
-            Some(anchor) => Self::nudge_set(store, anchor),
-            None => Self::nudge_all(store),
+    pub(crate) fn nudge_folder(
+        store: &mut Store,
+        home: &crate::SessionId,
+        folder: &ResourceLocation,
+    ) {
+        match Changes::id_for_folder(store, home, folder) {
+            Some(anchor) => Self::nudge_set(store, home, anchor),
+            None => Self::nudge_all(store, home),
         }
     }
 
-    pub(crate) fn nudge_all(store: &mut Store) {
-        let ids = Self::view_ids(store);
-        store.update::<Changes>(|views| {
+    pub(crate) fn nudge_all(store: &mut Store, home: &crate::SessionId) {
+        let ids = Self::view_ids(store, home);
+        Self::update(store, home, |views| {
             for id in ids {
                 views.stale.insert_mut(id);
             }
@@ -709,8 +750,7 @@ pub(crate) fn sync_changes_views(store: &mut Store, ui: &UiCtx) {
     let Some(scope) = crate::Gathered::scope(store).cloned() else {
         return;
     };
-    let stale: Vec<ChangesViewId> = store
-        .get::<Changes>()
+    let stale: Vec<ChangesViewId> = Changes::of(store, &scope)
         .map(|views| {
             views
                 .stale
@@ -726,13 +766,13 @@ pub(crate) fn sync_changes_views(store: &mut Store, ui: &UiCtx) {
         })
         .unwrap_or_default();
     for id in stale {
-        let Some(mut view) = Changes::take_view(store, id) else {
+        let Some(mut view) = Changes::take_view(store, &scope, id) else {
             continue;
         };
         view.refresh(store, ui);
-        Changes::put_view(store, id, view);
-        Changes::register(store, id);
-        store.update::<Changes>(|views| {
+        Changes::put_view(store, &scope, id, view);
+        Changes::register(store, &scope, id);
+        Changes::update(store, &scope, |views| {
             views.stale.remove_mut(&id);
         });
     }
@@ -742,13 +782,16 @@ pub(crate) fn sync_changes_views(store: &mut Store, ui: &UiCtx) {
 /// Its death removes the record: tree rows are pure derivation,
 /// nothing is lost on close.
 pub struct ChangesPane {
+    /// The session whose registry holds this dock's view record.
+    home: crate::SessionId,
     view: ChangesViewId,
     request: Option<ModalRequest>,
 }
 
 impl ChangesPane {
-    pub fn new(view: ChangesViewId) -> Self {
+    pub fn new(home: crate::SessionId, view: ChangesViewId) -> Self {
         Self {
+            home,
             view,
             request: None,
         }
@@ -757,11 +800,17 @@ impl ChangesPane {
     pub fn view(&self) -> ChangesViewId {
         self.view
     }
+
+    /// The session whose registry holds this dock's view.
+    pub fn home(&self) -> &crate::SessionId {
+        &self.home
+    }
 }
 
 impl Clone for ChangesPane {
     fn clone(&self) -> Self {
         Self {
+            home: self.home.clone(),
             view: self.view,
             request: None,
         }
@@ -776,7 +825,7 @@ impl View for ChangesPane {
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, ChangesViewCommand> {
-        match Changes::view_ref(store, self.view) {
+        match Changes::view_ref(store, &self.home, self.view) {
             Some(view) => view.focus_data(store, ui),
             None => imba::focus::FocusData::default(),
         }
@@ -789,7 +838,7 @@ impl View for ChangesPane {
         command: Self::Command,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut view) = Changes::take_view(store, self.view) else {
+        let Some(mut view) = Changes::take_view(store, &self.home, self.view) else {
             return;
         };
         view.perform(store, ui, command, fx);
@@ -798,11 +847,11 @@ impl View for ChangesPane {
         if let Some(request) = view.request.take() {
             self.request = Some(request);
         }
-        Changes::put_view(store, self.view, view);
+        Changes::put_view(store, &self.home, self.view, view);
     }
 
     fn destroy(&mut self, store: &mut Store, _fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        Changes::remove_view(store, self.view);
+        Changes::remove_view(store, &self.home, self.view);
     }
 
     fn display<'a>(
@@ -814,7 +863,7 @@ impl View for ChangesPane {
         imba::laid(
             move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
                 let widget: imba::ThunkBox<'a, ChangesViewCommand> =
-                    match Changes::view_ref(store, self.view) {
+                    match Changes::view_ref(store, &self.home, self.view) {
                         Some(view) => imba::ThunkBox::new(
                             arena,
                             imba::Layout::layout(

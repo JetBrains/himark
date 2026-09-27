@@ -208,6 +208,16 @@ pub struct SessionId {
 }
 
 impl SessionId {
+    /// The session this batch is WORKING in: the one it was gathered
+    /// for, else the local workspace. The answer for state that belongs
+    /// to "wherever the user is", as opposed to state whose own key
+    /// names its owner.
+    pub fn working(store: &Store) -> SessionId {
+        crate::Gathered::scope(store)
+            .cloned()
+            .unwrap_or_else(|| Self::local_default(store))
+    }
+
     pub fn local_default(store: &Store) -> SessionId {
         let host = store
             .get::<crate::higent::LocalHost>()

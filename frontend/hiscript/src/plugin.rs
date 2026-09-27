@@ -405,7 +405,10 @@ impl himark::DynamicEditorCommand for RunScript {
             source,
             snapshots,
             agent,
-            changes: himark::hichanges::Changes::script_summary(store),
+            changes: himark::hichanges::Changes::script_summary(
+                store,
+                &himark::SessionId::working(store),
+            ),
         };
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
             himark::EditorCommand::Dynamic {

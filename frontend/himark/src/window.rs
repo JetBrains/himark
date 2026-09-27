@@ -1465,7 +1465,7 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                Self::touch_recent(store, target);
+                Self::touch_recent(store, &self.current_session(), target);
                 return true;
             }
         }
@@ -1473,7 +1473,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        Self::touch_recent(store, target);
+        Self::touch_recent(store, &self.current_session(), target);
         true
     }
 
@@ -1523,7 +1523,7 @@ impl Window {
             let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        Self::touch_recent(store, target);
+        Self::touch_recent(store, &self.current_session(), target);
         true
     }
 
@@ -1577,9 +1577,13 @@ impl Window {
         true
     }
 
-    fn touch_recent(store: &mut Store, target: &crate::NavigationLocation) {
+    fn touch_recent(
+        store: &mut Store,
+        session: &crate::SessionId,
+        target: &crate::NavigationLocation,
+    ) {
         if let Some(place) = target.place::<crate::EditorPlace>() {
-            crate::RecentLocations::touch(store, &place.location);
+            crate::RecentLocations::touch(store, session, &place.location);
         }
     }
 

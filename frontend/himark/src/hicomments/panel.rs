@@ -269,8 +269,8 @@ impl CommentsView {
     }
 
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = Comments::generation(store);
-        let records = Comments::records(store);
+        self.seen = Comments::generation(store, &self.workspace);
+        let records = Comments::records(store, &self.workspace);
         let mut items = rpds::HashTrieMapSync::new_sync();
         let mut nodes: Vec<ForestNode<ResourceLocation>> =
             crate::higent::session_folders(store, &self.workspace)
@@ -314,7 +314,10 @@ impl CommentsView {
 
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(NavigateToComment { annotation: id }),
+                    Arc::new(NavigateToComment {
+                        home: self.workspace.clone(),
+                        annotation: id,
+                    }),
                 )));
             }
             Some(RowItem::Note) | None => {}
@@ -406,7 +409,10 @@ impl View for CommentsView {
                 }
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
-                    Arc::new(crate::hicomments::SendComments { ids }),
+                    Arc::new(crate::hicomments::SendComments {
+                        home: self.workspace.clone(),
+                        ids,
+                    }),
                 )));
             }
             CommentsCommand::Dismiss => {
@@ -491,7 +497,7 @@ impl View for CommentsView {
                 chip,
             );
 
-            let stale = Comments::generation(store) != self.seen;
+            let stale = Comments::generation(store, &self.workspace) != self.seen;
             overlay.wrap(move |inner| ReconcileShell { inner, stale })
         })
     }
@@ -550,6 +556,7 @@ impl ModalView for CommentsView {
 }
 
 struct NavigateToComment {
+    home: crate::SessionId,
     annotation: AnnotationId,
 }
 
@@ -568,10 +575,10 @@ impl crate::DynamicCommand for NavigateToComment {
         fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(record) = Comments::record(store, &self.annotation) else {
+        let Some(record) = Comments::record(store, &self.home, &self.annotation) else {
             return;
         };
-        let target = live_range(store, &self.annotation)
+        let target = live_range(store, &self.home, &self.annotation)
             .or(record.range.clone())
             .unwrap_or(crate::LineCol { line: 0, col: 0 }..crate::LineCol { line: 0, col: 0 });
         match crate::OpenDocuments::by_location(store, &record.location) {
@@ -595,8 +602,12 @@ impl crate::DynamicCommand for NavigateToComment {
     }
 }
 
-fn live_range(store: &Store, annotation: &AnnotationId) -> Option<std::ops::Range<crate::LineCol>> {
-    let (document, key) = Comments::card(store, annotation)?;
+fn live_range(
+    store: &Store,
+    home: &crate::SessionId,
+    annotation: &AnnotationId,
+) -> Option<std::ops::Range<crate::LineCol>> {
+    let (document, key) = Comments::card(store, home, annotation)?;
     let doc = crate::OpenDocuments::document_ref(store, document)?;
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let markup = doc.feature_markup(comments_markup())?;

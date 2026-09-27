@@ -338,15 +338,22 @@ impl SessionTree {
         self.0.is_none()
     }
 
-    fn find_or_create(store: &mut Store, ui: &imba::UiCtx) -> LocationTree {
-        store
-            .get::<SessionTree>()
-            .and_then(|tree| tree.0.clone())
+    /// Addressed by the session that owns it — never by whatever
+    /// session the batch was gathered for.
+    fn find_or_create(
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        session: &crate::SessionId,
+    ) -> LocationTree {
+        crate::higent::Hosts::family(store, session)
+            .and_then(|family| family.trees.0.clone())
             .unwrap_or_else(|| LocationTree::new(store, ui))
     }
 
-    fn persist(store: &mut Store, tree: &LocationTree) {
-        store.put(SessionTree(Some(tree.clone())));
+    fn persist(store: &mut Store, session: &crate::SessionId, tree: &LocationTree) {
+        crate::higent::Hosts::update_family(store, session, |family| {
+            family.trees = SessionTree(Some(tree.clone()));
+        });
     }
 }
 
@@ -410,7 +417,7 @@ impl SessionTreeView {
         reveal: Option<ResourceLocation>,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) -> Self {
-        let mut tree = SessionTree::find_or_create(store, ui);
+        let mut tree = SessionTree::find_or_create(store, ui, &workspace);
         tree.ensure_roots(
             &crate::higent::session_folders(store, &workspace),
             store,
@@ -464,7 +471,7 @@ impl SessionTreeView {
     }
 
     fn persist(&self, store: &mut Store) {
-        SessionTree::persist(store, &self.tree);
+        SessionTree::persist(store, &self.workspace, &self.tree);
     }
 
     fn list_effect(&self, parent: ResourceLocation) -> imba::effect::AnyEffect<TreeCommand> {

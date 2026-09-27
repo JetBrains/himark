@@ -2028,9 +2028,9 @@ fn test_connector() -> Arc<dyn hiahp::transport::Connector> {
 }
 
 #[cfg(test)]
-mod findroute_tests;
-#[cfg(test)]
 mod chat_flow_tests;
+#[cfg(test)]
+mod findroute_tests;
 #[cfg(test)]
 mod tests;
 

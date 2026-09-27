@@ -69,7 +69,10 @@ impl crate::DynamicEditorCommand for SaveDocument {
                     return;
                 };
                 crate::OpenDocuments::set_location(store, document_id, new_location.clone());
-                crate::RecentLocations::replace(store, location, &new_location);
+                if let Some(session) = crate::higent::Hosts::session_of_document(store, document_id)
+                {
+                    crate::RecentLocations::replace(store, &session, location, &new_location);
+                }
 
                 crate::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
                 Self::launch_store(store, document, document_id, &new_location, fx);
