@@ -472,7 +472,9 @@ impl Conversation {
                 let Some(turn) = self.streaming(&a.turn_id) else {
                     return self.nothing();
                 };
-                let mut landed = Change::Nothing;
+                // A part may land several model parts (a completed tool
+                // call carries its edits): the change names every one.
+                let mut parts = VectorSync::new_sync();
                 let mut next = self.clone();
                 for (part, laid) in read_part(&a.part).iter().cloned() {
                     let Some(grown) =
@@ -481,12 +483,17 @@ impl Conversation {
                         return self.nothing();
                     };
                     next = grown;
-                    landed = Change::Part {
-                        turn: turn.clone(),
-                        part,
-                    };
+                    parts.push_back_mut(part);
                 }
-                (next, landed)
+                let change = match parts.len() {
+                    0 => Change::Nothing,
+                    1 => Change::Part {
+                        turn,
+                        part: parts.first().cloned().expect("one"),
+                    },
+                    _ => Change::Parts { turn, parts },
+                };
+                (next, change)
             }
 
             A::ChatDelta(a) => self.appended(&a.turn_id, &a.part_id, &a.content),

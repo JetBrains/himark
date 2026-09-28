@@ -48,8 +48,12 @@ pub enum CellCommand {
 
     ResolveDiff(Result<crate::higent::BuiltFileEdit, String>),
 
-    /// The off-thread markdown build landed.
-    ResolveText(crate::BuiltDocument),
+    /// The off-thread markdown build landed, for the cell whose
+    /// `pending_nonce` this is.
+    ResolveText {
+        nonce: u64,
+        built: crate::BuiltDocument,
+    },
 
     Diff(crate::UnifiedDiffCommand),
 
@@ -79,11 +83,17 @@ enum CellBody {
     /// A markdown cell whose DOCUMENT is being built off the UI thread
     /// (`BuildDocumentEffect` — the text and the parse in the handler,
     /// the editor mounted at the landing). Streamed deltas land in the
-    /// buffer meanwhile; `grown` says the landing has catching up to do.
+    /// buffer meanwhile; `grown` says how the landing catches up.
     PendingText {
         markdown: String,
         width: f32,
-        grown: bool,
+        /// The band's height while the build runs: what the row was
+        /// sized at, so the first paint does not collapse it.
+        estimate: f32,
+        /// Which build this cell waits for. A re-laid cell under the
+        /// same key must not mount an older build's document.
+        nonce: u64,
+        grown: Grown,
     },
 
     PendingDiff {
@@ -105,10 +115,28 @@ enum CellBody {
     Tools(ToolGroup),
 }
 
+/// What streamed into a pending cell while its build ran.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Grown {
+    Nothing,
+    /// Deltas appended past the text the build was launched with — the
+    /// landing appends the suffix, an edit the size of the deltas.
+    Appended {
+        built: usize,
+    },
+    /// The text was replaced outright (a re-dressed part).
+    Rewritten,
+}
+
 #[derive(Clone)]
 pub struct Cell {
     kind: CellKind,
     body: CellBody,
+}
+
+fn mint_nonce() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 fn markdown_document(text: crate::Text) -> crate::Document {
@@ -200,20 +228,28 @@ impl Cell {
         let chrome = theme.ui().chat.clone();
         let width = Self::editor_width(kind, &chrome, content_width);
         let lines = markdown.lines().count().clamp(1, 40) as f32;
-        let height = (lines * chrome.title_size * 1.5).max(chrome.min_cell_height)
-            + chrome.pad * 2.0
-            + chrome.gap;
+        let estimate = (lines * chrome.title_size * 1.5).max(chrome.min_cell_height);
         (
             Self {
                 kind,
                 body: CellBody::PendingText {
                     markdown: markdown.to_owned(),
                     width,
-                    grown: false,
+                    estimate,
+                    nonce: mint_nonce(),
+                    grown: Grown::Nothing,
                 },
             },
-            height,
+            estimate + chrome.pad * 2.0 + chrome.gap,
         )
+    }
+
+    /// The build a pending cell waits for — the landing carries it back.
+    pub(crate) fn pending_nonce(&self) -> Option<u64> {
+        match &self.body {
+            CellBody::PendingText { nonce, .. } => Some(*nonce),
+            _ => None,
+        }
     }
 
     pub(crate) fn build_text(
@@ -315,17 +351,24 @@ impl Cell {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
+        nonce: u64,
         built: crate::BuiltDocument,
         fx: &mut Effects<'_, CellCommand>,
     ) {
         let CellBody::PendingText {
             markdown,
             width,
+            nonce: waited,
             grown,
-        } = self.body.clone()
+            ..
+        } = &mut self.body
         else {
             return;
         };
+        if *waited != nonce {
+            return;
+        }
+        let (markdown, width, grown) = (std::mem::take(markdown), *width, *grown);
         note_mount();
         let fonts = env::ui_collection(store, ui);
         let theme = env::Themes::of(store);
@@ -352,9 +395,16 @@ impl Cell {
             base: None,
         });
         // The stream did not wait for the build: catch the cell up.
-        if grown {
-            let text = crate::Text::from_string_exact(&markdown);
-            self.perform(store, ui, CellCommand::Rewrite(text), fx);
+        match grown {
+            Grown::Nothing => {}
+            Grown::Appended { built } => {
+                let suffix = markdown[built..].to_owned();
+                self.perform(store, ui, CellCommand::Append(suffix), fx);
+            }
+            Grown::Rewritten => {
+                let text = crate::Text::from_string_exact(&markdown);
+                self.perform(store, ui, CellCommand::Rewrite(text), fx);
+            }
         }
     }
 
@@ -595,7 +645,7 @@ impl View for Cell {
                 } = &mut self.body
                 {
                     *markdown = text.to_string();
-                    *grown = true;
+                    *grown = Grown::Rewritten;
                     return;
                 }
                 let CellBody::Markdown(editor) = &mut self.body else {
@@ -627,6 +677,11 @@ impl View for Cell {
                 fx.scope(CellCommand::Diff, |fx| view.perform(store, ui, command, fx));
             }
             CellCommand::Rewrap(width) => {
+                // Not laid yet: the landing lays at the new width.
+                if let CellBody::PendingText { width: held, .. } = &mut self.body {
+                    *held = width;
+                    return;
+                }
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 if let CellBody::Diff { view, .. } = &mut self.body {
@@ -712,8 +767,12 @@ impl View for Cell {
                     markdown, grown, ..
                 } = &mut self.body
                 {
+                    if *grown == Grown::Nothing {
+                        *grown = Grown::Appended {
+                            built: markdown.len(),
+                        };
+                    }
                     markdown.push_str(&chunk);
-                    *grown = true;
                     return;
                 }
                 let CellBody::Markdown(editor) = &mut self.body else {
@@ -733,7 +792,9 @@ impl View for Cell {
                 });
             }
             CellCommand::ResolveDiff(result) => self.resolve_diff(store, ui, result, fx),
-            CellCommand::ResolveText(built) => self.resolve_text(store, ui, built, fx),
+            CellCommand::ResolveText { nonce, built } => {
+                self.resolve_text(store, ui, nonce, built, fx)
+            }
             CellCommand::Tool(update) => {
                 let CellBody::Tools(group) = &mut self.body else {
                     return;
@@ -947,6 +1008,10 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             )
             .map(CellCommand::Diff)
         });
+        let pending_height = match &cell.body {
+            CellBody::PendingText { estimate, .. } => Some(*estimate),
+            _ => None,
+        };
         let editor_height = editor
             .map(|editor| editor.content_height().max(chrome.min_cell_height))
             .or_else(|| {
@@ -954,6 +1019,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                     .as_ref()
                     .map(|thunk| thunk.size().height.max(chrome.min_cell_height))
             })
+            .or(pending_height)
             .unwrap_or(0.0);
         let card_height = header_h + editor_height + chrome.pad * 2.0;
 

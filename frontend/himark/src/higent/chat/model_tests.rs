@@ -538,6 +538,70 @@ fn a_markdown_part_joins_the_live_turn() {
     );
 }
 
+/// A REPLAYED completed tool call arrives as one response part that
+/// lands several model parts — the call and its edits. The change
+/// names them all; a view that placed only the last would lose the
+/// call's cell and every edit but one.
+#[test]
+fn a_completed_tool_part_names_its_call_and_its_edits() {
+    use ahp_types::state::{
+        ToolCallCompletedState, ToolCallConfirmationReason, ToolCallResponsePart, ToolCallState,
+        ToolResultContent,
+    };
+    let edit = |path: &str, uri: &str| {
+        ToolResultContent::FileEdit(
+            crate::higent::FileEditRefs {
+                before: Some(crate::higent::snapshot(path, uri)),
+                after: Some(crate::higent::snapshot(path, uri)),
+                counts: crate::higent::DiffCounts::default(),
+            }
+            .to_content(),
+        )
+    };
+    let replayed = StateAction::ChatResponsePart(ChatResponsePartAction {
+        turn_id: "t1".to_owned(),
+        part: ResponsePart::ToolCall(Box::new(ToolCallResponsePart {
+            tool_call: ToolCallState::Completed(ToolCallCompletedState {
+                tool_call_id: "tool-1".to_owned(),
+                tool_name: "edit".to_owned(),
+                display_name: "Edit".to_owned(),
+                intention: None,
+                contributor: None,
+                meta: None,
+                invocation_message: StringOrMarkdown::Plain("editing".to_owned()),
+                tool_input: None,
+                success: true,
+                past_tense_message: StringOrMarkdown::Plain("edited".to_owned()),
+                content: Some(vec![
+                    edit("src/a.rs", "ahp-content:/a1"),
+                    edit("src/b.rs", "ahp-content:/b1"),
+                ]),
+                structured_content: None,
+                error: None,
+                confirmed: ToolCallConfirmationReason::NotNeeded,
+                selected_option: None,
+            }),
+        })),
+        meta: None,
+    });
+    let (chat, change) = fold(
+        &Conversation::default(),
+        vec![started("t1", "hi"), replayed],
+    );
+    let Change::Parts { turn, parts } = change else {
+        panic!("a completed tool part names its parts: {change:?}");
+    };
+    assert_eq!(turn, TurnId::new("t1"));
+    assert_eq!(
+        parts
+            .iter()
+            .map(|part| part.as_str().to_owned())
+            .collect::<Vec<_>>(),
+        vec!["tool-1", "edit:ahp-content:/a1", "edit:ahp-content:/b1"]
+    );
+    assert_eq!(chat.turn(&turn).expect("the turn").part_count(), 3);
+}
+
 /// A completion moves its call AND every edit it carried: the change
 /// names them all, so a view lays each edit's cell without walking the
 /// turn.

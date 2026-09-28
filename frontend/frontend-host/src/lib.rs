@@ -394,9 +394,12 @@ impl HimarkEngine {
     pub fn with_fonts(fonts: AppFonts) -> Self {
         let mut app = Application::new(fonts);
         app.register_syntax_languages(syntax_languages());
-        app.register_diff_policy(Arc::new(structdiff::Structural::new(Arc::new(
-            syntax_languages(),
-        ))));
+        // ONE policy: what the diff view computes with is what the
+        // chat's cells are built with.
+        let languages = Arc::new(syntax_languages());
+        let diff_policy: Arc<dyn himark::diff::DiffPolicy> =
+            Arc::new(structdiff::Structural::new(Arc::clone(&languages)));
+        app.register_diff_policy(Arc::clone(&diff_policy));
         app.register_enrichers(enrichment_passes());
         app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
@@ -417,11 +420,7 @@ impl HimarkEngine {
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
         hiahp::registry::register_all(&mut app);
-        hiahp::open::install_build_handler(
-            &mut app,
-            Arc::new(syntax_languages()),
-            Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
-        );
+        hiahp::open::install_build_handler(&mut app, languages, diff_policy);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
         himark::hicomments::Comments::install(&mut app.store_mut());

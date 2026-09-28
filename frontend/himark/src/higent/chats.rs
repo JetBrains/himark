@@ -259,7 +259,7 @@ impl ChatPane {
         &self.chat
     }
 
-    /// The pane goes, the MOUNT stays — parked and still fed, so the
+    /// The pane goes but the MOUNT stays — parked and still fed, so the
     /// walk back re-displays it instead of rebuilding every cell's
     /// document. The chat itself is session truth either way.
     fn park(&mut self, store: &mut Store) {
@@ -427,12 +427,22 @@ impl crate::PanelView for ChatPane {
     // re-mint the pane from it. The chat dies with its session, not
     // with a workbench slot. (The remove here was the sheet era's
     // lifecycle — it made reopening impossible.)
+    //
+    // The MOUNT does end here: closed is closed, and a mount nobody
+    // shows must not keep laying every part that streams in.
     fn dismantle(&mut self, store: &mut Store) {
-        self.park(store);
+        let Some(view) = self.view.take() else {
+            return;
+        };
+        let Some(mut panel) = Chats::chat(store, &self.session, &self.chat) else {
+            return;
+        };
+        panel.close_view(store, view);
+        Chats::put(store, self.chat.clone(), panel);
     }
 
-    /// Walked away from, or displaced by another panel: the instance
-    /// goes, the laid mount stays parked for the walk back.
+    /// Walked away from, or displaced by another panel — not closed:
+    /// the instance goes, the laid mount stays parked for the walk back.
     fn displaced(&mut self, store: &mut Store) {
         self.park(store);
     }

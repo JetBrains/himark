@@ -833,6 +833,14 @@ impl ChatPanel {
         }
     }
 
+    /// A pane CLOSED: its mount goes now. Teardown carries no effects,
+    /// and the mount's own are cancellations of builds in flight —
+    /// those land on an id no view holds and are dropped there.
+    pub(crate) fn close_view(&mut self, store: &mut Store, id: ChatViewId) {
+        let mut throwaway = imba::effect::Batch::new();
+        self.destroy_view(store, id, &mut throwaway.effects());
+    }
+
     pub(crate) fn destroy_view(
         &mut self,
         store: &mut Store,
@@ -2088,6 +2096,7 @@ impl ChatView {
             // the document off-thread — the landing only mounts it.
             CellSpec::Text(kind, markdown) => {
                 let (cell, height) = Cell::pending_text(store, kind, &markdown, content_width);
+                let nonce = cell.pending_nonce().expect("born pending");
                 fx.push(
                     AnyEffect::new(crate::BuildDocumentEffect {
                         location: cell_location(),
@@ -2096,7 +2105,7 @@ impl ChatView {
                     .map(move |built| ChatPanelCommand::Cell {
                         turn: turn_key.clone(),
                         cell: cell_key.clone(),
-                        command: CellCommand::ResolveText(built),
+                        command: CellCommand::ResolveText { nonce, built },
                     }),
                 );
                 (cell, height)
@@ -2493,10 +2502,6 @@ impl ChatView {
             }
             ViewOp::Grew { turn, part, text } => {
                 // From the part id straight to its cell: no counting.
-                let Some(range) = self.rows.content().row_range(turn) else {
-                    return;
-                };
-                let _ = range;
                 self.route_cell(
                     store,
                     ui,

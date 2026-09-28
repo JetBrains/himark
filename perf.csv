@@ -12191,3 +12191,11 @@ timestamp,commit,profile,bench,metric,value_ms
 1790529278,609981b2e,debug,chat-edits,frame_p95_ms,73.9022
 1790529278,609981b2e,debug,chat-edits,frame_max_ms,102.2700
 1790529278,609981b2e,debug,chat-edits,background_total_ms,2414.0033
+1790553359,8ce9eaf1b,debug,diff-open,open_ms,23.6891
+1790553359,8ce9eaf1b,debug,diff-typing,p50_ms,2.5105
+1790553360,8ce9eaf1b,debug,diff-resize,frame_p50_ms,6.6413
+1790553360,8ce9eaf1b,debug,diff-resize,frame_worst_ms,13.7120
+1790553366,8ce9eaf1b,debug,chat-edits,frame_p50_ms,8.8847
+1790553366,8ce9eaf1b,debug,chat-edits,frame_p95_ms,78.0553
+1790553366,8ce9eaf1b,debug,chat-edits,frame_max_ms,89.5486
+1790553366,8ce9eaf1b,debug,chat-edits,background_total_ms,2416.1383
