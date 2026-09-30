@@ -27,8 +27,8 @@ pub(crate) fn assist(
     // line sits ON that line, so probe the byte before it, or the
     // lookup answers the root and no assist fires. A caret after a
     // trailing newline is a fresh empty line and stays assist-free.
-    let after_newline = location.start > 0
-        && slice(text, location.start - 1..location.start) == "\n";
+    let after_newline =
+        location.start > 0 && slice(text, location.start - 1..location.start) == "\n";
     let probe = match local >= root.end_byte() && local > 0 && !after_newline {
         true => local - 1,
         false => local,

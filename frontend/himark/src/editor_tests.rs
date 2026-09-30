@@ -3151,7 +3151,9 @@ mod navigation_history {
         assert_eq!(focused_text(&app), "xalpha\n");
         assert_eq!(depths(&app), (0, 2));
 
-        assert!(!app.perform_registered(window, "navigation.back") || true);
+        // At the bottom of the stack: the command may refuse, but the
+        // place must not move.
+        let _ = app.perform_registered(window, "navigation.back");
         assert_eq!(focused_text(&app), "xalpha\n");
         assert_eq!(depths(&app), (0, 2));
 
@@ -3242,7 +3244,9 @@ mod navigation_history {
             (1, 0),
             "the branch recorded a.md and forgot redo"
         );
-        assert!(!app.perform_registered(window, "navigation.forward") || true);
+        // Past the top of the stack: the command may refuse, but the
+        // place must not move.
+        let _ = app.perform_registered(window, "navigation.forward");
         assert_eq!(focused_text(&app), "gamma\n", "no forward to walk");
     }
 
@@ -3485,7 +3489,9 @@ mod toc {
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
         let window = app.sole_window();
-        assert!(app.perform_registered(window, "toc.toggle") || true);
+        // The toggle may refuse on a structureless pane — what matters
+        // is that no panel opens.
+        let _ = app.perform_registered(window, "toc.toggle");
         assert!(
             crate::Windows::window_ref(app.store(), window)
                 .expect("window")

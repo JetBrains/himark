@@ -31,7 +31,8 @@ fn md_tree_past_the_source(src: &str) -> tree_sitter::Tree {
 fn a_tree_past_the_source_end_never_panics() {
     // No trailing newline on either side — both trees end at len+1.
     let base_src = "- [ ] adding a second folder\n- Chat\n  - [ ] navigate from edit\n- [ ] panic";
-    let target_src = "- [x] adding a second folder\n- Chat\n  - [ ] navigate from edit\n- [ ] panic";
+    let target_src =
+        "- [x] adding a second folder\n- Chat\n  - [ ] navigate from edit\n- [ ] panic";
     let base = Text::from_string_exact(base_src);
     let target = Text::from_string_exact(target_src);
     let base_tree = md_tree_past_the_source(base_src);

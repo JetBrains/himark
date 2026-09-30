@@ -392,8 +392,14 @@ mod tests {
     fn match_serialization_matches_protocol_example() {
         let m = TextSearchMatch {
             range: Range {
-                start: Position { line: 12, character: 0 },
-                end: Position { line: 12, character: 7 },
+                start: Position {
+                    line: 12,
+                    character: 0,
+                },
+                end: Position {
+                    line: 12,
+                    character: 7,
+                },
             },
             lines: vec![ContextLine {
                 line: 12,
@@ -429,7 +435,10 @@ mod tests {
             work_done_token: None,
         };
         let v = serde_json::to_value(&p).unwrap();
-        assert!(v.get("isRegExp").is_none(), "None options stay off the wire");
+        assert!(
+            v.get("isRegExp").is_none(),
+            "None options stay off the wire"
+        );
         assert_eq!(v["isCaseSensitive"], true);
         let back: TextSearchParams = serde_json::from_value(v).unwrap();
         assert_eq!(back.max_results, Some(10));

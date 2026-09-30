@@ -94,7 +94,8 @@ fn sibling_checkout(exe: &Path) -> Option<String> {
 /// prompt) or too small to index; the server scan-serves those
 /// scopes per request.
 pub(crate) fn indexable(dir: &Path) -> bool {
-    dir.ancestors().any(|ancestor| ancestor.join(".git").exists())
+    dir.ancestors()
+        .any(|ancestor| ancestor.join(".git").exists())
 }
 
 // ------------------------------------------------------------- the engine
@@ -144,7 +145,11 @@ pub(crate) struct Engine {
 }
 
 impl Engine {
-    pub(crate) fn new(binary: String, data_dir: PathBuf, overlay_source: OverlaySource) -> Arc<Engine> {
+    pub(crate) fn new(
+        binary: String,
+        data_dir: PathBuf,
+        overlay_source: OverlaySource,
+    ) -> Arc<Engine> {
         Arc::new(Engine {
             binary,
             data_dir,
@@ -161,7 +166,12 @@ impl Engine {
     }
 
     fn snapshot(&self) -> Arc<EngineState> {
-        Arc::clone(&self.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+        Arc::clone(
+            &self
+                .state
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        )
     }
 
     fn update<R>(&self, mutate: impl FnOnce(&mut EngineState) -> R) -> R {
@@ -260,7 +270,9 @@ impl Engine {
     pub(crate) fn feed_open(&self, uri: &str, text: &str) {
         let Some(fsp_uri) = fsp_uri(uri) else { return };
         self.update(|state| {
-            let Some(connection) = live(state) else { return };
+            let Some(connection) = live(state) else {
+                return;
+            };
             if state.overlays.contains_key(&fsp_uri) {
                 return;
             }
@@ -281,7 +293,9 @@ impl Engine {
                 .filter(|_| !connection.utf8())
         };
         self.update(|state| {
-            let Some(connection) = live(state) else { return };
+            let Some(connection) = live(state) else {
+                return;
+            };
             let Some(version) = state.overlays.get(&fsp_uri).map(|held| held + 1) else {
                 return;
             };
@@ -296,7 +310,9 @@ impl Engine {
     pub(crate) fn feed_close(&self, uri: &str) {
         let Some(fsp_uri) = fsp_uri(uri) else { return };
         self.update(|state| {
-            let Some(connection) = live(state) else { return };
+            let Some(connection) = live(state) else {
+                return;
+            };
             if state.overlays.contains_key(&fsp_uri) {
                 state.overlays.remove_mut(&fsp_uri);
                 connection.overlay_close(&fsp_uri);
@@ -351,7 +367,15 @@ impl Engine {
                 }
             }
         });
-        match call(&connection, "workspace/textSearch", params, Some(progress), leash).await? {
+        match call(
+            &connection,
+            "workspace/textSearch",
+            params,
+            Some(progress),
+            leash,
+        )
+        .await?
+        {
             Value::Null => Ok(true), // cancelled
             result => {
                 let result: wire::TextSearchResult =
@@ -708,7 +732,9 @@ fn reader_loop(
                     .and_then(|result| result.pointer("/capabilities/positionEncoding"))
                     .and_then(Value::as_str)
                     .unwrap_or("utf-16");
-                connection.utf8.store(encoding == "utf-8", Ordering::Relaxed);
+                connection
+                    .utf8
+                    .store(encoding == "utf-8", Ordering::Relaxed);
                 connection.notify("initialized", json!({}));
                 let _ = connection.out.send(Out::Ready);
                 ready = true;
@@ -882,8 +908,7 @@ mod tests {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&fast, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
+            std::fs::set_permissions(&fast, std::fs::Permissions::from_mode(0o755)).expect("chmod");
         }
         assert_eq!(
             sibling_checkout(&exe).as_deref(),
@@ -913,8 +938,14 @@ mod tests {
             limit_hit: None,
             matches: vec![wire::TextSearchMatch {
                 range: wire::Range {
-                    start: wire::Position { line: 3, character: 4 },
-                    end: wire::Position { line: 3, character: 10 },
+                    start: wire::Position {
+                        line: 3,
+                        character: 4,
+                    },
+                    end: wire::Position {
+                        line: 3,
+                        character: 10,
+                    },
                 },
                 lines: vec![wire::ContextLine {
                     line: 3,
