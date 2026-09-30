@@ -1121,3 +1121,196 @@ fn a_replayed_batch_leaves_one_row_and_one_copy() {
     assert_eq!(keys(&panel, view), vec!["t1"]);
     assert_eq!(shown(&panel, view), "hi|the reply");
 }
+
+// ======================================================================
+// G. Tool runs: consecutive calls collapse into ONE cell
+// (docs/ahp/agents.md, "Tool runs collapse").
+
+/// A completion carrying a file edit — the same uri before and after
+/// keeps the helper short.
+fn tool_done_with_edit(turn: &str, tool: &str, path: &str, uri: &str) -> StateAction {
+    let content = vec![ahp_types::state::ToolResultContent::FileEdit(
+        crate::higent::FileEditRefs {
+            before: Some(crate::higent::snapshot(path, uri)),
+            after: Some(crate::higent::snapshot(path, uri)),
+            counts: crate::higent::DiffCounts::default(),
+        }
+        .to_content(),
+    )];
+    StateAction::ChatToolCallComplete(ChatToolCallCompleteAction {
+        turn_id: turn.to_owned(),
+        tool_call_id: tool.to_owned(),
+        result: ToolCallResult {
+            success: true,
+            past_tense_message: StringOrMarkdown::Plain("edited".to_owned()),
+            content: Some(content),
+            structured_content: None,
+            error: None,
+        },
+        requires_result_confirmation: None,
+        meta: None,
+    })
+}
+
+#[test]
+fn consecutive_tool_calls_collapse_into_one_run() {
+    let mut store = Store::new();
+    let mut panel = panel(&mut store, "chat:g1");
+    let view = mount(&mut panel, &mut store);
+    feed(
+        &mut panel,
+        &mut store,
+        vec![
+            started("t1", "hi"),
+            tool_start("t1", "c1", "Bash"),
+            tool_start("t1", "c2", "Bash"),
+        ],
+    );
+
+    let (_, cells) = rows(&panel, view).into_iter().next().expect("the turn");
+    assert_eq!(cells.len(), 2, "a prompt and ONE run: {cells:?}");
+    assert!(
+        cells[1].1.contains("2 × Bash"),
+        "the run counts its calls: {}",
+        cells[1].1
+    );
+}
+
+#[test]
+fn a_reply_between_calls_closes_the_run() {
+    let mut store = Store::new();
+    let mut panel = panel(&mut store, "chat:g2");
+    let view = mount(&mut panel, &mut store);
+    feed(
+        &mut panel,
+        &mut store,
+        vec![
+            started("t1", "hi"),
+            tool_start("t1", "c1", "Bash"),
+            markdown("t1", "p1", "between"),
+            tool_start("t1", "c2", "Bash"),
+        ],
+    );
+
+    let (_, cells) = rows(&panel, view).into_iter().next().expect("the turn");
+    let kinds: Vec<&str> = cells.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        vec!["User", "Tool", "Agent", "Tool"],
+        "two runs, the reply between: {cells:?}"
+    );
+}
+
+#[test]
+fn a_late_call_joins_the_standing_run_cell() {
+    let mut store = Store::new();
+    let mut panel = panel(&mut store, "chat:g3");
+    let view = mount(&mut panel, &mut store);
+    feed(
+        &mut panel,
+        &mut store,
+        vec![started("t1", "hi"), tool_start("t1", "c1", "Bash")],
+    );
+    feed(
+        &mut panel,
+        &mut store,
+        vec![tool_done("t1", "c1", "ran it")],
+    );
+    feed(&mut panel, &mut store, vec![tool_start("t1", "c2", "Grep")]);
+
+    let (_, cells) = rows(&panel, view).into_iter().next().expect("the turn");
+    assert_eq!(cells.len(), 2, "the second call joined the run: {cells:?}");
+    assert!(
+        cells[1].1.contains("1 × Bash, 1 × Grep"),
+        "the group row counts both: {}",
+        cells[1].1
+    );
+
+    // A mount built AFTER the stream dresses from the model alone —
+    // it must agree with the mount the ops grew.
+    mount(&mut panel, &mut store);
+    let all = panel.view_transcripts();
+    assert_eq!(all.len(), 2);
+    assert_eq!(all[0], all[1], "the grown mount and the fresh one agree");
+}
+
+#[test]
+fn an_edit_between_calls_closes_the_run() {
+    let mut store = Store::new();
+    let mut panel = panel(&mut store, "chat:g4");
+    let view = mount(&mut panel, &mut store);
+    feed(
+        &mut panel,
+        &mut store,
+        vec![
+            started("t1", "hi"),
+            tool_start("t1", "c1", "Edit"),
+            tool_done_with_edit("t1", "c1", "src/a.rs", "ahp-content:/a1"),
+            tool_start("t1", "c2", "Bash"),
+        ],
+    );
+
+    let (_, cells) = rows(&panel, view).into_iter().next().expect("the turn");
+    let kinds: Vec<&str> = cells.iter().map(|(kind, _)| kind.as_str()).collect();
+    assert_eq!(
+        kinds,
+        vec!["User", "Tool", "Tool", "Tool"],
+        "run, diff, run: {cells:?}"
+    );
+    assert!(
+        cells[2].1.contains("diff a.rs"),
+        "the edit stands between the runs: {cells:?}"
+    );
+
+    // The diff's header carries the WORKING COPY's uri — what OPEN
+    // navigates to.
+    let turn = panel
+        .conversation
+        .turn(&crate::higent::TurnId::new("t1"))
+        .expect("the turn");
+    let header_uri = crate::higent::turn::dress(turn)
+        .iter()
+        .find_map(|(_, spec)| match spec {
+            CellSpec::Diff(spec) => Some(spec.header.uri.clone()),
+            _ => None,
+        })
+        .expect("a diff cell");
+    assert_eq!(header_uri.as_deref(), Some("src/a.rs"));
+}
+
+#[test]
+fn the_diff_headers_open_reaches_the_app() {
+    let mut store = Store::new();
+    let mut panel = panel(&mut store, "chat:g5");
+    let view = mount(&mut panel, &mut store);
+    feed(
+        &mut panel,
+        &mut store,
+        vec![
+            started("t1", "hi"),
+            tool_start("t1", "c1", "Edit"),
+            tool_done_with_edit("t1", "c1", "src/a.rs", "ahp-content:/a1"),
+        ],
+    );
+
+    // The header's OPEN click, as the rows road delivers it: the diff
+    // is the turn's third cell (prompt, run, diff).
+    let mut batch = imba::effect::Batch::new();
+    panel.perform_in_view(
+        &mut store,
+        ui(),
+        view,
+        ChatPanelCommand::Rows(ScrollCommand::Content(ListCommand::Child(
+            0,
+            RowCommand::Turn(ListCommand::Child(
+                2,
+                CellCommand::OpenFile("src/a.rs".to_owned()),
+            )),
+        ))),
+        &mut batch.effects(),
+    );
+
+    let drained = crate::AppRequests::drain(&mut store);
+    assert_eq!(drained.len(), 1, "one app request");
+    assert_eq!(drained[0].id(), "chat.open-edited-file");
+}

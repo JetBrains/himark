@@ -20,6 +20,7 @@ fn resolved(before: &str, after: &str) -> Cell {
             title: "sample.md".to_owned(),
             added: Some(1),
             removed: Some(1),
+            uri: None,
         },
         640.0,
     );

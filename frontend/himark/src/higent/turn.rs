@@ -42,6 +42,13 @@ impl DiffSpec {
                 title: refs.display_name(),
                 added: refs.counts.added,
                 removed: refs.counts.removed,
+                // The WORKING COPY's uri — the file the edit landed in,
+                // not the content snapshots. The header's OPEN rides it.
+                uri: refs
+                    .after
+                    .as_ref()
+                    .or(refs.before.as_ref())
+                    .map(|side| side.uri.clone()),
             },
             before: refs.before.as_ref().map(|side| side.content.uri.clone()),
             after: refs.after.as_ref().map(|side| side.content.uri.clone()),
@@ -168,19 +175,75 @@ impl View for TurnView {
 }
 
 /// The cells a turn SHOWS, keyed by what they came from: the prompt,
-/// one cell per part in the order it arrived, then how the turn ended
+/// one cell per part in the order it arrived — except consecutive tool
+/// calls, which collapse into ONE cell, a RUN, keyed by the run's
+/// first call (docs/ahp/agents.md, "Tool runs collapse": anything
+/// else between two calls closes the run) — then how the turn ended
 /// and what it spent. Pure dressing — the model holds none of it.
 pub(crate) fn dress(turn: &crate::higent::chat::model::Turn) -> DressedCells {
+    use crate::higent::chat::model::Part;
     let mut cells = DressedCells::new_sync();
     let (voice, text) = turn.prompt.clone();
     cells.push_back_mut((CellKey::Prompt, CellSpec::Text(voice, text)));
+    let mut run: Option<(PartId, Vec<ToolCallSpec>)> = None;
+    let close = |run: &mut Option<(PartId, Vec<ToolCallSpec>)>, cells: &mut DressedCells| {
+        if let Some((first, specs)) = run.take() {
+            cells.push_back_mut((CellKey::Part(first), CellSpec::Tools(specs)));
+        }
+    };
     for (id, part) in turn.parts() {
-        cells.push_back_mut((CellKey::Part(id.clone()), dress_part(part)));
+        match part {
+            Part::Tool(call) => match &mut run {
+                Some((_, specs)) => specs.push(tool_spec_of(call)),
+                None => run = Some((id.clone(), vec![tool_spec_of(call)])),
+            },
+            other => {
+                close(&mut run, &mut cells);
+                cells.push_back_mut((CellKey::Part(id.clone()), dress_part(other)));
+            }
+        }
     }
+    close(&mut run, &mut cells);
     for cell in dress_tail(turn).iter().cloned() {
         cells.push_back_mut(cell);
     }
     cells
+}
+
+/// The RUN a tool part belongs to, dressed whole: the cell's key is
+/// the run's FIRST call, so every call of the run lands on the same
+/// cell however late it joins. The spec carries the whole run — a view
+/// that lacks the cell builds all of it; one that has it takes the
+/// specs as keyed updates. None when the part is not a tool call.
+pub(crate) fn dress_tool_run(
+    turn: &crate::higent::chat::model::Turn,
+    part: &PartId,
+) -> Option<(CellKey, CellSpec)> {
+    use crate::higent::chat::model::Part;
+    let mut run: Option<(PartId, Vec<ToolCallSpec>)> = None;
+    let mut hit = false;
+    for (id, held) in turn.parts() {
+        match held {
+            Part::Tool(call) => {
+                match &mut run {
+                    Some((_, specs)) => specs.push(tool_spec_of(call)),
+                    None => run = Some((id.clone(), vec![tool_spec_of(call)])),
+                }
+                if id == part {
+                    hit = true;
+                }
+            }
+            // Anything else closes the run: past the hit it is done,
+            // before it the walk starts over.
+            _ if hit => break,
+            _ => run = None,
+        }
+    }
+    if !hit {
+        return None;
+    }
+    let (first, specs) = run?;
+    Some((CellKey::Part(first), CellSpec::Tools(specs)))
 }
 
 /// ONE part's cell — what a part landing re-dresses. Never the turn.

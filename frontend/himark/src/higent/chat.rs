@@ -644,9 +644,10 @@ impl ChatPanel {
                             CellSpec::Tools(specs) => (
                                 "Tool".to_owned(),
                                 specs
-                                    .first()
+                                    .iter()
                                     .map(|spec| spec.face.line.clone())
-                                    .unwrap_or_default(),
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
                             ),
                             CellSpec::Diff(spec) => ("Diff".to_owned(), spec.header.title.clone()),
                         })
@@ -1197,7 +1198,20 @@ impl ChatPanel {
     /// every view at its own width.
     fn ops_of(&self, change: &model::Change, ops: &mut Vec<ViewOp>) {
         let cell = |turn: &crate::higent::TurnId, part: &model::PartId| {
-            let spec = crate::higent::turn::dress_part(self.conversation.turn(turn)?.part(part)?);
+            let held = self.conversation.turn(turn)?;
+            let moved = held.part(part)?;
+            // A tool call's cell is its RUN — consecutive calls share
+            // one cell, keyed by the run's first call, however late a
+            // call joins or re-dresses.
+            if matches!(moved, model::Part::Tool(_)) {
+                let (key, spec) = crate::higent::turn::dress_tool_run(held, part)?;
+                return Some(ViewOp::Cell {
+                    turn: turn.clone(),
+                    key,
+                    spec,
+                });
+            }
+            let spec = crate::higent::turn::dress_part(moved);
             Some(ViewOp::Cell {
                 turn: turn.clone(),
                 key: crate::higent::turn::CellKey::Part(part.clone()),
@@ -1424,6 +1438,20 @@ impl ChatPanel {
         self.roll(store, ui, &ops, fx);
     }
 
+    /// The diff header's OPEN: hand the wire uri to the app, which
+    /// resolves it against this session's seat and opens the WORKING
+    /// COPY — the live file, not the snapshots the diff was built from.
+    fn open_edited_file(&self, store: &mut Store, uri: String) {
+        crate::AppRequests::push(
+            store,
+            std::sync::Arc::new(OpenEditedFile {
+                server: self.server,
+                session: self.session.clone(),
+                uri,
+            }),
+        );
+    }
+
     pub(crate) fn perform_model(
         &mut self,
         store: &mut Store,
@@ -1527,6 +1555,13 @@ impl ChatPanel {
                     self.load_older(store, ui, fx);
                     return;
                 }
+                // A diff header's OPEN is MODEL work — the seat lives
+                // on the panel — so it is consumed before the command
+                // reaches the mount's furniture.
+                if let Some(uri) = peeled_open_file(&command) {
+                    self.open_edited_file(store, uri);
+                    return;
+                }
                 if let Some(index) = peeled_wake(&command) {
                     let seat = self.seat(store);
                     let Some(mut view) = self.views.get(&id).cloned() else {
@@ -1549,6 +1584,13 @@ impl ChatPanel {
                     |fx| view.rows.perform(store, ui, command, fx),
                 );
                 self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::Cell {
+                command: CellCommand::OpenFile(uri),
+                ..
+            } => {
+                self.open_edited_file(store, uri);
             }
 
             ChatPanelCommand::Cell {
@@ -2530,14 +2572,11 @@ fn cell_location() -> crate::ResourceLocation {
 fn redress(spec: &CellSpec) -> Vec<CellCommand> {
     match spec {
         CellSpec::Text(_, text) => vec![CellCommand::Rewrite(crate::Text::from_string_exact(text))],
+        // ADD, not Face: a call the group already holds takes it as a
+        // face refresh, a call that just joined the run splices in.
         CellSpec::Tools(specs) => specs
             .iter()
-            .map(|spec| {
-                CellCommand::Tool(crate::higent::tool_group::ToolUpdate::Face {
-                    id: spec.id.clone(),
-                    face: spec.face.clone(),
-                })
-            })
+            .map(|spec| CellCommand::Tool(crate::higent::tool_group::ToolUpdate::Add(spec.clone())))
             .collect(),
         // A diff cell resolves itself through its own landing.
         CellSpec::Diff(_) => Vec::new(),
@@ -2579,6 +2618,73 @@ fn default_confirmation_options() -> Vec<ConfirmationOption> {
             group: None,
         },
     ]
+}
+
+/// A click on a diff header's OPEN, peeled off the rows road the way
+/// `peeled_wake` peels a wake — clicks arrive focus-wrapped at both
+/// the rows list and the turn's cells.
+fn peeled_open_file(command: &RowsCommand) -> Option<String> {
+    fn peel_turn(command: &TurnCommand) -> Option<String> {
+        match command {
+            ListCommand::Child(_, CellCommand::OpenFile(uri)) => Some(uri.clone()),
+            ListCommand::Focus(_, Some(inner)) => peel_turn(inner),
+            _ => None,
+        }
+    }
+    fn peel(command: &ListCommand<RowCommand>) -> Option<String> {
+        match command {
+            ListCommand::Child(_, RowCommand::Turn(inner)) => peel_turn(inner),
+            ListCommand::Focus(_, Some(inner)) => peel(inner),
+            _ => None,
+        }
+    }
+    match command {
+        ScrollCommand::Content(command) => peel(command),
+        _ => None,
+    }
+}
+
+/// Open the working copy behind a chat diff: resolve the wire uri
+/// against the session's seat authority and open the location —
+/// the same road a search hit or a changes row takes.
+pub(crate) struct OpenEditedFile {
+    server: crate::higent::HostId,
+    session: crate::higent::SessionUri,
+    uri: String,
+}
+
+impl crate::DynamicCommand for OpenEditedFile {
+    fn id(&self) -> &'static str {
+        "chat.open-edited-file"
+    }
+
+    fn name(&self) -> String {
+        "Open Edited File".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(uris) = crate::higent::Hosts::uris(store, self.server) else {
+            return;
+        };
+        let authority =
+            crate::Authority::new(crate::higent::seat::authority(self.server, &self.session));
+        let Some(location) = uris.location_of(
+            &crate::higent::ResourceUri::new(self.uri.as_str()),
+            crate::ResourceType::document(),
+            &authority,
+        ) else {
+            return;
+        };
+        let _ = fx.push(crate::open_by_location_effect(
+            window, location, true, true, None,
+        ));
+    }
 }
 
 fn peeled_wake(command: &RowsCommand) -> Option<usize> {

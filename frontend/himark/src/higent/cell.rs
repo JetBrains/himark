@@ -67,6 +67,11 @@ pub enum CellCommand {
     },
 
     Append(String),
+
+    /// The diff header's OPEN: navigate to the WORKING COPY of the
+    /// edited file. The uri is the wire's (`file:///…`); the panel
+    /// resolves it against the session's seat and opens the location.
+    OpenFile(ahp_types::common::Uri),
 }
 
 #[derive(Clone)]
@@ -74,6 +79,9 @@ pub(crate) struct DiffHeader {
     pub title: String,
     pub added: Option<i64>,
     pub removed: Option<i64>,
+    /// The edited file's own uri — the working copy the OPEN action
+    /// navigates to.
+    pub uri: Option<ahp_types::common::Uri>,
 }
 
 #[derive(Clone)]
@@ -813,6 +821,9 @@ impl View for Cell {
                 };
                 group.perform_keyed(store, ui, key, command, fx);
             }
+            // Navigation — the header's click bubbles UP to the panel,
+            // which owns the seat; nothing lands back on the cell.
+            CellCommand::OpenFile(_) => {}
         }
     }
 
@@ -873,6 +884,9 @@ fn header_band_layout<'a>(
             &text.clone().colored(chrome.removed_color.0),
             format!("-{removed}"),
         );
+    }
+    if let Some(uri) = header.uri.clone() {
+        band = band.action("OPEN", move || CellCommand::OpenFile(uri.clone()));
     }
     band
 }

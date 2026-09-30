@@ -299,6 +299,16 @@ impl ToolGroup {
                 let Some(index) = self.call_index(&id) else {
                     return;
                 };
+                // A run re-dress hands EVERY call back; a face that did
+                // not move must not splice rows or rewrite bodies.
+                let held = &self.calls[index].face;
+                if held.line == face.line
+                    && held.failed == face.failed
+                    && held.live == face.live
+                    && held.markdown == face.markdown
+                {
+                    return;
+                }
                 let mut call = self.calls[index].clone();
                 let was_open = call.expanded;
                 call.face = face;
