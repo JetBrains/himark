@@ -216,6 +216,74 @@ fn expansion_survives_reopen_and_new_folders_join() {
 }
 
 #[test]
+fn folders_added_mid_session_join_on_paint() {
+    let mut store = Store::new();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = SessionTreeView::open(
+        &mut store,
+        ::editor::test_document::test_ui(),
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert_eq!(view.row_count(), 1);
+
+    let paint = |view: &SessionTreeView, store: &Store| -> Vec<TreeCommand> {
+        let arena = imba::arena::Arena::default();
+        let ui = ::editor::test_document::test_ui();
+        let size = skia_safe::Size::new(400.0, 600.0);
+        let widget = imba::Layout::layout(
+            imba::View::display(view, &arena, store, &ui),
+            &arena,
+            imba::constraints::Constraints::tight(size),
+        );
+        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
+        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        match imba::Widget::handle_event(
+            &widget,
+            &arena,
+            &imba::event::Event::Paint {
+                canvas: surface.canvas(),
+                focused: true,
+            },
+            skia_safe::Rect::from_wh(400.0, 600.0),
+        ) {
+            imba::event::EventResult::Command(command) => vec![command],
+            imba::event::EventResult::Commands(commands) => commands,
+            _ => Vec::new(),
+        }
+    };
+
+    assert!(
+        paint(&view, &store).is_empty(),
+        "nothing to sync while the roots match"
+    );
+
+    crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
+    let commands = paint(&view, &store);
+    assert!(
+        commands
+            .iter()
+            .any(|command| matches!(command, TreeCommand::SyncRoots(_))),
+        "the paint gate minted the sync"
+    );
+    for command in commands {
+        view.perform(
+            &mut store,
+            ::editor::test_document::test_ui(),
+            command,
+            &mut imba::effect::Batch::new().effects(),
+        );
+    }
+    assert_eq!(view.row_count(), 2, "the added folder joined as a root");
+
+    assert!(
+        paint(&view, &store).is_empty(),
+        "the gate closed once the root stands"
+    );
+}
+
+#[test]
 fn dismissal_files_the_close() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();

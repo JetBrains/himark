@@ -374,6 +374,10 @@ pub enum TreeCommand {
 
     Changed(Vec<crate::Subscription>),
 
+    /// Session folders the tree does not show yet — folders can
+    /// join the session while the dock stands open.
+    SyncRoots(Vec<ResourceLocation>),
+
     Dismiss,
 
     Follow {
@@ -704,6 +708,9 @@ impl View for SessionTreeView {
                     }
                 }
             }
+            TreeCommand::SyncRoots(folders) => {
+                self.tree.ensure_roots(&folders, store, ui);
+            }
             TreeCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
@@ -796,7 +803,19 @@ impl View for SessionTreeView {
                     false => None,
                 }
             });
-            inner.wrap(move |inner| FollowShell { inner, follow })
+            // Folders joining the session mid-flight: the paint gate
+            // folds in any channel folder the tree does not show yet,
+            // and closes itself once the root row stands.
+            let missing_roots: Vec<ResourceLocation> =
+                crate::higent::session_folders(store, &self.workspace)
+                    .into_iter()
+                    .filter(|folder| !self.tree.is_visible(folder))
+                    .collect();
+            inner.wrap(move |inner| FollowShell {
+                inner,
+                follow,
+                missing_roots,
+            })
         })
     }
 }
@@ -804,6 +823,7 @@ impl View for SessionTreeView {
 struct FollowShell<Inner> {
     inner: Inner,
     follow: Option<(ResourceLocation, u64)>,
+    missing_roots: Vec<ResourceLocation>,
 }
 
 impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell<Inner> {
@@ -821,13 +841,18 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
         event: &Event<'_>,
         viewport: skia_safe::Rect,
     ) -> EventResult<TreeCommand> {
-        let result = self.inner.handle_event(arena, event, viewport);
+        let mut result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) {
             if let Some((location, generation)) = &self.follow {
-                return result.merge(EventResult::Command(TreeCommand::Follow {
+                result = result.merge(EventResult::Command(TreeCommand::Follow {
                     location: location.clone(),
                     generation: *generation,
                 }));
+            }
+            if !self.missing_roots.is_empty() {
+                result = result.merge(EventResult::Command(TreeCommand::SyncRoots(
+                    self.missing_roots.clone(),
+                )));
             }
         }
         result

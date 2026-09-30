@@ -35,6 +35,7 @@ pub use seat::{
     RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,
     SessionOptions, SessionUri, SessionsPage, TerminalEvent, TerminalHandle, TurnId, WatchHandle,
 };
+pub(crate) use session::apply_channel_actions;
 pub use session::{
     all_session_folders, open_session, open_session_with, session_folders, Agents, Host,
     HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel,

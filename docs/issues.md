@@ -57,3 +57,5 @@ stack backtrace:
 thread caused non-unwinding panic. aborting.
 ```
 
+- [ ] file-tree usability:
+    another usability gap in file tree is the lack of ability to create and delete and rename files. let's add a popup menu (see how overlays are built and the combo box, introduce MenuView and PopupMenuView). renaming or creating a file creates/replaces a tree row with a small editor, finishing on enter and validating the input to be a valid file name. focus loss leads to the editor removal/rename-cancelled. for the roots, there should be a menu item to remove a directory from the session. 

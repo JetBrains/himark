@@ -1277,14 +1277,25 @@ impl crate::DynamicCommand for SessionPolled {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        for action in &self.actions {
-            if let StateAction::SessionChangesetsChanged(changed) = action {
-                let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
-                subscribe_fresh(store, window, &self.home, entries, fx);
-            }
-        }
+        // This poller and higent's drain the SAME wire feed; the
+        // winner takes the whole batch, so hand every action kind
+        // to the shared application, not just the changeset ones.
+        crate::higent::apply_channel_actions(store, window, &self.home, &self.actions, fx);
         relaunch_session_poll(store, window, &self.home, fx);
     }
+}
+
+/// The session-channel catalog action, routed here from whichever
+/// poller drained it.
+pub(crate) fn adopt_session_catalog(
+    store: &mut Store,
+    window: crate::WindowId,
+    home: &crate::SessionId,
+    changed: &crate::higent::ahp_types::actions::SessionChangesetsChangedAction,
+    fx: &mut crate::AppFx<'_>,
+) {
+    let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
+    subscribe_fresh(store, window, home, entries, fx);
 }
 
 fn subscribe_fresh(

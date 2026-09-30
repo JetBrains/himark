@@ -231,81 +231,110 @@ impl DynamicCommand for ApplySessionActions {
             host: self.server,
             session: self.session.clone(),
         };
-        let mut channel = Agents::channel(store, &key).unwrap_or_default();
-        for action in &self.actions {
-            match action {
-                StateAction::SessionChatAdded(added) => {
-                    let kept: rpds::VectorSync<ChatSummary> = channel
-                        .chats
-                        .iter()
-                        .filter(|held| held.resource != added.summary.resource)
-                        .cloned()
-                        .collect();
-                    let mut chats = kept;
-                    chats.push_back_mut(added.summary.clone());
-                    channel.chats = chats;
-                }
-                StateAction::SessionChatRemoved(removed) => {
-                    channel.chats = channel
-                        .chats
-                        .iter()
-                        .filter(|held| held.resource != removed.chat)
-                        .cloned()
-                        .collect();
-                }
-                StateAction::SessionChatUpdated(updated) => {
-                    channel.chats = channel
-                        .chats
-                        .iter()
-                        .map(|held| {
-                            let mut held = held.clone();
-                            if held.resource == updated.chat {
-                                merge_chat_summary(&mut held, updated);
-                            }
-                            held
-                        })
-                        .collect();
-                }
-                StateAction::SessionWorkingDirectorySet(set) => {
-                    if !channel
-                        .working_directories
-                        .iter()
-                        .any(|held| held == &set.directory)
-                    {
-                        channel
-                            .working_directories
-                            .push_back_mut(set.directory.clone());
-                    }
-                }
-                StateAction::SessionWorkingDirectoryRemoved(removed) => {
-                    channel.working_directories = channel
-                        .working_directories
-                        .iter()
-                        .filter(|held| **held != removed.directory)
-                        .cloned()
-                        .collect();
-                }
-
-                StateAction::SessionConfigChanged(changed) => {
-                    if let Some(held) = &channel.config {
-                        let mut config = (**held).clone();
-                        if changed.replace.unwrap_or(false) {
-                            config.values = changed.config.clone();
-                        } else {
-                            for (key, value) in &changed.config {
-                                config.values.insert(key.clone(), value.clone());
-                            }
-                        }
-                        channel.config = Some(Arc::new(config));
-                    }
-                }
-                _ => {}
-            }
-        }
-        Agents::set_channel(store, &key, channel);
+        apply_channel_actions(store, window, &key, &self.actions, fx);
 
         if Agents::live_session(store, &key).is_some() {
             relaunch_session_poll(store, window, self.server, self.session.clone(), fx);
+        }
+    }
+}
+
+/// Applies a drained session-channel batch to the local mirror and
+/// fans out its side effects. TWO standing pollers drain the one
+/// shared wire feed for a session — this module's and hichanges' —
+/// and whichever wakes first takes the whole batch, so both must
+/// route every action kind through here; a partial handler silently
+/// loses the rest of the batch for everyone.
+pub(crate) fn apply_channel_actions(
+    store: &mut Store,
+    window: crate::WindowId,
+    key: &SessionId,
+    actions: &[StateAction],
+    fx: &mut crate::AppFx<'_>,
+) {
+    let mut channel = Agents::channel(store, key).unwrap_or_default();
+    let mut folders_grew = false;
+    for action in actions {
+        match action {
+            StateAction::SessionChatAdded(added) => {
+                let kept: rpds::VectorSync<ChatSummary> = channel
+                    .chats
+                    .iter()
+                    .filter(|held| held.resource != added.summary.resource)
+                    .cloned()
+                    .collect();
+                let mut chats = kept;
+                chats.push_back_mut(added.summary.clone());
+                channel.chats = chats;
+            }
+            StateAction::SessionChatRemoved(removed) => {
+                channel.chats = channel
+                    .chats
+                    .iter()
+                    .filter(|held| held.resource != removed.chat)
+                    .cloned()
+                    .collect();
+            }
+            StateAction::SessionChatUpdated(updated) => {
+                channel.chats = channel
+                    .chats
+                    .iter()
+                    .map(|held| {
+                        let mut held = held.clone();
+                        if held.resource == updated.chat {
+                            merge_chat_summary(&mut held, updated);
+                        }
+                        held
+                    })
+                    .collect();
+            }
+            StateAction::SessionWorkingDirectorySet(set) => {
+                if !channel
+                    .working_directories
+                    .iter()
+                    .any(|held| held == &set.directory)
+                {
+                    channel
+                        .working_directories
+                        .push_back_mut(set.directory.clone());
+                    folders_grew = true;
+                }
+            }
+            StateAction::SessionWorkingDirectoryRemoved(removed) => {
+                channel.working_directories = channel
+                    .working_directories
+                    .iter()
+                    .filter(|held| **held != removed.directory)
+                    .cloned()
+                    .collect();
+            }
+
+            StateAction::SessionConfigChanged(changed) => {
+                if let Some(held) = &channel.config {
+                    let mut config = (**held).clone();
+                    if changed.replace.unwrap_or(false) {
+                        config.values = changed.config.clone();
+                    } else {
+                        for (key, value) in &changed.config {
+                            config.values.insert(key.clone(), value.clone());
+                        }
+                    }
+                    channel.config = Some(Arc::new(config));
+                }
+            }
+            StateAction::SessionChangesetsChanged(changed) => {
+                crate::hichanges::adopt_session_catalog(store, window, key, changed, fx);
+            }
+            _ => {}
+        }
+    }
+    Agents::set_channel(store, key, channel);
+
+    if folders_grew {
+        // The attach path (`EnterSessionWork`) arms comments for
+        // every folder; one added mid-session gets the same here.
+        for folder in crate::higent::session_folders(store, key) {
+            crate::hicomments::Comments::ensure(store, window, &folder, fx);
         }
     }
 }
