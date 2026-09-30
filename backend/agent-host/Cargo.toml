@@ -12,6 +12,7 @@ path = "src/main.rs"
 ahp = "0.7"
 base64 = "0.22"
 ahp-types = "0.7"
+fsp-types = { path = "../../vendor/fsp-types" }
 hifind = { path = "../find" }
 higit = { path = "../git" }
 host-discovery = { path = "../../protocol/host-discovery" }

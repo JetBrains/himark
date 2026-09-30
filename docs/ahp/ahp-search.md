@@ -74,7 +74,8 @@ interface SearchResult {
   /**
    * Resource URIs of matching resources, deduplicated — one entry
    * per resource regardless of how many times the query matches
-   * inside it. Ordered by (searched folder, relative path).
+   * inside it. Ordered per §2.5: relevance for fuzzy path search,
+   * (searched folder, relative path) otherwise.
    */
   hits: string[];
   /** True iff the limit or a cancellation cut the result off. */
@@ -99,10 +100,14 @@ session channel answers `-32001` (NO SUCH CHANNEL).
   every kind.
 - `target: "path"` matches over the path relative to the searched
   folder (file name included); no content is read.
-- `target: "content"` reads **stored resource content only**. There
-  is no document-channel overlay: unflushed edits held in a mirrored
-  document (see the Documents extension) are not observed — a client
-  that wants live-buffer hits searches its own buffers.
+- `target: "content"` reads stored resource content; a server MAY
+  additionally observe synchronized document content, so unflushed
+  edits held in a mirrored document (see the Documents extension)
+  are searched as the user sees them. The reference server does when
+  its indexed engine serves (docs/file-search.md §4); its naive
+  fallback reads disk only. A client MUST NOT depend on either
+  behavior — a client that requires live-buffer hits searches its
+  own buffers.
 
 ### 2.4 The walk
 
@@ -122,11 +127,17 @@ An empty `query`, or `limit: 0`, answers
 
 ### 2.5 Ordering
 
-Hits are sorted by (index of the searched folder, relative path) —
-**path order**. Ranking by match quality is not performed; a client
-that wants relevance ordering (e.g. name-over-directory or
-subsequence density for a quick-open surface) ranks the returned
-paths itself.
+For `kind: "fuzzy"` with `target: "path"` — the quick-open lane —
+hits are **relevance-ordered, best first**, and the answer order is
+the presentation order: ranking lives in the SERVER (the reference
+server's FSP engine ranks by a name-position ladder — the name is
+the query, the name starts with the match, the match sits inside
+the name, it straddles the directory part — then contiguity and
+brevity; its naive fallback answers path order, a stated quality
+gap). Clients MUST NOT re-rank.
+
+Every other kind/target answers **path order** — (index of the
+searched folder, relative path).
 
 ### 2.6 Cancellation and truncation
 
@@ -134,7 +145,10 @@ The server holds one cancellation token per **connection**: a new
 `search` request on a connection cancels that connection's previous
 search, and closing the connection cancels its in-flight search. A
 cancelled search still answers, with the hits collected so far and
-`truncated: true`.
+`truncated: true`. "New" follows the REQUEST ID — ids on a
+connection increase, and the server never lets a smaller id cancel
+a larger one, whatever order their handlers got scheduled in: the
+newest search always runs to its own completion.
 
 `truncated: true` is the honesty contract — it is set both when the
 limit cut the walk short and when cancellation did; a client MUST be
@@ -158,7 +172,9 @@ The reference client maps its find surfaces onto the method as:
 - text find → `kind: "text"`, `target: "content"`, overall cap 64;
 
 issuing one request per session working directory with a limit that
-shrinks by the hits already collected. A client superseding a search
+shrinks by the hits already collected, and presenting path-find hits
+in ANSWER ORDER — the server ranked them (§2.5), no client-side
+scoring exists. A client superseding a search
 (the user kept typing) simply issues the next request — the server's
 per-connection token cancels the old one — and discards the earlier
 answer on arrival.

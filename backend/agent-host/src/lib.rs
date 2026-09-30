@@ -6,6 +6,7 @@ mod changes;
 pub mod claude;
 pub mod codex;
 mod documents;
+mod fsp;
 mod history;
 pub(crate) mod http;
 pub mod lock;

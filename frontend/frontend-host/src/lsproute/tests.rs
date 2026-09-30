@@ -17,6 +17,8 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: vec![agent_host::LanguageServer {
             extensions: vec!["rs".to_owned()],
             command: agent_host::testing::fake_ls_command(dir.path()),

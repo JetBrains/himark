@@ -21,6 +21,8 @@ fn wire_backend() -> (tempfile::TempDir, Arc<dyn himark::higent::AhpServer>) {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {

@@ -335,3 +335,128 @@ pub fn fake_ls_command(dir: &Path) -> String {
     std::fs::write(&path, FAKE_LS).expect("fake ls written");
     format!("python3 {}", path.display())
 }
+
+/// A scripted FSP server (docs/file-search.md §9): speaks real
+/// Content-Length framing, negotiates utf-8, logs every incoming
+/// message to `fsp-log.jsonl` beside the script. Canned behavior:
+/// textSearch answers one match for the query in `<first dir>/hit.md`
+/// (`"cut"` sets limitHit, `"die-now"` kills the process before
+/// answering, `"slow"` parks until `$/cancelRequest`); fileSearch
+/// answers `zeta.rs` above `alpha.rs` (score order — the host must
+/// re-sort to path order).
+pub const FAKE_FSP: &str = r#"#!/usr/bin/env python3
+import json, os, sys
+
+root = os.path.dirname(os.path.abspath(__file__))
+log_path = os.path.join(root, "fsp-log.jsonl")
+
+def log(obj):
+    with open(log_path, "a") as f:
+        f.write(json.dumps(obj) + "\n")
+
+def read_msg():
+    headers = {}
+    line = sys.stdin.buffer.readline()
+    if not line:
+        sys.exit(0)
+    while line and line.strip():
+        name, _, value = line.decode().partition(":")
+        headers[name.strip().lower()] = value.strip()
+        line = sys.stdin.buffer.readline()
+    if not line:
+        sys.exit(0)
+    body = sys.stdin.buffer.read(int(headers["content-length"]))
+    msg = json.loads(body)
+    log(msg)
+    return msg
+
+def send(obj):
+    body = json.dumps(obj).encode()
+    sys.stdout.buffer.write(b"Content-Length: %d\r\n\r\n" % len(body))
+    sys.stdout.buffer.write(body)
+    sys.stdout.buffer.flush()
+
+msg = read_msg()
+assert msg["method"] == "initialize", msg
+folders = [f["uri"] for f in (msg["params"].get("searchFolders") or [])]
+send({"jsonrpc": "2.0", "id": msg["id"], "result": {
+    "capabilities": {
+        "positionEncoding": "utf-8",
+        "textDocumentSync": 2,
+        "textSearchProvider": {"regExp": True, "multiline": True},
+        "fileSearchProvider": {"fuzzy": True},
+        "workspace": {"searchFolders": {"supported": True, "changeNotifications": True}}},
+    "serverInfo": {"name": "fake-fsp", "version": "0"}}})
+
+parked = None
+while True:
+    msg = read_msg()
+    method = msg.get("method")
+    if method == "exit":
+        sys.exit(0)
+    if method == "shutdown":
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": None})
+        continue
+    if method == "$/cancelRequest" and parked is not None:
+        if msg["params"]["id"] == parked:
+            send({"jsonrpc": "2.0", "id": parked,
+                  "error": {"code": -32800, "message": "request cancelled"}})
+            parked = None
+        continue
+    if method == "workspace/didChangeSearchFolders":
+        event = msg["params"]["event"]
+        for removed in event["removed"]:
+            if removed["uri"] in folders:
+                folders.remove(removed["uri"])
+        for added in event["added"]:
+            if added["uri"] not in folders:
+                folders.append(added["uri"])
+        continue
+    if method == "workspace/textSearch":
+        p = msg["params"]
+        q = p["query"]
+        if q == "die-now":
+            sys.exit(1)
+        if q == "slow":
+            parked = msg["id"]
+            continue
+        dirs = p.get("dirs") or folders
+        uri = dirs[0].rstrip("/") + "/hit.md"
+        text = "the %s here" % q
+        file_result = {"uri": uri, "matches": [{
+            "range": {"start": {"line": 0, "character": 4},
+                       "end": {"line": 0, "character": 4 + len(q)}},
+            "lines": [{"line": 0, "text": text, "isMatch": True}]}]}
+        token = p.get("partialResultToken")
+        if token is not None:
+            send({"jsonrpc": "2.0", "method": "$/progress",
+                  "params": {"token": token, "value": [file_result]}})
+            send({"jsonrpc": "2.0", "id": msg["id"],
+                  "result": {"results": [], "limitHit": q == "cut"}})
+        else:
+            send({"jsonrpc": "2.0", "id": msg["id"],
+                  "result": {"results": [file_result], "limitHit": q == "cut"}})
+        continue
+    if method == "workspace/fileSearch":
+        p = msg["params"]
+        dirs = p.get("dirs") or folders
+        base = dirs[0].rstrip("/")
+        send({"jsonrpc": "2.0", "id": msg["id"], "result": {"results": [
+            {"uri": base + "/zeta.rs", "score": 2.0},
+            {"uri": base + "/alpha.rs", "score": 1.0}], "limitHit": False}})
+        continue
+"#;
+
+pub fn fake_fsp_command(dir: &Path) -> String {
+    let path = dir.join("fake-fsp.py");
+    std::fs::write(&path, FAKE_FSP).expect("fake fsp written");
+    format!("python3 {}", path.display())
+}
+
+/// The fake FSP server's message log, parsed.
+pub fn fsp_log(dir: &Path) -> Vec<serde_json::Value> {
+    let raw = std::fs::read_to_string(dir.join("fsp-log.jsonl")).unwrap_or_default();
+    raw.lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}

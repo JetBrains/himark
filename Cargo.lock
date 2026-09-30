@@ -16,6 +16,7 @@ dependencies = [
  "ahp-types",
  "axum",
  "base64 0.22.1",
+ "fsp-types",
  "futures-util",
  "getrandom 0.4.3",
  "hifind",
@@ -1421,6 +1422,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76ee7a02da4d231650c7cea31349b889be2f45ddb3ef3032d2ec8185f6313fd2"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "fsp-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "url",
 ]
 
 [[package]]

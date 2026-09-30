@@ -294,10 +294,15 @@ socket — each service either a method or a channel family
   `resourceWrite`s; blob sides travel as `hihost-git:/` refs served
   by `resourceRead`. History channels (`hihost-history:/<folder>`)
   page the revision log (docs/ahp/ahp-history.md).
-- **search**: the `search` method walks the session's directories
-  with the ripgrep stack on a per-connection LEASH — the next search
-  supersedes the running one, a dead connection raises the cancel
-  flag, a cut answer says `truncated` (docs/ahp/ahp-search.md).
+- **search**: `search` and `searchLocations` ride the indexed FSP
+  engine when an `fsp-server` binary was discovered at boot — a
+  supervised sidecar fed the session's folders and document-channel
+  overlays — and the in-process ripgrep-stack walk otherwise
+  (docs/file-search.md). Cancellation is unchanged either way: the
+  per-connection leash for `search` (the next search supersedes,
+  a dead connection cancels, a cut answer says `truncated`), the
+  channel's disposal for `searchLocations`
+  (docs/ahp/ahp-search.md, docs/ahp/ahp-locations.md).
 - **lsp**: the host supervises language servers per workspace root
   (`lsp/*` envelope methods forwarded verbatim; capabilities and
   diagnostics host-synthesized; diagnostics stream on their own

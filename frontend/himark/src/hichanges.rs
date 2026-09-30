@@ -994,10 +994,7 @@ impl Changes {
                         folder: landing.clone(),
                         result,
                     });
-                    match Some(scope.clone()) {
-                        Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                        None => AppCommand::Dynamic(window, landed),
-                    }
+                    AppCommand::dynamic_in(scope.clone(), window, landed)
                 }),
             );
         }

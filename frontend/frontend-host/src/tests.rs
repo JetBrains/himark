@@ -240,6 +240,8 @@ fn hosted_engine_with_language_servers(
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers,
     };
     std::thread::spawn(move || {
@@ -1342,13 +1344,27 @@ and another
         900.0,
         700.0
     ));
-    settle_until(&mut engine, "the refetch recomputed the counts", |engine| {
+    // The refetch is the ONLY road to the new counts: the host's
+    // changeset watcher rides `.git/logs/HEAD`, which a working-tree
+    // edit never touches. So a timeout here names the rows it saw —
+    // a missed chip and a lost landing look the same from outside.
+    let started = std::time::Instant::now();
+    loop {
+        settle(&mut engine);
         let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
-        rows(engine).is_some_and(|rows| {
+        let seen = rows(&engine);
+        if seen.as_ref().is_some_and(|rows| {
             rows.iter()
                 .any(|(_, label, _)| label.starts_with("README.md") && label.contains("+2"))
-        })
-    });
+        }) {
+            break;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(30),
+            "never settled: the refetch recomputed the counts; rows: {seen:?}"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
 }
 
 #[test]
@@ -5195,6 +5211,8 @@ fn two_wire_clients_converge_on_one_document() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {
@@ -5425,6 +5443,8 @@ fn two_wire_clients_share_annotations() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {
@@ -5574,6 +5594,8 @@ fn two_engines_sync_a_live_document() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {
@@ -5737,6 +5759,8 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {
@@ -5923,6 +5947,8 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
         ..agent_host::HostConfig::default()
     };
@@ -6445,6 +6471,8 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: Vec::new(),
         ..agent_host::HostConfig::default()
     };

@@ -12199,3 +12199,11 @@ timestamp,commit,profile,bench,metric,value_ms
 1790553366,8ce9eaf1b,debug,chat-edits,frame_p95_ms,78.0553
 1790553366,8ce9eaf1b,debug,chat-edits,frame_max_ms,89.5486
 1790553366,8ce9eaf1b,debug,chat-edits,background_total_ms,2416.1383
+1790556552,287c2b7ef,debug,diff-open,open_ms,21.4921
+1790556552,287c2b7ef,debug,diff-typing,p50_ms,2.4648
+1790556553,287c2b7ef,debug,diff-resize,frame_p50_ms,6.4183
+1790556553,287c2b7ef,debug,diff-resize,frame_worst_ms,14.2886
+1790556559,287c2b7ef,debug,chat-edits,frame_p50_ms,8.2807
+1790556559,287c2b7ef,debug,chat-edits,frame_p95_ms,71.7180
+1790556559,287c2b7ef,debug,chat-edits,frame_max_ms,78.8598
+1790556559,287c2b7ef,debug,chat-edits,background_total_ms,2435.8307

@@ -82,6 +82,13 @@ pub struct HostConfig {
     pub shell: String,
 
     pub language_servers: Vec<LanguageServer>,
+
+    /// The FSP search server binary; `None` = no indexed engine, the
+    /// naive walk serves every search (docs/file-search.md).
+    pub fsp_binary: Option<String>,
+
+    /// The FSP server's persistent data root (`FSP_DATA_DIR`).
+    pub fsp_data_dir: PathBuf,
 }
 
 #[derive(Clone, Debug)]
@@ -118,6 +125,10 @@ impl Default for HostConfig {
                 extensions: vec!["rs".to_owned()],
                 command: crate::lsp::discover_rust_analyzer(),
             }],
+            fsp_binary: crate::fsp::discover_binary(),
+            fsp_data_dir: crate::lock::default_dir()
+                .unwrap_or_else(|| PathBuf::from(".himark-agent-host"))
+                .join("fsp"),
         }
     }
 }
@@ -543,7 +554,12 @@ struct State {
     replay: rpds::QueueSync<ahp_types::actions::ActionEnvelope>,
     next_connection: u64,
 
-    searches: rpds::HashTrieMapSync<u64, Arc<std::sync::atomic::AtomicBool>>,
+    /// Per-connection search lease: (request id, leash). Ordered by
+    /// the id — requests run on their own tasks, and an OLDER request
+    /// scheduled late must not install over (and thereby cancel) a
+    /// newer search (fast typing used to kill the newest quick-open
+    /// query, 2026-09-30).
+    searches: rpds::HashTrieMapSync<u64, (u64, Arc<std::sync::atomic::AtomicBool>)>,
 }
 
 #[derive(Clone)]
@@ -558,6 +574,11 @@ pub struct Host {
     config: HostConfig,
 
     lsp: crate::lsp::Pool,
+
+    /// The indexed search engine — present iff an FSP server binary
+    /// was discovered at boot (docs/file-search.md §2). `fsp_engine`
+    /// filters a demoted engine to `None`.
+    fsp: Option<Arc<crate::fsp::Engine>>,
 
     lsp_inflight: Mutex<HashMap<(u64, u64), (Arc<crate::lsp::Server>, i64)>>,
 
@@ -673,15 +694,37 @@ impl Host {
                 disk_texts: rpds::HashTrieMapSync::new_sync(),
             },
         );
-        Arc::new_cyclic(|weak: &std::sync::Weak<Self>| {
+        let host = Arc::new_cyclic(|weak: &std::sync::Weak<Self>| {
             let events_host = weak.clone();
             let lsp = crate::lsp::Pool::new(Arc::new(move |server, event| {
                 if let Some(host) = events_host.upgrade() {
                     host.ls_event(server, event);
                 }
             }));
+            match &config.fsp_binary {
+                Some(binary) => {
+                    tracing::info!(target: "ahp_host", %binary, "fsp search engine");
+                    eprintln!("[fsp] indexed search engine: {binary}");
+                }
+                None => {
+                    tracing::info!(target: "ahp_host", "no fsp-server found — the walk serves search");
+                    eprintln!("[fsp] no fsp-server found — the walk serves search");
+                }
+            }
+            let fsp = config.fsp_binary.clone().map(|binary| {
+                let overlays_host = weak.clone();
+                crate::fsp::Engine::new(
+                    binary,
+                    config.fsp_data_dir.clone(),
+                    Arc::new(move || match overlays_host.upgrade() {
+                        Some(host) => host.overlay_snapshot(),
+                        None => Vec::new(),
+                    }),
+                )
+            });
             Self {
                 lsp,
+                fsp,
                 lsp_inflight: Mutex::new(HashMap::new()),
                 lsp_cancelled: Mutex::new(std::collections::HashSet::new()),
                 trace: crate::trace::HostTrace::new(),
@@ -715,7 +758,73 @@ impl Host {
                 store,
                 config,
             }
-        })
+        });
+        host
+    }
+
+    /// The engine, absent when none was discovered or it demoted.
+    fn fsp_engine(&self) -> Option<Arc<crate::fsp::Engine>> {
+        self.fsp
+            .as_ref()
+            .filter(|engine| engine.available())
+            .cloned()
+    }
+
+    /// Reconcile the FSP folder set with the OPEN sessions' GIT
+    /// working directories — sessions with a live subscriber on
+    /// their session channel, never the whole catalog (a host boots
+    /// with every manifest it ever stored; registering that union
+    /// would be an ask to index and WATCH a user's entire session
+    /// history — the 2026-09-30 `~/Downloads` TCC prompt), and only
+    /// git repositories among them (`fsp::indexable`). Registration
+    /// is warmth only — an unregistered scope is scan-served per
+    /// request — so it follows the folders actually in use.
+    /// Idempotent; called from session AND subscription lifecycle.
+    fn fsp_sync_folders(&self) {
+        let Some(engine) = self.fsp_engine() else { return };
+        let state = self.snapshot();
+        let desired: std::collections::HashSet<PathBuf> = state
+            .sessions
+            .iter()
+            .filter(|(uri, _)| {
+                state
+                    .subscribers
+                    .get(*uri)
+                    .is_some_and(|subscribers| !subscribers.is_empty())
+            })
+            .flat_map(|(_, entry)| entry.manifest.working_directories.iter())
+            .filter_map(|dir| crate::uris::file_path(dir))
+            .filter(|dir| crate::fsp::indexable(dir))
+            .collect();
+        let any = !desired.is_empty();
+        engine.sync_folders(desired.into_iter().collect());
+        if any {
+            // The indexing ask: the first open session spawns the
+            // server warm.
+            engine.ensure();
+        }
+    }
+
+    /// Every open document overlay, for FSP replay at (re)spawn:
+    /// (resource uri, full text), deduplicated by uri.
+    fn overlay_snapshot(&self) -> Vec<(String, String)> {
+        let state = self.snapshot();
+        let mut seen = std::collections::HashSet::new();
+        let mut overlays = Vec::new();
+        for (_, session) in state.sessions.iter() {
+            for (uri, channel) in session.mirrors.iter() {
+                if !seen.insert(uri.clone()) {
+                    continue;
+                }
+                if let Some(document) = session.documents.get(channel) {
+                    overlays.push((
+                        uri.clone(),
+                        himark_ahp_ext_types::text::materialize(document.text()),
+                    ));
+                }
+            }
+        }
+        overlays
     }
 
     fn snapshot(&self) -> Arc<State> {
@@ -948,13 +1057,19 @@ impl Host {
                 state.subscribers.remove_mut(&channel);
             }
 
-            let search = state.searches.get(&connection).cloned();
+            let search = state
+                .searches
+                .get(&connection)
+                .map(|(_, held)| Arc::clone(held));
             state.searches.remove_mut(&connection);
             search
         });
         if let Some(search) = search {
             search.store(true, std::sync::atomic::Ordering::Relaxed);
         }
+        // The dying connection may have been a session's last
+        // subscriber: its folders leave the FSP registry.
+        self.fsp_sync_folders();
     }
 
     async fn http_serve(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
@@ -1281,6 +1396,10 @@ impl Host {
         {
             self.recompute_changes(channel);
         }
+        if answered.is_some() {
+            // An opened session's folders are the FSP indexing ask.
+            self.fsp_sync_folders();
+        }
         match answered {
             Some(snapshot) => rpc::success(
                 id,
@@ -1344,6 +1463,8 @@ impl Host {
                 }
             }
         });
+        // A closed session's folders leave the FSP registry.
+        self.fsp_sync_folders();
     }
 
     fn subscribe_channel(
@@ -1723,6 +1844,7 @@ impl Host {
                 }),
             );
         }
+        self.fsp_sync_folders();
         rpc::success(id, Value::Null)
     }
 
@@ -1795,6 +1917,13 @@ impl Host {
             return rpc::failure(id, NO_SUCH_CHANNEL, format!("no session {session}"));
         };
         let _ = self.store.remove_session(&removed.manifest.native_id);
+        if let Some(engine) = self.fsp_engine() {
+            // The session's overlays die with it: disk is truth again.
+            for (uri, _) in removed.mirrors.iter() {
+                engine.feed_close(uri);
+            }
+        }
+        self.fsp_sync_folders();
         self.notify_root(
             "root/sessionRemoved",
             serde_json::json!({"channel": ROOT, "session": session}),
@@ -1880,6 +2009,7 @@ impl Host {
                     }
                 });
                 self.republish_session_catalog(&channel);
+                self.fsp_sync_folders();
             }
             StateAction::SessionWorkingDirectoryRemoved(removed) => {
                 let directory = removed.directory.clone();
@@ -1890,6 +2020,7 @@ impl Host {
                         .retain(|held| *held != directory);
                 });
                 self.republish_session_catalog(&channel);
+                self.fsp_sync_folders();
             }
 
             StateAction::SessionConfigChanged(changed) => {
@@ -2485,14 +2616,132 @@ impl Host {
             .map(|limit| limit as usize)
             .unwrap_or(DEFAULT_LIMIT)
             .min(LIMIT_CAP);
+        if query.term.is_empty() || limit == 0 {
+            return rpc::success(
+                id,
+                himark_ahp_ext_types::SearchResult {
+                    hits: Vec::new(),
+                    truncated: false,
+                },
+            );
+        }
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
-        let superseded = self.update(|state| {
-            let held = state.searches.get(&connection).cloned();
-            state.searches.insert_mut(connection, Arc::clone(&cancel));
-            held
+        let lease = self.update(|state| {
+            if state
+                .searches
+                .get(&connection)
+                .is_some_and(|(lead, _)| *lead > id)
+            {
+                // A newer search already leads this connection: this
+                // request lost the race to its own task scheduling.
+                return None;
+            }
+            let held = state
+                .searches
+                .get(&connection)
+                .map(|(_, held)| Arc::clone(held));
+            state.searches.insert_mut(connection, (id, Arc::clone(&cancel)));
+            Some(held)
         });
+        let Some(superseded) = lease else {
+            // Superseded before it started: answer as a cancelled
+            // search does — cut off, nothing collected (§2.6).
+            return rpc::success(
+                id,
+                himark_ahp_ext_types::SearchResult {
+                    hits: Vec::new(),
+                    truncated: true,
+                },
+            );
+        };
         if let Some(superseded) = superseded {
             superseded.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+
+        // All search rides FSP when it is there (docs/file-search.md §6):
+        // fileSearch for the quick-open path lane, textSearch capped at
+        // one match per file for the content lane — over ANY scope, the
+        // server scans what it does not index. Only the classes FSP has
+        // no vocabulary for fall through to the walk. `Gone` is the
+        // crash window — this one request falls through while the
+        // respawn happens behind it.
+        let engine = self.fsp_engine().filter(|_| {
+            use himark_ahp_ext_types::{SearchKind, SearchTarget};
+            matches!(
+                (query.target, query.kind),
+                (SearchTarget::Path, SearchKind::Fuzzy)
+                    | (SearchTarget::Content, SearchKind::Text | SearchKind::Regex)
+            )
+        });
+        if let Some(engine) = engine {
+            let outcome = match query.target {
+                // Ranking lives in the FSP server; its score order IS
+                // the answer order (ahp-search.md §2.5) — nobody above
+                // this line re-sorts a fuzzy answer.
+                himark_ahp_ext_types::SearchTarget::Path => engine
+                    .file_search(
+                        &folders,
+                        &query.term,
+                        query.case_sensitive,
+                        limit,
+                        Arc::clone(&cancel),
+                    )
+                    .await
+                    .map(|(paths, truncated)| himark_ahp_ext_types::SearchResult {
+                        hits: paths
+                            .iter()
+                            .map(|path| crate::uris::file_uri(path))
+                            .collect(),
+                        truncated,
+                    }),
+                himark_ahp_ext_types::SearchTarget::Content => {
+                    let collected = Arc::new(std::sync::Mutex::new(Vec::new()));
+                    let sink = {
+                        let collected = Arc::clone(&collected);
+                        Arc::new(move |batch: Vec<crate::fsp::FileMatches>| {
+                            let mut held = collected.lock().expect("content hits");
+                            held.extend(batch.into_iter().map(|file| file.path));
+                        })
+                            as Arc<dyn Fn(Vec<crate::fsp::FileMatches>) + Send + Sync>
+                    };
+                    engine
+                        .text_search(
+                            &folders,
+                            &query.term,
+                            query.kind == himark_ahp_ext_types::SearchKind::Regex,
+                            query.case_sensitive,
+                            limit,
+                            Some(1),
+                            Arc::clone(&cancel),
+                            sink,
+                        )
+                        .await
+                        .map(|truncated| {
+                            let paths =
+                                std::mem::take(&mut *collected.lock().expect("content hits"));
+                            path_ordered(paths, &folders, truncated)
+                        })
+                }
+            };
+            let served = match outcome {
+                Ok(result) => Some(rpc::success(id, result)),
+                Err(crate::fsp::FspFailure::Invalid(message)) => {
+                    Some(rpc::failure(id, INVALID_PARAMS, message))
+                }
+                Err(crate::fsp::FspFailure::Gone) => None,
+            };
+            if let Some(answer) = served {
+                self.update(|state| {
+                    if state
+                        .searches
+                        .get(&connection)
+                        .is_some_and(|(lead, _)| *lead == id)
+                    {
+                        state.searches.remove_mut(&connection);
+                    }
+                });
+                return answer;
+            }
         }
 
         let scanned = tokio::task::spawn_blocking({
@@ -2506,7 +2755,7 @@ impl Host {
                 if state
                     .searches
                     .get(&connection)
-                    .is_some_and(|held| Arc::ptr_eq(held, &cancel))
+                    .is_some_and(|(lead, _)| *lead == id)
                 {
                     state.searches.remove_mut(&connection);
                 }
@@ -2577,44 +2826,111 @@ impl Host {
         let watcher = self.leash_locations(channel.clone(), Arc::clone(&cancel));
         let host = Arc::clone(self);
         let fan_out = channel.clone();
-        tokio::task::spawn_blocking(move || {
-            let emit = |batch: hifind::FileMatches| {
-                let uri = crate::uris::file_uri(&folders[batch.folder].join(&batch.relative));
-                let locations = batch
-                    .matches
-                    .into_iter()
-                    .map(|found| himark_ahp_ext_types::Location {
-                        uri: uri.clone(),
-                        line: found.line,
-                        column: found.column,
-                        length: found.length,
-                        context: found.context,
-                        context_column_start: found.context_column_start,
-                    })
-                    .collect();
-                host.emit_locations(
-                    &fan_out,
-                    himark_ahp_ext_types::LocationList {
-                        locations,
-                        done: false,
-                        truncated: false,
-                    },
-                );
-            };
-            let truncated =
-                hifind::scan_locations(&folders, &query, limit, &cancel, &emit).unwrap_or(true);
-            host.emit_locations(
-                &fan_out,
-                himark_ahp_ext_types::LocationList {
-                    locations: Vec::new(),
-                    done: true,
-                    truncated,
-                },
-            );
-            watcher.abort();
-        });
+        match self.fsp_engine() {
+            Some(engine) => {
+                tokio::spawn(async move {
+                    let truncated = host
+                        .fsp_search_locations(&engine, &folders, &query, limit, &cancel, &fan_out)
+                        .await;
+                    host.emit_locations(
+                        &fan_out,
+                        himark_ahp_ext_types::LocationList {
+                            locations: Vec::new(),
+                            done: true,
+                            truncated,
+                        },
+                    );
+                    watcher.abort();
+                });
+            }
+            None => {
+                tokio::task::spawn_blocking(move || {
+                    let emit = |batch: hifind::FileMatches| {
+                        let path = folders[batch.folder].join(&batch.relative);
+                        host.emit_locations(&fan_out, locations_of(&path, batch.matches));
+                    };
+                    let truncated = hifind::scan_locations(&folders, &query, limit, &cancel, &emit)
+                        .unwrap_or(true);
+                    host.emit_locations(
+                        &fan_out,
+                        himark_ahp_ext_types::LocationList {
+                            locations: Vec::new(),
+                            done: true,
+                            truncated,
+                        },
+                    );
+                    watcher.abort();
+                });
+            }
+        }
         rpc::success(id, serde_json::json!({ "channel": channel }))
     }
+
+    /// The FSP half of `searchLocations`: stream per-file batches into
+    /// the channel, answer whether the story was cut short. `Gone` with
+    /// nothing yet emitted falls to the naive walk for this request —
+    /// the crash window; with batches already out, honesty wins:
+    /// resolve truncated and let the next keystroke re-ask.
+    async fn fsp_search_locations(
+        self: &Arc<Self>,
+        engine: &Arc<crate::fsp::Engine>,
+        folders: &[PathBuf],
+        query: &hifind::SearchQuery,
+        limit: usize,
+        cancel: &Arc<std::sync::atomic::AtomicBool>,
+        channel: &Uri,
+    ) -> bool {
+        if query.term.is_empty() || limit == 0 {
+            return false;
+        }
+        let emitted = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let sink = {
+            let host = Arc::clone(self);
+            let channel = channel.clone();
+            let emitted = Arc::clone(&emitted);
+            Arc::new(move |batch: Vec<crate::fsp::FileMatches>| {
+                for file in batch {
+                    emitted.store(true, std::sync::atomic::Ordering::Relaxed);
+                    host.emit_locations(&channel, locations_of(&file.path, file.matches));
+                }
+            }) as Arc<dyn Fn(Vec<crate::fsp::FileMatches>) + Send + Sync>
+        };
+        let outcome = engine
+            .text_search(
+                folders,
+                &query.term,
+                query.kind == himark_ahp_ext_types::SearchKind::Regex,
+                query.case_sensitive,
+                limit,
+                None,
+                Arc::clone(cancel),
+                sink,
+            )
+            .await;
+        match outcome {
+            Ok(truncated) => truncated,
+            Err(crate::fsp::FspFailure::Gone)
+                if !emitted.load(std::sync::atomic::Ordering::Relaxed) =>
+            {
+                let host = Arc::clone(self);
+                let channel = channel.clone();
+                let folders = folders.to_vec();
+                let query = query.clone();
+                let cancel = Arc::clone(cancel);
+                tokio::task::spawn_blocking(move || {
+                    let emit = |batch: hifind::FileMatches| {
+                        let path = folders[batch.folder].join(&batch.relative);
+                        host.emit_locations(&channel, locations_of(&path, batch.matches));
+                    };
+                    hifind::scan_locations(&folders, &query, limit, &cancel, &emit).unwrap_or(true)
+                })
+                .await
+                .unwrap_or(true)
+            }
+            Err(_) => true,
+        }
+    }
+
 
     fn create_terminal(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params: CreateTerminalParams = match serde_json::from_value(params) {
@@ -2960,6 +3276,7 @@ impl Host {
 
         if let Some((dirs, uri)) = feed {
             self.lsp_feed_open(&dirs, &uri, &text, version);
+            self.fsp_feed_open(&uri, &text);
             // The host owns disk reloads for this mirror from here on.
             self.watch_mirror(channel.clone(), uri);
         }
@@ -3123,6 +3440,7 @@ impl Host {
                 &action.operation,
                 action.id,
             );
+            self.fsp_feed_change(&uri, &action.operation);
         }
     }
 
@@ -3267,6 +3585,7 @@ impl Host {
 
         if let Some((dirs, uri)) = feed {
             self.lsp_feed_change(&dirs, &uri, &action.operation, action.id);
+            self.fsp_feed_change(&uri, &action.operation);
         }
     }
 
@@ -3740,6 +4059,18 @@ impl Host {
             .filter(|dir| path.starts_with(*dir))
             .max_by_key(|dir| dir.len())?;
         row.map(|row| (PathBuf::from(root), row.command.clone()))
+    }
+
+    fn fsp_feed_open(&self, uri: &str, text: &str) {
+        if let Some(engine) = self.fsp_engine() {
+            engine.feed_open(uri, text);
+        }
+    }
+
+    fn fsp_feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::TextOperation) {
+        if let Some(engine) = self.fsp_engine() {
+            engine.feed_change(uri, operation);
+        }
     }
 
     fn lsp_feed_open(
@@ -4776,6 +5107,55 @@ fn file_path(uri: &Value) -> Option<PathBuf> {
 
 fn local_path(uri: &Uri) -> PathBuf {
     crate::uris::file_path(uri).unwrap_or_else(|| PathBuf::from(uri))
+}
+
+/// FSP fileSearch answers score-ordered; the wire promises
+/// (searched folder, relative path) — path order (ahp-search.md §2.5).
+fn path_ordered(
+    paths: Vec<PathBuf>,
+    folders: &[PathBuf],
+    truncated: bool,
+) -> himark_ahp_ext_types::SearchResult {
+    let mut hits: Vec<(usize, PathBuf, PathBuf)> = paths
+        .into_iter()
+        .filter_map(|path| {
+            let index = folders.iter().position(|folder| path.starts_with(folder))?;
+            let relative = path.strip_prefix(&folders[index]).ok()?.to_path_buf();
+            Some((index, relative, path))
+        })
+        .collect();
+    hits.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
+    himark_ahp_ext_types::SearchResult {
+        hits: hits
+            .iter()
+            .map(|(_, _, path)| crate::uris::file_uri(path))
+            .collect(),
+        truncated,
+    }
+}
+
+/// One file's positioned matches as a `locations/extend` payload — the
+/// shared conversion, whichever engine produced the matches.
+fn locations_of(
+    path: &Path,
+    matches: Vec<hifind::LineMatch>,
+) -> himark_ahp_ext_types::LocationList {
+    let uri = crate::uris::file_uri(path);
+    himark_ahp_ext_types::LocationList {
+        locations: matches
+            .into_iter()
+            .map(|found| himark_ahp_ext_types::Location {
+                uri: uri.clone(),
+                line: found.line,
+                column: found.column,
+                length: found.length,
+                context: found.context,
+                context_column_start: found.context_column_start,
+            })
+            .collect(),
+        done: false,
+        truncated: false,
+    }
 }
 
 #[cfg(test)]

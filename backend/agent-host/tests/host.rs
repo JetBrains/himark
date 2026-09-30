@@ -147,6 +147,8 @@ fn host_at(dir: &Path) -> Arc<agent_host::Host> {
         codex_home: dir.join("dot-codex"),
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
+        fsp_binary: None,
+        fsp_data_dir: dir.join("fsp"),
     })
 }
 
@@ -189,6 +191,7 @@ fn codex_host_at(dir: &Path) -> Arc<agent_host::Host> {
         codex_home: dir.join("dot-codex"),
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
+        fsp_binary: None,
         ..agent_host::HostConfig::default()
     })
 }
@@ -1148,6 +1151,17 @@ async fn pipelined_searches_answer_independently() {
         let truncated = answer["result"]["truncated"] == json!(true);
         assert!(complete || truncated, "{answer}");
     }
+    // The lease is ordered by request id: the NEWEST search always
+    // completes, whatever order the tasks got scheduled in — an older
+    // request must never cancel it (fast typing in quick-open used to
+    // land on empty, 2026-09-30).
+    assert_eq!(
+        answers[&902]["result"]["hits"].as_array().expect("hits").len(),
+        2,
+        "{}",
+        answers[&902]
+    );
+    assert_eq!(answers[&902]["result"]["truncated"], json!(false));
 }
 
 #[tokio::test]
@@ -2535,6 +2549,8 @@ async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::Host>, Client, String, Stri
             extensions: vec!["rs".to_owned()],
             command: agent_host::testing::fake_ls_command(dir),
         }],
+        fsp_binary: None,
+        fsp_data_dir: dir.join("fsp"),
     });
     let mut client = Client::connect(host.clone()).await;
     client
@@ -2717,6 +2733,7 @@ async fn session_config_resolves_and_creation_honors_it() {
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
+        fsp_binary: None,
         ..agent_host::HostConfig::default()
     });
     let mut client = Client::connect(host).await;
@@ -3443,4 +3460,547 @@ async fn unflushed_client_edits_survive_the_hosts_file_reload() {
         snapshot["snapshot"]["state"]["text"], "OURS alpha\nbeta\nAGENT\n",
         "three-way: unflushed typing survives the agent's reload"
     );
+}
+
+// ------------------------------------------------------- the FSP engine
+
+fn fsp_host_at(dir: &Path) -> Arc<agent_host::Host> {
+    agent_host::Host::new(agent_host::HostConfig {
+        agents: Vec::new(),
+        data_dir: dir.join("data"),
+        claude_binary: agent_host::testing::fake_cli_command(dir),
+        codex_binary: "false".to_owned(),
+        claude_home: dir.join("dot-claude"),
+        codex_home: dir.join("dot-codex"),
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+        fsp_binary: Some(agent_host::testing::fake_fsp_command(dir)),
+        fsp_data_dir: dir.join("fsp"),
+    })
+}
+
+async fn await_fsp_log(dir: &Path, seen: impl Fn(&[Value]) -> bool) -> Vec<Value> {
+    for _ in 0..100 {
+        let log = agent_host::testing::fsp_log(dir);
+        if seen(&log) {
+            return log;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    }
+    panic!("fsp log never showed the expected traffic: {:?}",
+           agent_host::testing::fsp_log(dir));
+}
+
+#[tokio::test]
+async fn fsp_engine_serves_locations_and_both_search_lanes() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(root.join(".git")).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    // The streaming producer rides the fake's $/progress batch.
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "needle"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    let locations = state["locations"].as_array().expect("locations");
+    assert_eq!(locations.len(), 1, "{state}");
+    let first = &locations[0];
+    assert!(first["uri"].as_str().expect("uri").ends_with("hit.md"));
+    assert_eq!(
+        (first["line"].clone(), first["column"].clone(), first["length"].clone()),
+        (json!(0), json!(4), json!(6)),
+        "{state}"
+    );
+    assert_eq!(first["context"], "the needle here");
+    assert_eq!(first["contextColumnStart"], json!(0));
+
+    // Quick-open path lane: ranking lives in the FSP server, and its
+    // score order IS the wire order (the fake scores zeta above
+    // alpha) — nothing re-sorts a fuzzy answer (ahp-search.md §2.5).
+    let found = client
+        .request(
+            "search",
+            json!({"channel": session, "query": "a", "kind": "fuzzy", "target": "path"}),
+        )
+        .await;
+    let hits: Vec<&str> = found["hits"]
+        .as_array()
+        .expect("hits")
+        .iter()
+        .map(|hit| hit.as_str().expect("uri"))
+        .collect();
+    assert_eq!(hits.len(), 2, "{found}");
+    assert!(hits[0].ends_with("zeta.rs") && hits[1].ends_with("alpha.rs"), "{hits:?}");
+
+    // Content lane: textSearch capped at one match per file, deduped
+    // to URIs.
+    let found = client
+        .request(
+            "search",
+            json!({"channel": session, "query": "kit", "target": "content"}),
+        )
+        .await;
+    let hits = found["hits"].as_array().expect("hits");
+    assert_eq!(hits.len(), 1, "{found}");
+    assert!(hits[0].as_str().expect("uri").ends_with("hit.md"));
+    assert_eq!(found["truncated"], json!(false));
+
+    // Unregistered scopes ride FSP too — the local-fs world names a
+    // concrete folder and the server scan-serves it (docs/file-search.md
+    // §6; PROTOCOL §6 dirs).
+    let outside = dir.path().join("outside");
+    std::fs::create_dir_all(&outside).expect("mkdir");
+    let outside = outside.canonicalize().expect("canonical");
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({
+                "channel": "hihost-fs:/local",
+                "folders": [format!("file://{}", outside.display())],
+                "query": "needle",
+            }),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    let locations = state["locations"].as_array().expect("locations");
+    assert_eq!(locations.len(), 1, "{state}");
+    assert!(
+        locations[0]["uri"]
+            .as_str()
+            .expect("uri")
+            .contains("outside"),
+        "the unregistered scope was asked of FSP: {state}"
+    );
+
+    // The engine registered the session's working directory — either in
+    // initialize or through a folder change before the first search.
+    let log = agent_host::testing::fsp_log(dir.path());
+    let registered = log.iter().any(|msg| {
+        let folders = if msg["method"] == "initialize" {
+            msg["params"]["searchFolders"].clone()
+        } else if msg["method"] == "workspace/didChangeSearchFolders" {
+            msg["params"]["event"]["added"].clone()
+        } else {
+            return false;
+        };
+        folders
+            .as_array()
+            .is_some_and(|entries| entries.iter().any(|folder| {
+                folder["uri"].as_str().is_some_and(|uri| uri.contains("ws"))
+            }))
+    });
+    assert!(registered, "{log:?}");
+}
+
+#[tokio::test]
+async fn fsp_overlays_replay_at_spawn_and_stream_after() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(&root).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    std::fs::write(root.join("doc.md"), "hello\n").expect("write");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    // Open BEFORE the engine ever spawns: the didOpen must arrive by
+    // replay when the first search brings the server up.
+    let uri = format!("file://{}", root.join("doc.md").display());
+    let opened = client
+        .request("openDocument", json!({"channel": session, "uri": uri}))
+        .await;
+    let document = opened["document"].as_str().expect("channel").to_owned();
+    let v0 = opened["version"].as_str().expect("uid").to_owned();
+    client
+        .request("subscribe", json!({"channel": document}))
+        .await;
+
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "needle"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+
+    let log = await_fsp_log(dir.path(), |log| {
+        log.iter().any(|msg| msg["method"] == "textDocument/didOpen")
+    })
+    .await;
+    let did_open = log
+        .iter()
+        .find(|msg| msg["method"] == "textDocument/didOpen")
+        .expect("didOpen");
+    assert_eq!(did_open["params"]["textDocument"]["text"], "hello\n");
+    assert!(did_open["params"]["textDocument"]["uri"]
+        .as_str()
+        .expect("uri")
+        .ends_with("doc.md"));
+
+    // A live edit streams as didChange (utf-8 columns, reverse order).
+    dispatch_applied(
+        &mut client,
+        &document,
+        &v0,
+        uid(0xf5b),
+        insert_at(0, 0, "hot "),
+    )
+    .await;
+    let log = await_fsp_log(dir.path(), |log| {
+        log.iter().any(|msg| msg["method"] == "textDocument/didChange")
+    })
+    .await;
+    let did_change = log
+        .iter()
+        .find(|msg| msg["method"] == "textDocument/didChange")
+        .expect("didChange");
+    assert_eq!(
+        did_change["params"]["contentChanges"][0]["text"],
+        "hot ",
+        "{did_change}"
+    );
+}
+
+#[tokio::test]
+async fn fsp_gone_falls_to_the_walk_and_the_respawn_recovers() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(&root).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    std::fs::write(root.join("walk.md"), "say die-now twice\n").expect("write");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    // "die-now" kills the fake before it answers: nothing streamed, so
+    // the request falls to the naive walk — and still answers.
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "die-now"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        &mut client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    assert_eq!(state["truncated"], json!(false), "{state}");
+    let locations = state["locations"].as_array().expect("locations");
+    assert_eq!(locations.len(), 1, "the walk served the crash window: {state}");
+    assert!(locations[0]["uri"].as_str().expect("uri").ends_with("walk.md"));
+
+    // Past the respawn backoff the next request lands on a fresh server.
+    tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
+    let found = client
+        .request(
+            "search",
+            json!({"channel": session, "query": "a", "kind": "fuzzy", "target": "path"}),
+        )
+        .await;
+    let hits = found["hits"].as_array().expect("hits");
+    assert_eq!(hits.len(), 2, "the respawned engine answers: {found}");
+    let inits = agent_host::testing::fsp_log(dir.path())
+        .iter()
+        .filter(|msg| msg["method"] == "initialize")
+        .count();
+    assert_eq!(inits, 2, "one spawn, one respawn");
+}
+
+#[tokio::test]
+async fn fsp_unsubscribe_cancels_through_the_wire() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(&root).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    // "slow" parks server-side until $/cancelRequest arrives.
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": "slow"}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    client
+        .request("unsubscribe", json!({"channel": channel}))
+        .await;
+
+    await_fsp_log(dir.path(), |log| {
+        log.iter().any(|msg| msg["method"] == "$/cancelRequest")
+    })
+    .await;
+}
+
+async fn drain_position_rows(
+    client: &mut Client,
+    session: &str,
+    query: &str,
+) -> Vec<(String, u64, u64, u64)> {
+    let minted = client
+        .request(
+            "searchLocations",
+            json!({"channel": session, "query": query}),
+        )
+        .await;
+    let channel = minted["channel"].as_str().expect("channel").to_owned();
+    let subscribed = client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let state = drain_locations(
+        client,
+        &channel,
+        subscribed["snapshot"]["state"].clone(),
+    )
+    .await;
+    let mut rows: Vec<(String, u64, u64, u64)> = state["locations"]
+        .as_array()
+        .expect("locations")
+        .iter()
+        .map(|location| {
+            (
+                location["uri"].as_str().expect("uri").to_owned(),
+                location["line"].as_u64().expect("line"),
+                location["column"].as_u64().expect("column"),
+                location["length"].as_u64().expect("length"),
+            )
+        })
+        .collect();
+    rows.sort();
+    rows
+}
+
+/// Parity against a REAL fsp-server (docs/file-search.md §9): run with
+/// `HIMARK_FSP_E2E=<path to fsp-server> cargo test -p agent-host fsp_real`.
+/// CI has no internal binary and skips.
+#[tokio::test]
+async fn fsp_real_server_parity() {
+    let Ok(binary) = std::env::var("HIMARK_FSP_E2E") else {
+        return;
+    };
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().join("ws");
+    std::fs::create_dir_all(root.join("src")).expect("mkdir");
+    std::fs::create_dir_all(root.join(".git")).expect("mkdir");
+    let root = root.canonicalize().expect("canonical");
+    std::fs::write(
+        root.join("src/lib.rs"),
+        "fn seek() {}\n// 𐐷 seek beyond ascii\nseek();\n",
+    )
+    .expect("write");
+    std::fs::write(root.join("README.md"), "nothing to seek\nplain\n").expect("write");
+    std::fs::write(root.join("skip.png"), b"seek\x00binary").expect("write");
+
+    let host = agent_host::Host::new(agent_host::HostConfig {
+        agents: Vec::new(),
+        data_dir: dir.path().join("data"),
+        claude_binary: agent_host::testing::fake_cli_command(dir.path()),
+        codex_binary: "false".to_owned(),
+        claude_home: dir.path().join("dot-claude"),
+        codex_home: dir.path().join("dot-codex"),
+        shell: "/bin/sh".to_owned(),
+        language_servers: Vec::new(),
+        fsp_binary: Some(binary),
+        fsp_data_dir: dir.path().join("fsp"),
+    });
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, &root).await;
+
+    // Oracle: the naive walk over the same tree, same query.
+    let oracle = |query: &str| {
+        let query = hifind::SearchQuery {
+            term: query.to_owned(),
+            kind: himark_ahp_ext_types::SearchKind::Text,
+            case_sensitive: false,
+            target: himark_ahp_ext_types::SearchTarget::Content,
+        };
+        let emitted = std::sync::Mutex::new(Vec::new());
+        let leash = std::sync::atomic::AtomicBool::new(false);
+        hifind::scan_locations(&[root.clone()], &query, 10_000, &leash, &|batch| {
+            let base = batch.relative.clone();
+            let mut rows = emitted.lock().unwrap();
+            for found in batch.matches {
+                rows.push((
+                    format!("file://{}", root.join(&base).display()),
+                    found.line as u64,
+                    found.column as u64,
+                    found.length as u64,
+                ));
+            }
+        })
+        .expect("oracle scan");
+        let mut rows = emitted.into_inner().unwrap();
+        rows.sort();
+        rows
+    };
+
+    // The multibyte line makes byte-column agreement observable.
+    let fsp_rows = drain_position_rows(&mut client, &session, "seek").await;
+    assert_eq!(fsp_rows, oracle("seek"), "engines disagree on positions");
+    assert!(fsp_rows.len() >= 3, "{fsp_rows:?}");
+
+    // Overlay truth: an unflushed edit is searchable at its live position.
+    let uri = format!("file://{}", root.join("src/lib.rs").display());
+    let opened = client
+        .request("openDocument", json!({"channel": session, "uri": uri}))
+        .await;
+    let document = opened["document"].as_str().expect("channel").to_owned();
+    let v0 = opened["version"].as_str().expect("uid").to_owned();
+    client
+        .request("subscribe", json!({"channel": document}))
+        .await;
+    dispatch_applied(
+        &mut client,
+        &document,
+        &v0,
+        uid(0xe2e),
+        insert_at(1, 3, "OVERLAY_TOKEN "),
+    )
+    .await;
+    let rows = drain_position_rows(&mut client, &session, "OVERLAY_TOKEN").await;
+    assert_eq!(rows.len(), 1, "the unflushed edit is searched: {rows:?}");
+    assert_eq!(
+        (rows[0].1, rows[0].2, rows[0].3),
+        (1, 3, "OVERLAY_TOKEN".len() as u64),
+        "utf-8 positions hold through the overlay: {rows:?}"
+    );
+
+    // Quick-open parity: fuzzy path search finds the file by subsequence.
+    let found = client
+        .request(
+            "search",
+            json!({"channel": session, "query": "lbrs", "kind": "fuzzy", "target": "path"}),
+        )
+        .await;
+    let hits = found["hits"].as_array().expect("hits");
+    assert!(
+        hits.iter()
+            .any(|hit| hit.as_str().expect("uri").ends_with("src/lib.rs")),
+        "{found}"
+    );
+}
+
+#[tokio::test]
+async fn fsp_registers_only_open_sessions() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let opened = dir.path().join("opened");
+    let dormant = dir.path().join("dormant");
+    let loose = dir.path().join("loose");
+    std::fs::create_dir_all(opened.join(".git")).expect("mkdir");
+    std::fs::create_dir_all(dormant.join(".git")).expect("mkdir");
+    std::fs::create_dir_all(&loose).expect("mkdir");
+    let opened = opened.canonicalize().expect("canonical");
+    let loose = loose.canonicalize().expect("canonical");
+    let host = fsp_host_at(dir.path());
+    let mut client = Client::connect(host).await;
+
+    // A listed-but-never-opened session — the catalog shape: a host
+    // boots with every manifest it ever stored, and indexing that
+    // union would watch a user's whole session history
+    // (docs/file-search.md §5).
+    client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+        )
+        .await;
+    client
+        .request(
+            "createSession",
+            json!({
+                "channel": "ahp-session:/dormant",
+                "provider": "claude",
+                "workingDirectories": [format!("file://{}", dormant.display())],
+                "config": {"isolation": "folder"},
+            }),
+        )
+        .await;
+
+    let session = "ahp-session:/opened".to_owned();
+    client
+        .request(
+            "createSession",
+            json!({
+                "channel": session,
+                "provider": "claude",
+                "workingDirectories": [
+                    format!("file://{}", opened.display()),
+                    format!("file://{}", loose.display()),
+                ],
+                "config": {"isolation": "folder"},
+            }),
+        )
+        .await;
+    client
+        .request("subscribe", json!({"channel": session}))
+        .await;
+
+    // The subscription is the indexing ask: the engine spawns with
+    // the OPEN session's folder and never hears of the dormant one.
+    let log = await_fsp_log(dir.path(), |log| {
+        log.iter().any(|msg| msg["method"] == "initialize")
+    })
+    .await;
+    let mentions = |log: &[Value], needle: &str| {
+        log.iter()
+            .any(|msg| msg.to_string().contains(needle))
+    };
+    assert!(mentions(&log, "opened"), "{log:?}");
+    assert!(!mentions(&log, "dormant"), "{log:?}");
+    // Only git repositories register: what fits git fits the index;
+    // a loose folder is scan-served per request instead.
+    assert!(!mentions(&log, "loose"), "{log:?}");
+
+    // The last unsubscribe releases the folder.
+    client
+        .request("unsubscribe", json!({"channel": session}))
+        .await;
+    let log = await_fsp_log(dir.path(), |log| {
+        log.iter().any(|msg| {
+            msg["method"] == "workspace/didChangeSearchFolders"
+                && msg["params"]["event"]["removed"].to_string().contains("opened")
+        })
+    })
+    .await;
+    assert!(!mentions(&log, "dormant"), "{log:?}");
 }
