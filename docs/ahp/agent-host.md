@@ -264,9 +264,10 @@ the same native store and remain available to the CLI.
   `Message.model` (id + thinking level) becomes the session's new
   default and respawns for THAT turn. The session state publishes
   the current values in `config.values` so clients seed their
-  pickers. (`worktree` is accepted and persisted but not acted on;
-  `isolation` is accepted and ignored — folder semantics are the
-  only session bootstrapping the host performs.)
+  pickers. (`worktree: true` bootstraps a git worktree of the
+  primary directory's repository at creation and makes it the
+  session's primary — docs/ahp/agents.md has the exact shape;
+  `isolation` is accepted and ignored.)
 - **Turn ids, part ids, timestamps**: minted by the host, persisted
   in the AHP transcript; providers keep their native ids in `_meta`
   for interop.

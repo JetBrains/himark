@@ -1777,6 +1777,22 @@ impl Host {
         let native_id = crate::uuid_v4();
         let default_chat = format!("ahp-chat:/{}", crate::uuid_v4());
 
+        // The "New worktree" tick is HONORED here, at the one moment
+        // the session's directories are minted: the primary directory
+        // is replaced with a fresh worktree of its repository, so
+        // everything that follows the manifest — the file tree, the
+        // spawn cwd, FSP, the changesets — lives in the worktree. A
+        // failed bootstrap falls back to the directory itself and the
+        // manifest says `worktree: false`, so the config tells the truth.
+        let (working_directories, worktree) =
+            match params["config"]["worktree"].as_bool().unwrap_or(false) {
+                true => match bootstrap_worktree(&working_directories, &native_id) {
+                    Some(dirs) => (dirs, true),
+                    None => (working_directories, false),
+                },
+                false => (working_directories, false),
+            };
+
         let primary = Some(working_directories.first().cloned().unwrap_or_default());
         let manifest = Manifest {
             session: requested.clone(),
@@ -1796,7 +1812,7 @@ impl Host {
             permission_mode: params["config"]["permissionMode"]
                 .as_str()
                 .map(str::to_owned),
-            worktree: params["config"]["worktree"].as_bool().unwrap_or(false),
+            worktree,
 
             listed: !params["config"]["unlisted"].as_bool().unwrap_or(false),
         };
@@ -4947,6 +4963,60 @@ fn sync_session_summary(
         ..Default::default()
     };
     Some((session.clone(), changes))
+}
+
+/// Honor the "New worktree" tick: `git worktree add
+/// <repo>/.claude/worktrees/agent-<id> -b agent-<id>` off the primary
+/// directory's repository, and the session's primary entry is REPLACED
+/// with the worktree — a session opened on `<repo>/sub` shows
+/// `<worktree>/sub`. None when the directory maps to no local path, is
+/// outside any git repository, or git fails: the caller then works in
+/// the directory itself and records `worktree: false`.
+fn bootstrap_worktree(dirs: &[Uri], native_id: &str) -> Option<Vec<Uri>> {
+    let picked = crate::uris::file_path(dirs.first()?)?;
+    let toplevel = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&picked)
+        .args(["rev-parse", "--show-toplevel"])
+        .output()
+        .ok()?;
+    if !toplevel.status.success() {
+        eprintln!(
+            "[worktree] {} is not inside a git repository — the session works in place",
+            picked.display()
+        );
+        return None;
+    }
+    let root = PathBuf::from(String::from_utf8_lossy(&toplevel.stdout).trim_end());
+    let short: String = native_id.chars().take(8).collect();
+    let name = format!("agent-{short}");
+    let target = root.join(".claude").join("worktrees").join(&name);
+    let added = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root)
+        .args(["worktree", "add"])
+        .arg(&target)
+        .args(["-b", &name])
+        .output()
+        .ok()?;
+    if !added.status.success() {
+        eprintln!(
+            "[worktree] git worktree add {} failed — the session works in place: {}",
+            target.display(),
+            String::from_utf8_lossy(&added.stderr).trim_end()
+        );
+        return None;
+    }
+    // The picked directory's place inside the repo carries over. The
+    // repo root comes back resolved (symlinks followed), so a picked
+    // path that does not literally sit under it keeps the worktree root.
+    let carried = match picked.strip_prefix(&root) {
+        Ok(rel) if !rel.as_os_str().is_empty() => target.join(rel),
+        _ => target.clone(),
+    };
+    let mut replaced = dirs.to_vec();
+    replaced[0] = crate::uris::file_uri(&carried);
+    Some(replaced)
 }
 
 fn session_state(manifest: &Manifest) -> SessionState {

@@ -2916,6 +2916,27 @@ async fn session_config_resolves_and_creation_honors_it() {
         "each model carries the EFFORT schema"
     );
 
+    // `worktree: true` is honored for real now, so the session needs a
+    // repository to fork — a bare directory would fall back to
+    // `worktree: false` (its own test below).
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("mkdir");
+    let sh = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .args(["-c", "core.fsmonitor=false", "-C"])
+            .arg(&repo)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+    };
+    sh(&["init", "-q"]);
+    sh(&["config", "user.email", "test@example.com"]);
+    sh(&["config", "user.name", "Test"]);
+    std::fs::write(repo.join("README.md"), "# readme\n").unwrap();
+    sh(&["add", "."]);
+    sh(&["commit", "-q", "-m", "seed"]);
+
     let session = format!("ahp-session:/options-{}", std::process::id());
     client
         .request(
@@ -2923,7 +2944,7 @@ async fn session_config_resolves_and_creation_honors_it() {
             json!({
                 "channel": session,
                 "provider": "claude",
-                "workingDirectories": [format!("file://{}", dir.path().display())],
+                "workingDirectories": [format!("file://{}", repo.display())],
                 "config": {"isolation": "folder", "permissionMode": "acceptEdits", "worktree": true},
                 "model": {"id": "claude-fable-5", "config": {"thinkingLevel": "max"}},
             }),
@@ -4137,4 +4158,117 @@ async fn fsp_registers_only_open_sessions() {
     })
     .await;
     assert!(!mentions(&log, "dormant"), "{log:?}");
+}
+
+// ----------------------------------------------------------------------
+// The "New worktree" tick.
+
+#[tokio::test]
+async fn a_worktree_session_works_in_the_worktree() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let repo = dir.path().join("repo");
+    std::fs::create_dir_all(&repo).expect("mkdir");
+    let repo = repo.canonicalize().expect("canonical");
+    let sh = |args: &[&str]| {
+        let output = std::process::Command::new("git")
+            .args(["-c", "core.fsmonitor=false", "-C"])
+            .arg(&repo)
+            .args(args)
+            .output()
+            .expect("git runs");
+        assert!(output.status.success(), "git {args:?}: {output:?}");
+    };
+    sh(&["init", "-q"]);
+    sh(&["config", "user.email", "test@example.com"]);
+    sh(&["config", "user.name", "Test"]);
+    std::fs::write(repo.join("README.md"), "# readme\n").unwrap();
+    sh(&["add", "."]);
+    sh(&["commit", "-q", "-m", "seed"]);
+
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+        )
+        .await;
+    let session = format!("ahp-session:/wt-{}", std::process::id());
+    client
+        .request(
+            "createSession",
+            json!({
+                "channel": session,
+                "provider": "claude",
+                "workingDirectories": [format!("file://{}", repo.display())],
+                "config": {"worktree": true},
+            }),
+        )
+        .await;
+    let snapshot = client
+        .request("subscribe", json!({"channel": session}))
+        .await;
+
+    // The workspace folder IS the worktree — not the original checkout.
+    let shown = snapshot["snapshot"]["state"]["workingDirectories"][0]
+        .as_str()
+        .expect("a directory")
+        .to_owned();
+    assert!(
+        shown.contains("/.claude/worktrees/agent-"),
+        "the session shows the worktree: {shown}"
+    );
+    let path = shown.strip_prefix("file://").expect("a file uri");
+    assert!(
+        std::path::Path::new(path).join("README.md").exists(),
+        "the worktree is checked out at {path}"
+    );
+    // And the config tells the truth.
+    assert_eq!(
+        snapshot["snapshot"]["state"]["config"]["values"]["worktree"],
+        json!(true)
+    );
+}
+
+#[tokio::test]
+async fn a_worktree_tick_outside_git_works_in_place() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let plain = dir.path().join("plain");
+    std::fs::create_dir_all(&plain).expect("mkdir");
+
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    client
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+        )
+        .await;
+    let session = format!("ahp-session:/wt-plain-{}", std::process::id());
+    let uri = format!("file://{}", plain.display());
+    client
+        .request(
+            "createSession",
+            json!({
+                "channel": session,
+                "provider": "claude",
+                "workingDirectories": [uri],
+                "config": {"worktree": true},
+            }),
+        )
+        .await;
+    let snapshot = client
+        .request("subscribe", json!({"channel": session}))
+        .await;
+
+    // No repository to fork: the directory stands, and the config
+    // says so rather than pretending.
+    assert_eq!(
+        snapshot["snapshot"]["state"]["workingDirectories"],
+        json!([format!("file://{}", plain.display())])
+    );
+    assert_eq!(
+        snapshot["snapshot"]["state"]["config"]["values"]["worktree"],
+        json!(false)
+    );
 }

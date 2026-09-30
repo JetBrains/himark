@@ -183,12 +183,17 @@ silently borrows another host.
   schema (mode, permission mode, worktree) and current values;
   `sessionConfigCompletions` exists beside it — the himark host
   answers completions with an empty list. Two values are worth
-  stating plainly: `worktree: true` is accepted into the session
-  manifest but NOT honored — no git-worktree bootstrap happens; and
+  stating plainly: `worktree: true` is honored at creation — the
+  host runs `git worktree add <repo>/.claude/worktrees/agent-<id>
+  -b agent-<id>` off the primary directory's repository and the
+  session's primary directory is REPLACED with the worktree, so the
+  workspace the session shows (file tree, spawn cwd, FSP folders,
+  changesets) IS the worktree; a directory outside any repository
+  (or a git failure) falls back to working in place and the manifest
+  records `worktree: false`, so the config tells the truth. And
   `config: {isolation: "folder"}` matters only to the VS Code host
   (without it that host bootstraps a git worktree and an `agents/*`
-  branch) — the himark host ignores `isolation` and always works
-  directly in the session's directories.
+  branch) — the himark host ignores `isolation`.
 
 ## The effects (declared in higent, handled statelessly in hiahp)
 
