@@ -167,6 +167,8 @@ bool himark_mouse_down(HimarkEngine *engine,
                        uint32_t mods,
                        uint32_t click_count);
 
+bool himark_secondary_down(HimarkEngine *engine, uint64_t window, float x, float y, uint32_t mods);
+
 bool himark_scroll(HimarkEngine *engine,
                    uint64_t window,
                    float x,

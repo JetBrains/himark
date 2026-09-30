@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use crate::menu::{MenuCommand, MenuView, PopupMenuView};
 use crate::{
     ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, ResourceLocation, TreeRow,
 };
@@ -374,9 +375,34 @@ pub enum TreeCommand {
 
     Changed(Vec<crate::Subscription>),
 
-    /// Session folders the tree does not show yet — folders can
-    /// join the session while the dock stands open.
-    SyncRoots(Vec<ResourceLocation>),
+    /// The roots drifted from the session's folders — folders join
+    /// and leave the session while the dock stands open.
+    SyncRoots {
+        missing: Vec<ResourceLocation>,
+        stale: Vec<ResourceLocation>,
+    },
+
+    /// The row context menu's traffic while one stands open.
+    Menu(MenuCommand),
+
+    /// The inline row editor's traffic while a rename/create rides.
+    Edit(::editor::EditorCommand),
+
+    CommitEdit,
+
+    CancelEdit,
+
+    /// A file operation landed — relist the owning folder and, on
+    /// success, reveal what the operation produced.
+    Mutated {
+        parent: ResourceLocation,
+        select: Option<ResourceLocation>,
+        ok: bool,
+    },
+
+    /// The remove-from-session dispatch answered; the row itself
+    /// leaves via the stale-roots gate when the echo lands.
+    Dispatched(Result<(), String>),
 
     Dismiss,
 
@@ -384,6 +410,40 @@ pub enum TreeCommand {
         location: ResourceLocation,
         generation: u64,
     },
+}
+
+/// The context menu standing over a row, with the row it serves.
+#[derive(Clone)]
+struct TreeMenu {
+    target: ResourceLocation,
+    view: PopupMenuView,
+}
+
+#[derive(Clone)]
+enum EditTarget {
+    Rename(ResourceLocation),
+
+    /// Creating under `parent`: a transient placeholder row hosts
+    /// the editor until commit or cancel removes it.
+    Create {
+        parent: ResourceLocation,
+        placeholder: ResourceLocation,
+    },
+}
+
+#[derive(Clone)]
+struct RowEdit {
+    target: EditTarget,
+    input: ::editor::EditorView,
+}
+
+impl RowEdit {
+    fn row_key(&self) -> &ResourceLocation {
+        match &self.target {
+            EditTarget::Rename(location) => location,
+            EditTarget::Create { placeholder, .. } => placeholder,
+        }
+    }
 }
 
 pub struct SessionTreeView {
@@ -397,6 +457,9 @@ pub struct SessionTreeView {
 
     followed: u64,
     request: Option<ModalRequest>,
+
+    menu: Option<TreeMenu>,
+    edit: Option<RowEdit>,
 }
 
 impl Clone for SessionTreeView {
@@ -409,6 +472,8 @@ impl Clone for SessionTreeView {
             followed: self.followed,
 
             request: None,
+            menu: self.menu.clone(),
+            edit: self.edit.clone(),
         }
     }
 }
@@ -434,6 +499,8 @@ impl SessionTreeView {
             window: None,
             followed: 0,
             request: None,
+            menu: None,
+            edit: None,
         };
         panel.drive_reveal(fx);
         panel.persist(store);
@@ -539,6 +606,339 @@ impl SessionTreeView {
             fx.notify(crate::UnsubscribeEffect { subscription });
         }
     }
+
+    fn open_menu(&mut self, index: usize, store: &Store, ui: &UiCtx) {
+        let Some(target) = self.tree.list.inner().content().key_at(index).cloned() else {
+            return;
+        };
+        let root = self.tree.list.inner().content().depth_at(index) == 0;
+        self.tree
+            .list
+            .inner_mut()
+            .content_mut()
+            .select_only(target.clone());
+        self.pending_reveal = None;
+        let items = menu_items(&target, root);
+        self.menu = Some(TreeMenu {
+            target,
+            view: PopupMenuView::new(store, ui, items),
+        });
+    }
+
+    fn menu_pick(
+        &mut self,
+        id: &str,
+        target: ResourceLocation,
+        store: &Store,
+        ui: &UiCtx,
+        fx: &mut imba::effect::Effects<'_, TreeCommand>,
+    ) {
+        match id {
+            NEW_FILE => self.start_create(target, store, ui),
+            RENAME => self.start_rename(&target, store, ui),
+            DELETE => {
+                let Some(parent) = parent_of(&target) else {
+                    return;
+                };
+                let recursive = target.kind().is_directory();
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(crate::DeleteResourceEffect {
+                        location: target,
+                        recursive,
+                    })
+                    .map(move |ok| TreeCommand::Mutated {
+                        parent,
+                        select: None,
+                        ok,
+                    }),
+                );
+            }
+            REMOVE_ROOT => {
+                let Some(seat) = crate::higent::Servers::seat(store, self.workspace.host) else {
+                    return;
+                };
+                let Some(uris) = crate::higent::Hosts::uris(store, self.workspace.host) else {
+                    return;
+                };
+                use crate::higent::ahp_types::actions as wire;
+                let directory = uris.uri_of(&target).as_str().to_owned();
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(crate::higent::DispatchChatActionEffect {
+                        seat,
+                        channel: self.workspace.session.as_channel(),
+                        action: wire::StateAction::SessionWorkingDirectoryRemoved(
+                            wire::SessionWorkingDirectoryRemovedAction { directory },
+                        ),
+                    })
+                    .map(TreeCommand::Dispatched),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    fn start_rename(&mut self, target: &ResourceLocation, store: &Store, ui: &UiCtx) {
+        let name = target.name().to_owned();
+        let mut input = seeded_input(store, ui, &name);
+        // The stem is the likely edit; the extension stays put until
+        // typed over.
+        let stem = name.rfind('.').filter(|at| *at > 0).unwrap_or(name.len());
+        input.document.set_carets(
+            input.editor,
+            ::editor::MultiCaret::one(::editor::Caret::selecting(0, stem as u32)),
+        );
+        self.edit = Some(RowEdit {
+            target: EditTarget::Rename(target.clone()),
+            input,
+        });
+        self.pending_reveal = None;
+    }
+
+    fn start_create(&mut self, parent: ResourceLocation, store: &Store, ui: &UiCtx) {
+        let Some(range) = self.tree.list.inner().content().row_range(&parent) else {
+            return;
+        };
+        let depth = self.tree.list.inner().content().depth_at(range.start) as u16;
+        let placeholder = parent.child(crate::ResourceType::document(), "");
+        if self.tree.is_visible(&placeholder) {
+            return;
+        }
+        let mut slice: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        slice.push_keyed(
+            placeholder.clone(),
+            self.tree.row(&placeholder, depth + 1, false),
+            store,
+            ui,
+        );
+        let at = range.start + 1;
+        self.tree
+            .list
+            .inner_mut()
+            .content_mut()
+            .splice_slice(at..at, slice);
+        let mut input = ::editor::EditorView::input(600.0, store, ui, crate::fonts::source());
+        input.focus_text();
+        self.edit = Some(RowEdit {
+            target: EditTarget::Create {
+                parent,
+                placeholder,
+            },
+            input,
+        });
+        self.pending_reveal = None;
+    }
+
+    fn commit_edit(&mut self, fx: &mut imba::effect::Effects<'_, TreeCommand>) {
+        let Some(edit) = self.edit.take() else {
+            return;
+        };
+        let name = edit_text(&edit.input).trim().to_owned();
+        if !valid_file_name(&name) {
+            // An unusable name keeps the editor for another try.
+            self.edit = Some(edit);
+            return;
+        }
+        match edit.target {
+            EditTarget::Rename(location) => {
+                let Some(parent) = parent_of(&location) else {
+                    return;
+                };
+                if location.name() == name {
+                    return;
+                }
+                let to = parent.child(location.kind().clone(), name);
+                let reveal = to.clone();
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(crate::MoveResourceEffect { from: location, to })
+                        .map(move |ok| TreeCommand::Mutated {
+                            parent,
+                            select: ok.then_some(reveal),
+                            ok,
+                        }),
+                );
+            }
+            EditTarget::Create {
+                parent,
+                placeholder,
+            } => {
+                self.remove_row(&placeholder);
+                let location = parent.child(crate::ResourceType::document(), name);
+                let reveal = location.clone();
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(crate::CreateDocumentEffect { location }).map(
+                        move |ok| TreeCommand::Mutated {
+                            parent,
+                            select: ok.then_some(reveal),
+                            ok,
+                        },
+                    ),
+                );
+            }
+        }
+    }
+
+    fn abort_edit(&mut self) {
+        if let Some(edit) = self.edit.take() {
+            if let EditTarget::Create { placeholder, .. } = edit.target {
+                self.remove_row(&placeholder);
+            }
+        }
+    }
+
+    /// Removes a single childless row — the create placeholder.
+    fn remove_row(&mut self, key: &ResourceLocation) {
+        let Some(range) = self
+            .tree
+            .list
+            .inner()
+            .content()
+            .row_range(key)
+            .filter(|range| range.len() == 1)
+        else {
+            return;
+        };
+        let empty: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        self.tree
+            .list
+            .inner_mut()
+            .content_mut()
+            .splice_slice(range, empty);
+    }
+
+    /// Splices a departed root and its whole subtree out, with the
+    /// watches, pending fetches and reveal that pointed under it.
+    fn remove_root(
+        &mut self,
+        root: &ResourceLocation,
+        fx: &mut imba::effect::Effects<'_, TreeCommand>,
+    ) {
+        let Some(range) = self.tree.list.inner().content().row_range(root) else {
+            return;
+        };
+        if self.tree.list.inner().content().depth_at(range.start) != 0 {
+            return;
+        }
+        if self
+            .edit
+            .as_ref()
+            .is_some_and(|edit| edit.row_key().path().starts_with(root.path()))
+        {
+            self.abort_edit();
+        }
+        self.drop_watches_under(root, fx);
+        let Some(range) = self.tree.list.inner().content().row_range(root) else {
+            return;
+        };
+        let empty: ListSlice<TreeRow, ResourceLocation> = ListSlice::new();
+        self.tree
+            .list
+            .inner_mut()
+            .content_mut()
+            .splice_slice(range, empty);
+        let under: Vec<ResourceLocation> = self
+            .tree
+            .pending
+            .iter()
+            .filter(|held| held.path().starts_with(root.path()))
+            .cloned()
+            .collect();
+        for held in under {
+            self.tree.pending.remove_mut(&held);
+        }
+        if self
+            .pending_reveal
+            .as_ref()
+            .is_some_and(|held| held.path().starts_with(root.path()))
+        {
+            self.pending_reveal = None;
+        }
+    }
+}
+
+const NEW_FILE: &str = "new-file";
+const RENAME: &str = "rename";
+const DELETE: &str = "delete";
+const REMOVE_ROOT: &str = "remove-root";
+
+fn menu_items(target: &ResourceLocation, root: bool) -> Vec<crate::combo::ComboOption> {
+    use crate::combo::ComboOption;
+    let mut items = Vec::new();
+    if target.kind().is_directory() {
+        items.push(ComboOption::plain(NEW_FILE, "New File"));
+    }
+    match root {
+        true => items.push(ComboOption::plain(REMOVE_ROOT, "Remove from Session")),
+        false => {
+            items.push(ComboOption::plain(RENAME, "Rename"));
+            items.push(ComboOption::plain(DELETE, "Delete"));
+        }
+    }
+    items
+}
+
+fn parent_of(location: &ResourceLocation) -> Option<ResourceLocation> {
+    (location.path().len() > 1).then(|| {
+        ResourceLocation::new(
+            crate::ResourceType::directory(),
+            location.authority().clone(),
+            location.path()[..location.path().len() - 1].to_vec(),
+        )
+    })
+}
+
+fn valid_file_name(name: &str) -> bool {
+    !name.is_empty()
+        && name != "."
+        && name != ".."
+        && !name.chars().any(|c| matches!(c, '/' | '\\' | '\0'))
+}
+
+fn edit_text(input: &::editor::EditorView) -> String {
+    let text = input.document.text();
+    let end = text.byte_count().min(u32::MAX as usize) as u32;
+    text.view().substring(0..end)
+}
+
+fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::EditorView {
+    let mut markup = crate::Markup::new();
+    markup.push_styled_covering(0..text.len() as u32, crate::theme::StyleId::Input);
+    let document = crate::Document::new(crate::Text::from_string_exact(text), markup);
+    let fonts = crate::fonts::source();
+    let mut input = ::editor::EditorView::of_document(
+        document,
+        600.0,
+        store,
+        ui,
+        &fonts(),
+        &crate::theme::Theme::embedded(),
+    );
+    input.set_caret(text.len() as u32);
+    input.focus_text();
+    input
+}
+
+/// The visible depth-0 keys that no longer belong to the session —
+/// O(roots × log n): each root's range jumps the walk past its
+/// subtree.
+fn stale_roots(
+    content: &ListView<TreeRow, ResourceLocation>,
+    folders: &[ResourceLocation],
+) -> Vec<ResourceLocation> {
+    let mut stale = Vec::new();
+    let mut index = 0;
+    while index < content.len() {
+        let Some(key) = content.key_at(index) else {
+            break;
+        };
+        let Some(range) = content.row_range(key) else {
+            break;
+        };
+        if !folders.contains(key) {
+            stale.push(key.clone());
+        }
+        index = range.end.max(index + 1);
+    }
+    stale
 }
 
 impl SessionTreeView {
@@ -556,6 +956,20 @@ impl View for SessionTreeView {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, TreeCommand> {
         use imba::focus::FocusData;
+        if let Some(edit) = &self.edit {
+            let own = FocusData {
+                on_key: Some(Box::new(|key, _mods| match key {
+                    InputKey::Enter => EventResult::Command(TreeCommand::CommitEdit),
+                    InputKey::Escape => EventResult::Command(TreeCommand::CancelEdit),
+                    _ => EventResult::Ignored,
+                })),
+                ..FocusData::default()
+            };
+            return own.merge_under(edit.input.focus_data(store, ui).map(TreeCommand::Edit));
+        }
+        if let Some(menu) = &self.menu {
+            return menu.view.focus_data(store, ui).map(TreeCommand::Menu);
+        }
         // The key table is the controller's; the surface keeps only
         // its own dismissal.
         let searching = self.tree.list.searching();
@@ -585,6 +999,11 @@ impl View for SessionTreeView {
     ) {
         match command {
             TreeCommand::Rows(command) => {
+                // Any other row interaction is a focus shift off the
+                // inline editor — the edit cancels first.
+                if self.edit.is_some() {
+                    self.abort_edit();
+                }
                 type Rows = ListKeyboardController<TreeList, LocationSearcher>;
                 match &command {
                     // The bespoke lazy fold: Right lists an unlisted
@@ -621,6 +1040,10 @@ impl View for SessionTreeView {
                         return;
                     }
                     ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = crate::tree_context(inner) {
+                            self.open_menu(index, store, ui);
+                            return self.persist(store);
+                        }
                         if let Some(index) = crate::tree_toggle(inner) {
                             self.activate(index, store, ui, fx);
                             return self.persist(store);
@@ -708,8 +1131,60 @@ impl View for SessionTreeView {
                     }
                 }
             }
-            TreeCommand::SyncRoots(folders) => {
-                self.tree.ensure_roots(&folders, store, ui);
+            TreeCommand::SyncRoots { missing, stale } => {
+                for root in &stale {
+                    self.remove_root(root, fx);
+                }
+                self.tree.ensure_roots(&missing, store, ui);
+            }
+            TreeCommand::Menu(command) => {
+                let Some(menu) = self.menu.as_mut() else {
+                    return;
+                };
+                if let Some(id) = menu.view.picked(&command) {
+                    let target = menu.target.clone();
+                    self.menu = None;
+                    self.menu_pick(&id, target, store, ui, fx);
+                } else if MenuView::closes(&command) {
+                    self.menu = None;
+                } else {
+                    fx.scope(TreeCommand::Menu, |fx| {
+                        menu.view.perform(store, ui, command, fx)
+                    });
+                }
+            }
+            TreeCommand::Edit(command) => {
+                let Some(edit) = self.edit.as_mut() else {
+                    return;
+                };
+                fx.scope(TreeCommand::Edit, |fx| {
+                    edit.input.perform(store, ui, command, fx)
+                });
+            }
+            TreeCommand::CommitEdit => {
+                self.commit_edit(fx);
+            }
+            TreeCommand::CancelEdit => {
+                self.abort_edit();
+            }
+            TreeCommand::Mutated { parent, select, ok } => {
+                if !ok {
+                    eprintln!("[hifiles] file operation failed under {parent:?}");
+                }
+                if let Some(select) = select {
+                    self.pending_reveal = Some(select);
+                }
+                // The relist is the one truth either way — a success
+                // shows the outcome, a failure resyncs the rows.
+                if !self.tree.pending.contains(&parent) {
+                    self.tree.pending.insert_mut(parent.clone());
+                    let _ = fx.push(self.list_effect(parent));
+                }
+            }
+            TreeCommand::Dispatched(result) => {
+                if let Err(error) = result {
+                    eprintln!("[hifiles] session folder removal failed: {error}");
+                }
             }
             TreeCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
@@ -757,9 +1232,31 @@ impl View for SessionTreeView {
             // The key table lives in the controller's own overlay;
             // the surface keeps only its dismissal and retheme.
             let searching = self.tree.list.searching();
+            let editing = self.edit.is_some();
+            let menu_open = self.menu.is_some();
             let keymap =
                 leaf::<TreeCommand>(size.width, size.height).event(move |_arena, event, _size| {
+                    if editing {
+                        return match event {
+                            Event::KeyDown {
+                                key: InputKey::Enter,
+                                ..
+                            } => EventResult::Command(TreeCommand::CommitEdit),
+                            Event::KeyDown {
+                                key: InputKey::Escape,
+                                ..
+                            } => EventResult::Command(TreeCommand::CancelEdit),
+                            Event::ThemeChanged => EventResult::Command(TreeCommand::Retheme),
+                            _ => EventResult::Ignored,
+                        };
+                    }
                     match event {
+                        Event::KeyDown {
+                            key: InputKey::Escape,
+                            ..
+                        } if menu_open => {
+                            EventResult::Command(TreeCommand::Menu(crate::menu::MenuCommand::Close))
+                        }
                         Event::KeyDown {
                             key: InputKey::Escape,
                             ..
@@ -770,6 +1267,71 @@ impl View for SessionTreeView {
                     }
                 });
             overlay.place(0.0, 0.0, keymap);
+
+            if let Some(menu) = &self.menu {
+                if let Some(range) = self.tree.list.inner().content().row_range(&menu.target) {
+                    if let Some((top, height)) =
+                        self.tree.list.inner().content().row_span(range.start)
+                    {
+                        let tree_theme = crate::env::Themes::of(store).ui().tree.clone();
+                        let depth = self.tree.list.inner().content().depth_at(range.start) as f32;
+                        let x = (depth * tree_theme.indent + tree_theme.text_x).min(size.width);
+                        let y = (PANEL_PAD + top + height - self.tree.list.inner().scroll_y())
+                            .clamp(0.0, size.height);
+                        overlay.place(
+                            x,
+                            y,
+                            menu.view
+                                .overlay_at(arena, store, ui)
+                                .map(TreeCommand::Menu),
+                        );
+                    }
+                }
+            }
+
+            if let Some(edit) = &self.edit {
+                if let Some(range) = self.tree.list.inner().content().row_range(edit.row_key()) {
+                    if let Some((top, height)) =
+                        self.tree.list.inner().content().row_span(range.start)
+                    {
+                        let theme = crate::env::Themes::of(store);
+                        let tree_theme = theme.ui().tree.clone();
+                        let search = theme.ui().search.clone();
+                        let depth = self.tree.list.inner().content().depth_at(range.start) as f32;
+                        let x = depth * tree_theme.indent + tree_theme.text_x;
+                        let y = PANEL_PAD + top - self.tree.list.inner().scroll_y();
+                        let well_width = (size.width - x - PANEL_PAD).max(1.0);
+                        let input_fill = search.input_fill;
+                        let well = leaf::<TreeCommand>(well_width, height).paint_instead(
+                            move |_arena, canvas, rect| {
+                                let mut paint = Paint::default();
+                                paint.set_anti_alias(true);
+                                paint.set_color(input_fill.0);
+                                canvas.draw_round_rect(rect, 4.0, 4.0, &paint);
+                            },
+                        );
+                        overlay.place(x, y, well);
+                        let inner_height = (height - search.input_pad_y * 2.0).max(1.0);
+                        overlay.place(
+                            x + search.input_pad_x,
+                            y + search.input_pad_y,
+                            imba::Layout::layout(
+                                edit.input.display(arena, store, ui),
+                                arena,
+                                Constraints {
+                                    min: Size::new(0.0, inner_height),
+                                    max: Size::new(
+                                        (well_width - search.input_pad_x * 2.0).max(1.0),
+                                        inner_height,
+                                    ),
+                                },
+                            )
+                            .map(TreeCommand::Edit)
+                            .focus_scope(true),
+                        );
+                    }
+                }
+            }
 
             let watched = self.tree.by_subscription.clone();
             let inner = overlay.event(move |_arena, event, _size| match event {
@@ -803,18 +1365,24 @@ impl View for SessionTreeView {
                     false => None,
                 }
             });
-            // Folders joining the session mid-flight: the paint gate
-            // folds in any channel folder the tree does not show yet,
-            // and closes itself once the root row stands.
-            let missing_roots: Vec<ResourceLocation> =
-                crate::higent::session_folders(store, &self.workspace)
-                    .into_iter()
-                    .filter(|folder| !self.tree.is_visible(folder))
-                    .collect();
+            // Folders join AND leave the session while the dock
+            // stands open — the paint gate folds the drift in as
+            // soon as the channel mirror carries it, and closes
+            // itself once the roots match.
+            let folders = crate::higent::session_folders(store, &self.workspace);
+            let missing_roots: Vec<ResourceLocation> = folders
+                .iter()
+                .filter(|folder| !self.tree.is_visible(folder))
+                .cloned()
+                .collect();
+            let stale_roots = stale_roots(self.tree.list.inner().content(), &folders);
+            let editing = self.edit.is_some();
             inner.wrap(move |inner| FollowShell {
                 inner,
                 follow,
                 missing_roots,
+                stale_roots,
+                editing,
             })
         })
     }
@@ -824,6 +1392,10 @@ struct FollowShell<Inner> {
     inner: Inner,
     follow: Option<(ResourceLocation, u64)>,
     missing_roots: Vec<ResourceLocation>,
+    stale_roots: Vec<ResourceLocation>,
+
+    /// An inline edit rides — an unfocused paint is its focus loss.
+    editing: bool,
 }
 
 impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell<Inner> {
@@ -849,10 +1421,16 @@ impl<'a, Inner: Widget<'a, TreeCommand>> Widget<'a, TreeCommand> for FollowShell
                     generation: *generation,
                 }));
             }
-            if !self.missing_roots.is_empty() {
-                result = result.merge(EventResult::Command(TreeCommand::SyncRoots(
-                    self.missing_roots.clone(),
-                )));
+            if !self.missing_roots.is_empty() || !self.stale_roots.is_empty() {
+                result = result.merge(EventResult::Command(TreeCommand::SyncRoots {
+                    missing: self.missing_roots.clone(),
+                    stale: self.stale_roots.clone(),
+                }));
+            }
+            if let Event::Paint { focused: false, .. } = event {
+                if self.editing {
+                    result = result.merge(EventResult::Command(TreeCommand::CancelEdit));
+                }
             }
         }
         result

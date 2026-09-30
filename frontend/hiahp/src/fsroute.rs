@@ -6,8 +6,9 @@ use std::sync::Arc;
 use crate::fs::SeatDirectory;
 use himark::higent::seat as fs;
 use himark::{
-    FetchDocumentEffect, ListDirectoryEffect, ResourceLocation, StoreDocumentEffect,
-    SubscribeEffect, Subscription, UnsubscribeEffect,
+    CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
+    MoveResourceEffect, ResourceLocation, StoreDocumentEffect, SubscribeEffect, Subscription,
+    UnsubscribeEffect,
 };
 use imba::effect::EffectHandler;
 
@@ -168,6 +169,60 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
                 })
                 .collect(),
         )
+    }
+}
+
+pub struct RouteCreate {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<CreateDocumentEffect> for RouteCreate {
+    async fn handle(&self, effect: CreateDocumentEffect) -> bool {
+        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+            return false;
+        };
+        seat.resource_create(session, self.uris.uri_of(&effect.location))
+            .await
+    }
+}
+
+pub struct RouteDelete {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<DeleteResourceEffect> for RouteDelete {
+    async fn handle(&self, effect: DeleteResourceEffect) -> bool {
+        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+            return false;
+        };
+        seat.resource_delete(
+            session,
+            self.uris.uri_of(&effect.location),
+            effect.recursive,
+        )
+        .await
+    }
+}
+
+pub struct RouteMove {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<MoveResourceEffect> for RouteMove {
+    async fn handle(&self, effect: MoveResourceEffect) -> bool {
+        // One seat serves both ends: a move never crosses authorities.
+        let Some((seat, session)) = seat_of(&self.directory, &effect.from) else {
+            return false;
+        };
+        seat.resource_move(
+            session,
+            self.uris.uri_of(&effect.from),
+            self.uris.uri_of(&effect.to),
+        )
+        .await
     }
 }
 

@@ -260,6 +260,10 @@ impl Engine {
             .mouse_down_at(self.window, x, y, mods, 0, event_started_at)
     }
 
+    fn secondary_down_at(&mut self, x: f32, y: f32, mods: u32) -> bool {
+        self.inner.secondary_down(self.window, x, y, mods)
+    }
+
     fn mouse_drag(&mut self, x: f32, y: f32, mods: u32) -> bool {
         self.inner.mouse_drag(self.window, x, y, mods)
     }
@@ -1426,6 +1430,26 @@ impl ApplicationHandler<UserEvent> for WinitHost {
                     }
                     MenuInteraction::Command(command) => self.run_command(command),
                 }
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Right,
+                ..
+            } => {
+                // The context press skips the menu bar — only the
+                // content answers it.
+                let Some((x, y)) = self
+                    .window
+                    .as_ref()
+                    .and_then(|window| window.cursor_position)
+                    .map(|position| (position.x as f32, position.y as f32))
+                    .and_then(|(x, y)| self.content_point(x, y))
+                else {
+                    return;
+                };
+                let mods = self.himark_mods();
+                let changed = self.engine.secondary_down_at(x, y, mods);
+                self.event_changed(changed);
             }
             WindowEvent::MouseInput {
                 state: ElementState::Released,

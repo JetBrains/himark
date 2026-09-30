@@ -57,5 +57,17 @@ stack backtrace:
 thread caused non-unwinding panic. aborting.
 ```
 
-- [ ] file-tree usability:
-    another usability gap in file tree is the lack of ability to create and delete and rename files. let's add a popup menu (see how overlays are built and the combo box, introduce MenuView and PopupMenuView). renaming or creating a file creates/replaces a tree row with a small editor, finishing on enter and validating the input to be a valid file name. focus loss leads to the editor removal/rename-cancelled. for the roots, there should be a menu item to remove a directory from the session. 
+- [x] file-tree usability: DONE — right-click (or ctrl-click) on a tree
+    row opens a context menu (`MenuView`/`PopupMenuView` in menu.rs, combo
+    dropdown chrome, window overlay + backdrop): New File / Rename / Delete
+    on rows, New File / Remove from Session on roots. Rename/create ride an
+    inline row editor (Enter commits after file-name validation, Escape or
+    focus loss cancels; create uses a transient placeholder row). File ops
+    are a new vertical slice (Create/Delete/MoveResourceEffect → seat →
+    wire resourceWrite createOnly / resourceDelete / resourceMove → backend
+    handlers + changes_touched). Root removal dispatches
+    SessionWorkingDirectoryRemoved; the tree's paint gate now also sweeps
+    departed roots (covers removals from other clients too). Right-click
+    plumbed through winit, the C ABI (`himark_secondary_down`) + Swift
+    `rightMouseDown`, and the web shell. Tests: hifiles (menu/rename/create/
+    validation/focus-loss/stale-root), menu.rs, agent-host resource ops.

@@ -144,6 +144,15 @@ final class HimarkView: NSView, NSTextInputClient {
         }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        let (x, y) = devicePoint(event)
+        let handled = engine.secondaryDown(
+            window: windowId, x: x, y: y, mods: himarkMods(event)
+        )
+        if handled { request() }
+        window?.makeFirstResponder(self)
+    }
+
     private func titlebarDoubleClick() {
         switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
         case "Minimize": window?.performMiniaturize(nil)

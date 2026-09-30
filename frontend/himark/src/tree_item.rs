@@ -44,6 +44,17 @@ pub struct TreeLabel {
 pub enum TreeLabelCommand {
     /// The row's right-aligned action chip was pressed.
     Action,
+
+    /// A secondary press on the row body (right button, or
+    /// control-click on platforms that fold it into Left).
+    Context,
+}
+
+/// The one definition of "secondary press" — shells that cannot send
+/// `MouseButton::Right` still deliver control as a modifier.
+pub fn secondary_press(button: imba::event::MouseButton, mods: &imba::event::Modifiers) -> bool {
+    matches!(button, imba::event::MouseButton::Right)
+        || (matches!(button, imba::event::MouseButton::Left) && mods.control)
 }
 
 impl TreeLabel {
@@ -133,6 +144,9 @@ impl View for TreeLabel {
             // (docs/ui/list-keyboard.md §2).
             let row = row.on_event(
                 move |_arena: &Arena, event: &Event<'_>, _size| match event {
+                    Event::MouseDown { button, mods, .. } if secondary_press(*button, mods) => {
+                        EventResult::Command(TreeLabelCommand::Context)
+                    }
                     Event::MouseDown { .. } => EventResult::Handled,
                     _ => EventResult::Ignored,
                 },
@@ -445,6 +459,15 @@ where
                 canvas.restore();
                 result
             }
+            // The secondary press is the INNER's before any toggle
+            // claim — a context ask must not fold the row.
+            Event::MouseDown { button, mods, .. } if secondary_press(*button, mods) => {
+                let local = event.translated(-self.offset, 0.0);
+                self.inner
+                    .handle_event(arena, &local, child_viewport)
+                    .map(TreeItemCommand::Inner)
+                    .reveal_translated(self.offset, 0.0)
+            }
             Event::MouseDown { point, .. } if self.expanded.is_some() && point.x < self.zone => {
                 // The toggle claim, with ONE exception: on rows whose
                 // inner carries an ACTION CHIP, a press the inner
@@ -517,7 +540,7 @@ pub fn tree_toggle(command: &TreeListCommand) -> Option<usize> {
     };
     match command {
         TreeItemCommand::Toggle => Some(index),
-        TreeItemCommand::Inner(TreeLabelCommand::Action) => None,
+        TreeItemCommand::Inner(TreeLabelCommand::Action | TreeLabelCommand::Context) => None,
     }
 }
 
@@ -539,6 +562,27 @@ pub fn tree_action(command: &TreeListCommand) -> Option<usize> {
     };
     match command {
         TreeItemCommand::Inner(TreeLabelCommand::Action) => Some(index),
+        _ => None,
+    }
+}
+
+/// A secondary press on a row body, decoded like `tree_action`.
+pub fn tree_context(command: &TreeListCommand) -> Option<usize> {
+    use imba::list::ListCommand;
+    use imba::scroll::ScrollCommand;
+    let ScrollCommand::Content(command) = command else {
+        return None;
+    };
+    let (index, command) = match command {
+        ListCommand::Child(index, command) => (*index, command),
+        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
+            ListCommand::Child(_, command) => (*index, command),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    match command {
+        TreeItemCommand::Inner(TreeLabelCommand::Context) => Some(index),
         _ => None,
     }
 }

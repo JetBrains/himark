@@ -139,6 +139,34 @@ pub trait AhpServer: Send + Sync + 'static {
         text: String,
     ) -> SeatFuture<bool>;
 
+    /// Creates an empty file; never overwrites — false when the
+    /// resource already exists.
+    fn resource_create(&self, session: SessionUri, uri: ResourceUri) -> SeatFuture<bool> {
+        let _ = (session, uri);
+        Box::pin(std::future::ready(false))
+    }
+
+    fn resource_delete(
+        &self,
+        session: SessionUri,
+        uri: ResourceUri,
+        recursive: bool,
+    ) -> SeatFuture<bool> {
+        let _ = (session, uri, recursive);
+        Box::pin(std::future::ready(false))
+    }
+
+    /// A rename: fails when the destination exists.
+    fn resource_move(
+        &self,
+        session: SessionUri,
+        from: ResourceUri,
+        to: ResourceUri,
+    ) -> SeatFuture<bool> {
+        let _ = (session, from, to);
+        Box::pin(std::future::ready(false))
+    }
+
     fn resource_list(
         &self,
         session: SessionUri,

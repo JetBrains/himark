@@ -568,6 +568,18 @@ impl HimarkEngine {
             directory: Arc::clone(&seats),
             uris: Arc::clone(&resource_uris),
         });
+        app.register_handler::<himark::CreateDocumentEffect>(fsroute::RouteCreate {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
+        app.register_handler::<himark::DeleteResourceEffect>(fsroute::RouteDelete {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
+        app.register_handler::<himark::MoveResourceEffect>(fsroute::RouteMove {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
         app.register_handler::<himark::SubscribeEffect>(fsroute::RouteSubscribe {
             directory: Arc::clone(&seats),
             uris: Arc::clone(&resource_uris),
@@ -818,6 +830,24 @@ impl HimarkEngine {
             },
             size,
             event_started_at,
+        )
+    }
+
+    /// The secondary (context) press. Shells that can tell buttons
+    /// apart route their right-button downs here; the others reach
+    /// the same rows via control-click.
+    pub fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
+        let size = self.window_size(window);
+        self.app.dispatch_timed(
+            wid(window),
+            Event::MouseDown {
+                point: Point::new(x, y),
+                button: MouseButton::Right,
+                mods: map_mods(mods),
+                count: 1,
+            },
+            size,
+            0.0,
         )
     }
 
@@ -1628,6 +1658,19 @@ pub unsafe extern "C" fn himark_mouse_down(
     engine.as_mut().map_or(false, |engine| {
         engine.mouse_down(window, x, y, mods, click_count)
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_secondary_down(
+    engine: *mut HimarkEngine,
+    window: u64,
+    x: f32,
+    y: f32,
+    mods: u32,
+) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.secondary_down(window, x, y, mods))
 }
 
 #[no_mangle]

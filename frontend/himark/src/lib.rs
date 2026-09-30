@@ -26,6 +26,7 @@ pub mod hover;
 mod keymap;
 mod list_keyboard;
 pub mod locations;
+pub mod menu;
 mod modal;
 mod navigation;
 pub mod new_session;
@@ -49,8 +50,8 @@ pub use list_keyboard::{
     SpeedSearchHandler, SpeedSearchMatches,
 };
 pub use tree_item::{
-    tree_action, tree_toggle, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand,
-    TreeListCommand, TreeTint,
+    secondary_press, tree_action, tree_context, tree_toggle, TreeItemCommand, TreeItemView,
+    TreeLabel, TreeLabelCommand, TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
 pub mod diff_pane;
@@ -74,9 +75,10 @@ pub use crate::diffs::{
 };
 pub use crate::family_rows::{mint, mint_unfronted, FamilyRow, RowMinter, RowMinters};
 pub use crate::workspace::{
-    open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument, DiffSide,
-    DiffSideInput, FindEffect, ListDirectoryEffect, LocationsChannel, LspLocationsEffect,
-    LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
+    open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument,
+    CreateDocumentEffect, DeleteResourceEffect, DiffSide, DiffSideInput, FindEffect,
+    ListDirectoryEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind,
+    MoveResourceEffect, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
     OpenedDiffPair, PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId,
     StoreDocumentEffect,
 };

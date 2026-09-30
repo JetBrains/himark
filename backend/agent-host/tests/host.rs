@@ -807,6 +807,125 @@ async fn a_watch_reports_external_writes() {
 }
 
 #[tokio::test]
+async fn create_only_writes_refuse_an_existing_file() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+
+    let target = dir.path().join("fresh.txt");
+    client
+        .request(
+            "resourceWrite",
+            json!({
+                "channel": session,
+                "uri": format!("file://{}", target.display()),
+                "data": "first\n", "encoding": "utf-8", "createOnly": true,
+            }),
+        )
+        .await;
+    assert_eq!(
+        std::fs::read_to_string(&target).expect("created"),
+        "first\n"
+    );
+
+    let refused = client
+        .request_any(
+            "resourceWrite",
+            json!({
+                "channel": session,
+                "uri": format!("file://{}", target.display()),
+                "data": "second\n", "encoding": "utf-8", "createOnly": true,
+            }),
+        )
+        .await;
+    assert!(refused.get("error").is_some(), "{refused}");
+    assert_eq!(std::fs::read_to_string(&target).expect("kept"), "first\n");
+}
+
+#[tokio::test]
+async fn resource_delete_removes_files_and_recursive_trees() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+
+    let file = dir.path().join("doomed.txt");
+    std::fs::write(&file, "bye").expect("file");
+    client
+        .request(
+            "resourceDelete",
+            json!({"channel": session, "uri": format!("file://{}", file.display())}),
+        )
+        .await;
+    assert!(!file.exists());
+
+    let tree = dir.path().join("nest");
+    std::fs::create_dir_all(tree.join("deep")).expect("tree");
+    std::fs::write(tree.join("deep").join("leaf.txt"), "leaf").expect("leaf");
+    let refused = client
+        .request_any(
+            "resourceDelete",
+            json!({"channel": session, "uri": format!("file://{}", tree.display())}),
+        )
+        .await;
+    assert!(refused.get("error").is_some(), "{refused}");
+    assert!(tree.exists());
+
+    client
+        .request(
+            "resourceDelete",
+            json!({
+                "channel": session,
+                "uri": format!("file://{}", tree.display()),
+                "recursive": true,
+            }),
+        )
+        .await;
+    assert!(!tree.exists());
+}
+
+#[tokio::test]
+async fn resource_move_renames_and_refuses_an_occupied_destination() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, _chat) = open_session(&mut client, dir.path()).await;
+
+    let from = dir.path().join("a.txt");
+    let to = dir.path().join("b.txt");
+    std::fs::write(&from, "body").expect("source");
+    client
+        .request(
+            "resourceMove",
+            json!({
+                "channel": session,
+                "source": format!("file://{}", from.display()),
+                "destination": format!("file://{}", to.display()),
+                "failIfExists": true,
+            }),
+        )
+        .await;
+    assert!(!from.exists());
+    assert_eq!(std::fs::read_to_string(&to).expect("moved"), "body");
+
+    std::fs::write(&from, "again").expect("source");
+    let refused = client
+        .request_any(
+            "resourceMove",
+            json!({
+                "channel": session,
+                "source": format!("file://{}", from.display()),
+                "destination": format!("file://{}", to.display()),
+                "failIfExists": true,
+            }),
+        )
+        .await;
+    assert!(refused.get("error").is_some(), "{refused}");
+    assert_eq!(std::fs::read_to_string(&to).expect("kept"), "body");
+}
+
+#[tokio::test]
 async fn a_file_edit_grows_diff_refs_served_by_resource_read() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = host_at(dir.path());
@@ -1156,7 +1275,10 @@ async fn pipelined_searches_answer_independently() {
     // request must never cancel it (fast typing in quick-open used to
     // land on empty, 2026-09-30).
     assert_eq!(
-        answers[&902]["result"]["hits"].as_array().expect("hits").len(),
+        answers[&902]["result"]["hits"]
+            .as_array()
+            .expect("hits")
+            .len(),
         2,
         "{}",
         answers[&902]
@@ -3487,8 +3609,10 @@ async fn await_fsp_log(dir: &Path, seen: impl Fn(&[Value]) -> bool) -> Vec<Value
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    panic!("fsp log never showed the expected traffic: {:?}",
-           agent_host::testing::fsp_log(dir));
+    panic!(
+        "fsp log never showed the expected traffic: {:?}",
+        agent_host::testing::fsp_log(dir)
+    );
 }
 
 #[tokio::test]
@@ -3524,7 +3648,11 @@ async fn fsp_engine_serves_locations_and_both_search_lanes() {
     let first = &locations[0];
     assert!(first["uri"].as_str().expect("uri").ends_with("hit.md"));
     assert_eq!(
-        (first["line"].clone(), first["column"].clone(), first["length"].clone()),
+        (
+            first["line"].clone(),
+            first["column"].clone(),
+            first["length"].clone()
+        ),
         (json!(0), json!(4), json!(6)),
         "{state}"
     );
@@ -3547,7 +3675,10 @@ async fn fsp_engine_serves_locations_and_both_search_lanes() {
         .map(|hit| hit.as_str().expect("uri"))
         .collect();
     assert_eq!(hits.len(), 2, "{found}");
-    assert!(hits[0].ends_with("zeta.rs") && hits[1].ends_with("alpha.rs"), "{hits:?}");
+    assert!(
+        hits[0].ends_with("zeta.rs") && hits[1].ends_with("alpha.rs"),
+        "{hits:?}"
+    );
 
     // Content lane: textSearch capped at one match per file, deduped
     // to URIs.
@@ -3609,11 +3740,11 @@ async fn fsp_engine_serves_locations_and_both_search_lanes() {
         } else {
             return false;
         };
-        folders
-            .as_array()
-            .is_some_and(|entries| entries.iter().any(|folder| {
-                folder["uri"].as_str().is_some_and(|uri| uri.contains("ws"))
-            }))
+        folders.as_array().is_some_and(|entries| {
+            entries
+                .iter()
+                .any(|folder| folder["uri"].as_str().is_some_and(|uri| uri.contains("ws")))
+        })
     });
     assert!(registered, "{log:?}");
 }
@@ -3653,7 +3784,8 @@ async fn fsp_overlays_replay_at_spawn_and_stream_after() {
         .await;
 
     let log = await_fsp_log(dir.path(), |log| {
-        log.iter().any(|msg| msg["method"] == "textDocument/didOpen")
+        log.iter()
+            .any(|msg| msg["method"] == "textDocument/didOpen")
     })
     .await;
     let did_open = log
@@ -3676,7 +3808,8 @@ async fn fsp_overlays_replay_at_spawn_and_stream_after() {
     )
     .await;
     let log = await_fsp_log(dir.path(), |log| {
-        log.iter().any(|msg| msg["method"] == "textDocument/didChange")
+        log.iter()
+            .any(|msg| msg["method"] == "textDocument/didChange")
     })
     .await;
     let did_change = log
@@ -3684,8 +3817,7 @@ async fn fsp_overlays_replay_at_spawn_and_stream_after() {
         .find(|msg| msg["method"] == "textDocument/didChange")
         .expect("didChange");
     assert_eq!(
-        did_change["params"]["contentChanges"][0]["text"],
-        "hot ",
+        did_change["params"]["contentChanges"][0]["text"], "hot ",
         "{did_change}"
     );
 }
@@ -3721,8 +3853,15 @@ async fn fsp_gone_falls_to_the_walk_and_the_respawn_recovers() {
     .await;
     assert_eq!(state["truncated"], json!(false), "{state}");
     let locations = state["locations"].as_array().expect("locations");
-    assert_eq!(locations.len(), 1, "the walk served the crash window: {state}");
-    assert!(locations[0]["uri"].as_str().expect("uri").ends_with("walk.md"));
+    assert_eq!(
+        locations.len(),
+        1,
+        "the walk served the crash window: {state}"
+    );
+    assert!(locations[0]["uri"]
+        .as_str()
+        .expect("uri")
+        .ends_with("walk.md"));
 
     // Past the respawn backoff the next request lands on a fresh server.
     tokio::time::sleep(std::time::Duration::from_millis(2100)).await;
@@ -3787,12 +3926,7 @@ async fn drain_position_rows(
     let subscribed = client
         .request("subscribe", json!({"channel": channel}))
         .await;
-    let state = drain_locations(
-        client,
-        &channel,
-        subscribed["snapshot"]["state"].clone(),
-    )
-    .await;
+    let state = drain_locations(client, &channel, subscribed["snapshot"]["state"].clone()).await;
     let mut rows: Vec<(String, u64, u64, u64)> = state["locations"]
         .as_array()
         .expect("locations")
@@ -3981,10 +4115,8 @@ async fn fsp_registers_only_open_sessions() {
         log.iter().any(|msg| msg["method"] == "initialize")
     })
     .await;
-    let mentions = |log: &[Value], needle: &str| {
-        log.iter()
-            .any(|msg| msg.to_string().contains(needle))
-    };
+    let mentions =
+        |log: &[Value], needle: &str| log.iter().any(|msg| msg.to_string().contains(needle));
     assert!(mentions(&log, "opened"), "{log:?}");
     assert!(!mentions(&log, "dormant"), "{log:?}");
     // Only git repositories register: what fits git fits the index;
@@ -3998,7 +4130,9 @@ async fn fsp_registers_only_open_sessions() {
     let log = await_fsp_log(dir.path(), |log| {
         log.iter().any(|msg| {
             msg["method"] == "workspace/didChangeSearchFolders"
-                && msg["params"]["event"]["removed"].to_string().contains("opened")
+                && msg["params"]["event"]["removed"]
+                    .to_string()
+                    .contains("opened")
         })
     })
     .await;

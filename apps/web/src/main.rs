@@ -894,6 +894,27 @@ mod app {
                 event.target_x as f32 * app.scale,
                 event.target_y as f32 * app.scale,
             );
+            let mods = imba::event::Modifiers {
+                shift: event.shift_key,
+                control: event.ctrl_key,
+                alt: event.alt_key,
+                command: event.meta_key,
+            };
+            // The secondary button skips the click run — a context
+            // press never double-clicks.
+            if event.button == 2 {
+                return app.state.dispatch_timed(
+                    app.window,
+                    imba::event::Event::MouseDown {
+                        mods,
+                        point,
+                        button: imba::event::MouseButton::Right,
+                        count: 1,
+                    },
+                    skia_safe::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
+                    event.timestamp / 1000.0,
+                );
+            }
             let Some(count) = app
                 .clicks
                 .count(event.timestamp, point.x, point.y, event.button)
@@ -904,12 +925,7 @@ mod app {
             app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::MouseDown {
-                    mods: imba::event::Modifiers {
-                        shift: event.shift_key,
-                        control: event.ctrl_key,
-                        alt: event.alt_key,
-                        command: event.meta_key,
-                    },
+                    mods,
                     point,
                     button: imba::event::MouseButton::Left,
                     count,

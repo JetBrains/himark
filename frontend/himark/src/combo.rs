@@ -34,7 +34,7 @@ pub trait ComboItem: View + Clone + Send + Sync + 'static {
     }
 }
 
-fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
+pub(crate) fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
 where
     T::Command: Send + 'static,
 {

@@ -58,6 +58,11 @@ final class HimarkEngine {
     ) -> Bool {
         himark_mouse_down(engine, window, x, y, mods, clickCount)
     }
+    @discardableResult func secondaryDown(
+        window: UInt64, x: Float, y: Float, mods: UInt32 = 0
+    ) -> Bool {
+        himark_secondary_down(engine, window, x, y, mods)
+    }
     func toolbarHeight() -> Float {
         himark_toolbar_height(engine)
     }

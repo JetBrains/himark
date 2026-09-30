@@ -24,6 +24,35 @@ impl Effect for ListDirectoryEffect {
     type Result = Option<Vec<ResourceLocation>>;
 }
 
+/// Creates an empty file; never overwrites — false when the
+/// location already exists.
+pub struct CreateDocumentEffect {
+    pub location: ResourceLocation,
+}
+
+impl Effect for CreateDocumentEffect {
+    type Result = bool;
+}
+
+pub struct DeleteResourceEffect {
+    pub location: ResourceLocation,
+    pub recursive: bool,
+}
+
+impl Effect for DeleteResourceEffect {
+    type Result = bool;
+}
+
+/// A rename: fails when the destination exists.
+pub struct MoveResourceEffect {
+    pub from: ResourceLocation,
+    pub to: ResourceLocation,
+}
+
+impl Effect for MoveResourceEffect {
+    type Result = bool;
+}
+
 pub struct PickSaveEffect {
     pub suggested: String,
 }

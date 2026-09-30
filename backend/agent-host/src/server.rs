@@ -781,7 +781,9 @@ impl Host {
     /// request — so it follows the folders actually in use.
     /// Idempotent; called from session AND subscription lifecycle.
     fn fsp_sync_folders(&self) {
-        let Some(engine) = self.fsp_engine() else { return };
+        let Some(engine) = self.fsp_engine() else {
+            return;
+        };
         let state = self.snapshot();
         let desired: std::collections::HashSet<PathBuf> = state
             .sessions
@@ -1198,6 +1200,8 @@ impl Host {
                 self.resource_read(id, params)
             }
             "resourceWrite" => self.resource_write(id, params),
+            "resourceDelete" => self.resource_delete(id, params),
+            "resourceMove" => self.resource_move(id, params),
             "resourceList" => {
                 if std::env::var("HIHOST_TRACE").is_ok() {
                     eprintln!("[hihost] resourceList {}", params["uri"]);
@@ -2640,7 +2644,9 @@ impl Host {
                 .searches
                 .get(&connection)
                 .map(|(_, held)| Arc::clone(held));
-            state.searches.insert_mut(connection, (id, Arc::clone(&cancel)));
+            state
+                .searches
+                .insert_mut(connection, (id, Arc::clone(&cancel)));
             Some(held)
         });
         let Some(superseded) = lease else {
@@ -2930,7 +2936,6 @@ impl Host {
             Err(_) => true,
         }
     }
-
 
     fn create_terminal(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params: CreateTerminalParams = match serde_json::from_value(params) {
@@ -4526,6 +4531,9 @@ impl Host {
         };
         let data = params["data"].as_str().unwrap_or_default();
 
+        if params["createOnly"].as_bool() == Some(true) && path.exists() {
+            return rpc::failure(id, INTERNAL, format!("exists: {}", path.display()));
+        }
         if let Some(parent) = path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
@@ -4535,6 +4543,51 @@ impl Host {
                 rpc::success(id, Value::Null)
             }
             Err(error) => rpc::failure(id, INTERNAL, format!("{}: {error}", path.display())),
+        }
+    }
+
+    fn resource_delete(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
+        let Some(path) = file_path(&params["uri"]) else {
+            return rpc::failure(id, INVALID_PARAMS, "not a file uri");
+        };
+        let metadata = match std::fs::symlink_metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) => return rpc::failure(id, -32002, format!("{}: {error}", path.display())),
+        };
+        let removed = match (
+            metadata.is_dir(),
+            params["recursive"].as_bool() == Some(true),
+        ) {
+            (true, true) => std::fs::remove_dir_all(&path),
+            (true, false) => std::fs::remove_dir(&path),
+            (false, _) => std::fs::remove_file(&path),
+        };
+        match removed {
+            Ok(()) => {
+                self.changes_touched(&path);
+                rpc::success(id, Value::Null)
+            }
+            Err(error) => rpc::failure(id, INTERNAL, format!("{}: {error}", path.display())),
+        }
+    }
+
+    fn resource_move(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
+        let Some(source) = file_path(&params["source"]) else {
+            return rpc::failure(id, INVALID_PARAMS, "not a file uri");
+        };
+        let Some(destination) = file_path(&params["destination"]) else {
+            return rpc::failure(id, INVALID_PARAMS, "not a file uri");
+        };
+        if params["failIfExists"].as_bool() == Some(true) && destination.exists() {
+            return rpc::failure(id, INTERNAL, format!("exists: {}", destination.display()));
+        }
+        match std::fs::rename(&source, &destination) {
+            Ok(()) => {
+                self.changes_touched(&source);
+                self.changes_touched(&destination);
+                rpc::success(id, Value::Null)
+            }
+            Err(error) => rpc::failure(id, INTERNAL, format!("{}: {error}", source.display())),
         }
     }
 

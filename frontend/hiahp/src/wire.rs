@@ -12,8 +12,8 @@ use ahp_types::actions::{RootConfigChangedAction, StateAction};
 use ahp_types::commands::{
     ContentEncoding, CreateChatParams, CreateResourceWatchParams, CreateResourceWatchResult,
     DisposeSessionParams, FetchTurnsParams, ListSessionsParams, ListSessionsResult,
-    ResourceListParams, ResourceListResult, ResourceReadParams, ResourceWriteParams,
-    SubscribeResult,
+    ResourceDeleteParams, ResourceListParams, ResourceListResult, ResourceMoveParams,
+    ResourceReadParams, ResourceWriteParams, SubscribeResult,
 };
 use ahp_types::common::Uri;
 use ahp_types::state::{
@@ -1379,6 +1379,102 @@ impl AhpServer for WireHost {
                 )
                 .await
                 .map_err(|error| format!("resourceWrite {uri}: {error}"))?;
+            Ok(true)
+        });
+        Box::pin(async move {
+            asked.await.unwrap_or_else(|error| {
+                eprintln!("[hiahp] {error}");
+                false
+            })
+        })
+    }
+
+    fn resource_create(
+        &self,
+        session: himark::higent::SessionUri,
+        uri: himark::higent::seat::ResourceUri,
+    ) -> SeatFuture<bool> {
+        let session = session.into_string();
+        let asked = self.run_ask(move |active| async move {
+            let _: serde_json::Value = active
+                .client
+                .request(
+                    "resourceWrite",
+                    ResourceWriteParams {
+                        channel: session,
+                        uri: uri.as_str().to_owned(),
+                        data: String::new(),
+                        encoding: ContentEncoding::Utf8,
+                        content_type: None,
+                        create_only: Some(true),
+                        mode: None,
+                        position: None,
+                        if_match: None,
+                    },
+                )
+                .await
+                .map_err(|error| format!("resourceWrite {uri}: {error}"))?;
+            Ok(true)
+        });
+        Box::pin(async move {
+            asked.await.unwrap_or_else(|error| {
+                eprintln!("[hiahp] {error}");
+                false
+            })
+        })
+    }
+
+    fn resource_delete(
+        &self,
+        session: himark::higent::SessionUri,
+        uri: himark::higent::seat::ResourceUri,
+        recursive: bool,
+    ) -> SeatFuture<bool> {
+        let session = session.into_string();
+        let asked = self.run_ask(move |active| async move {
+            let _: serde_json::Value = active
+                .client
+                .request(
+                    "resourceDelete",
+                    ResourceDeleteParams {
+                        channel: session,
+                        uri: uri.as_str().to_owned(),
+                        recursive: Some(recursive),
+                    },
+                )
+                .await
+                .map_err(|error| format!("resourceDelete {uri}: {error}"))?;
+            Ok(true)
+        });
+        Box::pin(async move {
+            asked.await.unwrap_or_else(|error| {
+                eprintln!("[hiahp] {error}");
+                false
+            })
+        })
+    }
+
+    fn resource_move(
+        &self,
+        session: himark::higent::SessionUri,
+        from: himark::higent::seat::ResourceUri,
+        to: himark::higent::seat::ResourceUri,
+    ) -> SeatFuture<bool> {
+        let session = session.into_string();
+        let asked = self.run_ask(move |active| async move {
+            let _: serde_json::Value = active
+                .client
+                .request(
+                    "resourceMove",
+                    ResourceMoveParams {
+                        channel: session,
+                        source: from.as_str().to_owned(),
+                        destination: to.as_str().to_owned(),
+                        fail_if_exists: Some(true),
+                    },
+                )
+                .await
+                .map_err(|error| format!("resourceMove {from}: {error}"))?;
             Ok(true)
         });
         Box::pin(async move {
