@@ -54,6 +54,7 @@ pub use tree_item::{
     TreeLabel, TreeLabelCommand, TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
+pub(crate) mod diff_header;
 pub mod diff_pane;
 mod family_rows;
 mod toolbar;

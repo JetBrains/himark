@@ -845,52 +845,6 @@ fn chrome_gutter(store: &Store) -> f32 {
     env::Themes::of(store).ui().editor_gutter.width
 }
 
-fn header_band_layout<'a>(
-    arena: &'a Arena,
-    ui: &UiCtx,
-    chrome: &ChatChrome,
-    header: &DiffHeader,
-    pending: bool,
-    height: f32,
-) -> impl imba::Layout<'a, CellCommand> + imba::LayoutValue + 'a {
-    let title = if pending {
-        format!("{} — fetching contents…", header.title)
-    } else {
-        header.title.clone()
-    };
-    let text = crate::ui::TextStyle {
-        font: crate::fonts::ui_text_font(ui, chrome.title_size * 0.85),
-        color: chrome.text_color.0,
-        tracking: 0.0,
-        shaper: imba::TextShaper::of(ui),
-    };
-    let _ = height;
-    let style = crate::ui::RowStyle {
-        inset: chrome.pad,
-        trail_inset: chrome.pad,
-        label: text.clone(),
-        trail: text.clone(),
-        air: crate::ui::space::S,
-    };
-    let mut band = crate::ui::ListRow::new(arena, style).label(title);
-    if let Some(added) = header.added.filter(|n| *n > 0) {
-        band = band.trail_styled(
-            &text.clone().colored(chrome.added_color.0),
-            format!("+{added}"),
-        );
-    }
-    if let Some(removed) = header.removed.filter(|n| *n > 0) {
-        band = band.trail_styled(
-            &text.clone().colored(chrome.removed_color.0),
-            format!("-{removed}"),
-        );
-    }
-    if let Some(uri) = header.uri.clone() {
-        band = band.action("OPEN", move || CellCommand::OpenFile(uri.clone()));
-    }
-    band
-}
-
 struct CellWidget<Inner> {
     inner: Inner,
     rewrap: Option<f32>,
@@ -1109,9 +1063,43 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             );
         }
         if let Some((header, pending)) = header {
-            card = card.child(header_band_layout(
-                arena, ui, &chrome, header, pending, header_h,
-            ));
+            // The canvas's own file band (diff_header): stats leading,
+            // the name right-aligned before the corner-arrow button,
+            // the band's body opening the working copy.
+            use crate::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
+            let title = if pending {
+                format!("{} — fetching contents…", header.title)
+            } else {
+                header.title.clone()
+            };
+            let size = chrome.title_size * 0.85;
+            let face = DiffHeaderFace::new(
+                store,
+                ui,
+                DiffHeaderSpec {
+                    title,
+                    added: header.added,
+                    removed: header.removed,
+                    chevron: None,
+                    buttons: match header.uri.is_some() {
+                        true => vec![DiffHeaderPress::OpenFile],
+                        false => Vec::new(),
+                    },
+                    primary: header.uri.is_some().then_some(DiffHeaderPress::OpenFile),
+                    title_size: size,
+                    bold: false,
+                    title_color: None,
+                    baseline: header_h * 0.5 + size * 0.36,
+                },
+                header_h,
+                card_width,
+            );
+            let uri = header.uri.clone();
+            let widget = face.widget(move |press| match (press, uri.clone()) {
+                (DiffHeaderPress::OpenFile, Some(uri)) => Some(CellCommand::OpenFile(uri)),
+                _ => None,
+            });
+            card = card.child(imba::fixed(imba::eager(widget)));
         }
 
         let rewrap = match &cell.body {

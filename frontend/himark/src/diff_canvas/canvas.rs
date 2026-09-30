@@ -2693,9 +2693,41 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 )
             }
             CanvasRow::Header(header) => {
+                use crate::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
                 let band = header_band(&theme);
-                let face = HeaderFace::new(store, ui, header, band, width);
-                imba::ThunkBox::new(arena, imba::eager(HeaderWidget { face }))
+                let h1 = theme.resolve([crate::StyleId::Header(1)]);
+                let size = h1.font_size.unwrap_or(48.0);
+                let mut buttons = vec![DiffHeaderPress::OpenPane, DiffHeaderPress::OpenFile];
+                if header.built {
+                    buttons.push(DiffHeaderPress::ToggleFace);
+                }
+                let face = DiffHeaderFace::new(
+                    store,
+                    ui,
+                    DiffHeaderSpec {
+                        title: header.file.title.clone(),
+                        added: header.file.added,
+                        removed: header.file.removed,
+                        chevron: Some(header.collapsed),
+                        buttons,
+                        primary: Some(DiffHeaderPress::OpenFile),
+                        title_size: size,
+                        bold: h1.bold,
+                        title_color: h1.color,
+                        baseline: size,
+                    },
+                    band,
+                    width,
+                );
+                let widget = face.widget(|press| {
+                    Some(RowCommand::Header(match press {
+                        DiffHeaderPress::OpenFile => HeaderAction::OpenFile,
+                        DiffHeaderPress::OpenPane => HeaderAction::OpenPane,
+                        DiffHeaderPress::ToggleFace => HeaderAction::ToggleFace,
+                        DiffHeaderPress::ToggleCollapse => HeaderAction::ToggleCollapse,
+                    }))
+                });
+                imba::ThunkBox::new(arena, imba::eager(widget))
             }
             CanvasRow::Diff(diff) => match &diff.body {
                 RowBody::Placeholder { armed } => {
@@ -2829,249 +2861,6 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
 }
 
 // ------------------------------------------------------------- header
-
-/// The Header-1 band, with its affordances: the collapse chevron and
-/// the `+N −M` trail at the left, the file name right-aligned before
-/// the three buttons at the right edge — toggle layout, open file,
-/// open the side-by-side pane. The body of the band opens the file.
-struct HeaderFace {
-    title: String,
-    added: Option<i64>,
-    removed: Option<i64>,
-    collapsed: bool,
-
-    band: f32,
-    width: f32,
-    inset: f32,
-
-    title_font: skia_safe::Font,
-    title_size: f32,
-    title_color: skia_safe::Color,
-    trail_font: skia_safe::Font,
-    shaper: std::rc::Rc<imba::TextShaper>,
-    added_color: skia_safe::Color,
-    removed_color: skia_safe::Color,
-    affordance_color: skia_safe::Color,
-
-    chevron: Rect,
-    buttons: Vec<(HeaderAction, Rect)>,
-}
-
-impl HeaderFace {
-    fn new(store: &Store, ui: &UiCtx, header: &HeaderRow, band: f32, width: f32) -> Self {
-        let theme = env::Themes::of(store);
-        let chrome = theme.ui().chat.clone();
-        let h1 = theme.resolve([crate::StyleId::Header(1)]);
-        let size = h1.font_size.unwrap_or(48.0);
-        let mut title_font = crate::fonts::ui_text_font(ui, size);
-        if h1.bold {
-            title_font.set_embolden(true);
-        }
-        let inset = chrome.pad;
-        let glyph = chrome.title_size * 1.2;
-        let zone = glyph + chrome.title_size;
-
-        // Button zones, right edge inward: [toggle] [open] [pane].
-        let mut buttons = Vec::new();
-        let mut right = width - inset;
-        for action in [
-            HeaderAction::OpenPane,
-            HeaderAction::OpenFile,
-            HeaderAction::ToggleFace,
-        ] {
-            if action == HeaderAction::ToggleFace && !header.built {
-                continue;
-            }
-            buttons.push((action, Rect::from_xywh(right - zone, 0.0, zone, band)));
-            right -= zone;
-        }
-
-        Self {
-            title: header.file.title.clone(),
-            added: header.file.added.filter(|n| *n > 0),
-            removed: header.file.removed.filter(|n| *n > 0),
-            collapsed: header.collapsed,
-            band,
-            width,
-            inset,
-            title_font,
-            title_size: size,
-            title_color: h1.color.unwrap_or(chrome.text_color.0),
-            trail_font: crate::fonts::ui_text_font(ui, chrome.title_size),
-            shaper: imba::TextShaper::of(ui),
-            added_color: chrome.added_color.0,
-            removed_color: chrome.removed_color.0,
-            affordance_color: chrome.loader_color.0,
-            chevron: Rect::from_xywh(0.0, 0.0, inset + chrome.title_size, band),
-            buttons,
-        }
-    }
-
-    fn action_at(&self, x: f32) -> HeaderAction {
-        if self.chevron.right > x {
-            return HeaderAction::ToggleCollapse;
-        }
-        for (action, zone) in &self.buttons {
-            if x >= zone.left && x < zone.right {
-                return *action;
-            }
-        }
-        HeaderAction::OpenFile
-    }
-
-    fn paint(&self, canvas: &skia_safe::Canvas, rect: Rect) {
-        let mut paint = Paint::default();
-        paint.set_anti_alias(true);
-        let baseline = rect.top + self.title_size;
-
-        // The chevron: right-pointing when collapsed, down when open.
-        let glyph = self.trail_font.size() * 0.5;
-        let center = (
-            rect.left + self.chevron.left + self.inset * 0.5 + glyph * 0.5,
-            baseline - glyph * 0.6,
-        );
-        paint.set_style(skia_safe::paint::Style::Stroke);
-        paint.set_stroke_width((glyph * 0.22).max(1.0));
-        paint.set_stroke_cap(skia_safe::paint::Cap::Round);
-        paint.set_color(self.affordance_color);
-        let mut path = skia_safe::PathBuilder::new();
-        if self.collapsed {
-            path.move_to((center.0 - glyph * 0.25, center.1 - glyph * 0.5));
-            path.line_to((center.0 + glyph * 0.35, center.1));
-            path.line_to((center.0 - glyph * 0.25, center.1 + glyph * 0.5));
-        } else {
-            path.move_to((center.0 - glyph * 0.5, center.1 - glyph * 0.25));
-            path.line_to((center.0, center.1 + glyph * 0.35));
-            path.line_to((center.0 + glyph * 0.5, center.1 - glyph * 0.25));
-        }
-        canvas.draw_path(&path.detach(), &paint);
-        paint.set_style(skia_safe::paint::Style::Fill);
-
-        // The +N −M trail after the chevron.
-        let mut x = rect.left + self.chevron.right;
-        if let Some(added) = self.added {
-            let label = format!("+{added}");
-            x += self.shaper.draw(
-                canvas,
-                &self.trail_font,
-                &label,
-                self.added_color,
-                0.0,
-                x,
-                baseline,
-            ) + 8.0;
-        }
-        if let Some(removed) = self.removed {
-            self.shaper.draw(
-                canvas,
-                &self.trail_font,
-                &format!("−{removed}"),
-                self.removed_color,
-                0.0,
-                x,
-                baseline,
-            );
-        }
-
-        // The buttons, hairline glyphs on the affordance color.
-        paint.set_style(skia_safe::paint::Style::Stroke);
-        paint.set_color(self.affordance_color);
-        let side = self.trail_font.size() * 1.05;
-        paint.set_stroke_width((side * 0.11).max(1.0));
-        for (action, zone) in &self.buttons {
-            let center = (
-                rect.left + zone.left + zone.width() * 0.5,
-                baseline - side * 0.42,
-            );
-            let half = side * 0.5;
-            let frame = Rect::from_xywh(center.0 - half, center.1 - half, side, side);
-            match action {
-                HeaderAction::ToggleFace => {
-                    // Two columns — switch the diff's face.
-                    canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
-                    canvas.draw_line((center.0, frame.top), (center.0, frame.bottom), &paint);
-                }
-                HeaderAction::OpenFile => {
-                    // A corner arrow leaving the box.
-                    let inset = side * 0.22;
-                    let mut path = skia_safe::PathBuilder::new();
-                    path.move_to((frame.left + side * 0.5, frame.top + inset));
-                    path.line_to((frame.left + inset, frame.top + inset));
-                    path.line_to((frame.left + inset, frame.bottom - inset));
-                    path.line_to((frame.right - inset, frame.bottom - inset));
-                    path.line_to((frame.right - inset, frame.top + side * 0.5));
-                    canvas.draw_path(&path.detach(), &paint);
-                    let mut arrow = skia_safe::PathBuilder::new();
-                    arrow.move_to((center.0 + side * 0.05, center.1 - side * 0.05));
-                    arrow.line_to((frame.right, frame.top));
-                    arrow.move_to((frame.right - side * 0.32, frame.top));
-                    arrow.line_to((frame.right, frame.top));
-                    arrow.line_to((frame.right, frame.top + side * 0.32));
-                    canvas.draw_path(&arrow.detach(), &paint);
-                }
-                HeaderAction::OpenPane => {
-                    // A framed pair of panes — the standalone
-                    // side-by-side diff.
-                    canvas.draw_round_rect(frame, 2.0, 2.0, &paint);
-                    let third = frame.left + frame.width() * 0.5;
-                    canvas.draw_line((third, frame.top), (third, frame.bottom), &paint);
-                    let mid = frame.top + frame.height() * 0.5;
-                    canvas.draw_line((frame.left, mid), (third, mid), &paint);
-                }
-                _ => {}
-            }
-        }
-        paint.set_style(skia_safe::paint::Style::Fill);
-
-        // The file name, right-aligned before the buttons.
-        let buttons_left = self
-            .buttons
-            .last()
-            .map(|(_, zone)| zone.left)
-            .unwrap_or(self.width - self.inset);
-        let title_width = self.shaper.advance(&self.title_font, &self.title);
-        self.shaper.draw(
-            canvas,
-            &self.title_font,
-            &self.title,
-            self.title_color,
-            0.0,
-            (rect.left + buttons_left - self.inset - title_width)
-                .max(rect.left + self.chevron.right),
-            baseline,
-        );
-    }
-}
-
-struct HeaderWidget {
-    face: HeaderFace,
-}
-
-impl<'a> Widget<'a, RowCommand> for HeaderWidget {
-    fn size(&self) -> Size {
-        Size::new(self.face.width, self.face.band)
-    }
-
-    fn handle_event(
-        &self,
-        _arena: &Arena,
-        event: &Event<'_>,
-        _viewport: Rect,
-    ) -> EventResult<RowCommand> {
-        match event {
-            Event::Paint { canvas, .. } => {
-                self.face.paint(canvas, Rect::from_size(self.size()));
-                EventResult::Handled
-            }
-            Event::MouseDown {
-                button: imba::event::MouseButton::Left,
-                point,
-                ..
-            } => EventResult::Command(RowCommand::Header(self.face.action_at(point.x))),
-            _ => EventResult::Ignored,
-        }
-    }
-}
 
 /// The skeleton under a pending header: rounded bars at the line
 /// rhythm, tinted from the diff palette, the mix proportioned to the
