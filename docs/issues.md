@@ -5,7 +5,20 @@
 - Claude
   - [ ] when downgrades to opus, it's not visible in chat and the model is not controllable afterwards
   - [ ] implement alternative chat host based on claude code plugin api, to allow steering terminal agents
-- [ ] panic:
+- [x] panic: FIXED at the root — himarkdown used to parse markdown
+  over a VIRTUAL trailing newline (the vendored grammar treated its
+  absence as ERROR-heading / unclosed-fence), so every fresh tree
+  ended one byte past its source; `structdiff::convert` sliced with
+  that range and the normalize-lane panic aborted the app (nounwind
+  boundary). The grammar now treats EOF as a line ending (mdparser
+  grammar.json `_eof` on atx headings / fence close / empty list
+  item; scanner.c fence-close, setext and minus matchers — see
+  grammar/README.md) and the virtual newline is gone; trees can no
+  longer outrun their text. `structdiff::structural` additionally
+  REFUSES an out-of-bounds tree (degrade to Myers, beside the
+  error-heavy gate) so a regressing producer can never abort the
+  app again. Tests: `mdparser/tests/eof_line_ending.rs`,
+  `structdiff/tests/tree_bounds.rs`, himarkdown assist EOF cases.
 ``` 
 thread '<unnamed>' (11829601) panicked at frontend/structdiff/src/convert.rs:116:29:
 end byte index 403 is out of bounds of `- [ ] adding a second folder to a session does not work

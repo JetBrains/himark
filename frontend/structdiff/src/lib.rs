@@ -174,6 +174,18 @@ fn structural(left: &Text, right: &Text, input: &SyntaxInput) -> Option<Operatio
     if left_src.len().max(right_src.len()) > MAX_STRUCTURAL_BYTES {
         return None;
     }
+    // A tree that outruns its text is not trusted, exactly like an
+    // error-heavy one — Myers serves the request. (The 2026-09 crash:
+    // markdown trees were parsed over a virtual trailing newline and
+    // ended at len+1; the grammar now treats EOF as a line ending —
+    // mdparser tests/eof_line_ending.rs pins the producer — and this
+    // gate keeps a regressing producer from aborting the app, since a
+    // panic on the normalize lane cannot unwind.)
+    if input.left_tree.root_node().end_byte() > left_src.len()
+        || input.right_tree.root_node().end_byte() > right_src.len()
+    {
+        return None;
+    }
 
     let lhs_arena = Arena::new();
     let rhs_arena = Arena::new();
