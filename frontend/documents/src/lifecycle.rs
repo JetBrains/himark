@@ -38,15 +38,21 @@ pub fn mount_editor(
     editor
 }
 
-pub fn close_editor(store: &mut Store, document_id: DocumentId, editor: EditorId) {
-    if let Some(mut document) = OpenDocuments::document(store, document_id) {
+pub fn close_editor(
+    store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
+    document_id: DocumentId,
+    editor: EditorId,
+) {
+    if let Some(mut document) = OpenDocuments::document(store, documents, document_id) {
         document.remove_editor(editor);
-        OpenDocuments::put_document(store, document_id, document);
+        OpenDocuments::put_document(store, documents, document_id, document);
     }
 }
 
 pub fn deliver(
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     ui: &imba::UiCtx,
     document_id: DocumentId,
     command: EditorCommand,
@@ -56,14 +62,14 @@ pub fn deliver(
         if outcome.anchor().is_none() {
             return;
         }
-        let location = OpenDocuments::location(store, document_id);
+        let location = OpenDocuments::location(store, documents, document_id);
         let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
-        let Some(mut document) = OpenDocuments::document(store, document_id) else {
+        let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
             return;
         };
         document.land_reparse(outcome, location, store, ui, &fonts, &theme, fx);
-        OpenDocuments::put_document(store, document_id, document);
+        OpenDocuments::put_document(store, documents, document_id, document);
         return;
     }
     let editor = match &command {
@@ -78,9 +84,9 @@ pub fn deliver(
         EditorCommand::ApplyScrollStripes(outcome) => outcome.editor(),
         _ => return,
     };
-    let Some(mut document) = OpenDocuments::document(store, document_id) else {
+    let Some(mut document) = OpenDocuments::document(store, documents, document_id) else {
         return;
     };
     document.perform(store, ui, editor, command, fx);
-    OpenDocuments::put_document(store, document_id, document);
+    OpenDocuments::put_document(store, documents, document_id, document);
 }

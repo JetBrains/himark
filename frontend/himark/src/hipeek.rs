@@ -677,21 +677,28 @@ impl crate::DynamicCommand for RemovePeek {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut doc) = crate::OpenDocuments::document(store, self.document) else {
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
+            return;
+        };
+        let Some(mut doc) = crate::OpenDocuments::document(store, documents, self.document) else {
             return;
         };
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
         let document = self.document;
         fx.scope(
-            move |command| crate::AppCommand::Entity(document, command),
+            move |command| {
+                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+            },
             |fx| doc.remove_inlay(self.key, store, ui, &fonts, &theme, fx),
         );
-        crate::OpenDocuments::put_document(store, self.document, doc);
+        crate::OpenDocuments::put_document(store, documents, self.document, doc);
     }
 }
 
@@ -752,7 +759,9 @@ impl crate::DynamicEditorCommand for GoToReference {
             width if width > 1.0 => width,
             _ => FALLBACK_WIDTH,
         };
-        let host = crate::OpenDocuments::by_location(store, location);
+        let home = crate::SessionId::of_location(store, location);
+        let host = crate::higent::Hosts::family(store, &home)
+            .and_then(|family| crate::OpenDocuments::by_location(store, family.documents(), location));
         let view = PeekView::new(store, host, width, feed);
         let markup = peek_markup();
         document.ensure_document_markup(markup);

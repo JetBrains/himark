@@ -746,10 +746,8 @@ impl ChangeSets {
 /// (gather/park), so every view in the record belongs to the
 /// gathered session already; the workspace guard just asserts that
 /// invariant.
-pub(crate) fn sync_changes_views(store: &mut Store, ui: &UiCtx) {
-    let Some(scope) = crate::Gathered::scope(store).cloned() else {
-        return;
-    };
+pub(crate) fn sync_changes_views(store: &mut Store, scope: &crate::SessionId, ui: &UiCtx) {
+    let scope = scope.clone();
     let stale: Vec<ChangesViewId> = Changes::of(store, &scope)
         .map(|views| {
             views

@@ -28,6 +28,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         assert!(app.perform_command(himark::AppCommand::Opened(
             app.sole_window(),
             himark::OpenedDocument {
+            documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),
@@ -86,9 +87,11 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     let ui = himark::test_document::test_ui();
+    let session = himark::SessionId::local_default(&store);
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
+        session,
         Size::new(800.0, 600.0),
         Vec::new(),
         Vec::new(),
@@ -134,9 +137,11 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     let ui = himark::test_document::test_ui();
+    let session = himark::SessionId::local_default(&store);
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
+        session,
         Size::new(800.0, 600.0),
         Vec::new(),
         Vec::new(),

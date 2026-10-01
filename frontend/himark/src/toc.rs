@@ -501,6 +501,7 @@ pub enum OutlineCommand {
 
 pub struct OutlineView {
     window: crate::WindowId,
+    documents: imba::store::Id<crate::OpenDocuments>,
     document: crate::DocumentId,
     location: crate::ResourceLocation,
     rows: Vec<OutlineRow>,
@@ -517,6 +518,7 @@ impl Clone for OutlineView {
     fn clone(&self) -> Self {
         Self {
             window: self.window,
+            documents: self.documents,
             document: self.document,
             location: self.location.clone(),
             rows: self.rows.clone(),
@@ -534,11 +536,13 @@ impl OutlineView {
         store: &Store,
         ui: &imba::UiCtx,
         window: crate::WindowId,
+        documents: imba::store::Id<crate::OpenDocuments>,
         document: crate::DocumentId,
         location: crate::ResourceLocation,
     ) -> Self {
         Self {
             window,
+            documents,
             document,
             location,
             rows: Vec::new(),
@@ -586,7 +590,7 @@ impl OutlineView {
     }
 
     fn relaunch(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, OutlineCommand>) {
-        let Some(document) = crate::OpenDocuments::document_ref(store, self.document) else {
+        let Some(document) = crate::OpenDocuments::document_ref(store, self.documents, self.document) else {
             return;
         };
         let stamp = Self::stamp_of(document);
@@ -605,7 +609,7 @@ impl OutlineView {
     }
 
     fn pick(&mut self, store: &Store, key: OutlineKey) {
-        let Some(range) = crate::OpenDocuments::document_ref(store, self.document)
+        let Some(range) = crate::OpenDocuments::document_ref(store, self.documents, self.document)
             .and_then(|document| document.resolve_outline(key.0, key.1))
         else {
             return;
@@ -754,7 +758,7 @@ impl View for OutlineView {
             let theme_ui = crate::env::Themes::of(store).ui().clone();
             let title_font = crate::fonts::ui_font(ui, theme_ui.panel.title_size);
             let stale =
-                crate::OpenDocuments::document_ref(store, self.document).is_some_and(|document| {
+                crate::OpenDocuments::document_ref(store, self.documents, self.document).is_some_and(|document| {
                     let stamp = Self::stamp_of(document);
                     self.derived != Some(stamp) && self.launched != Some(stamp)
                 });

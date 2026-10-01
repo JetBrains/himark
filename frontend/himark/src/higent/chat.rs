@@ -2681,8 +2681,16 @@ impl crate::DynamicCommand for OpenEditedFile {
         ) else {
             return;
         };
+        let documents = crate::higent::Hosts::ensure_family(
+            store,
+            &crate::SessionId {
+                host: self.server,
+                session: self.session.clone(),
+            },
+        )
+        .documents();
         let _ = fx.push(crate::open_by_location_effect(
-            window, location, true, true, None,
+            window, documents, location, true, true, None,
         ));
     }
 }

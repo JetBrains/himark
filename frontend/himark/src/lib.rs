@@ -106,7 +106,7 @@ pub use navigation::{
 };
 pub use rows::{label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow};
 pub use save::{SaveAll, SaveDocument};
-pub use state::{AppState, Gathered};
+pub use state::AppState;
 pub use stats::Stats;
 pub use toc::{
     OutlineCommand, OutlineEffect, OutlineHandler, OutlineRows, OutlineView, TocCommand, TocView,

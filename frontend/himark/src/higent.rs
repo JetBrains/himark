@@ -38,7 +38,7 @@ pub use seat::{
 pub(crate) use session::apply_channel_actions;
 pub use session::{
     all_session_folders, open_session, open_session_with, session_folders, Agents, Host,
-    HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel,
+    HostStatus, Hosts, SessionState, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel,
 };
 pub(crate) use session_toolbar::sync_effort_for_model;
 pub use session_toolbar::{

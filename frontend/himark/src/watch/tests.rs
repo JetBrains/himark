@@ -54,11 +54,18 @@ fn landed_rebase(batch: imba::effect::Batch<crate::AppCommand>) -> RefetchRebase
     ))
 }
 
+
+fn docs() -> imba::store::Id<OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<OpenDocuments>> = std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
 fn registered(store: &mut Store, source: &str) -> crate::DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
     OpenDocuments::register(
         store,
+        docs(),
         document,
         Some(located("a.md")),
         "a.md".to_owned(),
@@ -72,27 +79,29 @@ fn a_clean_document_follows_the_disk() {
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nbeta\n");
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nCHANGED\n".to_owned()),
         &mut batch.effects(),
     );
     assert_eq!(
-        text_of(&OpenDocuments::document_ref(&store, id).expect("the document")),
+        text_of(&OpenDocuments::document_ref(&store, docs(), id).expect("the document")),
         "alpha\nbeta\n",
         "the landing itself edits nothing — the diff is the worker's"
     );
 
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     assert!(rebase.synced, "ours moved nothing — the plain reload");
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -103,9 +112,9 @@ fn a_clean_document_follows_the_disk() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(!retry, "nothing raced this landing");
-    let document = &OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = &OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(text_of(document), "alpha\nCHANGED\n");
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         entity.saved_revision(),
         document.revision(),
@@ -123,14 +132,14 @@ fn a_stale_diff_landing_discards_itself() {
     let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let stale_revision = document.revision();
     let operation = myersdiff::diff(
         document.text(),
         &crate::Text::from_string_exact("external\n"),
     );
 
-    let mut document = OpenDocuments::document(&store, id).expect("the document");
+    let mut document = OpenDocuments::document(&store, docs(), id).expect("the document");
     let editor = document.add_editor(
         600.0,
         None,
@@ -152,10 +161,11 @@ fn a_stale_diff_landing_discards_itself() {
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
-    OpenDocuments::put_document(&mut store, id, document);
+    OpenDocuments::put_document(&mut store, docs(), id, document);
 
     OpenDocuments::edit_external(
         &mut store,
+        docs(),
         &ui,
         id,
         stale_revision,
@@ -163,7 +173,7 @@ fn a_stale_diff_landing_discards_itself() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(
-        text_of(&OpenDocuments::document_ref(&store, id).expect("the document")),
+        text_of(&OpenDocuments::document_ref(&store, docs(), id).expect("the document")),
         "typed alpha\n",
         "the stale operation discards; ours wins"
     );
@@ -187,6 +197,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     let saved = document.revision();
     let id = OpenDocuments::register(
         &mut store,
+        docs(),
         document,
         Some(located("a.md")),
         "a.md".to_owned(),
@@ -196,7 +207,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
         ::editor::SyntaxLanguages::new(),
     )));
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let base_revision = document.revision();
     let operation = myersdiff::diff(
         document.text(),
@@ -205,6 +216,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     let mut batch = imba::effect::Batch::new();
     OpenDocuments::edit_external(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -222,7 +234,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
 
 fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
     let ui = ::editor::test_document::test_ui();
-    let mut document = OpenDocuments::document(store, id).expect("the document");
+    let mut document = OpenDocuments::document(store, docs(), id).expect("the document");
     let len = document.text().byte_count().min(u32::MAX as usize) as u32;
     document.edit(
         &operation::Operation::insert_in(len, at, text),
@@ -232,7 +244,7 @@ fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
         &::editor::theme::Theme::embedded(),
         &mut imba::effect::Batch::new().effects(),
     );
-    OpenDocuments::put_document(store, id, document);
+    OpenDocuments::put_document(store, docs(), id, document);
 }
 
 #[test]
@@ -243,21 +255,23 @@ fn a_dirty_document_merges_the_external_change() {
     typed(&mut store, id, 0, "MINE ");
 
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nEXTERNAL\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     assert!(!rebase.synced, "ours moved — this is a merge, not a reload");
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -269,13 +283,13 @@ fn a_dirty_document_merges_the_external_change() {
     );
     assert!(!retry, "nothing raced this landing");
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "MINE alpha\nEXTERNAL\n",
         "the typing survived AND the disk's change landed"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_ne!(
         document.revision(),
         entity.saved_revision(),
@@ -294,14 +308,15 @@ fn a_dirty_save_echo_keeps_the_typing() {
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     typed(&mut store, id, 0, "typed ");
-    let before = OpenDocuments::document_ref(&store, id)
+    let before = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
 
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\n".to_owned()),
@@ -310,6 +325,7 @@ fn a_dirty_save_echo_keeps_the_typing() {
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         before,
@@ -321,7 +337,7 @@ fn a_dirty_save_echo_keeps_the_typing() {
     );
     assert!(!retry, "nothing raced this landing");
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(text_of(document), "typed alpha\n", "the typing stands");
     assert_eq!(
         document.revision(),
@@ -336,15 +352,16 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("external\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
@@ -353,6 +370,7 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
     let fetched = rebase.fetched_source.clone();
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -365,7 +383,7 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
     // The raced landing applies nothing YET — but it does not give
     // up either: the caller re-diffs the kept disk text.
     assert!(retry, "the raced landing asks for a re-diff");
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(text_of(document), "raced alpha\n", "nothing landed yet");
 
     // Round two, the way the app drives it: same serial, fresh
@@ -373,23 +391,30 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
     let mut batch = imba::effect::Batch::new();
     documents::watch::rediff(
         &mut store,
+        docs(),
         id,
         serial,
         fetched,
         &mut batch.effects(),
-        |document, base_revision, serial, rebase| crate::AppCommand::RefetchDiffed {
-            document,
-            base_revision,
-            serial,
-            rebase,
+        |document, base_revision, serial, rebase| {
+            crate::AppCommand::At(
+                imba::store::Id::mint(),
+                crate::app::DocumentsCommand::RefetchDiffed {
+                    document,
+                    base_revision,
+                    serial,
+                    rebase,
+                },
+            )
         },
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -401,13 +426,13 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
     );
     assert!(!retry, "the second round lands");
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "raced external\n",
         "the disk's change landed AND the racing keystroke survived"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "external\n",
@@ -431,17 +456,18 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
     let id = registered(&mut store, "base\n");
 
     let shared = |store: &mut Store, target: &str| {
-        let base = OpenDocuments::document_ref(store, id)
+        let base = OpenDocuments::document_ref(store, docs(), id)
             .expect("the document")
             .revision();
         let op = myersdiff::diff(
-            OpenDocuments::document_ref(store, id)
+            OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .text(),
             &crate::Text::from_string_exact(target),
         );
         assert!(OpenDocuments::edit_shared(
             store,
+            docs(),
             &ui,
             id,
             ::editor::EditIdentity::mint(),
@@ -454,15 +480,16 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
     // way the app's RefetchDiffed arm does.
     let reload = |store: &mut Store, disk: &str, race: Option<&str>| {
         let mut batch = imba::effect::Batch::new();
-        let serial = OpenDocuments::stamp_refetch(store, id);
+        let serial = OpenDocuments::stamp_refetch(store, docs(), id);
         apply_refetched(
             store,
+            docs(),
             id,
             serial,
             Some(disk.to_owned()),
             &mut batch.effects(),
         );
-        let mut base_revision = OpenDocuments::document_ref(store, id)
+        let mut base_revision = OpenDocuments::document_ref(store, docs(), id)
             .expect("the document")
             .revision();
         let mut rebase = landed_rebase(batch);
@@ -474,6 +501,7 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
             let fetched = rebase.fetched_source.clone();
             let retry = OpenDocuments::absorb_refetched(
                 store,
+                docs(),
                 &ui,
                 id,
                 base_revision,
@@ -491,18 +519,24 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
             let mut batch = imba::effect::Batch::new();
             documents::watch::rediff(
                 store,
+                docs(),
                 id,
                 serial,
                 fetched,
                 &mut batch.effects(),
-                |document, base_revision, serial, rebase| crate::AppCommand::RefetchDiffed {
-                    document,
-                    base_revision,
-                    serial,
-                    rebase,
+                |document, base_revision, serial, rebase| {
+                    crate::AppCommand::At(
+                        imba::store::Id::mint(),
+                        crate::app::DocumentsCommand::RefetchDiffed {
+                            document,
+                            base_revision,
+                            serial,
+                            rebase,
+                        },
+                    )
                 },
             );
-            base_revision = OpenDocuments::document_ref(store, id)
+            base_revision = OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .revision();
             rebase = landed_rebase(batch);
@@ -523,13 +557,13 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
     // buffer does not have yet).
     reload(&mut store, "typed base\nONE\nTWO\nTHREE\nFOUR\n", None);
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "typed base\nONE\nTWO\nTHREE\nFOUR\n",
         "every change exactly once; the keystroke survived; nothing stale"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "typed base\nONE\nTWO\nTHREE\nFOUR\n",
@@ -547,11 +581,12 @@ fn the_saves_own_echo_is_a_no_op() {
     let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let before = document.revision();
     let operation = myersdiff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
     OpenDocuments::edit_external(
         &mut store,
+        docs(),
         &ui,
         id,
         before,
@@ -559,7 +594,7 @@ fn the_saves_own_echo_is_a_no_op() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(
-        OpenDocuments::document_ref(&store, id)
+        OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .revision(),
         before,
@@ -573,23 +608,25 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
 
-    let stale_serial = OpenDocuments::stamp_refetch(&mut store, id);
-    let fresh_serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let stale_serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
+    let fresh_serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
 
     let mut batch = imba::effect::Batch::new();
     apply_refetched(
         &mut store,
+        docs(),
         id,
         fresh_serial,
         Some("NEW\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -601,13 +638,14 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
     );
     assert!(!retry, "nothing raced this landing");
     assert_eq!(
-        text_of(&OpenDocuments::document_ref(&store, id).expect("the document")),
+        text_of(&OpenDocuments::document_ref(&store, docs(), id).expect("the document")),
         "NEW\n"
     );
 
     let mut batch = imba::effect::Batch::new();
     apply_refetched(
         &mut store,
+        docs(),
         id,
         stale_serial,
         Some("alpha\n".to_owned()),
@@ -617,9 +655,9 @@ fn a_stale_fetch_landing_never_reverts_the_fresh_reload() {
         crate::test_support::surviving_launches(batch).is_empty(),
         "a superseded fetch launches nothing"
     );
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(text_of(document), "NEW\n", "the fresh reload stands");
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "NEW\n",
@@ -632,23 +670,25 @@ fn a_stale_diff_landing_drops_by_serial() {
     let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
-    let stale_serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let stale_serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     let mut batch = imba::effect::Batch::new();
     apply_refetched(
         &mut store,
+        docs(),
         id,
         stale_serial,
         Some("OLD\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
 
-    let _fresh_serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let _fresh_serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -659,13 +699,13 @@ fn a_stale_diff_landing_drops_by_serial() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(!retry, "nothing raced this landing");
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "alpha\n",
         "the stale diff dropped; the newer launch's landing decides"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "alpha\n",
@@ -678,10 +718,10 @@ fn a_missing_fetch_keeps_ours() {
     let mut store = test_store();
     let id = registered(&mut store, "alpha\n");
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
-    apply_refetched(&mut store, id, serial, None, &mut batch.effects());
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
+    apply_refetched(&mut store, docs(), id, serial, None, &mut batch.effects());
     assert_eq!(
-        text_of(&OpenDocuments::document_ref(&store, id).expect("the document")),
+        text_of(&OpenDocuments::document_ref(&store, docs(), id).expect("the document")),
         "alpha\n"
     );
 }
@@ -723,11 +763,13 @@ fn opens_watch_and_events_refetch() {
         }
     };
 
+    let documents = app.sole_documents();
     assert!(crate::AppExt::perform_command(
         &mut app,
         crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents,
                 name: "a.md".to_owned(),
                 document: plain_document("alpha\n"),
                 location: Some(located("a.md")),
@@ -739,7 +781,7 @@ fn opens_watch_and_events_refetch() {
     ));
     settle(&mut app);
 
-    let entity = OpenDocuments::list(app.store())
+    let entity = OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "a.md")
         .expect("the located open");
@@ -755,7 +797,7 @@ fn opens_watch_and_events_refetch() {
         crate::AppCommand::FileChanged(Subscription(7))
     ));
     settle(&mut app);
-    let document = OpenDocuments::document_ref(app.store(), entity.0).expect("the document");
+    let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0).expect("the document");
     assert_eq!(text_of(document), "alpha\nexternal\n");
 }
 
@@ -788,11 +830,13 @@ fn the_palette_reload_follows_the_disk() {
         }
     };
 
+    let documents = app.sole_documents();
     assert!(crate::AppExt::perform_command(
         &mut app,
         crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents,
                 name: "a.md".to_owned(),
                 document: plain_document("alpha\n"),
                 location: Some(located("a.md")),
@@ -811,7 +855,7 @@ fn the_palette_reload_follows_the_disk() {
     ));
     settle(&mut app);
 
-    let entity = OpenDocuments::list(app.store())
+    let entity = OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "a.md")
         .expect("the open");
@@ -835,13 +879,14 @@ fn a_shared_edit_is_not_a_reload() {
     let saved = document.revision();
     let id = OpenDocuments::register(
         &mut store,
+        docs(),
         document,
         Some(located("a.md")),
         "a.md".to_owned(),
         saved,
     );
 
-    let mut document = OpenDocuments::document(&store, id).expect("the document");
+    let mut document = OpenDocuments::document(&store, docs(), id).expect("the document");
     let editor = document.add_editor(
         600.0,
         None,
@@ -863,21 +908,22 @@ fn a_shared_edit_is_not_a_reload() {
         &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
-    OpenDocuments::put_document(&mut store, id, document);
-    let dirty_at = OpenDocuments::document_ref(&store, id)
+    OpenDocuments::put_document(&mut store, docs(), id, document);
+    let dirty_at = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     assert!(dirty_at > saved, "typing dirtied it");
 
     let identity = ::editor::EditIdentity::mint();
     let peer = myersdiff::diff(
-        OpenDocuments::document_ref(&store, id)
+        OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
         &crate::Text::from_string_exact("typed alpha\npeer\n"),
     );
     let applied = OpenDocuments::edit_shared(
         &mut store,
+        docs(),
         &ui,
         id,
         identity,
@@ -886,7 +932,7 @@ fn a_shared_edit_is_not_a_reload() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(applied);
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(text_of(&document), "typed alpha\npeer\n");
     assert_eq!(
         document.log().head(),
@@ -894,7 +940,7 @@ fn a_shared_edit_is_not_a_reload() {
         "recorded under the peer's name for it"
     );
     assert_eq!(
-        OpenDocuments::entity(&store, id)
+        OpenDocuments::entity(&store, docs(), id)
             .expect("the entity")
             .saved_revision(),
         saved,
@@ -903,6 +949,7 @@ fn a_shared_edit_is_not_a_reload() {
 
     assert!(!OpenDocuments::edit_shared(
         &mut store,
+        docs(),
         &ui,
         id,
         ::editor::EditIdentity::mint(),
@@ -923,17 +970,18 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
     let id = registered(&mut store, "alpha\nbeta\n");
 
     // The shared edit lands: the buffer now holds the agent's line.
-    let base = OpenDocuments::document_ref(&store, id)
+    let base = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let shared = myersdiff::diff(
-        OpenDocuments::document_ref(&store, id)
+        OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
         &crate::Text::from_string_exact("alpha\nAGENT\nbeta\n"),
     );
     assert!(OpenDocuments::edit_shared(
         &mut store,
+        docs(),
         &ui,
         id,
         ::editor::EditIdentity::mint(),
@@ -944,20 +992,22 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
 
     // The host wrote the same content to disk; the watch refetches.
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nAGENT\nbeta\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -969,13 +1019,13 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
     );
     assert!(!retry, "nothing raced this landing");
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "alpha\nAGENT\nbeta\n",
         "the echo applies NOTHING — the shared edit already did"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "alpha\nAGENT\nbeta\n",
@@ -998,17 +1048,18 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
     let id = registered(&mut store, "alpha\nbeta\n");
 
     let step = |store: &mut Store, target: &str| {
-        let base = OpenDocuments::document_ref(store, id)
+        let base = OpenDocuments::document_ref(store, docs(), id)
             .expect("the document")
             .revision();
         let op = myersdiff::diff(
-            OpenDocuments::document_ref(store, id)
+            OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .text(),
             &crate::Text::from_string_exact(target),
         );
         assert!(OpenDocuments::edit_shared(
             store,
+            docs(),
             &ui,
             id,
             ::editor::EditIdentity::mint(),
@@ -1022,20 +1073,22 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
 
     // The disk only has the FIRST edit so far.
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nFIRST\nbeta\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -1047,13 +1100,13 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
     );
     assert!(!retry, "nothing raced this landing");
 
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "alpha\nFIRST\nbeta\nSECOND\n",
         "the echoed hunk lands ONCE; the unflushed one stays"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "alpha\nFIRST\nbeta\n",
@@ -1073,17 +1126,18 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
     let ui = ::editor::test_document::test_ui();
     let mut store = test_store();
     let id = registered(&mut store, "alpha\nDOOMED\nbeta\n");
-    let base = OpenDocuments::document_ref(&store, id)
+    let base = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let op = myersdiff::diff(
-        OpenDocuments::document_ref(&store, id)
+        OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
         &crate::Text::from_string_exact("alpha\nbeta\n"),
     );
     assert!(OpenDocuments::edit_shared(
         &mut store,
+        docs(),
         &ui,
         id,
         ::editor::EditIdentity::mint(),
@@ -1093,20 +1147,22 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
     ));
 
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nbeta\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -1117,13 +1173,13 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(!retry);
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     assert_eq!(
         text_of(document),
         "alpha\nbeta\n",
         "deleted once, once only"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         entity.saved_revision(),
         document.revision(),
@@ -1140,7 +1196,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
     let id = registered(&mut store, "alpha\nMIDDLE\nbeta\n");
     // Ours: rewrite MIDDLE locally.
     {
-        let mut document = OpenDocuments::document(&store, id).expect("the document");
+        let mut document = OpenDocuments::document(&store, docs(), id).expect("the document");
         let op = myersdiff::diff(
             document.text(),
             &crate::Text::from_string_exact("alpha\nOURS\nbeta\n"),
@@ -1153,24 +1209,26 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
             &::editor::theme::Theme::embedded(),
             &mut imba::effect::Batch::new().effects(),
         );
-        OpenDocuments::put_document(&mut store, id, document);
+        OpenDocuments::put_document(&mut store, docs(), id, document);
     }
     // Theirs: the disk rewrote the same line another way.
     let mut batch = imba::effect::Batch::new();
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nTHEIRS\nbeta\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -1181,13 +1239,13 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert!(!retry);
-    let document = OpenDocuments::document_ref(&store, id).expect("the document");
+    let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let text = text_of(document);
     assert!(
         text.contains("OURS") && text.contains("THEIRS"),
         "a conflict drops nobody's bytes: {text:?}"
     );
-    let entity = OpenDocuments::entity(&store, id).expect("registered");
+    let entity = OpenDocuments::entity(&store, docs(), id).expect("registered");
     assert_eq!(
         text_of_text(entity.baseline()),
         "alpha\nTHEIRS\nbeta\n",
@@ -1210,11 +1268,11 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     let mut store = test_store();
     Watching::install(&mut store);
     let id = registered(&mut store, "alpha\n");
-    OpenDocuments::set_watch(&mut store, id, Some(Subscription(7)));
+    OpenDocuments::set_watch(&mut store, docs(), id, Some(Subscription(7)));
 
     // The channel goes live: the watch is released...
     let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
-    OpenDocuments::set_host_synced(&mut store, id, true, &mut batch.effects());
+    OpenDocuments::set_host_synced(&mut store, docs(), id, true, &mut batch.effects());
     let released = crate::test_support::surviving_launches(batch);
     assert!(
         released
@@ -1223,7 +1281,7 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
         "the file watch is the host's job now"
     );
     assert_eq!(
-        OpenDocuments::entity(&store, id)
+        OpenDocuments::entity(&store, docs(), id)
             .expect("registered")
             .watch(),
         None
@@ -1231,28 +1289,30 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
 
     // ...the sweep leaves it alone...
     let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
-    crate::watch::sync_document_watches(&mut store, &mut batch.effects());
+    crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
     assert!(
         crate::test_support::surviving_launches(batch).is_empty(),
         "a host-synced document never re-subscribes"
     );
 
     // ...and an in-flight refetch landing is refused.
-    let serial = OpenDocuments::stamp_refetch(&mut store, id);
+    let serial = OpenDocuments::stamp_refetch(&mut store, docs(), id);
     let mut batch = imba::effect::Batch::new();
     apply_refetched(
         &mut store,
+        docs(),
         id,
         serial,
         Some("alpha\nDISK\n".to_owned()),
         &mut batch.effects(),
     );
-    let base_revision = OpenDocuments::document_ref(&store, id)
+    let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
     let rebase = landed_rebase(batch);
     let retry = OpenDocuments::absorb_refetched(
         &mut store,
+        docs(),
         &ui,
         id,
         base_revision,
@@ -1264,15 +1324,15 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     );
     assert!(!retry, "no retry either — the host owns disk truth");
     assert_eq!(
-        text_of(&OpenDocuments::document_ref(&store, id).expect("the document")),
+        text_of(&OpenDocuments::document_ref(&store, docs(), id).expect("the document")),
         "alpha\n",
         "the client-side landing is refused wholesale"
     );
 
     // The channel dies: mode two re-arms the client's own watching.
     let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
-    OpenDocuments::set_host_synced(&mut store, id, false, &mut batch.effects());
-    crate::watch::sync_document_watches(&mut store, &mut batch.effects());
+    OpenDocuments::set_host_synced(&mut store, docs(), id, false, &mut batch.effects());
+    crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
     assert!(
         crate::test_support::surviving_launches(batch)
             .iter()

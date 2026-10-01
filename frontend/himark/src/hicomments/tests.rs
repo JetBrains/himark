@@ -51,6 +51,7 @@ fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: plain_document(source),
             location: Some(document_location("notes.md")),
@@ -72,7 +73,7 @@ fn invoke(app: &mut Application, window: crate::WindowId, id: &str) {
 }
 
 fn commented_document(app: &Application) -> (crate::DocumentId, Vec<(InlayKey, Range<u32>)>) {
-    for (id, entity) in crate::OpenDocuments::list(app.store()) {
+    for (id, entity) in crate::OpenDocuments::list(app.store(), app.sole_documents()) {
         let document = entity.document();
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
 
@@ -110,7 +111,7 @@ fn without_a_selection_add_comment_is_a_no_op() {
     let (mut app, window) = app_with_located_document("alpha beta gamma\n");
     invoke(&mut app, window, "comments.add");
 
-    for (_, entity) in crate::OpenDocuments::list(app.store()) {
+    for (_, entity) in crate::OpenDocuments::list(app.store(), app.sole_documents()) {
         let document = entity.document();
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
         assert!(
@@ -133,7 +134,7 @@ fn the_fresh_card_takes_the_focus() {
 
     let (document, inlays) = commented_document(&app);
     let document =
-        crate::OpenDocuments::document(app.store(), document).expect("the commented document");
+        crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the commented document");
     let focused = document
         .editor_ids()
         .any(|editor| document.focus(editor) == EditorFocus::Inlay(inlays[0].0));
@@ -157,7 +158,7 @@ fn remove_comment_clears_the_card_and_returns_focus() {
         }),
     )));
 
-    let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     assert!(
         doc.markup()
@@ -180,7 +181,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
     invoke(&mut app, window, "comments.add");
     let (document, inlays) = commented_document(&app);
     let host_before = {
-        let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
         let mut view = doc.text().view();
         let end = view.byte_count().min(u32::MAX as usize) as u32;
         view.substring(0..end)
@@ -188,7 +189,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
 
     let mut store = app.store().clone();
     let ui = UiCtx::dont_use_too_slow();
-    let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let comments = doc
         .feature_markup(crate::hicomments::comments_markup())
@@ -229,7 +230,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
         "the card's markdown parsed through the ordinary background lane"
     );
     let host_after = {
-        let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
         let mut text = doc.text().view();
         let end = text.byte_count().min(u32::MAX as usize) as u32;
         text.substring(0..end)
@@ -360,7 +361,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         crate::hicomments::Comments::records(app.store(), &app.sole_window_session()).is_empty(),
         "the sent comment's record is consumed"
     );
-    let survives = crate::OpenDocuments::list(app.store())
+    let survives = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .any(|(_, entity)| {
             entity

@@ -13,6 +13,13 @@ use editor::{
 use crate::AppExt;
 use crate::EditorIdView;
 
+
+fn test_docs() -> imba::store::Id<crate::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<crate::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
 struct TestPane {
     store: Store,
     view: EditorIdView,
@@ -56,10 +63,10 @@ impl TestPane {
         let inlay_markup = document.add_markup();
         document.show_markup(editor, inlay_markup);
         let document_id =
-            crate::OpenDocuments::register(&mut store, document, None, "test".to_owned(), 0);
+            crate::OpenDocuments::register(&mut store, test_docs(), document, None, "test".to_owned(), 0);
 
         Self {
-            view: EditorIdView::new(document_id, editor),
+            view: EditorIdView::new(test_docs(), document_id, editor),
             store,
             inlay_markup,
         }
@@ -73,7 +80,7 @@ impl TestPane {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document()).expect("document");
         let mut batch = imba::effect::Batch::new();
         let _ = document.resize(
             entity.editor(),
@@ -85,7 +92,7 @@ impl TestPane {
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(&mut self.store, entity.documents(), entity.document(), document);
         batch
     }
 
@@ -129,16 +136,16 @@ impl TestPane {
     fn set_caret(&mut self, byte: u32) {
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document()).expect("document");
         document.set_caret(entity.editor(), byte);
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(&mut self.store, entity.documents(), entity.document(), document);
     }
 
     fn replace_inlay(&mut self, key: editor::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document()).expect("document");
         let mut batch = imba::effect::Batch::new();
         document.replace_inlay(
             key,
@@ -150,7 +157,7 @@ impl TestPane {
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(&mut self.store, entity.documents(), entity.document(), document);
         self.finish(batch);
     }
 }
@@ -183,7 +190,7 @@ fn view_refresh_matches_committed_store() {
         text: "well, ".to_owned(),
     });
 
-    let gathered = EditorIdView::new(pane.view.document(), pane.view.editor())
+    let gathered = EditorIdView::new(test_docs(), pane.view.document(), pane.view.editor())
         .gathered(&pane.store)
         .expect("committed editor");
     assert_eq!(text_string(&pane), "well, hello");
@@ -223,9 +230,9 @@ fn editors_sharing_a_document_see_each_others_edits() {
     );
     document.set_caret(right_editor, "shared".len() as u32);
     let document_id =
-        crate::OpenDocuments::register(&mut store, document, None, "test".to_owned(), 0);
+        crate::OpenDocuments::register(&mut store, test_docs(), document, None, "test".to_owned(), 0);
 
-    let mut left_view = EditorIdView::new(document_id, left_editor);
+    let mut left_view = EditorIdView::new(test_docs(), document_id, left_editor);
     {
         let mut batch = imba::effect::Batch::new();
         left_view.perform(
@@ -238,7 +245,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         );
     };
 
-    let right_view = EditorIdView::new(document_id, right_editor)
+    let right_view = EditorIdView::new(test_docs(), document_id, right_editor)
         .gathered(&store)
         .expect("right editor");
     let mut text = right_view.document.text().view();
@@ -492,6 +499,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     let mut document_b = plain_document("# tiny\n");
     let document_b_id = crate::OpenDocuments::register(
         &mut pane.store,
+        test_docs(),
         document_b.clone(),
         None,
         "b".to_owned(),
@@ -499,7 +507,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     );
     let mut fresh = imba::effect::Batch::new();
 
-    crate::close_editor(&mut pane.store, pane.view.document(), pane.view.editor());
+    crate::close_editor(&mut pane.store, pane.view.documents(), pane.view.document(), pane.view.editor());
     let new_editor = crate::mount_editor(
         &pane.store,
         ::editor::test_document::test_ui(),
@@ -508,8 +516,8 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
         None,
         &mut fresh.effects(),
     );
-    pane.view = EditorIdView::new(document_b_id, new_editor);
-    crate::OpenDocuments::put_document(&mut pane.store, document_b_id, document_b);
+    pane.view = EditorIdView::new(test_docs(), document_b_id, new_editor);
+    crate::OpenDocuments::put_document(&mut pane.store, test_docs(), document_b_id, document_b);
     assert!(
         crate::test_support::surviving_launches(fresh).is_empty(),
         "the tiny document opens fully repaired"
@@ -650,7 +658,7 @@ fn focus_moves_between_text_and_inlays() {
     );
     let stored = pane.view;
     assert_eq!(
-        crate::OpenDocuments::document_ref(&pane.store, stored.document())
+        crate::OpenDocuments::document_ref(&pane.store, stored.documents(), stored.document())
             .expect("document")
             .focus(stored.editor()),
         EditorFocus::Inlay(pane.inlay_key(7))
@@ -998,7 +1006,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     let mut document = plain_document(&source);
     let mut store = Store::new();
     let document_id =
-        crate::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
+        crate::OpenDocuments::register(&mut store, test_docs(), document.clone(), None, "test".to_owned(), 0);
     let mut open_batch = imba::effect::Batch::new();
     let editor_id = crate::mount_editor(
         &store,
@@ -1008,7 +1016,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         None,
         &mut open_batch.effects(),
     );
-    crate::OpenDocuments::put_document(&mut store, document_id, document.clone());
+    crate::OpenDocuments::put_document(&mut store, test_docs(), document_id, document.clone());
     let effects = crate::test_support::surviving_launches(open_batch);
 
     let reference = EditorView::complete(
@@ -1019,14 +1027,14 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
-    let opened = EditorIdView::new(document_id, editor_id)
+    let opened = EditorIdView::new(test_docs(), document_id, editor_id)
         .gathered(&store)
         .expect("entity");
     assert!(opened.content_height() < reference.content_height());
     assert_eq!(opened.find_misaligned_boundary(), None);
     assert_eq!(effects.len(), 1, "the tail repairs in background");
 
-    let mut node = EditorIdView::new(document_id, editor_id);
+    let mut node = EditorIdView::new(test_docs(), document_id, editor_id);
     let mut chain = Vec::new();
     for effect in effects {
         let command = crate::test_support::handle_effect(
@@ -1334,8 +1342,11 @@ fn two_windows_edit_independently() {
 
     let focused_text = |app: &Application, window: crate::WindowId| -> Option<String> {
         let store = &app.window_store(window);
+        let session = crate::Windows::window_ref(store, window)?.current_session();
+        let documents = crate::higent::Hosts::family(store, &session)?.documents();
         let document = crate::OpenDocuments::document_ref(
             store,
+            documents,
             crate::Windows::window_ref(store, window)?.focused_document_id()?,
         )?;
         let end = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -1474,7 +1485,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         batch
     };
     let document =
-        crate::OpenDocuments::document(&pane.store, entity.document()).expect("document");
+        crate::OpenDocuments::document(&pane.store, entity.documents(), entity.document()).expect("document");
     assert!(!effects.is_empty(), "the tail defers as repair effects");
     assert!(
         document
@@ -1568,7 +1579,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
     };
     assert!(!stale_round.is_empty(), "the tail defers as repair effects");
     let pending = |pane: &TestPane| {
-        crate::OpenDocuments::document_ref(&pane.store, entity.document())
+        crate::OpenDocuments::document_ref(&pane.store, entity.documents(), entity.document())
             .unwrap()
             .document_layout(entity.editor())
             .unwrap()
@@ -1616,7 +1627,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
         });
     }
     let converged =
-        crate::OpenDocuments::document(&pane.store, entity.document()).expect("document");
+        crate::OpenDocuments::document(&pane.store, entity.documents(), entity.document()).expect("document");
     let layout = converged.document_layout(entity.editor()).unwrap();
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
@@ -1673,33 +1684,29 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 fn open_documents_list_recently_opened_first() {
     use crate::OpenDocuments;
     let mut store = Store::new();
-    let alpha = OpenDocuments::register(
-        &mut store,
-        plain_document("alpha"),
+    let alpha = OpenDocuments::register(&mut store, test_docs(), plain_document("alpha"),
         None,
         "alpha".to_owned(),
         0,
     );
-    let _beta = OpenDocuments::register(
-        &mut store,
-        plain_document("beta"),
+    let _beta = OpenDocuments::register(&mut store, test_docs(), plain_document("beta"),
         None,
         "beta".to_owned(),
         0,
     );
 
     let recent_names = |store: &Store| -> Vec<String> {
-        OpenDocuments::list_recent(store)
+        OpenDocuments::list_recent(store, test_docs())
             .into_iter()
             .map(|(_, info)| info.name())
             .collect()
     };
     assert_eq!(recent_names(&store), ["beta", "alpha"]);
 
-    OpenDocuments::touch(&mut store, alpha);
+    OpenDocuments::touch(&mut store, test_docs(), alpha);
     assert_eq!(recent_names(&store), ["alpha", "beta"]);
 
-    let open_order: Vec<String> = OpenDocuments::list(&store)
+    let open_order: Vec<String> = OpenDocuments::list(&store, test_docs())
         .into_iter()
         .map(|(_, info)| info.name())
         .collect();
@@ -1852,7 +1859,7 @@ fn palette_commands_follow_the_modal_focus() {
         "beta".to_owned(),
         false
     ));
-    let beta = OpenDocuments::list(app.store())
+    let beta = OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, info)| info.name() == "beta")
         .expect("beta is open")
@@ -2345,6 +2352,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "big.md".to_owned(),
             document: plain_document(&source),
             location: None,
@@ -2374,6 +2382,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "plain.md".to_owned(),
             document: plain_document("hello"),
             location: None,
@@ -2461,8 +2470,8 @@ fn navigation_back_and_forward_walk_pane_history() {
         )
     }
     fn editor_count(app: &Application, location: &crate::ResourceLocation) -> usize {
-        let id = crate::OpenDocuments::by_location(app.store(), location).expect("registered");
-        crate::OpenDocuments::document_ref(app.store(), id)
+        let id = crate::OpenDocuments::by_location(app.store(), app.sole_documents(), location).expect("registered");
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), id)
             .expect("document")
             .editor_ids()
             .count()
@@ -2480,6 +2489,7 @@ fn navigation_back_and_forward_walk_pane_history() {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: name.to_owned(),
                 document,
                 location: Some(located(name)),
@@ -2529,7 +2539,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 
     let caret = |app: &Application| -> u32 {
         let (document, editor) = app.focused_editor_id();
-        crate::OpenDocuments::document_ref(app.store(), document)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .expect("document")
             .caret_byte(editor)
     };
@@ -2537,6 +2547,7 @@ fn navigation_back_and_forward_walk_pane_history() {
     assert!(app.perform_command(crate::AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "b.md".to_owned(),
             document: plain_document("beta\n"),
             location: Some(located("b.md")),
@@ -2765,6 +2776,7 @@ fn close_widget_walks_the_pane_history() {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),
@@ -2796,7 +2808,7 @@ fn close_widget_walks_the_pane_history() {
         "the last place in the pane's history took over"
     );
     assert!(
-        crate::OpenDocuments::by_location(app.store(), &located("b.md")).is_none(),
+        crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("b.md")).is_none(),
         "the closed clean document left the registry"
     );
 
@@ -2805,17 +2817,17 @@ fn close_widget_walks_the_pane_history() {
         app.focused_document_text().is_none(),
         "history spent — the blank stays (a pristine scratch is not a place)"
     );
-    let a = crate::OpenDocuments::by_location(app.store(), &located("a.md"))
+    let a = crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("a.md"))
         .expect("dirty: unsaved edits are never released");
     assert_eq!(
-        crate::OpenDocuments::document_ref(app.store(), a)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), a)
             .expect("document")
             .editor_ids()
             .count(),
         0
     );
     assert!(
-        crate::OpenDocuments::list(app.store())
+        crate::OpenDocuments::list(app.store(), app.sole_documents())
             .iter()
             .any(|(_, entity)| entity.location().is_some_and(crate::is_scratch)),
         "the startup scratch survives the walk-past — listed, not lost"
@@ -2971,7 +2983,7 @@ fn find_bar_highlights_and_walks_occurrences() {
             .find_target()
             .expect("an editor pane")
     };
-    let document = crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id).expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -2991,7 +3003,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     assert!(app.perform_registered(window, "find.next"));
     let selection = |app: &Application| {
         let document =
-            crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+            crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id).expect("the document");
         let caret = document.carets(editor).primary();
         caret.selection()
     };
@@ -3009,7 +3021,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     with_slot(&app, &|slot| {
         assert!(slot.find.is_none(), "Escape closed the bar");
     });
-    let document = crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id).expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -3027,12 +3039,13 @@ fn find_bar_highlights_and_walks_occurrences() {
 
     {
         let mut document =
-            crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+            crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id).expect("the document");
         document.set_carets(
             editor,
             ::editor::MultiCaret::one(::editor::Caret::selecting(6, 10)),
         );
-        crate::OpenDocuments::put_document(&mut app.store_mut(), document_id, document);
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
     }
     assert!(app.perform_registered(window, "find.open"));
 
@@ -3080,6 +3093,7 @@ mod navigation_history {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),
@@ -3107,13 +3121,13 @@ mod navigation_history {
 
     fn caret(app: &Application) -> u32 {
         let (document, editor) = app.focused_editor_id();
-        crate::OpenDocuments::document_ref(app.store(), document)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .expect("document")
             .caret_byte(editor)
     }
 
     fn registered(app: &Application, name: &str) -> bool {
-        crate::OpenDocuments::by_location(app.store(), &located(name)).is_some()
+        crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located(name)).is_some()
     }
 
     #[test]
@@ -3402,6 +3416,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3478,7 +3493,7 @@ mod toc {
         };
         assert!(app.perform_command(command));
         let (document_id, editor_id) = app.focused_editor_id();
-        let caret = crate::OpenDocuments::document_ref(app.store(), document_id)
+        let caret = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document_id)
             .expect("document")
             .caret_byte(editor_id);
         assert_eq!(
@@ -3714,6 +3729,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3819,6 +3835,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3960,6 +3977,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -4405,7 +4423,7 @@ mod dock_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
         test_driver::drag(&mut app, 380.0, 130.0);
         test_driver::mouse_up(&mut app, 380.0, 130.0);
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .next()
             .expect("the scratch document");
@@ -4939,10 +4957,12 @@ mod dock_tests {
             true,
         );
         let mut entity = crate::Windows::window(&store, window).expect("window");
-        let _ = entity.switch_to(crate::SessionId {
+        let beta = crate::SessionId {
             host,
             session: crate::higent::SessionUri::new("test-session:/beta"),
-        });
+        };
+        let family = crate::higent::Hosts::ensure_family(&mut store, &beta);
+        let _ = entity.switch_to(beta, family);
         crate::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
@@ -5475,6 +5495,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "popup.md".to_owned(),
             document: plain_document(&source),
             location: None,
@@ -5485,7 +5506,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     )));
     crate::Window::draw(window, &mut app, surface.canvas());
 
-    let (id, held) = crate::OpenDocuments::list(app.store())
+    let (id, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, held)| held.name() == "popup.md")
         .expect("the opened document");
@@ -5514,7 +5535,10 @@ fn a_pane_documents_popup_paints_in_the_window() {
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
-    crate::OpenDocuments::put_document(&mut app.store_mut(), id, document);
+    {
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, id, document);
+    }
 
     let magenta = |surface: &mut skia_safe::Surface| -> usize {
         let image = surface.image_snapshot();
@@ -5538,7 +5562,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
         "the popup painted through the pane boundary: {painted} px"
     );
 
-    let (id, held) = crate::OpenDocuments::list(app.store())
+    let (id, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, held)| held.name() == "popup.md")
         .expect("still open");
@@ -5553,7 +5577,10 @@ fn a_pane_documents_popup_paints_in_the_window() {
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
-    crate::OpenDocuments::put_document(&mut app.store_mut(), id, document);
+    {
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, id, document);
+    }
     surface.canvas().clear(skia_safe::Color::from_rgb(9, 9, 9));
     crate::Window::draw(window, &mut app, surface.canvas());
     assert_eq!(magenta(&mut surface), 0, "the popup left with its marker");
@@ -5777,6 +5804,7 @@ fn the_at_completion_serves_markdown_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: markdown,
             location: Some(crate::ResourceLocation::new(
@@ -5810,7 +5838,7 @@ fn the_at_completion_serves_markdown_panes() {
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "notes.md")
             .expect("the pane document");
@@ -5873,6 +5901,7 @@ fn the_at_completion_serves_markdown_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("fn main() {}\n"),
             location: Some(crate::ResourceLocation::new(
@@ -5951,6 +5980,7 @@ fn lsp_completion_serves_code_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("value "),
             location: Some(crate::ResourceLocation::new(
@@ -5984,7 +6014,7 @@ fn lsp_completion_serves_code_panes() {
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "main.rs")
             .expect("the pane document");
@@ -6176,26 +6206,32 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         true
     ));
     let (target, editor) = app.focused_editor_id();
+    let documents = app.sole_documents();
     let base = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document("one\nTWO\nthree\n"),
         None,
         "base.md".to_owned(),
         0,
     );
-    let diff = crate::OpenDocuments::track_diff(&mut app.store_mut(), base, target, true)
+    let documents = app.sole_documents();
+    let diff = crate::OpenDocuments::track_diff(&mut app.store_mut(), documents, base, target, true)
         .expect("tracked");
     let _ = window;
 
     // A benign entity command: deliver drops it, the batch tails run.
-    let tick = |app: &mut Application| {
-        app.perform_batch(vec![crate::AppCommand::Entity(
-            target,
-            EditorCommand::ApplyRepair(Vec::new()),
+    let home = app.sole_window_session();
+    let documents =
+        crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+    let tick = move |app: &mut Application| {
+        app.perform_batch(vec![crate::AppCommand::At(
+            documents,
+            crate::app::DocumentsCommand::Editor(target, EditorCommand::ApplyRepair(Vec::new())),
         )]);
     };
     let stripes = |app: &Application| -> Vec<u32> {
-        crate::OpenDocuments::document_ref(app.store(), target)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
             .and_then(|document| document.scroll_stripes(editor))
             .map(|landed| landed.segments.iter().map(|segment| segment.byte).collect())
             .unwrap_or_default()
@@ -6210,8 +6246,10 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
+        let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, target).expect("open");
+        let mut document =
+            crate::OpenDocuments::document(&store, documents, target).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
             &::editor::Operation::insert_in(len, 0, "zero\n"),
@@ -6221,7 +6259,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, target, document);
+        crate::OpenDocuments::put_document(&mut store, documents, target, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6237,15 +6275,17 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
-        let target_text = crate::OpenDocuments::document_ref(app.store(), target)
+        let target_text = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
             .map(|document| {
                 let mut view = document.text().view();
                 let count = view.byte_count();
                 view.byte_string(0, count)
             })
             .expect("open");
+        let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, base).expect("open");
+        let mut document =
+            crate::OpenDocuments::document(&store, documents, base).expect("open");
         let catch_up = myersdiff::diff(
             document.text(),
             &::editor::Text::from_string_exact(&target_text),
@@ -6258,7 +6298,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, base, document);
+        crate::OpenDocuments::put_document(&mut store, documents, base, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6275,7 +6315,8 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, base).expect("open");
+        let mut document =
+            crate::OpenDocuments::document(&store, documents, base).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
             &::editor::Operation::insert_in(len, 0, "gone\n"),
@@ -6285,7 +6326,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, base, document);
+        crate::OpenDocuments::put_document(&mut store, documents, base, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6296,7 +6337,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // ...then land the new HEAD: a base equal to the target's text,
     // under its own location.
-    let target_text = crate::OpenDocuments::document_ref(app.store(), target)
+    let target_text = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
         .map(|document| {
             let mut view = document.text().view();
             let count = view.byte_count();
@@ -6308,17 +6349,27 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         ::editor::Authority::new("local"),
         vec!["head-v2.md".to_owned()],
     );
+    let documents = app.sole_documents();
     let _head_id = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(&target_text),
         Some(head.clone()),
         "head-v2.md".to_owned(),
         0,
     );
-    app.perform_batch(vec![crate::AppCommand::BaseLocated {
-        document: target,
-        base: Some(head),
-    }]);
+    {
+        let home = app.sole_window_session();
+        let documents =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+        app.perform_batch(vec![crate::AppCommand::At(
+            documents,
+            crate::app::DocumentsCommand::BaseLocated {
+                document: target,
+                base: Some(head),
+            },
+        )]);
+    }
     settle(&mut app);
     assert_eq!(
         stripes(&app),
@@ -6339,8 +6390,10 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     // (stripes=false). Its hunks must NOT leak onto the pane's track:
     // when the pane's own stripes diff clears, the track clears too,
     // panel or no panel.
+    let documents = app.sole_documents();
     let snapshot = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(
             "something
 entirely
@@ -6352,10 +6405,10 @@ unrelated
         0,
     );
     let panel_diff =
-        crate::OpenDocuments::track_diff(&mut app.store_mut(), snapshot, target, false)
+        crate::OpenDocuments::track_diff(&mut app.store_mut(), documents, snapshot, target, false)
             .expect("the panel road tracks");
     // The pane's own diff empties: HEAD catches up again.
-    let target_text = crate::OpenDocuments::document_ref(app.store(), target)
+    let target_text = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
         .map(|document| {
             let mut view = document.text().view();
             let count = view.byte_count();
@@ -6367,17 +6420,27 @@ unrelated
         ::editor::Authority::new("local"),
         vec!["head-v3.md".to_owned()],
     );
+    let documents = app.sole_documents();
     let _ = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(&target_text),
         Some(head3.clone()),
         "head-v3.md".to_owned(),
         0,
     );
-    app.perform_batch(vec![crate::AppCommand::BaseLocated {
-        document: target,
-        base: Some(head3),
-    }]);
+    {
+        let home = app.sole_window_session();
+        let documents =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+        app.perform_batch(vec![crate::AppCommand::At(
+            documents,
+            crate::app::DocumentsCommand::BaseLocated {
+                document: target,
+                base: Some(head3),
+            },
+        )]);
+    }
     settle(&mut app);
     assert_eq!(
         stripes(&app),
@@ -6440,6 +6503,7 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "hit.md".to_owned(),
                 document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
                 location: Some(located("hit.md")),
@@ -6480,7 +6544,7 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(DisposeFeed { feed }),)));
         assert!(LocationsFeeds::row(app.store(), feed).is_none());
         assert!(
-            crate::OpenDocuments::document_ref(app.store(), *document).is_some(),
+            crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), *document).is_some(),
             "the document stays; only the wash left"
         );
     }
@@ -6497,6 +6561,7 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
+            documents: app.sole_documents(),
                 name: "late.md".to_owned(),
                 document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
                 location: Some(located("late.md")),

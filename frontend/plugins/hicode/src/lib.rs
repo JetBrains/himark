@@ -147,7 +147,12 @@ fn navigate(
     built: &[(ResourceLocation, Document)],
     fx: &mut AppFx<'_>,
 ) {
-    let document_id = match OpenDocuments::by_location(store, &target.location) {
+    let Some(documents) =
+        himark::Windows::session_family(store, window).map(|family| family.documents())
+    else {
+        return;
+    };
+    let document_id = match OpenDocuments::by_location(store, documents, &target.location) {
         Some(document) => document,
         None => {
             let Some((_, document)) = built
@@ -158,6 +163,7 @@ fn navigate(
             };
             OpenDocuments::register(
                 store,
+                documents,
                 document.clone(),
                 Some(target.location.clone()),
                 target.location.name().to_owned(),
@@ -179,7 +185,8 @@ fn navigate(
     );
     himark::Windows::put(store, window, window_entity);
 
-    himark::sync_document_watches(store, fx);
+    himark::sync_document_watches(store, documents, fx);
+    himark::sync_stripe_bases(store, documents, ui, fx);
 }
 
 pub struct GoDefinition;
@@ -352,7 +359,13 @@ fn navigation(
             false => format!("Definitions of `{ident}`"),
             true => "Definitions".to_owned(),
         };
-        let open = OpenDocuments::list(store)
+        let home = himark::SessionId::of_location(store, location);
+        let Some(documents) =
+            himark::higent::Hosts::family(store, &home).map(|family| family.documents())
+        else {
+            return;
+        };
+        let open = OpenDocuments::list(store, documents)
             .into_iter()
             .filter_map(|(_, entity)| entity.location().cloned())
             .collect();

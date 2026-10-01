@@ -60,8 +60,10 @@ impl crate::DynamicEditorCommand for AddComment {
             _ => FALLBACK_WIDTH,
         };
 
-        let host = crate::OpenDocuments::by_location(store, location);
         let home = card_home(store, location);
+        let host = crate::higent::Hosts::family(store, &home)
+            .map(|family| family.documents())
+            .and_then(|documents| crate::OpenDocuments::by_location(store, documents, location));
 
         let annotation = {
             let mut view = document.text().view();
@@ -139,11 +141,7 @@ impl crate::DynamicCommand for EnsureComments {
 /// else the local workspace. A card always has a home — a plain file's
 /// comments belong to the local session, not to nothing.
 fn card_home(store: &imba::store::Store, location: &crate::ResourceLocation) -> crate::SessionId {
-    if let Some((host, session)) = crate::higent::seat::route(store, location.authority().as_str())
-    {
-        return crate::SessionId { host, session };
-    }
-    crate::SessionId::working(store)
+    crate::SessionId::of_location(store, location)
 }
 
 fn comments_markup() -> crate::MarkupId {
@@ -177,17 +175,24 @@ impl crate::DynamicCommand for RemoveComment {
         if let Some(annotation) = &self.annotation {
             sync::Comments::removed(store, &self.home, annotation);
         }
-        let Some(mut doc) = crate::OpenDocuments::document(store, self.document) else {
+        let Some(documents) = crate::higent::Hosts::family(store, &self.home)
+            .map(|family| family.documents())
+        else {
+            return;
+        };
+        let Some(mut doc) = crate::OpenDocuments::document(store, documents, self.document) else {
             return;
         };
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
         let document = self.document;
         fx.scope(
-            move |command| crate::AppCommand::Entity(document, command),
+            move |command| {
+                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+            },
             |fx| doc.remove_inlay(self.key, store, &ui, &fonts, &theme, fx),
         );
-        crate::OpenDocuments::put_document(store, self.document, doc);
+        crate::OpenDocuments::put_document(store, documents, self.document, doc);
     }
 }
 

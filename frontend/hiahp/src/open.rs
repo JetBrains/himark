@@ -211,6 +211,7 @@ impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHan
             effect.window,
             Arc::new(OpenDiffPair {
                 window: effect.window,
+                documents: effect.documents,
                 pair,
             }),
         )
@@ -241,10 +242,14 @@ impl himark::Navigator for DiffNavigator {
         // Resolve both sides on the UI thread — an open side hands over
         // its live snapshot; the prep runs off-thread and the landing
         // opens the dressed pane. Diffing never runs here.
-        let old = himark::DiffSideInput::resolve(store, place.old.clone());
-        let new = himark::DiffSideInput::resolve(store, place.new.clone());
+        let documents = himark::Windows::session_family(store, window)
+            .expect("a diff opens from a window with a session")
+            .documents();
+        let old = himark::DiffSideInput::resolve(store, documents, place.old.clone());
+        let new = himark::DiffSideInput::resolve(store, documents, place.new.clone());
         fx.push(AnyEffect::new(himark::OpenDiffByLocationsEffect {
             window,
+            documents,
             old,
             new,
         }));
@@ -254,6 +259,7 @@ impl himark::Navigator for DiffNavigator {
 
 pub struct OpenDiffPair {
     window: himark::WindowId,
+    documents: imba::store::Id<himark::OpenDocuments>,
     pair: himark::OpenedDiffPair,
 }
 
@@ -272,9 +278,16 @@ impl DynamicCommand for OpenDiffPair {
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let _ = himark::open_opened_diff_pane(store, ui, self.window, self.pair.clone(), fx);
-        himark::sync_document_watches(store, fx);
-        himark::sync_stripe_bases(store, ui, fx);
+        let _ = himark::open_opened_diff_pane(
+            store,
+            ui,
+            self.window,
+            self.documents,
+            self.pair.clone(),
+            fx,
+        );
+        himark::sync_document_watches(store, self.documents, fx);
+        himark::sync_stripe_bases(store, self.documents, ui, fx);
     }
 }
 
@@ -336,6 +349,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 AppCommand::Opened(
                     effect.window,
                     himark::OpenedDocument {
+                        documents: effect.documents,
                         name: effect.location.name().to_owned(),
                         document,
                         location: Some(effect.location),

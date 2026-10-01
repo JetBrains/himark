@@ -581,7 +581,10 @@ impl crate::DynamicCommand for NavigateToComment {
         let target = live_range(store, &self.home, &self.annotation)
             .or(record.range.clone())
             .unwrap_or(crate::LineCol { line: 0, col: 0 }..crate::LineCol { line: 0, col: 0 });
-        match crate::OpenDocuments::by_location(store, &record.location) {
+        let documents = crate::Windows::session_family(store, window)
+            .expect("comment navigation runs in a window with a session")
+            .documents();
+        match crate::OpenDocuments::by_location(store, documents, &record.location) {
             Some(document) => {
                 let Some(mut entity) = crate::Windows::window(store, window) else {
                     return;
@@ -592,6 +595,7 @@ impl crate::DynamicCommand for NavigateToComment {
             None => {
                 fx.push(crate::open_by_location_effect(
                     window,
+                    documents,
                     record.location.clone(),
                     true,
                     false,
@@ -608,7 +612,8 @@ fn live_range(
     annotation: &AnnotationId,
 ) -> Option<std::ops::Range<crate::LineCol>> {
     let (document, key) = Comments::card(store, home, annotation)?;
-    let doc = crate::OpenDocuments::document_ref(store, document)?;
+    let documents = crate::higent::Hosts::family(store, home)?.documents();
+    let doc = crate::OpenDocuments::document_ref(store, documents, document)?;
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let markup = doc.feature_markup(comments_markup())?;
     let extras = [(comments_markup(), markup)];

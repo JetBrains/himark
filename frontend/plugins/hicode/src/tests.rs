@@ -53,6 +53,7 @@ fn app_with_located_document(source: &str) -> (Application, himark::WindowId) {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "a.rs".to_owned(),
             document: plain_document(source),
             location: Some(document_location("a.rs")),
@@ -87,6 +88,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "a.rs".to_owned(),
             document: plain_document("hello"),
             location: Some(document_location("a.rs")),

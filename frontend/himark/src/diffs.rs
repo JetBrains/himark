@@ -14,20 +14,20 @@ pub use documents::diffs::{
 /// Assemble the per-ask facade over a tracked pair: live documents +
 /// the store-held `DiffViewState` (attached on first gather). Moved up
 /// from hidiff — the DRESSING is model machinery, not a panel's.
-pub fn gather_diff_view(pair: &DiffView, store: &Store) -> Option<crate::UnifiedDiffView> {
+pub fn gather_diff_view(pair: &DiffView, store: &Store, documents: imba::store::Id<crate::OpenDocuments>) -> Option<crate::UnifiedDiffView> {
     let left_view = crate::EditorView {
-        document: crate::OpenDocuments::document(store, pair.left.document())?,
+        document: crate::OpenDocuments::document(store, documents, pair.left.document())?,
         editor: pair.left.editor(),
         reports_geometry: true,
-        location: crate::OpenDocuments::location(store, pair.left.document()),
+        location: crate::OpenDocuments::location(store, documents, pair.left.document()),
         gutter_width: 0.0,
         base: None,
     };
     let right_view = crate::EditorView {
-        document: crate::OpenDocuments::document(store, pair.right.document())?,
+        document: crate::OpenDocuments::document(store, documents, pair.right.document())?,
         editor: pair.right.editor(),
         reports_geometry: true,
-        location: crate::OpenDocuments::location(store, pair.right.document()),
+        location: crate::OpenDocuments::location(store, documents, pair.right.document()),
         gutter_width: 0.0,
         base: None,
     };
@@ -37,7 +37,7 @@ pub fn gather_diff_view(pair: &DiffView, store: &Store) -> Option<crate::Unified
             pair.diff,
             &left_view.document,
             &right_view.document,
-            crate::OpenDocuments::diff_handle(store, pair.diff)?.base_markup,
+            crate::OpenDocuments::diff_handle(store, documents, pair.diff)?.base_markup,
             pair.right_extras,
             None,
         )?,
@@ -53,18 +53,18 @@ pub fn gather_diff_view(pair: &DiffView, store: &Store) -> Option<crate::Unified
 /// the documents and the state back. Panels keep their own routed
 /// perform for interaction; the dressing flows through here.
 pub(crate) fn perform_diff_view(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     session: crate::SessionId,
     id: DiffViewId,
     command: crate::UnifiedDiffCommand,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, id) else {
+    let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, documents, id) else {
         return;
     };
-    let Some(mut view) = gather_diff_view(&pair, store) else {
-        crate::OpenDocuments::put_diff_view(store, id, pair);
+    let Some(mut view) = gather_diff_view(&pair, store, documents) else {
+        crate::OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     };
     fx.scope(
@@ -75,10 +75,10 @@ pub(crate) fn perform_diff_view(
         },
         |fx| view.perform(store, ui, command, fx),
     );
-    crate::OpenDocuments::put_document(store, pair.left.document(), view.split.left.document);
-    crate::OpenDocuments::put_document(store, pair.right.document(), view.split.right.document);
+    crate::OpenDocuments::put_document(store, documents, pair.left.document(), view.split.left.document);
+    crate::OpenDocuments::put_document(store, documents, pair.right.document(), view.split.right.document);
     pair.state = Some(view.split.state);
-    crate::OpenDocuments::put_diff_view(store, id, pair);
+    crate::OpenDocuments::put_diff_view(store, documents, id, pair);
     store.update::<DressedViews>(|dressed| dressed.0.push(id));
 }
 
@@ -93,20 +93,24 @@ pub struct DressedViews(pub Vec<DiffViewId>);
 /// another editor moved a shared document — resyncs NOW, id-routed,
 /// no paint probe. Runs right after the diff lanes, so a landing and
 /// its re-dress share a batch. O(views) stale checks on refs.
-pub(crate) fn sync_diff_dressing(store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
-    let Some(session) = crate::Gathered::scope(store).cloned() else {
-        return;
-    };
-    for id in crate::OpenDocuments::diff_view_ids(store) {
-        let stale = crate::OpenDocuments::diff_view_ref(store, id).is_some_and(|pair| {
+pub(crate) fn sync_diff_dressing(
+    store: &mut Store,
+    session: &crate::SessionId,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    ui: &imba::UiCtx,
+    fx: &mut AppFx<'_>,
+) {
+    let session = session.clone();
+    for id in crate::OpenDocuments::diff_view_ids(store, documents) {
+        let stale = crate::OpenDocuments::diff_view_ref(store, documents, id).is_some_and(|pair| {
             let Some(state) = &pair.state else {
                 // Never gathered: no face was built, nothing owes.
                 return false;
             };
-            let Some(left) = crate::OpenDocuments::document_ref(store, pair.left.document()) else {
+            let Some(left) = crate::OpenDocuments::document_ref(store, documents, pair.left.document()) else {
                 return false;
             };
-            let Some(right) = crate::OpenDocuments::document_ref(store, pair.right.document())
+            let Some(right) = crate::OpenDocuments::document_ref(store, documents, pair.right.document())
             else {
                 return false;
             };
@@ -117,6 +121,7 @@ pub(crate) fn sync_diff_dressing(store: &mut Store, ui: &imba::UiCtx, fx: &mut A
         }
         perform_diff_view(
             store,
+            documents,
             ui,
             session.clone(),
             id,
@@ -126,41 +131,51 @@ pub(crate) fn sync_diff_dressing(store: &mut Store, ui: &imba::UiCtx, fx: &mut A
     }
 }
 
-pub(crate) fn sync_diff_lanes(store: &mut Store, fx: &mut AppFx<'_>) {
-    documents::diffs::sync_diff_lanes(store, fx, |normalized| AppCommand::DiffNormalized {
-        diff: normalized.diff,
-        operation: normalized.operation,
-        markup: normalized.markup,
-        changed: normalized.changed,
-        base_revision: normalized.base_revision,
-        target_revision: normalized.target_revision,
+pub(crate) fn sync_diff_lanes(store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>, fx: &mut AppFx<'_>) {
+    documents::diffs::sync_diff_lanes(store, documents, fx, move |normalized| {
+        AppCommand::At(
+            documents,
+            crate::app::DocumentsCommand::Normalized {
+                diff: normalized.diff,
+                operation: normalized.operation,
+                markup: normalized.markup,
+                changed: normalized.changed,
+                base_revision: normalized.base_revision,
+                target_revision: normalized.target_revision,
+            },
+        )
     });
 }
 
-pub fn sync_stripe_bases(store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
-    documents::diffs::sync_stripe_bases(store, fx, |store, document, base, fx| {
-        land_base_located(store, ui, document, base, fx);
+pub fn sync_stripe_bases(store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
+    documents::diffs::sync_stripe_bases(store, documents, fx, |store, document, base, fx| {
+        land_base_located(store, documents, ui, document, base, fx);
     });
 }
 
 pub(crate) fn land_base_located(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: Option<crate::ResourceLocation>,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(base) = adopt_base_location(store, ui, document, base, fx) else {
+    let Some(base) = adopt_base_location(store, documents, ui, document, base, fx) else {
         return;
     };
     let _ = fx.push(
         imba::effect::AnyEffect::new(crate::FetchDocumentEffect {
             location: base.clone(),
         })
-        .map(move |text| AppCommand::BaseFetched {
-            document,
-            base,
-            text,
+        .map(move |text| {
+            AppCommand::At(
+                documents,
+                crate::app::DocumentsCommand::BaseFetched {
+                    document,
+                    base,
+                    text,
+                },
+            )
         }),
     );
 }
@@ -173,27 +188,28 @@ pub const OPEN_HALF_WIDTH: f32 = 420.0;
 /// untrack the diff from the Diffs subsystem. Does NOT close the
 /// documents — they may be open elsewhere. Shared by `DiffPanelView`
 /// and the diff canvas.
-pub fn teardown_diff_view(store: &mut Store, id: crate::DiffViewId) {
+pub fn teardown_diff_view(store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>, id: crate::DiffViewId) {
     // Teardown-only road (dismantle/destroy/retire carry no UiCtx);
     // the release may reshape a surviving base document's markup once.
     let ui = &imba::UiCtx::dont_use_too_slow();
-    let Some(pair) = crate::OpenDocuments::take_diff_view(store, id) else {
+    let Some(pair) = crate::OpenDocuments::take_diff_view(store, documents, id) else {
         return;
     };
     if let Some(inline) = pair.state.as_ref().and_then(|state| state.inline_editor()) {
-        if let Some(mut document) = crate::OpenDocuments::document(store, pair.right.document()) {
+        if let Some(mut document) = crate::OpenDocuments::document(store, documents, pair.right.document()) {
             document.remove_editor(inline);
-            crate::OpenDocuments::put_document(store, pair.right.document(), document);
+            crate::OpenDocuments::put_document(store, documents, pair.right.document(), document);
         }
     }
     for entity in [pair.left, pair.right] {
-        if let Some(mut document) = crate::OpenDocuments::document(store, entity.document()) {
+        if let Some(mut document) = crate::OpenDocuments::document(store, documents, entity.document()) {
             document.remove_editor(entity.editor());
-            crate::OpenDocuments::put_document(store, entity.document(), document);
+            crate::OpenDocuments::put_document(store, documents, entity.document(), document);
         }
     }
     crate::OpenDocuments::untrack_diff(
         store,
+        documents,
         ui,
         pair.diff,
         &mut imba::effect::Batch::<crate::UnifiedDiffCommand>::new().effects(),
@@ -205,21 +221,21 @@ pub fn teardown_diff_view(store: &mut Store, id: crate::DiffViewId) {
 /// editors on the registered documents, resync, write back. The split
 /// face owns its half widths and is left alone.
 pub fn rewrap_pair(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     id: crate::DiffViewId,
     width: f32,
     fx: &mut imba::effect::Effects<'_, crate::UnifiedDiffCommand>,
 ) {
-    let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, id) else {
+    let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, documents, id) else {
         return;
     };
-    let Some(mut view) = gather_diff_view(&pair, store) else {
-        crate::OpenDocuments::put_diff_view(store, id, pair);
+    let Some(mut view) = gather_diff_view(&pair, store, documents) else {
+        crate::OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     };
     if view.layout == crate::DiffLayout::Split {
-        crate::OpenDocuments::put_diff_view(store, id, pair);
+        crate::OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     }
     let fonts = crate::env::Fonts::of(store)();
@@ -266,22 +282,23 @@ pub fn rewrap_pair(
         crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Resync),
         fx,
     );
-    crate::OpenDocuments::put_document(store, pair.left.document(), view.split.left.document);
-    crate::OpenDocuments::put_document(store, pair.right.document(), view.split.right.document);
+    crate::OpenDocuments::put_document(store, documents, pair.left.document(), view.split.left.document);
+    crate::OpenDocuments::put_document(store, documents, pair.right.document(), view.split.right.document);
     pair.state = Some(view.split.state);
-    crate::OpenDocuments::put_diff_view(store, id, pair);
+    crate::OpenDocuments::put_diff_view(store, documents, id, pair);
 }
 
-fn register_or_reuse(store: &mut Store, side: crate::DiffSide) -> crate::DocumentId {
+fn register_or_reuse(store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>, side: crate::DiffSide) -> crate::DocumentId {
     match side {
         crate::DiffSide::Open(id) => id,
         crate::DiffSide::Built { location, document } => {
-            match crate::OpenDocuments::by_location(store, &location) {
+            match crate::OpenDocuments::by_location(store, documents, &location) {
                 Some(id) => id,
                 None => {
                     let revision = document.document.revision();
                     crate::OpenDocuments::register(
                         store,
+                        documents,
                         document.document,
                         Some(location.clone()),
                         location.name().to_owned(),
@@ -299,13 +316,13 @@ fn register_or_reuse(store: &mut Store, side: crate::DiffSide) -> crate::Documen
 /// one landing behind the split-diff pane AND the diff canvas; each
 /// wraps the returned id in its own face.
 pub fn install_opened_pair(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     pair: crate::OpenedDiffPair,
     embedded: bool,
 ) -> Option<crate::DiffViewId> {
-    let old_id = register_or_reuse(store, pair.old);
-    let new_id = register_or_reuse(store, pair.new);
+    let old_id = register_or_reuse(store, documents, pair.old);
+    let new_id = register_or_reuse(store, documents, pair.new);
     let half_width = match embedded {
         true => {
             let gutter = crate::env::Themes::of(store).ui().editor_gutter.width;
@@ -313,7 +330,7 @@ pub fn install_opened_pair(
         }
         false => OPEN_HALF_WIDTH,
     };
-    build_diff_view(store, ui, old_id, new_id, half_width, embedded)
+    build_diff_view(store, documents, ui, old_id, new_id, half_width, embedded)
 }
 
 /// Make a diff view over two ALREADY-REGISTERED documents and mint the
@@ -323,7 +340,7 @@ pub fn install_opened_pair(
 /// the `DiffViewState`. No diff is computed here (docs/no-diff-on-ui-thread).
 /// The reusable core the split-diff pane and the diff canvas both mount.
 pub fn build_diff_view(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     left: crate::DocumentId,
     right: crate::DocumentId,
@@ -333,14 +350,14 @@ pub fn build_diff_view(
     let fonts = crate::env::Fonts::of(store)();
     let theme = crate::env::Themes::of(store);
 
-    let diff = crate::OpenDocuments::track_diff(store, left, right, false)?;
-    let handle = crate::OpenDocuments::diff_handle(store, diff)?;
-    let target_markup = crate::OpenDocuments::document_ref(store, right)
+    let diff = crate::OpenDocuments::track_diff(store, documents, left, right, false)?;
+    let handle = crate::OpenDocuments::diff_handle(store, documents, diff)?;
+    let target_markup = crate::OpenDocuments::document_ref(store, documents, right)
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
 
     let mut open =
         |document_id: crate::DocumentId, marks: crate::MarkupId| -> Option<crate::EditorIdView> {
-            let mut document = crate::OpenDocuments::document(store, document_id)?;
+            let mut document = crate::OpenDocuments::document(store, documents, document_id)?;
 
             let editor = document.add_editor(
                 half_width,
@@ -356,8 +373,8 @@ pub fn build_diff_view(
 
             document.manage_repairs_in_pair(editor);
 
-            crate::OpenDocuments::put_document(store, document_id, document);
-            Some(crate::EditorIdView::new(document_id, editor))
+            crate::OpenDocuments::put_document(store, documents, document_id, document);
+            Some(crate::EditorIdView::new(documents, document_id, editor))
         };
     let (Some(left_view), Some(right_view)) =
         (open(left, handle.base_markup), open(right, target_markup))
@@ -370,15 +387,15 @@ pub fn build_diff_view(
     // the diff machinery's — seeded by `track_diff`, minimized by the
     // normalize lane.
     let right_extras = {
-        let mut document = crate::OpenDocuments::document(store, right)?;
+        let mut document = crate::OpenDocuments::document(store, documents, right)?;
         let id = document.add_owned_markup(right_view.editor());
-        crate::OpenDocuments::put_document(store, right, document);
+        crate::OpenDocuments::put_document(store, documents, right, document);
         id
     };
 
     let state = {
-        let left_document = crate::OpenDocuments::document_ref(store, left)?;
-        let right_document = crate::OpenDocuments::document_ref(store, right)?;
+        let left_document = crate::OpenDocuments::document_ref(store, documents, left)?;
+        let right_document = crate::OpenDocuments::document_ref(store, documents, right)?;
         crate::DiffViewState::attach(
             diff,
             left_document,
@@ -391,6 +408,7 @@ pub fn build_diff_view(
     let id = crate::DiffViewId::mint();
     crate::OpenDocuments::put_diff_view(
         store,
+        documents,
         id,
         crate::DiffView {
             left: left_view,

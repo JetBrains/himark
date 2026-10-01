@@ -46,6 +46,13 @@ fn test_languages() -> std::sync::Arc<himark::SyntaxLanguages> {
 use himark::{EditorCommand, EditorId, EditorIdView, ReparseOutcome, ReparseWork};
 use imba::{store::Store, View};
 
+fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
+
 fn test_cx() -> std::sync::Arc<himark::Workshop> {
     std::sync::Arc::new(himark::Workshop::new(
         himark::embedded_fonts::source(),
@@ -76,8 +83,8 @@ fn seed_complete(
         &mut imba::effect::Batch::new().effects(),
     );
     let document_id =
-        himark::OpenDocuments::register(store, document.clone(), None, "test".to_owned(), 0);
-    (document_id, EditorIdView::new(document_id, editor), editor)
+        himark::OpenDocuments::register(store, test_docs(), document.clone(), None, "test".to_owned(), 0);
+    (document_id, EditorIdView::new(test_docs(), document_id, editor), editor)
 }
 
 fn resize_entity(
@@ -87,7 +94,7 @@ fn resize_entity(
     width: f32,
     anchor: u32,
 ) -> imba::effect::Batch<EditorCommand> {
-    let mut document = himark::OpenDocuments::document(store, entity.document()).expect("document");
+    let mut document = himark::OpenDocuments::document(store, entity.documents(), entity.document()).expect("document");
     let mut batch = imba::effect::Batch::new();
     document.resize(
         entity.editor(),
@@ -99,7 +106,7 @@ fn resize_entity(
         &test_theme(),
         &mut batch.effects(),
     );
-    himark::OpenDocuments::put_document(store, entity.document(), document);
+    himark::OpenDocuments::put_document(store, entity.documents(), entity.document(), document);
     batch
 }
 
@@ -126,7 +133,7 @@ fn perform_pumped(store: &mut Store, view: EditorIdView, command: EditorCommand)
 
 fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: ReparseOutcome) {
     let ui = himark::test_document::test_ui();
-    let mut document = himark::OpenDocuments::document(store, document_id).expect("document");
+    let mut document = himark::OpenDocuments::document(store, test_docs(), document_id).expect("document");
     let mut batch = imba::effect::Batch::new();
     document.apply_reparse_outcome(
         outcome,
@@ -136,14 +143,14 @@ fn apply_outcome(store: &mut Store, document_id: himark::DocumentId, outcome: Re
         &test_theme(),
         &mut batch.effects(),
     );
-    himark::OpenDocuments::put_document(store, document_id, document);
+    himark::OpenDocuments::put_document(store, test_docs(), document_id, document);
 
-    let Some(editor) = himark::OpenDocuments::document_ref(&store, document_id)
+    let Some(editor) = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .and_then(|document| document.editor_ids().next())
     else {
         return;
     };
-    let mut node = EditorIdView::new(document_id, editor);
+    let mut node = EditorIdView::new(test_docs(), document_id, editor);
     let cx = test_cx();
     let ui = himark::test_document::test_ui();
     let mut pending: Vec<EditorCommand> = himark::test_support::surviving_launches(batch)
@@ -175,14 +182,14 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
     let effects = resize_entity(&mut store, &ui, entity_id, 620.0, 0);
     assert_eq!(effects.len(), 1, "the tail rides one repair effect");
 
-    let height = himark::OpenDocuments::document_ref(&store, document_id)
+    let height = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .content_height(editor);
     let top = height * 0.7;
     let bottom = top + 800.0;
     let mut node = entity_id;
     let ui = himark::test_document::test_ui();
-    let anchor = himark::OpenDocuments::document_ref(&store, document_id)
+    let anchor = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .first_visible_byte(editor, top);
     let mut batch = imba::effect::Batch::new();
@@ -209,7 +216,7 @@ fn worker_repairs_are_quantized_and_heal_the_viewport_first() {
         command,
         &mut imba::effect::Batch::new().effects(),
     );
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert!(
         !document.visible_damage(editor, top, bottom),
         "the landing healed the viewport band first"
@@ -232,13 +239,13 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
     let (document_id, entity_id, editor) = seed_complete(&mut store, &ui, document, 900.0);
     let _ = resize_entity(&mut store, &ui, entity_id, 620.0, 0);
 
-    let height = himark::OpenDocuments::document_ref(&store, document_id)
+    let height = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .content_height(editor);
     let top = height * 0.6;
     let bottom = top + 800.0;
     assert!(
-        himark::OpenDocuments::document_ref(&store, document_id)
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
             .expect("document")
             .visible_damage(editor, top, bottom),
         "the deep band is a resize tail (still stale)"
@@ -246,7 +253,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
 
     let mut node = entity_id;
     let ui = himark::test_document::test_ui();
-    let anchor = himark::OpenDocuments::document_ref(&store, document_id)
+    let anchor = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .first_visible_byte(editor, top);
 
@@ -261,7 +268,7 @@ fn a_scroll_into_a_resize_tail_heals_synchronously() {
         },
         &mut imba::effect::Batch::new().effects(),
     );
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert!(
         !document.visible_damage(editor, top, bottom),
         "the band the user scrolled into re-shaped synchronously"
@@ -340,7 +347,7 @@ fn content_only_edits_rebuild_inline_markup() {
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 400.0);
 
     let strong_spans = |store: &Store| {
-        let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
         document
@@ -375,7 +382,7 @@ fn content_only_edits_rebuild_inline_markup() {
     );
     assert_eq!(
         {
-            let mut text_view = himark::OpenDocuments::document_ref(&store, document_id)
+            let mut text_view = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
                 .expect("document")
                 .text()
                 .view();
@@ -387,7 +394,7 @@ fn content_only_edits_rebuild_inline_markup() {
     );
 
     let outcome = ReparseWork::capture(
-        himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("document has a parse")
@@ -467,7 +474,7 @@ fn a_focused_table_cell_presents_structural_commands() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, entity, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -522,7 +529,7 @@ fn a_focused_table_cell_presents_structural_commands() {
         insert.command,
         &mut imba::effect::Batch::new().effects(),
     );
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let text = document.text().byte_string(0, document.text().byte_count());
     assert_eq!(text, "| a | b |\n|---|---|\n| 1 | 2 |\n|   |   |\n");
 }
@@ -600,7 +607,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
     let inlay_range = |store: &Store| {
-        himark::OpenDocuments::document_ref(&store, document_id)
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
             .expect("document")
             .all_inlays_in(0..u32::MAX / 2)
             .into_iter()
@@ -608,7 +615,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
             .expect("the table inlay")
             .range
     };
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -632,7 +639,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
 
     send(&mut store, table::TableCommand::InsertRow(2));
     let text = |store: &Store| {
-        let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert_eq!(
@@ -660,13 +667,13 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
     );
 
     let parsers = std::sync::Arc::new(markdown_languages(himark::SyntaxLanguages::new()));
-    let document = himark::OpenDocuments::document_ref(&store, document_id)
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     let outcome = himark::ReparseWork::capture(&document, parsers)
         .expect("reparse")
         .run_reparse();
-    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     document.apply_reparse_outcome(
@@ -677,7 +684,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
-    himark::OpenDocuments::put_document(&mut store, document_id, document);
+    himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     let landed = inlay_range(&store);
     assert_eq!(
         landed.end - landed.start,
@@ -693,7 +700,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -713,13 +720,13 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
     );
 
     let parsers = std::sync::Arc::new(markdown_languages(himark::SyntaxLanguages::new()));
-    let document = himark::OpenDocuments::document_ref(&store, document_id)
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     let outcome = himark::ReparseWork::capture(&document, parsers)
         .expect("reparse")
         .run_reparse();
-    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     document.apply_reparse_outcome(
@@ -768,7 +775,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -821,7 +828,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
 
         if i == 4 {
             let document =
-                himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+                himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
             if let Some(work) = ReparseWork::capture(&document, test_languages()) {
                 let outcome = work.run_reparse();
                 let mut view = editor;
@@ -834,7 +841,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
             }
         }
 
-        let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
         let bytes = document.text().byte_string(0, document.text().byte_count());
         assert!(
             std::str::from_utf8(bytes.as_bytes()).is_ok(),
@@ -843,7 +850,7 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
         );
     }
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let text = document.text().byte_string(0, document.text().byte_count());
     assert!(
         text.contains("emoji and combiфжд ыв афыning marks"),
@@ -859,7 +866,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -903,7 +910,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
 
     send(&mut store, EditorCommand::InsertText { text: "ф".into() });
     let in_flight = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -922,7 +929,7 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
 
     send(&mut store, EditorCommand::InsertText { text: "а".into() });
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let text = document.text().byte_string(0, document.text().byte_count());
     assert!(
         std::str::from_utf8(text.as_bytes()).is_ok(),
@@ -943,7 +950,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -982,7 +989,7 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
                 text: "ы".to_owned(),
             },
         );
-        let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
         let bytes = document.text().byte_string(0, document.text().byte_count());
         assert!(
             std::str::from_utf8(bytes.as_bytes()).is_ok(),
@@ -1000,7 +1007,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, editor, _) = seed_complete(&mut store, &ui, document.clone(), 700.0);
 
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1039,7 +1046,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         },
     );
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let text = document.text().byte_string(0, document.text().byte_count());
     assert!(
         text.contains("x\\|y<br>z"),
@@ -1056,7 +1063,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     assert_eq!(inlays.len(), 1, "still exactly the table");
@@ -1083,7 +1090,7 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
             &mut imba::effect::Batch::new().effects(),
         )
     };
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let text = document.text().byte_string(0, document.text().byte_count());
     assert!(
         text.contains("x\\|y<br>z!"),
@@ -1107,7 +1114,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
         document_from_markdown("alpha\n\nbeta", &store, ui, &test_fonts(), &test_theme());
     let (document_id, _, editor) = seed_complete(&mut store, &ui, document, 700.0);
     {
-        let mut document = himark::OpenDocuments::document(&store, document_id).expect("document");
+        let mut document = himark::OpenDocuments::document(&store, test_docs(), document_id).expect("document");
         document.set_caret(editor, 2);
         let mut batch = imba::effect::Batch::new();
         table::InsertTable.perform(
@@ -1119,9 +1126,9 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
             None,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, document_id, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert_eq!(
         document.text().byte_string(0, document.text().byte_count()),
         "al\n\n|   |   |\n| --- | --- |\n|   |   |\n\npha\n\nbeta",
@@ -1132,7 +1139,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
     let document = document_from_markdown("gamma\n\n", &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, editor) = seed_complete(&mut store, &ui, document, 700.0);
     {
-        let mut document = himark::OpenDocuments::document(&store, document_id).expect("document");
+        let mut document = himark::OpenDocuments::document(&store, test_docs(), document_id).expect("document");
         document.set_caret(editor, 7);
         let mut batch = imba::effect::Batch::new();
         table::InsertTable.perform(
@@ -1144,22 +1151,22 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
             None,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, document_id, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
     let text = {
-        let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert_eq!(text, "gamma\n\n|   |   |\n| --- | --- |\n|   |   |");
 
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
     .run_reparse();
     perform_pumped(&mut store, view, EditorCommand::ApplyReparse(outcome));
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     assert_eq!(inlays.len(), 1, "the template became a table inlay");
@@ -1177,7 +1184,7 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
     );
     let (document_id, _, editor) = seed_complete(&mut store, &ui, plain, 700.0);
     {
-        let mut document = himark::OpenDocuments::document(&store, document_id).expect("document");
+        let mut document = himark::OpenDocuments::document(&store, test_docs(), document_id).expect("document");
         let mut batch = imba::effect::Batch::new();
         table::InsertTable.perform(
             &mut store,
@@ -1188,9 +1195,9 @@ fn insert_table_pads_blank_lines_and_becomes_an_inlay() {
             None,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, document_id, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert_eq!(
         document.text().byte_string(0, document.text().byte_count()),
         "plain",
@@ -1205,7 +1212,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1238,7 +1245,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     );
     cell(&mut store, EditorCommand::Enter { soft: false });
     let text_of = |store: &Store| {
-        let document = himark::OpenDocuments::document_ref(store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(store, test_docs(), document_id).expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert!(
@@ -1260,7 +1267,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
     );
 
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1271,7 +1278,7 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
         EditorCommand::ApplyReparse(outcome),
         &mut imba::effect::Batch::new().effects(),
     );
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let table = document.all_inlays_in(0..byte_count)[0]
         .inlay
@@ -1291,7 +1298,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1325,7 +1332,7 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
     cell(&mut store, EditorCommand::DeleteForward);
     cell(&mut store, EditorCommand::Undo);
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert_eq!(
         document.text().byte_string(0, document.text().byte_count()),
         source,
@@ -1351,7 +1358,7 @@ fn breaking_the_delimiter_dissolves_the_widget() {
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
     assert_eq!(
-        himark::OpenDocuments::document_ref(&store, document_id)
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
             .expect("document")
             .all_inlays_in(0..source.len() as u32)
             .len(),
@@ -1361,7 +1368,7 @@ fn breaking_the_delimiter_dissolves_the_widget() {
 
     {
         let mut document =
-            himark::OpenDocuments::document(&mut store, document_id).expect("document");
+            himark::OpenDocuments::document(&mut store, test_docs(), document_id).expect("document");
         let mut batch = imba::effect::Batch::new();
         let tail = document.text().byte_count() as u32 - 10 - "|---|---|".len() as u32;
         document.edit(
@@ -1377,17 +1384,17 @@ fn breaking_the_delimiter_dissolves_the_widget() {
             &test_theme(),
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, document_id, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
     .run_reparse();
     perform_pumped(&mut store, view, EditorCommand::ApplyReparse(outcome));
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     assert!(
         document.all_inlays_in(0..byte_count).is_empty(),
@@ -1404,7 +1411,7 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1414,7 +1421,7 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
 
     let at = source.find("left").expect("the cell") as u32;
     {
-        let mut document = himark::OpenDocuments::document(&store, document_id).expect("document");
+        let mut document = himark::OpenDocuments::document(&store, test_docs(), document_id).expect("document");
         let mut batch = imba::effect::Batch::new();
         let tail = document.text().byte_count() as u32 - at - "left".len() as u32;
         document.edit(
@@ -1430,18 +1437,18 @@ fn an_external_edit_inside_a_table_reaches_the_cells_after_the_reparse() {
             &test_theme(),
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, document_id, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
     }
 
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
     .run_reparse();
     perform_pumped(&mut store, view, EditorCommand::ApplyReparse(outcome));
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     assert_eq!(inlays.len(), 1, "still exactly the table");
@@ -1464,7 +1471,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1510,7 +1517,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
         },
     );
     let text_of = |store: &Store| {
-        let document = himark::OpenDocuments::document_ref(store, document_id).expect("document");
+        let document = himark::OpenDocuments::document_ref(store, test_docs(), document_id).expect("document");
         document.text().byte_string(0, document.text().byte_count())
     };
     assert!(
@@ -1526,7 +1533,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
     );
 
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1534,7 +1541,7 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
 
     perform_pumped(&mut store, view, EditorCommand::ApplyReparse(outcome));
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     let table = inlays[0]
@@ -1555,7 +1562,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
     let mut store = Store::new();
     let document = document_from_markdown(source, &store, ui, &test_fonts(), &test_theme());
     let (document_id, view, _) = seed_complete(&mut store, &ui, document, 700.0);
-    let key = himark::OpenDocuments::document_ref(&store, document_id)
+    let key = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .all_inlays_in(0..source.len() as u32)
         .into_iter()
@@ -1599,7 +1606,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
 
     send(&mut store, type_in_cell("X"));
     let outcome = ReparseWork::capture(
-        &himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        &himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("reparse pending")
@@ -1607,7 +1614,7 @@ fn a_faithful_reparse_still_carries_the_live_table() {
     send(&mut store, type_in_cell("Y"));
     send(&mut store, EditorCommand::ApplyReparse(outcome));
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let byte_count = document.text().byte_count() as u32;
     let inlays = document.all_inlays_in(0..byte_count);
     let table = inlays[0]
@@ -1703,7 +1710,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
         &mut imba::effect::Batch::new().effects(),
     );
     let in_flight = ReparseWork::capture(
-        himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("document has a parse")
@@ -1719,7 +1726,7 @@ fn late_reparse_outcomes_rebase_over_typing() {
     );
 
     apply_outcome(&mut store, document_id, in_flight);
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     let line_end = "# big plain words here".len() as u32;
     assert_eq!(
         document
@@ -1743,7 +1750,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let mut store = Store::new();
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
     let document_id =
-        himark::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
+        himark::OpenDocuments::register(&mut store, test_docs(), document.clone(), None, "test".to_owned(), 0);
     let mut batch = imba::effect::Batch::new();
     let editor_id = himark::mount_editor(
         &store,
@@ -1753,8 +1760,8 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         None,
         &mut batch.effects(),
     );
-    let entity_id = EditorIdView::new(document_id, editor_id);
-    himark::OpenDocuments::put_document(&mut store, document_id, document.clone());
+    let entity_id = EditorIdView::new(test_docs(), document_id, editor_id);
+    himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document.clone());
 
     let mut effects = himark::test_support::surviving_launches(std::mem::replace(
         &mut batch,
@@ -1821,7 +1828,7 @@ fn demo_open_pipeline_applies_markup_and_layout() {
     let tree = parse_markdown(&text);
     let markup = markup_builder_from_tree(&text, &tree, &test_fonts(), &test_theme()).finish();
     let sites = MarkdownLanguage.sites_impl(&text, &tree);
-    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     let mut parse_batch = imba::effect::Batch::new();
@@ -1834,9 +1841,9 @@ fn demo_open_pipeline_applies_markup_and_layout() {
         &test_theme(),
         &mut parse_batch.effects(),
     );
-    himark::OpenDocuments::put_document(&mut store, document_id, document);
+    himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
 
-    let styled = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let styled = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert_eq!(
         styled
             .markup()
@@ -1902,11 +1909,11 @@ fn late_results_do_not_disturb_typing_at_a_soft_line_end() {
     {
         let entity = editor;
         let mut document =
-            himark::OpenDocuments::document(&store, entity.document()).expect("document");
+            himark::OpenDocuments::document(&store, entity.documents(), entity.document()).expect("document");
         document.set_caret(entity.editor(), boundary);
 
         document.refresh_unhide(entity.editor(), &store, ui, &test_fonts(), &test_theme());
-        himark::OpenDocuments::put_document(&mut store, entity.document(), document);
+        himark::OpenDocuments::put_document(&mut store, entity.documents(), entity.document(), document);
     }
 
     let caret_line_y = |store: &Store| {
@@ -2012,9 +2019,9 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &mut imba::effect::Batch::new().effects(),
     );
     let document_id =
-        himark::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
-    let narrow = EditorIdView::new(document_id, narrow_editor);
-    let wide = EditorIdView::new(document_id, wide_editor);
+        himark::OpenDocuments::register(&mut store, test_docs(), document.clone(), None, "test".to_owned(), 0);
+    let narrow = EditorIdView::new(test_docs(), document_id, narrow_editor);
+    let wide = EditorIdView::new(test_docs(), document_id, wide_editor);
 
     let texts = ["#", "# ", "é", "😀", "\n\n", "**x**", "```\n", "> ", "xyz"];
     let mut pending_reparses: Vec<ReparseOutcome> = Vec::new();
@@ -2061,7 +2068,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
             }
             6 => {
                 if let Some(work) = ReparseWork::capture(
-                    himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+                    himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
                     test_languages(),
                 ) {
                     pending_reparses.push(work.run_reparse());
@@ -2071,7 +2078,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 if !pending_reparses.is_empty() && rand() % 2 == 0 {
                     let index = (rand() % pending_reparses.len() as u64) as usize;
                     let outcome = pending_reparses.swap_remove(index);
-                    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+                    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
                         .expect("document")
                         .clone();
                     let mut local = imba::effect::Batch::new();
@@ -2083,7 +2090,7 @@ fn interleaved_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         &test_theme(),
                         &mut local.effects(),
                     );
-                    himark::OpenDocuments::put_document(&mut store, document_id, document);
+                    himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
                     pending_commands.extend(
                         himark::test_support::surviving_launches(local)
                             .into_iter()
@@ -2136,7 +2143,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     );
     let plain_height = editor.gathered(&store).expect("editor").content_height();
     assert_eq!(
-        himark::OpenDocuments::document_ref(&store, document_id)
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
             .expect("document")
             .markup()
             .block_marks_in(0..7)
@@ -2148,7 +2155,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     );
 
     let outcome = ReparseWork::capture(
-        himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("document has a tree")
@@ -2157,7 +2164,7 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     let mut store = store;
     apply_outcome(&mut store, document_id, outcome);
 
-    let document = himark::OpenDocuments::document_ref(&store, document_id).expect("document");
+    let document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document");
     assert_eq!(
         document
             .markup()
@@ -2175,12 +2182,12 @@ fn typing_a_hash_becomes_a_header_after_the_reparse_lands() {
     );
 
     let idle = ReparseWork::capture(
-        himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+        himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
         test_languages(),
     )
     .expect("tree advanced")
     .run_reparse();
-    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
         .expect("document")
         .clone();
     let mut idle_batch = imba::effect::Batch::new();

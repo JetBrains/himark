@@ -50,25 +50,27 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
     }
 }
 
-pub fn mint_unfronted(store: &Store, fronted: &[FamilyRow]) -> Vec<Box<dyn crate::DynPanelView>> {
+pub fn mint_unfronted(
+    store: &Store,
+    session: &crate::SessionId,
+    fronted: &[FamilyRow],
+) -> Vec<Box<dyn crate::DynPanelView>> {
     let mut rows: Vec<FamilyRow> = Vec::new();
-    if let Some(family) = crate::Gathered::scope(store)
-        .and_then(|session| crate::higent::Hosts::family(store, session))
-    {
+    if let Some(family) = crate::higent::Hosts::family(store, session) {
         rows.extend(
             crate::terminal::Terminals::list(store, family.terminals())
                 .into_iter()
                 .map(FamilyRow::Terminal),
         );
+        rows.extend(
+            crate::OpenDocuments::pair_ids(store, family.documents())
+                .into_iter()
+                .map(FamilyRow::Pair),
+        );
     }
-    rows.extend(
-        crate::OpenDocuments::pair_ids(store)
-            .into_iter()
-            .map(FamilyRow::Pair),
-    );
-    // The chats of the session this batch is gathered FOR — the family
-    // rows are a session's own furniture.
-    if let Some(session) = crate::Gathered::scope(store) {
+    // The chats of the NAMED session — the family rows are a
+    // session's own furniture.
+    {
         rows.extend(
             crate::higent::Chats::list(store, session)
                 .into_iter()

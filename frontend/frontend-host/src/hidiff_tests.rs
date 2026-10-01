@@ -15,6 +15,13 @@ use himark::AppExt;
 use himark::{AppFonts, Application};
 use std::sync::{mpsc, Arc};
 
+fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
+
 /// TEST SUPPORT: build an `OpenedDiffPair` over two freshly-built,
 /// not-yet-registered sides (`DiffSide::Built`) — what the off-thread
 /// open step produces for a canvas row when both sides are closed. The
@@ -226,12 +233,12 @@ fn the_optimizer_landing_cancels_matching_edits() {
         };
         let state = panel.diff_state(app.store()).expect("the pair has settled");
         let fragments: Vec<_> = {
-            let info = himark::OpenDocuments::list(app.store())
+            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "left.md")
                 .expect("left open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
             himark::diff::fragments_from(state.diff(), document.text(), 0).collect()
         };
         assert!(
@@ -296,7 +303,7 @@ fn identical_documents_settle_spacer_free() {
         };
         let (left, right) = panel.halves(app.store());
         for (label, entity) in [("left", left), ("right", right)] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let spacers = document.element_spacers(entity.editor());
             let ranges = document.element_byte_ranges(entity.editor());
@@ -462,7 +469,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() {
                 let right = panel.halves(app.store()).1;
-                shot = himark::OpenDocuments::document_ref(app.store(), right.document())
+                shot = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right.document())
                     .map(|document| document.content_height(right.editor()));
             }
         });
@@ -478,9 +485,10 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     {
         let fonts = himark::env::Fonts::of(&app.store())();
         let theme = himark::env::Themes::of(&app.store());
+        let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
-            himark::OpenDocuments::document(&store, right_id).expect("right document");
+            himark::OpenDocuments::document(&store, app_docs, right_id).expect("right document");
         let mut batch = imba::effect::Batch::new();
         let text = document.text().to_string();
         let at = text.find("same line 60").expect("the identical run") as u32;
@@ -493,7 +501,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
             &theme,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, right_id, document);
+        himark::OpenDocuments::put_document(&mut store, app_docs, right_id, document);
     }
     // The keystroke's own batch (any batch) runs the diff lanes and
     // the dressing sweep; the pane hears nothing through its panel.
@@ -699,7 +707,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let live: Vec<(u32, i64)> = document
                 .element_heights(entity.editor())
@@ -872,7 +880,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let (_, viewport, _, _) = document.probe_state(entity.editor());
             let viewport = viewport.expect("the half reported its viewport");
@@ -893,7 +901,7 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let width = document.layout_width(entity.editor());
             assert!(
@@ -931,7 +939,7 @@ fn dump_pair(app: &Application) {
         eprintln!("[dump] diff: {ops:?}");
         let (left, right) = panel.halves(app.store());
         for (label, entity) in [("left", left), ("right", right)] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let heights = document.element_heights(entity.editor());
             let spacers = document.element_spacers(entity.editor());
@@ -1015,7 +1023,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
     // change is washed before any scroll; the scroll still proves the
     // pair aligns all the way down.
     let right_marks = |app: &Application| -> Vec<std::ops::Range<u32>> {
-        let info = himark::OpenDocuments::list(app.store())
+        let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == "right.md")
             .expect("right open");
@@ -1027,7 +1035,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
             let Some(state) = panel.diff_state(app.store()) else {
                 return;
             };
-            ranges = himark::OpenDocuments::document_ref(app.store(), info.0)
+            ranges = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
                 .expect("document")
                 .markup_styled_ranges(state.hunk_markup_oracle());
         });
@@ -1148,14 +1156,14 @@ fn scrolling_after_a_theme_toggle_converges() {
     let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
     let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     let cell_focused = |app: &Application| {
-        let info = himark::OpenDocuments::list(app.store())
+        let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == "right.md")
             .expect("right open")
             .0;
         {
             let document =
-                himark::OpenDocuments::document_ref(app.store(), info).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info).expect("document");
             document
                 .editor_ids()
                 .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -1192,7 +1200,7 @@ fn scrolling_after_a_theme_toggle_converges() {
             ("left", panel.halves(app.store()).0),
             ("right", panel.halves(app.store()).1),
         ] {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let live: Vec<(u32, i64)> = document
                 .element_heights(entity.editor())
@@ -1365,13 +1373,13 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             himark::test_driver::click(&mut app, x as f32, y as f32, 1100.0, 800.0);
             let _ =
                 himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
-            let info = himark::OpenDocuments::list(app.store())
+            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let focused = {
                 let document =
-                    himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
                 document
                     .editor_ids()
                     .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -1385,11 +1393,11 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     assert!(cell_focused, "a table cell took focus");
 
     let table_heights = |app: &Application, name: &str| -> (f32, f32) {
-        let info = himark::OpenDocuments::list(app.store())
+        let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, info)| info.name() == name)
             .expect("open");
-        let document = himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+        let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
         let editor = document.editor_ids().next().expect("an editor");
 
         let heights = document.element_heights(editor);
@@ -1451,7 +1459,7 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
         let diff = state.diff();
         let (left, right) = panel.halves(app.store());
         let sides = [left, right].map(|entity| {
-            let document = himark::OpenDocuments::document_ref(app.store(), entity.document())
+            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                 .expect("document");
             let ranges = document.element_byte_ranges(entity.editor());
             let spacers = document.element_spacers(entity.editor());
@@ -1497,7 +1505,7 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
                             "left" => left,
                             _ => right,
                         };
-                        himark::OpenDocuments::document_ref(app.store(), entity.document())
+                        himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
                             .map(|document| document.element_heights(entity.editor()))
                             .unwrap_or_default()
                     };
@@ -1633,11 +1641,11 @@ fn an_edited_markdown_pair_settles_aligned() {
 }
 
 fn document_text(app: &Application, name: &str) -> String {
-    let info = himark::OpenDocuments::list(app.store())
+    let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, info)| info.name() == name)
         .expect("the document is open");
-    let document = himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+    let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
     let count = document.text().byte_count();
     document.text().view().byte_string(0, count)
 }
@@ -1674,21 +1682,21 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        let id = himark::OpenDocuments::register(&mut store, document, None, "side".to_owned(), 0);
-        (id, pane, himark::EditorIdView::new(id, editor))
+        let id = himark::OpenDocuments::register(&mut store, test_docs(), document, None, "side".to_owned(), 0);
+        (id, pane, himark::EditorIdView::new(test_docs(), id, editor))
     };
 
     let (old_doc, _, old_entity) = open("old side\n", false);
     let (new_doc, new_pane, new_entity) = open("new side\n", true);
 
-    let diff = himark::OpenDocuments::track_diff(&mut store, old_doc, new_doc, false)
+    let diff = himark::OpenDocuments::track_diff(&mut store, test_docs(), old_doc, new_doc, false)
         .expect("both sides registered");
-    let handle = himark::OpenDocuments::diff_handle(&store, diff).expect("tracked");
+    let handle = himark::OpenDocuments::diff_handle(&store, test_docs(), diff).expect("tracked");
     let right_extras = {
         let mut document =
-            himark::OpenDocuments::document(&mut store, new_doc).expect("registered");
+            himark::OpenDocuments::document(&mut store, test_docs(), new_doc).expect("registered");
         let id = document.add_owned_markup(new_entity.editor());
-        himark::OpenDocuments::put_document(&mut store, new_doc, document);
+        himark::OpenDocuments::put_document(&mut store, test_docs(), new_doc, document);
         id
     };
     let mut panel = DiffPanelView::new(
@@ -1702,10 +1710,10 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
     himark::PanelView::dismantle(&mut panel, &mut store);
 
     assert!(
-        himark::OpenDocuments::document_ref(&store, old_doc).is_none(),
+        himark::OpenDocuments::document_ref(&store, test_docs(), old_doc).is_none(),
         "editorless after retraction — the pinned side leaves whole"
     );
-    let new = himark::OpenDocuments::document(&store, new_doc).expect("the working copy stays");
+    let new = himark::OpenDocuments::document(&store, test_docs(), new_doc).expect("the working copy stays");
     assert!(
         new.has_editor(new_pane.expect("the extra editor")),
         "its pane editor keeps it alive"
@@ -1759,6 +1767,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         assert!(app.perform_command(himark::AppCommand::Opened(
             window,
             himark::OpenedDocument {
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: himark::test_document::plain_document(body),
                 location: Some(located(name)),
@@ -1810,12 +1819,12 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     }
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
-        himark::OpenDocuments::register(&mut store, document, None, name.to_owned(), 0)
+        himark::OpenDocuments::register(&mut store, test_docs(), document, None, name.to_owned(), 0)
     };
     let old = register(&format!("{middle}old tail\n"), "old");
     let new = register(&format!("{middle}new tail\n"), "new");
 
-    let panel = diff_panel(&mut store, &ui, old, new).expect("both registered");
+    let panel = diff_panel(&mut store, test_docs(), &ui, old, new).expect("both registered");
     let state = panel.diff_state(&store).expect("attached at construction");
 
     // The entry is the whole-replace seed: exact over the live text,
@@ -1823,17 +1832,17 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
     // owed to the normalize lane, never computed on this thread. (The
     // "one normalization owed" round-trip is pinned in the documents
     // crate's diff tests.)
-    let generation = himark::OpenDocuments::document_ref(&store, new)
+    let generation = himark::OpenDocuments::document_ref(&store, test_docs(), new)
         .and_then(|document| document.diff(state.diff_id()).map(|e| e.generation()))
         .expect("the entry rides the target");
     assert_eq!(generation, 0, "not dressed at birth — the lane owes it");
 
-    let live_len = himark::OpenDocuments::document_ref(&store, new)
+    let live_len = himark::OpenDocuments::document_ref(&store, test_docs(), new)
         .expect("registered")
         .text()
         .view()
         .byte_count();
-    let covers = himark::OpenDocuments::document_ref(&store, new)
+    let covers = himark::OpenDocuments::document_ref(&store, test_docs(), new)
         .and_then(|document| {
             document
                 .diff(state.diff_id())
@@ -1854,26 +1863,26 @@ fn a_shared_pair_reuses_the_standing_entry() {
     let fonts = himark::test_document::test_fonts_collection();
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
-        himark::OpenDocuments::register(&mut store, document, None, name.to_owned(), 0)
+        himark::OpenDocuments::register(&mut store, test_docs(), document, None, name.to_owned(), 0)
     };
     let old = register("one\ntwo\n", "old");
     let new = register("one\nTWO\n", "new");
 
-    himark::OpenDocuments::track_diff(&mut store, old, new, true).expect("tracked");
+    himark::OpenDocuments::track_diff(&mut store, test_docs(), old, new, true).expect("tracked");
 
     // The pair is already tracked; opening a pane over it reuses the
     // standing entry rather than tracking a second one.
-    let panel = diff_panel(&mut store, &ui, old, new).expect("the shared pair still opens");
+    let panel = diff_panel(&mut store, test_docs(), &ui, old, new).expect("the shared pair still opens");
 
     let state = panel.diff_state(&store).expect("attached");
-    let entry_len = himark::OpenDocuments::document_ref(&store, new)
+    let entry_len = himark::OpenDocuments::document_ref(&store, test_docs(), new)
         .and_then(|document| {
             document
                 .diff(state.diff_id())
                 .map(|entry| entry.operation().new_len())
         })
         .expect("the entry stands");
-    let live_len = himark::OpenDocuments::document_ref(&store, new)
+    let live_len = himark::OpenDocuments::document_ref(&store, test_docs(), new)
         .expect("registered")
         .text()
         .view()
@@ -2019,7 +2028,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         id.expect("the diff pane stands")
     };
     let pair_state = |app: &Application| {
-        himark::OpenDocuments::diff_view_ref(app.store(), pair_id)
+        himark::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id)
             .and_then(|pair| pair.state.clone())
             .expect("the pair's state row")
     };
@@ -2039,11 +2048,11 @@ fn the_unified_view_switches_between_split_and_inline() {
     let state = pair_state(&app);
     assert_eq!(state.unified_layout(), himark::DiffLayout::Inline);
     let inline_editor = state.inline_editor().expect("the inline editor minted");
-    let pair = himark::OpenDocuments::diff_view_ref(app.store(), pair_id).expect("the pair");
+    let pair = himark::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id).expect("the pair");
     let (left_id, right_id) = (pair.left.document(), pair.right.document());
     let right_editor = pair.right.editor();
     {
-        let right = himark::OpenDocuments::document_ref(app.store(), right_id).expect("right");
+        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
 
         let cards = right.before_inlays(inline_editor);
         assert_eq!(cards.len(), 2, "both changed blocks carry cards: {cards:?}");
@@ -2073,7 +2082,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     // inside line 0's text) shifts down by exactly the hole — the
     // inline line-0 height minus the card-less split face's.
     let hole = {
-        let right = himark::OpenDocuments::document_ref(app.store(), right_id).expect("right");
+        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
         right.height_before(inline_editor, 9) - right.height_before(right_editor, 9)
     };
     // Aim at line 0's TEXT: the settled before-card fills its full
@@ -2082,7 +2091,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     himark::test_driver::click(&mut app, 550.0, 88.0 + hole, 1100.0, 800.0);
     let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     {
-        let right = himark::OpenDocuments::document_ref(app.store(), right_id).expect("right");
+        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
         assert_eq!(
             right.focus(inline_editor),
             himark::EditorFocus::Text,
@@ -2572,13 +2581,15 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
-                let store = app.store();
+                let app_docs = app.sole_documents();
+                let app_docs = app.sole_documents();
+            let store = app.store();
                 shot = canvas
                     .probe_pair(
                         store,
                         &location("small.md", himark::ResourceType::document()),
                     )
-                    .and_then(|id| himark::OpenDocuments::diff_view_ref(store, id))
+                    .and_then(|id| himark::OpenDocuments::diff_view_ref(store, app_docs, id))
                     .and_then(|pair| pair.state.as_ref())
                     .and_then(|state| state.inline_editor());
             }
@@ -3024,14 +3035,15 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
 
     // Edit the TARGET document in the identical run: the diff regrows a
     // changed region, so the fold there shrinks and the body grows.
-    let target = himark::OpenDocuments::by_location(&app.store(), &key)
+    let target = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
         .expect("the row's registered target");
     {
         let fonts = himark::env::Fonts::of(&app.store())();
         let theme = himark::env::Themes::of(&app.store());
+        let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
-            himark::OpenDocuments::document(&store, target).expect("target document");
+            himark::OpenDocuments::document(&store, app_docs, target).expect("target document");
         let text = document.text().to_string();
         let at = text.find("same line 40").expect("the identical run") as u32;
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -3044,7 +3056,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             &theme,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, target, document);
+        himark::OpenDocuments::put_document(&mut store, app_docs, target, document);
     }
 
     // Settle: the diff rebased at the edit door, its resync re-dresses
@@ -3418,19 +3430,19 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // The row's target IS the registered document for its location —
     // not a throwaway snapshot.
-    let target_id = himark::OpenDocuments::by_location(&app.store(), &doc_loc("a.md"))
+    let target_id = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &doc_loc("a.md"))
         .expect("the canvas row registered its target document");
 
     // The diff the Diffs subsystem tracks for this row.
     let pair = view
         .probe_pair(&app.store(), &doc_loc("a.md"))
         .expect("a built pair");
-    let diff_id = himark::OpenDocuments::diff_view_ref(&app.store(), pair)
+    let diff_id = himark::OpenDocuments::diff_view_ref(&app.store(), app.sole_documents(), pair)
         .expect("the tracked diff view")
         .diff;
 
     let op_of = |app: &Application| {
-        himark::OpenDocuments::document_ref(app.store(), target_id)
+        himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), target_id)
             .and_then(|document| {
                 document
                     .diff(diff_id)
@@ -3452,9 +3464,10 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     {
         let fonts = himark::env::Fonts::of(&app.store())();
         let theme = himark::env::Themes::of(&app.store());
+        let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
-            himark::OpenDocuments::document(&store, target_id).expect("target document");
+            himark::OpenDocuments::document(&store, app_docs, target_id).expect("target document");
         let mut batch = imba::effect::Batch::new();
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
@@ -3465,7 +3478,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             &theme,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, target_id, document);
+        himark::OpenDocuments::put_document(&mut store, app_docs, target_id, document);
     }
 
     let after = op_of(&app);
@@ -3564,17 +3577,18 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() else {
                 return;
             };
+            let app_docs = app.sole_documents();
             let store = app.store();
             let Some(id) = canvas.probe_pair(store, &key) else {
                 return;
             };
-            let Some(pair) = himark::OpenDocuments::diff_view_ref(store, id) else {
+            let Some(pair) = himark::OpenDocuments::diff_view_ref(store, app_docs, id) else {
                 return;
             };
             let (Some(state), Some(left), Some(right)) = (
                 pair.state.as_ref(),
-                himark::OpenDocuments::document_ref(store, pair.left.document()),
-                himark::OpenDocuments::document_ref(store, pair.right.document()),
+                himark::OpenDocuments::document_ref(store, app_docs, pair.left.document()),
+                himark::OpenDocuments::document_ref(store, app_docs, pair.right.document()),
             ) else {
                 return;
             };
@@ -3589,13 +3603,14 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     // The out-of-pane edit through the document road — the row is not
     // focused, no command ever reaches it.
     let right_id =
-        himark::OpenDocuments::by_location(&app.store(), &key).expect("the registered target");
+        himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key).expect("the registered target");
     {
         let fonts = himark::env::Fonts::of(&app.store())();
         let theme = himark::env::Themes::of(&app.store());
+        let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
-            himark::OpenDocuments::document(&store, right_id).expect("right document");
+            himark::OpenDocuments::document(&store, app_docs, right_id).expect("right document");
         let mut batch = imba::effect::Batch::new();
         let text = document.text().to_string();
         let at = text.find("same line 15").expect("the identical run") as u32;
@@ -3608,7 +3623,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             &theme,
             &mut batch.effects(),
         );
-        himark::OpenDocuments::put_document(&mut store, right_id, document);
+        himark::OpenDocuments::put_document(&mut store, app_docs, right_id, document);
     }
     assert!(stale_now(&app), "the edit leaves the row's pair stale");
 
@@ -4134,12 +4149,12 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     let (view, key, built2) = seeded_working_canvas(&mut app);
 
     assert_eq!(
-        himark::OpenDocuments::diff_view_count(&app.store()),
+        himark::OpenDocuments::diff_view_count(&app.store(), app.sole_documents()),
         1,
         "one built row, one pair"
     );
     assert!(
-        himark::OpenDocuments::pair_ids(&app.store()).is_empty(),
+        himark::OpenDocuments::pair_ids(&app.store(), app.sole_documents()).is_empty(),
         "an embedded pair is no family row"
     );
 
@@ -4152,9 +4167,9 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
         view.land_for_tests(&mut store, &ui, key.clone(), built2);
     }
     assert_eq!(
-        himark::OpenDocuments::diff_view_count(&app.store()),
+        himark::OpenDocuments::diff_view_count(&app.store(), app.sole_documents()),
         1,
         "the rebuild replaced the pair — no leak"
     );
-    assert!(himark::OpenDocuments::pair_ids(&app.store()).is_empty());
+    assert!(himark::OpenDocuments::pair_ids(&app.store(), app.sole_documents()).is_empty());
 }

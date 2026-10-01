@@ -5,6 +5,13 @@ use super::*;
 use himark::{EditorCommand, EditorIdView, ReparseOutcome, ReparseWork};
 use imba::{store::Store, View};
 
+fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
+
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
     himark::test_document::test_fonts_collection().clone()
 }
@@ -77,9 +84,9 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &mut imba::effect::Batch::new().effects(),
     );
     let document_id =
-        himark::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
-    let narrow = EditorIdView::new(document_id, narrow_editor);
-    let wide = EditorIdView::new(document_id, wide_editor);
+        himark::OpenDocuments::register(&mut store, test_docs(), document.clone(), None, "test".to_owned(), 0);
+    let narrow = EditorIdView::new(test_docs(), document_id, narrow_editor);
+    let wide = EditorIdView::new(test_docs(), document_id, wide_editor);
     store.put(himark::env::Fonts(himark::embedded_fonts::source()));
 
     let texts = [
@@ -134,7 +141,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
             }
             6 => {
                 if let Some(work) = ReparseWork::capture(
-                    himark::OpenDocuments::document_ref(&store, document_id).expect("document"),
+                    himark::OpenDocuments::document_ref(&store, test_docs(), document_id).expect("document"),
                     test_languages(),
                 ) {
                     pending_reparses.push(work.run_reparse());
@@ -144,7 +151,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 if !pending_reparses.is_empty() && rand() % 2 == 0 {
                     let index = (rand() % pending_reparses.len() as u64) as usize;
                     let outcome = pending_reparses.swap_remove(index);
-                    let mut document = himark::OpenDocuments::document_ref(&store, document_id)
+                    let mut document = himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
                         .expect("document")
                         .clone();
                     let mut local = imba::effect::Batch::new();
@@ -156,7 +163,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         &test_theme(),
                         &mut local.effects(),
                     );
-                    himark::OpenDocuments::put_document(&mut store, document_id, document);
+                    himark::OpenDocuments::put_document(&mut store, test_docs(), document_id, document);
                     pending_commands.extend(
                         himark::test_support::surviving_launches(local)
                             .into_iter()

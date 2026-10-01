@@ -303,8 +303,11 @@ impl crate::DynamicCommand for OpenFoundLocation {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let documents = crate::Windows::session_family(store, window)
+            .expect("search runs in a window with a session")
+            .documents();
         if let Some(feed) = self.feed {
-            match crate::OpenDocuments::by_location(store, &self.location) {
+            match crate::OpenDocuments::by_location(store, documents, &self.location) {
                 Some(document) => crate::AppRequests::push(
                     store,
                     Arc::new(crate::locations::WashDocument { feed, document }),
@@ -314,6 +317,7 @@ impl crate::DynamicCommand for OpenFoundLocation {
         }
         let _ = fx.push(crate::open_by_location_effect(
             window,
+            documents,
             self.location.clone(),
             true,
             self.focus,
@@ -1061,7 +1065,7 @@ mod tests {
         assert_eq!(view.files, 2);
 
         // Zero fetches anywhere: nothing above registered a document.
-        assert!(crate::OpenDocuments::list(&store).is_empty());
+        assert!(crate::OpenDocuments::list(&store, imba::store::Id::mint()).is_empty());
     }
 
     #[test]

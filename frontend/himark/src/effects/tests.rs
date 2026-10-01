@@ -73,8 +73,16 @@ impl EffectHandler<SlowProbe> for External {
 
 fn lifted<E: Effect<Result = String>>(effect: E) -> AppEffect {
     let document = crate::DocumentId::from_raw(0);
-    AnyEffect::new(effect)
-        .map(move |text| AppCommand::Entity(document, ::editor::EditorCommand::InsertText { text }))
+    let documents = imba::store::Id::<crate::OpenDocuments>::mint();
+    AnyEffect::new(effect).map(move |text| {
+        AppCommand::At(
+            documents,
+            crate::app::DocumentsCommand::Editor(
+                document,
+                ::editor::EditorCommand::InsertText { text },
+            ),
+        )
+    })
 }
 
 fn batch_of(effects: Vec<AppEffect>) -> AppEffects {
@@ -98,7 +106,13 @@ fn harness(
     let dispatcher: EffectDispatcher = {
         let posted = Arc::clone(&posted);
         Arc::new(move |command| {
-            let AppCommand::Entity(_, ::editor::EditorCommand::InsertText { text }) = command
+            let AppCommand::At(
+                _,
+                crate::app::DocumentsCommand::Editor(
+                    _,
+                    ::editor::EditorCommand::InsertText { text },
+                ),
+            ) = command
             else {
                 panic!("the probes lift into InsertText");
             };

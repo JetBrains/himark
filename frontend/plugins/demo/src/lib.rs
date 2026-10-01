@@ -54,12 +54,16 @@ impl himark::DynamicCommand for OpenMonsterDemo {
     fn perform(
         &self,
         _app: &mut himark::Application,
-        _store: &mut imba::store::Store,
+        store: &mut imba::store::Store,
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let documents = himark::Windows::session_family(store, window)
+            .expect("a demo document opens into a window with a session")
+            .documents();
         fx.push(himark::open_effect(
             window,
+            documents,
             "torture sample".to_owned(),
             true,
             Some(demo_location("torture sample")),
@@ -80,12 +84,16 @@ impl himark::DynamicCommand for OpenWallOfTextDemo {
     fn perform(
         &self,
         _app: &mut himark::Application,
-        _store: &mut imba::store::Store,
+        store: &mut imba::store::Store,
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let documents = himark::Windows::session_family(store, window)
+            .expect("a demo document opens into a window with a session")
+            .documents();
         fx.push(himark::open_effect(
             window,
+            documents,
             "wall of text".to_owned(),
             true,
             Some(demo_location("wall of text")),

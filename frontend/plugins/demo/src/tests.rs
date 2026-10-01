@@ -106,7 +106,7 @@ fn heavy() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn registered(app: &Application, name: &str) -> bool {
-    himark::OpenDocuments::list(app.store())
+    himark::OpenDocuments::list(app.store(), app.sole_documents())
         .iter()
         .any(|(_, entity)| entity.name() == name)
 }
@@ -797,7 +797,7 @@ fn opening_at_window_size_converges_and_styles() {
 const MAX_SCROLL_STEPS: usize = 10_000;
 
 fn scroll_steps(app: &himark::Application, step: f32) -> usize {
-    let extent = himark::OpenDocuments::list(app.store())
+    let extent = himark::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .filter_map(|(_, entity)| {
             let document = entity.document();
@@ -1393,6 +1393,7 @@ fn rust_document_settles_and_stops_reconciling() {
         app.perform_batch(vec![AppCommand::Opened(
             app.sole_window(),
             himark::OpenedDocument {
+            documents: app.sole_documents(),
                 name: "document-target.rs".to_owned(),
                 document,
                 location: None,
@@ -1483,7 +1484,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     }
     {
         let (document_id, _) = app.focused_editor_id();
-        let document = himark::OpenDocuments::document(app.store(), document_id)
+        let document = himark::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
             .expect("the focused document");
         assert_eq!(
             document.text().view().byte_count(),

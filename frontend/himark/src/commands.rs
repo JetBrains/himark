@@ -128,9 +128,12 @@ impl DynamicCommand for NewScratch {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let location = crate::next_scratch_location(store);
+        let family = crate::Windows::session_family(store, window)
+            .expect("a scratch opens into a window with a session");
+        let location = crate::next_scratch_location(store, family.scratch_names());
         fx.push(crate::app::open_effect(
             window,
+            family.documents(),
             location.name().to_owned(),
             true,
             Some(location),
@@ -337,13 +340,16 @@ impl DynamicCommand for CompletionTrigger {
                 crate::Windows::put(store, window, entity);
                 return;
             };
-            let location = crate::OpenDocuments::location(store, id)
+            let documents = crate::Windows::session_family(store, window)
+                .expect("completion runs in a window with a session")
+                .documents();
+            let location = crate::OpenDocuments::location(store, documents, id)
                 .filter(|location| !location.is_synthetic());
             let Some(location) = location else {
                 crate::Windows::put(store, window, entity);
                 return;
             };
-            let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+            let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
                 crate::Windows::put(store, window, entity);
                 return;
             };
@@ -351,6 +357,9 @@ impl DynamicCommand for CompletionTrigger {
                 document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
             if !markdown {
                 let ui = app.ui_ctx();
+                let Some(documents) = slot.documents_id() else {
+                    return;
+                };
                 slot.completion.sync_lsp(
                     store,
                     &ui,
@@ -364,10 +373,12 @@ impl DynamicCommand for CompletionTrigger {
                     move |found| {
                         crate::AppCommand::Dynamic(window, Arc::new(CompletionLanded(found)))
                     },
-                    move |command| AppCommand::Entity(id, command),
+                    move |command| {
+                        AppCommand::At(documents, crate::app::DocumentsCommand::Editor(id, command))
+                    },
                 );
             }
-            crate::OpenDocuments::put_document(store, id, document);
+            crate::OpenDocuments::put_document(store, documents, id, document);
         }
         crate::Windows::put(store, window, entity);
     }
@@ -423,7 +434,9 @@ impl DynamicCommand for FindOpen {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             if slot.panel.editor().is_some() {
                 let seed = slot.find_target().and_then(|(document_id, editor)| {
-                    let document = crate::OpenDocuments::document_ref(store, document_id)?;
+                    let documents = slot.documents_id()?;
+                    let document =
+                        crate::OpenDocuments::document_ref(store, documents, document_id)?;
                     let caret = document.carets(editor).primary();
                     if !caret.has_selection() {
                         return None;
@@ -482,14 +495,26 @@ impl DynamicCommand for FindStep {
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let target = slot.find_target();
+            let slot_documents = slot.documents_id();
             if let (Some(find), Some((document, _))) = (&mut slot.find, target) {
                 let fonts = ::editor::env::ui_collection(store, &ui);
                 let theme = ::editor::env::Themes::of(store);
                 let forward = self.0;
-                crate::app::entity_scope(document, fx, |fx| {
-                    find.sync(store, target, &ui, &fonts, &theme, fx);
-                    find.step(store, forward, &ui, &fonts, &theme, fx);
-                });
+                let Some(documents) = slot_documents else {
+                    return;
+                };
+                fx.scope(
+                    move |command| {
+                        crate::AppCommand::At(
+                            documents,
+                            crate::DocumentsCommand::Editor(document, command),
+                        )
+                    },
+                    |fx| {
+                        find.sync(store, documents, target, &ui, &fonts, &theme, fx);
+                        find.step(store, documents, forward, &ui, &fonts, &theme, fx);
+                    },
+                );
             }
         }
         crate::Windows::put(store, window, entity);
@@ -504,6 +529,7 @@ fn find_sync_slot(
     fx: &mut crate::AppFx<'_>,
 ) {
     let target = slot.find_target();
+    let slot_documents = slot.documents_id();
     let Some(find) = &mut slot.find else {
         return;
     };
@@ -513,11 +539,20 @@ fn find_sync_slot(
     let ui = app.ui_ctx();
     let fonts = ::editor::env::ui_collection(store, &ui);
     let theme = ::editor::env::Themes::of(store);
-    crate::app::entity_scope(document, fx, |fx| {
-        find.sync(store, target, &ui, &fonts, &theme, fx)
-    });
+    let Some(documents) = slot_documents else {
+        return;
+    };
+    fx.scope(
+        move |command| {
+            crate::AppCommand::At(
+                documents,
+                crate::DocumentsCommand::Editor(document, command),
+            )
+        },
+        |fx| find.sync(store, documents, target, &ui, &fonts, &theme, fx),
+    );
 
-    find.launch(store, target, fx, move |scan| {
+    find.launch(store, documents, target, fx, move |scan| {
         crate::AppCommand::Dynamic(window, Arc::new(FindScanLanded(scan)))
     });
 }
@@ -546,15 +581,25 @@ impl DynamicCommand for FindScanLanded {
         let theme = ::editor::env::Themes::of(store);
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
             let target = slot.find_target();
+            let slot_documents = slot.documents_id();
             let Some(find) = &mut slot.find else {
                 return;
             };
             let Some((document, _)) = target else {
                 return;
             };
-            crate::app::entity_scope(document, fx, |fx| {
-                find.adopt(store, target, &self.0, &ui, &fonts, &theme, fx)
-            });
+            let Some(documents) = slot_documents else {
+                return;
+            };
+            fx.scope(
+                move |command| {
+                    crate::AppCommand::At(
+                        documents,
+                        crate::DocumentsCommand::Editor(document, command),
+                    )
+                },
+                |fx| find.adopt(store, documents, target, &self.0, &ui, &fonts, &theme, fx),
+            );
         });
         crate::Windows::put(store, window, entity);
     }

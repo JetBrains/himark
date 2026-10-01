@@ -268,7 +268,7 @@ pub fn resolve_base(
     }
     let before = himark::hichanges::Changes::base_ref(
         store,
-        &himark::SessionId::working(store),
+        &himark::SessionId::of_location(store, location),
         &format!("/{}", location.path().join("/")),
     )?;
     let (origin, _) = himark::hichanges::raw_ref(&before)?;

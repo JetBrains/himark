@@ -19,6 +19,10 @@ use skia_safe::{Paint, Rect, Size};
 
 #[derive(Clone)]
 pub struct Peeker {
+    /// The session this peeker fronts — set at open; its family ids
+    /// are the peeker's addressing currency.
+    session: himark::SessionId,
+
     recents: Vec<ResourceLocation>,
 
     workspace: Vec<ResourceLocation>,
@@ -127,6 +131,7 @@ impl Peeker {
     pub fn open(
         store: &mut Store,
         ui: &UiCtx,
+        session: himark::SessionId,
         viewport: Size,
         recents: Vec<ResourceLocation>,
         widgets: Vec<(WidgetOrigin, Box<dyn himark::DynPanelView>)>,
@@ -141,6 +146,7 @@ impl Peeker {
         let chrome = himark::env::Themes::of(store).ui().peeker.clone();
 
         let mut peeker = Self {
+            session,
             recents,
             workspace,
             found: Vec::new(),
@@ -309,14 +315,17 @@ impl Peeker {
         keep: Option<himark::DocumentId>,
         fx: &mut PeekerEffects<'_>,
     ) {
+        let Some(documents) = himark::higent::Hosts::family(store, &self.session).map(|family| family.documents()) else {
+            return;
+        };
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
-            himark::close_editor(store, entity.document(), entity.editor());
+            himark::close_editor(store, entity.documents(), entity.document(), entity.editor());
         }
 
         for (_, document) in self.temp_docs.drain() {
             if Some(document) != keep {
-                himark::OpenDocuments::remove_if_editorless(store, ui, document, fx);
+                himark::OpenDocuments::remove_if_editorless(store, documents, ui, document, fx);
             }
         }
         self.preview = None;
@@ -325,18 +334,21 @@ impl Peeker {
     fn drop_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
-            himark::close_editor(store, entity.document(), entity.editor());
+            himark::close_editor(store, entity.documents(), entity.document(), entity.editor());
 
             if self.temp_docs.values().any(|id| *id == entity.document()) {
-                himark::OpenDocuments::remove_if_editorless(store, ui, entity.document(), fx);
+                himark::OpenDocuments::remove_if_editorless(store, entity.documents(), ui, entity.document(), fx);
                 self.temp_docs
-                    .retain(|_, id| himark::OpenDocuments::contains(store, *id));
+                    .retain(|_, id| himark::OpenDocuments::contains(store, entity.documents(), *id));
             }
         }
         self.preview = None;
     }
 
     fn ensure_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
+        let Some(documents) = himark::higent::Hosts::family(store, &self.session).map(|family| family.documents()) else {
+            return;
+        };
         let width = EditorIdView::editor_width(
             self.preview_width,
             &himark::env::Themes::of(store).ui().window,
@@ -348,7 +360,7 @@ impl Peeker {
         }
 
         let document_id = match self.location_at(self.selected()).cloned() {
-            Some(location) => match himark::OpenDocuments::by_location(store, &location) {
+            Some(location) => match himark::OpenDocuments::by_location(store, documents, &location) {
                 Some(id) => Some(id),
                 None => match self.temp_docs.get(&location) {
                     Some(&id) => Some(id),
@@ -383,7 +395,7 @@ impl Peeker {
         }) {
             return;
         }
-        let Some(mut document) = himark::OpenDocuments::document(store, document_id) else {
+        let Some(mut document) = himark::OpenDocuments::document(store, documents, document_id) else {
             self.drop_preview(store, ui, fx);
             return;
         };
@@ -393,25 +405,25 @@ impl Peeker {
             _ => None,
         };
         if let Some(previous) = previous {
-            himark::close_editor(store, previous.document(), previous.editor());
+            himark::close_editor(store, previous.documents(), previous.document(), previous.editor());
         }
         let editor = fx.scope(
             |command| PeekerCommand::Preview(PaneCommand::Content(command)),
             |fx| himark::mount_editor(store, ui, &mut document, width, None, fx),
         );
-        himark::OpenDocuments::put_document(store, document_id, document);
+        himark::OpenDocuments::put_document(store, documents, document_id, document);
         if let Some(previous) = previous.filter(|previous| previous.document() != document_id) {
             if self.temp_docs.values().any(|id| *id == previous.document()) {
-                himark::OpenDocuments::remove_if_editorless(store, ui, previous.document(), fx);
+                himark::OpenDocuments::remove_if_editorless(store, previous.documents(), ui, previous.document(), fx);
                 self.temp_docs
-                    .retain(|_, id| himark::OpenDocuments::contains(store, *id));
+                    .retain(|_, id| himark::OpenDocuments::contains(store, documents, *id));
             }
         }
 
         self.preview = Some(PreviewSlot::Editor(Preview {
             document: document_id,
             width,
-            pane: ScrollView::new(EditorIdView::new(document_id, editor).blurred()),
+            pane: ScrollView::new(EditorIdView::new(documents, document_id, editor).blurred()),
         }));
     }
 }
@@ -505,7 +517,9 @@ impl View for Peeker {
                     return;
                 }
                 let request = if let Some(location) = self.location_at(row).cloned() {
-                    if let Some(document) = himark::OpenDocuments::by_location(store, &location) {
+                    let documents = himark::higent::Hosts::ensure_family(store, &self.session)
+                        .documents();
+                    if let Some(document) = himark::OpenDocuments::by_location(store, documents, &location) {
                         self.cleanup_temps(store, ui, Some(document), fx);
                         ModalRequest::ShowDocument(document)
                     } else {
@@ -563,13 +577,18 @@ impl View for Peeker {
                 self.pending_fetch.remove(&location);
 
                 let revision = document.revision();
-                let id = himark::OpenDocuments::register(
-                    store,
-                    document,
-                    Some(location.clone()),
-                    location.name().to_owned(),
-                    revision,
-                );
+                let id = {
+                    let documents = himark::higent::Hosts::ensure_family(store, &self.session)
+                        .documents();
+                    himark::OpenDocuments::register(
+                        store,
+                        documents,
+                        document,
+                        Some(location.clone()),
+                        location.name().to_owned(),
+                        revision,
+                    )
+                };
                 self.temp_docs.insert(location.clone(), id);
                 if self.location_at(self.selected()) == Some(&location) {
                     self.ensure_preview(store, ui, fx);
@@ -835,8 +854,9 @@ pub fn overlay_surface() -> himark::OverlaySurface {
                 .filter_map(|(_, widget)| widget.family_row())
                 .collect();
 
+            let session = entity.current_session();
             widgets.extend(
-                himark::mint_unfronted(store, &fronted)
+                himark::mint_unfronted(store, &session, &fronted)
                     .into_iter()
                     .map(|widget| (WidgetOrigin::Family, widget)),
             );
@@ -845,7 +865,7 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let peeker = fx.scope(himark::modal_scope(window), |fx| {
                 fx.scope(
                     |command: PeekerCommand| Box::new(command) as imba::DynCommand,
-                    |fx| Peeker::open(store, ui, viewport, recents, widgets, folders, fx),
+                    |fx| Peeker::open(store, ui, session.clone(), viewport, recents, widgets, folders, fx),
                 )
             });
             himark::Windows::put(store, window, entity);

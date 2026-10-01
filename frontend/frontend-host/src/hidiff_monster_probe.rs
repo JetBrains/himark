@@ -7,6 +7,13 @@ use himark::{AppFonts, Application};
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
+fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
+
+
 fn monster_pair(repetitions: usize) -> (String, String) {
     let sample = include_str!("../../plugins/demo/sample.md");
     let left = sample.repeat(repetitions);
@@ -305,14 +312,14 @@ fn probe_pair(left: String, right: String) {
                 himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         }
         let cell_focused = |app: &Application| {
-            let info = himark::OpenDocuments::list(app.store())
+            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open")
                 .0;
             {
                 let document =
-                    himark::OpenDocuments::document_ref(app.store(), info).expect("document");
+                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info).expect("document");
                 document
                     .editor_ids()
                     .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -320,12 +327,12 @@ fn probe_pair(left: String, right: String) {
         };
 
         let table_y = {
-            let info = himark::OpenDocuments::list(app.store())
+            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
             let editor = document.editor_ids().next().expect("an editor");
 
             let text = {
@@ -351,12 +358,12 @@ fn probe_pair(left: String, right: String) {
         };
 
         let viewport_start = |app: &Application| -> f32 {
-            let info = himark::OpenDocuments::list(app.store())
+            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
             let editor = document.editor_ids().next().expect("an editor");
             document
                 .viewport(editor)

@@ -683,8 +683,12 @@ impl crate::DynamicCommand for Polled {
             comments.generation += 1;
         });
 
-        for (document, key) in dead_cards {
-            remove_card(store, ui, document, key, fx);
+        if let Some(documents) =
+            crate::higent::Hosts::family(store, &self.home).map(|family| family.documents())
+        {
+            for (document, key) in dead_cards {
+                remove_card(store, documents, ui, document, key, fx);
+            }
         }
         settle(store, ui, &self.home, &self.session, fx);
         relaunch_poll(window, &self.session, &feed, fx);
@@ -714,7 +718,12 @@ fn settle(
         match Comments::card(store, home, &id) {
             Some(_) => refresh_card(store, ui, home, &id, &record),
             None => {
-                if let Some(document) = crate::OpenDocuments::by_location(store, &record.location) {
+                if let Some(document) = crate::higent::Hosts::family(store, home)
+                    .map(|family| family.documents())
+                    .and_then(|documents| {
+                        crate::OpenDocuments::by_location(store, documents, &record.location)
+                    })
+                {
                     materialize(store, ui, home, &id, &record, document, fx);
                 }
             }
@@ -782,16 +791,23 @@ impl crate::DynamicCommand for Sent {
             let Some((document, key)) = card else {
                 continue;
             };
-            let Some(mut doc) = crate::OpenDocuments::document(store, document) else {
+            let Some(documents) = crate::higent::Hosts::family(store, &self.home)
+                .map(|family| family.documents())
+            else {
+                continue;
+            };
+            let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
                 continue;
             };
             let fonts = crate::env::Fonts::of(store)();
             let theme = crate::env::Themes::of(store);
             fx.scope(
-                move |command| AppCommand::Entity(document, command),
+                move |command| {
+                    AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+                },
                 |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
             );
-            crate::OpenDocuments::put_document(store, document, doc);
+            crate::OpenDocuments::put_document(store, documents, document, doc);
         }
     }
 }
@@ -868,31 +884,41 @@ fn fold_set(
 
 fn remove_card(
     store: &mut Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     document: DocumentId,
     key: InlayKey,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(mut doc) = crate::OpenDocuments::document(store, document) else {
+    let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
         return;
     };
     let fonts = crate::env::Fonts::of(store)();
     let theme = crate::env::Themes::of(store);
     fx.scope(
-        move |command| AppCommand::Entity(document, command),
+        move |command| {
+            AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+        },
         |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
     );
-    crate::OpenDocuments::put_document(store, document, doc);
+    crate::OpenDocuments::put_document(store, documents, document, doc);
 }
 
 pub struct CommentsHook;
 
 impl crate::DocumentHook for CommentsHook {
-    fn opened(&self, store: &mut Store, document: DocumentId) {
-        let Some(location) = crate::OpenDocuments::location(store, document) else {
+    fn opened(
+        &self,
+        store: &mut Store,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        document: DocumentId,
+    ) {
+        let Some(location) = crate::OpenDocuments::location(store, documents, document) else {
             return;
         };
-        let Some(home) = crate::higent::Hosts::session_of_document(store, document) else {
+        // The hook holds the collection's ADDRESS: its owner is the
+        // document's home.
+        let Some(home) = crate::higent::Hosts::session_of_documents_id(store, documents) else {
             return;
         };
         let owes = Comments::of(store, &home).is_some_and(|comments| {
@@ -906,8 +932,13 @@ impl crate::DocumentHook for CommentsHook {
         }
     }
 
-    fn closing(&self, store: &mut Store, document: DocumentId) {
-        let Some(home) = crate::higent::Hosts::session_of_document(store, document) else {
+    fn closing(
+        &self,
+        store: &mut Store,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        document: DocumentId,
+    ) {
+        let Some(home) = crate::higent::Hosts::session_of_documents_id(store, documents) else {
             return;
         };
         let cards: Vec<(AnnotationId, InlayKey)> = Comments::of(store, &home)
@@ -921,7 +952,7 @@ impl crate::DocumentHook for CommentsHook {
             })
             .unwrap_or_default();
         for (id, key) in cards {
-            if let Some(range) = live_card_range(store, document, key) {
+            if let Some(range) = live_card_range(store, documents, document, key) {
                 Comments::update_record(store, &home, &id, move |record| {
                     record.range = Some(range);
                 });
@@ -948,14 +979,23 @@ impl crate::DynamicCommand for MaterializeFor {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        _window: WindowId,
+        window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(location) = crate::OpenDocuments::location(store, self.document) else {
+        let Some(family) = crate::Windows::session_family(store, window) else {
             return;
         };
-        let Some(home) = crate::higent::Hosts::session_of_document(store, self.document) else {
+        let Some(home) = crate::Windows::window_ref(store, window)
+            .map(|entity| entity.current_session())
+        else {
+            return;
+        };
+        let documents = family.documents();
+        {
+        };
+        let Some(location) = crate::OpenDocuments::location(store, documents, self.document)
+        else {
             return;
         };
         let owed: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, &home)
@@ -970,8 +1010,13 @@ impl crate::DynamicCommand for MaterializeFor {
     }
 }
 
-fn live_card_range(store: &Store, document: DocumentId, key: InlayKey) -> Option<Range<LineCol>> {
-    let doc = crate::OpenDocuments::document_ref(store, document)?;
+fn live_card_range(
+    store: &Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    document: DocumentId,
+    key: InlayKey,
+) -> Option<Range<LineCol>> {
+    let doc = crate::OpenDocuments::document_ref(store, documents, document)?;
     let markup = doc.feature_markup(comments_markup())?;
 
     let (range, _) = markup.inlay_at_key(comments_markup(), key)?;
@@ -991,7 +1036,12 @@ fn materialize(
     document: DocumentId,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(mut doc) = crate::OpenDocuments::document(store, document) else {
+    let Some(documents) =
+        crate::higent::Hosts::family(store, home).map(|family| family.documents())
+    else {
+        return;
+    };
+    let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
         return;
     };
     let fonts = crate::env::Fonts::of(store)();
@@ -1022,8 +1072,11 @@ fn materialize(
     let markup = comments_markup();
     doc.ensure_document_markup(markup);
     let mut minted = None;
+    let documents = crate::higent::Hosts::ensure_family(store, home).documents();
     fx.scope(
-        move |command| AppCommand::Entity(document, command),
+        move |command| {
+            AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+        },
         |fx| {
             let key = doc.push_inlay(
                 markup,
@@ -1043,7 +1096,7 @@ fn materialize(
             minted = Some(key);
         },
     );
-    crate::OpenDocuments::put_document(store, document, doc);
+    crate::OpenDocuments::put_document(store, documents, document, doc);
     if let Some(key) = minted {
         Comments::card_born(store, home, id, document, key);
     }
@@ -1059,7 +1112,12 @@ fn refresh_card(
     let Some((document, key)) = Comments::card(store, home, id) else {
         return;
     };
-    let Some(doc) = crate::OpenDocuments::document_ref(store, document) else {
+    let Some(documents) =
+        crate::higent::Hosts::family(store, home).map(|family| family.documents())
+    else {
+        return;
+    };
+    let Some(doc) = crate::OpenDocuments::document_ref(store, documents, document) else {
         return;
     };
     let Some(markup) = doc.feature_markup(comments_markup()) else {
@@ -1091,13 +1149,13 @@ fn refresh_card(
         record.thread_stamp,
     )
     .keyed(key);
-    let mut doc = crate::OpenDocuments::document(store, document).expect("held above");
+    let mut doc = crate::OpenDocuments::document(store, documents, document).expect("held above");
     doc.swap_inlay(
         key,
         range,
         crate::Inlay::new(crate::InlayMode::Under, rebuilt),
     );
-    crate::OpenDocuments::put_document(store, document, doc);
+    crate::OpenDocuments::put_document(store, documents, document, doc);
 }
 
 fn dispatch_set(

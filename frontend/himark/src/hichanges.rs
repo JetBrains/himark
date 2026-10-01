@@ -1395,7 +1395,7 @@ impl crate::DynamicCommand for SnapshotLanded {
             Err(error) => changes.adopt_error(&self.folder, error.clone()),
         });
         Changes::nudge_folder(store, &self.home, &self.folder);
-        rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
+        rearm_stripes(store, &self.home, &_app.ui_ctx(), &self.folder, fx);
         if self.result.is_ok() {
             relaunch_poll(store, window, &self.home, &self.folder, fx);
         }
@@ -1426,24 +1426,26 @@ impl crate::DynamicCommand for Polled {
             changes.fold(&self.folder, &self.actions)
         });
         Changes::nudge_folder(store, &self.home, &self.folder);
-        rearm_stripes(store, &_app.ui_ctx(), &self.folder, fx);
+        rearm_stripes(store, &self.home, &_app.ui_ctx(), &self.folder, fx);
         relaunch_poll(store, window, &self.home, &self.folder, fx);
     }
 }
 
 fn rearm_stripes(
     store: &mut Store,
+    home: &crate::SessionId,
     ui: &UiCtx,
     folder: &ResourceLocation,
     fx: &mut crate::AppFx<'_>,
 ) {
     let authority = folder.authority().clone();
     let prefix = format!("/{}/", folder.path().join("/"));
-    crate::rearm_base_asks(store, &|location| {
+    let documents = crate::higent::Hosts::ensure_family(store, home).documents();
+    crate::rearm_base_asks(store, documents, &|location| {
         location.authority() == &authority
             && format!("/{}", location.path().join("/")).starts_with(&prefix)
     });
-    crate::sync_stripe_bases(store, ui, fx);
+    crate::sync_stripe_bases(store, documents, ui, fx);
 }
 
 fn relaunch_poll(
@@ -1505,10 +1507,14 @@ impl crate::DynamicCommand for OpenDiffForPair {
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let old = crate::DiffSideInput::resolve(store, self.old.clone());
-        let new = crate::DiffSideInput::resolve(store, self.new.clone());
+        let documents = crate::Windows::session_family(store, window)
+            .expect("a diff opens from a window with a session")
+            .documents();
+        let old = crate::DiffSideInput::resolve(store, documents, self.old.clone());
+        let new = crate::DiffSideInput::resolve(store, documents, self.new.clone());
         let _ = fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
             window,
+            documents,
             old,
             new,
         }));
@@ -1775,7 +1781,7 @@ impl crate::DynamicCommand for RefetchChanges {
         let home = self.home.clone().unwrap_or_else(|| {
             crate::Windows::window_ref(store, window)
                 .map(|entity| entity.current_session())
-                .unwrap_or_else(|| crate::SessionId::working(store))
+                .unwrap_or_else(|| crate::SessionId::local_default(store))
         });
         Changes::refetch(store, &home, window, fx, self.folder.as_ref());
     }

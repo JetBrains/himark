@@ -367,7 +367,13 @@ impl himark::DynamicEditorCommand for RunScript {
             let end = view.byte_count().min(u32::MAX as usize) as u32;
             view.substring(0..end)
         };
-        let snapshots = OpenDocuments::list(store)
+        let home = himark::SessionId::of_location(store, location);
+        let Some(documents) =
+            himark::higent::Hosts::family(store, &home).map(|family| family.documents())
+        else {
+            return;
+        };
+        let snapshots = OpenDocuments::list(store, documents)
             .into_iter()
             .filter_map(|(id, entity)| {
                 let location = entity.location()?.clone();
@@ -407,7 +413,7 @@ impl himark::DynamicEditorCommand for RunScript {
             agent,
             changes: himark::hichanges::Changes::script_summary(
                 store,
-                &himark::SessionId::working(store),
+                &himark::SessionId::of_location(store, &location),
             ),
         };
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
@@ -439,7 +445,12 @@ fn land(
                 base_revision,
                 operation,
             } => {
-                let Some(mut document) = OpenDocuments::document(store, id) else {
+                let Some(documents) =
+                    himark::higent::Hosts::documents_of_document(store, id)
+                else {
+                    continue;
+                };
+                let Some(mut document) = OpenDocuments::document(store, documents, id) else {
                     log.push("write dropped: the target closed mid-run".to_owned());
                     continue;
                 };
@@ -460,12 +471,12 @@ fn land(
                 if let Some(parsers) = himark::env::Parsers::of(store) {
                     document.launch_reparse(parsers, fx);
                 }
-                if let Some(location) = OpenDocuments::location(store, id) {
+                if let Some(location) = OpenDocuments::location(store, documents, id) {
                     for sink in himark::InstalledChangeSink::of(store) {
                         sink.changed(store, &document, &location, base_revision, &text_before, fx);
                     }
                 }
-                OpenDocuments::put_document(store, id, document);
+                OpenDocuments::put_document(store, documents, id, document);
             }
             ScriptEdit::Store { location, text } => {
                 let show = show_now_or_with_store(&mut shows, &location);

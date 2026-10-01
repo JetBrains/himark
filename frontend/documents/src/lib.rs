@@ -50,9 +50,12 @@ impl ScratchMint {
     }
 }
 
-pub fn next_scratch_location(store: &mut Store) -> editor::ResourceLocation {
+pub fn next_scratch_location(
+    store: &mut Store,
+    scratch_names: imba::store::Id<ScratchMint>,
+) -> editor::ResourceLocation {
     let mut minted = 0;
-    store.update::<ScratchMint>(|mint| {
+    store.update_entity(scratch_names, |mint: &mut ScratchMint| {
         mint.0 += 1;
         minted = mint.0;
     });
@@ -77,11 +80,11 @@ pub fn is_synthetic(location: &editor::ResourceLocation) -> bool {
 
 impl OpenDocuments {
     pub fn set_location(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         location: editor::ResourceLocation,
     ) {
-        store.update::<OpenDocuments>(|documents| {
+        store.update_entity(documents, |documents| {
             let Some(entity) = documents.entries.get(&document) else {
                 return;
             };
@@ -200,8 +203,18 @@ impl OpenDocument {
 }
 
 pub trait DocumentHook: Send + Sync {
-    fn opened(&self, store: &mut imba::store::Store, document: DocumentId);
-    fn closing(&self, store: &mut imba::store::Store, document: DocumentId);
+    fn opened(
+        &self,
+        store: &mut imba::store::Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    );
+    fn closing(
+        &self,
+        store: &mut imba::store::Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    );
 }
 
 #[derive(Clone, Default)]
@@ -223,7 +236,7 @@ struct DocumentHooks(rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>);
 
 impl OpenDocuments {
     pub fn register(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: Document,
         location: Option<editor::ResourceLocation>,
         title: String,
@@ -235,13 +248,13 @@ impl OpenDocuments {
             minted = mint.0;
         });
         let id = DocumentId(minted);
-        let mut documents = store.get::<OpenDocuments>().cloned().unwrap_or_default();
-        let stamp = Self::next_stamp(&documents);
+        let mut rows = store.entity(documents).cloned().unwrap_or_default();
+        let stamp = Self::next_stamp(&rows);
         if let Some(location) = &location {
-            documents.by_location.insert_mut(location.clone(), id);
+            rows.by_location.insert_mut(location.clone(), id);
         }
         let baseline = document.text().clone();
-        documents.entries.insert_mut(
+        rows.entries.insert_mut(
             id,
             OpenDocument {
                 document,
@@ -259,9 +272,9 @@ impl OpenDocuments {
                 base_requested: false,
             },
         );
-        store.put(documents);
+        store.put_entity(documents, rows);
         for hook in Self::hooks(store).iter() {
-            hook.opened(store, id);
+            hook.opened(store, documents, id);
         }
         id
     }
@@ -335,29 +348,27 @@ impl OpenDocuments {
         self.diffs.record(diff).is_some()
     }
 
-    pub fn document(store: &Store, id: DocumentId) -> Option<Document> {
-        Self::document_ref(store, id).cloned()
+    pub fn document(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> Option<Document> {
+        Self::document_ref(store, documents, id).cloned()
     }
 
-    pub fn document_ref(store: &Store, id: DocumentId) -> Option<&Document> {
-        store
-            .get::<OpenDocuments>()?
+    pub fn document_ref(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> Option<&Document> {
+        store.entity(documents)?
             .entries
             .get(&id)
             .map(|entity| &entity.document)
     }
 
-    pub fn put_document(store: &mut Store, id: DocumentId, document: Document) {
-        Self::update_entity(store, id, |entity| entity.document = document);
+    pub fn put_document(store: &mut Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId, document: Document) {
+        Self::update_entity(store, documents, id, |entity| entity.document = document);
     }
 
-    pub fn contains(store: &Store, id: DocumentId) -> bool {
-        Self::document_ref(store, id).is_some()
+    pub fn contains(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> bool {
+        Self::document_ref(store, documents, id).is_some()
     }
 
-    pub fn list(store: &Store) -> Vec<(DocumentId, OpenDocument)> {
-        let mut entries: Vec<(DocumentId, OpenDocument)> = store
-            .get::<OpenDocuments>()
+    pub fn list(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<(DocumentId, OpenDocument)> {
+        let mut entries: Vec<(DocumentId, OpenDocument)> = store.entity(documents)
             .map(|documents| {
                 documents
                     .entries
@@ -370,55 +381,52 @@ impl OpenDocuments {
         entries
     }
 
-    pub fn list_recent(store: &Store) -> Vec<(DocumentId, OpenDocument)> {
-        let mut entries = Self::list(store);
+    pub fn list_recent(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<(DocumentId, OpenDocument)> {
+        let mut entries = Self::list(store, documents);
         entries.sort_by(|(_, a), (_, b)| b.last_opened.cmp(&a.last_opened));
         entries
     }
 
-    pub fn name(store: &Store, document: DocumentId) -> Option<String> {
-        Self::entity(store, document).map(|entity| entity.name())
+    pub fn name(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<String> {
+        Self::entity(store, documents, document).map(|entity| entity.name())
     }
 
-    pub fn location(store: &Store, document: DocumentId) -> Option<editor::ResourceLocation> {
-        store
-            .get::<OpenDocuments>()?
+    pub fn location(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<editor::ResourceLocation> {
+        store.entity(documents)?
             .entries
             .get(&document)?
             .location
             .clone()
     }
 
-    pub fn entity(store: &Store, document: DocumentId) -> Option<OpenDocument> {
-        store
-            .get::<OpenDocuments>()?
+    pub fn entity(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<OpenDocument> {
+        store.entity(documents)?
             .entries
             .get(&document)
             .cloned()
     }
 
-    pub fn by_location(store: &Store, location: &editor::ResourceLocation) -> Option<DocumentId> {
-        store
-            .get::<OpenDocuments>()?
+    pub fn by_location(store: &Store, documents: imba::store::Id<OpenDocuments>, location: &editor::ResourceLocation) -> Option<DocumentId> {
+        store.entity(documents)?
             .by_location
             .get(location)
             .copied()
     }
 
-    pub fn touch(store: &mut Store, document: DocumentId) {
-        let Some(documents) = store.get::<OpenDocuments>() else {
+    pub fn touch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
+        let Some(rows_ref) = store.entity(documents) else {
             return;
         };
-        let stamp = Self::next_stamp(documents);
-        Self::update_entity(store, document, |entity| entity.last_opened = stamp);
+        let stamp = Self::next_stamp(rows_ref);
+        Self::update_entity(store, documents, document, |entity| entity.last_opened = stamp);
     }
 
     pub fn set_save_token(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         token: Option<imba::effect::CancellationToken>,
     ) {
-        Self::update_entity(store, document, |entity| entity.save_token = token);
+        Self::update_entity(store, documents, document, |entity| entity.save_token = token);
     }
 
     /// The document channel went live (or died): while live, the
@@ -426,12 +434,12 @@ impl OpenDocuments {
     /// file; on fallback the watch machinery re-arms and a refetch
     /// resyncs from disk.
     pub fn set_host_synced<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         synced: bool,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        let Some(entity) = Self::entity(store, document) else {
+        let Some(entity) = Self::entity(store, documents, document) else {
             return;
         };
         if entity.host_synced == synced {
@@ -444,7 +452,7 @@ impl OpenDocuments {
                 ));
             }
         }
-        Self::update_entity(store, document, |entity| {
+        Self::update_entity(store, documents, document, |entity| {
             entity.host_synced = synced;
             if synced {
                 entity.watch = None;
@@ -454,20 +462,20 @@ impl OpenDocuments {
         });
     }
 
-    pub fn host_synced(store: &Store, document: DocumentId) -> bool {
-        Self::entity(store, document).is_some_and(|entity| entity.host_synced)
+    pub fn host_synced(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> bool {
+        Self::entity(store, documents, document).is_some_and(|entity| entity.host_synced)
     }
 
-    pub fn set_watch_requested(store: &mut Store, document: DocumentId) {
-        Self::update_entity(store, document, |entity| entity.watch_requested = true);
+    pub fn set_watch_requested(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
+        Self::update_entity(store, documents, document, |entity| entity.watch_requested = true);
     }
 
-    pub fn set_base_requested(store: &mut Store, document: DocumentId) {
-        Self::update_entity(store, document, |entity| entity.base_requested = true);
+    pub fn set_base_requested(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
+        Self::update_entity(store, documents, document, |entity| entity.base_requested = true);
     }
 
-    pub fn set_watch(store: &mut Store, document: DocumentId, watch: Option<crate::Subscription>) {
-        store.update::<OpenDocuments>(|documents| {
+    pub fn set_watch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId, watch: Option<crate::Subscription>) {
+        store.update_entity(documents, |documents| {
             let Some(entity) = documents.entries.get(&document) else {
                 return;
             };
@@ -487,26 +495,26 @@ impl OpenDocuments {
     }
 
     pub fn mark_saved(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         revision: u64,
         stored: editor::Text,
     ) {
-        Self::update_entity(store, document, |entity| {
+        Self::update_entity(store, documents, document, |entity| {
             entity.saved_revision = revision;
             entity.baseline = stored;
         });
     }
 
     pub fn edit_external(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
         operation: &operation::Operation,
         fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
     ) {
-        let Some(mut document) = Self::document(store, document_id) else {
+        let Some(mut document) = Self::document(store, documents, document_id) else {
             return;
         };
         if document.revision() != base_revision {
@@ -526,7 +534,7 @@ impl OpenDocuments {
             document.launch_reparse(parsers, fx);
         }
         document.clear_undo_history();
-        if let Some(location) = Self::location(store, document_id) {
+        if let Some(location) = Self::location(store, documents, document_id) {
             for sink in ::editor::InstalledChangeSink::of(store) {
                 sink.changed(store, &document, &location, base_revision, &text_before, fx);
             }
@@ -534,12 +542,12 @@ impl OpenDocuments {
 
         let revision = document.revision();
         let stored = document.text().clone();
-        Self::put_document(store, document_id, document);
-        Self::mark_saved(store, document_id, revision, stored);
+        Self::put_document(store, documents, document_id, document);
+        Self::mark_saved(store, documents, document_id, revision, stored);
     }
 
     pub fn edit_shared(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         identity: ::editor::EditIdentity,
@@ -547,7 +555,7 @@ impl OpenDocuments {
         operation: &operation::Operation,
         fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
     ) -> bool {
-        let Some(mut document) = Self::document(store, document_id) else {
+        let Some(mut document) = Self::document(store, documents, document_id) else {
             return false;
         };
         if document.revision() != base_revision {
@@ -566,18 +574,18 @@ impl OpenDocuments {
         if let Some(parsers) = ::editor::env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
-        if let Some(location) = Self::location(store, document_id) {
+        if let Some(location) = Self::location(store, documents, document_id) {
             for sink in ::editor::InstalledChangeSink::of(store) {
                 sink.changed(store, &document, &location, base_revision, &text_before, fx);
             }
         }
-        Self::put_document(store, document_id, document);
+        Self::put_document(store, documents, document_id, document);
         true
     }
 
-    pub fn stamp_refetch(store: &mut Store, document: DocumentId) -> u64 {
+    pub fn stamp_refetch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> u64 {
         let mut stamped = 0;
-        Self::update_entity(store, document, |entity| {
+        Self::update_entity(store, documents, document, |entity| {
             entity.refetch_serial += 1;
             stamped = entity.refetch_serial;
         });
@@ -593,7 +601,7 @@ impl OpenDocuments {
     /// converge, not give up).
     #[must_use]
     pub fn absorb_refetched(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
@@ -603,7 +611,7 @@ impl OpenDocuments {
         synced: bool,
         fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
     ) -> bool {
-        let Some(entity) = Self::entity(store, document_id) else {
+        let Some(entity) = Self::entity(store, documents, document_id) else {
             return false;
         };
         // The channel went live while this landing was in flight: the
@@ -612,7 +620,7 @@ impl OpenDocuments {
         if entity.host_synced || entity.refetch_serial != serial {
             return false;
         }
-        let Some(mut document) = Self::document(store, document_id) else {
+        let Some(mut document) = Self::document(store, documents, document_id) else {
             return false;
         };
         if document.revision() != base_revision {
@@ -630,51 +638,51 @@ impl OpenDocuments {
                 document.launch_reparse(parsers, fx);
             }
             document.clear_undo_history();
-            if let Some(location) = Self::location(store, document_id) {
+            if let Some(location) = Self::location(store, documents, document_id) {
                 for sink in ::editor::InstalledChangeSink::of(store) {
                     sink.changed(store, &document, &location, base_revision, &text_before, fx);
                 }
             }
         }
         let revision = document.revision();
-        Self::put_document(store, document_id, document);
+        Self::put_document(store, documents, document_id, document);
         // `synced` came from the WORKER (the merge target equals the
         // disk text): the landing brought the buffer exactly to the
         // disk — a save, whatever the diff route was. Never compare
         // texts here; this is the UI thread.
         match synced {
-            true => Self::mark_saved(store, document_id, revision, fetched),
-            false => Self::update_entity(store, document_id, |entity| entity.baseline = fetched),
+            true => Self::mark_saved(store, documents, document_id, revision, fetched),
+            false => Self::update_entity(store, documents, document_id, |entity| entity.baseline = fetched),
         }
         false
     }
 
     pub fn remove_if_editorless<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        Self::release_editorless(store, ui, document, fx, true)
+        Self::release_editorless(store, documents, ui, document, fx, true)
     }
 
     pub fn remove_on_close<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
-        Self::release_editorless(store, ui, document, fx, false)
+        Self::release_editorless(store, documents, ui, document, fx, false)
     }
 
     fn release_editorless<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
         spare_scratch: bool,
     ) {
-        let Some(entity) = Self::entity(store, document) else {
+        let Some(entity) = Self::entity(store, documents, document) else {
             return;
         };
         if entity.document.editor_ids().next().is_some() {
@@ -687,12 +695,11 @@ impl OpenDocuments {
             return;
         }
 
-        if Self::untrack_stripes(store, ui, document, fx) {
+        if Self::untrack_stripes(store, documents, ui, document, fx) {
             return;
         }
 
-        if store
-            .get::<OpenDocuments>()
+        if store.entity(documents)
             .is_some_and(|docs| docs.diffs.touches(document))
         {
             return;
@@ -707,9 +714,9 @@ impl OpenDocuments {
         }
 
         for hook in Self::hooks(store).iter() {
-            hook.closing(store, document);
+            hook.closing(store, documents, document);
         }
-        store.update::<OpenDocuments>(|documents| {
+        store.update_entity(documents, |documents| {
             let (watch, location) = match documents.entries.get(&document) {
                 Some(entity) => (entity.watch, entity.location.clone()),
                 None => (None, None),
@@ -727,11 +734,11 @@ impl OpenDocuments {
     }
 
     pub fn update_entity(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         mutate: impl FnOnce(&mut OpenDocument),
     ) {
-        store.update::<OpenDocuments>(|documents| {
+        store.update_entity(documents, |documents| {
             let Some(mut entity) = documents.entries.get(&document).cloned() else {
                 return;
             };

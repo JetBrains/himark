@@ -500,7 +500,10 @@ impl himark::DynamicCommand for ShowWorkingCopy {
         fx: &mut himark::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        match himark::OpenDocuments::by_location(store, &self.location) {
+        let documents = himark::Windows::session_family(store, window)
+            .expect("an open runs in a window with a session")
+            .documents();
+        match himark::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
                 let Some(mut entity) = himark::Windows::window(store, window) else {
                     return;
@@ -519,6 +522,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
             None => {
                 fx.push(himark::open_by_location_effect(
                     window,
+                    documents,
                     self.location.clone(),
                     true,
                     false,

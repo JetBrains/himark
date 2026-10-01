@@ -712,6 +712,18 @@ pub struct Windows {
 }
 
 impl Windows {
+    /// The family of the session a WINDOW is working in — read off the
+    /// window's OWN record (docs/entities.md law 3): the bundle is
+    /// wired at session entry, so no catalog consult and no ambient
+    /// scope. The ids are stable where the `SessionId` is not
+    /// (placeholder and local-host rekeys move the key, never the ids).
+    pub fn session_family(
+        store: &Store,
+        window: crate::WindowId,
+    ) -> Option<crate::higent::SessionState> {
+        Some(Self::window_ref(store, window)?.family().clone())
+    }
+
     pub(crate) fn add(store: &mut imba::store::Store, entity: Window) -> WindowId {
         let mut windows = store.get::<Windows>().cloned().unwrap_or_default();
         let id = WindowId(windows.next);
@@ -799,6 +811,11 @@ pub struct Window {
 
     current_session: crate::SessionId,
 
+    /// The id bundle of `current_session`'s collections, wired at
+    /// session ENTRY (creation and switch). Rekeys change the
+    /// `SessionId`, never this: the ids are the stable currency.
+    family: crate::higent::SessionState,
+
     dock_width: f32,
 
     workbenches: rpds::HashTrieMapSync<crate::SessionId, Workbench>,
@@ -823,7 +840,11 @@ impl Window {
         }
     }
 
-    pub(crate) fn new(root: WorkbenchNode, workspace: crate::SessionId) -> Self {
+    pub(crate) fn new(
+        root: WorkbenchNode,
+        workspace: crate::SessionId,
+        family: crate::higent::SessionState,
+    ) -> Self {
         Self {
             content: Layers {
                 toolbar: crate::toolbar::Toolbar::default(),
@@ -835,6 +856,7 @@ impl Window {
             viewport_size: Size::new(1.0, 1.0),
             dock_width: crate::dock::DOCK_WIDTH,
             current_session: workspace,
+            family,
             workbenches: rpds::HashTrieMapSync::new_sync(),
             focused_location: None,
             focus_generation: 0,
@@ -845,8 +867,16 @@ impl Window {
         self.current_session.clone()
     }
 
+    pub fn family(&self) -> &crate::higent::SessionState {
+        &self.family
+    }
+
     #[must_use]
-    pub(crate) fn switch_to(&mut self, workspace: crate::SessionId) -> Option<crate::SessionId> {
+    pub(crate) fn switch_to(
+        &mut self,
+        workspace: crate::SessionId,
+        family: crate::higent::SessionState,
+    ) -> Option<crate::SessionId> {
         if workspace == self.current_session {
             return None;
         }
@@ -854,6 +884,7 @@ impl Window {
         if matches!(self.content.focus, LayerFocus::Dock) {
             self.content.focus = LayerFocus::Content;
         }
+        self.family = family;
         let Some(stashed) = self.workbenches.get(&workspace) else {
             return Some(std::mem::replace(&mut self.current_session, workspace));
         };
@@ -867,6 +898,8 @@ impl Window {
         None
     }
 
+    /// A rekey changes the session's NAME, not its identity: the
+    /// family bundle stays — the caller moves the catalog row with it.
     pub(crate) fn rekey_current(&mut self, workspace: crate::SessionId) -> bool {
         if workspace == self.current_session {
             return true;
@@ -1396,34 +1429,45 @@ impl Window {
         let document_id = entity.document();
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
+        let documents = self.family.documents();
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
         let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        let new_editor = crate::app::entity_scope(document_id, fx, |fx| {
-            document.add_editor(
-                width,
-                None,
-                ::editor::EditorBuild::Bounded,
-                &[],
-                store,
-                ui,
-                &fonts,
-                &theme,
-                fx,
-            )
-        });
+        let new_editor = fx.scope(
+            move |command| {
+                crate::AppCommand::At(
+                    documents,
+                    crate::DocumentsCommand::Editor(document_id, command),
+                )
+            },
+            |fx| {
+                document.add_editor(
+                    width,
+                    None,
+                    ::editor::EditorBuild::Bounded,
+                    &[],
+                    store,
+                    ui,
+                    &fonts,
+                    &theme,
+                    fx,
+                )
+            },
+        );
         documents::scroll_stripes::enable_scroll_stripes(
             store,
+            documents,
             document_id,
             &mut document,
             new_editor,
         );
 
-        crate::OpenDocuments::put_document(store, document_id, document);
+        crate::OpenDocuments::put_document(store, documents, document_id, document);
 
-        let pane_height = crate::OpenDocuments::document_ref(store, document_id)
+        let pane_height = crate::OpenDocuments::document_ref(store, documents, document_id)
             .and_then(|document| document.viewport(entity.editor()))
             .map(|band| band.end - band.start);
         let pane_width = width + ::editor::env::Themes::of(store).ui().editor_gutter.width;
@@ -1434,7 +1478,7 @@ impl Window {
         };
         self.workbench_mut().root.split_focused(
             Panel::Editor(ScrollView::new(
-                EditorIdView::new(document_id, new_editor).with_gutter(),
+                EditorIdView::new(documents, document_id, new_editor).with_gutter(),
             )),
             arrangement,
             false,
@@ -1466,7 +1510,7 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                Self::touch_recent(store, &self.current_session(), target);
+                Self::touch_recent(store, self.family.recents(), target);
                 return true;
             }
         }
@@ -1474,7 +1518,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        Self::touch_recent(store, &self.current_session(), target);
+        Self::touch_recent(store, self.family.recents(), target);
         true
     }
 
@@ -1524,7 +1568,7 @@ impl Window {
             let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        Self::touch_recent(store, &self.current_session(), target);
+        Self::touch_recent(store, self.family.recents(), target);
         true
     }
 
@@ -1545,8 +1589,14 @@ impl Window {
         match closed {
             Panel::Editor(pane) => {
                 let view = *pane.content();
-                crate::close_editor(store, view.document(), view.editor());
-                crate::OpenDocuments::remove_on_close(store, ui, view.document(), fx);
+                crate::close_editor(store, view.documents(), view.document(), view.editor());
+                crate::OpenDocuments::remove_on_close(
+                    store,
+                    view.documents(),
+                    ui,
+                    view.document(),
+                    fx,
+                );
             }
             Panel::Plugin(mut view) => {
                 if !view.as_any().is::<crate::workbench_node::ClosedPanel>() {
@@ -1580,11 +1630,10 @@ impl Window {
 
     fn touch_recent(
         store: &mut Store,
-        session: &crate::SessionId,
+        recents: imba::store::Id<crate::RecentLocations>,
         target: &crate::NavigationLocation,
     ) {
         if let Some(place) = target.place::<crate::EditorPlace>() {
-            let recents = crate::higent::Hosts::ensure_family(store, session).recents();
             crate::RecentLocations::touch(store, recents, &place.location);
         }
     }
@@ -1675,8 +1724,14 @@ impl Window {
     ) {
         if let Panel::Editor(pane) = &displaced {
             let view = *pane.content();
-            crate::close_editor(store, view.document(), view.editor());
-            crate::OpenDocuments::remove_if_editorless(store, ui, view.document(), fx);
+            crate::close_editor(store, view.documents(), view.document(), view.editor());
+            crate::OpenDocuments::remove_if_editorless(
+                store,
+                view.documents(),
+                ui,
+                view.document(),
+                fx,
+            );
         }
         self.stash_displaced(store, displaced);
     }
@@ -1694,11 +1749,13 @@ impl Window {
         if focus {
             self.focus_content_layer(store, ui, window, fx);
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
+        let documents = self.family.documents();
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
 
-        if let Some(location) = crate::OpenDocuments::location(store, document_id) {
+        if let Some(location) = crate::OpenDocuments::location(store, documents, document_id) {
             if target.is_none() {
                 let walk_waits = self
                     .workbench()
@@ -1717,12 +1774,16 @@ impl Window {
                         .focused_pane()
                         .editor()
                         .is_some_and(|pane| {
-                            crate::OpenDocuments::location(store, pane.content().document())
-                                .as_ref()
+                            crate::OpenDocuments::location(
+                                store,
+                                pane.content().documents(),
+                                pane.content().document(),
+                            )
+                            .as_ref()
                                 == Some(&location)
                         });
                 if already_shown && !walk_waits {
-                    crate::OpenDocuments::touch(store, document_id);
+                    crate::OpenDocuments::touch(store, documents, document_id);
                     return;
                 }
             }
@@ -1745,28 +1806,38 @@ impl Window {
             ) {
                 return;
             }
-            let Some(document_again) = crate::OpenDocuments::document(store, document_id) else {
+            let Some(document_again) =
+                crate::OpenDocuments::document(store, documents, document_id)
+            else {
                 return;
             };
             document = document_again;
         }
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let editor_id = crate::app::entity_scope(document_id, fx, |fx| {
-            crate::mount_editor(store, ui, &mut document, width, target, fx)
-        });
+        let documents = self.family.documents();
+        let editor_id = fx.scope(
+            move |command| {
+                crate::AppCommand::At(
+                    documents,
+                    crate::DocumentsCommand::Editor(document_id, command),
+                )
+            },
+            |fx| crate::mount_editor(store, ui, &mut document, width, target, fx),
+        );
         documents::scroll_stripes::enable_scroll_stripes(
             store,
+            documents,
             document_id,
             &mut document,
             editor_id,
         );
-        crate::OpenDocuments::put_document(store, document_id, document);
-        crate::OpenDocuments::touch(store, document_id);
+        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        crate::OpenDocuments::touch(store, documents, document_id);
         self.replace_focused_panel(
             store,
             Panel::Editor(ScrollView::new(
-                EditorIdView::new(document_id, editor_id).with_gutter(),
+                EditorIdView::new(documents, document_id, editor_id).with_gutter(),
             )),
         );
     }

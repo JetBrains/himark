@@ -77,6 +77,8 @@ pub struct BuiltDocument {
 
 pub struct OpenByLocationEffect {
     pub window: crate::WindowId,
+    /// The collection the open lands into — stamped at launch.
+    pub documents: imba::store::Id<crate::OpenDocuments>,
     pub location: ResourceLocation,
     pub primary: bool,
 
@@ -96,6 +98,8 @@ impl Effect for OpenByLocationEffect {
 /// pane-open command.
 pub struct OpenDiffByLocationsEffect {
     pub window: crate::WindowId,
+    /// The collection both sides register into — stamped at launch.
+    pub documents: imba::store::Id<crate::OpenDocuments>,
     pub old: DiffSideInput,
     pub new: DiffSideInput,
 }
@@ -132,8 +136,12 @@ pub enum DiffSideInput {
 }
 
 impl DiffSideInput {
-    pub fn resolve(store: &imba::store::Store, location: ResourceLocation) -> Self {
-        match crate::OpenDocuments::by_location(store, &location) {
+    pub fn resolve(
+        store: &imba::store::Store,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        location: ResourceLocation,
+    ) -> Self {
+        match crate::OpenDocuments::by_location(store, documents, &location) {
             Some(document) => DiffSideInput::Open(document),
             None => DiffSideInput::Fetch(location),
         }
@@ -163,6 +171,7 @@ pub enum DiffSide {
 
 pub fn open_by_location_effect(
     window: crate::WindowId,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
     primary: bool,
     focus: bool,
@@ -170,6 +179,7 @@ pub fn open_by_location_effect(
 ) -> crate::AppEffect {
     AnyEffect::new(OpenByLocationEffect {
         window,
+        documents,
         location,
         primary,
         target,
@@ -207,8 +217,13 @@ pub fn open_locations(
         })
         .collect();
     let mut primary = true;
+    let Some(documents) =
+        crate::Windows::session_family(store, window).map(|family| family.documents())
+    else {
+        return;
+    };
     for location in &locations {
-        if let Some(document) = crate::OpenDocuments::by_location(store, location) {
+        if let Some(document) = crate::OpenDocuments::by_location(store, documents, location) {
             if primary {
                 if let Some(mut window_entity) = crate::Windows::window(store, window) {
                     window_entity.show_document(store, ui, window, document, None, false, fx);
@@ -220,6 +235,7 @@ pub fn open_locations(
         }
         fx.push(open_by_location_effect(
             window,
+            documents,
             location.clone(),
             primary,
             false,
@@ -237,14 +253,17 @@ pub struct SessionId {
 }
 
 impl SessionId {
-    /// The session this batch is WORKING in: the one it was gathered
-    /// for, else the local workspace. The answer for state that belongs
-    /// to "wherever the user is", as opposed to state whose own key
-    /// names its owner.
-    pub fn working(store: &Store) -> SessionId {
-        crate::Gathered::scope(store)
-            .cloned()
-            .unwrap_or_else(|| Self::local_default(store))
+    /// Which session OWNS a location: the one whose seat routes its
+    /// authority, else the local workspace — the address-derived
+    /// owner, never an ambient scope. A plain file's state belongs to
+    /// the local session, not to nothing.
+    pub fn of_location(store: &Store, location: &crate::ResourceLocation) -> SessionId {
+        if let Some((host, session)) =
+            crate::higent::seat::route(store, location.authority().as_str())
+        {
+            return SessionId { host, session };
+        }
+        Self::local_default(store)
     }
 
     pub fn local_default(store: &Store) -> SessionId {

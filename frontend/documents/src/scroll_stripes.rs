@@ -17,13 +17,13 @@ use crate::{DocumentId, OpenDocuments};
 /// direction — the diff arriving while panes already show tracks —
 /// is `track_diff`'s registration.
 pub fn enable_scroll_stripes(
-    store: &Store,
+    store: &Store, documents: imba::store::Id<OpenDocuments>,
     id: DocumentId,
     document: &mut editor::Document,
     editor: editor::EditorId,
 ) {
     document.enable_scroll_stripes(editor);
-    if let Some(markup) = OpenDocuments::stripe_diff(store, id)
+    if let Some(markup) = OpenDocuments::stripe_diff(store, documents, id)
         .and_then(|handle| document.diff(handle.id).map(|entry| entry.markup()))
     {
         document.mark_scroll_stripes(editor, markup);
@@ -31,12 +31,11 @@ pub fn enable_scroll_stripes(
 }
 
 pub fn sync_scroll_stripe_lanes<R: 'static>(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<OpenDocuments>,
     fx: &mut imba::effect::Effects<'_, R>,
     wrap: impl Fn(DocumentId, editor::EditorCommand) -> R + Send + Clone + 'static,
 ) {
-    let wanting: Vec<DocumentId> = store
-        .get::<OpenDocuments>()
+    let wanting: Vec<DocumentId> = store.entity(documents)
         .map(|docs| {
             docs.entries
                 .iter()
@@ -50,7 +49,7 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
     }
     let theme = editor::env::Themes::of(store);
     for id in wanting {
-        let Some(mut document) = OpenDocuments::document(store, id) else {
+        let Some(mut document) = OpenDocuments::document(store, documents, id) else {
             continue;
         };
         let launches = document.scroll_stripe_launches(&theme);
@@ -69,7 +68,7 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
             );
             document.note_scroll_stripe_token(editor, slot);
         }
-        OpenDocuments::put_document(store, id, document);
+        OpenDocuments::put_document(store, documents, id, document);
     }
 }
 
@@ -81,6 +80,7 @@ mod tests {
     #[test]
     fn the_sweep_launches_once_and_the_landing_settles_the_track() {
         let mut store = Store::new();
+        let documents = imba::store::Id::mint();
         let source: String = (0..100).fold(String::new(), |mut text, index| {
             use std::fmt::Write;
             let _ = writeln!(text, "line {index:03}");
@@ -88,6 +88,7 @@ mod tests {
         });
         let id = OpenDocuments::register(
             &mut store,
+            documents,
             plain_document(&source),
             None,
             "doc".to_owned(),
@@ -99,7 +100,7 @@ mod tests {
         let mut sink = imba::effect::Batch::new();
         let quiet = &mut sink.effects();
 
-        let mut document = OpenDocuments::document(&store, id).expect("registered");
+        let mut document = OpenDocuments::document(&store, documents, id).expect("registered");
         let editor_id = document.add_editor(
             400.0,
             None,
@@ -118,10 +119,10 @@ mod tests {
         let mut tints = editor::Markup::new();
         tints.push_styled(90..95, editor::ThemeStyleId::Match);
         document.replace_markup(markup, tints, &[], &store, ui, &fonts, &theme, quiet);
-        OpenDocuments::put_document(&mut store, id, document);
+        OpenDocuments::put_document(&mut store, documents, id, document);
 
         let mut batch = imba::effect::Batch::new();
-        sync_scroll_stripe_lanes(&mut store, &mut batch.effects(), |document, command| {
+        sync_scroll_stripe_lanes(&mut store, documents, &mut batch.effects(), |document, command| {
             (document, command)
         });
         let mut outcomes = Vec::new();
@@ -141,17 +142,17 @@ mod tests {
         let ui = ::editor::test_document::test_ui();
         let outcome = outcomes.pop().expect("counted");
         let landing = editor::EditorCommand::ApplyScrollStripes(outcome);
-        let mut document = OpenDocuments::document(&store, id).expect("registered");
+        let mut document = OpenDocuments::document(&store, documents, id).expect("registered");
         document.perform(&mut store, &ui, editor_id, landing, quiet);
         let landed = document
             .scroll_stripes(editor_id)
             .expect("the track landed");
         assert_eq!(landed.segments.len(), 1);
         assert_eq!(landed.segments[0].byte, 90);
-        OpenDocuments::put_document(&mut store, id, document);
+        OpenDocuments::put_document(&mut store, documents, id, document);
 
         let mut again = imba::effect::Batch::<()>::new();
-        sync_scroll_stripe_lanes(&mut store, &mut again.effects(), |_, _| ());
+        sync_scroll_stripe_lanes(&mut store, documents, &mut again.effects(), |_, _| ());
         assert_eq!(
             again.drain().len(),
             0,

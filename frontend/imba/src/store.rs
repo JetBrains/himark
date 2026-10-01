@@ -72,15 +72,45 @@ impl<T> std::fmt::Debug for Id<T> {
     }
 }
 
+/// One row's slot. A LEASED row is out with its perform
+/// (docs/entities.md law 5): the marker stays behind so a read during
+/// the lease is distinguishable from gone — that read is a REENTRANCY
+/// BUG, not a race.
+#[derive(Clone)]
+enum Slot<T> {
+    Present(T),
+    Leased,
+}
+
 /// One kind's entity rows — an ordinary component, so the table
 /// rides every store clone and projection as pointer bumps.
 #[derive(Clone)]
-struct EntityRows<T>(HashTrieMapSync<u64, T>);
+struct EntityRows<T>(HashTrieMapSync<u64, Slot<T>>);
 
 impl<T> Default for EntityRows<T> {
     fn default() -> Self {
         Self(HashTrieMapSync::new_sync())
     }
+}
+
+/// A collection addressable by `At(Id<T>, T::Command)` — the one
+/// command road (docs/entities.md law 5). `perform` runs under a
+/// LEASE: own state is `self`, siblings are reached through the store
+/// it is handed, and effects are already scoped to `Self::Command` —
+/// the router stamps the address. `destroy` runs at dispose and
+/// retracts the entities this one owns.
+pub trait Entity: Component {
+    type Command: 'static;
+
+    fn perform(
+        &mut self,
+        command: Self::Command,
+        store: &mut Store,
+        ui: &crate::ui::UiCtx,
+        fx: &mut crate::effect::Effects<'_, Self::Command>,
+    );
+
+    fn destroy(&mut self, store: &mut Store);
 }
 
 #[derive(Clone, Default)]
@@ -120,15 +150,91 @@ impl Store {
 
     /// Resolve an entity by id. `None` means retracted (or never
     /// put) — the caller handles or discards, the gone-document
-    /// convention (docs/entities.md).
+    /// convention (docs/entities.md). A read during the row's own
+    /// perform is a REENTRANCY BUG: it panics in debug and answers
+    /// `None` with a loud log in release — never silently.
     pub fn entity<T: Component>(&self, id: Id<T>) -> Option<&T> {
-        self.get::<EntityRows<T>>()?.0.get(&id.serial)
+        match self.get::<EntityRows<T>>()?.0.get(&id.serial)? {
+            Slot::Present(value) => Some(value),
+            Slot::Leased => {
+                debug_assert!(false, "{id:?} read during its own perform (lease reentrancy)");
+                eprintln!("[store] {id:?} read during its own perform (lease reentrancy)");
+                None
+            }
+        }
     }
 
     pub fn put_entity<T: Component>(&mut self, id: Id<T>, value: T) {
         self.update::<EntityRows<T>>(|rows| {
-            rows.0.insert_mut(id.serial, value);
+            rows.0.insert_mut(id.serial, Slot::Present(value));
         });
+    }
+
+    /// Take the row out for its perform, leaving the lease MARKER —
+    /// the take half of the one command road (docs/entities.md law 5).
+    /// `None` means gone (the discard road); leasing a leased row is
+    /// the same reentrancy bug as reading one.
+    pub fn lease<T: Component>(&mut self, id: Id<T>) -> Option<T> {
+        let slot = self.get::<EntityRows<T>>()?.0.get(&id.serial)?.clone();
+        match slot {
+            Slot::Present(value) => {
+                self.update::<EntityRows<T>>(|rows| {
+                    rows.0.insert_mut(id.serial, Slot::Leased);
+                });
+                Some(value)
+            }
+            Slot::Leased => {
+                debug_assert!(false, "{id:?} leased during its own perform (lease reentrancy)");
+                eprintln!("[store] {id:?} leased during its own perform (lease reentrancy)");
+                None
+            }
+        }
+    }
+
+    /// Put the leased row back. If the row was RETRACTED during its
+    /// own perform (self-dispose, a cascade), the slot is gone and the
+    /// returned value drops — retraction wins.
+    pub fn unlease<T: Component>(&mut self, id: Id<T>, value: T) {
+        let occupied = self
+            .get::<EntityRows<T>>()
+            .and_then(|rows| rows.0.get(&id.serial));
+        match occupied {
+            Some(Slot::Leased) => self.update::<EntityRows<T>>(|rows| {
+                rows.0.insert_mut(id.serial, Slot::Present(value));
+            }),
+            Some(Slot::Present(_)) => {
+                debug_assert!(false, "{id:?} replaced while leased");
+                eprintln!("[store] {id:?} replaced while leased; the replacement stands");
+            }
+            None => {}
+        }
+    }
+
+    /// Route one addressed command: lease the row, perform with
+    /// effects stamped by `address`, put it back. A gone target
+    /// discards the command — the race road, not an error.
+    pub fn route<T: Entity, R: 'static>(
+        &mut self,
+        id: Id<T>,
+        command: T::Command,
+        ui: &crate::ui::UiCtx,
+        address: impl Fn(T::Command) -> R + Send + Clone + 'static,
+        fx: &mut crate::effect::Effects<'_, R>,
+    ) {
+        let Some(mut row) = self.lease(id) else {
+            return;
+        };
+        fx.scope(address, |fx| row.perform(command, self, ui, fx));
+        self.unlease(id, row);
+    }
+
+    /// Dispose an entity (docs/entities.md law 6): the row leaves the
+    /// table FIRST, then its `destroy` runs and retracts what it owns
+    /// — teardown cascades by ownership.
+    pub fn dispose<T: Entity>(&mut self, id: Id<T>) {
+        if let Some(mut row) = self.retract(id) {
+            row.destroy(self);
+        }
     }
 
     /// Mutate an entity in place, minting the row from `Default` on
@@ -145,15 +251,23 @@ impl Store {
 
     /// Remove an entity's row. Manual lifecycle: retraction is the
     /// OWNER's duty at dispose (docs/entities.md step 2); every id
-    /// still in flight resolves `None` from here on.
+    /// still in flight resolves `None` from here on. Retracting a
+    /// LEASED row removes the marker too — retraction wins, and the
+    /// perform's `unlease` finds the slot gone and drops the value.
     pub fn retract<T: Component>(&mut self, id: Id<T>) -> Option<T> {
-        let value = self.entity(id).cloned();
-        if value.is_some() {
+        let slot = self
+            .get::<EntityRows<T>>()
+            .and_then(|rows| rows.0.get(&id.serial))
+            .cloned();
+        if slot.is_some() {
             self.update::<EntityRows<T>>(|rows| {
                 rows.0.remove_mut(&id.serial);
             });
         }
-        value
+        match slot {
+            Some(Slot::Present(value)) => Some(value),
+            Some(Slot::Leased) | None => None,
+        }
     }
 }
 
@@ -220,5 +334,93 @@ mod tests {
         let id = Id::<Counter>::mint();
         store.update_entity(id, |counter| counter.0 += 3);
         assert_eq!(store.entity(id), Some(&Counter(3)));
+    }
+
+    #[test]
+    fn a_lease_takes_the_row_and_unlease_restores_it() {
+        let mut store = Store::new();
+        let id = Id::<Counter>::mint();
+        store.put_entity(id, Counter(7));
+        let mut row = store.lease(id).expect("the row is present");
+        row.0 += 1;
+        store.unlease(id, row);
+        assert_eq!(store.entity(id), Some(&Counter(8)));
+    }
+
+    #[test]
+    #[should_panic(expected = "lease reentrancy")]
+    fn reading_a_leased_row_is_a_reentrancy_bug() {
+        let mut store = Store::new();
+        let id = Id::<Counter>::mint();
+        store.put_entity(id, Counter(1));
+        let _row = store.lease(id).expect("the row is present");
+        let _ = store.entity(id);
+    }
+
+    #[test]
+    fn leasing_a_gone_row_is_the_discard_road() {
+        let mut store = Store::new();
+        let id = Id::<Counter>::mint();
+        assert!(store.lease(id).is_none());
+    }
+
+    /// Retraction during the row's own perform wins: the marker goes
+    /// with the slot, and the perform's unlease drops the value.
+    #[test]
+    fn retracting_a_leased_row_beats_the_unlease() {
+        let mut store = Store::new();
+        let id = Id::<Counter>::mint();
+        store.put_entity(id, Counter(3));
+        let row = store.lease(id).expect("the row is present");
+        assert_eq!(store.retract(id), None, "the value is out with the lease");
+        store.unlease(id, row);
+        assert_eq!(store.entity(id), None, "retraction stands");
+    }
+
+    #[derive(Clone)]
+    struct Owner {
+        owned: Id<Counter>,
+    }
+
+    impl Entity for Owner {
+        type Command = u64;
+        fn perform(
+            &mut self,
+            command: u64,
+            store: &mut Store,
+            _ui: &crate::ui::UiCtx,
+            _fx: &mut crate::effect::Effects<'_, u64>,
+        ) {
+            store.update_entity(self.owned, |counter| counter.0 += command);
+        }
+        fn destroy(&mut self, store: &mut Store) {
+            store.retract(self.owned);
+        }
+    }
+
+    #[test]
+    fn dispose_runs_destroy_and_the_cascade_retracts_the_owned() {
+        let mut store = Store::new();
+        let owned = Id::<Counter>::mint();
+        store.put_entity(owned, Counter(1));
+        let owner = Id::<Owner>::mint();
+        store.put_entity(owner, Owner { owned });
+        store.dispose(owner);
+        assert!(store.entity(owner).is_none());
+        assert!(store.entity(owned).is_none(), "the cascade retracts");
+    }
+
+    #[test]
+    fn route_leases_performs_and_restores() {
+        let mut store = Store::new();
+        let owned = Id::<Counter>::mint();
+        store.put_entity(owned, Counter(0));
+        let owner = Id::<Owner>::mint();
+        store.put_entity(owner, Owner { owned });
+        let ui = crate::ui::UiCtx::dont_use_too_slow();
+        let mut batch = crate::effect::Batch::<u64>::new();
+        store.route(owner, 5, &ui, |command| command, &mut batch.effects());
+        assert_eq!(store.entity(owned), Some(&Counter(5)));
+        assert!(store.entity(owner).is_some(), "the row came back");
     }
 }

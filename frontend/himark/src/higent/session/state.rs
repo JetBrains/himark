@@ -99,6 +99,14 @@ impl SessionState {
         self.terminals
     }
 
+    pub fn documents(&self) -> Id<crate::OpenDocuments> {
+        self.documents
+    }
+
+    pub fn scratch_names(&self) -> Id<documents::ScratchMint> {
+        self.scratch_names
+    }
+
     fn mint() -> Self {
         Self {
             chats: Id::mint(),
@@ -110,30 +118,6 @@ impl SessionState {
             terminals: Id::mint(),
             documents: Id::mint(),
             scratch_names: Id::mint(),
-        }
-    }
-
-    /// Only DOCUMENTS are projected as flat components (scaffolding —
-    /// docs/entities.md step 1; the `documents` crate is session-blind
-    /// and does its own store reads). Everything else is reached by
-    /// id and never leaves the table.
-    fn gather_into(&self, store: &mut Store) {
-        let documents = store.entity(self.documents).cloned().unwrap_or_default();
-        let scratch_names = store
-            .entity(self.scratch_names)
-            .cloned()
-            .unwrap_or_default();
-        store.put(documents);
-        store.put(scratch_names);
-    }
-
-    /// The flat projections come home to their rows.
-    fn absorb_projected(&self, store: &mut Store) {
-        if let Some(documents) = store.take::<crate::OpenDocuments>() {
-            store.put_entity(self.documents, documents);
-        }
-        if let Some(scratch_names) = store.take::<documents::ScratchMint>() {
-            store.put_entity(self.scratch_names, scratch_names);
         }
     }
 
@@ -260,48 +244,27 @@ impl Hosts {
         });
     }
 
-    pub(crate) fn gather_session(&self, store: &mut Store, scope: &crate::SessionId) {
-        match self
-            .entries
-            .get(&scope.host)
-            .and_then(|host| host.families.get(&scope.session))
-        {
-            Some(family) => family.gather_into(store),
-            None => {
-                store.put(crate::OpenDocuments::default());
-                store.put(documents::ScratchMint::default());
-            }
-        }
-    }
-
+    /// The all-empty housekeeping sweep: a family whose every
+    /// collection emptied leaves the catalog, and its rows leave the
+    /// table. Nothing is projected and nothing comes back — the store
+    /// is single and global, and the table IS the data.
     pub(crate) fn scatter_session(&mut self, store: &mut Store, scope: &crate::SessionId) {
-        let families = self
+        let Some(families) = self
             .entries
             .get(&scope.host)
             .and_then(|host| host.families.get(&scope.session))
             .cloned()
-            .unwrap_or_else(SessionState::mint);
-        families.absorb_projected(store);
+        else {
+            return;
+        };
         if families.is_empty(store) {
             families.retract_all(store);
             if let Some(host) = self.entries.get(&scope.host) {
-                if host.families.contains_key(&scope.session) {
-                    let mut host = host.clone();
-                    host.families.remove_mut(&scope.session);
-                    self.entries.insert_mut(scope.host, host);
-                }
+                let mut host = host.clone();
+                host.families.remove_mut(&scope.session);
+                self.entries.insert_mut(scope.host, host);
             }
-            return;
         }
-        let mut host = match self.entries.get(&scope.host) {
-            Some(host) => host.clone(),
-            None => {
-                self.order.push_back_mut(scope.host);
-                Host::new("Local".to_owned())
-            }
-        };
-        host.families.insert_mut(scope.session.clone(), families);
-        self.entries.insert_mut(scope.host, host);
     }
 
     /// A session's conversations, reached by its own id whatever the
@@ -414,13 +377,44 @@ impl Hosts {
             hosts.generation += 1;
         });
         family.retract_all(store);
-        // A batch gathered FOR the disposed session still carries its
-        // flat projections; empty them so scatter cannot resurrect
-        // the family from the scaffolding.
-        if crate::Gathered::scope(store) == Some(session) {
-            store.put(crate::OpenDocuments::default());
-            store.put(documents::ScratchMint::default());
+    }
+
+    /// A session RENAMED (the composer's placeholder uri becomes the
+    /// provider's real one): the family row moves to the new key — the
+    /// ids never change, only the catalog's name for them. Windows
+    /// keep their bundle through the rekey; this keeps the catalog
+    /// telling the same story.
+    pub fn rekey_family(store: &mut Store, from: &crate::SessionId, to: &crate::SessionId) {
+        if from == to {
+            return;
         }
+        let Some(family) = Self::family(store, from).cloned() else {
+            return;
+        };
+        if Self::family(store, to).is_some() {
+            eprintln!("[higent] NOT rekeying {from:?} -> {to:?}: the target has a family");
+            return;
+        }
+        store.update::<Hosts>(|hosts| {
+            let Some(source) = hosts.entries.get(&from.host) else {
+                return;
+            };
+            let mut source = source.clone();
+            source.families.remove_mut(&from.session);
+            hosts.entries.insert_mut(from.host, source);
+            let mut target = match hosts.entries.get(&to.host) {
+                Some(host) => host.clone(),
+                None => {
+                    hosts.order.push_back_mut(to.host);
+                    Host::new("Local".to_owned())
+                }
+            };
+            target
+                .families
+                .insert_mut(to.session.clone(), family.clone());
+            hosts.entries.insert_mut(to.host, target);
+            hosts.generation += 1;
+        });
     }
 
     // No typed per-family doors here, deliberately: Hosts answers one
@@ -429,6 +423,72 @@ impl Hosts {
     // BY ID (`store.entity` / `store.update_entity`), threaded to the
     // use sites (docs/entities.md law 3). A helper here that takes a
     // `SessionId` per read would remarry every collection to Hosts.
+
+    /// Which session owns a documents collection — an ID COMPARE over
+    /// the family rows, no content resolution: an `At` command scopes
+    /// to its owner whether or not the addressed record still exists.
+    pub(crate) fn session_of_documents_id(
+        store: &Store,
+        documents: Id<crate::OpenDocuments>,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |_store, families| families.documents == documents)
+    }
+
+    /// Which documents collection holds a document — the cold road
+    /// for a landing that names only the document.
+    pub fn documents_of_document(
+        store: &Store,
+        document: crate::DocumentId,
+    ) -> Option<Id<crate::OpenDocuments>> {
+        let hosts = store.get::<Hosts>()?;
+        for (_, host) in hosts.entries.iter() {
+            for (_, families) in host.families.iter() {
+                let documents = families.documents;
+                if store
+                    .entity(documents)
+                    .is_some_and(|docs| docs.contains_id(document))
+                {
+                    return Some(documents);
+                }
+            }
+        }
+        None
+    }
+
+    /// Which session rides a watch — the ONE id-less border road:
+    /// file events arrive from the watcher with a subscription and
+    /// nothing else.
+    /// Which documents collection holds a diff view — the cold
+    /// re-mint road for a family row that names only the pair.
+    pub(crate) fn documents_of_diff_view(
+        store: &Store,
+        pair: crate::DiffViewId,
+    ) -> Option<Id<crate::OpenDocuments>> {
+        let hosts = store.get::<Hosts>()?;
+        for (_, host) in hosts.entries.iter() {
+            for (_, families) in host.families.iter() {
+                let documents = families.documents;
+                if store
+                    .entity(documents)
+                    .is_some_and(|docs| docs.holds_diff_view(pair))
+                {
+                    return Some(documents);
+                }
+            }
+        }
+        None
+    }
+
+    pub(crate) fn session_of_watch(
+        store: &Store,
+        subscription: crate::watch::Subscription,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |store, families| {
+            store
+                .entity(families.documents)
+                .is_some_and(|documents| documents.rides_watch(subscription))
+        })
+    }
 
     /// Which session owns a terminal — the cold road, for a family row
     /// or a walk back that holds a channel and nothing else.
@@ -484,39 +544,6 @@ impl Hosts {
             .collect()
     }
 
-    pub(crate) fn session_of_document(
-        store: &Store,
-        document: crate::DocumentId,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.documents)
-                .is_some_and(|documents| documents.contains_id(document))
-        })
-    }
-
-    pub(crate) fn session_of_watch(
-        store: &Store,
-        subscription: crate::watch::Subscription,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.documents)
-                .is_some_and(|documents| documents.rides_watch(subscription))
-        })
-    }
-
-    pub(crate) fn session_of_diff(
-        store: &Store,
-        diff: ::editor::diff::DiffId,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.documents)
-                .is_some_and(|documents| documents.tracks_diff(diff))
-        })
-    }
-
     fn find_session(
         store: &Store,
         matches: impl Fn(&Store, &SessionState) -> bool,
@@ -567,44 +594,6 @@ impl Hosts {
             self.entries.insert_mut(target, host);
         }
     }
-
-    /// A batch gathered without a session scope has no family to
-    /// scatter into. The CHAT records are safe — they live in the
-    /// global store now, one home whatever the gather — but anything
-    /// else written here would be dropped on the floor.
-    /// A batch gathered without a session scope has no family to
-    /// scatter into, so whatever it wrote to a PROJECTED component is
-    /// dropped here. Session-ADDRESSED state (chats, trees, recents,
-    /// terminals) is not projected and cannot be lost this way; the
-    /// rest can, and it must never be lost QUIETLY — a `debug_assert`
-    /// alone is invisible in the build the user runs.
-    pub(crate) fn assert_no_family_orphans(store: &mut Store) {
-        let mut named = Vec::new();
-        if store
-            .take::<crate::OpenDocuments>()
-            .is_some_and(|documents| !documents.is_empty())
-        {
-            named.push("documents");
-        }
-        if store
-            .take::<documents::ScratchMint>()
-            .is_some_and(|names| !names.is_empty())
-        {
-            named.push("scratch names");
-        }
-        if !named.is_empty() {
-            eprintln!(
-                "[state] DROPPED a session-family write made with no session scope: {}\n{}",
-                named.join(", "),
-                std::backtrace::Backtrace::force_capture()
-            );
-        }
-        debug_assert!(
-            named.is_empty(),
-            "a session-family write happened in a batch gathered without a session scope: {}",
-            named.join(", ")
-        );
-    }
 }
 
 #[cfg(test)]
@@ -643,7 +632,7 @@ mod family_tests {
 
         let mut store = state.gather(None, Some(&home), &seats);
         let uri = put(&mut store, &home, "chat:1");
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         // The next batch is gathered for a DIFFERENT session.
         let store = state.gather(None, Some(&session("s-b")), &seats);
@@ -661,12 +650,12 @@ mod family_tests {
 
         let mut store = state.gather(None, Some(&home), &seats);
         let uri = put(&mut store, &home, "chat:2");
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         // A batch with NO session scope: it writes other things, and
         // the chats must not be dragged out of their family with them.
         let mut store = state.gather(None, None, &seats);
-        state.scatter(std::mem::replace(&mut store, Store::new()));
+        state.scatter(std::mem::replace(&mut store, Store::new()), None);
 
         let store = state.gather(None, Some(&home), &seats);
         assert!(Chats::chat_ref(&store, &home, &uri).is_some());
@@ -682,7 +671,7 @@ mod family_tests {
         // The batch is gathered for s-b; the chat belongs to s-a.
         let mut store = state.gather(None, Some(&elsewhere), &seats);
         let uri = put(&mut store, &home, "chat:3");
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         let store = state.gather(None, Some(&home), &seats);
         assert!(
@@ -705,7 +694,7 @@ mod family_tests {
         let mut store = state.gather(None, Some(&a), &seats);
         let mine = put(&mut store, &a, "chat:a");
         let theirs = put(&mut store, &b, "chat:b");
-        state.scatter(store);
+        state.scatter(store, Some(&a));
 
         let store = state.gather(None, Some(&a), &seats);
         assert_eq!(Chats::list(&store, &a), vec![mine]);
@@ -722,7 +711,7 @@ mod family_tests {
         let mut store = state.gather(None, Some(&home), &seats);
         let uri = put(&mut store, &home, "chat:1");
         Hosts::dispose_family(&mut store, &home);
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         let store = state.gather(None, Some(&home), &seats);
         assert!(Chats::chat_ref(&store, &home, &uri).is_none());
@@ -748,7 +737,7 @@ mod family_tests {
         store.update_entity(family.history, |_history| {});
         store.update_entity(family.comments, |_comments| {});
         store.update_entity(family.terminals, |_terminals| {});
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         let mut store = state.gather(None, Some(&home), &seats);
         assert!(Hosts::family(&store, &home).is_some(), "the row is live");
@@ -764,7 +753,7 @@ mod family_tests {
         assert!(store.entity(family.terminals).is_none());
         assert!(store.entity(family.documents).is_none());
         assert!(store.entity(family.scratch_names).is_none());
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         // And scatter resurrects nothing from the scaffolding.
         let store = state.gather(None, Some(&home), &seats);
@@ -779,7 +768,7 @@ mod family_tests {
 
         let mut store = state.gather(None, Some(&home), &seats);
         let uri = put(&mut store, &home, "chat:1");
-        state.scatter(store);
+        state.scatter(store, Some(&home));
 
         let store = state.gather(None, None, &seats);
         assert_eq!(Hosts::session_of_chat(&store, &uri), Some(home));

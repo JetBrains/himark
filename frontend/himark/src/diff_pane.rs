@@ -14,27 +14,46 @@ use imba::{
     arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
 };
 
+/// The pane holds IDS (docs/entities.md): the collection its pair
+/// lives in, and the pair's key within it.
 #[derive(Clone, Copy)]
 pub struct PairPane {
+    documents: imba::store::Id<crate::OpenDocuments>,
     id: crate::DiffViewId,
 }
 
 impl PairPane {
-    pub fn over(id: crate::DiffViewId) -> Self {
-        Self { id }
+    pub fn over(documents: imba::store::Id<crate::OpenDocuments>, id: crate::DiffViewId) -> Self {
+        Self { documents, id }
     }
 
     pub fn id(&self) -> crate::DiffViewId {
         self.id
     }
+
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.documents
+    }
 }
 
-fn gathered(pair: &crate::DiffView, store: &Store) -> Option<UnifiedDiffView> {
-    crate::gather_diff_view(pair, store)
+fn gathered(
+    pair: &crate::DiffView,
+    store: &Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+) -> Option<UnifiedDiffView> {
+    crate::gather_diff_view(pair, store, documents)
 }
 
-pub fn gathered_view(store: &Store, id: crate::DiffViewId) -> Option<UnifiedDiffView> {
-    gathered(crate::OpenDocuments::diff_view_ref(store, id)?, store)
+pub fn gathered_view(
+    store: &Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    id: crate::DiffViewId,
+) -> Option<UnifiedDiffView> {
+    gathered(
+        crate::OpenDocuments::diff_view_ref(store, documents, id)?,
+        store,
+        documents,
+    )
 }
 
 impl View for PairPane {
@@ -45,7 +64,7 @@ impl View for PairPane {
         store: &'w Store,
         ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
-        pane_focus_data(self.id, store, ui)
+        pane_focus_data(self.documents, self.id, store, ui)
     }
 
     fn perform(
@@ -55,20 +74,20 @@ impl View for PairPane {
         command: UnifiedDiffCommand,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, self.id) else {
+        let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, self.documents, self.id) else {
             return;
         };
-        let Some(mut view) = gathered(&pair, store) else {
-            crate::OpenDocuments::put_diff_view(store, self.id, pair);
+        let Some(mut view) = gathered(&pair, store, self.documents) else {
+            crate::OpenDocuments::put_diff_view(store, self.documents, self.id, pair);
             return;
         };
 
         view.perform(store, ui, command, fx);
 
-        OpenDocuments::put_document(store, pair.left.document(), view.split.left.document);
-        OpenDocuments::put_document(store, pair.right.document(), view.split.right.document);
+        OpenDocuments::put_document(store, self.documents, pair.left.document(), view.split.left.document);
+        OpenDocuments::put_document(store, self.documents, pair.right.document(), view.split.right.document);
         pair.state = Some(view.split.state);
-        crate::OpenDocuments::put_diff_view(store, self.id, pair);
+        crate::OpenDocuments::put_diff_view(store, self.documents, self.id, pair);
     }
 
     fn display<'a>(
@@ -86,8 +105,8 @@ impl View for PairPane {
         // (the DiffCanvas.trace lesson).
         imba::laid(
             move |arena: &'a Arena, constraints: Constraints| GatheredThunk {
-                view: crate::OpenDocuments::diff_view_ref(store, self.id)
-                    .and_then(|pair| gathered(pair, store))
+                view: crate::OpenDocuments::diff_view_ref(store, self.documents, self.id)
+                    .and_then(|pair| gathered(pair, store, self.documents))
                     .map(|view| &*arena.alloc(view)),
                 store,
                 ui,
@@ -157,6 +176,7 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
 /// handlers re-mint per call. The standing "open in full" command
 /// rides whichever side of the pair is focused.
 fn pane_focus_data<'w>(
+    documents: imba::store::Id<crate::OpenDocuments>,
     id: crate::DiffViewId,
     store: &'w Store,
     ui: &'w imba::UiCtx,
@@ -164,7 +184,8 @@ fn pane_focus_data<'w>(
     use imba::event::EventResult;
     use imba::focus::FocusData;
     let mint = move || {
-        crate::OpenDocuments::diff_view_ref(store, id).and_then(|pair| gathered(pair, store))
+        crate::OpenDocuments::diff_view_ref(store, documents, id)
+            .and_then(|pair| gathered(pair, store, documents))
     };
     let Some(view) = mint() else {
         return FocusData::default();
@@ -304,9 +325,9 @@ pub struct DiffPanelView {
 }
 
 impl DiffPanelView {
-    pub fn over(id: crate::DiffViewId) -> Self {
+    pub fn over(documents: imba::store::Id<crate::OpenDocuments>, id: crate::DiffViewId) -> Self {
         Self {
-            pane: ScrollView::new(PairPane { id }),
+            pane: ScrollView::new(PairPane { documents, id }),
         }
     }
 
@@ -314,15 +335,19 @@ impl DiffPanelView {
         self.pane.content().id
     }
 
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.pane.content().documents
+    }
+
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
-        crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)?
+        crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)?
             .state
             .as_ref()
     }
 
     #[doc(hidden)]
     pub fn halves(&self, store: &Store) -> (EditorIdView, EditorIdView) {
-        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)
+        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)
             .expect("the pane's family row");
         (pair.left, pair.right)
     }
@@ -335,9 +360,11 @@ impl DiffPanelView {
         right_extras: crate::MarkupId,
         state: Option<DiffViewState>,
     ) -> Self {
+        let documents = left.documents();
         let id = crate::DiffViewId::mint();
         crate::OpenDocuments::put_diff_view(
             store,
+            documents,
             id,
             crate::DiffView {
                 left,
@@ -349,7 +376,7 @@ impl DiffPanelView {
             },
         );
         Self {
-            pane: ScrollView::new(PairPane { id }),
+            pane: ScrollView::new(PairPane { documents, id }),
         }
     }
 }
@@ -401,10 +428,10 @@ impl crate::PanelView for DiffPanelView {
     }
 
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
-        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)?;
+        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)?;
         Some(DiffPlace {
-            old: OpenDocuments::location(store, pair.left.document())?,
-            new: OpenDocuments::location(store, pair.right.document())?,
+            old: OpenDocuments::location(store, pair.left.documents(), pair.left.document())?,
+            new: OpenDocuments::location(store, pair.left.documents(), pair.right.document())?,
         })
     }
 
@@ -414,17 +441,17 @@ impl crate::PanelView for DiffPanelView {
         place: &DiffPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> bool {
-        let Some(pair) = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id) else {
+        let Some(pair) = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id) else {
             return false;
         };
         let (left, right) = (pair.left, pair.right);
-        OpenDocuments::location(store, left.document()).as_ref() == Some(&place.old)
-            && OpenDocuments::location(store, right.document()).as_ref() == Some(&place.new)
+        OpenDocuments::location(store, left.documents(), left.document()).as_ref() == Some(&place.old)
+            && OpenDocuments::location(store, right.documents(), right.document()).as_ref() == Some(&place.new)
     }
 
     fn title(&self, store: &Store) -> String {
-        let named = crate::OpenDocuments::diff_view_ref(store, self.pane.content().id)
-            .and_then(|pair| OpenDocuments::location(store, pair.right.document()));
+        let named = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)
+            .and_then(|pair| OpenDocuments::location(store, pair.left.documents(), pair.right.document()));
         match named {
             Some(location) => format!("Diff: {}", location.name()),
             None => "Diff".to_owned(),
@@ -432,7 +459,7 @@ impl crate::PanelView for DiffPanelView {
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        crate::teardown_diff_view(store, self.pane.content().id);
+        crate::teardown_diff_view(store, self.pane.content().documents, self.pane.content().id);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -442,13 +469,14 @@ impl crate::PanelView for DiffPanelView {
 
 pub fn open_diff_documents(
     store: &mut Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     window: crate::WindowId,
     left: crate::DocumentId,
     right: crate::DocumentId,
     fx: &mut crate::AppFx<'_>,
 ) -> bool {
-    let Some(panel) = diff_panel(store, ui, left, right) else {
+    let Some(panel) = diff_panel(store, documents, ui, left, right) else {
         return false;
     };
     let mut entity = crate::Windows::window(store, window).expect("the window entity");
@@ -470,13 +498,14 @@ pub fn open_opened_diff_pane(
     store: &mut Store,
     ui: &imba::UiCtx,
     window: crate::WindowId,
+    documents: imba::store::Id<crate::OpenDocuments>,
     pair: crate::OpenedDiffPair,
     fx: &mut crate::AppFx<'_>,
 ) -> bool {
-    let Some(id) = crate::install_opened_pair(store, ui, pair, false) else {
+    let Some(id) = crate::install_opened_pair(store, documents, ui, pair, false) else {
         return false;
     };
-    let panel = DiffPanelView::over(id);
+    let panel = DiffPanelView::over(documents, id);
     let mut entity = crate::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
     crate::Windows::put(store, window, entity);
@@ -485,18 +514,22 @@ pub fn open_opened_diff_pane(
 
 pub fn diff_panel(
     store: &mut Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     left: crate::DocumentId,
     right: crate::DocumentId,
 ) -> Option<DiffPanelView> {
-    let id = crate::build_diff_view(store, ui, left, right, crate::OPEN_HALF_WIDTH, false)?;
-    Some(DiffPanelView::over(id))
+    let id = crate::build_diff_view(store, documents, ui, left, right, crate::OPEN_HALF_WIDTH, false)?;
+    Some(DiffPanelView::over(documents, id))
 }
 
 pub fn pair_row_minter() -> std::sync::Arc<crate::RowMinter> {
-    std::sync::Arc::new(|_store, row| match row {
+    std::sync::Arc::new(|store, row| match row {
         crate::FamilyRow::Pair(id) => {
-            Some(Box::new(DiffPanelView::over(*id)) as Box<dyn crate::DynPanelView>)
+            // The row names only the pair: its owner is found once,
+            // by content — the cold re-mint road.
+            let documents = crate::higent::Hosts::documents_of_diff_view(store, *id)?;
+            Some(Box::new(DiffPanelView::over(documents, *id)) as Box<dyn crate::DynPanelView>)
         }
         // Canvases open through the NAVIGATION road (CanvasNavigator)
         // — reuse is a store lookup, not a mint.
@@ -521,10 +554,14 @@ impl crate::DynamicCommand for OpenDiff {
         _fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let recent = OpenDocuments::list_recent(store);
+        let Some(family) = crate::Windows::session_family(store, window) else {
+            return;
+        };
+        let documents = family.documents();
+        let recent = OpenDocuments::list_recent(store, documents);
         let (Some(newest), Some(older)) = (recent.first(), recent.get(1)) else {
             return;
         };
-        let _ = open_diff_documents(store, ui, window, older.0, newest.0, _fx);
+        let _ = open_diff_documents(store, documents, ui, window, older.0, newest.0, _fx);
     }
 }

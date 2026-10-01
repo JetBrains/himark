@@ -185,9 +185,13 @@ impl Navigator for EditorNavigator {
         place: &EditorPlace,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel> {
-        let Some(id) = crate::OpenDocuments::by_location(store, &place.location) else {
+        let documents = crate::Windows::session_family(store, window)
+            .expect("navigation runs in a window with a session")
+            .documents();
+        let Some(id) = crate::OpenDocuments::by_location(store, documents, &place.location) else {
             fx.push(crate::open_by_location_effect(
                 window,
+                documents,
                 place.location.clone(),
                 true,
                 false,
@@ -195,27 +199,39 @@ impl Navigator for EditorNavigator {
             ));
             return None;
         };
-        let mut document = crate::OpenDocuments::document(store, id)?;
+        let mut document = crate::OpenDocuments::document(store, documents, id)?;
         let width = crate::Windows::window_ref(store, window)
             .and_then(|entity| {
                 crate::app::panel_width(store, entity.workbench().root.focused_pane())
             })
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let editor = crate::app::entity_scope(id, fx, |fx| {
-            let editor = crate::mount_editor(store, ui, &mut document, width, None, fx);
+        let editor = fx.scope(
+            move |command| {
+                crate::AppCommand::At(documents, crate::DocumentsCommand::Editor(id, command))
+            },
+            |fx| {
+                let editor = crate::mount_editor(store, ui, &mut document, width, None, fx);
 
-            if place.caret > 0 {
-                let fonts = ::editor::env::Fonts::of(store)();
-                let theme = ::editor::env::Themes::of(store);
-                document.reveal_at_instant(editor, place.caret, store, ui, &fonts, &theme, fx);
-            }
-            editor
-        });
-        documents::scroll_stripes::enable_scroll_stripes(store, id, &mut document, editor);
-        crate::OpenDocuments::put_document(store, id, document);
-        crate::OpenDocuments::touch(store, id);
-        let mut pane =
-            imba::scroll::ScrollView::new(crate::EditorIdView::new(id, editor).with_gutter());
+                if place.caret > 0 {
+                    let fonts = ::editor::env::Fonts::of(store)();
+                    let theme = ::editor::env::Themes::of(store);
+                    document.reveal_at_instant(editor, place.caret, store, ui, &fonts, &theme, fx);
+                }
+                editor
+            },
+        );
+        documents::scroll_stripes::enable_scroll_stripes(
+            store,
+            documents,
+            id,
+            &mut document,
+            editor,
+        );
+        crate::OpenDocuments::put_document(store, documents, id, document);
+        crate::OpenDocuments::touch(store, documents, id);
+        let mut pane = imba::scroll::ScrollView::new(
+            crate::EditorIdView::new(documents, id, editor).with_gutter(),
+        );
         pane.set_scroll_y(place.scroll_y);
         Some(crate::Panel::Editor(pane))
     }

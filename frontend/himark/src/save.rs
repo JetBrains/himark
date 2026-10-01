@@ -42,18 +42,25 @@ impl crate::DynamicEditorCommand for SaveDocument {
         if !self.offers_at(location) {
             return;
         }
+        let home = crate::SessionId::of_location(store, location);
+        let documents = crate::higent::Hosts::ensure_family(store, &home).documents();
         if let Some(payload) = payload {
             let payload = match payload.downcast::<(bool, u64, crate::Text)>() {
                 Ok(landing) => {
-                    let Some(document_id) = crate::OpenDocuments::by_location(store, location)
+                    let Some(document_id) =
+                        crate::OpenDocuments::by_location(store, documents, location)
                     else {
                         return;
                     };
                     let (stored, revision, snapshot) = *landing;
                     match stored {
-                        true => {
-                            crate::OpenDocuments::mark_saved(store, document_id, revision, snapshot)
-                        }
+                        true => crate::OpenDocuments::mark_saved(
+                            store,
+                            documents,
+                            document_id,
+                            revision,
+                            snapshot,
+                        ),
                         false => eprintln!("[himark] store failed for an open document"),
                     }
                     return;
@@ -65,18 +72,26 @@ impl crate::DynamicEditorCommand for SaveDocument {
                 let Some(new_location) = *picked else {
                     return;
                 };
-                let Some(document_id) = crate::OpenDocuments::by_location(store, location) else {
+                let Some(document_id) =
+                    crate::OpenDocuments::by_location(store, documents, location)
+                else {
                     return;
                 };
-                crate::OpenDocuments::set_location(store, document_id, new_location.clone());
-                if let Some(session) = crate::higent::Hosts::session_of_document(store, document_id)
+                crate::OpenDocuments::set_location(
+                    store,
+                    documents,
+                    document_id,
+                    new_location.clone(),
+                );
+                if let Some(session) =
+                    crate::higent::Hosts::session_of_documents_id(store, documents)
                 {
                     let recents = crate::higent::Hosts::ensure_family(store, &session).recents();
                     crate::RecentLocations::replace(store, recents, location, &new_location);
                 }
 
                 crate::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
-                Self::launch_store(store, document, document_id, &new_location, fx);
+                Self::launch_store(store, documents, document, document_id, &new_location, fx);
             }
             return;
         }
@@ -95,22 +110,24 @@ impl crate::DynamicEditorCommand for SaveDocument {
             );
             return;
         }
-        let Some(document_id) = crate::OpenDocuments::by_location(store, location) else {
+        let Some(document_id) = crate::OpenDocuments::by_location(store, documents, location)
+        else {
             return;
         };
-        Self::launch_store(store, document, document_id, location, fx);
+        Self::launch_store(store, documents, document, document_id, location, fx);
     }
 }
 
 impl SaveDocument {
     fn launch_store(
         store: &mut Store,
+        documents: imba::store::Id<crate::OpenDocuments>,
         document: &crate::Document,
         document_id: crate::DocumentId,
         location: &ResourceLocation,
         fx: &mut imba::effect::Effects<'_, crate::EditorCommand>,
     ) {
-        let Some(entity) = crate::OpenDocuments::entity(store, document_id) else {
+        let Some(entity) = crate::OpenDocuments::entity(store, documents, document_id) else {
             return;
         };
 
@@ -133,7 +150,7 @@ impl SaveDocument {
         if let Some(previous) = previous {
             fx.cancel(previous);
         }
-        crate::OpenDocuments::set_save_token(store, document_id, Some(token));
+        crate::OpenDocuments::set_save_token(store, documents, document_id, Some(token));
     }
 }
 
@@ -156,22 +173,28 @@ impl DynamicCommand for SaveAll {
         _window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        save_all(store, fx);
+        save_all(store, _window, fx);
     }
 }
 
-pub(crate) fn save_all(store: &mut Store, fx: &mut AppFx<'_>) {
-    let owed: Vec<(crate::DocumentId, ResourceLocation)> = crate::OpenDocuments::list(store)
-        .into_iter()
-        .filter(|(_, entity)| entity.modified())
-        .filter_map(|(id, entity)| {
-            let location = entity.location()?.clone();
-            (!crate::is_synthetic(&location) && !crate::hichanges::scoped(&location))
-                .then_some((id, location))
-        })
-        .collect();
+pub(crate) fn save_all(store: &mut Store, window: crate::WindowId, fx: &mut AppFx<'_>) {
+    let Some(documents) =
+        crate::Windows::session_family(store, window).map(|family| family.documents())
+    else {
+        return;
+    };
+    let owed: Vec<(crate::DocumentId, ResourceLocation)> =
+        crate::OpenDocuments::list(store, documents)
+            .into_iter()
+            .filter(|(_, entity)| entity.modified())
+            .filter_map(|(id, entity)| {
+                let location = entity.location()?.clone();
+                (!crate::is_synthetic(&location) && !crate::hichanges::scoped(&location))
+                    .then_some((id, location))
+            })
+            .collect();
     for (id, location) in owed {
-        let Some(entity) = crate::OpenDocuments::entity(store, id) else {
+        let Some(entity) = crate::OpenDocuments::entity(store, documents, id) else {
             continue;
         };
         let document = entity.document();
@@ -181,17 +204,22 @@ pub(crate) fn save_all(store: &mut Store, fx: &mut AppFx<'_>) {
         let snapshot = document.text().clone();
         let previous = entity.save_token();
         let token = fx.push(AnyEffect::new(StoreDocumentEffect { location, text }).map(
-            move |stored| crate::AppCommand::DocumentStored {
-                document: id,
-                revision,
-                snapshot,
-                stored,
+            move |stored| {
+                crate::AppCommand::At(
+                    documents,
+                    crate::app::DocumentsCommand::Stored {
+                        document: id,
+                        revision,
+                        snapshot,
+                        stored,
+                    },
+                )
             },
         ));
         if let Some(previous) = previous {
             fx.cancel(previous);
         }
-        crate::OpenDocuments::set_save_token(store, id, Some(token));
+        crate::OpenDocuments::set_save_token(store, documents, id, Some(token));
     }
 }
 
@@ -208,11 +236,13 @@ impl DynamicCommand for SyncWatches {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        crate::sync_document_watches(store, fx);
-        crate::sync_stripe_bases(store, &app.ui_ctx(), fx);
+        if let Some(family) = crate::Windows::session_family(store, window) {
+            crate::watch::sync_document_watches(store, family.documents(), fx);
+            crate::diffs::sync_stripe_bases(store, family.documents(), &app.ui_ctx(), fx);
+        }
     }
 }
 

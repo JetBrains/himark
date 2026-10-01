@@ -176,28 +176,27 @@ pub struct DiffHandle {
 }
 
 impl OpenDocuments {
-    pub fn put_diff_view(store: &mut Store, id: DiffViewId, pair: DiffView) {
-        store.update::<OpenDocuments>(|docs| {
+    pub fn put_diff_view(store: &mut Store, documents: imba::store::Id<OpenDocuments>, id: DiffViewId, pair: DiffView) {
+        store.update_entity(documents, |docs| {
             docs.diffs.diff_views.insert_mut(id.0, pair);
         });
     }
 
-    pub fn take_diff_view(store: &mut Store, id: DiffViewId) -> Option<DiffView> {
-        let pair = Self::diff_view_ref(store, id).cloned();
+    pub fn take_diff_view(store: &mut Store, documents: imba::store::Id<OpenDocuments>, id: DiffViewId) -> Option<DiffView> {
+        let pair = Self::diff_view_ref(store, documents, id).cloned();
         if pair.is_some() {
-            Self::remove_diff_view(store, id);
+            Self::remove_diff_view(store, documents, id);
         }
         pair
     }
 
-    pub fn diff_view_ref(store: &Store, id: DiffViewId) -> Option<&DiffView> {
-        store
-            .get::<OpenDocuments>()
+    pub fn diff_view_ref(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DiffViewId) -> Option<&DiffView> {
+        store.entity(documents)
             .and_then(|docs| docs.diffs.diff_views.get(&id.0))
     }
 
-    pub fn remove_diff_view(store: &mut Store, id: DiffViewId) {
-        store.update::<OpenDocuments>(|docs| {
+    pub fn remove_diff_view(store: &mut Store, documents: imba::store::Id<OpenDocuments>, id: DiffViewId) {
+        store.update_entity(documents, |docs| {
             docs.diffs.diff_views.remove_mut(&id.0);
         });
     }
@@ -205,9 +204,8 @@ impl OpenDocuments {
     /// The STANDALONE pairs — the family rows a peeker can front.
     /// Canvas-embedded pairs stay with their canvas.
     /// Every tracked diff view — the dressing sweep's domain.
-    pub fn diff_view_ids(store: &Store) -> Vec<DiffViewId> {
-        store
-            .get::<OpenDocuments>()
+    pub fn diff_view_ids(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<DiffViewId> {
+        store.entity(documents)
             .map(|docs| {
                 docs.diffs
                     .diff_views
@@ -218,9 +216,8 @@ impl OpenDocuments {
             .unwrap_or_default()
     }
 
-    pub fn pair_ids(store: &Store) -> Vec<DiffViewId> {
-        store
-            .get::<OpenDocuments>()
+    pub fn pair_ids(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<DiffViewId> {
+        store.entity(documents)
             .map(|docs| {
                 docs.diffs
                     .diff_views
@@ -234,16 +231,18 @@ impl OpenDocuments {
 
     /// TEST SUPPORT: every held pair, embedded or not.
     #[doc(hidden)]
-    pub fn diff_view_count(store: &Store) -> usize {
-        store
-            .get::<OpenDocuments>()
+    pub fn diff_view_count(store: &Store, documents: imba::store::Id<OpenDocuments>) -> usize {
+        store.entity(documents)
             .map(|docs| docs.diffs.diff_views.size())
             .unwrap_or(0)
     }
 
-    pub fn pair_tracked(store: &Store, base: DocumentId, target: DocumentId) -> bool {
-        store
-            .get::<OpenDocuments>()
+    pub fn holds_diff_view(&self, id: DiffViewId) -> bool {
+        self.diffs.diff_views.contains_key(&id.0)
+    }
+
+    pub fn pair_tracked(store: &Store, documents: imba::store::Id<OpenDocuments>, base: DocumentId, target: DocumentId) -> bool {
+        store.entity(documents)
             .is_some_and(|docs| docs.diffs.by_pair(base, target).is_some())
     }
 
@@ -256,13 +255,13 @@ impl OpenDocuments {
     /// snapshot: the documents ARE the truth (docs/no-diff-on-ui-thread,
     /// docs/editor/diff-canvas.md §7).
     pub fn track_diff(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         base: DocumentId,
         target: DocumentId,
         stripes: bool,
     ) -> Option<DiffId> {
         let mut result = None;
-        store.update::<OpenDocuments>(|docs| {
+        store.update_entity(documents, |docs| {
             if let Some(existing) = docs.diffs.by_pair(base, target) {
                 let mut record = docs.diffs.record(existing).expect("indexed").clone();
                 record.refs += 1;
@@ -341,7 +340,7 @@ impl OpenDocuments {
     }
 
     pub fn untrack_diff<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         id: DiffId,
         fx: &mut imba::effect::Effects<'_, R>,
@@ -349,7 +348,7 @@ impl OpenDocuments {
         let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
         let mut released: Option<DiffRecord> = None;
-        store.update::<OpenDocuments>(|docs| {
+        store.update_entity(documents, |docs| {
             let Some(mut record) = docs.diffs.record(id).cloned() else {
                 return;
             };
@@ -367,7 +366,7 @@ impl OpenDocuments {
             fx.cancel(token);
         }
 
-        if let Some(mut document) = Self::document(store, record.target) {
+        if let Some(mut document) = Self::document(store, documents, record.target) {
             document.remove_diff(
                 id,
                 &[],
@@ -377,9 +376,9 @@ impl OpenDocuments {
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             );
-            Self::put_document(store, record.target, document);
+            Self::put_document(store, documents, record.target, document);
         }
-        if let Some(mut document) = Self::document(store, record.base) {
+        if let Some(mut document) = Self::document(store, documents, record.base) {
             document.remove_markup(
                 record.base_markup,
                 &[],
@@ -389,14 +388,14 @@ impl OpenDocuments {
                 &theme,
                 &mut imba::effect::Batch::new().effects(),
             );
-            Self::put_document(store, record.base, document);
+            Self::put_document(store, documents, record.base, document);
         }
-        Self::remove_if_editorless(store, ui, record.base, fx);
-        Self::remove_if_editorless(store, ui, record.target, fx);
+        Self::remove_if_editorless(store, documents, ui, record.base, fx);
+        Self::remove_if_editorless(store, documents, ui, record.target, fx);
     }
 
-    pub fn diff_handle(store: &Store, id: DiffId) -> Option<DiffHandle> {
-        let docs = store.get::<OpenDocuments>()?;
+    pub fn diff_handle(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DiffId) -> Option<DiffHandle> {
+        let docs = store.entity(documents)?;
         let record = docs.diffs.record(id)?;
         Some(DiffHandle {
             id,
@@ -406,24 +405,23 @@ impl OpenDocuments {
         })
     }
 
-    pub fn stripe_diff(store: &Store, target: DocumentId) -> Option<DiffHandle> {
-        let docs = store.get::<OpenDocuments>()?;
-        Self::diff_handle(store, docs.diffs.stripe_of(target)?)
+    pub fn stripe_diff(store: &Store, documents: imba::store::Id<OpenDocuments>, target: DocumentId) -> Option<DiffHandle> {
+        let docs = store.entity(documents)?;
+        Self::diff_handle(store, documents, docs.diffs.stripe_of(target)?)
     }
 
     pub(crate) fn untrack_stripes<R: 'static>(
-        store: &mut Store,
+        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) -> bool {
-        let Some(id) = store
-            .get::<OpenDocuments>()
+        let Some(id) = store.entity(documents)
             .and_then(|docs| docs.diffs.stripe_of(document))
         else {
             return false;
         };
-        store.update::<OpenDocuments>(|docs| {
+        store.update_entity(documents, |docs| {
             if let Some(mut record) = docs.diffs.record(id).cloned() {
                 record.stripes = false;
                 docs.diffs.put(id, record);
@@ -440,29 +438,28 @@ impl OpenDocuments {
                 }
             }
         });
-        Self::untrack_diff(store, ui, id, fx);
+        Self::untrack_diff(store, documents, ui, id, fx);
         true
     }
 
     #[doc(hidden)]
-    pub fn diff_refs(store: &Store, id: DiffId) -> Option<u32> {
-        Some(store.get::<OpenDocuments>()?.diffs.record(id)?.refs)
+    pub fn diff_refs(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DiffId) -> Option<u32> {
+        Some(store.entity(documents)?.diffs.record(id)?.refs)
     }
 }
 
 pub fn sync_diff_lanes<R: 'static>(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<OpenDocuments>,
     fx: &mut imba::effect::Effects<'_, R>,
     wrap: impl Fn(Normalized) -> R + Send + Clone + 'static,
 ) {
-    if store
-        .get::<OpenDocuments>()
+    if store.entity(documents)
         .is_none_or(|docs| docs.diffs.is_empty())
     {
         return;
     }
     let policy = editor::env::Differ::of(store);
-    store.update::<OpenDocuments>(|docs| {
+    store.update_entity(documents, |docs| {
         for id in docs.diffs.ids() {
             let Some(mut record) = docs.diffs.record(id).cloned() else {
                 continue;
@@ -538,14 +535,14 @@ pub fn sync_diff_lanes<R: 'static>(
 }
 
 pub fn land_normalized(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<OpenDocuments>,
     id: DiffId,
     minimal: Operation,
     base_revision: u64,
     target_revision: u64,
 ) -> bool {
     let mut landed = false;
-    store.update::<OpenDocuments>(|docs| {
+    store.update_entity(documents, |docs| {
         let Some(record) = docs.diffs.record(id).cloned() else {
             return;
         };
@@ -583,7 +580,7 @@ pub fn land_normalized(
 /// document — through the entity's own effects scope, so the swap's
 /// repair tails route home like any landing's.
 pub fn land_diff_markup(
-    store: &mut Store,
+    store: &mut Store, documents: imba::store::Id<OpenDocuments>,
     ui: &imba::UiCtx,
     id: DiffId,
     markup: editor::Markup,
@@ -591,21 +588,20 @@ pub fn land_diff_markup(
     derived_at: u64,
     fx: &mut editor::EditorEffects<'_>,
 ) {
-    let Some(record) = store
-        .get::<OpenDocuments>()
+    let Some(record) = store.entity(documents)
         .and_then(|docs| docs.diffs.record(id).cloned())
     else {
         return;
     };
     let fonts = editor::env::Fonts::of(store)();
     let theme = editor::env::Themes::of(store);
-    let Some(mut document) = OpenDocuments::document(store, record.target) else {
+    let Some(mut document) = OpenDocuments::document(store, documents, record.target) else {
         return;
     };
     document.install_diff_markup(
         id, markup, changed, derived_at, store, ui, &fonts, &theme, fx,
     );
-    OpenDocuments::put_document(store, record.target, document);
+    OpenDocuments::put_document(store, documents, record.target, document);
 }
 
 /// The edge-installed BASE RESOLVER: working location → its base ref,
@@ -635,6 +631,7 @@ impl StripeBases {
 
 pub fn sync_stripe_bases<R: 'static>(
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     fx: &mut imba::effect::Effects<'_, R>,
     mut land: impl FnMut(
         &mut Store,
@@ -646,7 +643,7 @@ pub fn sync_stripe_bases<R: 'static>(
     let Some(resolve) = store.get::<StripeBases>().map(|bases| bases.0.clone()) else {
         return;
     };
-    let asks: Vec<(DocumentId, editor::ResourceLocation)> = OpenDocuments::list(store)
+    let asks: Vec<(DocumentId, editor::ResourceLocation)> = OpenDocuments::list(store, documents)
         .into_iter()
         .filter(|(_, entity)| !entity.base_requested())
         .filter_map(|(document, entity)| {
@@ -655,7 +652,7 @@ pub fn sync_stripe_bases<R: 'static>(
         })
         .collect();
     for (document, location) in asks {
-        OpenDocuments::set_base_requested(store, document);
+        OpenDocuments::set_base_requested(store, documents, document);
         if probe() {
             eprintln!("[diffs] base ask for /{}", location.path().join("/"));
         }
@@ -664,8 +661,8 @@ pub fn sync_stripe_bases<R: 'static>(
     }
 }
 
-pub fn rearm_base_asks(store: &mut Store, matches: &dyn Fn(&editor::ResourceLocation) -> bool) {
-    let rearm: Vec<crate::DocumentId> = OpenDocuments::list(store)
+pub fn rearm_base_asks(store: &mut Store, documents: imba::store::Id<OpenDocuments>, matches: &dyn Fn(&editor::ResourceLocation) -> bool) {
+    let rearm: Vec<crate::DocumentId> = OpenDocuments::list(store, documents)
         .into_iter()
         .filter(|(_, entity)| {
             entity.base_requested() && entity.location().is_some_and(|location| matches(location))
@@ -673,71 +670,73 @@ pub fn rearm_base_asks(store: &mut Store, matches: &dyn Fn(&editor::ResourceLoca
         .map(|(document, _)| document)
         .collect();
     for document in rearm {
-        OpenDocuments::update_entity(store, document, |entity| entity.base_requested = false);
+        OpenDocuments::update_entity(store, documents, document, |entity| entity.base_requested = false);
     }
 }
 
 pub fn adopt_base_location<R: 'static>(
-    store: &mut Store,
+    store: &mut Store, 
+    documents: imba::store::Id<OpenDocuments>,
     ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: Option<editor::ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, R>,
 ) -> Option<editor::ResourceLocation> {
-    if !OpenDocuments::contains(store, document) {
+    if !OpenDocuments::contains(store, documents, document) {
         return None;
     }
 
-    if let Some(handle) = OpenDocuments::stripe_diff(store, document) {
-        if OpenDocuments::location(store, handle.base).as_ref() == base.as_ref() {
+    if let Some(handle) = OpenDocuments::stripe_diff(store, documents, document) {
+        if OpenDocuments::location(store, documents, handle.base).as_ref() == base.as_ref() {
             return None;
         }
-        OpenDocuments::untrack_stripes(store, ui, document, fx);
+        OpenDocuments::untrack_stripes(store, documents, ui, document, fx);
 
-        if !OpenDocuments::contains(store, document) {
+        if !OpenDocuments::contains(store, documents, document) {
             return None;
         }
     }
     let base = base?;
-    if let Some(base_id) = OpenDocuments::by_location(store, &base) {
-        let _ = OpenDocuments::track_diff(store, base_id, document, true);
+    if let Some(base_id) = OpenDocuments::by_location(store, documents, &base) {
+        let _ = OpenDocuments::track_diff(store, documents, base_id, document, true);
         return None;
     }
     Some(base)
 }
 
 pub fn land_base_built<R: 'static>(
-    store: &mut Store,
+    store: &mut Store, 
+    documents: imba::store::Id<OpenDocuments>,
     ui: &imba::UiCtx,
     document: crate::DocumentId,
     base: editor::ResourceLocation,
     built: editor::Document,
     fx: &mut imba::effect::Effects<'_, R>,
 ) {
-    if !OpenDocuments::contains(store, document) {
+    if !OpenDocuments::contains(store, documents, document) {
         return;
     }
-    if let Some(handle) = OpenDocuments::stripe_diff(store, document) {
-        if OpenDocuments::location(store, handle.base).as_ref() == Some(&base) {
+    if let Some(handle) = OpenDocuments::stripe_diff(store, documents, document) {
+        if OpenDocuments::location(store, documents, handle.base).as_ref() == Some(&base) {
             return;
         }
-        OpenDocuments::untrack_stripes(store, ui, document, fx);
-        if !OpenDocuments::contains(store, document) {
+        OpenDocuments::untrack_stripes(store, documents, ui, document, fx);
+        if !OpenDocuments::contains(store, documents, document) {
             return;
         }
     }
-    let base_id = match OpenDocuments::by_location(store, &base) {
+    let base_id = match OpenDocuments::by_location(store, documents, &base) {
         Some(existing) => existing,
         None => {
             let saved = built.revision();
             let name = base.name().to_owned();
-            let id = OpenDocuments::register(store, built, Some(base), name, saved);
+            let id = OpenDocuments::register(store, documents, built, Some(base), name, saved);
 
-            OpenDocuments::set_base_requested(store, id);
+            OpenDocuments::set_base_requested(store, documents, id);
             id
         }
     };
-    let tracked = OpenDocuments::track_diff(store, base_id, document, true);
+    let tracked = OpenDocuments::track_diff(store, documents, base_id, document, true);
     if probe() {
         eprintln!("[diffs] stripes tracked={tracked:?} for {document:?}");
     }
@@ -884,8 +883,10 @@ mod tests {
     fn the_base_chain_tracks_and_the_release_unwinds() {
         let ui = ::editor::test_document::test_ui();
         let mut store = Store::new();
+        let documents = imba::store::Id::mint();
         let target = OpenDocuments::register(
             &mut store,
+            documents,
             plain_document("one\nTWO\n"),
             Some(located("work.md")),
             "work.md".to_owned(),
@@ -894,7 +895,7 @@ mod tests {
 
         let mut landed: Vec<(DocumentId, Option<editor::ResourceLocation>)> = Vec::new();
         let mut quiet = imba::effect::Batch::<Landed>::new();
-        sync_stripe_bases(&mut store, &mut quiet.effects(), |_, document, base, _| {
+        sync_stripe_bases(&mut store, documents, &mut quiet.effects(), |_, document, base, _| {
             landed.push((document, base))
         });
         assert_eq!(landed.len(), 0, "no resolver installed, no ask");
@@ -909,7 +910,7 @@ mod tests {
             }),
         );
         let mut first = imba::effect::Batch::<Landed>::new();
-        sync_stripe_bases(&mut store, &mut first.effects(), |_, document, base, _| {
+        sync_stripe_bases(&mut store, documents, &mut first.effects(), |_, document, base, _| {
             landed.push((document, base))
         });
         assert_eq!(landed.len(), 1, "one ask for the located document");
@@ -919,7 +920,7 @@ mod tests {
             "the resolver answered at launch, synchronously"
         );
         let mut again = imba::effect::Batch::<Landed>::new();
-        sync_stripe_bases(&mut store, &mut again.effects(), |_, document, base, _| {
+        sync_stripe_bases(&mut store, documents, &mut again.effects(), |_, document, base, _| {
             landed.push((document, base))
         });
         assert_eq!(landed.len(), 1, "asked once per open");
@@ -928,6 +929,7 @@ mod tests {
         assert_eq!(
             adopt_base_location(
                 &mut store,
+                documents,
                 ui,
                 target,
                 Some(base_location.clone()),
@@ -939,19 +941,20 @@ mod tests {
 
         land_base_built(
             &mut store,
+            documents,
             ui,
             target,
             base_location.clone(),
             plain_document("one\ntwo\n"),
             &mut imba::effect::Batch::<()>::new().effects(),
         );
-        let handle = OpenDocuments::stripe_diff(&store, target).expect("tracked");
+        let handle = OpenDocuments::stripe_diff(&store, documents, target).expect("tracked");
         let base_id = handle.base;
         assert_eq!(
-            OpenDocuments::location(&store, base_id),
+            OpenDocuments::location(&store, documents, base_id),
             Some(base_location.clone())
         );
-        let base_entity = OpenDocuments::entity(&store, base_id).expect("registered");
+        let base_entity = OpenDocuments::entity(&store, documents, base_id).expect("registered");
         assert_eq!(
             base_entity.saved_revision(),
             base_entity.document().revision(),
@@ -962,7 +965,7 @@ mod tests {
             "a base is never asked for a base"
         );
         assert!(
-            OpenDocuments::document_ref(&store, target)
+            OpenDocuments::document_ref(&store, documents, target)
                 .and_then(|document| document.diff(handle.id))
                 .is_some(),
             "the entry rides the target"
@@ -971,6 +974,7 @@ mod tests {
         assert_eq!(
             adopt_base_location(
                 &mut store,
+                documents,
                 ui,
                 target,
                 Some(base_location.clone()),
@@ -979,26 +983,27 @@ mod tests {
             None,
             "nothing owed while the track stands"
         );
-        assert_eq!(OpenDocuments::diff_refs(&store, handle.id), Some(1));
+        assert_eq!(OpenDocuments::diff_refs(&store, documents, handle.id), Some(1));
 
         let mut lanes = imba::effect::Batch::new();
-        sync_diff_lanes(&mut store, &mut lanes.effects(), Landed::Normalized);
+        sync_diff_lanes(&mut store, documents, &mut lanes.effects(), Landed::Normalized);
         assert_eq!(launches(lanes), 1, "the first normalization launches");
 
         OpenDocuments::remove_if_editorless(
             &mut store,
+            documents,
             ui,
             target,
             &mut imba::effect::Batch::<()>::new().effects(),
         );
         assert!(
-            !OpenDocuments::contains(&store, target),
+            !OpenDocuments::contains(&store, documents, target),
             "the target released"
         );
         assert!(
-            !OpenDocuments::contains(&store, base_id),
+            !OpenDocuments::contains(&store, documents, base_id),
             "the base released with the record"
         );
-        assert!(OpenDocuments::diff_handle(&store, handle.id).is_none());
+        assert!(OpenDocuments::diff_handle(&store, documents, handle.id).is_none());
     }
 }
