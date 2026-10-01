@@ -203,7 +203,7 @@ fn dir_children(
 
 type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
 
-pub enum CommentsCommand {
+pub enum CommentsViewCommand {
     Rows(ListKeyCommand<TreeListCommand>),
 
     SendAll,
@@ -332,31 +332,31 @@ impl CommentsView {
 }
 
 impl View for CommentsView {
-    type Command = CommentsCommand;
+    type Command = CommentsViewCommand;
 
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
         ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, CommentsCommand> {
+    ) -> imba::focus::FocusData<'w, CommentsViewCommand> {
         use imba::focus::FocusData;
         // The key table is the controller's (docs/ui/list-keyboard.md
         // §3); the surface keeps only its own dismissal.
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(CommentsCommand::Dismiss),
+                InputKey::Escape if !searching => EventResult::Command(CommentsViewCommand::Dismiss),
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
         };
-        own.merge_under(self.list.focus_data(store, ui).map(CommentsCommand::Rows))
+        own.merge_under(self.list.focus_data(store, ui).map(CommentsViewCommand::Rows))
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
         let ui = &imba::UiCtx::dont_use_too_slow();
-        fx.scope(CommentsCommand::Rows, |fx| self.list.clear(store, ui, fx));
+        fx.scope(CommentsViewCommand::Rows, |fx| self.list.clear(store, ui, fx));
     }
 
     fn perform(
@@ -367,7 +367,7 @@ impl View for CommentsView {
         fx: &mut Effects<'_, Self::Command>,
     ) {
         match command {
-            CommentsCommand::Rows(command) => {
+            CommentsViewCommand::Rows(command) => {
                 match &command {
                     ListKeyCommand::Fold { expand, .. } => {
                         return self.list.inner_mut().fold_cursor(*expand, store, ui);
@@ -389,19 +389,19 @@ impl View for CommentsView {
                             return self.perform(
                                 store,
                                 ui,
-                                CommentsCommand::Rows(ListKeyCommand::Clear),
+                                CommentsViewCommand::Rows(ListKeyCommand::Clear),
                                 fx,
                             );
                         }
                         ActivateTrigger::Enter | ActivateTrigger::Click => {}
                     }
                 }
-                fx.scope(CommentsCommand::Rows, |fx| {
+                fx.scope(CommentsViewCommand::Rows, |fx| {
                     self.list.perform(store, ui, command, fx)
                 });
             }
-            CommentsCommand::Refresh => self.refresh(store, ui),
-            CommentsCommand::SendAll => {
+            CommentsViewCommand::Refresh => self.refresh(store, ui),
+            CommentsViewCommand::SendAll => {
                 let ids: Vec<AnnotationId> = self
                     .items
                     .iter()
@@ -421,7 +421,7 @@ impl View for CommentsView {
                     }),
                 )));
             }
-            CommentsCommand::Dismiss => {
+            CommentsViewCommand::Dismiss => {
                 self.request = Some(ModalRequest::Close);
             }
         }
@@ -445,7 +445,7 @@ impl View for CommentsView {
                 arena,
                 Constraints::tight(Size::new(size.width, size.height - band)),
             )
-            .map(CommentsCommand::Rows);
+            .map(CommentsViewCommand::Rows);
             overlay.place(0.0, band, rows);
 
             let chip_font = crate::fonts::ui_font(ui, chrome.hint_size);
@@ -454,7 +454,7 @@ impl View for CommentsView {
             let chip_radius = chrome.well_radius;
             let rule = chrome.rule.0;
             let dim = chrome.dim_text.0;
-            let chip = leaf::<CommentsCommand>(chip_width, chip_height)
+            let chip = leaf::<CommentsViewCommand>(chip_width, chip_height)
                 .paint_instead(move |_arena, canvas, rect| {
                     let mut paint = skia_safe::Paint::default();
                     paint.set_anti_alias(true);
@@ -480,19 +480,19 @@ impl View for CommentsView {
                     );
                 })
                 .event(|_arena, event, _size| match event {
-                    Event::MouseDown { .. } => EventResult::Command(CommentsCommand::SendAll),
+                    Event::MouseDown { .. } => EventResult::Command(CommentsViewCommand::SendAll),
                     _ => EventResult::Ignored,
                 });
 
             // The key table lives in the controller's own overlay;
             // the surface keeps only its dismissal.
             let searching = self.list.searching();
-            let keymap = leaf::<CommentsCommand>(size.width, size.height).event(
+            let keymap = leaf::<CommentsViewCommand>(size.width, size.height).event(
                 move |_arena, event, _size| match event {
                     Event::KeyDown {
                         key: InputKey::Escape,
                         ..
-                    } if !searching => EventResult::Command(CommentsCommand::Dismiss),
+                    } if !searching => EventResult::Command(CommentsViewCommand::Dismiss),
                     _ => EventResult::Ignored,
                 },
             );
@@ -514,12 +514,12 @@ struct ReconcileShell<Inner> {
     stale: bool,
 }
 
-impl<'a, Inner: Widget<'a, CommentsCommand>> Widget<'a, CommentsCommand> for ReconcileShell<Inner> {
+impl<'a, Inner: Widget<'a, CommentsViewCommand>> Widget<'a, CommentsViewCommand> for ReconcileShell<Inner> {
     fn size(&self) -> Size {
         self.inner.size()
     }
 
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, CommentsCommand>> {
+    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, CommentsViewCommand>> {
         self.inner.overlays()
     }
 
@@ -528,10 +528,10 @@ impl<'a, Inner: Widget<'a, CommentsCommand>> Widget<'a, CommentsCommand> for Rec
         arena: &Arena,
         event: &Event<'_>,
         viewport: Rect,
-    ) -> EventResult<CommentsCommand> {
+    ) -> EventResult<CommentsViewCommand> {
         let result = self.inner.handle_event(arena, event, viewport);
         if matches!(event, Event::Paint { .. }) && self.stale {
-            return result.merge(EventResult::Command(CommentsCommand::Refresh));
+            return result.merge(EventResult::Command(CommentsViewCommand::Refresh));
         }
         result
     }
@@ -539,7 +539,7 @@ impl<'a, Inner: Widget<'a, CommentsCommand>> Widget<'a, CommentsCommand> for Rec
     fn layout_data<'w>(
         &'w mut self,
         target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, CommentsCommand>
+    ) -> imba::focus::LayoutData<'w, CommentsViewCommand>
     where
         'a: 'w,
     {
@@ -659,7 +659,7 @@ impl crate::DynamicCommand for ToggleCommentsView {
         let workspace = entity.current_session();
         let comments = entity.family().comments();
         for folder in crate::higent::session_folders(store, &workspace) {
-            Comments::ensure(store, window, comments, &folder, fx);
+            Comments::ensure(store, comments, &folder, fx);
         }
 
         fx.scope(

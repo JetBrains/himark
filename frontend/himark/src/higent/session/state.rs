@@ -148,7 +148,7 @@ impl SessionState {
         store.retract(self.recents);
         store.dispose(self.changes);
         store.dispose(self.history);
-        store.retract(self.comments);
+        store.dispose(self.comments);
         store.retract(self.terminals);
         // Converted collections leave through `dispose`: the row goes,
         // then its `destroy` retracts what it owns (law 6). The others
@@ -471,6 +471,13 @@ impl Hosts {
         history: Id<crate::hihistory::History>,
     ) -> Option<crate::SessionId> {
         Self::find_session(store, |_store, families| families.history == history)
+    }
+
+    pub(crate) fn session_of_comments_id(
+        store: &Store,
+        comments: Id<crate::hicomments::Comments>,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |_store, families| families.comments == comments)
     }
 
     /// The family whose documents collection this is — the sibling

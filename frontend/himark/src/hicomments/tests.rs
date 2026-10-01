@@ -342,24 +342,22 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         "the record stands"
     );
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(crate::hicomments::sync::Sent {
-            comments: app.sole_family().comments(),
+    assert!(app.perform_command(AppCommand::AtComments(
+        app.sole_family().comments(),
+        crate::hicomments::CommentsCommand::Sent {
             ids: ids.clone(),
             result: Err("wire died".to_owned()),
-        }),
+        },
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(crate::hicomments::sync::Sent {
-            comments: app.sole_family().comments(),
+    assert!(app.perform_command(AppCommand::AtComments(
+        app.sole_family().comments(),
+        crate::hicomments::CommentsCommand::Sent {
             ids,
             result: Ok(()),
-        }),
+        },
     )));
     assert!(
         crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),

@@ -14,7 +14,7 @@ use crate::higent::ahp_types::state::{
     TextPosition, TextRange,
 };
 use crate::{AppCommand, AppFx, DocumentId, InlayKey, LineCol, ResourceLocation, WindowId};
-use imba::effect::AnyEffect;
+use imba::effect::{AnyEffect, Effects};
 use imba::store::Store;
 
 use crate::hicomments::{comments_markup, CommentView};
@@ -91,6 +91,127 @@ pub struct Comments {
 
 #[derive(Clone, Default)]
 pub struct CommentsInstall;
+
+/// What the collection answers to behind its `At` address
+/// (docs/entities.md law 5): the annotations feed's landings and the
+/// send-turn's answer, each stamped with the collection id at launch.
+pub enum CommentsCommand {
+    /// The annotations subscribe answered for the feed's session.
+    Snapshot {
+        session: Uri,
+        result: Result<AnnotationsState, String>,
+    },
+    /// The annotations poll drained for the feed's session.
+    Polled {
+        session: Uri,
+        actions: Vec<StateAction>,
+    },
+    /// The send-to-agent turn answered for a batch of comments.
+    Sent {
+        ids: Vec<AnnotationId>,
+        result: Result<(), String>,
+    },
+}
+
+/// A note the collection leaves for the application road after a
+/// landing (the `BaseRearms` shape): cards whose records died drop
+/// their inlays, and the surviving records settle into cards. The
+/// entity holds no document-addressed effects of its own; the
+/// `AtComments` arm consumes this with the ones it has.
+#[derive(Clone, Default)]
+pub struct CardWork {
+    pub dead: Vec<(DocumentId, InlayKey)>,
+    pub settle: bool,
+}
+
+impl imba::store::Entity for Comments {
+    type Command = CommentsCommand;
+
+    fn perform(
+        &mut self,
+        _id: imba::store::Id<Self>,
+        command: CommentsCommand,
+        store: &mut Store,
+        _ui: &imba::UiCtx,
+        fx: &mut Effects<'_, CommentsCommand>,
+    ) {
+        match command {
+            CommentsCommand::Snapshot { session, result } => {
+                let Some(feed) = self.channel_for(&session).cloned() else {
+                    return;
+                };
+                let state = match result {
+                    Ok(state) => state,
+                    Err(_) => {
+                        self.channel = None;
+                        return;
+                    }
+                };
+                let placed: Vec<(Annotation, ResourceLocation)> = state
+                    .annotations
+                    .iter()
+                    .filter_map(|annotation| {
+                        self.place(store, &session, annotation)
+                            .map(|location| (annotation.clone(), location))
+                    })
+                    .collect();
+                let mut live = feed.clone();
+                live.live = true;
+                self.channel = Some(live);
+                for (annotation, location) in &placed {
+                    fold_set(self, feed.server, &session, annotation, location);
+                }
+                self.generation += 1;
+                self.note_card_work(store, Vec::new());
+                self.relaunch_poll(&session, fx);
+            }
+            CommentsCommand::Polled { session, actions } => {
+                let Some(feed) = self.channel_for(&session).cloned() else {
+                    return;
+                };
+                let placed: std::collections::HashMap<AnnotationId, ResourceLocation> = actions
+                    .iter()
+                    .filter_map(|action| match action {
+                        StateAction::AnnotationsSet(set) => self
+                            .place(store, &session, &set.annotation)
+                            .map(|location| (set.annotation.id.clone(), location)),
+                        _ => None,
+                    })
+                    .collect();
+                let dead = self.fold_polled(feed.server, &session, &actions, &placed);
+                self.generation += 1;
+                self.note_card_work(store, dead);
+                self.relaunch_poll(&session, fx);
+            }
+            CommentsCommand::Sent { ids, result } => {
+                if let Err(error) = &result {
+                    eprintln!("[comments] send failed, comments kept: {error}");
+                    for id in &ids {
+                        let Some(mut record) = self.records.get(id).cloned() else {
+                            continue;
+                        };
+                        record.sending = false;
+                        self.records.insert_mut(id.clone(), record);
+                    }
+                    return;
+                }
+                let mut dead = Vec::new();
+                for id in &ids {
+                    if let Some(card) = self.cards.get(id) {
+                        dead.push(*card);
+                    }
+                    self.remove_in_place(id);
+                }
+                store.update::<CardWork>(|work| work.dead.extend(dead));
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {
+        // Records and cards are the collection's PRIVATE schema —
+        // nothing to retract; the feed dies with the drop.
+    }
+}
 
 impl Comments {
     pub fn install(store: &mut Store) {
@@ -216,12 +337,171 @@ impl Comments {
         id
     }
 
+    /// The annotation's document location through the host's uri
+    /// map — an existing record keeps the location it had.
+    fn place(
+        &self,
+        store: &Store,
+        session: &Uri,
+        annotation: &Annotation,
+    ) -> Option<ResourceLocation> {
+        if let Some(held) = self.records.get(&annotation.id) {
+            return Some(held.location.clone());
+        }
+        let server = self.channel_for(session)?.server;
+        let uris = crate::higent::Hosts::uris(store, server)?;
+        let authority = crate::higent::seat::route_authority(server, session);
+        uris.location_of(
+            &crate::higent::ResourceUri::new(annotation.resource.clone()),
+            crate::ResourceType::document(),
+            &authority,
+        )
+    }
+
+    /// Fold the feed's streamed actions; cards whose records died come
+    /// back for the application road to drop.
+    fn fold_polled(
+        &mut self,
+        server: crate::higent::HostId,
+        session: &Uri,
+        actions: &[StateAction],
+        placed: &std::collections::HashMap<AnnotationId, ResourceLocation>,
+    ) -> Vec<(DocumentId, InlayKey)> {
+        let mut dead_cards: Vec<(DocumentId, InlayKey)> = Vec::new();
+        for action in actions {
+            match action {
+                StateAction::AnnotationsSet(set) => {
+                    let Some(location) = placed.get(&set.annotation.id) else {
+                        continue;
+                    };
+                    fold_set(self, server, session, &set.annotation, location);
+                }
+                StateAction::AnnotationsUpdated(updated) => {
+                    let Some(mut record) = self.records.get(&updated.annotation_id).cloned()
+                    else {
+                        continue;
+                    };
+                    if let Some(turn) = &updated.turn_id {
+                        record.turn_id = turn.clone();
+                    }
+                    if let Some(range) = &updated.range {
+                        record.range = Some(from_wire(range));
+                    }
+                    if let Some(resolved) = updated.resolved {
+                        record.resolved = resolved;
+                    }
+                    self.records
+                        .insert_mut(updated.annotation_id.clone(), record);
+                }
+                StateAction::AnnotationsRemoved(removed) => {
+                    if let Some(card) = self.cards.get(&removed.annotation_id) {
+                        dead_cards.push(*card);
+                    }
+                    self.records.remove_mut(&removed.annotation_id);
+                    self.cards.remove_mut(&removed.annotation_id);
+                }
+                StateAction::AnnotationsEntrySet(set) => {
+                    let Some(mut record) = self.records.get(&set.annotation_id).cloned() else {
+                        continue;
+                    };
+                    let text = wire_text(&set.entry.text);
+                    let mut entries: Vec<EntryRecord> = record.entries.iter().cloned().collect();
+                    let mut foreign_touch = true;
+                    match entries.iter_mut().find(|held| held.id == set.entry.id) {
+                        Some(held) => {
+                            foreign_touch = !held.ours;
+                            held.text = text;
+                        }
+                        None => entries.push(EntryRecord {
+                            id: set.entry.id.clone(),
+                            text,
+                            ours: false,
+                        }),
+                    }
+                    record.entries = entries.into_iter().collect();
+                    record.thread_stamp += u64::from(foreign_touch);
+                    self.records.insert_mut(set.annotation_id.clone(), record);
+                }
+                StateAction::AnnotationsEntryRemoved(removed) => {
+                    let Some(mut record) = self.records.get(&removed.annotation_id).cloned()
+                    else {
+                        continue;
+                    };
+                    let foreign_touch = record
+                        .entries
+                        .iter()
+                        .any(|held| held.id == removed.entry_id && !held.ours);
+                    record.entries = record
+                        .entries
+                        .iter()
+                        .filter(|held| held.id != removed.entry_id)
+                        .cloned()
+                        .collect();
+                    record.thread_stamp += u64::from(foreign_touch);
+                    self.records
+                        .insert_mut(removed.annotation_id.clone(), record);
+                }
+                _ => {}
+            }
+        }
+        dead_cards
+    }
+
+    /// The landing's own poll relaunch — the next batch of the feed's
+    /// annotations channel comes home as `Polled`, stamped by the
+    /// router.
+    fn relaunch_poll(&self, session: &Uri, fx: &mut Effects<'_, CommentsCommand>) {
+        let Some(feed) = self.channel_for(session) else {
+            return;
+        };
+        let landing = session.clone();
+        fx.push(
+            AnyEffect::new(crate::higent::PollAnnotationsEffect {
+                seat: feed.seat.clone(),
+                session: session.clone(),
+            })
+            .map(move |actions| CommentsCommand::Polled {
+                session: landing.clone(),
+                actions,
+            }),
+        );
+    }
+
+    /// Remove a record (announcing it to the live feed) and forget its
+    /// card; the inlay itself is the application road's to drop.
+    fn remove_in_place(&mut self, id: &AnnotationId) {
+        let Some(record) = self.records.get(id) else {
+            return;
+        };
+        if record.synced {
+            if let Some(feed) = self.channel_for(&record.session) {
+                feed.seat.dispatch_annotations(
+                    &record.session,
+                    StateAction::AnnotationsRemoved(AnnotationsRemovedAction {
+                        annotation_id: id.clone(),
+                    }),
+                );
+            }
+        }
+        self.records.remove_mut(id);
+        self.cards.remove_mut(id);
+        self.generation += 1;
+    }
+
+    /// Leave the card note for the application road: a landing's
+    /// document work (inlay mint and removal) runs behind the lease.
+    fn note_card_work(&self, store: &mut Store, dead: Vec<(DocumentId, InlayKey)>) {
+        store.update::<CardWork>(|work| {
+            work.dead.extend(dead);
+            work.settle = true;
+        });
+    }
+
     /// Attach the annotations feed of the wire that serves a folder —
     /// the collection is the caller's (the window's family), the seat
     /// and AHP session come off the folder's authority.
     pub fn ensure(
         store: &mut Store,
-        window: WindowId,
         comments: imba::store::Id<Comments>,
         location: &ResourceLocation,
         fx: &mut AppFx<'_>,
@@ -233,10 +513,6 @@ impl Comments {
             crate::higent::seat::route_seat(store, location.authority().as_str())
         else {
             return;
-        };
-        let scope = crate::SessionId {
-            host: server,
-            session: session.clone(),
         };
         let known = Self::of(store, comments)
             .is_some_and(|comments| comments.channel_for(&session).is_some());
@@ -257,15 +533,12 @@ impl Comments {
                 session: session.clone(),
             })
             .map(move |result| {
-                AppCommand::dynamic_in(
-                    scope.clone(),
-                    window,
-                    Arc::new(SnapshotLanded {
-                        home: scope.clone(),
-                        comments,
+                AppCommand::AtComments(
+                    comments,
+                    CommentsCommand::Snapshot {
                         session: session.clone(),
                         result,
-                    }),
+                    },
                 )
             }),
         );
@@ -331,26 +604,7 @@ impl Comments {
     }
 
     pub fn removed(store: &mut Store, comments: imba::store::Id<Comments>, id: &AnnotationId) {
-        let Some(record) = Self::record(store, comments, id) else {
-            return;
-        };
-        if record.synced {
-            if let Some(feed) = Self::of(store, comments)
-                .and_then(|comments| comments.channel_for(&record.session).cloned())
-            {
-                feed.seat.dispatch_annotations(
-                    &record.session,
-                    StateAction::AnnotationsRemoved(AnnotationsRemovedAction {
-                        annotation_id: id.clone(),
-                    }),
-                );
-            }
-        }
-        Self::update(store, comments, |comments| {
-            comments.records.remove_mut(id);
-            comments.cards.remove_mut(id);
-            comments.generation += 1;
-        });
+        Self::update(store, comments, |comments| comments.remove_in_place(id));
     }
 
     pub fn send_to_agent(
@@ -420,7 +674,6 @@ impl Comments {
             }
             let sent = group.clone();
 
-            let scope = key.clone();
             fx.push(
                 AnyEffect::new(crate::higent::StartTurnEffect {
                     seat: feed.seat.clone(),
@@ -430,14 +683,12 @@ impl Comments {
                     model: None,
                 })
                 .map(move |result| {
-                    AppCommand::dynamic_in(
-                        scope.clone(),
-                        window,
-                        Arc::new(Sent {
-                            comments,
+                    AppCommand::AtComments(
+                        comments,
+                        CommentsCommand::Sent {
                             ids: sent.clone(),
                             result,
-                        }),
+                        },
                     )
                 }),
             );
@@ -530,233 +781,46 @@ fn latest_turn(store: &Store, server: crate::higent::HostId, session: &Uri) -> S
     .unwrap_or_default()
 }
 
-/// The annotations channel's landing: the WIRE is the session's (its
-/// address scopes the batch), the collection it feeds is the id.
-struct SnapshotLanded {
-    home: crate::SessionId,
-    comments: imba::store::Id<Comments>,
-    session: Uri,
-    result: Result<AnnotationsState, String>,
-}
-
-impl crate::DynamicCommand for SnapshotLanded {
-    fn id(&self) -> &'static str {
-        "comments.snapshot-landed"
-    }
-    fn name(&self) -> String {
-        "Comments Snapshot Landed".to_owned()
-    }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
-        let Some(feed) = Comments::of(store, self.comments)
-            .and_then(|comments| comments.channel_for(&self.session).cloned())
-        else {
-            return;
-        };
-        let state = match &self.result {
-            Ok(state) => state,
-            Err(_) => {
-                Comments::update(store, self.comments, |comments| {
-                    if comments.channel_for(&self.session).is_some() {
-                        comments.channel = None;
-                    }
-                });
-                return;
-            }
-        };
-
-        let placed: Vec<(Annotation, ResourceLocation)> = state
-            .annotations
-            .iter()
-            .filter_map(|annotation| {
-                place(store, self.comments, &self.session, annotation)
-                    .map(|location| (annotation.clone(), location))
-            })
-            .collect();
-        Comments::update(store, self.comments, |comments| {
-            if let Some(mut feed) = comments.channel_for(&self.session).cloned() {
-                feed.live = true;
-                comments.channel = Some(feed);
-            }
-            for (annotation, location) in &placed {
-                fold_set(comments, feed.server, &self.session, annotation, location);
-            }
-            comments.generation += 1;
-        });
-        settle(store, ui, self.comments, &self.session, fx);
-        relaunch_poll(window, self.comments, &self.session, &feed, fx);
-    }
-}
-
-struct Polled {
-    home: crate::SessionId,
-    comments: imba::store::Id<Comments>,
-    session: Uri,
-    actions: Vec<StateAction>,
-}
-
-impl crate::DynamicCommand for Polled {
-    fn id(&self) -> &'static str {
-        "comments.polled"
-    }
-    fn name(&self) -> String {
-        "Comments Actions Landed".to_owned()
-    }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
-        let Some(feed) = Comments::of(store, self.comments)
-            .and_then(|comments| comments.channel_for(&self.session).cloned())
-        else {
-            return;
-        };
-
-        let placed: std::collections::HashMap<AnnotationId, ResourceLocation> = self
-            .actions
-            .iter()
-            .filter_map(|action| match action {
-                StateAction::AnnotationsSet(set) => {
-                    place(store, self.comments, &self.session, &set.annotation)
-                        .map(|location| (set.annotation.id.clone(), location))
-                }
-                _ => None,
-            })
-            .collect();
-        let mut dead_cards: Vec<(DocumentId, InlayKey)> = Vec::new();
-        Comments::update(store, self.comments, |comments| {
-            for action in &self.actions {
-                match action {
-                    StateAction::AnnotationsSet(set) => {
-                        let Some(location) = placed.get(&set.annotation.id) else {
-                            continue;
-                        };
-                        fold_set(
-                            comments,
-                            feed.server,
-                            &self.session,
-                            &set.annotation,
-                            location,
-                        );
-                    }
-                    StateAction::AnnotationsUpdated(updated) => {
-                        let Some(mut record) =
-                            comments.records.get(&updated.annotation_id).cloned()
-                        else {
-                            continue;
-                        };
-                        if let Some(turn) = &updated.turn_id {
-                            record.turn_id = turn.clone();
-                        }
-                        if let Some(range) = &updated.range {
-                            record.range = Some(from_wire(range));
-                        }
-                        if let Some(resolved) = updated.resolved {
-                            record.resolved = resolved;
-                        }
-                        comments
-                            .records
-                            .insert_mut(updated.annotation_id.clone(), record);
-                    }
-                    StateAction::AnnotationsRemoved(removed) => {
-                        if let Some(card) = comments.cards.get(&removed.annotation_id) {
-                            dead_cards.push(*card);
-                        }
-                        comments.records.remove_mut(&removed.annotation_id);
-                        comments.cards.remove_mut(&removed.annotation_id);
-                    }
-                    StateAction::AnnotationsEntrySet(set) => {
-                        let Some(mut record) = comments.records.get(&set.annotation_id).cloned()
-                        else {
-                            continue;
-                        };
-                        let text = wire_text(&set.entry.text);
-                        let mut entries: Vec<EntryRecord> =
-                            record.entries.iter().cloned().collect();
-                        let mut foreign_touch = true;
-                        match entries.iter_mut().find(|held| held.id == set.entry.id) {
-                            Some(held) => {
-                                foreign_touch = !held.ours;
-                                held.text = text;
-                            }
-                            None => entries.push(EntryRecord {
-                                id: set.entry.id.clone(),
-                                text,
-                                ours: false,
-                            }),
-                        }
-                        record.entries = entries.into_iter().collect();
-                        record.thread_stamp += u64::from(foreign_touch);
-                        comments
-                            .records
-                            .insert_mut(set.annotation_id.clone(), record);
-                    }
-                    StateAction::AnnotationsEntryRemoved(removed) => {
-                        let Some(mut record) =
-                            comments.records.get(&removed.annotation_id).cloned()
-                        else {
-                            continue;
-                        };
-                        let foreign_touch = record
-                            .entries
-                            .iter()
-                            .any(|held| held.id == removed.entry_id && !held.ours);
-                        record.entries = record
-                            .entries
-                            .iter()
-                            .filter(|held| held.id != removed.entry_id)
-                            .cloned()
-                            .collect();
-                        record.thread_stamp += u64::from(foreign_touch);
-                        comments
-                            .records
-                            .insert_mut(removed.annotation_id.clone(), record);
-                    }
-                    _ => {}
-                }
-            }
-            comments.generation += 1;
-        });
-
-        if let Some(documents) = Comments::documents_of(store, self.comments) {
-            for (document, key) in dead_cards {
-                remove_card(store, documents, ui, document, key, fx);
-            }
-        }
-        settle(store, ui, self.comments, &self.session, fx);
-        relaunch_poll(window, self.comments, &self.session, &feed, fx);
-    }
-}
-
-fn settle(
+/// The `AtComments` arm's drain: a landing's card note runs with the
+/// application effects the entity does not hold.
+pub(crate) fn run_card_work(
     store: &mut Store,
     ui: &imba::UiCtx,
     comments: imba::store::Id<Comments>,
-    session: &Uri,
+    work: CardWork,
     fx: &mut AppFx<'_>,
 ) {
-    let feed =
-        Comments::of(store, comments).and_then(|comments| comments.channel_for(session).cloned());
+    if let Some(documents) = Comments::documents_of(store, comments) {
+        for (document, key) in work.dead {
+            remove_card(store, documents, ui, document, key, fx);
+        }
+    }
+    if work.settle {
+        settle_cards(store, ui, comments, fx);
+    }
+}
+
+/// Behind a landing, after the lease: unsynced records reach the live
+/// feed, and every record whose document is open settles into a card.
+fn settle_cards(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    comments: imba::store::Id<Comments>,
+    fx: &mut AppFx<'_>,
+) {
+    let Some(feed) = Comments::of(store, comments).and_then(|comments| comments.channel.clone())
+    else {
+        return;
+    };
+    let session = feed.session.clone();
     let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments)
         .into_iter()
-        .filter(|(_, record)| &record.session == session)
+        .filter(|(_, record)| record.session == session)
         .collect();
     for (id, record) in records {
-        if !record.synced {
-            if let Some(feed) = feed.as_ref().filter(|feed| feed.live) {
-                dispatch_set(store, &feed.seat, &id, &record);
-                Comments::update_record(store, comments, &id, |record| record.synced = true);
-            }
+        if !record.synced && feed.live {
+            dispatch_set(store, &feed.seat, &id, &record);
+            Comments::update_record(store, comments, &id, |record| record.synced = true);
         }
         match Comments::card(store, comments, &id) {
             Some(_) => refresh_card(store, ui, comments, &id, &record),
@@ -771,115 +835,6 @@ fn settle(
             }
         }
     }
-}
-
-fn relaunch_poll(
-    window: WindowId,
-    comments: imba::store::Id<Comments>,
-    session: &Uri,
-    feed: &ChannelFeed,
-    fx: &mut AppFx<'_>,
-) {
-    let scope = crate::SessionId {
-        host: feed.server,
-        session: session.clone(),
-    };
-    let session = session.clone();
-    let landing = session.clone();
-    fx.push(
-        AnyEffect::new(crate::higent::PollAnnotationsEffect {
-            seat: feed.seat.clone(),
-            session,
-        })
-        .map(move |actions| {
-            AppCommand::dynamic_in(
-                scope.clone(),
-                window,
-                Arc::new(Polled {
-                    home: scope.clone(),
-                    comments,
-                    session: landing.clone(),
-                    actions,
-                }),
-            )
-        }),
-    );
-}
-
-pub(crate) struct Sent {
-    pub(crate) comments: imba::store::Id<Comments>,
-    pub(crate) ids: Vec<AnnotationId>,
-    pub(crate) result: Result<(), String>,
-}
-
-impl crate::DynamicCommand for Sent {
-    fn id(&self) -> &'static str {
-        "comments.sent"
-    }
-    fn name(&self) -> String {
-        "Comments Sent".to_owned()
-    }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        _window: WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
-        if let Err(error) = &self.result {
-            eprintln!("[comments] send failed, comments kept: {error}");
-            for id in &self.ids {
-                Comments::update_record(store, self.comments, id, |record| record.sending = false);
-            }
-            return;
-        }
-        for id in &self.ids {
-            let card = Comments::card(store, self.comments, id);
-            Comments::removed(store, self.comments, id);
-            let Some((document, key)) = card else {
-                continue;
-            };
-            let Some(documents) = Comments::documents_of(store, self.comments) else {
-                continue;
-            };
-            let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
-                continue;
-            };
-            let fonts = crate::env::Fonts::of(store)();
-            let theme = crate::env::Themes::of(store);
-            fx.scope(
-                move |command| {
-                    AppCommand::At(
-                        documents,
-                        crate::app::DocumentsCommand::Editor(document, command),
-                    )
-                },
-                |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
-            );
-            crate::OpenDocuments::put_document(store, documents, document, doc);
-        }
-    }
-}
-
-fn place(
-    store: &Store,
-    comments: imba::store::Id<Comments>,
-    session: &Uri,
-    annotation: &Annotation,
-) -> Option<ResourceLocation> {
-    let comments = Comments::of(store, comments)?;
-    if let Some(held) = comments.records.get(&annotation.id) {
-        return Some(held.location.clone());
-    }
-    let server = comments.channel_for(session)?.server;
-    let uris = crate::higent::Hosts::uris(store, server)?;
-    let authority = crate::higent::seat::route_authority(server, session);
-    uris.location_of(
-        &crate::higent::ResourceUri::new(annotation.resource.clone()),
-        crate::ResourceType::document(),
-        &authority,
-    )
 }
 
 fn fold_set(

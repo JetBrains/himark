@@ -420,7 +420,7 @@ impl DynamicCommand for OpenPicked {
                         spelled.clone(),
                         fx,
                     );
-                    himark::hicomments::Comments::ensure(store, window, comments, &spelled, fx);
+                    himark::hicomments::Comments::ensure(store, comments, &spelled, fx);
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
                 eprintln!("[host] folder pick dropped: no local agent host to session it");

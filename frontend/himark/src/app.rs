@@ -125,6 +125,11 @@ pub enum AppCommand {
         crate::hihistory::HistoryCommand,
     ),
 
+    AtComments(
+        imba::store::Id<crate::hicomments::Comments>,
+        crate::hicomments::CommentsCommand,
+    ),
+
     Opened(WindowId, OpenedDocument),
 
     /// A command for a STORE-HELD diff view, routed by the documents
@@ -530,6 +535,12 @@ impl Application {
                 return (
                     None,
                     crate::higent::Hosts::session_of_history_id(store, *history),
+                );
+            }
+            AppCommand::AtComments(comments, _) => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_comments_id(store, *comments),
                 );
             }
             AppCommand::FileChanged(subscription) => {
@@ -1243,6 +1254,7 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::AtChats(_, crate::higent::ChatsCommand::Panel(..)) => "chat",
         AppCommand::AtChanges(..) => "changes",
         AppCommand::AtHistory(..) => "history",
+        AppCommand::AtComments(..) => "comments",
         AppCommand::Opened(..) => "opened",
         AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::CanvasViewCommand { .. } => "canvas view",
@@ -1524,6 +1536,22 @@ impl Application {
                     move |command| AppCommand::AtHistory(history, command),
                     fx,
                 );
+            }
+            AppCommand::AtComments(comments, command) => {
+                store.route(
+                    comments,
+                    command,
+                    ui,
+                    move |command| AppCommand::AtComments(comments, command),
+                    fx,
+                );
+                // The landing's note: cards whose records died drop
+                // their inlays and the records settle into cards —
+                // document-addressed effects the entity itself does
+                // not hold.
+                if let Some(work) = store.take::<crate::hicomments::CardWork>() {
+                    crate::hicomments::run_card_work(store, ui, comments, work, fx);
+                }
             }
             AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),

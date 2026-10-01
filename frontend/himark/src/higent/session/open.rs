@@ -156,7 +156,7 @@ impl DynamicCommand for EnterSessionWork {
         if let Some(family) = Windows::session_family(store, window) {
             crate::hichanges::Changes::ensure(store, window, family.changes(), folders.clone(), fx);
             for folder in folders {
-                crate::hicomments::Comments::ensure(store, window, family.comments(), &folder, fx);
+                crate::hicomments::Comments::ensure(store, family.comments(), &folder, fx);
             }
         }
         if let Some(chat) = self.default_chat.clone().filter(|_| self.open_chat) {
@@ -358,7 +358,7 @@ pub(crate) fn apply_channel_actions(
             crate::higent::Hosts::family(store, key).map(|family| family.comments())
         {
             for folder in crate::higent::session_folders(store, key) {
-                crate::hicomments::Comments::ensure(store, window, comments, &folder, fx);
+                crate::hicomments::Comments::ensure(store, comments, &folder, fx);
             }
         }
     }

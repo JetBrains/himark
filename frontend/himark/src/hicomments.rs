@@ -23,7 +23,10 @@ mod panel;
 mod sync;
 
 pub use panel::{toolbar_button, CommentsView, ToggleCommentsView};
-pub use sync::{AnnotationId, CommentRecord, Comments, CommentsHook, EntryRecord};
+pub use sync::{
+    AnnotationId, CardWork, CommentRecord, Comments, CommentsCommand, CommentsHook, EntryRecord,
+};
+pub(crate) use sync::run_card_work;
 
 #[cfg(test)]
 mod tests;
@@ -137,10 +140,10 @@ impl crate::DynamicCommand for EnsureComments {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        _window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::ensure(store, window, self.comments, &self.location, fx);
+        sync::Comments::ensure(store, self.comments, &self.location, fx);
     }
 }
 
