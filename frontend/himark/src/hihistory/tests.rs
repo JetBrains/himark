@@ -185,13 +185,13 @@ fn history_mirror() -> (imba::store::Store, ResourceLocation) {
             more: None,
         },
     );
-    crate::higent::Hosts::update_family(&mut store, &home(), |family| {
-        family.history = history;
+    crate::higent::Hosts::update_history(&mut store, &home(), |slot| {
+        *slot = history;
     });
     let mut changes = crate::hichanges::Changes::default();
     changes.uris = Some(Arc::new(FileUris));
-    crate::higent::Hosts::update_family(&mut store, &home(), |family| {
-        family.changes = changes;
+    crate::higent::Hosts::update_changes(&mut store, &home(), |slot| {
+        *slot = changes;
     });
     (store, folder)
 }

@@ -346,14 +346,14 @@ impl SessionTree {
         ui: &imba::UiCtx,
         session: &crate::SessionId,
     ) -> LocationTree {
-        crate::higent::Hosts::family(store, session)
-            .and_then(|family| family.trees.0.clone())
+        crate::higent::Hosts::trees_of(store, session)
+            .and_then(|trees| trees.0.clone())
             .unwrap_or_else(|| LocationTree::new(store, ui))
     }
 
     fn persist(store: &mut Store, session: &crate::SessionId, tree: &LocationTree) {
-        crate::higent::Hosts::update_family(store, session, |family| {
-            family.trees = SessionTree(Some(tree.clone()));
+        crate::higent::Hosts::update_trees(store, session, |trees| {
+            *trees = SessionTree(Some(tree.clone()));
         });
     }
 }

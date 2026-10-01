@@ -110,11 +110,11 @@ impl Comments {
     /// The comments of one session, addressed by it: a card's thread
     /// belongs to the session whose host serves the annotations.
     fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a Comments> {
-        crate::higent::Hosts::family(store, home).map(|family| &family.comments)
+        crate::higent::Hosts::comments_of(store, home)
     }
 
     fn update(store: &mut Store, home: &crate::SessionId, mutate: impl FnOnce(&mut Comments)) {
-        crate::higent::Hosts::update_family(store, home, |family| mutate(&mut family.comments));
+        crate::higent::Hosts::update_comments(store, home, mutate);
     }
 
     pub fn generation(store: &Store, home: &crate::SessionId) -> u64 {

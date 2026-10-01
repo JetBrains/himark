@@ -137,8 +137,8 @@ impl RecentLocations {
         session: &crate::SessionId,
         location: &crate::ResourceLocation,
     ) {
-        crate::higent::Hosts::update_family(store, session, |family| {
-            let recents = &mut family.recents.0;
+        crate::higent::Hosts::update_recents(store, session, |recents| {
+            let recents = &mut recents.0;
             recents.retain(|listed| listed != location);
             recents.insert(0, location.clone());
             recents.truncate(Self::CAP);
@@ -151,8 +151,8 @@ impl RecentLocations {
         old: &crate::ResourceLocation,
         new: &crate::ResourceLocation,
     ) {
-        crate::higent::Hosts::update_family(store, session, |family| {
-            let recents = &mut family.recents.0;
+        crate::higent::Hosts::update_recents(store, session, |recents| {
+            let recents = &mut recents.0;
             recents.retain(|listed| listed != old && listed != new);
             recents.insert(0, new.clone());
             recents.truncate(Self::CAP);
@@ -164,8 +164,8 @@ impl RecentLocations {
     }
 
     pub fn list(store: &Store, session: &crate::SessionId) -> Vec<crate::ResourceLocation> {
-        crate::higent::Hosts::family(store, session)
-            .map(|family| family.recents.0.clone())
+        crate::higent::Hosts::recents_of(store, session)
+            .map(|recents| recents.0.clone())
             .unwrap_or_default()
     }
 }

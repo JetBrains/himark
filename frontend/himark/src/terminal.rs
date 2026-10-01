@@ -395,8 +395,8 @@ impl Terminals {
         channel: crate::higent::ChannelUri,
         session: Arc<Session>,
     ) {
-        crate::higent::Hosts::update_family(store, home, |family| {
-            family.terminals.0.insert_mut(channel, session);
+        crate::higent::Hosts::update_terminals(store, home, |terminals| {
+            terminals.0.insert_mut(channel, session);
         });
     }
 
@@ -413,21 +413,20 @@ impl Terminals {
         home: &crate::SessionId,
         channel: &crate::higent::ChannelUri,
     ) -> Option<&'a Arc<Session>> {
-        crate::higent::Hosts::family(store, home)?
-            .terminals
+        crate::higent::Hosts::terminals_of(store, home)?
             .0
             .get(channel)
     }
 
     pub fn remove(store: &mut Store, home: &crate::SessionId, channel: &crate::higent::ChannelUri) {
-        crate::higent::Hosts::update_family(store, home, |family| {
-            family.terminals.0.remove_mut(channel);
+        crate::higent::Hosts::update_terminals(store, home, |terminals| {
+            terminals.0.remove_mut(channel);
         });
     }
 
     pub fn list(store: &Store, home: &crate::SessionId) -> Vec<crate::higent::ChannelUri> {
-        crate::higent::Hosts::family(store, home)
-            .map(|family| family.terminals.0.keys().cloned().collect())
+        crate::higent::Hosts::terminals_of(store, home)
+            .map(|terminals| terminals.0.keys().cloned().collect())
             .unwrap_or_default()
     }
 

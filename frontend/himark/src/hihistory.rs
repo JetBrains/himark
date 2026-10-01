@@ -81,8 +81,7 @@ impl History {
         home: &crate::SessionId,
         folder: &ResourceLocation,
     ) -> Option<FolderHistory> {
-        crate::higent::Hosts::family(store, home)?
-            .history
+        crate::higent::Hosts::history_of(store, home)?
             .folders
             .get(folder)
             .cloned()
@@ -93,7 +92,7 @@ impl History {
         home: &crate::SessionId,
         mutate: impl FnOnce(&mut History),
     ) {
-        crate::higent::Hosts::update_family(store, home, |family| mutate(&mut family.history));
+        crate::higent::Hosts::update_history(store, home, mutate);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -234,8 +233,7 @@ impl History {
 
     pub(crate) fn session_failed(store: &mut Store, home: &crate::SessionId, error: &str) {
         let session = home.session.clone();
-        crate::higent::Hosts::update_family(store, home, |family| {
-            let history = &mut family.history;
+        crate::higent::Hosts::update_history(store, home, |history| {
             let riding: Vec<ResourceLocation> = history
                 .folders
                 .iter()
@@ -328,8 +326,8 @@ pub(crate) fn subscribe_fresh(
     }
     let session = home.session.clone();
     let mut fresh = Vec::new();
-    crate::higent::Hosts::update_family(store, home, |family| {
-        fresh = family.history.adopt_catalog(&session, &histories);
+    crate::higent::Hosts::update_history(store, home, |history| {
+        fresh = history.adopt_catalog(&session, &histories);
     });
     crate::hichanges::Changes::nudge_all(store, home);
     for (folder, seat, channel) in fresh {

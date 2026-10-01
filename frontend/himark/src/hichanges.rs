@@ -409,7 +409,7 @@ impl Changes {
     /// never gathered as a component, so nothing can reach the wrong
     /// session's sets or lose a write to a scopeless batch.
     pub(crate) fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a ChangeSets> {
-        crate::higent::Hosts::family(store, home).map(|family| &family.changes)
+        crate::higent::Hosts::changes_of(store, home)
     }
 
     pub(crate) fn update(
@@ -417,7 +417,7 @@ impl Changes {
         home: &crate::SessionId,
         mutate: impl FnOnce(&mut ChangeSets),
     ) {
-        crate::higent::Hosts::update_family(store, home, |family| mutate(&mut family.changes));
+        crate::higent::Hosts::update_changes(store, home, mutate);
     }
 
     fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {
