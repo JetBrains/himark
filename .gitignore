@@ -2,3 +2,6 @@ target
 .DS_Store
 vendor/skia-bindings-0.99.0/depot_tools/
 vendor/skia-bindings-0.99.0/skia/
+
+# Claude Code worktrees live inside the checkout; never content.
+.claude/worktrees/
