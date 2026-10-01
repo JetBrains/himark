@@ -445,7 +445,7 @@ impl EffectHandler<himark::PickSaveEffect> for PickSaveHandler {
 
 pub(crate) struct OpenWorkingCopy;
 
-impl himark::DynamicEditorCommand for OpenWorkingCopy {
+impl himark::DocumentCommand for OpenWorkingCopy {
     fn id(&self) -> &'static str {
         "workbench.open-in-full"
     }
@@ -456,10 +456,13 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
     fn offers_at(&self, location: &ResourceLocation) -> bool {
         himark::hichanges::scoped(location)
     }
+    #[allow(clippy::too_many_arguments)]
     fn perform(
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        documents: imba::store::Id<himark::OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut himark::Document,
         editor: himark::EditorId,
         location: &himark::ResourceLocation,
@@ -473,6 +476,7 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
         himark::AppRequests::push(
             store,
             Arc::new(ShowWorkingCopy {
+                documents,
                 location: working,
                 target: at..at,
             }),
@@ -481,6 +485,9 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
 }
 
 struct ShowWorkingCopy {
+    /// The collection the working copy opens into — closed over at the
+    /// gesture, in the pane that fired it.
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: himark::ResourceLocation,
     target: std::ops::Range<himark::LineCol>,
 }
@@ -500,9 +507,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
         fx: &mut himark::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let documents = himark::Windows::session_family(store, window)
-            .expect("an open runs in a window with a session")
-            .documents();
+        let documents = self.documents;
         match himark::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
                 let Some(mut entity) = himark::Windows::window(store, window) else {

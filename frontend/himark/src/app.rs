@@ -578,6 +578,12 @@ impl Application {
         self.setup(|store| ::editor::EditorCommands::register(store, command));
     }
 
+    /// Commands that act on the COLLECTION — handed the pane's ids at
+    /// dispatch (docs/entities.md law 3), never resolving an owner.
+    pub fn register_document_command(&mut self, command: Arc<dyn documents::DocumentCommand>) {
+        self.setup(|store| documents::DocumentCommands::register(store, command));
+    }
+
     pub fn register_toolbar_button(&mut self, button: crate::ToolbarButton) {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }

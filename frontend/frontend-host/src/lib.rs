@@ -1069,11 +1069,11 @@ impl HimarkEngine {
             self.app
                 .register_editor_command(Arc::new(himark::hipeek::GoToReference));
             self.app
-                .register_editor_command(Arc::new(host::OpenWorkingCopy));
+                .register_document_command(Arc::new(host::OpenWorkingCopy));
         }
         if capabilities.store_document && !installed.store_document {
             self.app
-                .register_editor_command(Arc::new(himark::SaveDocument::with_save_as()));
+                .register_document_command(Arc::new(himark::SaveDocument::with_save_as()));
             self.app.register_command(Arc::new(himark::SaveAll));
 
             self.app

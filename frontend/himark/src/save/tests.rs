@@ -35,7 +35,7 @@ fn setup(
 ) {
     let mut app = Application::new(crate::AppFonts::embedded());
     app.add_window();
-    app.register_editor_command(Arc::new(SaveDocument::existing_files()));
+    app.register_document_command(Arc::new(SaveDocument::existing_files()));
     let writes = Writes::default();
     app.register_handler::<StoreDocumentEffect>(StoreHandler {
         writes: writes.clone(),

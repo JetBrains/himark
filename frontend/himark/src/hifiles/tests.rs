@@ -5,6 +5,25 @@ use crate::ResourceType;
 
 use super::*;
 
+fn open_view(
+    store: &mut Store,
+    workspace: crate::SessionId,
+    reveal: Option<ResourceLocation>,
+    fx: &mut imba::effect::Effects<'_, TreeCommand>,
+) -> SessionTreeView {
+    let trees = crate::higent::Hosts::ensure_family(store, &workspace).trees();
+    let folders = crate::higent::session_folders(store, &workspace);
+    SessionTreeView::open(
+        store,
+        ::editor::test_document::test_ui(),
+        workspace,
+        trees,
+        &folders,
+        reveal,
+        fx,
+    )
+}
+
 fn location(kind: ResourceType, path: &[&str]) -> ResourceLocation {
     ResourceLocation::new(
         kind,
@@ -29,9 +48,8 @@ fn workspace_with(store: &mut Store, folders: &[ResourceLocation]) -> crate::Ses
 fn listings_grow_and_fold_the_tree() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -108,9 +126,8 @@ fn listings_grow_and_fold_the_tree() {
 fn a_document_click_requests_the_open() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -147,9 +164,8 @@ fn expansion_survives_reopen_and_new_folders_join() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -176,9 +192,8 @@ fn expansion_survives_reopen_and_new_folders_join() {
     drop(view);
 
     crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
-    let reopened = SessionTreeView::open(
+    let reopened = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -192,18 +207,16 @@ fn expansion_survives_reopen_and_new_folders_join() {
     let stashed = store.take::<SessionTree>().unwrap_or_default();
     let second =
         crate::test_support::seed_session_folders(&mut store, &[directory(&["elsewhere"])]);
-    let other_tree = SessionTreeView::open(
+    let other_tree = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         second,
         None,
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(other_tree.row_count(), 1, "only elsewhere; nothing leaked");
     store.put(stashed);
-    let first_again = SessionTreeView::open(
+    let first_again = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -219,9 +232,8 @@ fn expansion_survives_reopen_and_new_folders_join() {
 fn folders_added_mid_session_join_on_paint() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -308,9 +320,8 @@ fn a_context_press_menus_and_rename_commits_a_move() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -365,9 +376,8 @@ fn new_file_rides_a_placeholder_row_and_creates() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -413,9 +423,8 @@ fn an_empty_or_slashed_name_keeps_the_editor() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -445,9 +454,8 @@ fn an_unfocused_paint_cancels_the_edit() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -509,9 +517,8 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
         &mut store,
         &[directory(&["project"]), directory(&["other"])],
     );
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -582,9 +589,8 @@ fn dismissal_files_the_close() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -605,9 +611,8 @@ fn dismissal_files_the_close() {
 fn a_stale_listing_drops() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -675,9 +680,8 @@ fn expanded_folders_watch_and_events_relist() {
     let mut store = Store::new();
     crate::Watching::install(&mut store);
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -767,9 +771,8 @@ fn cursor_walks_and_enter_opens() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -841,9 +844,8 @@ fn cursor_walks_and_enter_opens() {
 fn a_relist_keeps_expanded_subtrees() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -935,9 +937,8 @@ fn a_relist_keeps_expanded_subtrees() {
 fn a_theme_switch_re_resolves_the_selection_style() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),

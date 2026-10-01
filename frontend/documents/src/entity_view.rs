@@ -112,6 +112,38 @@ impl View for EditorIdView {
         command: Self::Command,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
+        // Collection-scoped dynamic commands dispatch HERE, where the
+        // pane's ids are in hand — never through an owner lookup.
+        if let EditorCommand::Dynamic { id, .. } = &command {
+            if let Some(entry) = crate::DocumentCommands::of(store).find(id).cloned() {
+                let EditorCommand::Dynamic { payload, .. } = command else {
+                    unreachable!("matched above");
+                };
+                let Some(location) =
+                    crate::OpenDocuments::location(store, self.documents, self.document)
+                else {
+                    return;
+                };
+                let Some(mut document) =
+                    crate::OpenDocuments::document(store, self.documents, self.document)
+                else {
+                    return;
+                };
+                entry.perform(
+                    store,
+                    ui,
+                    self.documents,
+                    self.document,
+                    &mut document,
+                    self.editor,
+                    &location,
+                    payload,
+                    fx,
+                );
+                crate::OpenDocuments::put_document(store, self.documents, self.document, document);
+                return;
+            }
+        }
         let Some(mut view) = self.gathered(store) else {
             return;
         };
@@ -130,7 +162,7 @@ impl View for EditorIdView {
         // The editor view is MINTED from the store per ask (documents
         // are persistent, the clone is cheap); handlers re-mint per
         // call because the data may not outlive a temporary.
-        let (commands, location, seat) = match self.gathered(store) {
+        let (mut commands, location, seat) = match self.gathered(store) {
             Some(view) => {
                 let mut data = view.focus_data(store, ui);
                 (
@@ -141,6 +173,20 @@ impl View for EditorIdView {
             }
             None => (Vec::new(), None, None),
         };
+        if let Some(at) = crate::OpenDocuments::location(store, self.documents, self.document) {
+            for entry in crate::DocumentCommands::of(store).iter() {
+                if entry.offers_at(&at) {
+                    commands.push(imba::PresentableCommand::new(
+                        entry.id(),
+                        entry.name(),
+                        EditorCommand::Dynamic {
+                            id: entry.id(),
+                            payload: None,
+                        },
+                    ));
+                }
+            }
+        }
         let with_view =
             move |f: &mut dyn FnMut(FocusData<'_, EditorCommand>) -> EventResult<EditorCommand>| {
                 match self.gathered(store) {

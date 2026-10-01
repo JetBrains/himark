@@ -5,6 +5,7 @@ use editor::Document;
 use imba::store::Store;
 
 pub mod diffs;
+mod dynamic;
 mod entity_view;
 mod lifecycle;
 pub mod scroll_stripes;
@@ -16,6 +17,7 @@ pub use diffs::{
     rearm_base_asks, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId,
     Normalized, StripeBases,
 };
+pub use dynamic::{DocumentCommand, DocumentCommands};
 pub use entity_view::EditorIdView;
 pub use lifecycle::{close_editor, deliver, mount_editor};
 pub use text_ext::{line_col_at, offset_at, LineCol};

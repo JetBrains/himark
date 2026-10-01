@@ -487,20 +487,21 @@ impl Clone for SessionTreeView {
 }
 
 impl SessionTreeView {
+    /// The caller closes over what the panel ACTUALLY addresses: its
+    /// tree collection id and the session's folders at open. The
+    /// `workspace` stays only as the panel's WIRE address (seat ops,
+    /// the display-time folder-drift mirror) — never a store road.
     pub fn open(
         store: &mut Store,
         ui: &UiCtx,
         workspace: crate::SessionId,
+        trees: imba::store::Id<SessionTree>,
+        folders: &[ResourceLocation],
         reveal: Option<ResourceLocation>,
         fx: &mut imba::effect::Effects<'_, TreeCommand>,
     ) -> Self {
-        let trees = crate::higent::Hosts::ensure_family(store, &workspace).trees();
         let mut tree = SessionTree::find_or_create(store, ui, trees);
-        tree.ensure_roots(
-            &crate::higent::session_folders(store, &workspace),
-            store,
-            ui,
-        );
+        tree.ensure_roots(folders, store, ui);
         let mut panel = Self {
             tree,
             trees,
@@ -1508,12 +1509,22 @@ impl crate::DynamicCommand for ToggleSessionTree {
         );
 
         let workspace = entity.current_session();
+        let trees = entity.family().trees();
+        let folders = crate::higent::session_folders(store, &workspace);
         let panel = fx.scope(crate::dock_scope(window), |fx| {
             fx.scope(
                 |command: TreeCommand| Box::new(command) as imba::DynCommand,
                 |fx| {
-                    SessionTreeView::open(store, &app.ui_ctx(), workspace, reveal, fx)
-                        .following(window)
+                    SessionTreeView::open(
+                        store,
+                        &app.ui_ctx(),
+                        workspace,
+                        trees,
+                        &folders,
+                        reveal,
+                        fx,
+                    )
+                    .following(window)
                 },
             )
         });

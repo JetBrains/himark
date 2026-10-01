@@ -19,9 +19,9 @@ use skia_safe::{Paint, Rect, Size};
 
 #[derive(Clone)]
 pub struct Peeker {
-    /// The session this peeker fronts — set at open; its family ids
-    /// are the peeker's addressing currency.
-    session: himark::SessionId,
+    /// The documents collection this peeker fronts — its id is wired
+    /// at open from the window.s family bundle (docs/entities.md law 3).
+    documents: imba::store::Id<himark::OpenDocuments>,
 
     recents: Vec<ResourceLocation>,
 
@@ -131,7 +131,7 @@ impl Peeker {
     pub fn open(
         store: &mut Store,
         ui: &UiCtx,
-        session: himark::SessionId,
+        documents: imba::store::Id<himark::OpenDocuments>,
         viewport: Size,
         recents: Vec<ResourceLocation>,
         widgets: Vec<(WidgetOrigin, Box<dyn himark::DynPanelView>)>,
@@ -146,7 +146,7 @@ impl Peeker {
         let chrome = himark::env::Themes::of(store).ui().peeker.clone();
 
         let mut peeker = Self {
-            session,
+            documents,
             recents,
             workspace,
             found: Vec::new(),
@@ -315,9 +315,7 @@ impl Peeker {
         keep: Option<himark::DocumentId>,
         fx: &mut PeekerEffects<'_>,
     ) {
-        let Some(documents) = himark::higent::Hosts::family(store, &self.session).map(|family| family.documents()) else {
-            return;
-        };
+        let documents = self.documents;
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
             himark::close_editor(store, entity.documents(), entity.document(), entity.editor());
@@ -346,9 +344,7 @@ impl Peeker {
     }
 
     fn ensure_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
-        let Some(documents) = himark::higent::Hosts::family(store, &self.session).map(|family| family.documents()) else {
-            return;
-        };
+        let documents = self.documents;
         let width = EditorIdView::editor_width(
             self.preview_width,
             &himark::env::Themes::of(store).ui().window,
@@ -517,8 +513,7 @@ impl View for Peeker {
                     return;
                 }
                 let request = if let Some(location) = self.location_at(row).cloned() {
-                    let documents = himark::higent::Hosts::ensure_family(store, &self.session)
-                        .documents();
+                    let documents = self.documents;
                     if let Some(document) = himark::OpenDocuments::by_location(store, documents, &location) {
                         self.cleanup_temps(store, ui, Some(document), fx);
                         ModalRequest::ShowDocument(document)
@@ -578,8 +573,7 @@ impl View for Peeker {
 
                 let revision = document.revision();
                 let id = {
-                    let documents = himark::higent::Hosts::ensure_family(store, &self.session)
-                        .documents();
+                    let documents = self.documents;
                     himark::OpenDocuments::register(
                         store,
                         documents,
@@ -844,9 +838,7 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let mut entity = himark::Windows::window(store, window).expect("the window entity");
             let viewport = entity.viewport_size();
 
-            let recents = himark::higent::Hosts::family(store, &entity.current_session())
-                .map(|family| himark::RecentLocations::list(store, family.recents()))
-                .unwrap_or_default();
+            let recents = himark::RecentLocations::list(store, entity.family().recents());
 
             let mut widgets = entity.unmount_all_widgets();
             let fronted: Vec<himark::FamilyRow> = widgets
@@ -862,10 +854,11 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             );
             let folders = himark::higent::session_folders(store, &entity.current_session());
 
+            let documents = entity.family().documents();
             let peeker = fx.scope(himark::modal_scope(window), |fx| {
                 fx.scope(
                     |command: PeekerCommand| Box::new(command) as imba::DynCommand,
-                    |fx| Peeker::open(store, ui, session.clone(), viewport, recents, widgets, folders, fx),
+                    |fx| Peeker::open(store, ui, documents, viewport, recents, widgets, folders, fx),
                 )
             });
             himark::Windows::put(store, window, entity);

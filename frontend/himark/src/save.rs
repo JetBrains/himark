@@ -19,7 +19,7 @@ impl SaveDocument {
     }
 }
 
-impl crate::DynamicEditorCommand for SaveDocument {
+impl documents::DocumentCommand for SaveDocument {
     fn id(&self) -> &'static str {
         "file.save"
     }
@@ -33,25 +33,20 @@ impl crate::DynamicEditorCommand for SaveDocument {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        document_id: crate::DocumentId,
         document: &mut crate::Document,
         _editor: crate::EditorId,
         location: &crate::ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, crate::EditorCommand>,
     ) {
-        if !self.offers_at(location) {
+        if !documents::DocumentCommand::offers_at(self, location) {
             return;
         }
-        let home = crate::SessionId::of_location(store, location);
-        let documents = crate::higent::Hosts::ensure_family(store, &home).documents();
         if let Some(payload) = payload {
             let payload = match payload.downcast::<(bool, u64, crate::Text)>() {
                 Ok(landing) => {
-                    let Some(document_id) =
-                        crate::OpenDocuments::by_location(store, documents, location)
-                    else {
-                        return;
-                    };
                     let (stored, revision, snapshot) = *landing;
                     match stored {
                         true => crate::OpenDocuments::mark_saved(
@@ -72,23 +67,18 @@ impl crate::DynamicEditorCommand for SaveDocument {
                 let Some(new_location) = *picked else {
                     return;
                 };
-                let Some(document_id) =
-                    crate::OpenDocuments::by_location(store, documents, location)
-                else {
-                    return;
-                };
                 crate::OpenDocuments::set_location(
                     store,
                     documents,
                     document_id,
                     new_location.clone(),
                 );
-                if let Some(session) =
-                    crate::higent::Hosts::session_of_documents_id(store, documents)
-                {
-                    let recents = crate::higent::Hosts::ensure_family(store, &session).recents();
-                    crate::RecentLocations::replace(store, recents, location, &new_location);
-                }
+                // The RECENTS of the save's own session: the location
+                // names its owner — the one catalog consult left here,
+                // and only because recents have not converted yet.
+                let home = crate::SessionId::of_location(store, &new_location);
+                let recents = crate::higent::Hosts::ensure_family(store, &home).recents();
+                crate::RecentLocations::replace(store, recents, location, &new_location);
 
                 crate::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
                 Self::launch_store(store, documents, document, document_id, &new_location, fx);
