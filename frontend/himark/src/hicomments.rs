@@ -23,10 +23,10 @@ mod panel;
 mod sync;
 
 pub use panel::{toolbar_button, CommentsView, ToggleCommentsView};
+pub(crate) use sync::run_card_work;
 pub use sync::{
     AnnotationId, CardWork, CommentRecord, Comments, CommentsCommand, CommentsHook, EntryRecord,
 };
-pub(crate) use sync::run_card_work;
 
 #[cfg(test)]
 mod tests;

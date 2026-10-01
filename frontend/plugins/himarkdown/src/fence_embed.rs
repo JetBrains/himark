@@ -90,9 +90,16 @@ impl View for EmbedView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         if let Some(set) = self.fragments.take() {
-            if let Some(mut document) = OpenDocuments::document(store, self.view.documents(), self.view.document()) {
+            if let Some(mut document) =
+                OpenDocuments::document(store, self.view.documents(), self.view.document())
+            {
                 document.remove_fragment_set(set);
-                OpenDocuments::put_document(store, self.view.documents(), self.view.document(), document);
+                OpenDocuments::put_document(
+                    store,
+                    self.view.documents(),
+                    self.view.document(),
+                    document,
+                );
             }
         }
         View::destroy(&mut self.view, store, fx);
@@ -126,7 +133,8 @@ impl View for EmbedView {
 
 impl EmbedView {
     fn live_height(&self, store: &Store) -> Option<f32> {
-        let document = OpenDocuments::document_ref(store, self.view.documents(), self.view.document())?;
+        let document =
+            OpenDocuments::document_ref(store, self.view.documents(), self.view.document())?;
         document
             .has_editor(self.view.editor())
             .then(|| document.content_height(self.view.editor()))

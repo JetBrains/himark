@@ -345,18 +345,26 @@ impl View for CommentsView {
         let searching = self.list.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(CommentsViewCommand::Dismiss),
+                InputKey::Escape if !searching => {
+                    EventResult::Command(CommentsViewCommand::Dismiss)
+                }
                 _ => EventResult::Ignored,
             })),
             ..FocusData::default()
         };
-        own.merge_under(self.list.focus_data(store, ui).map(CommentsViewCommand::Rows))
+        own.merge_under(
+            self.list
+                .focus_data(store, ui)
+                .map(CommentsViewCommand::Rows),
+        )
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
         let ui = &imba::UiCtx::dont_use_too_slow();
-        fx.scope(CommentsViewCommand::Rows, |fx| self.list.clear(store, ui, fx));
+        fx.scope(CommentsViewCommand::Rows, |fx| {
+            self.list.clear(store, ui, fx)
+        });
     }
 
     fn perform(
@@ -514,7 +522,9 @@ struct ReconcileShell<Inner> {
     stale: bool,
 }
 
-impl<'a, Inner: Widget<'a, CommentsViewCommand>> Widget<'a, CommentsViewCommand> for ReconcileShell<Inner> {
+impl<'a, Inner: Widget<'a, CommentsViewCommand>> Widget<'a, CommentsViewCommand>
+    for ReconcileShell<Inner>
+{
     fn size(&self) -> Size {
         self.inner.size()
     }

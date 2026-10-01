@@ -5260,11 +5260,12 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         |engine| hiahp::docsync::SyncSeats::count(engine.app.store()) == 1,
     );
     assert!(engine.perform_command(window, "workbench.close"));
-    pump(&mut engine, &mut surface);
-    assert_eq!(
-        hiahp::docsync::SyncSeats::count(engine.app.store()),
-        0,
-        "the closed document took its loop with it"
+    // The drain is a cross-process round trip: the stopped life
+    // unsubscribes over the socket before `Drained` retires the seat.
+    settle_until(
+        &mut engine,
+        "the closed document took its loop with it",
+        |engine| hiahp::docsync::SyncSeats::count(engine.app.store()) == 0,
     );
 }
 

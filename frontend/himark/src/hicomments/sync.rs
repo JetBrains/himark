@@ -377,8 +377,7 @@ impl Comments {
                     fold_set(self, server, session, &set.annotation, location);
                 }
                 StateAction::AnnotationsUpdated(updated) => {
-                    let Some(mut record) = self.records.get(&updated.annotation_id).cloned()
-                    else {
+                    let Some(mut record) = self.records.get(&updated.annotation_id).cloned() else {
                         continue;
                     };
                     if let Some(turn) = &updated.turn_id {
@@ -423,8 +422,7 @@ impl Comments {
                     self.records.insert_mut(set.annotation_id.clone(), record);
                 }
                 StateAction::AnnotationsEntryRemoved(removed) => {
-                    let Some(mut record) = self.records.get(&removed.annotation_id).cloned()
-                    else {
+                    let Some(mut record) = self.records.get(&removed.annotation_id).cloned() else {
                         continue;
                     };
                     let foreign_touch = record
