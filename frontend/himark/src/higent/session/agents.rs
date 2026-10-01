@@ -111,8 +111,9 @@ impl Agents {
                         .collect();
                     record.states.remove_mut(&session);
                 });
-                // The session is the LIFETIME of its chats.
-                crate::higent::Chats::forget_session(
+                // The session is the LIFETIME of its family: the row
+                // goes, and every entity it named retracts with it.
+                crate::higent::Hosts::dispose_family(
                     store,
                     &crate::SessionId {
                         host: server,

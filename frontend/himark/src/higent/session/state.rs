@@ -387,6 +387,42 @@ impl Hosts {
         minted
     }
 
+    /// The other half of the ceremony (docs/entities.md step 2,
+    /// law 6): the session is the LIFETIME of everything its family
+    /// row names. Removing the row RETRACTS every entity it minted —
+    /// terminals' PTYs hang up on the drop, the backstop they always
+    /// had. Removal is structural, so the generation bumps. The ONE
+    /// deletion road; `scatter_session`'s all-empty sweep is mere
+    /// housekeeping over the same retract.
+    pub fn dispose_family(store: &mut Store, session: &crate::SessionId) {
+        let session = &Self::addressed(store, session);
+        let Some(family) = store
+            .get::<Hosts>()
+            .and_then(|hosts| hosts.entries.get(&session.host))
+            .and_then(|host| host.families.get(&session.session))
+            .cloned()
+        else {
+            return;
+        };
+        store.update::<Hosts>(|hosts| {
+            let Some(host) = hosts.entries.get(&session.host) else {
+                return;
+            };
+            let mut host = host.clone();
+            host.families.remove_mut(&session.session);
+            hosts.entries.insert_mut(session.host, host);
+            hosts.generation += 1;
+        });
+        family.retract_all(store);
+        // A batch gathered FOR the disposed session still carries its
+        // flat projections; empty them so scatter cannot resurrect
+        // the family from the scaffolding.
+        if crate::Gathered::scope(store) == Some(session) {
+            store.put(crate::OpenDocuments::default());
+            store.put(documents::ScratchMint::default());
+        }
+    }
+
     // No typed per-family doors here, deliberately: Hosts answers one
     // question — WHICH ids a session's family holds (`family`,
     // `ensure_family`) — and the collections are then read and written
@@ -685,12 +721,54 @@ mod family_tests {
 
         let mut store = state.gather(None, Some(&home), &seats);
         let uri = put(&mut store, &home, "chat:1");
-        Chats::forget_session(&mut store, &home);
+        Hosts::dispose_family(&mut store, &home);
         state.scatter(store);
 
         let store = state.gather(None, Some(&home), &seats);
         assert!(Chats::chat_ref(&store, &home, &uri).is_none());
         assert!(Chats::list(&store, &home).is_empty());
+    }
+
+    /// Disposal is the whole ceremony: the family row leaves `Hosts`
+    /// and EVERY entity row its ids named retracts from the table —
+    /// nothing session-scoped can outlive its session
+    /// (docs/entities.md step 2).
+    #[test]
+    fn disposal_retracts_every_family_entity() {
+        let mut state = crate::AppState::default();
+        let seats = crate::higent::Servers::default();
+        let home = session("s-a");
+
+        let mut store = state.gather(None, Some(&home), &seats);
+        put(&mut store, &home, "chat:1");
+        let family = Hosts::ensure_family(&mut store, &home);
+        store.update_entity(family.recents, |_recents: &mut crate::RecentLocations| {});
+        store.update_entity(family.trees, |_trees| {});
+        store.update_entity(family.changes, |_changes| {});
+        store.update_entity(family.history, |_history| {});
+        store.update_entity(family.comments, |_comments| {});
+        store.update_entity(family.terminals, |_terminals| {});
+        state.scatter(store);
+
+        let mut store = state.gather(None, Some(&home), &seats);
+        assert!(Hosts::family(&store, &home).is_some(), "the row is live");
+        Hosts::dispose_family(&mut store, &home);
+
+        assert!(Hosts::family(&store, &home).is_none(), "the row is gone");
+        assert!(store.entity(family.chats).is_none());
+        assert!(store.entity(family.trees).is_none());
+        assert!(store.entity(family.recents).is_none());
+        assert!(store.entity(family.changes).is_none());
+        assert!(store.entity(family.history).is_none());
+        assert!(store.entity(family.comments).is_none());
+        assert!(store.entity(family.terminals).is_none());
+        assert!(store.entity(family.documents).is_none());
+        assert!(store.entity(family.scratch_names).is_none());
+        state.scatter(store);
+
+        // And scatter resurrects nothing from the scaffolding.
+        let store = state.gather(None, Some(&home), &seats);
+        assert!(Hosts::family(&store, &home).is_none());
     }
 
     #[test]

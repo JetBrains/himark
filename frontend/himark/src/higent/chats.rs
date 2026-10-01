@@ -79,18 +79,6 @@ impl Chats {
         });
     }
 
-    /// The session let go: its conversations go with it. A session
-    /// that never had a family has nothing to forget — no row minted.
-    pub fn forget_session(store: &mut Store, session: &crate::SessionId) {
-        let Some(chats) = crate::higent::Hosts::family(store, session).map(|family| family.chats())
-        else {
-            return;
-        };
-        store.update_entity(chats, |chats| {
-            chats.chats = rpds::HashTrieMapSync::new_sync();
-        });
-    }
-
     pub fn open(
         store: &mut Store,
         ui: &imba::UiCtx,
