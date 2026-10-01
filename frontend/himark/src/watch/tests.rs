@@ -37,7 +37,25 @@ fn text_of_text(text: &crate::Text) -> String {
     view.substring(0..end)
 }
 
-fn landed_rebase(batch: imba::effect::Batch<crate::AppCommand>) -> RefetchRebase {
+/// The lanes answer on the collection's OWN command type now — the
+/// tests drive the row forms through the same lease door production
+/// uses.
+fn apply_refetched(
+    store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
+    id: crate::DocumentId,
+    serial: u64,
+    text: Option<String>,
+    fx: &mut imba::effect::Effects<'_, crate::DocumentsCommand>,
+) {
+    let Some(rows) = store.lease(documents) else {
+        return;
+    };
+    rows.apply_refetched_row(store, id, serial, text, fx);
+    store.unlease(documents, rows);
+}
+
+fn landed_rebase<R: 'static>(batch: imba::effect::Batch<R>) -> documents::watch::RefetchRebase {
     use imba::effect::EffectHandler;
     let mut launches = crate::test_support::surviving_launches(batch);
     assert_eq!(launches.len(), 1, "one merge launch");
@@ -53,7 +71,6 @@ fn landed_rebase(batch: imba::effect::Batch<crate::AppCommand>) -> RefetchRebase
         async move { RefetchDiffHandler.handle(*effect).await },
     ))
 }
-
 
 fn docs() -> imba::store::Id<OpenDocuments> {
     static DOCS: std::sync::OnceLock<imba::store::Id<OpenDocuments>> = std::sync::OnceLock::new();
@@ -388,26 +405,12 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
 
     // Round two, the way the app drives it: same serial, fresh
     // baseline/current/revision.
-    let mut batch = imba::effect::Batch::new();
-    documents::watch::rediff(
-        &mut store,
-        docs(),
-        id,
-        serial,
-        fetched,
-        &mut batch.effects(),
-        |document, base_revision, serial, rebase| {
-            crate::AppCommand::At(
-                imba::store::Id::mint(),
-                crate::app::DocumentsCommand::RefetchDiffed {
-                    document,
-                    base_revision,
-                    serial,
-                    rebase,
-                },
-            )
-        },
-    );
+    let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
+    {
+        let rows = store.lease(docs()).expect("the collection");
+        rows.rediff_row(&store, id, serial, fetched, &mut batch.effects());
+        store.unlease(docs(), rows);
+    }
     let base_revision = OpenDocuments::document_ref(&store, docs(), id)
         .expect("the document")
         .revision();
@@ -516,26 +519,12 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
             }
             rounds += 1;
             assert!(rounds < 4, "the re-diff loop must converge");
-            let mut batch = imba::effect::Batch::new();
-            documents::watch::rediff(
-                store,
-                docs(),
-                id,
-                serial,
-                fetched,
-                &mut batch.effects(),
-                |document, base_revision, serial, rebase| {
-                    crate::AppCommand::At(
-                        imba::store::Id::mint(),
-                        crate::app::DocumentsCommand::RefetchDiffed {
-                            document,
-                            base_revision,
-                            serial,
-                            rebase,
-                        },
-                    )
-                },
-            );
+            let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
+            {
+                let rows = store.lease(docs()).expect("the collection");
+                rows.rediff_row(store, id, serial, fetched, &mut batch.effects());
+                store.unlease(docs(), rows);
+            }
             base_revision = OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .revision();
@@ -797,7 +786,8 @@ fn opens_watch_and_events_refetch() {
         crate::AppCommand::FileChanged(Subscription(7))
     ));
     settle(&mut app);
-    let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0).expect("the document");
+    let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0)
+        .expect("the document");
     assert_eq!(text_of(document), "alpha\nexternal\n");
 }
 

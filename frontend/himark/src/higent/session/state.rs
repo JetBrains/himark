@@ -150,7 +150,10 @@ impl SessionState {
         store.retract(self.history);
         store.retract(self.comments);
         store.retract(self.terminals);
-        store.retract(self.documents);
+        // Converted collections leave through `dispose`: the row goes,
+        // then its `destroy` retracts what it owns (law 6). The others
+        // follow as they convert.
+        store.dispose(self.documents);
         store.retract(self.scratch_names);
     }
 }

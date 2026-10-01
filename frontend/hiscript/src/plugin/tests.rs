@@ -16,7 +16,7 @@ fn located(path: &[&str]) -> ResourceLocation {
 }
 
 fn text_of(store: &Store, id: DocumentId) -> String {
-    let document = OpenDocuments::document_ref(store, test_docs(), id).expect("the document");
+    let document = OpenDocuments::document_ref(store, test_docs(&store), id).expect("the document");
     let mut view = document.text().view();
     let end = view.byte_count().min(u32::MAX as usize) as u32;
     view.substring(0..end)
@@ -25,9 +25,12 @@ fn text_of(store: &Store, id: DocumentId) -> String {
 fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
+    let documents =
+        himark::higent::Hosts::ensure_family(store, &himark::SessionId::local_default(store))
+            .documents();
     OpenDocuments::register(
         store,
-        test_docs(),
+        documents,
         document,
         Some(located(path)),
         path.last().expect("a name").to_string(),
@@ -37,8 +40,9 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
 
 fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
     let ui = himark::test_document::test_ui();
-    let location = OpenDocuments::location(&store, test_docs(), script).expect("located");
-    let mut document = OpenDocuments::document(&store, test_docs(), script).expect("the document");
+    let location = OpenDocuments::location(&store, test_docs(&store), script).expect("located");
+    let mut document =
+        OpenDocuments::document(&store, test_docs(&store), script).expect("the document");
     let editor = document.add_editor(
         400.0,
         None,
@@ -87,8 +91,9 @@ fn landed(
     landing: ScriptLanding,
 ) -> imba::effect::Batch<himark::EditorCommand> {
     let ui = himark::test_document::test_ui();
-    let location = OpenDocuments::location(&store, test_docs(), script).expect("located");
-    let mut document = OpenDocuments::document(&store, test_docs(), script).expect("the document");
+    let location = OpenDocuments::location(&store, test_docs(&store), script).expect("located");
+    let mut document =
+        OpenDocuments::document(&store, test_docs(&store), script).expect("the document");
     let editor = document.add_editor(
         400.0,
         None,
@@ -200,7 +205,8 @@ fn typing_mid_run_discards_the_write() {
     let plan = registered(&mut store, &["repo", "plan.md"], "alpha");
     let landing = ran(launched(&mut store, script));
 
-    let mut document = OpenDocuments::document(&store, test_docs(), plan).expect("the document");
+    let mut document =
+        OpenDocuments::document(&store, test_docs(&store), plan).expect("the document");
     let len = document.text().byte_count() as u32;
     document.edit(
         &operation::Operation::insert_in(len, 0, "typed "),
@@ -210,7 +216,8 @@ fn typing_mid_run_discards_the_write() {
         &himark::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
-    OpenDocuments::put_document(&mut store, test_docs(), plan, document);
+    let documents = test_docs(&store);
+    OpenDocuments::put_document(&mut store, documents, plan, document);
     landed(&mut store, &ui, script, landing);
     assert_eq!(text_of(&store, plan), "typed alpha", "ours stands");
     let runs = ScriptRuns::of(&store);
@@ -269,12 +276,14 @@ use himark::higent::ahp_types::actions::{
 };
 use himark::higent::ahp_types::state::{MarkdownResponsePart, ResponsePart};
 
-fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
-    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
-        std::sync::OnceLock::new();
-    *DOCS.get_or_init(imba::store::Id::mint)
+/// The collection the plugin resolves in production (the location's
+/// owner — a bare test store routes to the local default session);
+/// `registered` mints the family, everyone else reads it back.
+fn test_docs(store: &Store) -> imba::store::Id<himark::OpenDocuments> {
+    himark::higent::Hosts::family(store, &himark::SessionId::local_default(store))
+        .expect("the local family is minted by the first register")
+        .documents()
 }
-
 
 macro_rules! unreached {
     ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
@@ -563,8 +572,10 @@ fn shows_file_now_or_ride_their_store() {
     let location = located(&["repo", "new.md"]);
     let script_doc = script;
     let stored_landing = |store: &mut Store, stored: ScriptStored| {
-        let location = OpenDocuments::location(store, test_docs(), script_doc).expect("located");
-        let mut document = OpenDocuments::document(store, test_docs(), script_doc).expect("the document");
+        let location =
+            OpenDocuments::location(store, test_docs(&store), script_doc).expect("located");
+        let mut document =
+            OpenDocuments::document(store, test_docs(&store), script_doc).expect("the document");
         let editor = document.add_editor(
             400.0,
             None,

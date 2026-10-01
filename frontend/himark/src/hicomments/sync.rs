@@ -791,8 +791,8 @@ impl crate::DynamicCommand for Sent {
             let Some((document, key)) = card else {
                 continue;
             };
-            let Some(documents) = crate::higent::Hosts::family(store, &self.home)
-                .map(|family| family.documents())
+            let Some(documents) =
+                crate::higent::Hosts::family(store, &self.home).map(|family| family.documents())
             else {
                 continue;
             };
@@ -803,7 +803,10 @@ impl crate::DynamicCommand for Sent {
             let theme = crate::env::Themes::of(store);
             fx.scope(
                 move |command| {
-                    AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+                    AppCommand::At(
+                        documents,
+                        crate::app::DocumentsCommand::Editor(document, command),
+                    )
                 },
                 |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
             );
@@ -897,7 +900,10 @@ fn remove_card(
     let theme = crate::env::Themes::of(store);
     fx.scope(
         move |command| {
-            AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+            AppCommand::At(
+                documents,
+                crate::app::DocumentsCommand::Editor(document, command),
+            )
         },
         |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
     );
@@ -912,8 +918,9 @@ impl crate::DocumentHook for CommentsHook {
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
         document: DocumentId,
+        location: Option<&crate::ResourceLocation>,
     ) {
-        let Some(location) = crate::OpenDocuments::location(store, documents, document) else {
+        let Some(location) = location else {
             return;
         };
         // The hook holds the collection's ADDRESS: its owner is the
@@ -922,10 +929,9 @@ impl crate::DocumentHook for CommentsHook {
             return;
         };
         let owes = Comments::of(store, &home).is_some_and(|comments| {
-            comments
-                .records
-                .iter()
-                .any(|(id, record)| record.location == location && !comments.cards.contains_key(id))
+            comments.records.iter().any(|(id, record)| {
+                record.location == *location && !comments.cards.contains_key(id)
+            })
         });
         if owes {
             crate::AppRequests::push(store, Arc::new(MaterializeFor { document }));
@@ -937,6 +943,8 @@ impl crate::DocumentHook for CommentsHook {
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
         document: DocumentId,
+        _location: Option<&crate::ResourceLocation>,
+        doc: &crate::Document,
     ) {
         let Some(home) = crate::higent::Hosts::session_of_documents_id(store, documents) else {
             return;
@@ -952,7 +960,7 @@ impl crate::DocumentHook for CommentsHook {
             })
             .unwrap_or_default();
         for (id, key) in cards {
-            if let Some(range) = live_card_range(store, documents, document, key) {
+            if let Some(range) = live_card_range(doc, key) {
                 Comments::update_record(store, &home, &id, move |record| {
                     record.range = Some(range);
                 });
@@ -986,16 +994,14 @@ impl crate::DynamicCommand for MaterializeFor {
         let Some(family) = crate::Windows::session_family(store, window) else {
             return;
         };
-        let Some(home) = crate::Windows::window_ref(store, window)
-            .map(|entity| entity.current_session())
+        let Some(home) =
+            crate::Windows::window_ref(store, window).map(|entity| entity.current_session())
         else {
             return;
         };
         let documents = family.documents();
-        {
-        };
-        let Some(location) = crate::OpenDocuments::location(store, documents, self.document)
-        else {
+        {};
+        let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
             return;
         };
         let owed: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, &home)
@@ -1010,13 +1016,10 @@ impl crate::DynamicCommand for MaterializeFor {
     }
 }
 
-fn live_card_range(
-    store: &Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
-    document: DocumentId,
-    key: InlayKey,
-) -> Option<Range<LineCol>> {
-    let doc = crate::OpenDocuments::document_ref(store, documents, document)?;
+/// The card's live range read off the CLOSING row itself — the hook
+/// is handed the document; a store read here would be lease
+/// reentrancy (docs/entities.md law 5).
+fn live_card_range(doc: &crate::Document, key: InlayKey) -> Option<Range<LineCol>> {
     let markup = doc.feature_markup(comments_markup())?;
 
     let (range, _) = markup.inlay_at_key(comments_markup(), key)?;
@@ -1075,7 +1078,10 @@ fn materialize(
     let documents = crate::higent::Hosts::ensure_family(store, home).documents();
     fx.scope(
         move |command| {
-            AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+            AppCommand::At(
+                documents,
+                crate::app::DocumentsCommand::Editor(document, command),
+            )
         },
         |fx| {
             let key = doc.push_inlay(

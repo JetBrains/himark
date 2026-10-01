@@ -346,13 +346,14 @@ impl crate::DocumentHook for LocationsWashHook {
     fn opened(
         &self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<crate::OpenDocuments>,
         document: crate::DocumentId,
+        location: Option<&crate::ResourceLocation>,
     ) {
-        let Some(location) = crate::OpenDocuments::location(store, documents, document) else {
+        let Some(location) = location else {
             return;
         };
-        if let Some(feed) = PendingWashes::take(store, &location) {
+        if let Some(feed) = PendingWashes::take(store, location) {
             crate::AppRequests::push(store, std::sync::Arc::new(WashDocument { feed, document }));
         }
     }
@@ -362,6 +363,8 @@ impl crate::DocumentHook for LocationsWashHook {
         _store: &mut Store,
         _documents: imba::store::Id<crate::OpenDocuments>,
         _document: crate::DocumentId,
+        _location: Option<&crate::ResourceLocation>,
+        _doc: &crate::Document,
     ) {
     }
 }
@@ -405,8 +408,7 @@ impl crate::DynamicCommand for WashDocument {
         else {
             return;
         };
-        let Some(location) = crate::OpenDocuments::location(store, documents, self.document)
-        else {
+        let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
             return;
         };
         let Some(mut document) = crate::OpenDocuments::document(store, documents, self.document)
@@ -444,7 +446,10 @@ impl crate::DynamicCommand for WashDocument {
         let entity = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(entity, command))
+                crate::AppCommand::At(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(entity, command),
+                )
             },
             |fx| document.replace_markup(markup, tints, &ranges, store, ui, &fonts, &theme, fx),
         );
@@ -482,7 +487,10 @@ fn remove_washes(
         let entity = *id;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(entity, command))
+                crate::AppCommand::At(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(entity, command),
+                )
             },
             |fx| document.remove_markup(*markup, &changed, store, ui, &fonts, &theme, fx),
         );

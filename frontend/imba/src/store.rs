@@ -104,6 +104,7 @@ pub trait Entity: Component {
 
     fn perform(
         &mut self,
+        id: Id<Self>,
         command: Self::Command,
         store: &mut Store,
         ui: &crate::ui::UiCtx,
@@ -157,7 +158,10 @@ impl Store {
         match self.get::<EntityRows<T>>()?.0.get(&id.serial)? {
             Slot::Present(value) => Some(value),
             Slot::Leased => {
-                debug_assert!(false, "{id:?} read during its own perform (lease reentrancy)");
+                debug_assert!(
+                    false,
+                    "{id:?} read during its own perform (lease reentrancy)"
+                );
                 eprintln!("[store] {id:?} read during its own perform (lease reentrancy)");
                 None
             }
@@ -184,7 +188,10 @@ impl Store {
                 Some(value)
             }
             Slot::Leased => {
-                debug_assert!(false, "{id:?} leased during its own perform (lease reentrancy)");
+                debug_assert!(
+                    false,
+                    "{id:?} leased during its own perform (lease reentrancy)"
+                );
                 eprintln!("[store] {id:?} leased during its own perform (lease reentrancy)");
                 None
             }
@@ -224,7 +231,7 @@ impl Store {
         let Some(mut row) = self.lease(id) else {
             return;
         };
-        fx.scope(address, |fx| row.perform(command, self, ui, fx));
+        fx.scope(address, |fx| row.perform(id, command, self, ui, fx));
         self.unlease(id, row);
     }
 
@@ -386,6 +393,7 @@ mod tests {
         type Command = u64;
         fn perform(
             &mut self,
+            _id: Id<Self>,
             command: u64,
             store: &mut Store,
             _ui: &crate::ui::UiCtx,

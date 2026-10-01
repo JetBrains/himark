@@ -17,7 +17,8 @@ use crate::{DocumentId, OpenDocuments};
 /// direction — the diff arriving while panes already show tracks —
 /// is `track_diff`'s registration.
 pub fn enable_scroll_stripes(
-    store: &Store, documents: imba::store::Id<OpenDocuments>,
+    store: &Store,
+    documents: imba::store::Id<OpenDocuments>,
     id: DocumentId,
     document: &mut editor::Document,
     editor: editor::EditorId,
@@ -31,11 +32,13 @@ pub fn enable_scroll_stripes(
 }
 
 pub fn sync_scroll_stripe_lanes<R: 'static>(
-    store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+    store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     fx: &mut imba::effect::Effects<'_, R>,
     wrap: impl Fn(DocumentId, editor::EditorCommand) -> R + Send + Clone + 'static,
 ) {
-    let wanting: Vec<DocumentId> = store.entity(documents)
+    let wanting: Vec<DocumentId> = store
+        .entity(documents)
         .map(|docs| {
             docs.entries
                 .iter()
@@ -122,9 +125,12 @@ mod tests {
         OpenDocuments::put_document(&mut store, documents, id, document);
 
         let mut batch = imba::effect::Batch::new();
-        sync_scroll_stripe_lanes(&mut store, documents, &mut batch.effects(), |document, command| {
-            (document, command)
-        });
+        sync_scroll_stripe_lanes(
+            &mut store,
+            documents,
+            &mut batch.effects(),
+            |document, command| (document, command),
+        );
         let mut outcomes = Vec::new();
         for launch in batch.surviving_launches() {
             let Ok(effect) = launch

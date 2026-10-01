@@ -78,12 +78,12 @@ impl EditorIdView {
             },
 
             base: match self.gutter {
-                true => {
-                    crate::OpenDocuments::stripe_diff(store, self.documents, self.document).and_then(|handle| {
-                        let base = crate::OpenDocuments::document(store, self.documents, handle.base)?;
+                true => crate::OpenDocuments::stripe_diff(store, self.documents, self.document)
+                    .and_then(|handle| {
+                        let base =
+                            crate::OpenDocuments::document(store, self.documents, handle.base)?;
                         Some((base, handle.id))
-                    })
-                }
+                    }),
                 false => None,
             },
         };

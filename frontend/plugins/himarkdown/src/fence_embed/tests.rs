@@ -11,7 +11,6 @@ fn test_docs(store: &mut Store) -> imba::store::Id<himark::OpenDocuments> {
         .documents()
 }
 
-
 fn fonts() -> skia_safe::textlayout::FontCollection {
     himark::test_document::test_fonts_collection().clone()
 }
@@ -163,7 +162,8 @@ fn an_addressed_fence_embeds_the_registered_file() {
     );
     let id = embedded(&entry, source.len() as u32).expect("an EditorIdView embed");
 
-    let location = himark::OpenDocuments::location(&store, documents, id).expect("registered location");
+    let location =
+        himark::OpenDocuments::location(&store, documents, id).expect("registered location");
     assert_eq!(location.path(), sidecar_path().as_slice());
     assert_eq!(
         himark::OpenDocuments::by_location(&store, documents, &location),
@@ -226,7 +226,8 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
         whole.height()
     );
 
-    let target = himark::OpenDocuments::document_ref(&store, documents, windowed.document()).expect("target");
+    let target = himark::OpenDocuments::document_ref(&store, documents, windowed.document())
+        .expect("target");
     let text = target.text().byte_string(0, target.text().byte_count());
     let start = text.find("fn two").expect("line 2") as u32;
     let end = (text.find("fn three").expect("line 3") + "fn three() {}".len()) as u32;
@@ -379,7 +380,8 @@ fn a_line_fragment_windows_the_embed() {
         .into_iter()
         .find_map(|interval| interval.inlay.view_as::<EmbedView>().copied())
         .expect("the embed");
-    let target = himark::OpenDocuments::document_ref(&store, documents, embed.document()).expect("target");
+    let target =
+        himark::OpenDocuments::document_ref(&store, documents, embed.document()).expect("target");
     let window = target.window(embed.editor());
     let text = target.text();
     let shown = text.byte_string(window.start as usize, (window.end - window.start) as usize);

@@ -981,42 +981,45 @@ pub struct DocsyncHook {
 impl himark::DocumentHook for DocsyncHook {
     fn opened(
         &self,
-        store: &mut Store,
-        documents: imba::store::Id<himark::OpenDocuments>,
-        document: himark::DocumentId,
+        _store: &mut Store,
+        _documents: imba::store::Id<himark::OpenDocuments>,
+        _document: himark::DocumentId,
+        location: Option<&himark::ResourceLocation>,
     ) {
         // The invariant (2026-09-15): every located document that
         // talks to the outside world is registered in OpenDocuments —
         // so registration is where its document channel gets ensured.
-        let Some(location) = himark::OpenDocuments::location(store, documents, document) else {
+        let Some(location) = location else {
             return;
         };
-        if himark::is_synthetic(&location) || !location.kind().is_document() {
+        if himark::is_synthetic(location) || !location.kind().is_document() {
             return;
         }
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, &location) else {
+        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, location) else {
             return;
         };
-        DocumentChannels::ensure(&self.channels, location, seat, session.into_string());
+        DocumentChannels::ensure(
+            &self.channels,
+            location.clone(),
+            seat,
+            session.into_string(),
+        );
     }
 
     fn closing(
         &self,
         store: &mut Store,
-        documents: imba::store::Id<himark::OpenDocuments>,
-        document: himark::DocumentId,
+        _documents: imba::store::Id<himark::OpenDocuments>,
+        _document: himark::DocumentId,
+        location: Option<&himark::ResourceLocation>,
+        _doc: &himark::Document,
     ) {
-        if let Some(location) = himark::OpenDocuments::location(store, documents, document) {
-            SyncSeats::detach(store, &location);
-            self.channels.forget_store(&location);
+        // The row leaves the collection right after this hook — no
+        // flag writes back into it; the release already unsubscribes
+        // its watch.
+        if let Some(location) = location {
+            SyncSeats::detach(store, location);
+            self.channels.forget_store(location);
         }
-        let mut throwaway: imba::effect::Batch<imba::DynCommand> = imba::effect::Batch::new();
-        himark::OpenDocuments::set_host_synced(
-            store,
-            documents,
-            document,
-            false,
-            &mut throwaway.effects(),
-        );
     }
 }

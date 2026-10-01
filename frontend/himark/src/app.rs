@@ -18,8 +18,8 @@ use skia_safe::{Canvas, Rect, Size};
 use text::Text;
 
 use crate::{
-    deliver, mount_editor, Document, DocumentId, EditorCommand, EditorIdView, Markup, ModalRequest,
-    ModalView, OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode,
+    mount_editor, Document, EditorCommand, EditorIdView, Markup, ModalRequest, ModalView,
+    OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode,
 };
 
 use crate::stats::{Stats, StatsCommand};
@@ -156,65 +156,7 @@ pub enum AppCommand {
     RegisterEnrichers(::editor::Enrichers),
 }
 
-/// What the documents collection answers to, behind its `At` address
-/// (docs/entities.md law 5): the editor road plus every
-/// document-addressed landing. The variants carry the collection's
-/// PRIVATE keys (`DocumentId`); the table never sees them.
-pub enum DocumentsCommand {
-    Editor(DocumentId, EditorCommand),
-
-    BaseLocated {
-        document: DocumentId,
-        base: Option<crate::ResourceLocation>,
-    },
-
-    BaseFetched {
-        document: DocumentId,
-        base: crate::ResourceLocation,
-        text: Option<String>,
-    },
-
-    BaseBuilt {
-        document: DocumentId,
-        base: crate::ResourceLocation,
-        built: Document,
-    },
-
-    /// A Save All store came home for one document.
-    Stored {
-        document: DocumentId,
-        revision: u64,
-        snapshot: ::editor::Text,
-        stored: bool,
-    },
-
-    Watched(DocumentId, Option<crate::watch::Subscription>),
-
-    Refetched {
-        document: DocumentId,
-
-        serial: u64,
-        text: Option<String>,
-    },
-
-    RefetchDiffed {
-        document: DocumentId,
-        base_revision: u64,
-        serial: u64,
-        rebase: crate::watch::RefetchRebase,
-    },
-
-    /// A normalize lane came home: the minimal diff for a tracked
-    /// pair, stamped with its collection at launch.
-    Normalized {
-        diff: ::editor::diff::DiffId,
-        operation: operation::Operation,
-        markup: ::editor::Markup,
-        changed: Vec<std::ops::Range<u32>>,
-        base_revision: u64,
-        target_revision: u64,
-    },
-}
+pub use documents::DocumentsCommand;
 
 impl AppCommand {
     pub fn dynamic_in(
@@ -1260,196 +1202,6 @@ fn command_label(command: &AppCommand) -> &'static str {
     }
 }
 
-/// The documents collection's perform — every arm that used to be a
-/// document-addressed `AppCommand` variant, behind the one `At` road.
-/// The `documents` id is the address the batch was scoped by; the
-/// landing chains re-stamp it, so nothing below re-derives an owner.
-fn perform_documents(
-    store: &mut Store,
-    ui: &UiCtx,
-    documents: imba::store::Id<OpenDocuments>,
-    command: DocumentsCommand,
-    fx: &mut AppFx<'_>,
-) {
-    match command {
-        DocumentsCommand::Editor(document, command) => {
-            if OpenDocuments::contains(store, documents, document) {
-                fx.scope(
-                    move |command| {
-                        AppCommand::At(documents, DocumentsCommand::Editor(document, command))
-                    },
-                    |fx| deliver(store, documents, ui, document, command, fx),
-                );
-            }
-        }
-        DocumentsCommand::BaseLocated { document, base } => {
-            crate::diffs::land_base_located(store, documents, ui, document, base, fx);
-        }
-        DocumentsCommand::BaseFetched {
-            document,
-            base,
-            text,
-        } => {
-            let Some(text) = text else {
-                return;
-            };
-            if !OpenDocuments::contains(store, documents, document) {
-                return;
-            }
-            let _ = fx.push(
-                imba::effect::AnyEffect::new(crate::BuildDocumentEffect {
-                    location: base.clone(),
-                    text,
-                })
-                .map(move |built| {
-                    AppCommand::At(
-                        documents,
-                        DocumentsCommand::BaseBuilt {
-                            document,
-                            base,
-                            built: built.document,
-                        },
-                    )
-                }),
-            );
-        }
-        DocumentsCommand::BaseBuilt {
-            document,
-            base,
-            built,
-        } => {
-            crate::diffs::land_base_built(store, documents, ui, document, base, built, fx);
-        }
-        DocumentsCommand::Stored {
-            document,
-            revision,
-            snapshot,
-            stored,
-        } => match stored {
-            true => {
-                crate::OpenDocuments::mark_saved(store, documents, document, revision, snapshot)
-            }
-            false => eprintln!("[himark] store failed for an open document"),
-        },
-        DocumentsCommand::Watched(document, subscription) => {
-            // The channel may have gone live while the subscribe
-            // was in flight: mode one holds — the host watches
-            // the file, this subscription is surplus.
-            if crate::OpenDocuments::host_synced(store, documents, document) {
-                if let Some(subscription) = subscription {
-                    let _ = fx.push(imba::effect::AnyEffect::notification(
-                        crate::watch::UnsubscribeEffect { subscription },
-                    ));
-                }
-                return;
-            }
-            crate::OpenDocuments::set_watch(store, documents, document, subscription);
-        }
-        DocumentsCommand::Refetched {
-            document,
-            serial,
-            text,
-        } => {
-            crate::watch::apply_refetched(store, documents, document, serial, text, fx);
-        }
-        DocumentsCommand::RefetchDiffed {
-            document,
-            base_revision,
-            serial,
-            rebase,
-        } => {
-            let documents::watch::RefetchRebase {
-                operation,
-                fetched,
-                fetched_source,
-                synced,
-                ..
-            } = rebase;
-            let retry = fx.scope(
-                move |command| {
-                    AppCommand::At(documents, DocumentsCommand::Editor(document, command))
-                },
-                |fx| {
-                    crate::OpenDocuments::absorb_refetched(
-                        store,
-                        documents,
-                        ui,
-                        document,
-                        base_revision,
-                        serial,
-                        &operation,
-                        fetched,
-                        synced,
-                        fx,
-                    )
-                },
-            );
-            if retry {
-                documents::watch::rediff(
-                    store,
-                    documents,
-                    document,
-                    serial,
-                    fetched_source,
-                    fx,
-                    move |document, base_revision, serial, rebase| {
-                        AppCommand::At(
-                            documents,
-                            DocumentsCommand::RefetchDiffed {
-                                document,
-                                base_revision,
-                                serial,
-                                rebase,
-                            },
-                        )
-                    },
-                );
-            }
-        }
-        DocumentsCommand::Normalized {
-            diff,
-            operation,
-            markup,
-            changed,
-            base_revision,
-            target_revision,
-        } => {
-            if crate::diffs::land_normalized(
-                store,
-                documents,
-                diff,
-                operation,
-                base_revision,
-                target_revision,
-            ) {
-                if let Some(handle) = crate::OpenDocuments::diff_handle(store, documents, diff) {
-                    let document = handle.target;
-                    fx.scope(
-                        move |command| {
-                            AppCommand::At(documents, DocumentsCommand::Editor(document, command))
-                        },
-                        |fx| {
-                            documents::diffs::land_diff_markup(
-                                store,
-                                documents,
-                                ui,
-                                diff,
-                                markup,
-                                changed,
-                                target_revision,
-                                fx,
-                            )
-                        },
-                    );
-                }
-                // No push here: every visible diff face notices the
-                // landed generation itself, on its next paint (the
-                // staleness probe in hidiff's GatheredSplit).
-            }
-        }
-    }
-}
-
 fn trace_reconcile(source: &str, commands: &[AppCommand]) {
     static ENABLED: OnceLock<bool> = OnceLock::new();
     if !*ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_RECONCILE").is_some()) {
@@ -1672,7 +1424,15 @@ impl Application {
                 });
             }
             AppCommand::At(documents, command) => {
-                perform_documents(store, ui, documents, command, fx);
+                // The one command road (docs/entities.md law 5): lease
+                // the row, perform under its own address, put it back.
+                store.route(
+                    documents,
+                    command,
+                    ui,
+                    move |command| AppCommand::At(documents, command),
+                    fx,
+                );
             }
             AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),

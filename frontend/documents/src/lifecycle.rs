@@ -50,6 +50,11 @@ pub fn close_editor(
     }
 }
 
+/// The editor delivery is a PLUGIN BOUNDARY: `land_reparse` and
+/// `Document::perform` run enrichers and view destroys that open and
+/// release SIBLINGS in this same collection — so the row must be IN
+/// the table while they run (the router swaps it back first), and the
+/// spans that touch the row stay narrow, as they always were.
 pub fn deliver(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,

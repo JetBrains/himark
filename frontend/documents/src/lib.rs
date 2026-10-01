@@ -41,6 +41,22 @@ impl imba::effect::Effect for FetchResourceBytesEffect {
     type Result = Option<Vec<u8>>;
 }
 
+/// Build a Document from fetched text, off the UI thread — the base
+/// chain's second leg (BaseFetched -> BaseBuilt).
+pub struct BuildDocumentEffect {
+    pub location: editor::ResourceLocation,
+    pub text: String,
+}
+
+impl imba::effect::Effect for BuildDocumentEffect {
+    type Result = BuiltDocument;
+}
+
+#[derive(Clone)]
+pub struct BuiltDocument {
+    pub document: Document,
+}
+
 #[derive(Clone, Default)]
 pub struct ScratchMint(u64);
 
@@ -80,7 +96,8 @@ pub fn is_synthetic(location: &editor::ResourceLocation) -> bool {
 
 impl OpenDocuments {
     pub fn set_location(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         location: editor::ResourceLocation,
     ) {
@@ -101,6 +118,250 @@ impl OpenDocuments {
             entity.watch_requested = false;
             documents.entries.insert_mut(document, entity);
         });
+    }
+}
+
+/// What the documents collection answers to, behind its `At` address
+/// (docs/entities.md law 5): the editor road plus every
+/// document-addressed landing. The variants carry the collection's
+/// PRIVATE keys (`DocumentId`); the table never sees them.
+pub enum DocumentsCommand {
+    Editor(DocumentId, editor::EditorCommand),
+
+    BaseLocated {
+        document: DocumentId,
+        base: Option<editor::ResourceLocation>,
+    },
+
+    BaseFetched {
+        document: DocumentId,
+        base: editor::ResourceLocation,
+        text: Option<String>,
+    },
+
+    BaseBuilt {
+        document: DocumentId,
+        base: editor::ResourceLocation,
+        built: Document,
+    },
+
+    /// A Save All store came home for one document.
+    Stored {
+        document: DocumentId,
+        revision: u64,
+        snapshot: editor::Text,
+        stored: bool,
+    },
+
+    Watched(DocumentId, Option<crate::Subscription>),
+
+    Refetched {
+        document: DocumentId,
+
+        serial: u64,
+        text: Option<String>,
+    },
+
+    RefetchDiffed {
+        document: DocumentId,
+        base_revision: u64,
+        serial: u64,
+        rebase: crate::watch::RefetchRebase,
+    },
+
+    /// A normalize lane came home: the minimal diff for a tracked
+    /// pair, stamped with its collection at launch.
+    Normalized {
+        diff: editor::diff::DiffId,
+        operation: operation::Operation,
+        markup: editor::Markup,
+        changed: Vec<std::ops::Range<u32>>,
+        base_revision: u64,
+        target_revision: u64,
+    },
+}
+
+/// The one command road (docs/entities.md law 5): the router leases
+/// the row and hands it effects already scoped to `DocumentsCommand`
+/// — every push and every nested scope lands back at this collection
+/// without naming the application's command type.
+impl imba::store::Entity for OpenDocuments {
+    type Command = DocumentsCommand;
+
+    fn perform(
+        &mut self,
+        id: imba::store::Id<Self>,
+        command: DocumentsCommand,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut imba::effect::Effects<'_, DocumentsCommand>,
+    ) {
+        // The arms that reach a PLUGIN BOUNDARY (editor performs,
+        // markup destroys, enricher installs — code that legitimately
+        // opens and releases SIBLINGS in this collection) give the row
+        // BACK for the duration and pick up the fresh state after; the
+        // lease marker guards only the collection's own bookkeeping.
+        macro_rules! with_row_home {
+            ($body:expr) => {{
+                store.unlease(id, std::mem::take(self));
+                let out = $body;
+                *self = store.lease(id).unwrap_or_default();
+                out
+            }};
+        }
+        match command {
+            DocumentsCommand::Editor(document, command) => {
+                if self.contains_id(document) {
+                    with_row_home!(fx.scope(
+                        move |command| DocumentsCommand::Editor(document, command),
+                        |fx| crate::deliver(store, id, ui, document, command, fx),
+                    ));
+                }
+            }
+            DocumentsCommand::BaseLocated { document, base } => {
+                with_row_home!(crate::diffs::land_base_located(
+                    store, id, ui, document, base, fx
+                ));
+            }
+            DocumentsCommand::BaseFetched {
+                document,
+                base,
+                text,
+            } => {
+                let Some(text) = text else {
+                    return;
+                };
+                if !self.contains_id(document) {
+                    return;
+                }
+                let _ = fx.push(
+                    imba::effect::AnyEffect::new(BuildDocumentEffect {
+                        location: base.clone(),
+                        text,
+                    })
+                    .map(move |built| DocumentsCommand::BaseBuilt {
+                        document,
+                        base,
+                        built: built.document,
+                    }),
+                );
+            }
+            DocumentsCommand::BaseBuilt {
+                document,
+                base,
+                built,
+            } => {
+                with_row_home!(crate::diffs::land_base_built(
+                    store, id, ui, document, base, built, fx
+                ));
+            }
+            DocumentsCommand::Stored {
+                document,
+                revision,
+                snapshot,
+                stored,
+            } => match stored {
+                true => self.mark_saved_row(document, revision, snapshot),
+                false => eprintln!("[documents] store failed for an open document"),
+            },
+            DocumentsCommand::Watched(document, subscription) => {
+                // The channel may have gone live while the subscribe
+                // was in flight: mode one holds — the host watches
+                // the file, this subscription is surplus.
+                if self.host_synced_row(document) {
+                    if let Some(subscription) = subscription {
+                        let _ = fx.push(imba::effect::AnyEffect::notification(
+                            crate::watch::UnsubscribeEffect { subscription },
+                        ));
+                    }
+                    return;
+                }
+                self.set_watch_row(document, subscription);
+            }
+            DocumentsCommand::Refetched {
+                document,
+                serial,
+                text,
+            } => {
+                self.apply_refetched_row(store, document, serial, text, fx);
+            }
+            DocumentsCommand::RefetchDiffed {
+                document,
+                base_revision,
+                serial,
+                rebase,
+            } => {
+                let crate::watch::RefetchRebase {
+                    operation,
+                    fetched,
+                    fetched_source,
+                    synced,
+                    ..
+                } = rebase;
+                // The merge EDITS the document (change sinks, repair
+                // tails) — a plugin boundary like any editor perform.
+                let retry = with_row_home!(fx.scope(
+                    move |command| DocumentsCommand::Editor(document, command),
+                    |fx| {
+                        Self::absorb_refetched(
+                            store,
+                            id,
+                            ui,
+                            document,
+                            base_revision,
+                            serial,
+                            &operation,
+                            fetched,
+                            synced,
+                            fx,
+                        )
+                    },
+                ));
+                if retry {
+                    self.rediff_row(store, document, serial, fetched_source, fx);
+                }
+            }
+            DocumentsCommand::Normalized {
+                diff,
+                operation,
+                markup,
+                changed,
+                base_revision,
+                target_revision,
+            } => {
+                if self.land_normalized_row(diff, operation, base_revision, target_revision) {
+                    if let Some(handle) = self.diff_handle_row(diff) {
+                        let document = handle.target;
+                        // The markup swap destroys replaced inlays —
+                        // a plugin boundary.
+                        with_row_home!(fx.scope(
+                            move |command| DocumentsCommand::Editor(document, command),
+                            |fx| {
+                                crate::diffs::land_diff_markup(
+                                    store,
+                                    id,
+                                    ui,
+                                    diff,
+                                    markup,
+                                    changed,
+                                    target_revision,
+                                    fx,
+                                )
+                            },
+                        ));
+                    }
+                    // No push here: every visible diff face notices the
+                    // landed generation itself, on its next paint (the
+                    // staleness probe in hidiff's GatheredSplit).
+                }
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {
+        // The records are the collection's PRIVATE schema, not table
+        // entities — nothing to retract; watches and editors die with
+        // the drop.
     }
 }
 
@@ -202,18 +463,25 @@ impl OpenDocument {
     }
 }
 
+/// Registration/release observers. They receive the FACTS (the
+/// document's location) rather than reading the collection back by
+/// id — hooks run inside the collection's own doors, where a row
+/// read would be lease reentrancy (docs/entities.md law 5).
 pub trait DocumentHook: Send + Sync {
     fn opened(
         &self,
         store: &mut imba::store::Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
+        location: Option<&editor::ResourceLocation>,
     );
     fn closing(
         &self,
         store: &mut imba::store::Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
+        location: Option<&editor::ResourceLocation>,
+        doc: &Document,
     );
 }
 
@@ -236,7 +504,25 @@ struct DocumentHooks(rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>);
 
 impl OpenDocuments {
     pub fn register(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: Document,
+        location: Option<editor::ResourceLocation>,
+        title: String,
+        saved_revision: u64,
+    ) -> DocumentId {
+        // The outside door mints the row lazily, as it always has; a
+        // leased perform calls `register_row` on the row it holds.
+        let mut rows = store.entity(documents).cloned().unwrap_or_default();
+        let id = rows.register_row(store, documents, document, location, title, saved_revision);
+        store.put_entity(documents, rows);
+        id
+    }
+
+    pub fn register_row(
+        &mut self,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: Document,
         location: Option<editor::ResourceLocation>,
         title: String,
@@ -248,13 +534,13 @@ impl OpenDocuments {
             minted = mint.0;
         });
         let id = DocumentId(minted);
-        let mut rows = store.entity(documents).cloned().unwrap_or_default();
-        let stamp = Self::next_stamp(&rows);
+        let stamp = Self::next_stamp(self);
         if let Some(location) = &location {
-            rows.by_location.insert_mut(location.clone(), id);
+            self.by_location.insert_mut(location.clone(), id);
         }
+        let hook_location = location.clone();
         let baseline = document.text().clone();
-        rows.entries.insert_mut(
+        self.entries.insert_mut(
             id,
             OpenDocument {
                 document,
@@ -272,9 +558,8 @@ impl OpenDocuments {
                 base_requested: false,
             },
         );
-        store.put_entity(documents, rows);
         for hook in Self::hooks(store).iter() {
-            hook.opened(store, documents, id);
+            hook.opened(store, documents, id, hook_location.as_ref());
         }
         id
     }
@@ -348,27 +633,65 @@ impl OpenDocuments {
         self.diffs.record(diff).is_some()
     }
 
-    pub fn document(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> Option<Document> {
+    pub fn document(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        id: DocumentId,
+    ) -> Option<Document> {
         Self::document_ref(store, documents, id).cloned()
     }
 
-    pub fn document_ref(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> Option<&Document> {
-        store.entity(documents)?
-            .entries
-            .get(&id)
-            .map(|entity| &entity.document)
+    pub fn document_ref(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        id: DocumentId,
+    ) -> Option<&Document> {
+        store.entity(documents)?.document_row(id)
     }
 
-    pub fn put_document(store: &mut Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId, document: Document) {
+    /// The row forms (`*_row`): the collection speaking for itself —
+    /// what a leased perform uses, where a store read of the own id
+    /// would be reentrancy (docs/entities.md law 5). The `(store, id)`
+    /// statics stay as the outside doors and delegate here.
+    pub fn document_row(&self, id: DocumentId) -> Option<&Document> {
+        self.entries.get(&id).map(|entity| &entity.document)
+    }
+
+    pub fn put_document(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        id: DocumentId,
+        document: Document,
+    ) {
         Self::update_entity(store, documents, id, |entity| entity.document = document);
     }
 
-    pub fn contains(store: &Store, documents: imba::store::Id<OpenDocuments>, id: DocumentId) -> bool {
+    pub fn put_document_row(&mut self, id: DocumentId, document: Document) {
+        self.update_row(id, |entity| entity.document = document);
+    }
+
+    pub(crate) fn update_row(&mut self, id: DocumentId, mutate: impl FnOnce(&mut OpenDocument)) {
+        let Some(mut entity) = self.entries.get(&id).cloned() else {
+            return;
+        };
+        mutate(&mut entity);
+        self.entries.insert_mut(id, entity);
+    }
+
+    pub fn contains(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        id: DocumentId,
+    ) -> bool {
         Self::document_ref(store, documents, id).is_some()
     }
 
-    pub fn list(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<(DocumentId, OpenDocument)> {
-        let mut entries: Vec<(DocumentId, OpenDocument)> = store.entity(documents)
+    pub fn list(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+    ) -> Vec<(DocumentId, OpenDocument)> {
+        let mut entries: Vec<(DocumentId, OpenDocument)> = store
+            .entity(documents)
             .map(|documents| {
                 documents
                     .entries
@@ -381,52 +704,82 @@ impl OpenDocuments {
         entries
     }
 
-    pub fn list_recent(store: &Store, documents: imba::store::Id<OpenDocuments>) -> Vec<(DocumentId, OpenDocument)> {
+    pub fn list_recent(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+    ) -> Vec<(DocumentId, OpenDocument)> {
         let mut entries = Self::list(store, documents);
         entries.sort_by(|(_, a), (_, b)| b.last_opened.cmp(&a.last_opened));
         entries
     }
 
-    pub fn name(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<String> {
+    pub fn name(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) -> Option<String> {
         Self::entity(store, documents, document).map(|entity| entity.name())
     }
 
-    pub fn location(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<editor::ResourceLocation> {
-        store.entity(documents)?
-            .entries
-            .get(&document)?
-            .location
-            .clone()
+    pub fn location(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) -> Option<editor::ResourceLocation> {
+        store.entity(documents)?.location_row(document)
     }
 
-    pub fn entity(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> Option<OpenDocument> {
-        store.entity(documents)?
-            .entries
-            .get(&document)
-            .cloned()
+    pub fn location_row(&self, document: DocumentId) -> Option<editor::ResourceLocation> {
+        self.entries.get(&document)?.location.clone()
     }
 
-    pub fn by_location(store: &Store, documents: imba::store::Id<OpenDocuments>, location: &editor::ResourceLocation) -> Option<DocumentId> {
-        store.entity(documents)?
-            .by_location
-            .get(location)
-            .copied()
+    pub fn entity(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) -> Option<OpenDocument> {
+        store.entity(documents)?.entity_row(document)
     }
 
-    pub fn touch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
+    pub fn entity_row(&self, document: DocumentId) -> Option<OpenDocument> {
+        self.entries.get(&document).cloned()
+    }
+
+    pub fn by_location(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        location: &editor::ResourceLocation,
+    ) -> Option<DocumentId> {
+        store.entity(documents)?.by_location_row(location)
+    }
+
+    pub fn by_location_row(&self, location: &editor::ResourceLocation) -> Option<DocumentId> {
+        self.by_location.get(location).copied()
+    }
+
+    pub fn touch(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) {
         let Some(rows_ref) = store.entity(documents) else {
             return;
         };
         let stamp = Self::next_stamp(rows_ref);
-        Self::update_entity(store, documents, document, |entity| entity.last_opened = stamp);
+        Self::update_entity(store, documents, document, |entity| {
+            entity.last_opened = stamp
+        });
     }
 
     pub fn set_save_token(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         token: Option<imba::effect::CancellationToken>,
     ) {
-        Self::update_entity(store, documents, document, |entity| entity.save_token = token);
+        Self::update_entity(store, documents, document, |entity| {
+            entity.save_token = token
+        });
     }
 
     /// The document channel went live (or died): while live, the
@@ -434,7 +787,8 @@ impl OpenDocuments {
     /// file; on fallback the watch machinery re-arms and a refetch
     /// resyncs from disk.
     pub fn set_host_synced<R: 'static>(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         synced: bool,
         fx: &mut imba::effect::Effects<'_, R>,
@@ -462,40 +816,78 @@ impl OpenDocuments {
         });
     }
 
-    pub fn host_synced(store: &Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> bool {
-        Self::entity(store, documents, document).is_some_and(|entity| entity.host_synced)
+    pub fn host_synced(
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) -> bool {
+        store
+            .entity(documents)
+            .is_some_and(|rows| rows.host_synced_row(document))
     }
 
-    pub fn set_watch_requested(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
-        Self::update_entity(store, documents, document, |entity| entity.watch_requested = true);
+    pub fn host_synced_row(&self, document: DocumentId) -> bool {
+        self.entries
+            .get(&document)
+            .is_some_and(|entity| entity.host_synced)
     }
 
-    pub fn set_base_requested(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) {
-        Self::update_entity(store, documents, document, |entity| entity.base_requested = true);
-    }
-
-    pub fn set_watch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId, watch: Option<crate::Subscription>) {
-        store.update_entity(documents, |documents| {
-            let Some(entity) = documents.entries.get(&document) else {
-                return;
-            };
-            let mut entity = entity.clone();
-            let old = entity.watch;
-            entity.watch = watch;
-            documents.entries.insert_mut(document, entity);
-            if old != watch {
-                if let Some(old) = old {
-                    documents.unindex_watch(document, old);
-                }
-                if let Some(new) = watch {
-                    documents.index_watch(document, new);
-                }
-            }
+    pub fn set_watch_requested(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) {
+        Self::update_entity(store, documents, document, |entity| {
+            entity.watch_requested = true
         });
     }
 
+    pub fn set_base_requested(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) {
+        Self::update_entity(store, documents, document, |entity| {
+            entity.base_requested = true
+        });
+    }
+
+    pub fn set_base_requested_row(&mut self, document: DocumentId) {
+        self.update_row(document, |entity| entity.base_requested = true);
+    }
+
+    pub fn set_watch(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+        watch: Option<crate::Subscription>,
+    ) {
+        store.update_entity(documents, |documents| {
+            documents.set_watch_row(document, watch)
+        });
+    }
+
+    pub fn set_watch_row(&mut self, document: DocumentId, watch: Option<crate::Subscription>) {
+        let Some(entity) = self.entries.get(&document) else {
+            return;
+        };
+        let mut entity = entity.clone();
+        let old = entity.watch;
+        entity.watch = watch;
+        self.entries.insert_mut(document, entity);
+        if old != watch {
+            if let Some(old) = old {
+                self.unindex_watch(document, old);
+            }
+            if let Some(new) = watch {
+                self.index_watch(document, new);
+            }
+        }
+    }
+
     pub fn mark_saved(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         revision: u64,
         stored: editor::Text,
@@ -506,8 +898,16 @@ impl OpenDocuments {
         });
     }
 
+    pub fn mark_saved_row(&mut self, document: DocumentId, revision: u64, stored: editor::Text) {
+        self.update_row(document, |entity| {
+            entity.saved_revision = revision;
+            entity.baseline = stored;
+        });
+    }
+
     pub fn edit_external(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
@@ -547,7 +947,8 @@ impl OpenDocuments {
     }
 
     pub fn edit_shared(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         identity: ::editor::EditIdentity,
@@ -583,7 +984,11 @@ impl OpenDocuments {
         true
     }
 
-    pub fn stamp_refetch(store: &mut Store, documents: imba::store::Id<OpenDocuments>, document: DocumentId) -> u64 {
+    pub fn stamp_refetch(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        document: DocumentId,
+    ) -> u64 {
         let mut stamped = 0;
         Self::update_entity(store, documents, document, |entity| {
             entity.refetch_serial += 1;
@@ -601,7 +1006,8 @@ impl OpenDocuments {
     /// converge, not give up).
     #[must_use]
     pub fn absorb_refetched(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
@@ -652,13 +1058,16 @@ impl OpenDocuments {
         // texts here; this is the UI thread.
         match synced {
             true => Self::mark_saved(store, documents, document_id, revision, fetched),
-            false => Self::update_entity(store, documents, document_id, |entity| entity.baseline = fetched),
+            false => Self::update_entity(store, documents, document_id, |entity| {
+                entity.baseline = fetched
+            }),
         }
         false
     }
 
     pub fn remove_if_editorless<R: 'static>(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
@@ -667,7 +1076,8 @@ impl OpenDocuments {
     }
 
     pub fn remove_on_close<R: 'static>(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
@@ -676,7 +1086,8 @@ impl OpenDocuments {
     }
 
     fn release_editorless<R: 'static>(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         ui: &imba::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
@@ -699,7 +1110,8 @@ impl OpenDocuments {
             return;
         }
 
-        if store.entity(documents)
+        if store
+            .entity(documents)
             .is_some_and(|docs| docs.diffs.touches(document))
         {
             return;
@@ -714,7 +1126,13 @@ impl OpenDocuments {
         }
 
         for hook in Self::hooks(store).iter() {
-            hook.closing(store, documents, document);
+            hook.closing(
+                store,
+                documents,
+                document,
+                entity.location.as_ref(),
+                &entity.document,
+            );
         }
         store.update_entity(documents, |documents| {
             let (watch, location) = match documents.entries.get(&document) {
@@ -734,7 +1152,8 @@ impl OpenDocuments {
     }
 
     pub fn update_entity(
-        store: &mut Store, documents: imba::store::Id<OpenDocuments>,
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         mutate: impl FnOnce(&mut OpenDocument),
     ) {

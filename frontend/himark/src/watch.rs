@@ -6,8 +6,8 @@ use imba::store::Store;
 use crate::{AppCommand, AppFx};
 
 pub use documents::watch::{
-    FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, RefetchRebase,
-    SubscribeEffect, Subscription, UnsubscribeEffect, Watching,
+    FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect,
+    Subscription, UnsubscribeEffect, Watching,
 };
 
 use crate::app::DocumentsCommand;
@@ -28,41 +28,18 @@ pub(crate) fn refetch_watched(
     subscription: Subscription,
     fx: &mut AppFx<'_>,
 ) {
-    documents::watch::refetch_watched(store, documents, subscription, fx, move |document, serial, text| {
-        AppCommand::At(
-            documents,
-            DocumentsCommand::Refetched {
-                document,
-                serial,
-                text,
-            },
-        )
-    });
-}
-
-pub(crate) fn apply_refetched(
-    store: &mut Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
-    document_id: crate::DocumentId,
-    serial: u64,
-    text: Option<String>,
-    fx: &mut AppFx<'_>,
-) {
-    documents::watch::apply_refetched(
+    documents::watch::refetch_watched(
         store,
         documents,
-        document_id,
-        serial,
-        text,
+        subscription,
         fx,
-        move |document, base_revision, serial, rebase| {
+        move |document, serial, text| {
             AppCommand::At(
                 documents,
-                DocumentsCommand::RefetchDiffed {
+                DocumentsCommand::Refetched {
                     document,
-                    base_revision,
                     serial,
-                    rebase,
+                    text,
                 },
             )
         },

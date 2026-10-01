@@ -61,19 +61,7 @@ impl Effect for PickSaveEffect {
     type Result = Option<ResourceLocation>;
 }
 
-pub struct BuildDocumentEffect {
-    pub location: ResourceLocation,
-    pub text: String,
-}
-
-impl Effect for BuildDocumentEffect {
-    type Result = BuiltDocument;
-}
-
-#[derive(Clone)]
-pub struct BuiltDocument {
-    pub document: crate::Document,
-}
+pub use documents::{BuildDocumentEffect, BuiltDocument};
 
 pub struct OpenByLocationEffect {
     pub window: crate::WindowId,

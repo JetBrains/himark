@@ -24,8 +24,14 @@ fn the_retraction_rule_spares_dirty_documents() {
 
     let dirty = plain_document("typed\n");
     let stale_stamp = dirty.revision().wrapping_sub(1);
-    let dirty_id =
-        OpenDocuments::register(&mut store, documents, dirty, None, "dirty.md".to_owned(), stale_stamp);
+    let dirty_id = OpenDocuments::register(
+        &mut store,
+        documents,
+        dirty,
+        None,
+        "dirty.md".to_owned(),
+        stale_stamp,
+    );
 
     OpenDocuments::remove_if_editorless(&mut store, documents, ui, clean_id, &mut batch.effects());
     OpenDocuments::remove_if_editorless(&mut store, documents, ui, dirty_id, &mut batch.effects());
@@ -61,11 +67,12 @@ fn the_stripes_join_resolves_the_tracked_base_diff() {
         0,
     );
 
-    let pane =
-        OpenDocuments::track_diff(&mut store, documents, base_id, target_id, false).expect("both registered");
+    let pane = OpenDocuments::track_diff(&mut store, documents, base_id, target_id, false)
+        .expect("both registered");
     assert!(OpenDocuments::stripe_diff(&store, documents, target_id).is_none());
 
-    let stripes = OpenDocuments::track_diff(&mut store, documents, base_id, target_id, true).expect("dedups");
+    let stripes =
+        OpenDocuments::track_diff(&mut store, documents, base_id, target_id, true).expect("dedups");
     assert_eq!(pane, stripes, "one diff per pair");
     let handle = OpenDocuments::stripe_diff(&store, documents, target_id).expect("joined now");
     assert_eq!(handle.base, base_id);
@@ -116,7 +123,7 @@ fn a_moved_base_retires_the_stale_stripes_track() {
     let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let documents = imba::store::Id::mint();
-    let mut batch = imba::effect::Batch::<()>::new();
+    let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
     let location = |authority: &str, name: &str| {
         editor::ResourceLocation::new(
             editor::ResourceType::document(),
@@ -224,9 +231,15 @@ fn a_moved_base_retires_the_stale_stripes_track() {
         "a differing landing replaces the track"
     );
 
-    assert!(
-        diffs::adopt_base_location(&mut store, documents, ui, target_id, None, &mut batch.effects()).is_none()
-    );
+    assert!(diffs::adopt_base_location(
+        &mut store,
+        documents,
+        ui,
+        target_id,
+        None,
+        &mut batch.effects()
+    )
+    .is_none());
     assert!(
         OpenDocuments::stripe_diff(&store, documents, target_id).is_none(),
         "a vanished base clears the phantom stripes"
