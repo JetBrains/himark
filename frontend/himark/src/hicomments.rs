@@ -32,7 +32,10 @@ pub(crate) const FALLBACK_WIDTH: f32 = 600.0;
 
 pub struct AddComment;
 
-impl crate::DynamicEditorCommand for AddComment {
+/// The command closes over the pane's ids (docs/entities.md law 3):
+/// the documents collection and the document the card goes into; the
+/// comments collection is the sibling next to those documents.
+impl documents::DocumentCommand for AddComment {
     fn id(&self) -> &'static str {
         "comments.add"
     }
@@ -43,6 +46,8 @@ impl crate::DynamicEditorCommand for AddComment {
         &self,
         store: &mut Store,
         ui: &imba::UiCtx,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        document_id: crate::DocumentId,
         document: &mut Document,
         editor: crate::EditorId,
         location: &crate::ResourceLocation,
@@ -53,27 +58,28 @@ impl crate::DynamicEditorCommand for AddComment {
         if selection.is_empty() {
             return;
         }
+        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
+            .map(|family| family.comments())
+        else {
+            return;
+        };
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
         let width = match document.layout_width(editor) {
             width if width > 1.0 => width,
             _ => FALLBACK_WIDTH,
         };
-
-        let home = card_home(store, location);
-        let host = crate::higent::Hosts::family(store, &home)
-            .map(|family| family.documents())
-            .and_then(|documents| crate::OpenDocuments::by_location(store, documents, location));
+        let host = Some(document_id);
 
         let annotation = {
             let mut view = document.text().view();
             let range = crate::line_col_at(&mut view, selection.start as usize)
                 ..crate::line_col_at(&mut view, selection.end as usize);
-            sync::Comments::created(store, location, range)
+            sync::Comments::created(store, comments, location, range)
         };
 
         let view = CommentView::new(
-            home.clone(),
+            comments,
             host,
             width,
             store,
@@ -102,11 +108,12 @@ impl crate::DynamicEditorCommand for AddComment {
 
         document.set_focus(editor, EditorFocus::Inlay(key));
         if let (Some(id), Some(host)) = (annotation, host) {
-            sync::Comments::card_born(store, &home, &id, host, key);
+            sync::Comments::card_born(store, comments, &id, host, key);
 
             AppRequests::push(
                 store,
                 Arc::new(EnsureComments {
+                    comments,
                     location: location.clone(),
                 }),
             );
@@ -115,6 +122,7 @@ impl crate::DynamicEditorCommand for AddComment {
 }
 
 struct EnsureComments {
+    comments: imba::store::Id<sync::Comments>,
     location: crate::ResourceLocation,
 }
 
@@ -132,16 +140,8 @@ impl crate::DynamicCommand for EnsureComments {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::ensure(store, window, &self.location, fx);
+        sync::Comments::ensure(store, window, self.comments, &self.location, fx);
     }
-}
-
-/// Which session a card belongs to: the one that ROUTES the location
-/// when it is session-served, else the session the batch is working in,
-/// else the local workspace. A card always has a home — a plain file's
-/// comments belong to the local session, not to nothing.
-fn card_home(store: &imba::store::Store, location: &crate::ResourceLocation) -> crate::SessionId {
-    crate::SessionId::of_location(store, location)
 }
 
 fn comments_markup() -> crate::MarkupId {
@@ -150,7 +150,7 @@ fn comments_markup() -> crate::MarkupId {
 }
 
 pub struct RemoveComment {
-    pub home: crate::SessionId,
+    pub comments: imba::store::Id<sync::Comments>,
     pub document: crate::DocumentId,
     pub key: InlayKey,
 
@@ -173,11 +173,9 @@ impl crate::DynamicCommand for RemoveComment {
     ) {
         let ui = app.ui_ctx();
         if let Some(annotation) = &self.annotation {
-            sync::Comments::removed(store, &self.home, annotation);
+            sync::Comments::removed(store, self.comments, annotation);
         }
-        let Some(documents) = crate::higent::Hosts::family(store, &self.home)
-            .map(|family| family.documents())
-        else {
+        let Some(documents) = sync::Comments::documents_of(store, self.comments) else {
             return;
         };
         let Some(mut doc) = crate::OpenDocuments::document(store, documents, self.document) else {
@@ -188,7 +186,10 @@ impl crate::DynamicCommand for RemoveComment {
         let document = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+                crate::AppCommand::At(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(document, command),
+                )
             },
             |fx| doc.remove_inlay(self.key, store, &ui, &fonts, &theme, fx),
         );
@@ -197,7 +198,7 @@ impl crate::DynamicCommand for RemoveComment {
 }
 
 pub struct SendComments {
-    pub home: crate::SessionId,
+    pub comments: imba::store::Id<sync::Comments>,
     pub ids: Vec<AnnotationId>,
 }
 
@@ -215,7 +216,7 @@ impl crate::DynamicCommand for SendComments {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::send_to_agent(store, &self.home, window, self.ids.clone(), fx);
+        sync::Comments::send_to_agent(store, self.comments, window, self.ids.clone(), fx);
     }
 }
 
@@ -242,8 +243,8 @@ fn markdown_comment_document(text: crate::Text) -> Document {
 pub struct CommentView {
     editor: EditorView,
 
-    /// The session that owns this card's thread.
-    home: crate::SessionId,
+    /// The collection that holds this card's thread.
+    comments: imba::store::Id<sync::Comments>,
 
     host: Option<crate::DocumentId>,
 
@@ -262,7 +263,7 @@ pub struct CommentView {
 
 impl CommentView {
     fn new(
-        home: crate::SessionId,
+        comments: imba::store::Id<sync::Comments>,
         host: Option<crate::DocumentId>,
         width: f32,
         store: &imba::store::Store,
@@ -284,7 +285,7 @@ impl CommentView {
         let reported_revision = editor.document.revision();
         Self {
             editor,
-            home,
+            comments,
             host,
             key: None,
             annotation,
@@ -296,7 +297,7 @@ impl CommentView {
     }
 
     pub(crate) fn materialized(
-        home: crate::SessionId,
+        comments: imba::store::Id<sync::Comments>,
         host: Option<crate::DocumentId>,
         width: f32,
         store: &imba::store::Store,
@@ -336,7 +337,7 @@ impl CommentView {
         let reported_revision = editor.document.revision();
         Self {
             editor,
-            home,
+            comments,
             host,
             key: None,
             annotation: Some(annotation),
@@ -511,7 +512,7 @@ impl View for CommentView {
                         self.reported_revision = revision;
                         sync::Comments::text_edited(
                             store,
-                            &self.home,
+                            self.comments,
                             annotation,
                             self.text_rope(),
                         );
@@ -541,7 +542,7 @@ impl View for CommentView {
                 AppRequests::push(
                     store,
                     Arc::new(RemoveComment {
-                        home: self.home.clone(),
+                        comments: self.comments,
                         document,
                         key,
                         annotation: self.annotation.clone(),
@@ -555,7 +556,7 @@ impl View for CommentView {
                 AppRequests::push(
                     store,
                     Arc::new(SendComments {
-                        home: self.home.clone(),
+                        comments: self.comments,
                         ids: vec![annotation.clone()],
                     }),
                 );
@@ -564,10 +565,10 @@ impl View for CommentView {
                 let Some(annotation) = &self.annotation else {
                     return;
                 };
-                let resolved = sync::Comments::record(store, &self.home, annotation)
+                let resolved = sync::Comments::record(store, self.comments, annotation)
                     .map(|record| record.resolved)
                     .unwrap_or(false);
-                sync::Comments::resolve(store, &self.home, annotation, !resolved);
+                sync::Comments::resolve(store, self.comments, annotation, !resolved);
             }
         }
     }
@@ -631,7 +632,7 @@ impl View for CommentView {
                 let resolved = self
                     .annotation
                     .as_ref()
-                    .and_then(|id| sync::Comments::record(store, &self.home, id))
+                    .and_then(|id| sync::Comments::record(store, self.comments, id))
                     .map(|record| record.resolved)
                     .unwrap_or(false);
                 let check = imba::leaf::leaf(close, close)

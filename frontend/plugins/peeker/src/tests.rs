@@ -28,7 +28,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         assert!(app.perform_command(himark::AppCommand::Opened(
             app.sole_window(),
             himark::OpenedDocument {
-            documents: app.sole_documents(),
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),

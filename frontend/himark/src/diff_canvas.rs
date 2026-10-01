@@ -34,12 +34,15 @@ impl CanvasSource {
         }
     }
 
-    pub fn title(&self, store: &Store, home: &crate::SessionId) -> String {
+    pub fn title(&self, store: &Store, changes: imba::store::Id<Changes>) -> String {
         match self {
             CanvasSource::WorkingCopy { folder } => format!("Changes — {}", folder.name()),
             CanvasSource::Commit { folder, id } => {
-                let summary =
-                    crate::hihistory::History::folder(store, home, folder).and_then(|held| {
+                let summary = Changes::of(store, changes)
+                    .and_then(|held| {
+                        crate::hihistory::History::folder(store, held.history(), folder)
+                    })
+                    .and_then(|held| {
                         held.commits
                             .iter()
                             .find(|commit| commit.id == id.as_str())
@@ -106,7 +109,7 @@ pub enum CanvasBanner {
 
 pub fn canvas_banner(
     store: &Store,
-    home: &crate::SessionId,
+    changes: imba::store::Id<Changes>,
     source: &CanvasSource,
 ) -> Option<CanvasBanner> {
     match source {
@@ -114,7 +117,8 @@ pub fn canvas_banner(
             folder: folder.clone(),
         }),
         CanvasSource::Commit { folder, id } => {
-            let held = crate::hihistory::History::folder(store, home, folder)?;
+            let history = Changes::of(store, changes)?.history();
+            let held = crate::hihistory::History::folder(store, history, folder)?;
             let commit = held
                 .commits
                 .iter()
@@ -135,12 +139,18 @@ pub fn canvas_banner(
 
 /// The per-frame staleness probe — O(1), no listing built. The panel
 /// derives rows only when this moves (the ReconcileShell contract).
-pub fn canvas_generation(store: &Store, home: &crate::SessionId, source: &CanvasSource) -> u64 {
+pub fn canvas_generation(
+    store: &Store,
+    changes: imba::store::Id<Changes>,
+    source: &CanvasSource,
+) -> u64 {
     match source {
         // Per-SET staleness (docs/model-view.md): a canvas re-derives
         // when ITS set moved, not when anything in the session did.
-        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, home, folder),
-        CanvasSource::Commit { folder, id } => Changes::commit_generation(store, home, folder, id),
+        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, changes, folder),
+        CanvasSource::Commit { folder, id } => {
+            Changes::commit_generation(store, changes, folder, id)
+        }
     }
 }
 
@@ -149,13 +159,13 @@ pub fn canvas_generation(store: &Store, home: &crate::SessionId, source: &Canvas
 /// on movement, the ReconcileShell contract.
 pub fn canvas_files(
     store: &Store,
-    home: &crate::SessionId,
+    changes: imba::store::Id<Changes>,
     source: &CanvasSource,
 ) -> (u64, CanvasListing) {
     match source {
         CanvasSource::WorkingCopy { folder } => {
-            let generation = Changes::folder_generation(store, home, folder);
-            let listing = match Changes::folder(store, home, folder) {
+            let generation = Changes::folder_generation(store, changes, folder);
+            let listing = match Changes::folder(store, changes, folder) {
                 None => CanvasListing::Pending("no changes source".to_owned()),
                 Some(changes) => listing_of(&changes.status, changes.files.iter(), |entry| {
                     // The working-copy pair diffs the LIVE file — the
@@ -168,9 +178,9 @@ pub fn canvas_files(
         CanvasSource::Commit { folder, id } => {
             // Per-SET staleness: the commit's own ChangeSet carries
             // the content and the generation (docs/model-view.md).
-            let generation = Changes::commit_generation(store, home, folder, id);
+            let generation = Changes::commit_generation(store, changes, folder, id);
             let held =
-                Changes::commit_set(store, home, folder, id).filter(|set| set.generation() > 0);
+                Changes::commit_set(store, changes, folder, id).filter(|set| set.generation() > 0);
             let listing = match held {
                 None => CanvasListing::Pending("fetching the commit…".to_owned()),
                 Some(commit) => listing_of(&commit.status, commit.files.iter(), |entry| {
@@ -254,9 +264,9 @@ fn tree_order(a: &[String], b: &[String]) -> std::cmp::Ordering {
 /// the reveal is a delivery, not an identity.
 #[derive(Clone)]
 pub struct CanvasPlace {
-    /// The session that owns the folder — a walk back has to land in
-    /// the same family the canvas read from.
-    pub home: crate::SessionId,
+    /// The collection the canvas reads from — a walk back has to land
+    /// in the same one.
+    pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -273,8 +283,8 @@ impl crate::Place for CanvasPlace {}
 /// canvas is found by source in the store; a fresh view of it costs
 /// nothing). An armed reveal rides the place.
 pub struct OpenDiffCanvas {
-    /// The session that owns the folder this canvas shows.
-    pub home: crate::SessionId,
+    /// The collection whose set this canvas shows.
+    pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -297,23 +307,25 @@ impl crate::DynamicCommand for OpenDiffCanvas {
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
-            crate::DynamicCommand::perform(
-                &crate::hihistory::FetchCommitFiles {
-                    home: self.home.clone(),
-                    folder: folder.clone(),
-                    commit: id.clone(),
-                },
-                app,
-                store,
-                window,
-                fx,
-            );
+            if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
+                crate::DynamicCommand::perform(
+                    &crate::hihistory::FetchCommitFiles {
+                        history,
+                        folder: folder.clone(),
+                        commit: id.clone(),
+                    },
+                    app,
+                    store,
+                    window,
+                    fx,
+                );
+            }
         }
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
         let place = CanvasPlace {
-            home: self.home.clone(),
+            changes: self.changes,
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };

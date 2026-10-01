@@ -401,7 +401,9 @@ impl DynamicCommand for OpenPicked {
             let workspace = himark::Windows::window_ref(store, window)
                 .map(|entity| entity.current_session())
                 .unwrap_or_else(|| himark::SessionId::local_default(store));
-            if workspace.names_session() {
+            let family = himark::Windows::session_family(store, window);
+            if let (true, Some(family)) = (workspace.names_session(), family) {
+                let (changes, comments) = (family.changes(), family.comments());
                 for folder in folders {
                     let spelled = himark::ResourceLocation::new(
                         folder.kind().clone(),
@@ -411,8 +413,14 @@ impl DynamicCommand for OpenPicked {
                         )),
                         folder.path().to_vec(),
                     );
-                    himark::hichanges::Changes::ensure_folder(store, window, spelled.clone(), fx);
-                    himark::hicomments::Comments::ensure(store, window, &spelled, fx);
+                    himark::hichanges::Changes::ensure_folder(
+                        store,
+                        window,
+                        changes,
+                        spelled.clone(),
+                        fx,
+                    );
+                    himark::hicomments::Comments::ensure(store, window, comments, &spelled, fx);
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
                 eprintln!("[host] folder pick dropped: no local agent host to session it");
@@ -540,8 +548,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
 
 pub struct NewTerminalEffect {
     pub(crate) seat: Arc<dyn himark::higent::AhpServer>,
-    /// The session that will OWN the terminal — carried so the landing
-    /// files it in that session's family, whatever the batch's scope.
+    /// The session the terminal is spawned IN — the wire's address.
     pub(crate) home: himark::SessionId,
     pub(crate) cwd: Option<String>,
     pub(crate) window: himark::WindowId,
@@ -695,7 +702,13 @@ impl DynamicCommand for OpenTerminal {
         let Some((seat, home, cwd)) = resolved else {
             return;
         };
-        let landing = home.clone();
+        // The terminal files into the WINDOW's family — the collection
+        // the pane is minted against, carried from here to the landing.
+        let Some(terminals) =
+            himark::Windows::session_family(store, window).map(|family| family.terminals())
+        else {
+            return;
+        };
         let _ = fx.push(
             AnyEffect::new(NewTerminalEffect {
                 seat,
@@ -704,13 +717,7 @@ impl DynamicCommand for OpenTerminal {
                 window,
             })
             .map(move |session| {
-                AppCommand::Dynamic(
-                    window,
-                    Arc::new(ShowTerminal {
-                        session,
-                        home: landing.clone(),
-                    }),
-                )
+                AppCommand::Dynamic(window, Arc::new(ShowTerminal { session, terminals }))
             }),
         );
     }
@@ -718,7 +725,7 @@ impl DynamicCommand for OpenTerminal {
 
 struct ShowTerminal {
     session: Option<Arc<himark::terminal::Session>>,
-    home: himark::SessionId,
+    terminals: imba::store::Id<himark::terminal::Terminals>,
 }
 
 impl DynamicCommand for ShowTerminal {
@@ -745,7 +752,7 @@ impl DynamicCommand for ShowTerminal {
         };
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
 
-        let terminals = himark::higent::Hosts::ensure_family(store, &self.home).terminals();
+        let terminals = self.terminals;
         himark::terminal::Terminals::put(store, terminals, channel.clone(), session.clone());
         if !entity.open_panel(
             store,

@@ -152,9 +152,12 @@ impl DynamicCommand for EnterSessionWork {
             host: self.server,
             session: self.session.clone(),
         };
-        crate::hichanges::Changes::ensure(store, window, key.clone(), fx);
-        for folder in crate::higent::session_folders(store, &key) {
-            crate::hicomments::Comments::ensure(store, window, &folder, fx);
+        let folders = crate::higent::session_folders(store, &key);
+        if let Some(family) = Windows::session_family(store, window) {
+            crate::hichanges::Changes::ensure(store, window, family.changes(), folders.clone(), fx);
+            for folder in folders {
+                crate::hicomments::Comments::ensure(store, window, family.comments(), &folder, fx);
+            }
         }
         if let Some(chat) = self.default_chat.clone().filter(|_| self.open_chat) {
             let prompt = self
@@ -162,15 +165,23 @@ impl DynamicCommand for EnterSessionWork {
                 .clone()
                 .map(|text| text.trim().to_owned())
                 .filter(|text| !text.is_empty());
+            let mut entity = Windows::window(store, window).expect("the window entity");
+            // The window switched to this session a batch ago; if it
+            // has moved on since, the entry is abandoned — the chat
+            // must not be filed into whatever family is there now.
+            if entity.current_session() != key {
+                Windows::put(store, window, entity);
+                return;
+            }
             let pane = crate::higent::Chats::open_with(
                 store,
                 ui,
+                entity.family().chats(),
                 self.server,
                 self.session.clone(),
                 chat,
                 prompt,
             );
-            let mut entity = Windows::window(store, window).expect("the window entity");
 
             let _ = entity.open_panel(store, ui, pane, fx);
             Windows::put(store, window, entity);
@@ -323,7 +334,15 @@ pub(crate) fn apply_channel_actions(
                 }
             }
             StateAction::SessionChangesetsChanged(changed) => {
-                crate::hichanges::adopt_session_catalog(store, window, key, changed, fx);
+                // The session channel's catalog names the session it
+                // serves; its family's collection takes the entries.
+                if let Some(changes) =
+                    crate::higent::Hosts::family(store, key).map(|family| family.changes())
+                {
+                    crate::hichanges::adopt_session_catalog(
+                        store, window, key, changes, changed, fx,
+                    );
+                }
             }
             _ => {}
         }
@@ -333,8 +352,14 @@ pub(crate) fn apply_channel_actions(
     if folders_grew {
         // The attach path (`EnterSessionWork`) arms comments for
         // every folder; one added mid-session gets the same here.
-        for folder in crate::higent::session_folders(store, key) {
-            crate::hicomments::Comments::ensure(store, window, &folder, fx);
+        // The channel names the session it serves; the family's
+        // collection takes the folder.
+        if let Some(comments) =
+            crate::higent::Hosts::family(store, key).map(|family| family.comments())
+        {
+            for folder in crate::higent::session_folders(store, key) {
+                crate::hicomments::Comments::ensure(store, window, comments, &folder, fx);
+            }
         }
     }
 }

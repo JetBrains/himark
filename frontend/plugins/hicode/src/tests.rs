@@ -47,8 +47,8 @@ impl himark::EffectHandler<CodeNavigationEffect> for StubNavigation {
 
 fn app_with_located_document(source: &str) -> (Application, himark::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
-    app.register_editor_command(Arc::new(GoDefinition));
-    app.register_editor_command(Arc::new(GoReferences));
+    app.register_document_command(Arc::new(GoDefinition));
+    app.register_document_command(Arc::new(GoReferences));
     let window = app.add_window();
     assert!(app.perform_command(AppCommand::Opened(
         window,
@@ -77,7 +77,7 @@ fn invoke(app: &mut Application, window: himark::WindowId, id: &str) {
 #[test]
 fn located_editors_offer_the_commands_on_the_focus_path() {
     let mut app = Application::new(AppFonts::embedded());
-    app.register_editor_command(Arc::new(GoDefinition));
+    app.register_document_command(Arc::new(GoDefinition));
     let window = app.add_window();
     let listed = |app: &Application| {
         himark::palette_commands(app.store(), &app.ui_handle(), window)

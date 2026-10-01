@@ -308,11 +308,12 @@ impl View for TerminalView {
     }
 }
 
-/// The terminal pane's navigation identity: its channel — same shape
-/// as the chat's, and for the same reason: a place is what makes
-/// leaving the pane walkable.
+/// The terminal pane's navigation identity: its collection and its
+/// channel — same shape as the chat's, and for the same reason: a
+/// place is what makes leaving the pane walkable.
 #[derive(Clone, PartialEq)]
 pub struct TerminalPlace {
+    pub terminals: imba::store::Id<Terminals>,
     pub channel: crate::higent::ChannelUri,
 }
 
@@ -333,10 +334,9 @@ impl crate::Navigator for TerminalNavigator {
         place: &TerminalPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> Option<crate::Panel> {
-        crate::higent::Hosts::session_of_terminal(store, &place.channel)?;
         Some(crate::Panel::Plugin(crate::family_rows::mint(
             store,
-            &crate::FamilyRow::Terminal(place.channel.clone()),
+            &crate::FamilyRow::Terminal(place.terminals, place.channel.clone()),
         )?))
     }
 }
@@ -346,6 +346,7 @@ impl PanelView for TerminalView {
 
     fn navigation_location(&self, _store: &Store) -> Option<TerminalPlace> {
         Some(TerminalPlace {
+            terminals: self.terminals,
             channel: self.channel.clone(),
         })
     }
@@ -356,7 +357,7 @@ impl PanelView for TerminalView {
         place: &TerminalPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> bool {
-        place.channel == self.channel
+        place.terminals == self.terminals && place.channel == self.channel
     }
 
     fn title(&self, store: &Store) -> String {
@@ -377,7 +378,10 @@ impl PanelView for TerminalView {
     }
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Terminal(self.channel.clone()))
+        Some(crate::FamilyRow::Terminal(
+            self.terminals,
+            self.channel.clone(),
+        ))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

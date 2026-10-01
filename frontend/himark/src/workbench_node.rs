@@ -868,7 +868,7 @@ impl PaneSlot {
 
         let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
         if markdown {
-            let Some(session) = crate::higent::Hosts::session_of_documents_id(store, documents)
+            let Some((session, family)) = crate::higent::Hosts::home_of_documents(store, documents)
             else {
                 crate::OpenDocuments::put_document(store, documents, id, document);
                 return;
@@ -882,6 +882,7 @@ impl PaneSlot {
                 editor,
                 typed_at,
                 &session,
+                family.recents(),
                 Some((id, editor)),
                 fx,
                 PanelCommand::Completion,

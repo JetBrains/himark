@@ -73,12 +73,13 @@ impl documents::DocumentCommand for SaveDocument {
                     document_id,
                     new_location.clone(),
                 );
-                // The RECENTS of the save's own session: the location
-                // names its owner — the one catalog consult left here,
-                // and only because recents have not converted yet.
-                let home = crate::SessionId::of_location(store, &new_location);
-                let recents = crate::higent::Hosts::ensure_family(store, &home).recents();
-                crate::RecentLocations::replace(store, recents, location, &new_location);
+                // The RECENTS next to the documents the save ran in —
+                // the sibling of the collection the command closes over.
+                if let Some(recents) = crate::higent::Hosts::family_of_documents(store, documents)
+                    .map(|family| family.recents())
+                {
+                    crate::RecentLocations::replace(store, recents, location, &new_location);
+                }
 
                 crate::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
                 Self::launch_store(store, documents, document, document_id, &new_location, fx);

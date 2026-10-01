@@ -21,7 +21,7 @@ mod turn;
 pub use crate::SessionId;
 pub use cell::{Cell, CellCommand, CellKind};
 pub use chat::{ChatArea, ChatPanel, ChatPanelCommand, RowCommand};
-pub use chats::{ChatNavigator, ChatPane, ChatPlace, Chats};
+pub use chats::{ChatNavigator, ChatPane, ChatPlace, Chats, ChatsCommand};
 pub use composer::ComposerCommand;
 pub use drawer::{
     toolbar_button, AddHost, AgentsCommand, AgentsPanel, ShareHost, ToggleAgentsView,
@@ -38,7 +38,7 @@ pub use seat::{
 pub(crate) use session::apply_channel_actions;
 pub use session::{
     all_session_folders, open_session, open_session_with, session_folders, Agents, Host,
-    HostStatus, Hosts, SessionState, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel,
+    HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel, SessionState,
 };
 pub(crate) use session_toolbar::sync_effort_for_model;
 pub use session_toolbar::{

@@ -318,7 +318,12 @@ impl Peeker {
         let documents = self.documents;
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
-            himark::close_editor(store, entity.documents(), entity.document(), entity.editor());
+            himark::close_editor(
+                store,
+                entity.documents(),
+                entity.document(),
+                entity.editor(),
+            );
         }
 
         for (_, document) in self.temp_docs.drain() {
@@ -332,12 +337,24 @@ impl Peeker {
     fn drop_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
-            himark::close_editor(store, entity.documents(), entity.document(), entity.editor());
+            himark::close_editor(
+                store,
+                entity.documents(),
+                entity.document(),
+                entity.editor(),
+            );
 
             if self.temp_docs.values().any(|id| *id == entity.document()) {
-                himark::OpenDocuments::remove_if_editorless(store, entity.documents(), ui, entity.document(), fx);
-                self.temp_docs
-                    .retain(|_, id| himark::OpenDocuments::contains(store, entity.documents(), *id));
+                himark::OpenDocuments::remove_if_editorless(
+                    store,
+                    entity.documents(),
+                    ui,
+                    entity.document(),
+                    fx,
+                );
+                self.temp_docs.retain(|_, id| {
+                    himark::OpenDocuments::contains(store, entity.documents(), *id)
+                });
             }
         }
         self.preview = None;
@@ -356,27 +373,28 @@ impl Peeker {
         }
 
         let document_id = match self.location_at(self.selected()).cloned() {
-            Some(location) => match himark::OpenDocuments::by_location(store, documents, &location) {
-                Some(id) => Some(id),
-                None => match self.temp_docs.get(&location) {
-                    Some(&id) => Some(id),
-                    None => {
-                        self.drop_preview(store, ui, fx);
-                        if self.pending_fetch.insert(location.clone()) {
-                            let landing = location.clone();
-                            let _ = fx.push(
-                                imba::effect::AnyEffect::new(FetchDocumentEffect { location }).map(
-                                    move |text| PeekerCommand::FetchedPreview {
-                                        location: landing,
-                                        text,
-                                    },
-                                ),
-                            );
+            Some(location) => {
+                match himark::OpenDocuments::by_location(store, documents, &location) {
+                    Some(id) => Some(id),
+                    None => match self.temp_docs.get(&location) {
+                        Some(&id) => Some(id),
+                        None => {
+                            self.drop_preview(store, ui, fx);
+                            if self.pending_fetch.insert(location.clone()) {
+                                let landing = location.clone();
+                                let _ = fx.push(
+                                    imba::effect::AnyEffect::new(FetchDocumentEffect { location })
+                                        .map(move |text| PeekerCommand::FetchedPreview {
+                                            location: landing,
+                                            text,
+                                        }),
+                                );
+                            }
+                            return;
                         }
-                        return;
-                    }
-                },
-            },
+                    },
+                }
+            }
             None => None,
         };
         let Some(document_id) = document_id else {
@@ -391,7 +409,8 @@ impl Peeker {
         }) {
             return;
         }
-        let Some(mut document) = himark::OpenDocuments::document(store, documents, document_id) else {
+        let Some(mut document) = himark::OpenDocuments::document(store, documents, document_id)
+        else {
             self.drop_preview(store, ui, fx);
             return;
         };
@@ -401,7 +420,12 @@ impl Peeker {
             _ => None,
         };
         if let Some(previous) = previous {
-            himark::close_editor(store, previous.documents(), previous.document(), previous.editor());
+            himark::close_editor(
+                store,
+                previous.documents(),
+                previous.document(),
+                previous.editor(),
+            );
         }
         let editor = fx.scope(
             |command| PeekerCommand::Preview(PaneCommand::Content(command)),
@@ -410,7 +434,13 @@ impl Peeker {
         himark::OpenDocuments::put_document(store, documents, document_id, document);
         if let Some(previous) = previous.filter(|previous| previous.document() != document_id) {
             if self.temp_docs.values().any(|id| *id == previous.document()) {
-                himark::OpenDocuments::remove_if_editorless(store, previous.documents(), ui, previous.document(), fx);
+                himark::OpenDocuments::remove_if_editorless(
+                    store,
+                    previous.documents(),
+                    ui,
+                    previous.document(),
+                    fx,
+                );
                 self.temp_docs
                     .retain(|_, id| himark::OpenDocuments::contains(store, documents, *id));
             }
@@ -514,7 +544,9 @@ impl View for Peeker {
                 }
                 let request = if let Some(location) = self.location_at(row).cloned() {
                     let documents = self.documents;
-                    if let Some(document) = himark::OpenDocuments::by_location(store, documents, &location) {
+                    if let Some(document) =
+                        himark::OpenDocuments::by_location(store, documents, &location)
+                    {
                         self.cleanup_temps(store, ui, Some(document), fx);
                         ModalRequest::ShowDocument(document)
                     } else {
@@ -846,9 +878,9 @@ pub fn overlay_surface() -> himark::OverlaySurface {
                 .filter_map(|(_, widget)| widget.family_row())
                 .collect();
 
-            let session = entity.current_session();
+            let family = entity.family().clone();
             widgets.extend(
-                himark::mint_unfronted(store, &session, &fronted)
+                himark::mint_unfronted(store, &family, &fronted)
                     .into_iter()
                     .map(|widget| (WidgetOrigin::Family, widget)),
             );
@@ -858,7 +890,11 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let peeker = fx.scope(himark::modal_scope(window), |fx| {
                 fx.scope(
                     |command: PeekerCommand| Box::new(command) as imba::DynCommand,
-                    |fx| Peeker::open(store, ui, documents, viewport, recents, widgets, folders, fx),
+                    |fx| {
+                        Peeker::open(
+                            store, ui, documents, viewport, recents, widgets, folders, fx,
+                        )
+                    },
                 )
             });
             himark::Windows::put(store, window, entity);

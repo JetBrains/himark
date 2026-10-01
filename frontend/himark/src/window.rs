@@ -1097,20 +1097,18 @@ impl Window {
         }
         let is_chat = |panel: &Panel| {
             matches!(panel, Panel::Plugin(view)
-                if matches!(view.family_row(), Some(crate::FamilyRow::Chat(_))))
+                if matches!(view.family_row(), Some(crate::FamilyRow::Chat(..))))
         };
         if self.workbench_mut().root.focus_where(&is_chat) {
             self.content.focus = LayerFocus::Content;
             return;
         }
-        let session = self.current_session();
-        let Some(chat) = crate::higent::Chats::list(store, &session)
-            .into_iter()
-            .next()
-        else {
+        let chats = self.family.chats();
+        let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
             return;
         };
-        let Some(pane) = crate::family_rows::mint(store, &crate::FamilyRow::Chat(chat)) else {
+        let Some(pane) = crate::family_rows::mint(store, &crate::FamilyRow::Chat(chats, chat))
+        else {
             return;
         };
         if self.open_panel(store, ui, pane, fx) {

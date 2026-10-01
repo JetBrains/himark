@@ -414,7 +414,7 @@ impl HimarkEngine {
         app.register_command(Arc::new(demo::OpenMonsterDemo));
         app.register_command(Arc::new(demo::OpenWallOfTextDemo));
 
-        app.register_editor_command(Arc::new(himark::hicomments::AddComment));
+        app.register_document_command(Arc::new(himark::hicomments::AddComment));
 
         himarkdown::register_handlers(&mut app);
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
@@ -1061,13 +1061,13 @@ impl HimarkEngine {
                 },
             );
             self.app
-                .register_editor_command(Arc::new(hicode::GoDefinition));
+                .register_document_command(Arc::new(hicode::GoDefinition));
             self.app
-                .register_editor_command(Arc::new(hicode::GoReferences));
+                .register_document_command(Arc::new(hicode::GoReferences));
             self.app
-                .register_editor_command(Arc::new(hicode::GoImplementations));
+                .register_document_command(Arc::new(hicode::GoImplementations));
             self.app
-                .register_editor_command(Arc::new(himark::hipeek::GoToReference));
+                .register_document_command(Arc::new(himark::hipeek::GoToReference));
             self.app
                 .register_document_command(Arc::new(host::OpenWorkingCopy));
         }

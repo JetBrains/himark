@@ -8,7 +8,7 @@ use crate::{AppCommand, AppFx};
 
 pub use documents::diffs::{
     rearm_base_asks, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId,
-    StripeBases,
+    StripeBaseResolver, StripeBases,
 };
 
 /// Assemble the per-ask facade over a tracked pair: live documents +
@@ -60,7 +60,6 @@ pub(crate) fn perform_diff_view(
     store: &mut Store,
     documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
-    session: crate::SessionId,
     id: DiffViewId,
     command: crate::UnifiedDiffCommand,
     fx: &mut AppFx<'_>,
@@ -74,7 +73,7 @@ pub(crate) fn perform_diff_view(
     };
     fx.scope(
         move |command: crate::UnifiedDiffCommand| AppCommand::DiffViewCommand {
-            session: session.clone(),
+            documents,
             view: id,
             command: Box::new(command),
         },
@@ -110,12 +109,10 @@ pub struct DressedViews(pub Vec<DiffViewId>);
 /// its re-dress share a batch. O(views) stale checks on refs.
 pub(crate) fn sync_diff_dressing(
     store: &mut Store,
-    session: &crate::SessionId,
     documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     fx: &mut AppFx<'_>,
 ) {
-    let session = session.clone();
     for id in crate::OpenDocuments::diff_view_ids(store, documents) {
         let stale = crate::OpenDocuments::diff_view_ref(store, documents, id).is_some_and(|pair| {
             let Some(state) = &pair.state else {
@@ -141,7 +138,6 @@ pub(crate) fn sync_diff_dressing(
             store,
             documents,
             ui,
-            session.clone(),
             id,
             crate::UnifiedDiffCommand::Split(crate::SplitDiffCommand::Resync),
             fx,

@@ -370,12 +370,18 @@ pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> b
 /// Session-family state — the AHP changeset/history channels are
 /// session-level (docs/ahp/vcs.md), so the collection gathers with
 /// its session.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ChangeSets {
+    /// Siblings, wired at the family mint (docs/entities.md law 4):
+    /// the documents whose stripes this collection's bases serve, and
+    /// the history whose commits mint sets here.
+    documents: imba::store::Id<crate::OpenDocuments>,
+    history: imba::store::Id<crate::hihistory::History>,
+
     sets: rpds::HashTrieMapSync<ChangeSetId, ChangeSet>,
 
     /// Source → set: the reuse lookup for BOTH flavors.
-    by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
+    pub(crate) by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
 
     session: Option<SessionFeed>,
 
@@ -404,27 +410,147 @@ pub struct ChangeSets {
 /// named the collection `Changes`.
 pub type Changes = ChangeSets;
 
+/// What the collection answers to behind its `At` address
+/// (docs/entities.md law 5): the feed landings of its working-copy
+/// sets. Each is stamped with the collection id at launch and comes
+/// home by it — no scope is re-derived.
+pub enum ChangesCommand {
+    /// A changeset subscribe answered for one folder's set.
+    Snapshot {
+        folder: ResourceLocation,
+        result: Result<ChangesetState, String>,
+    },
+    /// A changeset poll drained for one folder's set.
+    Polled {
+        folder: ResourceLocation,
+        actions: Vec<StateAction>,
+    },
+}
+
+/// A note the collection leaves for the application road after a
+/// landing (the `DressedViews` shape): the stripe bases under a folder
+/// must re-ask. The entity has no application effects of its own; the
+/// `AtChanges` arm consumes this with the ones it has.
+#[derive(Clone, Default)]
+pub struct BaseRearms(pub Vec<(imba::store::Id<crate::OpenDocuments>, ResourceLocation)>);
+
+impl imba::store::Entity for ChangeSets {
+    type Command = ChangesCommand;
+
+    fn perform(
+        &mut self,
+        _id: imba::store::Id<Self>,
+        command: ChangesCommand,
+        store: &mut Store,
+        _ui: &UiCtx,
+        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+    ) {
+        match command {
+            ChangesCommand::Snapshot { folder, result } => {
+                match &result {
+                    Ok(state) => self.adopt(&folder, state),
+                    Err(error) => self.adopt_error(&folder, error.clone()),
+                }
+                self.nudge_folder_in_place(&folder);
+                self.note_rearm(store, &folder);
+                if result.is_ok() {
+                    self.relaunch_poll(&folder, fx);
+                }
+            }
+            ChangesCommand::Polled { folder, actions } => {
+                self.fold(&folder, &actions);
+                self.nudge_folder_in_place(&folder);
+                self.note_rearm(store, &folder);
+                self.relaunch_poll(&folder, fx);
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {
+        // Sets, canvases and views are the collection's PRIVATE
+        // schema — nothing to retract; feeds die with the drop.
+    }
+}
+
 impl Changes {
-    /// The change sets of one session, addressed by it — the family is
-    /// never gathered as a component, so nothing can reach the wrong
-    /// session's sets or lose a write to a scopeless batch.
-    /// The module's ONE pair of session-addressed doors: the feed
-    /// folds land with a `SessionId` (the wire's scope), so the
-    /// resolution to `Id<ChangeSets>` happens here, once. When the
-    /// landings carry the id themselves (docs/entities.md step 4),
-    /// this pair retires.
-    pub(crate) fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a ChangeSets> {
-        let changes = crate::higent::Hosts::family(store, home)?.changes();
+    /// A collection wired to its siblings — minted by the family
+    /// ceremony, and by tests that stand one up alone.
+    pub fn wired(
+        documents: imba::store::Id<crate::OpenDocuments>,
+        history: imba::store::Id<crate::hihistory::History>,
+    ) -> Self {
+        Self {
+            documents,
+            history,
+            sets: rpds::HashTrieMapSync::new_sync(),
+            by_source: rpds::HashTrieMapSync::new_sync(),
+            session: None,
+            uris: None,
+            views: rpds::HashTrieMapSync::new_sync(),
+            viewers: rpds::HashTrieMapSync::new_sync(),
+            stale: rpds::HashTrieSetSync::new_sync(),
+        }
+    }
+
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.documents
+    }
+
+    pub fn history(&self) -> imba::store::Id<crate::hihistory::History> {
+        self.history
+    }
+
+    /// The collection by its id — `None` is gone (docs/entities.md).
+    pub(crate) fn of(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<&ChangeSets> {
         store.entity(changes)
     }
 
+    /// Mutate the collection in place. A gone collection takes no
+    /// write — there is no row to mint from: siblings are wired at
+    /// the ceremony, never defaulted.
     pub(crate) fn update(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         mutate: impl FnOnce(&mut ChangeSets),
     ) {
-        let changes = crate::higent::Hosts::ensure_family(store, home).changes();
-        store.update_entity(changes, mutate);
+        let Some(mut row) = store.entity(changes).cloned() else {
+            return;
+        };
+        mutate(&mut row);
+        store.put_entity(changes, row);
+    }
+
+    /// The landing's own poll relaunch — the next batch of the set's
+    /// channel comes home as `Polled`, stamped by the router.
+    fn relaunch_poll(
+        &self,
+        folder: &ResourceLocation,
+        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+    ) {
+        let Some(feed) = self.folder_set(folder).and_then(|set| set.feed.clone()) else {
+            return;
+        };
+        let Some(channel) = feed.channel else {
+            return;
+        };
+        let landing = folder.clone();
+        fx.push(
+            AnyEffect::new(PollChangesetEffect {
+                seat: feed.seat,
+                channel,
+            })
+            .map(move |actions| ChangesCommand::Polled {
+                folder: landing.clone(),
+                actions,
+            }),
+        );
+    }
+
+    /// Leave the stripe-base note for the application road.
+    fn note_rearm(&self, store: &mut Store, folder: &ResourceLocation) {
+        let documents = self.documents;
+        let folder = folder.clone();
+        store.update::<BaseRearms>(|rearms| rearms.0.push((documents, folder)));
     }
 
     fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {
@@ -489,7 +615,7 @@ impl Changes {
     /// first ask). Never bumps the commit set's generation.
     pub(crate) fn ensure_commit_set(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
         seat: &Arc<dyn AhpServer>,
@@ -500,14 +626,14 @@ impl Changes {
             revision: revision.to_owned(),
         };
         if let Some(id) =
-            Self::of(store, home).and_then(|changes| changes.by_source.get(&source).copied())
+            Self::of(store, changes).and_then(|changes| changes.by_source.get(&source).copied())
         {
             return id;
         }
         let id = ChangeSetId::mint();
         let seat = seat.clone();
         let session = session.to_owned();
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             changes.sets.insert_mut(
                 id,
                 ChangeSet {
@@ -531,11 +657,11 @@ impl Changes {
 
     pub fn commit_set(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
     ) -> Option<ChangeSet> {
-        let changes = Self::of(store, home)?;
+        let changes = Self::of(store, changes)?;
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
             revision: revision.to_owned(),
@@ -546,11 +672,11 @@ impl Changes {
     /// The per-SET staleness cue for a commit canvas.
     pub fn commit_generation(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
     ) -> u64 {
-        Self::commit_set(store, home, folder, revision)
+        Self::commit_set(store, changes, folder, revision)
             .map(|set| set.generation)
             .unwrap_or(0)
     }
@@ -560,17 +686,17 @@ impl Changes {
     /// feed attaches at `ensure_folder`). Never bumps generations.
     pub(crate) fn ensure_set_for_source(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         source: &ChangeSetSource,
     ) -> ChangeSetId {
         if let Some(id) =
-            Self::of(store, home).and_then(|changes| changes.by_source.get(source).copied())
+            Self::of(store, changes).and_then(|changes| changes.by_source.get(source).copied())
         {
             return id;
         }
         let id = ChangeSetId::mint();
         let source = source.clone();
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             changes.sets.insert_mut(
                 id,
                 ChangeSet {
@@ -590,31 +716,35 @@ impl Changes {
 
     pub(crate) fn id_for_source(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         source: &ChangeSetSource,
     ) -> Option<ChangeSetId> {
-        Self::of(store, home)?.by_source.get(source).copied()
+        Self::of(store, changes)?.by_source.get(source).copied()
     }
 
     /// The SET owns its canvases; these reach one by (set, canvas) —
     /// canvas mutations never touch the set's generation.
     pub(crate) fn canvas_ref<'a>(
         store: &'a Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
         canvas: crate::diff_canvas::canvas::CanvasId,
     ) -> Option<&'a crate::diff_canvas::canvas::Canvas> {
-        Self::of(store, home)?.sets.get(&set)?.canvases.get(&canvas)
+        Self::of(store, changes)?
+            .sets
+            .get(&set)?
+            .canvases
+            .get(&canvas)
     }
 
     pub(crate) fn take_canvas(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
         canvas: crate::diff_canvas::canvas::CanvasId,
     ) -> Option<crate::diff_canvas::canvas::Canvas> {
-        let held = Self::canvas_ref(store, home, set, canvas)?.clone();
-        Self::update(store, home, |changes| {
+        let held = Self::canvas_ref(store, changes, set, canvas)?.clone();
+        Self::update(store, changes, |changes| {
             let Some(mut owner) = changes.sets.get(&set).cloned() else {
                 return;
             };
@@ -626,12 +756,12 @@ impl Changes {
 
     pub(crate) fn put_canvas(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
         canvas: crate::diff_canvas::canvas::CanvasId,
         held: crate::diff_canvas::canvas::Canvas,
     ) {
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             let Some(mut owner) = changes.sets.get(&set).cloned() else {
                 return;
             };
@@ -644,9 +774,9 @@ impl Changes {
     /// the batch-tail sweep's domain.
     pub(crate) fn canvas_ids(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
     ) -> Vec<(ChangeSetId, crate::diff_canvas::canvas::CanvasId)> {
-        Self::of(store, home)
+        Self::of(store, changes)
             .map(|changes| {
                 changes
                     .sets
@@ -661,7 +791,7 @@ impl Changes {
     /// lands.
     pub(crate) fn mark_commit_computing(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
     ) {
@@ -669,14 +799,14 @@ impl Changes {
             folder: folder.clone(),
             revision: revision.to_owned(),
         };
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             changes.update_set_by_source(&source, |set| {
                 set.status = ChangesStatus::Computing;
                 set.files = rpds::VectorSync::new_sync();
             });
         });
-        if let Some(id) = Self::id_for_source(store, home, &source) {
-            Self::nudge_set(store, home, id);
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
         }
     }
 
@@ -684,19 +814,19 @@ impl Changes {
     /// for `?commit=<sha>`): status + files onto the SET.
     pub(crate) fn adopt_commit_state(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
         result: &Result<ChangesetState, String>,
     ) {
-        let Some(uris) = Self::of(store, home).and_then(|changes| changes.uris.clone()) else {
+        let Some(uris) = Self::of(store, changes).and_then(|changes| changes.uris.clone()) else {
             return;
         };
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
             revision: revision.to_owned(),
         };
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             changes.update_set_by_source(&source, |set| match result {
                 Ok(state) => {
                     set.status = ChangesStatus::of_wire(
@@ -715,27 +845,27 @@ impl Changes {
                 }
             });
         });
-        if let Some(id) = Self::id_for_source(store, home, &source) {
-            Self::nudge_set(store, home, id);
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
         }
     }
 
     /// Streamed updates for a commit set's changeset channel.
     pub(crate) fn fold_commit_actions(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
         actions: &[StateAction],
     ) {
-        let Some(uris) = Self::of(store, home).and_then(|changes| changes.uris.clone()) else {
+        let Some(uris) = Self::of(store, changes).and_then(|changes| changes.uris.clone()) else {
             return;
         };
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
             revision: revision.to_owned(),
         };
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |changes| {
             changes.update_set_by_source(&source, |set| {
                 for action in actions {
                     match action {
@@ -757,38 +887,38 @@ impl Changes {
                 }
             });
         });
-        if let Some(id) = Self::id_for_source(store, home, &source) {
-            Self::nudge_set(store, home, id);
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
         }
     }
 
     pub fn set_ref<'a>(
         store: &'a Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         id: ChangeSetId,
     ) -> Option<&'a ChangeSet> {
-        Self::of(store, home)?.sets.get(&id)
+        Self::of(store, changes)?.sets.get(&id)
     }
 
     pub fn id_for_folder(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
     ) -> Option<ChangeSetId> {
         let source = ChangeSetSource::WorkingCopy {
             folder: folder.clone(),
         };
-        Self::of(store, home)?.by_source.get(&source).copied()
+        Self::of(store, changes)?.by_source.get(&source).copied()
     }
 
     /// The per-SET staleness cue for a working copy — 0 while absent
     /// (the canvas keeps probing until the set exists).
     pub fn folder_generation(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
     ) -> u64 {
-        Self::of(store, home)
+        Self::of(store, changes)
             .and_then(|changes| changes.folder_set(folder))
             .map(|set| set.generation)
             .unwrap_or(0)
@@ -796,31 +926,35 @@ impl Changes {
 
     pub fn folder(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
     ) -> Option<ChangeSet> {
-        Self::of(store, home)?.folder_set(folder).cloned()
+        Self::of(store, changes)?.folder_set(folder).cloned()
     }
 
+    /// Attach every folder of a session to ITS collection — the id in
+    /// hand is the family's, the folders are the catalog's.
     pub fn ensure(
         store: &mut Store,
         window: crate::WindowId,
-        workspace: crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
+        folders: Vec<ResourceLocation>,
         fx: &mut crate::AppFx<'_>,
     ) {
-        for folder in crate::higent::session_folders(store, &workspace) {
-            Self::ensure_folder(store, window, folder, fx);
+        for folder in folders {
+            Self::ensure_folder(store, window, changes, folder, fx);
         }
     }
 
     pub fn ensure_folder(
         store: &mut Store,
         window: crate::WindowId,
+        changes: imba::store::Id<ChangeSets>,
         folder: ResourceLocation,
         fx: &mut crate::AppFx<'_>,
     ) {
-        // The folder's own authority names the session that serves it:
-        // that session's family is where its change set lives.
+        // The folder's own authority names the WIRE that serves it:
+        // the seat and the AHP session the feeds subscribe through.
         let Some((host, seat, session)) =
             crate::higent::seat::route_seat(store, folder.authority().as_str())
         else {
@@ -830,7 +964,7 @@ impl Changes {
             host,
             session: session.clone(),
         };
-        let known = Self::of(store, &scope).is_some_and(|changes| {
+        let known = Self::of(store, changes).is_some_and(|changes| {
             changes
                 .folder_set(&folder)
                 .is_some_and(|set| set.feed.is_some())
@@ -838,7 +972,7 @@ impl Changes {
         if known {
             return;
         }
-        let detached = Self::of(store, &scope).is_some_and(|changes| {
+        let detached = Self::of(store, changes).is_some_and(|changes| {
             changes
                 .by_source
                 .contains_key(&ChangeSetSource::WorkingCopy {
@@ -848,8 +982,8 @@ impl Changes {
         let Some(uris) = crate::higent::Hosts::uris(store, host) else {
             return;
         };
-        Self::update(store, &scope, |changes| changes.uris = Some(uris.clone()));
-        Self::update(store, &scope, |changes| {
+        Self::update(store, changes, |changes| changes.uris = Some(uris.clone()));
+        Self::update(store, changes, |changes| {
             if detached {
                 // The canvas opened this set before the feeds routed:
                 // attach the feed, keep the set (and its canvases).
@@ -888,8 +1022,11 @@ impl Changes {
                 id,
             );
         });
-        crate::hihistory::History::ensure_folder(store, &scope, &folder, &seat);
-        Changes::nudge_folder(store, &scope, &folder);
+        let history = Self::of(store, changes).map(|held| held.history);
+        if let Some(history) = history {
+            crate::hihistory::History::ensure_folder(store, history, &scope, &folder, &seat);
+        }
+        Changes::nudge_folder(store, changes, &folder);
 
         let directory = uris.uri_of(&folder).into_string();
         fx.push(
@@ -905,9 +1042,9 @@ impl Changes {
             .map(move |result| AppCommand::Dynamic(window, Arc::new(Dispatched { result }))),
         );
         let feed_known =
-            Self::of(store, &scope).is_some_and(|changes| changes.feed_for(&session).is_some());
+            Self::of(store, changes).is_some_and(|changes| changes.feed_for(&session).is_some());
         if !feed_known {
-            Self::update(store, &scope, |changes| {
+            Self::update(store, changes, |changes| {
                 changes.session = Some(SessionFeed {
                     uri: session.clone(),
                     seat: seat.clone(),
@@ -923,6 +1060,7 @@ impl Changes {
                             window,
                             Arc::new(SessionLanded {
                                 home: landing.clone(),
+                                changes,
                                 result,
                             }),
                         )
@@ -932,8 +1070,8 @@ impl Changes {
         }
     }
 
-    pub fn script_summary(store: &Store, home: &crate::SessionId) -> Option<String> {
-        let changes = Self::of(store, home)?;
+    pub fn script_summary(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<String> {
+        let changes = Self::of(store, changes)?;
         let mut lines = Vec::new();
         for (folder, entry) in changes.working_copies() {
             for file in entry.files.iter() {
@@ -957,19 +1095,19 @@ impl Changes {
 
     pub fn refetch(
         store: &mut Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
         only: Option<&ResourceLocation>,
     ) {
-        let Some(changes) = Self::of(store, home) else {
+        let Some(held) = Self::of(store, changes) else {
             return;
         };
         let riding: Vec<(
             ResourceLocation,
             Arc<dyn AhpServer>,
             crate::higent::ChannelUri,
-        )> = changes
+        )> = held
             .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
@@ -981,29 +1119,19 @@ impl Changes {
         if riding.is_empty() {
             return;
         }
-        Self::update(store, home, |changes| {
+        Self::update(store, changes, |held| {
             for (folder, _, _) in &riding {
-                changes.update_folder_set(folder, |set| {
+                held.update_folder_set(folder, |set| {
                     set.status = ChangesStatus::Computing;
                 });
             }
         });
         for (folder, _, _) in &riding {
-            Changes::nudge_folder(store, home, folder);
+            Changes::nudge_folder(store, changes, folder);
         }
+        let _ = window;
         for (folder, seat, channel) in riding {
-            let landing = folder.clone();
-            let scope = home.clone();
-            fx.push(
-                AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-                    let landed = Arc::new(SnapshotLanded {
-                        home: scope.clone(),
-                        folder: landing.clone(),
-                        result,
-                    });
-                    AppCommand::dynamic_in(scope.clone(), window, landed)
-                }),
-            );
+            fx.push(subscribe_set(changes, folder, seat, channel));
         }
     }
 
@@ -1193,10 +1321,10 @@ impl Changes {
     /// set owns its slice; the sets are few.
     pub fn base_ref(
         store: &Store,
-        home: &crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
         abs_path: &str,
     ) -> Option<ResourceLocation> {
-        Self::of(store, home)?
+        Self::of(store, changes)?
             .sets
             .values()
             .find_map(|set| set.bases.get(abs_path).cloned())
@@ -1227,8 +1355,11 @@ impl crate::DynamicCommand for Dispatched {
     }
 }
 
+/// The session channel's own landing — the WIRE is the session's, so
+/// its address rides along; the collection it feeds is the id.
 struct SessionLanded {
     home: crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     result: Result<crate::higent::ahp_types::state::SessionState, String>,
 }
 
@@ -1249,17 +1380,19 @@ impl crate::DynamicCommand for SessionLanded {
         match &self.result {
             Ok(state) => {
                 let entries = digest_catalog(state.changesets.as_deref().unwrap_or_default());
-                subscribe_fresh(store, window, &self.home, entries, fx);
-                relaunch_session_poll(store, window, &self.home, fx);
+                subscribe_fresh(store, window, &self.home, self.changes, entries, fx);
+                relaunch_session_poll(store, window, &self.home, self.changes, fx);
             }
             Err(error) => {
                 eprintln!("[hichanges] session subscribe failed: {error}");
                 let session = self.home.session.clone();
-                Changes::update(store, &self.home, |changes| {
+                Changes::update(store, self.changes, |changes| {
                     changes.session_failed(&session, error);
+                    changes.nudge_all();
                 });
-                Changes::nudge_all(store, &self.home);
-                crate::hihistory::History::session_failed(store, &self.home, error);
+                if let Some(history) = Changes::of(store, self.changes).map(|held| held.history) {
+                    crate::hihistory::History::session_failed(store, history, &session, error);
+                }
             }
         }
     }
@@ -1267,6 +1400,7 @@ impl crate::DynamicCommand for SessionLanded {
 
 struct SessionPolled {
     home: crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     actions: Vec<StateAction>,
 }
 
@@ -1288,7 +1422,7 @@ impl crate::DynamicCommand for SessionPolled {
         // winner takes the whole batch, so hand every action kind
         // to the shared application, not just the changeset ones.
         crate::higent::apply_channel_actions(store, window, &self.home, &self.actions, fx);
-        relaunch_session_poll(store, window, &self.home, fx);
+        relaunch_session_poll(store, window, &self.home, self.changes, fx);
     }
 }
 
@@ -1298,44 +1432,53 @@ pub(crate) fn adopt_session_catalog(
     store: &mut Store,
     window: crate::WindowId,
     home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     changed: &crate::higent::ahp_types::actions::SessionChangesetsChangedAction,
     fx: &mut crate::AppFx<'_>,
 ) {
     let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
-    subscribe_fresh(store, window, home, entries, fx);
+    subscribe_fresh(store, window, home, changes, entries, fx);
+}
+
+/// One folder's changeset subscribe, launched at the collection's
+/// address: the snapshot comes home as `ChangesCommand::Snapshot`.
+fn subscribe_set(
+    changes: imba::store::Id<ChangeSets>,
+    folder: ResourceLocation,
+    seat: Arc<dyn AhpServer>,
+    channel: crate::higent::ChannelUri,
+) -> crate::AppEffect {
+    AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
+        AppCommand::AtChanges(
+            changes,
+            ChangesCommand::Snapshot {
+                folder: folder.clone(),
+                result,
+            },
+        )
+    })
 }
 
 fn subscribe_fresh(
     store: &mut Store,
     window: crate::WindowId,
     home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     entries: Vec<CatalogEntry>,
     fx: &mut crate::AppFx<'_>,
 ) {
     let session = home.session.clone();
     let mut fresh = Vec::new();
-    Changes::update(store, home, |changes| {
-        fresh = changes.adopt_catalog(&session, entries.clone());
+    Changes::update(store, changes, |held| {
+        fresh = held.adopt_catalog(&session, entries.clone());
+        held.nudge_all();
     });
-    Changes::nudge_all(store, home);
 
-    crate::hihistory::subscribe_fresh(store, window, home, &entries, fx);
+    if let Some(history) = Changes::of(store, changes).map(|held| held.history) {
+        crate::hihistory::subscribe_fresh(store, window, home, history, &entries, fx);
+    }
     for (folder, seat, channel) in fresh {
-        let landing = folder.clone();
-        let scope = home.clone();
-        fx.push(
-            AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-                let landed = Arc::new(SnapshotLanded {
-                    home: scope.clone(),
-                    folder: landing.clone(),
-                    result,
-                });
-                match Some(scope.clone()) {
-                    Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                    None => AppCommand::Dynamic(window, landed),
-                }
-            }),
-        );
+        fx.push(subscribe_set(changes, folder, seat, channel));
     }
 }
 
@@ -1343,10 +1486,11 @@ fn relaunch_session_poll(
     store: &Store,
     window: crate::WindowId,
     home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     fx: &mut crate::AppFx<'_>,
 ) {
     let Some(feed) =
-        Changes::of(store, home).and_then(|changes| changes.feed_for(&home.session).cloned())
+        Changes::of(store, changes).and_then(|held| held.feed_for(&home.session).cloned())
     else {
         return;
     };
@@ -1363,121 +1507,7 @@ fn relaunch_session_poll(
                 window,
                 Arc::new(SessionPolled {
                     home: landing.clone(),
-                    actions,
-                }),
-            )
-        }),
-    );
-}
-
-struct SnapshotLanded {
-    home: crate::SessionId,
-    folder: ResourceLocation,
-    result: Result<ChangesetState, String>,
-}
-
-impl crate::DynamicCommand for SnapshotLanded {
-    fn id(&self) -> &'static str {
-        "changes.snapshot-landed"
-    }
-    fn name(&self) -> String {
-        "Changes Snapshot".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        Changes::update(store, &self.home, |changes| match &self.result {
-            Ok(state) => changes.adopt(&self.folder, state),
-            Err(error) => changes.adopt_error(&self.folder, error.clone()),
-        });
-        Changes::nudge_folder(store, &self.home, &self.folder);
-        rearm_stripes(store, &self.home, &_app.ui_ctx(), &self.folder, fx);
-        if self.result.is_ok() {
-            relaunch_poll(store, window, &self.home, &self.folder, fx);
-        }
-    }
-}
-
-struct Polled {
-    home: crate::SessionId,
-    folder: ResourceLocation,
-    actions: Vec<StateAction>,
-}
-
-impl crate::DynamicCommand for Polled {
-    fn id(&self) -> &'static str {
-        "changes.polled"
-    }
-    fn name(&self) -> String {
-        "Changes Update".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        Changes::update(store, &self.home, |changes| {
-            changes.fold(&self.folder, &self.actions)
-        });
-        Changes::nudge_folder(store, &self.home, &self.folder);
-        rearm_stripes(store, &self.home, &_app.ui_ctx(), &self.folder, fx);
-        relaunch_poll(store, window, &self.home, &self.folder, fx);
-    }
-}
-
-fn rearm_stripes(
-    store: &mut Store,
-    home: &crate::SessionId,
-    ui: &UiCtx,
-    folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
-) {
-    let authority = folder.authority().clone();
-    let prefix = format!("/{}/", folder.path().join("/"));
-    let documents = crate::higent::Hosts::ensure_family(store, home).documents();
-    crate::rearm_base_asks(store, documents, &|location| {
-        location.authority() == &authority
-            && format!("/{}", location.path().join("/")).starts_with(&prefix)
-    });
-    crate::sync_stripe_bases(store, documents, ui, fx);
-}
-
-fn relaunch_poll(
-    store: &Store,
-    window: crate::WindowId,
-    home: &crate::SessionId,
-    folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
-) {
-    let Some(entry) = Changes::folder(store, home, folder) else {
-        return;
-    };
-    let Some(feed) = entry.feed else {
-        return;
-    };
-    let Some(channel) = feed.channel else {
-        return;
-    };
-    let landing = folder.clone();
-    let scope = home.clone();
-    fx.push(
-        AnyEffect::new(PollChangesetEffect {
-            seat: feed.seat,
-            channel,
-        })
-        .map(move |actions| {
-            AppCommand::dynamic_in(
-                scope.clone(),
-                window,
-                Arc::new(Polled {
-                    home: scope.clone(),
-                    folder: landing.clone(),
+                    changes,
                     actions,
                 }),
             )
@@ -1719,8 +1749,12 @@ impl crate::DynamicCommand for ToggleChangesView {
             crate::Windows::put(store, window, entity);
             return;
         }
+        // The pane closes over the window's family: its change sets
+        // by id, the session only as the catalog's name for the folders.
         let workspace = entity.current_session();
-        Changes::ensure(store, window, workspace.clone(), fx);
+        let changes = entity.family().changes();
+        let folders = crate::higent::session_folders(store, &workspace);
+        Changes::ensure(store, window, changes, folders, fx);
 
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
@@ -1728,12 +1762,13 @@ impl crate::DynamicCommand for ToggleChangesView {
         );
         let view = Changes::mint_view(
             store,
-            &workspace.clone(),
+            changes,
             crate::changes_view::ChangesView::open(
                 store,
                 &_app.ui_ctx(),
                 window,
-                workspace.clone(),
+                changes,
+                workspace,
                 crate::changes_view::ViewSets::WorkingCopies,
             ),
         );
@@ -1743,7 +1778,7 @@ impl crate::DynamicCommand for ToggleChangesView {
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(crate::changes_view::ChangesPane::new(workspace, view)),
+                    Box::new(crate::changes_view::ChangesPane::new(changes, view)),
                     owner,
                     fx,
                 )
@@ -1757,10 +1792,10 @@ impl crate::DynamicCommand for ToggleChangesView {
 /// riding folder's otherwise (the palette / test road).
 #[derive(Default)]
 pub struct RefetchChanges {
-    /// The session to refetch in. `None` means "the one this window is
-    /// working in", resolved when the command performs — a command
-    /// registered into the palette has no session at registration.
-    pub home: Option<crate::SessionId>,
+    /// The collection to refetch. `None` means "the window's family's",
+    /// resolved when the command performs — a command registered into
+    /// the palette holds no id at registration.
+    pub changes: Option<imba::store::Id<ChangeSets>>,
     pub folder: Option<ResourceLocation>,
 }
 
@@ -1778,12 +1813,12 @@ impl crate::DynamicCommand for RefetchChanges {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let home = self.home.clone().unwrap_or_else(|| {
-            crate::Windows::window_ref(store, window)
-                .map(|entity| entity.current_session())
-                .unwrap_or_else(|| crate::SessionId::local_default(store))
-        });
-        Changes::refetch(store, &home, window, fx, self.folder.as_ref());
+        let Some(changes) = self.changes.or_else(|| {
+            crate::Windows::session_family(store, window).map(|family| family.changes())
+        }) else {
+            return;
+        };
+        Changes::refetch(store, changes, window, fx, self.folder.as_ref());
     }
 }
 

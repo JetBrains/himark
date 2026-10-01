@@ -481,8 +481,23 @@ impl himark::DynamicCommand for OpenScripted {
     }
 }
 
+/// The chats collection of the scripted session — the family of the
+/// window that entered it (the first one; a second window of the same
+/// session shares the collection).
+fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<himark::higent::Chats> {
+    let window = *engine.app.window_ids().first().expect("a window");
+    himark::Windows::window_ref(engine.app.store(), window)
+        .expect("the window entity")
+        .family()
+        .chats()
+}
+
 fn chat_record(engine: &HimarkEngine) -> Option<himark::higent::ChatPanel> {
-    himark::higent::Chats::found(engine.app.store(), &ChatUri::new(CHAT)).map(|(_, chat)| chat)
+    himark::higent::Chats::chat(
+        engine.app.store(),
+        chats_of_window(engine),
+        &ChatUri::new(CHAT),
+    )
 }
 
 fn transcript(engine: &HimarkEngine) -> Vec<(String, Vec<(String, String)>)> {
@@ -897,9 +912,9 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     let mounted = Cell::documents_mounted();
     let born = himark::Document::born_on_this_thread();
     let chat = ChatUri::new(CHAT);
-    let (home, _) = himark::higent::Chats::found(engine.app.store(), &chat).expect("the record");
+    let chats = chats_of_window(&engine);
     for _ in 0..3 {
-        let pane = himark::higent::ChatPane::new(home.clone(), chat.clone());
+        let pane = himark::higent::ChatPane::new(chats, chat.clone());
         assert!(engine.app.open_panel(window_id(window), Box::new(pane)));
         paint(&mut engine, window);
     }

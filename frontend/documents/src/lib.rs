@@ -15,7 +15,7 @@ pub mod watch;
 
 pub use diffs::{
     rearm_base_asks, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId,
-    Normalized, StripeBases,
+    Normalized, StripeBaseResolver, StripeBases,
 };
 pub use dynamic::{DocumentCommand, DocumentCommands};
 pub use entity_view::EditorIdView;

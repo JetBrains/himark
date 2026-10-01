@@ -1,9 +1,15 @@
 /// The session these canvas tests work in.
-fn canvas_home() -> himark::SessionId {
-    himark::SessionId {
-        host: himark::higent::HostId::LOCAL,
-        session: himark::higent::SessionUri::new("hihost-fs:/local"),
-    }
+/// The change-set collection a test canvas reads from: the one in the
+/// window's family, so the rows it mounts land in the window's own
+/// documents collection.
+fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<himark::hichanges::Changes> {
+    let window = himark::Windows::list(store)
+        .into_iter()
+        .next()
+        .expect("a window");
+    himark::Windows::session_family(store, window)
+        .expect("the window's family")
+        .changes()
 }
 
 // Copyright © 2026 JetBrains s.r.o.
@@ -20,7 +26,6 @@ fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
         std::sync::OnceLock::new();
     *DOCS.get_or_init(imba::store::Id::mint)
 }
-
 
 /// TEST SUPPORT: build an `OpenedDiffPair` over two freshly-built,
 /// not-yet-registered sides (`DiffSide::Built`) — what the off-thread
@@ -238,7 +243,8 @@ fn the_optimizer_landing_cancels_matching_edits() {
                 .find(|(_, info)| info.name() == "left.md")
                 .expect("left open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                    .expect("document");
             himark::diff::fragments_from(state.diff(), document.text(), 0).collect()
         };
         assert!(
@@ -303,8 +309,12 @@ fn identical_documents_settle_spacer_free() {
         };
         let (left, right) = panel.halves(app.store());
         for (label, entity) in [("left", left), ("right", right)] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let spacers = document.element_spacers(entity.editor());
             let ranges = document.element_byte_ranges(entity.editor());
             let nonzero: Vec<_> = ranges
@@ -469,8 +479,12 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() {
                 let right = panel.halves(app.store()).1;
-                shot = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right.document())
-                    .map(|document| document.content_height(right.editor()));
+                shot = himark::OpenDocuments::document_ref(
+                    app.store(),
+                    app.sole_documents(),
+                    right.document(),
+                )
+                .map(|document| document.content_height(right.editor()));
             }
         });
         shot.expect("the diff pane is open")
@@ -707,8 +721,12 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let live: Vec<(u32, i64)> = document
                 .element_heights(entity.editor())
                 .into_iter()
@@ -880,8 +898,12 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let (_, viewport, _, _) = document.probe_state(entity.editor());
             let viewport = viewport.expect("the half reported its viewport");
             assert!(
@@ -901,8 +923,12 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
             return;
         };
         for entity in [panel.halves(app.store()).0, panel.halves(app.store()).1] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let width = document.layout_width(entity.editor());
             assert!(
                 width > himark::OPEN_HALF_WIDTH * 1.5,
@@ -939,8 +965,12 @@ fn dump_pair(app: &Application) {
         eprintln!("[dump] diff: {ops:?}");
         let (left, right) = panel.halves(app.store());
         for (label, entity) in [("left", left), ("right", right)] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let heights = document.element_heights(entity.editor());
             let spacers = document.element_spacers(entity.editor());
             let (pending, viewport, _, _) = document.probe_state(entity.editor());
@@ -1163,7 +1193,8 @@ fn scrolling_after_a_theme_toggle_converges() {
             .0;
         {
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
+                    .expect("document");
             document
                 .editor_ids()
                 .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -1200,8 +1231,12 @@ fn scrolling_after_a_theme_toggle_converges() {
             ("left", panel.halves(app.store()).0),
             ("right", panel.halves(app.store()).1),
         ] {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let live: Vec<(u32, i64)> = document
                 .element_heights(entity.editor())
                 .into_iter()
@@ -1379,7 +1414,8 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
                 .expect("right open");
             let focused = {
                 let document =
-                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                        .expect("document");
                 document
                     .editor_ids()
                     .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -1397,7 +1433,9 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
             .into_iter()
             .find(|(_, info)| info.name() == name)
             .expect("open");
-        let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+        let document =
+            himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                .expect("document");
         let editor = document.editor_ids().next().expect("an editor");
 
         let heights = document.element_heights(editor);
@@ -1459,8 +1497,12 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
         let diff = state.diff();
         let (left, right) = panel.halves(app.store());
         let sides = [left, right].map(|entity| {
-            let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                .expect("document");
+            let document = himark::OpenDocuments::document_ref(
+                app.store(),
+                app.sole_documents(),
+                entity.document(),
+            )
+            .expect("document");
             let ranges = document.element_byte_ranges(entity.editor());
             let spacers = document.element_spacers(entity.editor());
             let heights: Vec<f32> = document
@@ -1505,9 +1547,13 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
                             "left" => left,
                             _ => right,
                         };
-                        himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.document())
-                            .map(|document| document.element_heights(entity.editor()))
-                            .unwrap_or_default()
+                        himark::OpenDocuments::document_ref(
+                            app.store(),
+                            app.sole_documents(),
+                            entity.document(),
+                        )
+                        .map(|document| document.element_heights(entity.editor()))
+                        .unwrap_or_default()
                     };
                     for ((range, spacer), (byte, height)) in
                         ranges.iter().zip(spacers.iter()).zip(heights)
@@ -1645,7 +1691,8 @@ fn document_text(app: &Application, name: &str) -> String {
         .into_iter()
         .find(|(_, info)| info.name() == name)
         .expect("the document is open");
-    let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+    let document = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+        .expect("document");
     let count = document.text().byte_count();
     document.text().view().byte_string(0, count)
 }
@@ -1682,7 +1729,14 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        let id = himark::OpenDocuments::register(&mut store, test_docs(), document, None, "side".to_owned(), 0);
+        let id = himark::OpenDocuments::register(
+            &mut store,
+            test_docs(),
+            document,
+            None,
+            "side".to_owned(),
+            0,
+        );
         (id, pane, himark::EditorIdView::new(test_docs(), id, editor))
     };
 
@@ -1713,7 +1767,8 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
         himark::OpenDocuments::document_ref(&store, test_docs(), old_doc).is_none(),
         "editorless after retraction — the pinned side leaves whole"
     );
-    let new = himark::OpenDocuments::document(&store, test_docs(), new_doc).expect("the working copy stays");
+    let new = himark::OpenDocuments::document(&store, test_docs(), new_doc)
+        .expect("the working copy stays");
     assert!(
         new.has_editor(new_pane.expect("the extra editor")),
         "its pane editor keeps it alive"
@@ -1872,7 +1927,8 @@ fn a_shared_pair_reuses_the_standing_entry() {
 
     // The pair is already tracked; opening a pane over it reuses the
     // standing entry rather than tracking a second one.
-    let panel = diff_panel(&mut store, test_docs(), &ui, old, new).expect("the shared pair still opens");
+    let panel =
+        diff_panel(&mut store, test_docs(), &ui, old, new).expect("the shared pair still opens");
 
     let state = panel.diff_state(&store).expect("attached");
     let entry_len = himark::OpenDocuments::document_ref(&store, test_docs(), new)
@@ -2021,7 +2077,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     let pair_id = {
         let mut id = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(himark::FamilyRow::Pair(pair)) = panel.family_row() {
+            if let Some(himark::FamilyRow::Pair(_, pair)) = panel.family_row() {
                 id = Some(pair);
             }
         });
@@ -2048,11 +2104,14 @@ fn the_unified_view_switches_between_split_and_inline() {
     let state = pair_state(&app);
     assert_eq!(state.unified_layout(), himark::DiffLayout::Inline);
     let inline_editor = state.inline_editor().expect("the inline editor minted");
-    let pair = himark::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id).expect("the pair");
+    let pair = himark::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id)
+        .expect("the pair");
     let (left_id, right_id) = (pair.left.document(), pair.right.document());
     let right_editor = pair.right.editor();
     {
-        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
+        let right =
+            himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id)
+                .expect("right");
 
         let cards = right.before_inlays(inline_editor);
         assert_eq!(cards.len(), 2, "both changed blocks carry cards: {cards:?}");
@@ -2082,7 +2141,9 @@ fn the_unified_view_switches_between_split_and_inline() {
     // inside line 0's text) shifts down by exactly the hole — the
     // inline line-0 height minus the card-less split face's.
     let hole = {
-        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
+        let right =
+            himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id)
+                .expect("right");
         right.height_before(inline_editor, 9) - right.height_before(right_editor, 9)
     };
     // Aim at line 0's TEXT: the settled before-card fills its full
@@ -2091,7 +2152,9 @@ fn the_unified_view_switches_between_split_and_inline() {
     himark::test_driver::click(&mut app, 550.0, 88.0 + hole, 1100.0, 800.0);
     let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     {
-        let right = himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id).expect("right");
+        let right =
+            himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), right_id)
+                .expect("right");
         assert_eq!(
             right.focus(inline_editor),
             himark::EditorFocus::Text,
@@ -2284,10 +2347,11 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2404,10 +2468,11 @@ fn folded_squash_paint_cost_is_size_independent() {
         let canvas = {
             let ui = app.ui_handle();
             let mut store = app.store_mut();
+            let changes = canvas_changes(&store);
             DiffCanvasView::seeded_for_tests(
                 &mut store,
                 &ui,
-                canvas_home(),
+                changes,
                 himark::diff_canvas::CanvasSource::WorkingCopy {
                     folder: location("proj", himark::ResourceType::directory()),
                 },
@@ -2493,10 +2558,11 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2583,7 +2649,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
                 let app_docs = app.sole_documents();
                 let app_docs = app.sole_documents();
-            let store = app.store();
+                let store = app.store();
                 shot = canvas
                     .probe_pair(
                         store,
@@ -2669,10 +2735,11 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2864,10 +2931,11 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -2983,10 +3051,11 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3118,10 +3187,11 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3276,10 +3346,11 @@ fn reconcile_follows_the_change_set_without_flashing() {
     let view = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3412,10 +3483,11 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     let view = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3430,8 +3502,9 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // The row's target IS the registered document for its location —
     // not a throwaway snapshot.
-    let target_id = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &doc_loc("a.md"))
-        .expect("the canvas row registered its target document");
+    let target_id =
+        himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &doc_loc("a.md"))
+            .expect("the canvas row registered its target document");
 
     // The diff the Diffs subsystem tracks for this row.
     let pair = view
@@ -3546,10 +3619,11 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let canvas = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: location("proj", himark::ResourceType::directory()),
             },
@@ -3602,8 +3676,8 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
 
     // The out-of-pane edit through the document road — the row is not
     // focused, no command ever reaches it.
-    let right_id =
-        himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key).expect("the registered target");
+    let right_id = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
+        .expect("the registered target");
     {
         let fonts = himark::env::Fonts::of(&app.store())();
         let theme = himark::env::Themes::of(&app.store());
@@ -3686,10 +3760,11 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     let view = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3868,10 +3943,11 @@ fn seeded_working_canvas(
     let view = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -3929,10 +4005,11 @@ fn a_retired_file_leaves_no_orphan_row() {
     let view = {
         let ui = app.ui_handle();
         let mut store = app.store_mut();
+        let changes = canvas_changes(&store);
         DiffCanvasView::seeded_for_tests(
             &mut store,
             &ui,
-            canvas_home(),
+            changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
                 folder: himark::ResourceLocation::new(
                     himark::ResourceType::directory(),
@@ -4008,7 +4085,8 @@ fn membership_follows_every_adopted_listing() {
     };
     let view = {
         let mut store = app.store_mut();
-        DiffCanvasView::over(&mut store, canvas_home(), source)
+        let changes = canvas_changes(&store);
+        DiffCanvasView::over(&mut store, changes, source)
     };
 
     let mut lcg: u64 = 0x5eed_cafe;
@@ -4105,7 +4183,8 @@ fn membership_minimal_repro() {
     };
     let view = {
         let mut store = app.store_mut();
-        DiffCanvasView::over(&mut store, canvas_home(), source)
+        let changes = canvas_changes(&store);
+        DiffCanvasView::over(&mut store, changes, source)
     };
     let ui = himark::test_document::test_ui();
     let ready = |names: &[&str], gen: u64| {

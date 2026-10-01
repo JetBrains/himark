@@ -103,7 +103,11 @@ fn panel(store: &mut Store, chat: &str) -> ChatPanel {
     store.update::<crate::higent::Servers>(|servers| {
         host = servers.mint(Arc::new(InertSeat));
     });
-    let mut panel = ChatPanel::new(store, ui(), host, "s", chat);
+    // The collection the panel files into — minted here, the way the
+    // session ceremony does it; the panel never asks who owns it.
+    let chats = imba::store::Id::<crate::higent::Chats>::mint();
+    store.put_entity(chats, crate::higent::Chats::wired(imba::store::Id::mint()));
+    let mut panel = ChatPanel::new(store, ui(), host, "s", chats, chat);
     panel.state = Link::Ready;
     panel
 }

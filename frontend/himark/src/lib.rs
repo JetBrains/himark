@@ -72,7 +72,7 @@ pub use crate::diff_pane::{
 pub use crate::diffs::{
     build_diff_view, gather_diff_view, install_opened_pair, rearm_base_asks, rewrap_pair,
     sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
-    DiffView, DiffViewId, DressedViews, StripeBases, OPEN_HALF_WIDTH,
+    DiffView, DiffViewId, DressedViews, StripeBaseResolver, StripeBases, OPEN_HALF_WIDTH,
 };
 pub use crate::family_rows::{mint, mint_unfronted, FamilyRow, RowMinter, RowMinters};
 pub use crate::workspace::{

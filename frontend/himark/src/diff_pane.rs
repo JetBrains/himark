@@ -74,7 +74,8 @@ impl View for PairPane {
         command: UnifiedDiffCommand,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, self.documents, self.id) else {
+        let Some(mut pair) = crate::OpenDocuments::take_diff_view(store, self.documents, self.id)
+        else {
             return;
         };
         let Some(mut view) = gathered(&pair, store, self.documents) else {
@@ -84,8 +85,18 @@ impl View for PairPane {
 
         view.perform(store, ui, command, fx);
 
-        OpenDocuments::put_document(store, self.documents, pair.left.document(), view.split.left.document);
-        OpenDocuments::put_document(store, self.documents, pair.right.document(), view.split.right.document);
+        OpenDocuments::put_document(
+            store,
+            self.documents,
+            pair.left.document(),
+            view.split.left.document,
+        );
+        OpenDocuments::put_document(
+            store,
+            self.documents,
+            pair.right.document(),
+            view.split.right.document,
+        );
         pair.state = Some(view.split.state);
         crate::OpenDocuments::put_diff_view(store, self.documents, self.id, pair);
     }
@@ -340,15 +351,23 @@ impl DiffPanelView {
     }
 
     pub fn diff_state<'a>(&self, store: &'a Store) -> Option<&'a DiffViewState> {
-        crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)?
-            .state
-            .as_ref()
+        crate::OpenDocuments::diff_view_ref(
+            store,
+            self.pane.content().documents,
+            self.pane.content().id,
+        )?
+        .state
+        .as_ref()
     }
 
     #[doc(hidden)]
     pub fn halves(&self, store: &Store) -> (EditorIdView, EditorIdView) {
-        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)
-            .expect("the pane's family row");
+        let pair = crate::OpenDocuments::diff_view_ref(
+            store,
+            self.pane.content().documents,
+            self.pane.content().id,
+        )
+        .expect("the pane's family row");
         (pair.left, pair.right)
     }
 
@@ -424,11 +443,16 @@ impl crate::PanelView for DiffPanelView {
     type Place = DiffPlace;
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Pair(self.pane.content().id))
+        let pane = self.pane.content();
+        Some(crate::FamilyRow::Pair(pane.documents, pane.id))
     }
 
     fn navigation_location(&self, store: &Store) -> Option<DiffPlace> {
-        let pair = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)?;
+        let pair = crate::OpenDocuments::diff_view_ref(
+            store,
+            self.pane.content().documents,
+            self.pane.content().id,
+        )?;
         Some(DiffPlace {
             old: OpenDocuments::location(store, pair.left.documents(), pair.left.document())?,
             new: OpenDocuments::location(store, pair.left.documents(), pair.right.document())?,
@@ -441,17 +465,29 @@ impl crate::PanelView for DiffPanelView {
         place: &DiffPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> bool {
-        let Some(pair) = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id) else {
+        let Some(pair) = crate::OpenDocuments::diff_view_ref(
+            store,
+            self.pane.content().documents,
+            self.pane.content().id,
+        ) else {
             return false;
         };
         let (left, right) = (pair.left, pair.right);
-        OpenDocuments::location(store, left.documents(), left.document()).as_ref() == Some(&place.old)
-            && OpenDocuments::location(store, right.documents(), right.document()).as_ref() == Some(&place.new)
+        OpenDocuments::location(store, left.documents(), left.document()).as_ref()
+            == Some(&place.old)
+            && OpenDocuments::location(store, right.documents(), right.document()).as_ref()
+                == Some(&place.new)
     }
 
     fn title(&self, store: &Store) -> String {
-        let named = crate::OpenDocuments::diff_view_ref(store, self.pane.content().documents, self.pane.content().id)
-            .and_then(|pair| OpenDocuments::location(store, pair.left.documents(), pair.right.document()));
+        let named = crate::OpenDocuments::diff_view_ref(
+            store,
+            self.pane.content().documents,
+            self.pane.content().id,
+        )
+        .and_then(|pair| {
+            OpenDocuments::location(store, pair.left.documents(), pair.right.document())
+        });
         match named {
             Some(location) => format!("Diff: {}", location.name()),
             None => "Diff".to_owned(),
@@ -519,17 +555,26 @@ pub fn diff_panel(
     left: crate::DocumentId,
     right: crate::DocumentId,
 ) -> Option<DiffPanelView> {
-    let id = crate::build_diff_view(store, documents, ui, left, right, crate::OPEN_HALF_WIDTH, false)?;
+    let id = crate::build_diff_view(
+        store,
+        documents,
+        ui,
+        left,
+        right,
+        crate::OPEN_HALF_WIDTH,
+        false,
+    )?;
     Some(DiffPanelView::over(documents, id))
 }
 
 pub fn pair_row_minter() -> std::sync::Arc<crate::RowMinter> {
     std::sync::Arc::new(|store, row| match row {
-        crate::FamilyRow::Pair(id) => {
-            // The row names only the pair: its owner is found once,
-            // by content — the cold re-mint road.
-            let documents = crate::higent::Hosts::documents_of_diff_view(store, *id)?;
-            Some(Box::new(DiffPanelView::over(documents, *id)) as Box<dyn crate::DynPanelView>)
+        // The row carries its collection: the pane is minted off the
+        // ids while the pair still stands.
+        crate::FamilyRow::Pair(documents, id) => {
+            crate::OpenDocuments::diff_view_ref(store, *documents, *id).map(|_| {
+                Box::new(DiffPanelView::over(*documents, *id)) as Box<dyn crate::DynPanelView>
+            })
         }
         // Canvases open through the NAVIGATION road (CanvasNavigator)
         // — reuse is a store lookup, not a mint.

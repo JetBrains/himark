@@ -216,6 +216,9 @@ pub enum CommentsCommand {
 pub struct CommentsView {
     list: Rows,
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
+    /// The collection whose records this dock lists.
+    comments: imba::store::Id<Comments>,
+    /// The session, as the CATALOG's name for its folders.
     workspace: crate::SessionId,
     window: crate::WindowId,
 
@@ -228,6 +231,7 @@ impl Clone for CommentsView {
         Self {
             list: self.list.clone(),
             items: self.items.clone(),
+            comments: self.comments,
             workspace: self.workspace.clone(),
             window: self.window,
             seen: self.seen,
@@ -242,6 +246,7 @@ impl CommentsView {
         store: &Store,
         ui: &UiCtx,
         window: crate::WindowId,
+        comments: imba::store::Id<Comments>,
         workspace: crate::SessionId,
     ) -> Self {
         let mut panel = Self {
@@ -254,6 +259,7 @@ impl CommentsView {
             )
             .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),
+            comments,
             workspace,
             window,
             seen: 0,
@@ -269,8 +275,8 @@ impl CommentsView {
     }
 
     fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = Comments::generation(store, &self.workspace);
-        let records = Comments::records(store, &self.workspace);
+        self.seen = Comments::generation(store, self.comments);
+        let records = Comments::records(store, self.comments);
         let mut items = rpds::HashTrieMapSync::new_sync();
         let mut nodes: Vec<ForestNode<ResourceLocation>> =
             crate::higent::session_folders(store, &self.workspace)
@@ -315,7 +321,7 @@ impl CommentsView {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
                     Arc::new(NavigateToComment {
-                        home: self.workspace.clone(),
+                        comments: self.comments,
                         annotation: id,
                     }),
                 )));
@@ -410,7 +416,7 @@ impl View for CommentsView {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
                     Arc::new(crate::hicomments::SendComments {
-                        home: self.workspace.clone(),
+                        comments: self.comments,
                         ids,
                     }),
                 )));
@@ -497,7 +503,7 @@ impl View for CommentsView {
                 chip,
             );
 
-            let stale = Comments::generation(store, &self.workspace) != self.seen;
+            let stale = Comments::generation(store, self.comments) != self.seen;
             overlay.wrap(move |inner| ReconcileShell { inner, stale })
         })
     }
@@ -556,7 +562,7 @@ impl ModalView for CommentsView {
 }
 
 struct NavigateToComment {
-    home: crate::SessionId,
+    comments: imba::store::Id<Comments>,
     annotation: AnnotationId,
 }
 
@@ -575,15 +581,15 @@ impl crate::DynamicCommand for NavigateToComment {
         fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(record) = Comments::record(store, &self.home, &self.annotation) else {
+        let Some(record) = Comments::record(store, self.comments, &self.annotation) else {
             return;
         };
-        let target = live_range(store, &self.home, &self.annotation)
+        let target = live_range(store, self.comments, &self.annotation)
             .or(record.range.clone())
             .unwrap_or(crate::LineCol { line: 0, col: 0 }..crate::LineCol { line: 0, col: 0 });
-        let documents = crate::Windows::session_family(store, window)
-            .expect("comment navigation runs in a window with a session")
-            .documents();
+        let Some(documents) = Comments::documents_of(store, self.comments) else {
+            return;
+        };
         match crate::OpenDocuments::by_location(store, documents, &record.location) {
             Some(document) => {
                 let Some(mut entity) = crate::Windows::window(store, window) else {
@@ -608,11 +614,11 @@ impl crate::DynamicCommand for NavigateToComment {
 
 fn live_range(
     store: &Store,
-    home: &crate::SessionId,
+    comments: imba::store::Id<Comments>,
     annotation: &AnnotationId,
 ) -> Option<std::ops::Range<crate::LineCol>> {
-    let (document, key) = Comments::card(store, home, annotation)?;
-    let documents = crate::higent::Hosts::family(store, home)?.documents();
+    let (document, key) = Comments::card(store, comments, annotation)?;
+    let documents = Comments::documents_of(store, comments)?;
     let doc = crate::OpenDocuments::document_ref(store, documents, document)?;
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let markup = doc.feature_markup(comments_markup())?;
@@ -651,15 +657,16 @@ impl crate::DynamicCommand for ToggleCommentsView {
             return;
         }
         let workspace = entity.current_session();
+        let comments = entity.family().comments();
         for folder in crate::higent::session_folders(store, &workspace) {
-            Comments::ensure(store, window, &folder, fx);
+            Comments::ensure(store, window, comments, &folder, fx);
         }
 
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = CommentsView::open(store, &_app.ui_ctx(), window, workspace);
+        let panel = CommentsView::open(store, &_app.ui_ctx(), window, comments, workspace);
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),

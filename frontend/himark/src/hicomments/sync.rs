@@ -72,8 +72,12 @@ struct ChannelFeed {
     live: bool,
 }
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct Comments {
+    /// The documents the cards live in — wired at the family mint
+    /// (docs/entities.md law 4).
+    documents: imba::store::Id<crate::OpenDocuments>,
+
     records: rpds::HashTrieMapSync<AnnotationId, CommentRecord>,
 
     cards: rpds::HashTrieMapSync<AnnotationId, (DocumentId, InlayKey)>,
@@ -107,38 +111,68 @@ impl Comments {
         self.records.is_empty() && self.cards.is_empty() && self.channel.is_none()
     }
 
-    /// The comments of one session, addressed by it: a card's thread
-    /// belongs to the session whose host serves the annotations.
-    /// The module's ONE pair of session-addressed doors — the feed
-    /// folds land with the wire's `SessionId`; resolution to
-    /// `Id<Comments>` happens here, once (docs/entities.md step 4
-    /// retires the pair).
-    fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a Comments> {
-        let comments = crate::higent::Hosts::family(store, home)?.comments();
+    /// A collection wired to the documents its cards live in — minted
+    /// by the family ceremony.
+    pub fn wired(documents: imba::store::Id<crate::OpenDocuments>) -> Self {
+        Self {
+            documents,
+            records: rpds::HashTrieMapSync::new_sync(),
+            cards: rpds::HashTrieMapSync::new_sync(),
+            channel: None,
+            generation: 0,
+            minted: 0,
+        }
+    }
+
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.documents
+    }
+
+    /// The collection by its id — `None` is gone.
+    fn of(store: &Store, comments: imba::store::Id<Comments>) -> Option<&Comments> {
         store.entity(comments)
     }
 
-    fn update(store: &mut Store, home: &crate::SessionId, mutate: impl FnOnce(&mut Comments)) {
-        let comments = crate::higent::Hosts::ensure_family(store, home).comments();
-        store.update_entity(comments, mutate);
+    /// The documents collection this one's cards live in.
+    pub(crate) fn documents_of(
+        store: &Store,
+        comments: imba::store::Id<Comments>,
+    ) -> Option<imba::store::Id<crate::OpenDocuments>> {
+        Some(Self::of(store, comments)?.documents)
     }
 
-    pub fn generation(store: &Store, home: &crate::SessionId) -> u64 {
-        Self::of(store, home)
+    /// Mutate in place; a gone collection takes no write.
+    fn update(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        mutate: impl FnOnce(&mut Comments),
+    ) {
+        let Some(mut row) = store.entity(comments).cloned() else {
+            return;
+        };
+        mutate(&mut row);
+        store.put_entity(comments, row);
+    }
+
+    pub fn generation(store: &Store, comments: imba::store::Id<Comments>) -> u64 {
+        Self::of(store, comments)
             .map(|comments| comments.generation)
             .unwrap_or(0)
     }
 
     pub fn record(
         store: &Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         id: &AnnotationId,
     ) -> Option<CommentRecord> {
-        Self::of(store, home)?.records.get(id).cloned()
+        Self::of(store, comments)?.records.get(id).cloned()
     }
 
-    pub fn records(store: &Store, home: &crate::SessionId) -> Vec<(AnnotationId, CommentRecord)> {
-        Self::of(store, home)
+    pub fn records(
+        store: &Store,
+        comments: imba::store::Id<Comments>,
+    ) -> Vec<(AnnotationId, CommentRecord)> {
+        Self::of(store, comments)
             .map(|comments| {
                 comments
                     .records
@@ -151,19 +185,19 @@ impl Comments {
 
     pub fn card(
         store: &Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         id: &AnnotationId,
     ) -> Option<(DocumentId, InlayKey)> {
-        Self::of(store, home)?.cards.get(id).copied()
+        Self::of(store, comments)?.cards.get(id).copied()
     }
 
     fn update_record(
         store: &mut Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         id: &AnnotationId,
         change: impl FnOnce(&mut CommentRecord),
     ) {
-        Self::update(store, home, |comments| {
+        Self::update(store, comments, |comments| {
             let Some(mut record) = comments.records.get(id).cloned() else {
                 return;
             };
@@ -173,18 +207,22 @@ impl Comments {
         });
     }
 
-    fn mint(store: &mut Store, home: &crate::SessionId) -> AnnotationId {
+    fn mint(store: &mut Store, comments: imba::store::Id<Comments>) -> AnnotationId {
         let mut id = String::new();
-        Self::update(store, home, |comments| {
+        Self::update(store, comments, |comments| {
             comments.minted += 1;
             id = format!("hc-{}-{}", std::process::id(), comments.minted);
         });
         id
     }
 
+    /// Attach the annotations feed of the wire that serves a folder —
+    /// the collection is the caller's (the window's family), the seat
+    /// and AHP session come off the folder's authority.
     pub fn ensure(
         store: &mut Store,
         window: WindowId,
+        comments: imba::store::Id<Comments>,
         location: &ResourceLocation,
         fx: &mut AppFx<'_>,
     ) {
@@ -200,12 +238,12 @@ impl Comments {
             host: server,
             session: session.clone(),
         };
-        let known = Self::of(store, &scope)
+        let known = Self::of(store, comments)
             .is_some_and(|comments| comments.channel_for(&session).is_some());
         if known {
             return;
         }
-        Self::update(store, &scope, |comments| {
+        Self::update(store, comments, |comments| {
             comments.channel = Some(ChannelFeed {
                 session: session.clone(),
                 server,
@@ -224,6 +262,7 @@ impl Comments {
                     window,
                     Arc::new(SnapshotLanded {
                         home: scope.clone(),
+                        comments,
                         session: session.clone(),
                         result,
                     }),
@@ -234,6 +273,7 @@ impl Comments {
 
     pub fn created(
         store: &mut Store,
+        comments: imba::store::Id<Comments>,
         location: &ResourceLocation,
         range: Range<LineCol>,
     ) -> Option<AnnotationId> {
@@ -241,11 +281,7 @@ impl Comments {
             return None;
         }
         let (server, session) = crate::higent::seat::route(store, location.authority().as_str())?;
-        let home = crate::SessionId {
-            host: server,
-            session: session.clone(),
-        };
-        let id = Self::mint(store, &home);
+        let id = Self::mint(store, comments);
         let entry_id = format!("{id}-e1");
         let record = CommentRecord {
             server,
@@ -267,14 +303,14 @@ impl Comments {
         let mut record = record;
         record.turn_id = stamp;
 
-        let feed = Self::of(store, &home)
+        let feed = Self::of(store, comments)
             .and_then(|comments| comments.channel_for(&record.session).cloned())
             .filter(|feed| feed.live);
         if let Some(feed) = &feed {
             record.synced = true;
             dispatch_set(store, &feed.seat, &id, &record);
         }
-        Self::update(store, &home, |comments| {
+        Self::update(store, comments, |comments| {
             comments.records.insert_mut(id.clone(), record.clone());
             comments.generation += 1;
         });
@@ -283,23 +319,23 @@ impl Comments {
 
     pub fn card_born(
         store: &mut Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         id: &AnnotationId,
         document: DocumentId,
         key: InlayKey,
     ) {
         let id = id.clone();
-        Self::update(store, home, |comments| {
+        Self::update(store, comments, |comments| {
             comments.cards.insert_mut(id, (document, key));
         });
     }
 
-    pub fn removed(store: &mut Store, home: &crate::SessionId, id: &AnnotationId) {
-        let Some(record) = Self::record(store, home, id) else {
+    pub fn removed(store: &mut Store, comments: imba::store::Id<Comments>, id: &AnnotationId) {
+        let Some(record) = Self::record(store, comments, id) else {
             return;
         };
         if record.synced {
-            if let Some(feed) = Self::of(store, home)
+            if let Some(feed) = Self::of(store, comments)
                 .and_then(|comments| comments.channel_for(&record.session).cloned())
             {
                 feed.seat.dispatch_annotations(
@@ -310,7 +346,7 @@ impl Comments {
                 );
             }
         }
-        Self::update(store, home, |comments| {
+        Self::update(store, comments, |comments| {
             comments.records.remove_mut(id);
             comments.cards.remove_mut(id);
             comments.generation += 1;
@@ -319,14 +355,14 @@ impl Comments {
 
     pub fn send_to_agent(
         store: &mut Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         window: WindowId,
         ids: Vec<AnnotationId>,
         fx: &mut AppFx<'_>,
     ) {
         let mut by_session: Vec<(Uri, Vec<AnnotationId>)> = Vec::new();
         for id in ids {
-            let Some(record) = Self::record(store, home, &id) else {
+            let Some(record) = Self::record(store, comments, &id) else {
                 continue;
             };
             if !record.synced || record.sending {
@@ -341,8 +377,8 @@ impl Comments {
             }
         }
         for (session, group) in by_session {
-            let Some(feed) =
-                Self::of(store, home).and_then(|comments| comments.channel_for(&session).cloned())
+            let Some(feed) = Self::of(store, comments)
+                .and_then(|comments| comments.channel_for(&session).cloned())
             else {
                 continue;
             };
@@ -380,7 +416,7 @@ impl Comments {
                 annotation_ids: Some(group.clone()),
             });
             for id in &group {
-                Self::update_record(store, home, id, |record| record.sending = true);
+                Self::update_record(store, comments, id, |record| record.sending = true);
             }
             let sent = group.clone();
 
@@ -398,7 +434,7 @@ impl Comments {
                         scope.clone(),
                         window,
                         Arc::new(Sent {
-                            home: scope.clone(),
+                            comments,
                             ids: sent.clone(),
                             result,
                         }),
@@ -410,11 +446,11 @@ impl Comments {
 
     pub fn text_edited(
         store: &mut Store,
-        home: &crate::SessionId,
+        comments: imba::store::Id<Comments>,
         id: &AnnotationId,
         text: crate::Text,
     ) {
-        let Some(record) = Self::record(store, home, id) else {
+        let Some(record) = Self::record(store, comments, id) else {
             return;
         };
         let Some(own) = record.own_entry() else {
@@ -424,7 +460,7 @@ impl Comments {
         {
             let own_id = own_id.clone();
             let text = text.clone();
-            Self::update_record(store, home, id, move |record| {
+            Self::update_record(store, comments, id, move |record| {
                 let mut entries: Vec<EntryRecord> = record.entries.iter().cloned().collect();
                 if let Some(entry) = entries.iter_mut().find(|entry| entry.id == own_id) {
                     entry.text = text;
@@ -433,7 +469,7 @@ impl Comments {
             });
         }
         if record.synced {
-            if let Some(feed) = Self::of(store, home)
+            if let Some(feed) = Self::of(store, comments)
                 .and_then(|comments| comments.channel_for(&record.session).cloned())
                 .filter(|feed| feed.live)
             {
@@ -454,13 +490,18 @@ impl Comments {
         }
     }
 
-    pub fn resolve(store: &mut Store, home: &crate::SessionId, id: &AnnotationId, resolved: bool) {
-        let Some(record) = Self::record(store, home, id) else {
+    pub fn resolve(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        id: &AnnotationId,
+        resolved: bool,
+    ) {
+        let Some(record) = Self::record(store, comments, id) else {
             return;
         };
-        Self::update_record(store, home, id, |record| record.resolved = resolved);
+        Self::update_record(store, comments, id, |record| record.resolved = resolved);
         if record.synced {
-            if let Some(feed) = Self::of(store, home)
+            if let Some(feed) = Self::of(store, comments)
                 .and_then(|comments| comments.channel_for(&record.session).cloned())
             {
                 feed.seat.dispatch_annotations(
@@ -489,8 +530,11 @@ fn latest_turn(store: &Store, server: crate::higent::HostId, session: &Uri) -> S
     .unwrap_or_default()
 }
 
+/// The annotations channel's landing: the WIRE is the session's (its
+/// address scopes the batch), the collection it feeds is the id.
 struct SnapshotLanded {
     home: crate::SessionId,
+    comments: imba::store::Id<Comments>,
     session: Uri,
     result: Result<AnnotationsState, String>,
 }
@@ -510,7 +554,7 @@ impl crate::DynamicCommand for SnapshotLanded {
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(feed) = Comments::of(store, &self.home)
+        let Some(feed) = Comments::of(store, self.comments)
             .and_then(|comments| comments.channel_for(&self.session).cloned())
         else {
             return;
@@ -518,7 +562,7 @@ impl crate::DynamicCommand for SnapshotLanded {
         let state = match &self.result {
             Ok(state) => state,
             Err(_) => {
-                Comments::update(store, &self.home, |comments| {
+                Comments::update(store, self.comments, |comments| {
                     if comments.channel_for(&self.session).is_some() {
                         comments.channel = None;
                     }
@@ -531,11 +575,11 @@ impl crate::DynamicCommand for SnapshotLanded {
             .annotations
             .iter()
             .filter_map(|annotation| {
-                place(store, &self.home, &self.session, annotation)
+                place(store, self.comments, &self.session, annotation)
                     .map(|location| (annotation.clone(), location))
             })
             .collect();
-        Comments::update(store, &self.home, |comments| {
+        Comments::update(store, self.comments, |comments| {
             if let Some(mut feed) = comments.channel_for(&self.session).cloned() {
                 feed.live = true;
                 comments.channel = Some(feed);
@@ -545,13 +589,14 @@ impl crate::DynamicCommand for SnapshotLanded {
             }
             comments.generation += 1;
         });
-        settle(store, ui, &self.home, &self.session, fx);
-        relaunch_poll(window, &self.session, &feed, fx);
+        settle(store, ui, self.comments, &self.session, fx);
+        relaunch_poll(window, self.comments, &self.session, &feed, fx);
     }
 }
 
 struct Polled {
     home: crate::SessionId,
+    comments: imba::store::Id<Comments>,
     session: Uri,
     actions: Vec<StateAction>,
 }
@@ -571,7 +616,7 @@ impl crate::DynamicCommand for Polled {
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(feed) = Comments::of(store, &self.home)
+        let Some(feed) = Comments::of(store, self.comments)
             .and_then(|comments| comments.channel_for(&self.session).cloned())
         else {
             return;
@@ -582,14 +627,14 @@ impl crate::DynamicCommand for Polled {
             .iter()
             .filter_map(|action| match action {
                 StateAction::AnnotationsSet(set) => {
-                    place(store, &self.home, &self.session, &set.annotation)
+                    place(store, self.comments, &self.session, &set.annotation)
                         .map(|location| (set.annotation.id.clone(), location))
                 }
                 _ => None,
             })
             .collect();
         let mut dead_cards: Vec<(DocumentId, InlayKey)> = Vec::new();
-        Comments::update(store, &self.home, |comments| {
+        Comments::update(store, self.comments, |comments| {
             for action in &self.actions {
                 match action {
                     StateAction::AnnotationsSet(set) => {
@@ -683,28 +728,26 @@ impl crate::DynamicCommand for Polled {
             comments.generation += 1;
         });
 
-        if let Some(documents) =
-            crate::higent::Hosts::family(store, &self.home).map(|family| family.documents())
-        {
+        if let Some(documents) = Comments::documents_of(store, self.comments) {
             for (document, key) in dead_cards {
                 remove_card(store, documents, ui, document, key, fx);
             }
         }
-        settle(store, ui, &self.home, &self.session, fx);
-        relaunch_poll(window, &self.session, &feed, fx);
+        settle(store, ui, self.comments, &self.session, fx);
+        relaunch_poll(window, self.comments, &self.session, &feed, fx);
     }
 }
 
 fn settle(
     store: &mut Store,
     ui: &imba::UiCtx,
-    home: &crate::SessionId,
+    comments: imba::store::Id<Comments>,
     session: &Uri,
     fx: &mut AppFx<'_>,
 ) {
     let feed =
-        Comments::of(store, home).and_then(|comments| comments.channel_for(session).cloned());
-    let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, home)
+        Comments::of(store, comments).and_then(|comments| comments.channel_for(session).cloned());
+    let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments)
         .into_iter()
         .filter(|(_, record)| &record.session == session)
         .collect();
@@ -712,26 +755,31 @@ fn settle(
         if !record.synced {
             if let Some(feed) = feed.as_ref().filter(|feed| feed.live) {
                 dispatch_set(store, &feed.seat, &id, &record);
-                Comments::update_record(store, home, &id, |record| record.synced = true);
+                Comments::update_record(store, comments, &id, |record| record.synced = true);
             }
         }
-        match Comments::card(store, home, &id) {
-            Some(_) => refresh_card(store, ui, home, &id, &record),
+        match Comments::card(store, comments, &id) {
+            Some(_) => refresh_card(store, ui, comments, &id, &record),
             None => {
-                if let Some(document) = crate::higent::Hosts::family(store, home)
-                    .map(|family| family.documents())
-                    .and_then(|documents| {
+                if let Some(document) =
+                    Comments::documents_of(store, comments).and_then(|documents| {
                         crate::OpenDocuments::by_location(store, documents, &record.location)
                     })
                 {
-                    materialize(store, ui, home, &id, &record, document, fx);
+                    materialize(store, ui, comments, &id, &record, document, fx);
                 }
             }
         }
     }
 }
 
-fn relaunch_poll(window: WindowId, session: &Uri, feed: &ChannelFeed, fx: &mut AppFx<'_>) {
+fn relaunch_poll(
+    window: WindowId,
+    comments: imba::store::Id<Comments>,
+    session: &Uri,
+    feed: &ChannelFeed,
+    fx: &mut AppFx<'_>,
+) {
     let scope = crate::SessionId {
         host: feed.server,
         session: session.clone(),
@@ -749,6 +797,7 @@ fn relaunch_poll(window: WindowId, session: &Uri, feed: &ChannelFeed, fx: &mut A
                 window,
                 Arc::new(Polled {
                     home: scope.clone(),
+                    comments,
                     session: landing.clone(),
                     actions,
                 }),
@@ -758,7 +807,7 @@ fn relaunch_poll(window: WindowId, session: &Uri, feed: &ChannelFeed, fx: &mut A
 }
 
 pub(crate) struct Sent {
-    pub(crate) home: crate::SessionId,
+    pub(crate) comments: imba::store::Id<Comments>,
     pub(crate) ids: Vec<AnnotationId>,
     pub(crate) result: Result<(), String>,
 }
@@ -781,19 +830,17 @@ impl crate::DynamicCommand for Sent {
         if let Err(error) = &self.result {
             eprintln!("[comments] send failed, comments kept: {error}");
             for id in &self.ids {
-                Comments::update_record(store, &self.home, id, |record| record.sending = false);
+                Comments::update_record(store, self.comments, id, |record| record.sending = false);
             }
             return;
         }
         for id in &self.ids {
-            let card = Comments::card(store, &self.home, id);
-            Comments::removed(store, &self.home, id);
+            let card = Comments::card(store, self.comments, id);
+            Comments::removed(store, self.comments, id);
             let Some((document, key)) = card else {
                 continue;
             };
-            let Some(documents) =
-                crate::higent::Hosts::family(store, &self.home).map(|family| family.documents())
-            else {
+            let Some(documents) = Comments::documents_of(store, self.comments) else {
                 continue;
             };
             let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
@@ -817,11 +864,11 @@ impl crate::DynamicCommand for Sent {
 
 fn place(
     store: &Store,
-    home: &crate::SessionId,
+    comments: imba::store::Id<Comments>,
     session: &Uri,
     annotation: &Annotation,
 ) -> Option<ResourceLocation> {
-    let comments = Comments::of(store, home)?;
+    let comments = Comments::of(store, comments)?;
     if let Some(held) = comments.records.get(&annotation.id) {
         return Some(held.location.clone());
     }
@@ -923,18 +970,20 @@ impl crate::DocumentHook for CommentsHook {
         let Some(location) = location else {
             return;
         };
-        // The hook holds the collection's ADDRESS: its owner is the
-        // document's home.
-        let Some(home) = crate::higent::Hosts::session_of_documents_id(store, documents) else {
+        // The hook holds a documents id; the cards' collection is the
+        // sibling next to it.
+        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
+            .map(|family| family.comments())
+        else {
             return;
         };
-        let owes = Comments::of(store, &home).is_some_and(|comments| {
+        let owes = Comments::of(store, comments).is_some_and(|comments| {
             comments.records.iter().any(|(id, record)| {
                 record.location == *location && !comments.cards.contains_key(id)
             })
         });
         if owes {
-            crate::AppRequests::push(store, Arc::new(MaterializeFor { document }));
+            crate::AppRequests::push(store, Arc::new(MaterializeFor { comments, document }));
         }
     }
 
@@ -946,10 +995,12 @@ impl crate::DocumentHook for CommentsHook {
         _location: Option<&crate::ResourceLocation>,
         doc: &crate::Document,
     ) {
-        let Some(home) = crate::higent::Hosts::session_of_documents_id(store, documents) else {
+        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
+            .map(|family| family.comments())
+        else {
             return;
         };
-        let cards: Vec<(AnnotationId, InlayKey)> = Comments::of(store, &home)
+        let cards: Vec<(AnnotationId, InlayKey)> = Comments::of(store, comments)
             .map(|comments| {
                 comments
                     .cards
@@ -961,11 +1012,11 @@ impl crate::DocumentHook for CommentsHook {
             .unwrap_or_default();
         for (id, key) in cards {
             if let Some(range) = live_card_range(doc, key) {
-                Comments::update_record(store, &home, &id, move |record| {
+                Comments::update_record(store, comments, &id, move |record| {
                     record.range = Some(range);
                 });
             }
-            Comments::update(store, &home, |comments| {
+            Comments::update(store, comments, |comments| {
                 comments.cards.remove_mut(&id);
             });
         }
@@ -973,6 +1024,7 @@ impl crate::DocumentHook for CommentsHook {
 }
 
 struct MaterializeFor {
+    comments: imba::store::Id<Comments>,
     document: DocumentId,
 }
 
@@ -990,28 +1042,22 @@ impl crate::DynamicCommand for MaterializeFor {
         window: WindowId,
         fx: &mut AppFx<'_>,
     ) {
+        let _ = window;
         let ui = &app.ui_ctx();
-        let Some(family) = crate::Windows::session_family(store, window) else {
+        let Some(documents) = Comments::documents_of(store, self.comments) else {
             return;
         };
-        let Some(home) =
-            crate::Windows::window_ref(store, window).map(|entity| entity.current_session())
-        else {
-            return;
-        };
-        let documents = family.documents();
-        {};
         let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
             return;
         };
-        let owed: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, &home)
+        let owed: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, self.comments)
             .into_iter()
             .filter(|(id, record)| {
-                record.location == location && Comments::card(store, &home, id).is_none()
+                record.location == location && Comments::card(store, self.comments, id).is_none()
             })
             .collect();
         for (id, record) in owed {
-            materialize(store, ui, &home, &id, &record, self.document, fx);
+            materialize(store, ui, self.comments, &id, &record, self.document, fx);
         }
     }
 }
@@ -1033,15 +1079,13 @@ fn live_card_range(doc: &crate::Document, key: InlayKey) -> Option<Range<LineCol
 fn materialize(
     store: &mut Store,
     ui: &imba::UiCtx,
-    home: &crate::SessionId,
+    comments: imba::store::Id<Comments>,
     id: &AnnotationId,
     record: &CommentRecord,
     document: DocumentId,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(documents) =
-        crate::higent::Hosts::family(store, home).map(|family| family.documents())
-    else {
+    let Some(documents) = Comments::documents_of(store, comments) else {
         return;
     };
     let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
@@ -1060,7 +1104,7 @@ fn materialize(
         None => 0..byte_count,
     };
     let view = CommentView::materialized(
-        home.clone(),
+        comments,
         Some(document),
         crate::hicomments::FALLBACK_WIDTH,
         store,
@@ -1075,7 +1119,6 @@ fn materialize(
     let markup = comments_markup();
     doc.ensure_document_markup(markup);
     let mut minted = None;
-    let documents = crate::higent::Hosts::ensure_family(store, home).documents();
     fx.scope(
         move |command| {
             AppCommand::At(
@@ -1104,23 +1147,21 @@ fn materialize(
     );
     crate::OpenDocuments::put_document(store, documents, document, doc);
     if let Some(key) = minted {
-        Comments::card_born(store, home, id, document, key);
+        Comments::card_born(store, comments, id, document, key);
     }
 }
 
 fn refresh_card(
     store: &mut Store,
     ui: &imba::UiCtx,
-    home: &crate::SessionId,
+    comments: imba::store::Id<Comments>,
     id: &AnnotationId,
     record: &CommentRecord,
 ) {
-    let Some((document, key)) = Comments::card(store, home, id) else {
+    let Some((document, key)) = Comments::card(store, comments, id) else {
         return;
     };
-    let Some(documents) =
-        crate::higent::Hosts::family(store, home).map(|family| family.documents())
-    else {
+    let Some(documents) = Comments::documents_of(store, comments) else {
         return;
     };
     let Some(doc) = crate::OpenDocuments::document_ref(store, documents, document) else {
@@ -1142,7 +1183,7 @@ fn refresh_card(
     let fonts = crate::env::Fonts::of(store)();
     let theme = crate::env::Themes::of(store);
     let rebuilt = CommentView::materialized(
-        home.clone(),
+        comments,
         Some(document),
         crate::hicomments::FALLBACK_WIDTH,
         store,

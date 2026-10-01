@@ -45,7 +45,7 @@ impl crate::DynamicEditorCommand for SelectRange {
 fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_syntax_languages(himarkdown::markdown_languages(crate::SyntaxLanguages::new()));
-    app.register_editor_command(std::sync::Arc::new(AddComment));
+    app.register_document_command(std::sync::Arc::new(AddComment));
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
     assert!(app.perform_command(AppCommand::Opened(
@@ -133,8 +133,8 @@ fn the_fresh_card_takes_the_focus() {
     invoke(&mut app, window, "comments.add");
 
     let (document, inlays) = commented_document(&app);
-    let document =
-        crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the commented document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the commented document");
     let focused = document
         .editor_ids()
         .any(|editor| document.focus(editor) == EditorFocus::Inlay(inlays[0].0));
@@ -151,14 +151,15 @@ fn remove_comment_clears_the_card_and_returns_focus() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(RemoveComment {
-            home: app.sole_window_session(),
+            comments: app.sole_family().comments(),
             document,
             key: inlays[0].0,
             annotation: None,
         }),
     )));
 
-    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     assert!(
         doc.markup()
@@ -181,7 +182,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
     invoke(&mut app, window, "comments.add");
     let (document, inlays) = commented_document(&app);
     let host_before = {
-        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+            .expect("the document");
         let mut view = doc.text().view();
         let end = view.byte_count().min(u32::MAX as usize) as u32;
         view.substring(0..end)
@@ -189,7 +191,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
 
     let mut store = app.store().clone();
     let ui = UiCtx::dont_use_too_slow();
-    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let comments = doc
         .feature_markup(crate::hicomments::comments_markup())
@@ -230,7 +233,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
         "the card's markdown parsed through the ordinary background lane"
     );
     let host_after = {
-        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+            .expect("the document");
         let mut text = doc.text().view();
         let end = text.byte_count().min(u32::MAX as usize) as u32;
         text.substring(0..end)
@@ -317,7 +321,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1);
     let ids: Vec<crate::hicomments::AnnotationId> =
-        crate::hicomments::Comments::records(app.store(), &app.sole_window_session())
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments())
             .into_iter()
             .map(|(id, _)| id)
             .collect();
@@ -326,14 +330,14 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(crate::hicomments::SendComments {
-            home: app.sole_window_session(),
+            comments: app.sole_family().comments(),
             ids: ids.clone(),
         }),
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "the card stands");
     assert_eq!(
-        crate::hicomments::Comments::records(app.store(), &app.sole_window_session()).len(),
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).len(),
         1,
         "the record stands"
     );
@@ -341,7 +345,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(crate::hicomments::sync::Sent {
-            home: app.sole_window_session(),
+            comments: app.sole_family().comments(),
             ids: ids.clone(),
             result: Err("wire died".to_owned()),
         }),
@@ -352,13 +356,13 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(crate::hicomments::sync::Sent {
-            home: app.sole_window_session(),
+            comments: app.sole_family().comments(),
             ids,
             result: Ok(()),
         }),
     )));
     assert!(
-        crate::hicomments::Comments::records(app.store(), &app.sole_window_session()).is_empty(),
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),
         "the sent comment's record is consumed"
     );
     let survives = crate::OpenDocuments::list(app.store(), app.sole_documents())

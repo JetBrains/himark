@@ -228,7 +228,8 @@ impl FindBar {
         let Some((document_id, _)) = target else {
             return;
         };
-        let Some(document) = crate::OpenDocuments::document_ref(store, documents, document_id) else {
+        let Some(document) = crate::OpenDocuments::document_ref(store, documents, document_id)
+        else {
             return;
         };
         let query = self.query();
@@ -271,7 +272,8 @@ impl FindBar {
         if document_id != landed.document || self.query() != landed.query {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
         let matches = landed.matches.clone();
@@ -328,7 +330,8 @@ impl FindBar {
             self.stepped = true;
         }
         let found = self.matches[self.current].clone();
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
         document.reveal_selecting(editor, found, store, ui, fonts, theme, fx);
@@ -347,7 +350,8 @@ impl FindBar {
         let Some((document_id, _, markup)) = self.installed.take() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
         document.remove_markup(markup, &self.matches, store, ui, fonts, theme, fx);

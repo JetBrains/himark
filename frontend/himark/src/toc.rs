@@ -590,7 +590,9 @@ impl OutlineView {
     }
 
     fn relaunch(&mut self, store: &Store, fx: &mut imba::effect::Effects<'_, OutlineCommand>) {
-        let Some(document) = crate::OpenDocuments::document_ref(store, self.documents, self.document) else {
+        let Some(document) =
+            crate::OpenDocuments::document_ref(store, self.documents, self.document)
+        else {
             return;
         };
         let stamp = Self::stamp_of(document);
@@ -757,8 +759,8 @@ impl View for OutlineView {
         {
             let theme_ui = crate::env::Themes::of(store).ui().clone();
             let title_font = crate::fonts::ui_font(ui, theme_ui.panel.title_size);
-            let stale =
-                crate::OpenDocuments::document_ref(store, self.documents, self.document).is_some_and(|document| {
+            let stale = crate::OpenDocuments::document_ref(store, self.documents, self.document)
+                .is_some_and(|document| {
                     let stamp = Self::stamp_of(document);
                     self.derived != Some(stamp) && self.launched != Some(stamp)
                 });

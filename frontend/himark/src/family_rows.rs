@@ -7,11 +7,17 @@ use imba::store::Store;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum FamilyRow {
-    Terminal(crate::higent::ChannelUri),
+    Terminal(
+        imba::store::Id<crate::terminal::Terminals>,
+        crate::higent::ChannelUri,
+    ),
 
-    Pair(crate::DiffViewId),
+    Pair(imba::store::Id<crate::OpenDocuments>, crate::DiffViewId),
 
-    Chat(crate::higent::ChatUri),
+    Chat(
+        imba::store::Id<crate::higent::Chats>,
+        crate::higent::ChatUri,
+    ),
 
     Canvas(crate::diff_canvas::CanvasSource),
 }
@@ -32,16 +38,28 @@ impl RowMinters {
 
 pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
     match row {
-        FamilyRow::Terminal(channel) => crate::higent::Hosts::session_of_terminal(store, channel)
-            .and_then(|home| crate::higent::Hosts::family(store, &home))
-            .map(|family| {
+        // A row carries its collection: the pane is minted off the id
+        // while the record still stands.
+        FamilyRow::Terminal(terminals, channel) => store
+            .entity(*terminals)
+            .filter(|rows| rows.holds(channel))
+            .map(|_| {
                 Box::new(crate::terminal::TerminalView::new(
-                    family.terminals(),
+                    *terminals,
                     channel.clone(),
                 )) as Box<dyn crate::DynPanelView>
             }),
-        FamilyRow::Chat(chat) => crate::higent::ChatPane::of_chat(store, chat.clone())
-            .map(|pane| Box::new(pane) as Box<dyn crate::DynPanelView>),
+        // The row carries its collection: a pane is minted off the id,
+        // and a dismantled chat has no home to walk back to.
+        FamilyRow::Chat(chats, chat) => {
+            store
+                .entity(*chats)
+                .filter(|rows| rows.holds(chat))
+                .map(|_| {
+                    Box::new(crate::higent::ChatPane::new(*chats, chat.clone()))
+                        as Box<dyn crate::DynPanelView>
+                })
+        }
         row => store
             .get::<RowMinters>()?
             .0
@@ -50,31 +68,29 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
     }
 }
 
+/// The rows of one family that no pane fronts yet — the caller hands
+/// the family (a window's), never a session to look up.
 pub fn mint_unfronted(
     store: &Store,
-    session: &crate::SessionId,
+    family: &crate::higent::SessionState,
     fronted: &[FamilyRow],
 ) -> Vec<Box<dyn crate::DynPanelView>> {
     let mut rows: Vec<FamilyRow> = Vec::new();
-    if let Some(family) = crate::higent::Hosts::family(store, session) {
+    {
         rows.extend(
             crate::terminal::Terminals::list(store, family.terminals())
                 .into_iter()
-                .map(FamilyRow::Terminal),
+                .map(|channel| FamilyRow::Terminal(family.terminals(), channel)),
         );
         rows.extend(
             crate::OpenDocuments::pair_ids(store, family.documents())
                 .into_iter()
-                .map(FamilyRow::Pair),
+                .map(|pair| FamilyRow::Pair(family.documents(), pair)),
         );
-    }
-    // The chats of the NAMED session — the family rows are a
-    // session's own furniture.
-    {
         rows.extend(
-            crate::higent::Chats::list(store, session)
+            crate::higent::Chats::list(store, family.chats())
                 .into_iter()
-                .map(FamilyRow::Chat),
+                .map(|chat| FamilyRow::Chat(family.chats(), chat)),
         );
     }
     rows.retain(|row| !fronted.contains(row));

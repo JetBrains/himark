@@ -84,12 +84,7 @@ impl AppExt for Application {
         // consumes the id and never re-asks the window.
         let documents = {
             let store = self.window_store(window);
-            let Some(session) = crate::Windows::window_ref(&store, window)
-                .map(|entity| entity.current_session())
-            else {
-                return false;
-            };
-            let Some(family) = crate::higent::Hosts::family(&store, &session) else {
+            let Some(family) = crate::Windows::session_family(&store, window) else {
                 return false;
             };
             family.documents()

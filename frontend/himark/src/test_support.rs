@@ -111,7 +111,10 @@ pub fn add_session_folders(
 
 #[allow(dead_code)]
 fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
-    Some(crate::OpenDocuments::document_ref(store, view.documents(), view.document())?.content_height(view.editor()))
+    Some(
+        crate::OpenDocuments::document_ref(store, view.documents(), view.document())?
+            .content_height(view.editor()),
+    )
 }
 
 impl Application {
@@ -129,13 +132,16 @@ impl Application {
             .current_session()
     }
 
-    /// The sole window session's documents collection — the id a test
-    /// threads when it reaches documents directly.
+    /// The sole window's family — the ids a test threads when it
+    /// reaches a collection directly.
+    pub fn sole_family(&self) -> crate::higent::SessionState {
+        crate::Windows::session_family(self.store(), self.sole_window())
+            .expect("the sole window's family")
+    }
+
+    /// The sole window session's documents collection.
     pub fn sole_documents(&self) -> imba::store::Id<crate::OpenDocuments> {
-        let session = self.sole_window_session();
-        crate::higent::Hosts::family(self.store(), &session)
-            .expect("the sole session's family")
-            .documents()
+        self.sole_family().documents()
     }
 
     fn workbench(&self) -> &crate::Workbench {
@@ -175,7 +181,8 @@ impl Application {
         });
         let entity = first.expect("an editor pane");
         let document =
-            crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document()).expect("document");
+            crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())
+                .expect("document");
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
         let ui = ::editor::test_document::test_ui();
@@ -201,7 +208,9 @@ impl Application {
     pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
         let Some(document) = crate::Windows::window_ref(self.store(), self.sole_window())
             .and_then(|window| window.focused_document_id())
-            .and_then(|id| crate::OpenDocuments::document_ref(self.store(), self.sole_documents(), id))
+            .and_then(|id| {
+                crate::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)
+            })
         else {
             return false;
         };
@@ -223,7 +232,9 @@ impl Application {
         let mut index = 0usize;
         let store = self.store();
         let mut check = |index: usize, entity: EditorIdView| {
-            if let Some(document) = crate::OpenDocuments::document_ref(store, entity.documents(), entity.document()) {
+            if let Some(document) =
+                crate::OpenDocuments::document_ref(store, entity.documents(), entity.document())
+            {
                 let (pending, ..) = document.probe_state(entity.editor());
                 if pending.is_some() {
                     offenders.push((index, f32::NAN, f32::NAN));
@@ -269,7 +280,11 @@ impl Application {
         );
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = *pane.content();
-        let document = crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())?;
+        let document = crate::OpenDocuments::document_ref(
+            self.store(),
+            entity.documents(),
+            entity.document(),
+        )?;
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
         let extras = document.extras_keyed(entity.editor());
         let interval = ::editor::OverlaidMarkup::new(document.markup(), &extras)
@@ -294,14 +309,22 @@ impl Application {
     pub fn focused_caret_byte(&self) -> Option<u32> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
-        let document = crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())?;
+        let document = crate::OpenDocuments::document_ref(
+            self.store(),
+            entity.documents(),
+            entity.document(),
+        )?;
         Some(document.caret_byte(entity.editor()))
     }
 
     pub fn focused_reveal_pending(&self) -> Option<bool> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
-        let document = crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())?;
+        let document = crate::OpenDocuments::document_ref(
+            self.store(),
+            entity.documents(),
+            entity.document(),
+        )?;
         Some(document.reveal_pending(entity.editor()))
     }
 
@@ -326,7 +349,9 @@ impl Application {
         self.workbench().root.for_each_pane(&mut |panel| {
             let Some(pane) = panel.editor() else { return };
             let entity = pane.content();
-            if let Some(document) = crate::OpenDocuments::document_ref(store, entity.documents(), entity.document()) {
+            if let Some(document) =
+                crate::OpenDocuments::document_ref(store, entity.documents(), entity.document())
+            {
                 if document.syntax().is_some() {
                     styled += 1;
                 }
@@ -348,7 +373,8 @@ impl Application {
 
     pub fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
         let view = self.workbench().root.focused_pane().editor()?.content();
-        let document = crate::OpenDocuments::document_ref(self.store(), view.documents(), view.document())?;
+        let document =
+            crate::OpenDocuments::document_ref(self.store(), view.documents(), view.document())?;
         if document.text().view().byte_count() == 0 {
             return None;
         }

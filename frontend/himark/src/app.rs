@@ -110,21 +110,37 @@ pub enum AppCommand {
     /// a scope that was never lost.
     At(imba::store::Id<OpenDocuments>, DocumentsCommand),
 
+    AtChats(
+        imba::store::Id<crate::higent::Chats>,
+        crate::higent::ChatsCommand,
+    ),
+
+    AtChanges(
+        imba::store::Id<crate::hichanges::ChangeSets>,
+        crate::hichanges::ChangesCommand,
+    ),
+
+    AtHistory(
+        imba::store::Id<crate::hihistory::History>,
+        crate::hihistory::HistoryCommand,
+    ),
+
     Opened(WindowId, OpenedDocument),
 
-    /// A command for a STORE-HELD diff view, routed by id + session —
-    /// the dressing's own road (docs/model-view.md step 1): marks-job
-    /// landings and resyncs reach the view with no panel involved.
+    /// A command for a STORE-HELD diff view, routed by the documents
+    /// collection it lives in and its id — the dressing's own road
+    /// (docs/model-view.md step 1): marks-job landings and resyncs
+    /// reach the view with no panel involved.
     DiffViewCommand {
-        session: crate::SessionId,
+        documents: imba::store::Id<OpenDocuments>,
         view: crate::DiffViewId,
         command: Box<::editor::UnifiedDiffCommand>,
     },
 
-    /// A command for a SET-OWNED canvas, routed by ids + session —
-    /// the DiffViewCommand shape (docs/model-view.md).
+    /// A command for a SET-OWNED canvas, routed by the collection, the
+    /// set and the canvas — the DiffViewCommand shape.
     CanvasViewCommand {
-        session: crate::SessionId,
+        changes: imba::store::Id<crate::hichanges::ChangeSets>,
         set: crate::hichanges::ChangeSetId,
         canvas: crate::diff_canvas::canvas::CanvasId,
         command: Box<crate::diff_canvas::canvas::CanvasCommand>,
@@ -218,13 +234,12 @@ pub struct ChromeClearance(pub f32);
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
-    session: &crate::SessionId,
+    family: &crate::higent::SessionState,
     ui: &UiCtx,
     fx: &mut AppFx<'_>,
 ) -> WorkbenchNode {
     let mut scratch = markdown_scratch();
 
-    let family = crate::higent::Hosts::ensure_family(store, session);
     let documents = family.documents();
     let location = crate::next_scratch_location(store, family.scratch_names());
     let name = location.name().to_owned();
@@ -306,8 +321,8 @@ impl crate::DynamicCommand for EnterFreshSession {
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let session = entity.current_session();
-        let root = fresh_workbench_root(store, &session, ui, fx);
+        let family = entity.family().clone();
+        let root = fresh_workbench_root(store, &family, ui, fx);
         entity.install_fresh(self.previous.clone(), Workbench::new(root));
         crate::Windows::put(store, window, entity);
     }
@@ -499,18 +514,46 @@ impl Application {
                     crate::higent::Hosts::session_of_documents_id(store, *documents),
                 );
             }
+            AppCommand::AtChats(chats, _) => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_chats_id(store, *chats),
+                );
+            }
+            AppCommand::AtChanges(changes, _) => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_changes_id(store, *changes),
+                );
+            }
+            AppCommand::AtHistory(history, _) => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_history_id(store, *history),
+                );
+            }
             AppCommand::FileChanged(subscription) => {
                 // The one id-less border road: file events arrive from
                 // the watcher with a subscription and nothing else, so
                 // the owner is located once, here.
                 return (
                     None,
-                    crate::higent::Hosts::session_of_watch(store, *subscription),
+                    crate::higent::Hosts::documents_of_watch(store, *subscription).and_then(
+                        |documents| crate::higent::Hosts::session_of_documents_id(store, documents),
+                    ),
                 );
             }
-            AppCommand::DiffViewCommand { session, .. }
-            | AppCommand::CanvasViewCommand { session, .. } => {
-                return (None, Some(session.clone()));
+            AppCommand::DiffViewCommand { documents, .. } => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_documents_id(store, *documents),
+                );
+            }
+            AppCommand::CanvasViewCommand { changes, .. } => {
+                return (
+                    None,
+                    crate::higent::Hosts::session_of_changes_id(store, *changes),
+                );
             }
             _ => return (None, None),
         };
@@ -527,8 +570,8 @@ impl Application {
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let editors = fresh_workbench_root(&mut store, &workspace, &ui, &mut discarded.effects());
         let family = crate::higent::Hosts::ensure_family(&mut store, &workspace);
+        let editors = fresh_workbench_root(&mut store, &family, &ui, &mut discarded.effects());
         let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), family));
         self.commit(store, Some(&workspace));
         window
@@ -565,11 +608,7 @@ impl Application {
     /// answered synchronously from store truth at ask time.
     pub fn observe_stripe_bases(
         &mut self,
-        resolve: std::sync::Arc<
-            dyn Fn(&imba::store::Store, &crate::ResourceLocation) -> Option<crate::ResourceLocation>
-                + Send
-                + Sync,
-        >,
+        resolve: std::sync::Arc<dyn documents::StripeBaseResolver>,
     ) {
         self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
     }
@@ -903,10 +942,12 @@ impl Application {
             // The document lanes run over the batch's LAST scope — the
             // loop's own variable, not an ambient marker; a scopeless
             // tail has no documents to serve.
-            if let Some((session, documents)) = scope.1.as_ref().and_then(|session| {
-                crate::higent::Hosts::family(&store, session)
-                    .map(|family| (session.clone(), family.documents()))
-            }) {
+            if let Some(family) = scope
+                .1
+                .as_ref()
+                .and_then(|session| crate::higent::Hosts::family(&store, session).cloned())
+            {
+                let documents = family.documents();
                 crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
                 documents::scroll_stripes::sync_scroll_stripe_lanes(
                     &mut store,
@@ -920,23 +961,21 @@ impl Application {
                 // pair resyncs NOW, id-routed — a normalize landing
                 // and its re-dress share a batch, and no face waits
                 // for paint.
-                crate::diffs::sync_diff_dressing(
-                    &mut store,
-                    &session,
-                    documents,
-                    &self.ui_ctx(),
-                    &mut fx,
-                );
+                crate::diffs::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), &mut fx);
                 // The dock tree views ride the push road too: a
                 // changes / history feed landing refreshes a mounted
                 // stale view in the SAME batch — no paint probe.
-                crate::changes_view::sync_changes_views(&mut store, &session, &self.ui_ctx());
+                crate::changes_view::sync_changes_views(
+                    &mut store,
+                    family.changes(),
+                    &self.ui_ctx(),
+                );
                 // The canvases sync against the fresh document/diff/
                 // changeset state — the SAME batch a feed landed in, a
                 // direct lane over the sets that own them.
                 crate::diff_canvas::canvas::sync_canvases(
                     &mut store,
-                    &session,
+                    family.changes(),
                     &self.ui_ctx(),
                     &mut fx,
                 );
@@ -1201,6 +1240,9 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::At(_, DocumentsCommand::Refetched { .. }) => "refetched",
         AppCommand::At(_, DocumentsCommand::RefetchDiffed { .. }) => "refetch-diffed",
         AppCommand::At(_, DocumentsCommand::Normalized { .. }) => "diff normalized",
+        AppCommand::AtChats(_, crate::higent::ChatsCommand::Panel(..)) => "chat",
+        AppCommand::AtChanges(..) => "changes",
+        AppCommand::AtHistory(..) => "history",
         AppCommand::Opened(..) => "opened",
         AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::CanvasViewCommand { .. } => "canvas view",
@@ -1440,6 +1482,49 @@ impl Application {
                     fx,
                 );
             }
+            AppCommand::AtChats(chats, command) => {
+                store.route(
+                    chats,
+                    command,
+                    ui,
+                    move |command| AppCommand::AtChats(chats, command),
+                    fx,
+                );
+            }
+            AppCommand::AtChanges(changes, command) => {
+                store.route(
+                    changes,
+                    command,
+                    ui,
+                    move |command| AppCommand::AtChanges(changes, command),
+                    fx,
+                );
+                // The landing's note: the stripe bases under the
+                // folders it touched re-ask — application effects the
+                // entity itself does not hold.
+                for (documents, folder) in store
+                    .take::<crate::hichanges::BaseRearms>()
+                    .map(|rearms| rearms.0)
+                    .unwrap_or_default()
+                {
+                    let authority = folder.authority().clone();
+                    let prefix = format!("/{}/", folder.path().join("/"));
+                    crate::rearm_base_asks(store, documents, &|location| {
+                        location.authority() == &authority
+                            && format!("/{}", location.path().join("/")).starts_with(&prefix)
+                    });
+                    crate::sync_stripe_bases(store, documents, ui, fx);
+                }
+            }
+            AppCommand::AtHistory(history, command) => {
+                store.route(
+                    history,
+                    command,
+                    ui,
+                    move |command| AppCommand::AtHistory(history, command),
+                    fx,
+                );
+            }
             AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
 
@@ -1448,29 +1533,28 @@ impl Application {
                 crate::commands::Commands::register(store, command);
             }
             AppCommand::DiffViewCommand {
-                session,
+                documents,
                 view,
                 command,
             } => {
-                let documents = crate::higent::Hosts::ensure_family(store, &session).documents();
-                crate::diffs::perform_diff_view(store, documents, ui, session, view, *command, fx);
+                crate::diffs::perform_diff_view(store, documents, ui, view, *command, fx);
             }
             AppCommand::CanvasViewCommand {
-                session,
+                changes,
                 set,
                 canvas,
                 command,
             } => {
                 crate::diff_canvas::canvas::perform_canvas(
-                    store, ui, session, set, canvas, *command, fx,
+                    store, ui, changes, set, canvas, *command, fx,
                 );
             }
             AppCommand::FileChanged(subscription) => {
                 // The border road: the event names only a subscription;
                 // its documents collection is found once, by content.
-                if let Some(session) = crate::higent::Hosts::session_of_watch(store, subscription) {
-                    let documents =
-                        crate::higent::Hosts::ensure_family(store, &session).documents();
+                if let Some(documents) =
+                    crate::higent::Hosts::documents_of_watch(store, subscription)
+                {
                     crate::watch::refetch_watched(store, documents, subscription, fx);
                 }
 

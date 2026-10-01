@@ -695,21 +695,42 @@ pub fn land_diff_markup(
 /// async effect smuggled the data through an Arc<Mutex<HashMap>>,
 /// which is exactly the mutable shared state this codebase bans).
 #[derive(Clone)]
-pub struct StripeBases(
-    pub  std::sync::Arc<
-        dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation> + Send + Sync,
-    >,
-);
+pub struct StripeBases(pub std::sync::Arc<dyn StripeBaseResolver>);
+
+/// The base resolver's shape: it is handed the documents collection
+/// the ask is for, so an edge that keeps bases next to that collection
+/// reaches them by id (docs/entities.md law 3).
+pub trait StripeBaseResolver: Send + Sync {
+    fn resolve(
+        &self,
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        location: &editor::ResourceLocation,
+    ) -> Option<editor::ResourceLocation>;
+}
+
+impl<F> StripeBaseResolver for F
+where
+    F: Fn(
+            &Store,
+            imba::store::Id<OpenDocuments>,
+            &editor::ResourceLocation,
+        ) -> Option<editor::ResourceLocation>
+        + Send
+        + Sync,
+{
+    fn resolve(
+        &self,
+        store: &Store,
+        documents: imba::store::Id<OpenDocuments>,
+        location: &editor::ResourceLocation,
+    ) -> Option<editor::ResourceLocation> {
+        self(store, documents, location)
+    }
+}
 
 impl StripeBases {
-    pub fn install(
-        store: &mut Store,
-        resolve: std::sync::Arc<
-            dyn Fn(&Store, &editor::ResourceLocation) -> Option<editor::ResourceLocation>
-                + Send
-                + Sync,
-        >,
-    ) {
+    pub fn install(store: &mut Store, resolve: std::sync::Arc<dyn StripeBaseResolver>) {
         store.put(StripeBases(resolve));
     }
 }
@@ -741,7 +762,7 @@ pub fn sync_stripe_bases<R: 'static>(
         if probe() {
             eprintln!("[diffs] base ask for /{}", location.path().join("/"));
         }
-        let base = resolve(store, &location);
+        let base = resolve.resolve(store, documents, &location);
         land(store, document, base, fx);
     }
 }
@@ -1022,13 +1043,17 @@ mod tests {
         assert_eq!(landed.len(), 0, "no resolver installed, no ask");
         StripeBases::install(
             &mut store,
-            std::sync::Arc::new(|_: &Store, location: &editor::ResourceLocation| {
-                Some(editor::ResourceLocation::new(
-                    editor::ResourceType::document(),
-                    location.authority().clone(),
-                    vec![format!("{}@abc123", location.path().join("/"))],
-                ))
-            }),
+            std::sync::Arc::new(
+                |_: &Store,
+                 _: imba::store::Id<OpenDocuments>,
+                 location: &editor::ResourceLocation| {
+                    Some(editor::ResourceLocation::new(
+                        editor::ResourceType::document(),
+                        location.authority().clone(),
+                        vec![format!("{}@abc123", location.path().join("/"))],
+                    ))
+                },
+            ),
         );
         let mut first = imba::effect::Batch::<Landed>::new();
         sync_stripe_bases(

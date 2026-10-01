@@ -346,14 +346,19 @@ impl DocumentChannels {
         Uid(self.salt ^ u128::from(minted))
     }
 
+    /// Ensure the channel for a document the hook just registered —
+    /// the hook holds the collection, so every landing of this life
+    /// carries it (docs/entities.md law 3).
     pub fn ensure(
         self: &Arc<Self>,
+        documents: imba::store::Id<himark::OpenDocuments>,
         location: ResourceLocation,
         seat: Arc<dyn AhpServer>,
         session: String,
     ) {
         self.post(EnsureSync {
             channels: Arc::clone(self),
+            documents,
             location,
             seat,
             session,
@@ -374,27 +379,23 @@ impl DocumentChannels {
 fn connect(
     channels: &Arc<DocumentChannels>,
     store: &mut Store,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: &ResourceLocation,
     seat: &Arc<dyn AhpServer>,
     session: &str,
 ) {
     channels.store_connecting(location);
-    let since = Some(
-        himark::higent::Hosts::ensure_family(
-            store,
-            &himark::SessionId::of_location(store, location),
-        )
-        .documents(),
-    )
-    .and_then(|documents| {
-        himark::OpenDocuments::by_location(store, documents, location)
-            .and_then(|id| himark::OpenDocuments::document_ref(store, documents, id))
-    })
-    .map(|document| document.revision())
-    .unwrap_or_default();
+    let since = Some(documents)
+        .and_then(|documents| {
+            himark::OpenDocuments::by_location(store, documents, location)
+                .and_then(|id| himark::OpenDocuments::document_ref(store, documents, id))
+        })
+        .map(|document| document.revision())
+        .unwrap_or_default();
     let (stop, stopped) = mpsc::unbounded_channel();
     channels.runtime.spawn(channel_life(
         Arc::clone(channels),
+        documents,
         location.clone(),
         Arc::clone(seat),
         session.to_owned(),
@@ -411,22 +412,33 @@ type Seeded = (SyncState, Uid, mpsc::UnboundedReceiver<Local<SyncEdit>>);
 
 async fn channel_life(
     channels: Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: ResourceLocation,
     server: Arc<dyn AhpServer>,
     session: String,
     mut stopped: mpsc::UnboundedReceiver<()>,
 ) {
-    life(&channels, &location, server, session, &mut stopped).await;
+    life(
+        &channels,
+        documents,
+        &location,
+        server,
+        session,
+        &mut stopped,
+    )
+    .await;
     // The last word, ALWAYS: whatever road ended the life, the
     // subscription is gone by now, so a queued reopen may connect.
     channels.post(Drained {
         channels: Arc::clone(&channels),
+        documents,
         location,
     });
 }
 
 async fn life(
     channels: &Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: &ResourceLocation,
     server: Arc<dyn AhpServer>,
     session: String,
@@ -444,6 +456,7 @@ async fn life(
                 tracing::warn!(%error, "docsync: could not reach the channel");
                 channels.post(GiveUp {
                     channels: Arc::clone(channels),
+                    documents,
                     location: location.clone(),
                 });
                 return;
@@ -466,6 +479,7 @@ async fn life(
                 .await;
             channels.post(GiveUp {
                 channels: Arc::clone(channels),
+                documents,
                 location: location.clone(),
             });
             return;
@@ -481,6 +495,7 @@ async fn life(
     let (seeded, mut seed) = mpsc::channel::<Seeded>(1);
     channels.post(AdoptSnapshot {
         channels: Arc::clone(channels),
+        documents,
         server: Arc::clone(&server),
         document: opened.document.clone(),
         location: location.clone(),
@@ -546,6 +561,7 @@ async fn life(
         runtime.spawn(async move {
             while let Some(offer) = offers_rx.recv().await {
                 channels.post(ApplyOffer {
+                    documents,
                     location: location.clone(),
                     offer,
                 });
@@ -581,6 +597,7 @@ async fn life(
 
 struct EnsureSync {
     channels: Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: ResourceLocation,
     seat: Arc<dyn AhpServer>,
     session: String,
@@ -617,6 +634,7 @@ impl himark::DynamicCommand for EnsureSync {
         connect(
             &self.channels,
             store,
+            self.documents,
             &self.location,
             &self.seat,
             &self.session,
@@ -629,6 +647,7 @@ impl himark::DynamicCommand for EnsureSync {
 /// after the old unsubscribe.
 struct Drained {
     channels: Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: ResourceLocation,
 }
 
@@ -653,6 +672,7 @@ impl himark::DynamicCommand for Drained {
                 connect(
                     &self.channels,
                     store,
+                    self.documents,
                     &self.location,
                     &reopen.seat,
                     &reopen.session,
@@ -664,11 +684,7 @@ impl himark::DynamicCommand for Drained {
                 // the resource itself.
                 self.channels.forget_store(&self.location);
                 {
-                    let documents = himark::higent::Hosts::ensure_family(
-                        store,
-                        &himark::SessionId::of_location(store, &self.location),
-                    )
-                    .documents();
+                    let documents = self.documents;
                     if let Some(document) =
                         himark::OpenDocuments::by_location(store, documents, &self.location)
                     {
@@ -689,6 +705,7 @@ impl himark::DynamicCommand for Drained {
 
 struct AdoptSnapshot {
     channels: Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     server: Arc<dyn AhpServer>,
     document: himark_ahp_ext_types::Uri,
     location: ResourceLocation,
@@ -715,11 +732,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
         let Some((stop, since)) = SyncSeats::connecting(store, &self.location) else {
             return;
         };
-        let documents = himark::higent::Hosts::ensure_family(
-            store,
-            &himark::SessionId::of_location(store, &self.location),
-        )
-        .documents();
+        let documents = self.documents;
         let Some(document_id) =
             himark::OpenDocuments::by_location(store, documents, &self.location)
         else {
@@ -827,6 +840,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
 
 struct GiveUp {
     channels: Arc<DocumentChannels>,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: ResourceLocation,
 }
 
@@ -851,11 +865,7 @@ impl himark::DynamicCommand for GiveUp {
         // Mode two: no document channel — this client subscribes to
         // the resource itself and reloads on its own.
         {
-            let documents = himark::higent::Hosts::ensure_family(
-                store,
-                &himark::SessionId::of_location(store, &self.location),
-            )
-            .documents();
+            let documents = self.documents;
             if let Some(document) =
                 himark::OpenDocuments::by_location(store, documents, &self.location)
             {
@@ -868,6 +878,7 @@ impl himark::DynamicCommand for GiveUp {
 }
 
 struct ApplyOffer {
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: ResourceLocation,
     offer: Offer<SyncState>,
 }
@@ -890,11 +901,7 @@ impl himark::DynamicCommand for ApplyOffer {
         let Some(seat) = SyncSeats::seat(store, &self.location) else {
             return;
         };
-        let documents = himark::higent::Hosts::ensure_family(
-            store,
-            &himark::SessionId::of_location(store, &self.location),
-        )
-        .documents();
+        let documents = self.documents;
         let Some(document_id) =
             himark::OpenDocuments::by_location(store, documents, &self.location)
         else {
@@ -982,7 +989,7 @@ impl himark::DocumentHook for DocsyncHook {
     fn opened(
         &self,
         _store: &mut Store,
-        _documents: imba::store::Id<himark::OpenDocuments>,
+        documents: imba::store::Id<himark::OpenDocuments>,
         _document: himark::DocumentId,
         location: Option<&himark::ResourceLocation>,
     ) {
@@ -1000,6 +1007,7 @@ impl himark::DocumentHook for DocsyncHook {
         };
         DocumentChannels::ensure(
             &self.channels,
+            documents,
             location.clone(),
             seat,
             session.into_string(),

@@ -191,7 +191,9 @@ fn navigate(
 
 pub struct GoDefinition;
 
-impl himark::DynamicEditorCommand for GoDefinition {
+/// The navigation commands close over the pane's ids (docs/entities.md
+/// law 3): the open set they hand the ask is the collection they run in.
+impl himark::DocumentCommand for GoDefinition {
     fn id(&self) -> &'static str {
         "code.definition"
     }
@@ -202,19 +204,30 @@ impl himark::DynamicEditorCommand for GoDefinition {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
-        navigation(self.id(), store, document, editor, location, payload, fx);
+        navigation(
+            self.id(),
+            store,
+            documents,
+            document,
+            editor,
+            location,
+            payload,
+            fx,
+        );
     }
 }
 
 pub struct GoReferences;
 
-impl himark::DynamicEditorCommand for GoReferences {
+impl himark::DocumentCommand for GoReferences {
     fn id(&self) -> &'static str {
         "code.references"
     }
@@ -225,6 +238,8 @@ impl himark::DynamicEditorCommand for GoReferences {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        _documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -246,7 +261,7 @@ impl himark::DynamicEditorCommand for GoReferences {
 
 pub struct GoImplementations;
 
-impl himark::DynamicEditorCommand for GoImplementations {
+impl himark::DocumentCommand for GoImplementations {
     fn id(&self) -> &'static str {
         "code.implementations"
     }
@@ -257,6 +272,8 @@ impl himark::DynamicEditorCommand for GoImplementations {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        _documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -344,6 +361,7 @@ fn stream_navigation(
 fn navigation(
     id: &'static str,
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     document: &mut Document,
     editor: himark::EditorId,
     location: &ResourceLocation,
@@ -358,12 +376,6 @@ fn navigation(
         let title = match ident.is_empty() {
             false => format!("Definitions of `{ident}`"),
             true => "Definitions".to_owned(),
-        };
-        let home = himark::SessionId::of_location(store, location);
-        let Some(documents) =
-            himark::higent::Hosts::family(store, &home).map(|family| family.documents())
-        else {
-            return;
         };
         let open = OpenDocuments::list(store, documents)
             .into_iter()

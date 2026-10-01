@@ -143,11 +143,11 @@ impl SessionState {
     /// Manual lifecycle (docs/entities.md): the owner retracts what
     /// its ids name when the row goes.
     fn retract_all(&self, store: &mut Store) {
-        store.retract(self.chats);
+        store.dispose(self.chats);
         store.retract(self.trees);
         store.retract(self.recents);
-        store.retract(self.changes);
-        store.retract(self.history);
+        store.dispose(self.changes);
+        store.dispose(self.history);
         store.retract(self.comments);
         store.retract(self.terminals);
         // Converted collections leave through `dispose`: the row goes,
@@ -337,6 +337,21 @@ impl Hosts {
         }
         let family = SessionState::mint();
         let minted = family.clone();
+        // The collections that hold SIBLING ids are put wired, here,
+        // the one place that knows the whole wiring (law 4).
+        store.put_entity(
+            family.changes,
+            crate::hichanges::ChangeSets::wired(family.documents, family.history),
+        );
+        store.put_entity(
+            family.history,
+            crate::hihistory::History::wired(family.changes),
+        );
+        store.put_entity(
+            family.comments,
+            crate::hicomments::Comments::wired(family.documents),
+        );
+        store.put_entity(family.chats, crate::higent::Chats::wired(family.recents));
         store.update::<Hosts>(|hosts| {
             let mut host = match hosts.entries.get(&session.host) {
                 Some(host) => host.clone(),
@@ -437,6 +452,42 @@ impl Hosts {
         Self::find_session(store, |_store, families| families.documents == documents)
     }
 
+    pub(crate) fn session_of_chats_id(
+        store: &Store,
+        chats: Id<crate::higent::Chats>,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |_store, families| families.chats == chats)
+    }
+
+    pub(crate) fn session_of_changes_id(
+        store: &Store,
+        changes: Id<crate::hichanges::ChangeSets>,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |_store, families| families.changes == changes)
+    }
+
+    pub(crate) fn session_of_history_id(
+        store: &Store,
+        history: Id<crate::hihistory::History>,
+    ) -> Option<crate::SessionId> {
+        Self::find_session(store, |_store, families| families.history == history)
+    }
+
+    /// The family whose documents collection this is — the sibling
+    /// road for an edge that holds a documents id and needs the
+    /// collection next to it (the stripe-base resolver).
+    pub fn family_of_documents(
+        store: &Store,
+        documents: Id<crate::OpenDocuments>,
+    ) -> Option<&SessionState> {
+        let hosts = store.get::<Hosts>()?;
+        hosts.entries.values().find_map(|host| {
+            host.families
+                .values()
+                .find(|families| families.documents == documents)
+        })
+    }
+
     /// Which documents collection holds a document — the cold road
     /// for a landing that names only the document.
     pub fn documents_of_document(
@@ -463,88 +514,46 @@ impl Hosts {
     /// nothing else.
     /// Which documents collection holds a diff view — the cold
     /// re-mint road for a family row that names only the pair.
-    pub(crate) fn documents_of_diff_view(
+    /// The documents collection riding a watch subscription — the one
+    /// id-less border road (file events arrive with a subscription and
+    /// nothing else), found once, here.
+    pub(crate) fn documents_of_watch(
         store: &Store,
-        pair: crate::DiffViewId,
+        subscription: crate::watch::Subscription,
     ) -> Option<Id<crate::OpenDocuments>> {
         let hosts = store.get::<Hosts>()?;
-        for (_, host) in hosts.entries.iter() {
-            for (_, families) in host.families.iter() {
-                let documents = families.documents;
-                if store
-                    .entity(documents)
-                    .is_some_and(|docs| docs.holds_diff_view(pair))
-                {
-                    return Some(documents);
+        hosts.entries.values().find_map(|host| {
+            host.families.values().find_map(|families| {
+                store
+                    .entity(families.documents)
+                    .is_some_and(|documents| documents.rides_watch(subscription))
+                    .then_some(families.documents)
+            })
+        })
+    }
+
+    /// The session and family a documents collection belongs to — for
+    /// a pane that holds the collection's id and needs the catalog's
+    /// name for its folders beside the sibling ids.
+    pub(crate) fn home_of_documents(
+        store: &Store,
+        documents: Id<crate::OpenDocuments>,
+    ) -> Option<(crate::SessionId, SessionState)> {
+        let hosts = store.get::<Hosts>()?;
+        for (host, row) in hosts.entries.iter() {
+            for (session, families) in row.families.iter() {
+                if families.documents == documents {
+                    return Some((
+                        crate::SessionId {
+                            host: *host,
+                            session: session.clone(),
+                        },
+                        families.clone(),
+                    ));
                 }
             }
         }
         None
-    }
-
-    pub(crate) fn session_of_watch(
-        store: &Store,
-        subscription: crate::watch::Subscription,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.documents)
-                .is_some_and(|documents| documents.rides_watch(subscription))
-        })
-    }
-
-    /// Which session owns a terminal — the cold road, for a family row
-    /// or a walk back that holds a channel and nothing else.
-    pub(crate) fn session_of_terminal(
-        store: &Store,
-        channel: &crate::higent::ChannelUri,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.terminals)
-                .is_some_and(|terminals| terminals.holds(channel))
-        })
-    }
-
-    /// Which session owns a chat — the COLD road, for the places that
-    /// hold a chat uri and nothing else (a window's listing, a family
-    /// row, a walk back).
-    pub(crate) fn session_of_chat(
-        store: &Store,
-        chat: &crate::higent::ChatUri,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |store, families| {
-            store
-                .entity(families.chats)
-                .is_some_and(|chats| chats.holds(chat))
-        })
-    }
-
-    /// Every chat of every session, with the session that owns it —
-    /// the cross-family listing, for a window that has to find a chat
-    /// without knowing whose it is.
-    pub fn every_chat(store: &Store) -> Vec<(crate::SessionId, crate::higent::ChatUri)> {
-        let Some(hosts) = store.get::<Hosts>() else {
-            return Vec::new();
-        };
-        hosts
-            .entries
-            .iter()
-            .flat_map(|(host, row)| {
-                row.families.iter().flat_map(move |(session, families)| {
-                    let id = crate::SessionId {
-                        host: *host,
-                        session: session.clone(),
-                    };
-                    store
-                        .entity(families.chats)
-                        .map(|chats| chats.uris())
-                        .unwrap_or_default()
-                        .into_iter()
-                        .map(move |chat| (id.clone(), chat))
-                })
-            })
-            .collect()
     }
 
     fn find_session(
@@ -611,17 +620,34 @@ mod family_tests {
         }
     }
 
+    /// Mint a chat into ITS session's collection — the mint door is the
+    /// one catalog consult; the record carries the collection id after.
     fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
         let uri = ChatUri::new(chat);
+        let chats = Hosts::ensure_family(store, session).chats();
         let panel = crate::higent::chat::ChatPanel::new(
             store,
             ::editor::test_document::test_ui(),
             session.host,
             session.session.clone(),
+            chats,
             uri.clone(),
         );
-        Chats::put(store, uri.clone(), panel);
+        Chats::put(store, chats, uri.clone(), panel);
         uri
+    }
+
+    /// The cold read a test takes: session → collection → record.
+    fn chat_in(store: &Store, session: &crate::SessionId, uri: &ChatUri) -> bool {
+        Hosts::family(store, session)
+            .and_then(|family| Chats::chat_ref(store, family.chats(), uri))
+            .is_some()
+    }
+
+    fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
+        Hosts::family(store, session)
+            .map(|family| Chats::list(store, family.chats()))
+            .unwrap_or_default()
     }
 
     /// A chat is reached by its OWN session, so a batch gathered for
@@ -640,7 +666,7 @@ mod family_tests {
         // The next batch is gathered for a DIFFERENT session.
         let store = state.gather(None, Some(&session("s-b")), &seats);
         assert!(
-            Chats::chat_ref(&store, &home, &uri).is_some(),
+            chat_in(&store, &home, &uri),
             "the record is found by its own address"
         );
     }
@@ -661,7 +687,7 @@ mod family_tests {
         state.scatter(std::mem::replace(&mut store, Store::new()), None);
 
         let store = state.gather(None, Some(&home), &seats);
-        assert!(Chats::chat_ref(&store, &home, &uri).is_some());
+        assert!(chat_in(&store, &home, &uri));
     }
 
     #[test]
@@ -678,13 +704,10 @@ mod family_tests {
 
         let store = state.gather(None, Some(&home), &seats);
         assert!(
-            Chats::chat_ref(&store, &home, &uri).is_some(),
+            chat_in(&store, &home, &uri),
             "filed by the panel's session, not the gather's"
         );
-        assert!(
-            Chats::chat_ref(&store, &elsewhere, &uri).is_none(),
-            "and nowhere else"
-        );
+        assert!(!chat_in(&store, &elsewhere, &uri), "and nowhere else");
     }
 
     #[test]
@@ -700,8 +723,8 @@ mod family_tests {
         state.scatter(store, Some(&a));
 
         let store = state.gather(None, Some(&a), &seats);
-        assert_eq!(Chats::list(&store, &a), vec![mine]);
-        assert_eq!(Chats::list(&store, &b), vec![theirs]);
+        assert_eq!(list_in(&store, &a), vec![mine]);
+        assert_eq!(list_in(&store, &b), vec![theirs]);
     }
 
     /// The session is the LIFETIME of its chats.
@@ -717,8 +740,8 @@ mod family_tests {
         state.scatter(store, Some(&home));
 
         let store = state.gather(None, Some(&home), &seats);
-        assert!(Chats::chat_ref(&store, &home, &uri).is_none());
-        assert!(Chats::list(&store, &home).is_empty());
+        assert!(!chat_in(&store, &home, &uri));
+        assert!(list_in(&store, &home).is_empty());
     }
 
     /// Disposal is the whole ceremony: the family row leaves `Hosts`
@@ -736,9 +759,6 @@ mod family_tests {
         let family = Hosts::ensure_family(&mut store, &home);
         store.update_entity(family.recents, |_recents: &mut crate::RecentLocations| {});
         store.update_entity(family.trees, |_trees| {});
-        store.update_entity(family.changes, |_changes| {});
-        store.update_entity(family.history, |_history| {});
-        store.update_entity(family.comments, |_comments| {});
         store.update_entity(family.terminals, |_terminals| {});
         state.scatter(store, Some(&home));
 
@@ -761,26 +781,5 @@ mod family_tests {
         // And scatter resurrects nothing from the scaffolding.
         let store = state.gather(None, Some(&home), &seats);
         assert!(Hosts::family(&store, &home).is_none());
-    }
-
-    #[test]
-    fn a_chat_names_the_session_that_owns_it() {
-        let mut state = crate::AppState::default();
-        let seats = crate::higent::Servers::default();
-        let home = session("s-a");
-
-        let mut store = state.gather(None, Some(&home), &seats);
-        let uri = put(&mut store, &home, "chat:1");
-        state.scatter(store, Some(&home));
-
-        let store = state.gather(None, None, &seats);
-        assert_eq!(Hosts::session_of_chat(&store, &uri), Some(home));
-    }
-
-    #[test]
-    fn an_unknown_chat_names_no_session() {
-        let state = crate::AppState::default();
-        let store = state.gather(None, None, &crate::higent::Servers::default());
-        assert!(Hosts::session_of_chat(&store, &ChatUri::new("chat:ghost")).is_none());
     }
 }

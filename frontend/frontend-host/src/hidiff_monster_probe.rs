@@ -13,7 +13,6 @@ fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
     *DOCS.get_or_init(imba::store::Id::mint)
 }
 
-
 fn monster_pair(repetitions: usize) -> (String, String) {
     let sample = include_str!("../../plugins/demo/sample.md");
     let left = sample.repeat(repetitions);
@@ -319,7 +318,8 @@ fn probe_pair(left: String, right: String) {
                 .0;
             {
                 let document =
-                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info).expect("document");
+                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
+                        .expect("document");
                 document
                     .editor_ids()
                     .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
@@ -332,7 +332,8 @@ fn probe_pair(left: String, right: String) {
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                    .expect("document");
             let editor = document.editor_ids().next().expect("an editor");
 
             let text = {
@@ -363,7 +364,8 @@ fn probe_pair(left: String, right: String) {
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0).expect("document");
+                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                    .expect("document");
             let editor = document.editor_ids().next().expect("an editor");
             document
                 .viewport(editor)

@@ -319,6 +319,7 @@ impl Completion {
         editor: ::editor::EditorId,
         typed_at: Option<u32>,
         session: &crate::SessionId,
+        recents: imba::store::Id<crate::RecentLocations>,
         installed: Option<(crate::DocumentId, ::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         wrap: W,
@@ -363,11 +364,7 @@ impl Completion {
         }
         self.source = SourceState::Path {
             folders: Arc::new(crate::higent::session_folders(store, session)),
-            recents: Arc::new(
-                crate::higent::Hosts::family(store, session)
-                    .map(|family| crate::RecentLocations::list(store, family.recents()))
-                    .unwrap_or_default(),
-            ),
+            recents: Arc::new(crate::RecentLocations::list(store, recents)),
             found: Arc::new(Vec::new()),
             rows: Arc::new(Vec::new()),
         };

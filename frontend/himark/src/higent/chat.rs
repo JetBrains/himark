@@ -443,6 +443,9 @@ pub struct ChatPanel {
     server: crate::higent::HostId,
 
     session: crate::higent::SessionUri,
+    /// The collection this chat files into — wired at mint
+    /// (docs/entities.md law 4).
+    chats: imba::store::Id<crate::higent::Chats>,
     chat: crate::higent::ChatUri,
     state: Link,
     title: String,
@@ -482,6 +485,7 @@ impl Clone for ChatPanel {
         Self {
             server: self.server,
             session: self.session.clone(),
+            chats: self.chats,
             chat: self.chat.clone(),
             state: self.state.clone(),
             title: self.title.clone(),
@@ -571,11 +575,13 @@ impl ChatPanel {
         _ui: &UiCtx,
         server: crate::higent::HostId,
         session: impl Into<crate::higent::SessionUri>,
+        chats: imba::store::Id<crate::higent::Chats>,
         chat: impl Into<crate::higent::ChatUri>,
     ) -> Self {
         Self {
             server,
             session: session.into(),
+            chats,
             chat: chat.into(),
             state: Link::Idle,
             title: "Agent Chat".to_owned(),
@@ -1469,7 +1475,7 @@ impl ChatPanel {
                     crate::AppRequests::push(
                         store,
                         std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
-                            session: self.session_id(),
+                            chats: self.chats,
                             chat: self.chat.clone(),
                         }),
                     );
@@ -1654,9 +1660,12 @@ impl ChatPanel {
                     return;
                 };
                 let session = self.session_id();
+                let Some(recents) = store.entity(self.chats).map(|chats| chats.recents()) else {
+                    return;
+                };
                 fx.scope(
                     move |command| ChatPanelCommand::InView(id, Box::new(command)),
-                    |fx| view.composer_command(store, ui, &session, command, fx),
+                    |fx| view.composer_command(store, ui, &session, recents, command, fx),
                 );
                 self.views.insert_mut(id, view);
             }
@@ -2355,6 +2364,7 @@ impl ChatView {
         store: &mut Store,
         ui: &UiCtx,
         session: &crate::SessionId,
+        recents: imba::store::Id<crate::RecentLocations>,
         command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2385,6 +2395,7 @@ impl ChatView {
             editor,
             at,
             session,
+            recents,
             None,
             fx,
             ChatPanelCommand::CompletionFound,
@@ -2681,14 +2692,12 @@ impl crate::DynamicCommand for OpenEditedFile {
         ) else {
             return;
         };
-        let documents = crate::higent::Hosts::ensure_family(
-            store,
-            &crate::SessionId {
-                host: self.server,
-                session: self.session.clone(),
-            },
-        )
-        .documents();
+        // The file opens WHERE the user is: the window's own documents.
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
+            return;
+        };
         let _ = fx.push(crate::open_by_location_effect(
             window, documents, location, true, true, None,
         ));

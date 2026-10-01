@@ -261,14 +261,18 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
 /// handler fed through a shared Arc<Mutex<HashMap>>.)
 pub fn resolve_base(
     store: &imba::store::Store,
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: &ResourceLocation,
 ) -> Option<ResourceLocation> {
     if himark::hichanges::scoped(location) || !served(location) {
         return None;
     }
+    // The ask names its documents collection; the bases live in the
+    // change sets next to it.
+    let changes = himark::higent::Hosts::family_of_documents(store, documents)?.changes();
     let before = himark::hichanges::Changes::base_ref(
         store,
-        &himark::SessionId::of_location(store, location),
+        changes,
         &format!("/{}", location.path().join("/")),
     )?;
     let (origin, _) = himark::hichanges::raw_ref(&before)?;

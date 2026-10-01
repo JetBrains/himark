@@ -694,7 +694,10 @@ impl crate::DynamicCommand for RemovePeek {
         let document = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(documents, crate::app::DocumentsCommand::Editor(document, command))
+                crate::AppCommand::At(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(document, command),
+                )
             },
             |fx| doc.remove_inlay(self.key, store, ui, &fonts, &theme, fx),
         );
@@ -709,7 +712,9 @@ fn peek_markup() -> crate::MarkupId {
 
 pub struct GoToReference;
 
-impl crate::DynamicEditorCommand for GoToReference {
+/// Closes over the pane's ids (docs/entities.md law 3): the card's
+/// host is the document the command runs in, no owner is resolved.
+impl documents::DocumentCommand for GoToReference {
     fn id(&self) -> &'static str {
         "code.go-to-reference"
     }
@@ -722,6 +727,8 @@ impl crate::DynamicEditorCommand for GoToReference {
         &self,
         store: &mut Store,
         ui: &imba::UiCtx,
+        _documents: imba::store::Id<crate::OpenDocuments>,
+        document_id: crate::DocumentId,
         document: &mut Document,
         editor: crate::EditorId,
         location: &crate::ResourceLocation,
@@ -759,9 +766,7 @@ impl crate::DynamicEditorCommand for GoToReference {
             width if width > 1.0 => width,
             _ => FALLBACK_WIDTH,
         };
-        let home = crate::SessionId::of_location(store, location);
-        let host = crate::higent::Hosts::family(store, &home)
-            .and_then(|family| crate::OpenDocuments::by_location(store, family.documents(), location));
+        let host = Some(document_id);
         let view = PeekView::new(store, host, width, feed);
         let markup = peek_markup();
         document.ensure_document_markup(markup);

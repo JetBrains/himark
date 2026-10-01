@@ -430,7 +430,7 @@ mod app {
                             channels: Arc::clone(&document_channels),
                         },
                     );
-                    state.register_editor_command(Arc::new(himark::SaveDocument::existing_files()));
+                    state.register_document_command(Arc::new(himark::SaveDocument::existing_files()));
                     state.register_handler::<himark::ListDirectoryEffect>(
                         hiahp::fsroute::RouteList {
                             directory: Arc::clone(&seats),

@@ -78,12 +78,15 @@ impl crate::higent::AhpServer for InertSeat {
     }
 }
 
-/// The session the test's folder belongs to.
-fn home() -> crate::SessionId {
-    crate::SessionId {
-        host: crate::higent::HostId::LOCAL,
-        session: crate::higent::SessionUri::new("hihost-fs:/local"),
-    }
+/// The collection the test's sets live in — wired to sibling ids
+/// nothing here resolves, the way the ceremony would wire them.
+fn changes_id() -> imba::store::Id<Changes> {
+    static ID: std::sync::OnceLock<imba::store::Id<Changes>> = std::sync::OnceLock::new();
+    *ID.get_or_init(imba::store::Id::mint)
+}
+
+fn wired() -> Changes {
+    Changes::wired(imba::store::Id::mint(), imba::store::Id::mint())
 }
 
 fn folder() -> ResourceLocation {
@@ -148,7 +151,7 @@ impl crate::higent::ResourceUriMap for FileUris {
 }
 
 fn mirror() -> (Changes, ResourceLocation) {
-    let mut changes = Changes::default();
+    let mut changes = wired();
     changes.uris = Some(Arc::new(FileUris));
     let id = ChangeSetId::mint();
     changes.sets.insert_mut(
@@ -510,13 +513,10 @@ fn activation_pairs_carry_the_exact_locations() {
     // The PAIR itself now rides the canvas feed — the same entries,
     // normalized the way activation consumes them.
     let mut store = imba::store::Store::new();
-    let slot = crate::higent::Hosts::ensure_family(&mut store, &home()).changes();
-    store.update_entity(slot, |held| {
-        *held = changes;
-    });
+    store.put_entity(changes_id(), changes);
     let (_, listing) = crate::diff_canvas::canvas_files(
         &store,
-        &home(),
+        changes_id(),
         &crate::diff_canvas::CanvasSource::WorkingCopy {
             folder: folder.clone(),
         },

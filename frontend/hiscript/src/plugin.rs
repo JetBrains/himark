@@ -368,8 +368,8 @@ impl himark::DynamicEditorCommand for RunScript {
             view.substring(0..end)
         };
         let home = himark::SessionId::of_location(store, location);
-        let Some(documents) =
-            himark::higent::Hosts::family(store, &home).map(|family| family.documents())
+        let Some((documents, changes)) = himark::higent::Hosts::family(store, &home)
+            .map(|family| (family.documents(), family.changes()))
         else {
             return;
         };
@@ -411,10 +411,7 @@ impl himark::DynamicEditorCommand for RunScript {
             source,
             snapshots,
             agent,
-            changes: himark::hichanges::Changes::script_summary(
-                store,
-                &himark::SessionId::of_location(store, &location),
-            ),
+            changes: himark::hichanges::Changes::script_summary(store, changes),
         };
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
             himark::EditorCommand::Dynamic {
@@ -445,8 +442,7 @@ fn land(
                 base_revision,
                 operation,
             } => {
-                let Some(documents) =
-                    himark::higent::Hosts::documents_of_document(store, id)
+                let Some(documents) = himark::higent::Hosts::documents_of_document(store, id)
                 else {
                     continue;
                 };
