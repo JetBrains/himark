@@ -253,8 +253,21 @@ the same native store and remain available to the CLI.
 
 - **The prompt queue**: `pendingMessageSet` mirrors into host state;
   on natural turn completion the host drains the head into the next
-  prompt and emits `pendingMessageRemoved` +
-  `turnStarted {queuedMessageId}`. Stop leaves the queue paused.
+  prompt (attachments expanded, as at any turn start) and emits
+  `pendingMessageRemoved` + `turnStarted {queuedMessageId}`. Stop
+  leaves the queue paused.
+- **ONE live turn per chat.** A `chat/turnStarted` that arrives while
+  a turn is live is not a second turn: the reducer would make it the
+  active turn and orphan every part of the live one, and both
+  providers answer prompts strictly in order — Claude folds a prompt
+  written mid-turn into the running turn (or an interrupt drops it)
+  and emits ONE `result` for the pair, after which every later reply
+  would land on the previous turn's id, a turn the client has already
+  closed. So the host files it as a queued message (id = the turn id)
+  and drains it on natural completion; the provider adapters refuse
+  a second live prompt outright. `chat/turnCancelled` interrupts the
+  turn it NAMES: the live one gets the provider's interrupt, a queued
+  one just leaves the queue, a stale id touches nothing.
 - **Sessions mutate mid-flight.** The uniform lever: mutate the
   manifest, persist, RETIRE the chat's agent process — an idle one
   now, an active one after its turn — and the next turn respawns

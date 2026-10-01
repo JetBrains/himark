@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use ahp_types::actions::{
     ChangesetContentChangedAction, ChangesetStatusChangedAction, ChatPendingMessageRemovedAction,
-    ChatTurnCancelledAction, ChatTurnStartedAction, RootTerminalsChangedAction, StateAction,
-    TerminalDataAction, TerminalExitedAction,
+    ChatPendingMessageSetAction, ChatTurnCancelledAction, ChatTurnStartedAction,
+    RootTerminalsChangedAction, StateAction, TerminalDataAction, TerminalExitedAction,
 };
 use ahp_types::commands::{
     CreateTerminalParams, DisposeTerminalParams, Implementation, InitializeParams,
@@ -451,10 +451,18 @@ impl LiveAgent {
         }
     }
 
-    async fn interrupt(&self) -> Result<(), String> {
+    async fn interrupt(&self, turn_id: &str) -> Result<(), String> {
         match self {
-            Self::Claude(agent) => agent.interrupt().await,
-            Self::Codex(agent) => agent.interrupt().await,
+            Self::Claude(agent) => agent.interrupt(turn_id).await,
+            Self::Codex(agent) => agent.interrupt(turn_id).await,
+        }
+    }
+
+    /// A turn is live: prompted and neither finished nor cancelled.
+    fn busy(&self) -> bool {
+        match self {
+            Self::Claude(agent) => agent.busy(),
+            Self::Codex(agent) => agent.busy(),
         }
     }
 
@@ -1991,6 +1999,30 @@ impl Host {
         }
         match &envelope.action {
             StateAction::ChatTurnStarted(started) => {
+                // ONE live turn per chat. A turnStarted that arrives while a
+                // turn is live is not a second turn — the reducer would make
+                // it the active turn and orphan every part of the live one,
+                // and the provider would fold or drop its prompt and answer
+                // both with one `result`, shifting every later reply onto the
+                // wrong id. It is the spec's queued message (§4c): it keeps
+                // the turn's id, waits, and drains on natural completion.
+                if self.agent_of(&channel).is_some_and(|agent| agent.busy()) {
+                    if trace {
+                        eprintln!(
+                            "[hihost] turn {} arrived mid-flight on {channel}: queued",
+                            started.turn_id
+                        );
+                    }
+                    self.apply(
+                        &channel,
+                        StateAction::ChatPendingMessageSet(ChatPendingMessageSetAction {
+                            kind: PendingMessageKind::Queued,
+                            id: started.turn_id.clone(),
+                            message: started.message.clone(),
+                        }),
+                    );
+                    return;
+                }
                 self.honor_message_model(&channel, &started.message);
                 self.apply(&channel, envelope.action.clone());
                 self.retitle_on_first_prompt(&channel, started);
@@ -2010,10 +2042,11 @@ impl Host {
                     let _ = agent.answer(&tool, approved).await;
                 }
             }
-            StateAction::ChatTurnCancelled(_) => {
+            StateAction::ChatTurnCancelled(cancelled) => {
+                let turn_id = cancelled.turn_id.clone();
                 self.apply(&channel, envelope.action);
                 if let Some(agent) = self.agent_of(&channel) {
-                    let _ = agent.interrupt().await;
+                    let _ = agent.interrupt(&turn_id).await;
                 }
             }
 
@@ -2413,7 +2446,7 @@ impl Host {
             queued_message_id: Some(queued.id),
             meta: None,
         };
-        let text = queued.message.text.clone();
+        let text = self.expanded_prompt(&started);
         self.honor_message_model(chat, &queued.message);
         self.apply(chat, StateAction::ChatTurnStarted(started));
         let host = Arc::clone(&self);

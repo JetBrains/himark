@@ -770,6 +770,185 @@ async fn the_queue_drains_on_natural_completion() {
     assert_eq!(drained["message"]["text"], "hello");
 }
 
+/// Park a turn in the fake CLI (it streams one delta, then waits for an
+/// interrupt) and return once that delta has been seen.
+async fn park_a_turn(client: &mut Client, chat: &str, turn: &str) {
+    client.dispatch(chat, turn_started(turn, "park here")).await;
+    loop {
+        if client.next_action(chat).await["type"] == "chat/delta" {
+            break;
+        }
+    }
+}
+
+async fn stop_the_turn(client: &mut Client, chat: &str, turn: &str) {
+    client
+        .dispatch(
+            chat,
+            json!({"type": "chat/turnCancelled", "turnId": turn, "duration": 0}),
+        )
+        .await;
+    let action = client.next_action(chat).await;
+    assert_eq!(action["type"], "chat/turnCancelled", "{action}");
+    assert_eq!(action["turnId"], turn, "{action}");
+}
+
+/// The screenshot bug: a review-comment send dispatched `chat/turnStarted`
+/// while a turn was live. The host wrote a second prompt into the CLI, which
+/// folded it into the running turn and answered both with ONE `result` —
+/// from then on every reply landed on the previous turn's id, a turn the
+/// client had already cancelled, and the chat went silent while Claude kept
+/// working. One live turn per chat: the second prompt is the spec's queued
+/// message, and the next prompt is answered as ITSELF.
+#[tokio::test]
+async fn a_turn_started_while_one_is_live_is_queued_not_prompted() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+
+    park_a_turn(&mut client, &chat, "t-park").await;
+
+    client
+        .dispatch(&chat, turn_started("t-second", "hello"))
+        .await;
+    let queued = client.next_action(&chat).await;
+    assert_eq!(queued["type"], "chat/pendingMessageSet", "{queued}");
+    assert_eq!(queued["kind"], "queued", "{queued}");
+    assert_eq!(queued["id"], "t-second", "{queued}");
+    assert_eq!(queued["message"]["text"], "hello", "{queued}");
+
+    // Stop leaves the queue paused; the next prompt is its own turn.
+    stop_the_turn(&mut client, &chat, "t-park").await;
+    client.dispatch(&chat, turn_started("t-after", "hi")).await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(actions[0]["type"], "chat/turnStarted", "{actions:?}");
+    assert!(
+        actions.iter().all(|action| action["turnId"] == "t-after"),
+        "every reply lands on the turn it answers: {actions:?}"
+    );
+    let text: String = actions
+        .iter()
+        .filter(|action| action["type"] == "chat/delta")
+        .filter_map(|action| action["content"].as_str())
+        .collect();
+    assert_eq!(text, "OK");
+
+    // Natural completion drains the held prompt, as a turn of its own.
+    let drained = client.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(
+        drained[0]["type"], "chat/pendingMessageRemoved",
+        "{drained:?}"
+    );
+    assert_eq!(drained[0]["id"], "t-second", "{drained:?}");
+    assert_eq!(drained[1]["type"], "chat/turnStarted", "{drained:?}");
+    assert_eq!(drained[1]["queuedMessageId"], "t-second", "{drained:?}");
+    assert_eq!(drained[1]["message"]["text"], "hello", "{drained:?}");
+    let turn = drained[1]["turnId"].clone();
+    assert!(
+        drained[2..].iter().all(|action| action["turnId"] == turn),
+        "{drained:?}"
+    );
+}
+
+/// A review sent mid-flight keeps its comments: the queue drains it with
+/// the annotations expanded into the prompt, exactly as a direct start.
+#[tokio::test]
+async fn a_queued_review_drains_with_its_comments_expanded() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (session, chat) = open_session(&mut client, dir.path()).await;
+    let channel = format!("{session}/annotations");
+    client
+        .request("subscribe", json!({"channel": channel}))
+        .await;
+    let file = format!("file://{}/src/main.rs", dir.path().display());
+    client
+        .dispatch(&channel, annotation_set("a-1", &file, "why unwrap?"))
+        .await;
+    client.next_action(&channel).await;
+
+    park_a_turn(&mut client, &chat, "t-park").await;
+    client
+        .dispatch(
+            &chat,
+            json!({
+                "type": "chat/turnStarted",
+                "turnId": "t-review",
+                "startedAt": "2026-08-19T12:00:00.000Z",
+                "message": {
+                    "text": "echo-prompt: address the attached review comment.",
+                    "origin": {"kind": "user"},
+                    "attachments": [{
+                        "type": "annotations",
+                        "label": "1 review comment",
+                        "resource": channel,
+                        "annotationIds": ["a-1"],
+                    }],
+                },
+            }),
+        )
+        .await;
+    let queued = client.next_action(&chat).await;
+    assert_eq!(queued["type"], "chat/pendingMessageSet", "{queued}");
+    assert_eq!(queued["id"], "t-review", "{queued}");
+
+    stop_the_turn(&mut client, &chat, "t-park").await;
+    client
+        .dispatch(&chat, turn_started("t-plain", "hello"))
+        .await;
+    let plain = client.actions_until(&chat, "chat/turnComplete").await;
+    assert!(
+        plain.iter().all(|action| action["turnId"] == "t-plain"),
+        "{plain:?}"
+    );
+
+    let drained = client.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(drained[1]["type"], "chat/turnStarted", "{drained:?}");
+    assert_eq!(drained[1]["queuedMessageId"], "t-review", "{drained:?}");
+    let prompt: String = drained
+        .iter()
+        .filter(|action| action["type"] == "chat/delta")
+        .filter_map(|action| action["content"].as_str())
+        .collect();
+    assert!(prompt.contains("<review-comments>"), "{prompt}");
+    assert!(prompt.contains("why unwrap?"), "{prompt}");
+}
+
+/// `chat/turnCancelled` cancels the turn it NAMES. A stale id (a turn the
+/// agent never ran) must not interrupt the live turn — the proof is that a
+/// prompt sent right after still finds the turn live and gets queued.
+#[tokio::test]
+async fn cancelling_a_turn_that_is_not_live_leaves_the_live_one_running() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(host).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+
+    park_a_turn(&mut client, &chat, "t-park").await;
+    stop_the_turn(&mut client, &chat, "t-ghost").await;
+
+    client
+        .dispatch(&chat, turn_started("t-probe", "hello"))
+        .await;
+    let probe = client.next_action(&chat).await;
+    assert_eq!(
+        probe["type"], "chat/pendingMessageSet",
+        "the parked turn is still live, so the probe queues: {probe}"
+    );
+
+    stop_the_turn(&mut client, &chat, "t-park").await;
+    client.dispatch(&chat, turn_started("t-after", "hi")).await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    assert!(
+        actions.iter().all(|action| action["turnId"] == "t-after"),
+        "{actions:?}"
+    );
+    let drained = client.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(drained[1]["queuedMessageId"], "t-probe", "{drained:?}");
+}
+
 #[tokio::test]
 async fn a_watch_reports_external_writes() {
     let dir = tempfile::tempdir().expect("tempdir");
