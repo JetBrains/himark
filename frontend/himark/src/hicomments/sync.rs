@@ -109,12 +109,18 @@ impl Comments {
 
     /// The comments of one session, addressed by it: a card's thread
     /// belongs to the session whose host serves the annotations.
+    /// The module's ONE pair of session-addressed doors — the feed
+    /// folds land with the wire's `SessionId`; resolution to
+    /// `Id<Comments>` happens here, once (docs/entities.md step 4
+    /// retires the pair).
     fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a Comments> {
-        crate::higent::Hosts::comments_of(store, home)
+        let comments = crate::higent::Hosts::family(store, home)?.comments();
+        store.entity(comments)
     }
 
     fn update(store: &mut Store, home: &crate::SessionId, mutate: impl FnOnce(&mut Comments)) {
-        crate::higent::Hosts::update_comments(store, home, mutate);
+        let comments = crate::higent::Hosts::ensure_family(store, home).comments();
+        store.update_entity(comments, mutate);
     }
 
     pub fn generation(store: &Store, home: &crate::SessionId) -> u64 {

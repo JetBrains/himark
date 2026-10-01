@@ -408,8 +408,14 @@ impl Changes {
     /// The change sets of one session, addressed by it — the family is
     /// never gathered as a component, so nothing can reach the wrong
     /// session's sets or lose a write to a scopeless batch.
+    /// The module's ONE pair of session-addressed doors: the feed
+    /// folds land with a `SessionId` (the wire's scope), so the
+    /// resolution to `Id<ChangeSets>` happens here, once. When the
+    /// landings carry the id themselves (docs/entities.md step 4),
+    /// this pair retires.
     pub(crate) fn of<'a>(store: &'a Store, home: &crate::SessionId) -> Option<&'a ChangeSets> {
-        crate::higent::Hosts::changes_of(store, home)
+        let changes = crate::higent::Hosts::family(store, home)?.changes();
+        store.entity(changes)
     }
 
     pub(crate) fn update(
@@ -417,7 +423,8 @@ impl Changes {
         home: &crate::SessionId,
         mutate: impl FnOnce(&mut ChangeSets),
     ) {
-        crate::higent::Hosts::update_changes(store, home, mutate);
+        let changes = crate::higent::Hosts::ensure_family(store, home).changes();
+        store.update_entity(changes, mutate);
     }
 
     fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {

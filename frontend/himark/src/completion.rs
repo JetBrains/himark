@@ -363,7 +363,11 @@ impl Completion {
         }
         self.source = SourceState::Path {
             folders: Arc::new(crate::higent::session_folders(store, session)),
-            recents: Arc::new(crate::RecentLocations::list(store, session)),
+            recents: Arc::new(
+                crate::higent::Hosts::family(store, session)
+                    .map(|family| crate::RecentLocations::list(store, family.recents()))
+                    .unwrap_or_default(),
+            ),
             found: Arc::new(Vec::new()),
             rows: Arc::new(Vec::new()),
         };

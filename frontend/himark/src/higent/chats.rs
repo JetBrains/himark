@@ -40,9 +40,8 @@ impl Chats {
         session: &crate::SessionId,
         chat: &ChatUri,
     ) -> Option<&'a ChatPanel> {
-        crate::higent::Hosts::chats_of(store, session)?
-            .chats
-            .get(chat)
+        let chats = crate::higent::Hosts::family(store, session)?.chats();
+        store.entity(chats)?.chats.get(chat)
     }
 
     pub fn chat(store: &Store, session: &crate::SessionId, chat: &ChatUri) -> Option<ChatPanel> {
@@ -74,14 +73,20 @@ impl Chats {
     /// gathered for.
     pub fn put(store: &mut Store, chat: ChatUri, panel: ChatPanel) {
         let session = panel.session_id();
-        crate::higent::Hosts::update_chats(store, &session, |chats| {
+        let chats = crate::higent::Hosts::ensure_family(store, &session).chats();
+        store.update_entity(chats, |chats| {
             chats.chats.insert_mut(chat, panel);
         });
     }
 
-    /// The session let go: its conversations go with it.
+    /// The session let go: its conversations go with it. A session
+    /// that never had a family has nothing to forget — no row minted.
     pub fn forget_session(store: &mut Store, session: &crate::SessionId) {
-        crate::higent::Hosts::update_chats(store, session, |chats| {
+        let Some(chats) = crate::higent::Hosts::family(store, session).map(|family| family.chats())
+        else {
+            return;
+        };
+        store.update_entity(chats, |chats| {
             chats.chats = rpds::HashTrieMapSync::new_sync();
         });
     }
@@ -122,7 +127,8 @@ impl Chats {
 
     /// Every chat of one session.
     pub fn list(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
-        crate::higent::Hosts::chats_of(store, session)
+        crate::higent::Hosts::family(store, session)
+            .and_then(|family| store.entity(family.chats()))
             .map(Chats::uris)
             .unwrap_or_default()
     }

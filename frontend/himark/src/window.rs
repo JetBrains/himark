@@ -1584,7 +1584,8 @@ impl Window {
         target: &crate::NavigationLocation,
     ) {
         if let Some(place) = target.place::<crate::EditorPlace>() {
-            crate::RecentLocations::touch(store, session, &place.location);
+            let recents = crate::higent::Hosts::ensure_family(store, session).recents();
+            crate::RecentLocations::touch(store, recents, &place.location);
         }
     }
 

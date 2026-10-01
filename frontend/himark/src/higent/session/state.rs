@@ -50,7 +50,7 @@ pub struct Host {
 /// row is minted once (`mint`) and its ids never change; disposal
 /// retracts what the ids name.
 #[derive(Clone)]
-pub(crate) struct SessionState {
+pub struct SessionState {
     chats: Id<crate::higent::Chats>,
 
     trees: Id<crate::hifiles::SessionTree>,
@@ -71,6 +71,34 @@ pub(crate) struct SessionState {
 }
 
 impl SessionState {
+    pub fn chats(&self) -> Id<crate::higent::Chats> {
+        self.chats
+    }
+
+    pub fn trees(&self) -> Id<crate::hifiles::SessionTree> {
+        self.trees
+    }
+
+    pub fn recents(&self) -> Id<crate::RecentLocations> {
+        self.recents
+    }
+
+    pub fn changes(&self) -> Id<crate::hichanges::Changes> {
+        self.changes
+    }
+
+    pub fn history(&self) -> Id<crate::hihistory::History> {
+        self.history
+    }
+
+    pub fn comments(&self) -> Id<crate::hicomments::Comments> {
+        self.comments
+    }
+
+    pub fn terminals(&self) -> Id<crate::terminal::Terminals> {
+        self.terminals
+    }
+
     fn mint() -> Self {
         Self {
             chats: Id::mint(),
@@ -318,10 +346,7 @@ impl Hosts {
         session.clone()
     }
 
-    pub(crate) fn family<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a SessionState> {
+    pub fn family<'a>(store: &'a Store, session: &crate::SessionId) -> Option<&'a SessionState> {
         let session = Self::addressed(store, session);
         store
             .get::<Hosts>()?
@@ -335,7 +360,7 @@ impl Hosts {
     /// Minting is STRUCTURAL (a new row in the catalog's map), so it
     /// bumps the generation; content writes land in the entity table
     /// and touch `Hosts` not at all.
-    fn ensure_family(store: &mut Store, session: &crate::SessionId) -> SessionState {
+    pub fn ensure_family(store: &mut Store, session: &crate::SessionId) -> SessionState {
         let session = &Self::addressed(store, session);
         if let Some(family) = store
             .get::<Hosts>()
@@ -362,133 +387,12 @@ impl Hosts {
         minted
     }
 
-    /// Resolve one of a session's collections — the id comes from the
-    /// family row, the value from the entity table.
-    fn entity_of<'a, T: imba::store::Component>(
-        store: &'a Store,
-        session: &crate::SessionId,
-        pick: impl FnOnce(&SessionState) -> Id<T>,
-    ) -> Option<&'a T> {
-        let id = pick(Self::family(store, session)?);
-        store.entity(id)
-    }
-
-    /// Mutate one of a session's collections in place, minting the
-    /// family row and the entity row as needed.
-    fn update_entity_of<T: imba::store::Component + Default>(
-        store: &mut Store,
-        session: &crate::SessionId,
-        pick: impl FnOnce(&SessionState) -> Id<T>,
-        mutate: impl FnOnce(&mut T),
-    ) {
-        let id = pick(&Self::ensure_family(store, session));
-        store.update_entity(id, mutate);
-    }
-
-    pub(crate) fn chats_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::higent::Chats> {
-        Self::entity_of(store, session, |family| family.chats)
-    }
-
-    pub(crate) fn update_chats(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::higent::Chats),
-    ) {
-        Self::update_entity_of(store, session, |family| family.chats, mutate);
-    }
-
-    pub(crate) fn trees_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::hifiles::SessionTree> {
-        Self::entity_of(store, session, |family| family.trees)
-    }
-
-    pub(crate) fn update_trees(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::hifiles::SessionTree),
-    ) {
-        Self::update_entity_of(store, session, |family| family.trees, mutate);
-    }
-
-    pub(crate) fn recents_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::RecentLocations> {
-        Self::entity_of(store, session, |family| family.recents)
-    }
-
-    pub(crate) fn update_recents(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::RecentLocations),
-    ) {
-        Self::update_entity_of(store, session, |family| family.recents, mutate);
-    }
-
-    pub(crate) fn changes_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::hichanges::Changes> {
-        Self::entity_of(store, session, |family| family.changes)
-    }
-
-    pub(crate) fn update_changes(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::hichanges::Changes),
-    ) {
-        Self::update_entity_of(store, session, |family| family.changes, mutate);
-    }
-
-    pub(crate) fn history_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::hihistory::History> {
-        Self::entity_of(store, session, |family| family.history)
-    }
-
-    pub(crate) fn update_history(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::hihistory::History),
-    ) {
-        Self::update_entity_of(store, session, |family| family.history, mutate);
-    }
-
-    pub(crate) fn comments_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::hicomments::Comments> {
-        Self::entity_of(store, session, |family| family.comments)
-    }
-
-    pub(crate) fn update_comments(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::hicomments::Comments),
-    ) {
-        Self::update_entity_of(store, session, |family| family.comments, mutate);
-    }
-
-    pub(crate) fn terminals_of<'a>(
-        store: &'a Store,
-        session: &crate::SessionId,
-    ) -> Option<&'a crate::terminal::Terminals> {
-        Self::entity_of(store, session, |family| family.terminals)
-    }
-
-    pub(crate) fn update_terminals(
-        store: &mut Store,
-        session: &crate::SessionId,
-        mutate: impl FnOnce(&mut crate::terminal::Terminals),
-    ) {
-        Self::update_entity_of(store, session, |family| family.terminals, mutate);
-    }
+    // No typed per-family doors here, deliberately: Hosts answers one
+    // question — WHICH ids a session's family holds (`family`,
+    // `ensure_family`) — and the collections are then read and written
+    // BY ID (`store.entity` / `store.update_entity`), threaded to the
+    // use sites (docs/entities.md law 3). A helper here that takes a
+    // `SessionId` per read would remarry every collection to Hosts.
 
     /// Which session owns a terminal — the cold road, for a family row
     /// or a walk back that holds a channel and nothing else.

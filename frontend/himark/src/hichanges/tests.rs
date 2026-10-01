@@ -510,8 +510,9 @@ fn activation_pairs_carry_the_exact_locations() {
     // The PAIR itself now rides the canvas feed — the same entries,
     // normalized the way activation consumes them.
     let mut store = imba::store::Store::new();
-    crate::higent::Hosts::update_changes(&mut store, &home(), |slot| {
-        *slot = changes;
+    let slot = crate::higent::Hosts::ensure_family(&mut store, &home()).changes();
+    store.update_entity(slot, |held| {
+        *held = changes;
     });
     let (_, listing) = crate::diff_canvas::canvas_files(
         &store,

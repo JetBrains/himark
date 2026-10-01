@@ -2779,7 +2779,12 @@ fn close_widget_walks_the_pane_history() {
     assert!(crate::test_driver::type_text(&mut app, "x"));
     open(&mut app, "b.md", "beta\n");
     assert_eq!(
-        crate::RecentLocations::list(app.store(), &app.sole_window_session())[..2],
+        {
+            let session = app.sole_window_session();
+            crate::higent::Hosts::family(app.store(), &session)
+                .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+                .unwrap_or_default()
+        }[..2],
         [located("b.md"), located("a.md")],
         "every visited place on the recents list, newest first (the startup scratch behind)"
     );
@@ -2818,7 +2823,12 @@ fn close_widget_walks_the_pane_history() {
 
     assert!(app.perform_registered(window, "workbench.close"));
     assert!(app.focused_document_text().is_none());
-    let recents = crate::RecentLocations::list(app.store(), &app.sole_window_session());
+    let recents = {
+        let session = app.sole_window_session();
+        crate::higent::Hosts::family(app.store(), &session)
+            .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+            .unwrap_or_default()
+    };
     assert!(
         recents.contains(&located("a.md")) && recents.contains(&located("b.md")),
         "closing forgets documents, never places: {recents:?}"
@@ -5152,7 +5162,9 @@ mod dock_tests {
         let session = crate::terminal::Session::new(Box::new(NullBackend));
         session.set_channel(hidden.clone());
         let home = app.sole_window_session();
-        crate::terminal::Terminals::put(&mut app.store_mut(), &home, hidden.clone(), session);
+        let terminals =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+        crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden.clone(), session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
                 .expect("the window entity")
@@ -5160,7 +5172,7 @@ mod dock_tests {
         };
         assert!(entity(&app).has_dock());
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &home, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
             "the family row is in the session"
         );
 
@@ -5199,11 +5211,14 @@ mod dock_tests {
         );
         let fresh = minted.lock().unwrap().clone().expect("the minted session");
         assert!(
-            crate::terminal::Terminals::list(app.store(), &fresh).is_empty(),
+            crate::higent::Hosts::family(app.store(), &fresh)
+                .map(|family| crate::terminal::Terminals::list(app.store(), family.terminals()))
+                .unwrap_or_default()
+                .is_empty(),
             "a fresh session has no family rows of its own"
         );
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &home, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
             "and the first session's row stayed WITH it — never borrowed, never dropped"
         );
 
@@ -5216,7 +5231,7 @@ mod dock_tests {
             "and reads open, not closing"
         );
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &home, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
             "the family row rode along"
         );
 

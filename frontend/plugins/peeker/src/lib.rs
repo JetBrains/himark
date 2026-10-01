@@ -825,7 +825,9 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let mut entity = himark::Windows::window(store, window).expect("the window entity");
             let viewport = entity.viewport_size();
 
-            let recents = himark::RecentLocations::list(store, &entity.current_session());
+            let recents = himark::higent::Hosts::family(store, &entity.current_session())
+                .map(|family| himark::RecentLocations::list(store, family.recents()))
+                .unwrap_or_default();
 
             let mut widgets = entity.unmount_all_widgets();
             let fronted: Vec<himark::FamilyRow> = widgets

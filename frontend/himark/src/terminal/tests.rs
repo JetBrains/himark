@@ -82,18 +82,19 @@ fn dismantle_hangs_up_exactly_once() {
         host: crate::higent::HostId::LOCAL,
         session: crate::higent::SessionUri::new("test-session:1"),
     };
+    let terminals = crate::higent::Hosts::ensure_family(&mut store, &home).terminals();
     Terminals::put(
         &mut store,
-        &home,
+        terminals,
         crate::higent::ChannelUri::new("test-term:1"),
         session.clone(),
     );
-    let mut panel = TerminalView::new(home.clone(), crate::higent::ChannelUri::new("test-term:1"));
+    let mut panel = TerminalView::new(terminals, crate::higent::ChannelUri::new("test-term:1"));
     PanelView::dismantle(&mut panel, &mut store);
     session.hangup();
     assert_eq!(*recorder.hangups.lock().unwrap(), 1);
     assert!(
-        Terminals::list(&store, &home).is_empty(),
+        Terminals::list(&store, terminals).is_empty(),
         "the row left the family"
     );
 }
@@ -136,16 +137,17 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     assert!(app.new_scratch(app.sole_window()));
     let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
+    let terminals = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
     Terminals::put(
         &mut app.store_mut(),
-        &home,
+        terminals,
         crate::higent::ChannelUri::new("test-term:g"),
         session.clone(),
     );
     assert!(app.open_panel(
         app.sole_window(),
         Box::new(TerminalView::new(
-            home.clone(),
+            terminals,
             crate::higent::ChannelUri::new("test-term:g")
         ))
     ));
@@ -195,16 +197,17 @@ fn dump_terminal_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
+    let terminals = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
     Terminals::put(
         &mut app.store_mut(),
-        &home,
+        terminals,
         crate::higent::ChannelUri::new("test-term:s"),
         session.clone(),
     );
     assert!(app.open_panel(
         app.sole_window(),
         Box::new(TerminalView::new(
-            home.clone(),
+            terminals,
             crate::higent::ChannelUri::new("test-term:s")
         ))
     ));

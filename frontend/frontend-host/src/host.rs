@@ -736,18 +736,19 @@ impl DynamicCommand for ShowTerminal {
         };
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
 
-        himark::terminal::Terminals::put(store, &self.home, channel.clone(), session.clone());
+        let terminals = himark::higent::Hosts::ensure_family(store, &self.home).terminals();
+        himark::terminal::Terminals::put(store, terminals, channel.clone(), session.clone());
         if !entity.open_panel(
             store,
             ui,
             Box::new(himark::terminal::TerminalView::new(
-                self.home.clone(),
+                terminals,
                 channel.clone(),
             )),
             fx,
         ) {
             session.hangup();
-            himark::terminal::Terminals::remove(store, &self.home, &channel);
+            himark::terminal::Terminals::remove(store, terminals, &channel);
         }
         himark::Windows::put(store, window, entity);
     }

@@ -67,7 +67,8 @@ fn seed_terminal_row(
     session.set_channel(channel.clone());
     let _ = session.output(format!("\x1b]0;{title}\x07").as_bytes());
     let home = app.sole_window_session();
-    himark::terminal::Terminals::put(&mut app.store_mut(), &home, channel.clone(), session);
+    let terminals = himark::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+    himark::terminal::Terminals::put(&mut app.store_mut(), terminals, channel.clone(), session);
     channel
 }
 
@@ -78,17 +79,24 @@ fn displaced_handles_drop_and_their_rows_survive() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let alpha = seed_terminal_row(&mut app, "test-terminal:alpha", "alpha results");
+    let home = app.sole_window_session();
+    let terminals = himark::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
     assert!(app.open_panel(
         app.sole_window(),
         Box::new(himark::terminal::TerminalView::new(
-            app.sole_window_session(),
+            terminals,
             alpha.clone()
         ))
     ));
     assert!(app.open_panel(app.sole_window(), Box::new(StubWidget("beta widget"))));
     assert_eq!(mounted_titles(&app), vec!["beta widget"]);
     assert!(
-        himark::terminal::Terminals::session_ref(app.store(), &app.sole_window_session(), &alpha)
+        himark::higent::Hosts::family(app.store(), &app.sole_window_session())
+            .and_then(|family| himark::terminal::Terminals::session_ref(
+                app.store(),
+                family.terminals(),
+                &alpha
+            ))
             .is_some(),
         "the displaced handle dropped; the family row survived"
     );
@@ -125,7 +133,12 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(mounted_titles(&app), vec!["beta widget"], "pane restored");
     assert!(
-        himark::terminal::Terminals::session_ref(app.store(), &app.sole_window_session(), &alpha)
+        himark::higent::Hosts::family(app.store(), &app.sole_window_session())
+            .and_then(|family| himark::terminal::Terminals::session_ref(
+                app.store(),
+                family.terminals(),
+                &alpha
+            ))
             .is_some(),
         "the row survived the dismissal"
     );

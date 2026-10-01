@@ -33,9 +33,12 @@ impl RowMinters {
 pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
     match row {
         FamilyRow::Terminal(channel) => crate::higent::Hosts::session_of_terminal(store, channel)
-            .map(|home| {
-                Box::new(crate::terminal::TerminalView::new(home, channel.clone()))
-                    as Box<dyn crate::DynPanelView>
+            .and_then(|home| crate::higent::Hosts::family(store, &home))
+            .map(|family| {
+                Box::new(crate::terminal::TerminalView::new(
+                    family.terminals(),
+                    channel.clone(),
+                )) as Box<dyn crate::DynPanelView>
             }),
         FamilyRow::Chat(chat) => crate::higent::ChatPane::of_chat(store, chat.clone())
             .map(|pane| Box::new(pane) as Box<dyn crate::DynPanelView>),
@@ -49,9 +52,11 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
 
 pub fn mint_unfronted(store: &Store, fronted: &[FamilyRow]) -> Vec<Box<dyn crate::DynPanelView>> {
     let mut rows: Vec<FamilyRow> = Vec::new();
-    if let Some(session) = crate::Gathered::scope(store) {
+    if let Some(family) = crate::Gathered::scope(store)
+        .and_then(|session| crate::higent::Hosts::family(store, session))
+    {
         rows.extend(
-            crate::terminal::Terminals::list(store, session)
+            crate::terminal::Terminals::list(store, family.terminals())
                 .into_iter()
                 .map(FamilyRow::Terminal),
         );

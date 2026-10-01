@@ -81,18 +81,21 @@ impl History {
         home: &crate::SessionId,
         folder: &ResourceLocation,
     ) -> Option<FolderHistory> {
-        crate::higent::Hosts::history_of(store, home)?
-            .folders
-            .get(folder)
-            .cloned()
+        let history = crate::higent::Hosts::family(store, home)?.history();
+        store.entity(history)?.folders.get(folder).cloned()
     }
 
+    /// The module's ONE pair of session-addressed doors — the feed
+    /// folds land with the wire's `SessionId`; resolution to
+    /// `Id<History>` happens here, once (docs/entities.md step 4
+    /// retires the pair).
     fn update_folder(
         store: &mut Store,
         home: &crate::SessionId,
         mutate: impl FnOnce(&mut History),
     ) {
-        crate::higent::Hosts::update_history(store, home, mutate);
+        let history = crate::higent::Hosts::ensure_family(store, home).history();
+        store.update_entity(history, mutate);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
@@ -233,7 +236,8 @@ impl History {
 
     pub(crate) fn session_failed(store: &mut Store, home: &crate::SessionId, error: &str) {
         let session = home.session.clone();
-        crate::higent::Hosts::update_history(store, home, |history| {
+        let slot = crate::higent::Hosts::ensure_family(store, home).history();
+        store.update_entity(slot, |history| {
             let riding: Vec<ResourceLocation> = history
                 .folders
                 .iter()
@@ -326,7 +330,8 @@ pub(crate) fn subscribe_fresh(
     }
     let session = home.session.clone();
     let mut fresh = Vec::new();
-    crate::higent::Hosts::update_history(store, home, |history| {
+    let slot = crate::higent::Hosts::ensure_family(store, home).history();
+    store.update_entity(slot, |history| {
         fresh = history.adopt_catalog(&session, &histories);
     });
     crate::hichanges::Changes::nudge_all(store, home);

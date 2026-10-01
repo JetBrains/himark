@@ -1585,7 +1585,10 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     });
     assert!(!mounted, "the terminal handle dropped with the pane");
     assert_eq!(
-        himark::terminal::Terminals::list(engine.app.store(), &engine_session(&engine)).len(),
+        himark::higent::Hosts::family(engine.app.store(), &engine_session(&engine))
+            .map(|family| himark::terminal::Terminals::list(engine.app.store(), family.terminals()))
+            .unwrap_or_default()
+            .len(),
         1,
         "the PTY session survives in the family"
     );
@@ -2614,7 +2617,9 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
                 })
     });
     assert!(
-        himark::RecentLocations::list(engine.app.store(), &engine_session(&engine))
+        himark::higent::Hosts::family(engine.app.store(), &engine_session(&engine))
+            .map(|family| himark::RecentLocations::list(engine.app.store(), family.recents()))
+            .unwrap_or_default()
             .contains(&picked),
         "the recents follow the re-point"
     );

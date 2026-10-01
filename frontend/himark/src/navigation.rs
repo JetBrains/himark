@@ -127,17 +127,18 @@ impl Navigators {
 #[derive(Clone, Default)]
 pub struct RecentLocations(Vec<crate::ResourceLocation>);
 
+/// Recents belong to the session you are working in; its family row
+/// hands the id to whoever has that context (docs/entities.md law 3) —
+/// this module never sees a `SessionId`.
 impl RecentLocations {
     const CAP: usize = 100;
 
-    /// Recents belong to the session you are working in, and are
-    /// addressed by it — the store carries no ambient answer.
     pub fn touch(
         store: &mut Store,
-        session: &crate::SessionId,
+        recents: imba::store::Id<Self>,
         location: &crate::ResourceLocation,
     ) {
-        crate::higent::Hosts::update_recents(store, session, |recents| {
+        store.update_entity(recents, |recents| {
             let recents = &mut recents.0;
             recents.retain(|listed| listed != location);
             recents.insert(0, location.clone());
@@ -147,11 +148,11 @@ impl RecentLocations {
 
     pub fn replace(
         store: &mut Store,
-        session: &crate::SessionId,
+        recents: imba::store::Id<Self>,
         old: &crate::ResourceLocation,
         new: &crate::ResourceLocation,
     ) {
-        crate::higent::Hosts::update_recents(store, session, |recents| {
+        store.update_entity(recents, |recents| {
             let recents = &mut recents.0;
             recents.retain(|listed| listed != old && listed != new);
             recents.insert(0, new.clone());
@@ -163,8 +164,9 @@ impl RecentLocations {
         self.0.is_empty()
     }
 
-    pub fn list(store: &Store, session: &crate::SessionId) -> Vec<crate::ResourceLocation> {
-        crate::higent::Hosts::recents_of(store, session)
+    pub fn list(store: &Store, recents: imba::store::Id<Self>) -> Vec<crate::ResourceLocation> {
+        store
+            .entity(recents)
             .map(|recents| recents.0.clone())
             .unwrap_or_default()
     }
