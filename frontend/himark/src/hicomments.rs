@@ -23,7 +23,6 @@ mod panel;
 mod sync;
 
 pub use panel::{toolbar_button, CommentsView, ToggleCommentsView};
-pub(crate) use sync::run_card_work;
 pub use sync::{
     AnnotationId, CardWork, CommentRecord, Comments, CommentsCommand, CommentsHook, EntryRecord,
 };
@@ -189,7 +188,7 @@ impl crate::DynamicCommand for RemoveComment {
         let document = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(document, command),
                 )

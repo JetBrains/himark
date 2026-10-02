@@ -594,6 +594,40 @@ impl imba::store::Entity for ChangeSets {
     }
 }
 
+impl crate::AppEntity for ChangeSets {
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
+        family.changes()
+    }
+
+    fn label(_: &ChangesCommand) -> &'static str {
+        "changes"
+    }
+
+    /// The landing's note: the stripe bases under the folders it
+    /// touched re-ask — application effects the entity itself does
+    /// not hold.
+    fn after_route(
+        store: &mut Store,
+        ui: &UiCtx,
+        _id: imba::store::Id<Self>,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        for (documents, folder) in store
+            .take::<BaseRearms>()
+            .map(|rearms| rearms.0)
+            .unwrap_or_default()
+        {
+            let authority = folder.authority().clone();
+            let prefix = format!("/{}/", folder.path().join("/"));
+            crate::rearm_base_asks(store, documents, &|location| {
+                location.authority() == &authority
+                    && format!("/{}", location.path().join("/")).starts_with(&prefix)
+            });
+            crate::sync_stripe_bases(store, documents, ui, fx);
+        }
+    }
+}
+
 impl Changes {
     /// A collection wired to its siblings — minted by the family
     /// ceremony, and by tests that stand one up alone.
@@ -1593,7 +1627,7 @@ fn subscribe_set(
     uris: Arc<dyn crate::higent::ResourceUriMap>,
 ) -> crate::AppEffect {
     AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-        AppCommand::AtChanges(
+        AppCommand::at(
             changes,
             ChangesCommand::Snapshot {
                 result: result.map(|state| digest_state(&*uris, &folder, &state)),

@@ -213,6 +213,30 @@ impl imba::store::Entity for Comments {
     }
 }
 
+impl crate::AppEntity for Comments {
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
+        family.comments()
+    }
+
+    fn label(_: &CommentsCommand) -> &'static str {
+        "comments"
+    }
+
+    /// The landing's note: cards whose records died drop their inlays
+    /// and the records settle into cards — document-addressed effects
+    /// the entity itself does not hold.
+    fn after_route(
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        id: imba::store::Id<Self>,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        if let Some(work) = store.take::<CardWork>() {
+            run_card_work(store, ui, id, work, fx);
+        }
+    }
+}
+
 impl Comments {
     pub fn install(store: &mut Store) {
         store.put(CommentsInstall);
@@ -533,7 +557,7 @@ impl Comments {
                 session: session.clone(),
             })
             .map(move |result| {
-                AppCommand::AtComments(
+                AppCommand::at(
                     comments,
                     CommentsCommand::Snapshot {
                         session: session.clone(),
@@ -683,7 +707,7 @@ impl Comments {
                     model: None,
                 })
                 .map(move |result| {
-                    AppCommand::AtComments(
+                    AppCommand::at(
                         comments,
                         CommentsCommand::Sent {
                             ids: sent.clone(),
@@ -902,7 +926,7 @@ fn remove_card(
     let theme = crate::env::Themes::of(store);
     fx.scope(
         move |command| {
-            AppCommand::At(
+            AppCommand::at(
                 documents,
                 crate::app::DocumentsCommand::Editor(document, command),
             )
@@ -1076,7 +1100,7 @@ fn materialize(
     let mut minted = None;
     fx.scope(
         move |command| {
-            AppCommand::At(
+            AppCommand::at(
                 documents,
                 crate::app::DocumentsCommand::Editor(document, command),
             )

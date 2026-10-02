@@ -207,7 +207,7 @@ impl Navigator for EditorNavigator {
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
         let editor = fx.scope(
             move |command| {
-                crate::AppCommand::At(documents, crate::DocumentsCommand::Editor(id, command))
+                crate::AppCommand::at(documents, crate::DocumentsCommand::Editor(id, command))
             },
             |fx| {
                 let editor = crate::mount_editor(store, ui, &mut document, width, None, fx);

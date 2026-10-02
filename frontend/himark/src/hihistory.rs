@@ -160,6 +160,16 @@ impl imba::store::Entity for History {
     fn destroy(&mut self, _store: &mut Store) {}
 }
 
+impl crate::AppEntity for History {
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
+        family.history()
+    }
+
+    fn label(_: &HistoryCommand) -> &'static str {
+        "history"
+    }
+}
+
 impl History {
     /// A collection wired to the sets its commits are — minted by the
     /// family ceremony, and by tests that stand one up alone.
@@ -512,7 +522,7 @@ pub(crate) fn subscribe_fresh(
         let landing = folder.clone();
         fx.push(
             AnyEffect::new(SubscribeHistoryEffect { seat, channel }).map(move |result| {
-                AppCommand::AtHistory(
+                AppCommand::at(
                     history,
                     HistoryCommand::Snapshot {
                         folder: landing.clone(),
@@ -580,7 +590,7 @@ impl crate::DynamicCommand for FetchCommitFiles {
                 channel,
             })
             .map(move |result| {
-                AppCommand::AtHistory(
+                AppCommand::at(
                     history,
                     HistoryCommand::CommitFiles {
                         folder: landing.clone(),

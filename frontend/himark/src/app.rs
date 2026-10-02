@@ -104,31 +104,12 @@ pub enum AppCommand {
     Register(std::sync::Arc<dyn crate::DynamicCommand>),
     Stats(StatsCommand),
 
-    /// The one road to the documents collection (docs/entities.md
-    /// step 3): addressed by the collection's id, stamped at launch,
-    /// carried through the whole landing chain — nothing re-derives
-    /// a scope that was never lost.
-    At(imba::store::Id<OpenDocuments>, DocumentsCommand),
-
-    AtChats(
-        imba::store::Id<crate::higent::Chats>,
-        crate::higent::ChatsCommand,
-    ),
-
-    AtChanges(
-        imba::store::Id<crate::hichanges::ChangeSets>,
-        crate::hichanges::ChangesCommand,
-    ),
-
-    AtHistory(
-        imba::store::Id<crate::hihistory::History>,
-        crate::hihistory::HistoryCommand,
-    ),
-
-    AtComments(
-        imba::store::Id<crate::hicomments::Comments>,
-        crate::hicomments::CommentsCommand,
-    ),
+    /// THE one command road (docs/entities.md law 5): any collection,
+    /// addressed by its id, stamped at launch, carried through the
+    /// whole landing chain — nothing re-derives a scope that was never
+    /// lost. Built by `AppCommand::at`; the erasure is what keeps the
+    /// enum from growing an arm per collection.
+    At(Addressed),
 
     Opened(WindowId, OpenedDocument),
 
@@ -179,7 +160,89 @@ pub enum AppCommand {
 
 pub use documents::DocumentsCommand;
 
+/// An addressed command with its entity type erased — what `At`
+/// carries. The address (the typed id) lives inside the closures:
+/// `scope` answers the owning session for the batch gather, `run` is
+/// the lease-perform-unlease road plus the collection's own landing
+/// tail. Erasure is per COMMAND, not per collection — the enum stays
+/// one arm no matter how many collections become addressable.
+pub struct Addressed {
+    label: &'static str,
+    scope: Box<dyn Fn(&Store) -> Option<crate::SessionId> + Send + Sync>,
+    run: Box<dyn FnOnce(&mut Store, &imba::UiCtx, &mut AppFx<'_>) + Send + Sync>,
+}
+
+/// What a collection declares to ride the `At` road: where it sits in
+/// a session family (the scope compare), what the reconcile trace
+/// calls its commands, and the application-side tail its landings owe
+/// — effects the entity cannot push itself because its own fx are
+/// scoped to `Self::Command`.
+pub trait AppEntity: imba::store::Entity
+where
+    Self::Command: Send + Sync,
+{
+    /// This collection's id in a session family — `At` scopes by an id
+    /// compare over the family rows, no content resolution: a command
+    /// for a gone record still comes home to discard in the right
+    /// place.
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self>;
+
+    fn label(command: &Self::Command) -> &'static str;
+
+    /// The landing's application tail, run after the lease returns —
+    /// store notes the perform left (rearms, card work) convert into
+    /// app-scoped effects here.
+    fn after_route(
+        _store: &mut Store,
+        _ui: &imba::UiCtx,
+        _id: imba::store::Id<Self>,
+        _fx: &mut AppFx<'_>,
+    ) {
+    }
+}
+
+impl AppEntity for OpenDocuments {
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
+        family.documents()
+    }
+
+    fn label(command: &DocumentsCommand) -> &'static str {
+        match command {
+            DocumentsCommand::Editor(_, EditorCommand::ApplyRepair(_)) => "repair",
+            DocumentsCommand::Editor(_, EditorCommand::ApplyReparse(_)) => "reparse",
+            DocumentsCommand::Editor(_, EditorCommand::ApplyEnrichment(_)) => "enrich",
+            DocumentsCommand::Editor(..) => "entity",
+            DocumentsCommand::BaseLocated { .. } => "base located",
+            DocumentsCommand::BaseFetched { .. } => "base fetched",
+            DocumentsCommand::BaseBuilt { .. } => "base built",
+            DocumentsCommand::Stored { .. } => "document stored",
+            DocumentsCommand::Watched(..) => "watched",
+            DocumentsCommand::Refetched { .. } => "refetched",
+            DocumentsCommand::RefetchDiffed { .. } => "refetch-diffed",
+            DocumentsCommand::Normalized { .. } => "diff normalized",
+        }
+    }
+}
+
 impl AppCommand {
+    /// The one addressed-command constructor: every launch stamp and
+    /// every landing re-wrap goes through here.
+    pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand
+    where
+        T::Command: Send + Sync,
+    {
+        AppCommand::At(Addressed {
+            label: T::label(&command),
+            scope: Box::new(move |store| {
+                crate::higent::Hosts::find_session(store, |_, family| T::family_id(family) == id)
+            }),
+            run: Box::new(move |store, ui, fx| {
+                store.route(id, command, ui, move |command| AppCommand::at(id, command), fx);
+                T::after_route(store, ui, id, fx);
+            }),
+        })
+    }
+
     pub fn dynamic_in(
         session: crate::SessionId,
         window: WindowId,
@@ -253,7 +316,7 @@ pub(crate) fn fresh_workbench_root(
         OpenDocuments::register(store, documents, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
     let editor_id = fx.scope(
-        move |command| AppCommand::At(documents, DocumentsCommand::Editor(scratch_id, command)),
+        move |command| AppCommand::at(documents, DocumentsCommand::Editor(scratch_id, command)),
         |fx| mount_editor(store, ui, &mut scratch, width, None, fx),
     );
     documents::scroll_stripes::enable_scroll_stripes(
@@ -509,39 +572,12 @@ impl Application {
             | AppCommand::ViewportResized(window, _) => *window,
             AppCommand::CloseModal(window) => *window,
 
-            AppCommand::At(documents, _) => {
+            AppCommand::At(addressed) => {
                 // The address IS the scope: the owning session falls
                 // out of an id compare over the family rows — no
-                // content scan, and a command for a gone document
+                // content scan, and a command for a gone record
                 // still comes home to discard in the right place.
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_documents_id(store, *documents),
-                );
-            }
-            AppCommand::AtChats(chats, _) => {
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_chats_id(store, *chats),
-                );
-            }
-            AppCommand::AtChanges(changes, _) => {
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_changes_id(store, *changes),
-                );
-            }
-            AppCommand::AtHistory(history, _) => {
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_history_id(store, *history),
-                );
-            }
-            AppCommand::AtComments(comments, _) => {
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_comments_id(store, *comments),
-                );
+                return (None, (addressed.scope)(store));
             }
             AppCommand::FileChanged(subscription) => {
                 // The one id-less border road: file events arrive from
@@ -550,20 +586,30 @@ impl Application {
                 return (
                     None,
                     crate::higent::Hosts::documents_of_watch(store, *subscription).and_then(
-                        |documents| crate::higent::Hosts::session_of_documents_id(store, documents),
+                        |documents| {
+                            crate::higent::Hosts::find_session(store, |_, family| {
+                                family.documents() == documents
+                            })
+                        },
                     ),
                 );
             }
             AppCommand::DiffViewCommand { documents, .. } => {
+                let documents = *documents;
                 return (
                     None,
-                    crate::higent::Hosts::session_of_documents_id(store, *documents),
+                    crate::higent::Hosts::find_session(store, |_, family| {
+                        family.documents() == documents
+                    }),
                 );
             }
             AppCommand::CanvasViewCommand { changes, .. } => {
+                let changes = *changes;
                 return (
                     None,
-                    crate::higent::Hosts::session_of_changes_id(store, *changes),
+                    crate::higent::Hosts::find_session(store, |_, family| {
+                        family.changes() == changes
+                    }),
                 );
             }
             _ => return (None, None),
@@ -965,7 +1011,7 @@ impl Application {
                     documents,
                     &mut fx,
                     move |document, command| {
-                        AppCommand::At(documents, DocumentsCommand::Editor(document, command))
+                        AppCommand::at(documents, DocumentsCommand::Editor(document, command))
                     },
                 );
                 // The DRESSING sweep: any view whose basis lags its
@@ -1237,24 +1283,10 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::RegisterDiffPolicy(_) => "register diff policy",
         AppCommand::RegisterEnrichers(_) => "register enrichers",
         AppCommand::Stats(_) => "stats",
-        AppCommand::At(_, DocumentsCommand::Editor(_, EditorCommand::ApplyRepair(_))) => "repair",
-        AppCommand::At(_, DocumentsCommand::Editor(_, EditorCommand::ApplyReparse(_))) => "reparse",
-        AppCommand::At(_, DocumentsCommand::Editor(_, EditorCommand::ApplyEnrichment(_))) => {
-            "enrich"
-        }
-        AppCommand::At(_, DocumentsCommand::Editor(..)) => "entity",
-        AppCommand::At(_, DocumentsCommand::BaseLocated { .. }) => "base located",
-        AppCommand::At(_, DocumentsCommand::BaseFetched { .. }) => "base fetched",
-        AppCommand::At(_, DocumentsCommand::BaseBuilt { .. }) => "base built",
-        AppCommand::At(_, DocumentsCommand::Stored { .. }) => "document stored",
-        AppCommand::At(_, DocumentsCommand::Watched(..)) => "watched",
-        AppCommand::At(_, DocumentsCommand::Refetched { .. }) => "refetched",
-        AppCommand::At(_, DocumentsCommand::RefetchDiffed { .. }) => "refetch-diffed",
-        AppCommand::At(_, DocumentsCommand::Normalized { .. }) => "diff normalized",
-        AppCommand::AtChats(_, crate::higent::ChatsCommand::Panel(..)) => "chat",
-        AppCommand::AtChanges(..) => "changes",
-        AppCommand::AtHistory(..) => "history",
-        AppCommand::AtComments(..) => "comments",
+        // The addressed commands label at construction
+        // (`AppEntity::label`) — the type is erased by the time the
+        // trace reads one.
+        AppCommand::At(addressed) => addressed.label,
         AppCommand::Opened(..) => "opened",
         AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::CanvasViewCommand { .. } => "canvas view",
@@ -1483,75 +1515,12 @@ impl Application {
                     self.stats.perform(store, ui, command, fx)
                 });
             }
-            AppCommand::At(documents, command) => {
+            AppCommand::At(addressed) => {
                 // The one command road (docs/entities.md law 5): lease
-                // the row, perform under its own address, put it back.
-                store.route(
-                    documents,
-                    command,
-                    ui,
-                    move |command| AppCommand::At(documents, command),
-                    fx,
-                );
-            }
-            AppCommand::AtChats(chats, command) => {
-                store.route(
-                    chats,
-                    command,
-                    ui,
-                    move |command| AppCommand::AtChats(chats, command),
-                    fx,
-                );
-            }
-            AppCommand::AtChanges(changes, command) => {
-                store.route(
-                    changes,
-                    command,
-                    ui,
-                    move |command| AppCommand::AtChanges(changes, command),
-                    fx,
-                );
-                // The landing's note: the stripe bases under the
-                // folders it touched re-ask — application effects the
-                // entity itself does not hold.
-                for (documents, folder) in store
-                    .take::<crate::hichanges::BaseRearms>()
-                    .map(|rearms| rearms.0)
-                    .unwrap_or_default()
-                {
-                    let authority = folder.authority().clone();
-                    let prefix = format!("/{}/", folder.path().join("/"));
-                    crate::rearm_base_asks(store, documents, &|location| {
-                        location.authority() == &authority
-                            && format!("/{}", location.path().join("/")).starts_with(&prefix)
-                    });
-                    crate::sync_stripe_bases(store, documents, ui, fx);
-                }
-            }
-            AppCommand::AtHistory(history, command) => {
-                store.route(
-                    history,
-                    command,
-                    ui,
-                    move |command| AppCommand::AtHistory(history, command),
-                    fx,
-                );
-            }
-            AppCommand::AtComments(comments, command) => {
-                store.route(
-                    comments,
-                    command,
-                    ui,
-                    move |command| AppCommand::AtComments(comments, command),
-                    fx,
-                );
-                // The landing's note: cards whose records died drop
-                // their inlays and the records settle into cards —
-                // document-addressed effects the entity itself does
-                // not hold.
-                if let Some(work) = store.take::<crate::hicomments::CardWork>() {
-                    crate::hicomments::run_card_work(store, ui, comments, work, fx);
-                }
+                // the row, perform under its own address, put it back,
+                // then the collection's application tail
+                // (`AppEntity::after_route`).
+                (addressed.run)(store, ui, fx);
             }
             AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),

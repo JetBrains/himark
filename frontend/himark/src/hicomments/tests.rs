@@ -342,7 +342,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         "the record stands"
     );
 
-    assert!(app.perform_command(AppCommand::AtComments(
+    assert!(app.perform_command(AppCommand::at(
         app.sole_family().comments(),
         crate::hicomments::CommentsCommand::Sent {
             ids: ids.clone(),
@@ -352,7 +352,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
-    assert!(app.perform_command(AppCommand::AtComments(
+    assert!(app.perform_command(AppCommand::at(
         app.sole_family().comments(),
         crate::hicomments::CommentsCommand::Sent {
             ids,

@@ -694,7 +694,7 @@ impl crate::DynamicCommand for RemovePeek {
         let document = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(document, command),
                 )

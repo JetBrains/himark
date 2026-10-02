@@ -6291,7 +6291,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     let home = app.sole_window_session();
     let documents = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
     let tick = move |app: &mut Application| {
-        app.perform_batch(vec![crate::AppCommand::At(
+        app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::Editor(target, EditorCommand::ApplyRepair(Vec::new())),
         )]);
@@ -6426,7 +6426,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let home = app.sole_window_session();
         let documents =
             crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
-        app.perform_batch(vec![crate::AppCommand::At(
+        app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
                 document: target,
@@ -6497,7 +6497,7 @@ unrelated
         let home = app.sole_window_session();
         let documents =
             crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
-        app.perform_batch(vec![crate::AppCommand::At(
+        app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
                 document: target,

@@ -71,18 +71,30 @@ impl EffectHandler<SlowProbe> for External {
     }
 }
 
+/// The probe's landing shape: the lifted text rides a command the
+/// dispatcher can read back — the addressed road is type-erased now,
+/// so the test lifts into `Register` and the text IS the name.
+struct LiftedText(String);
+
+impl crate::DynamicCommand for LiftedText {
+    fn id(&self) -> &'static str {
+        "test.lifted-text"
+    }
+    fn name(&self) -> String {
+        self.0.clone()
+    }
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        _store: &mut imba::store::Store,
+        _window: crate::WindowId,
+        _fx: &mut crate::AppFx<'_>,
+    ) {
+    }
+}
+
 fn lifted<E: Effect<Result = String>>(effect: E) -> AppEffect {
-    let document = crate::DocumentId::from_raw(0);
-    let documents = imba::store::Id::<crate::OpenDocuments>::mint();
-    AnyEffect::new(effect).map(move |text| {
-        AppCommand::At(
-            documents,
-            crate::app::DocumentsCommand::Editor(
-                document,
-                ::editor::EditorCommand::InsertText { text },
-            ),
-        )
-    })
+    AnyEffect::new(effect).map(move |text| AppCommand::Register(Arc::new(LiftedText(text))))
 }
 
 fn batch_of(effects: Vec<AppEffect>) -> AppEffects {
@@ -106,17 +118,10 @@ fn harness(
     let dispatcher: EffectDispatcher = {
         let posted = Arc::clone(&posted);
         Arc::new(move |command| {
-            let AppCommand::At(
-                _,
-                crate::app::DocumentsCommand::Editor(
-                    _,
-                    ::editor::EditorCommand::InsertText { text },
-                ),
-            ) = command
-            else {
-                panic!("the probes lift into InsertText");
+            let AppCommand::Register(command) = command else {
+                panic!("the probes lift into Register");
             };
-            posted.lock().expect("posted").push(text);
+            posted.lock().expect("posted").push(command.name());
         })
     };
     let scheduler: Arc<dyn Fn() + Send + Sync> = {

@@ -196,7 +196,7 @@ pub(crate) fn save_all(store: &mut Store, window: crate::WindowId, fx: &mut AppF
         let previous = entity.save_token();
         let token = fx.push(AnyEffect::new(StoreDocumentEffect { location, text }).map(
             move |stored| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::app::DocumentsCommand::Stored {
                         document: id,

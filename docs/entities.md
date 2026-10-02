@@ -41,8 +41,21 @@ direction is recorded at the tail, not legislated).
    `Id<OpenDocuments>` at the mint and never learns what a session
    is. Cross-collection links are `(Id<X>, private key)`.
 5. **One command road: `At(Id<T>, T::Command)` — carried by the
-   `Entity` trait.** An entity declares its command type the way
-   views do:
+   `Entity` trait.** LANDED as `AppCommand::At(Addressed)` — ONE
+   type-erased variant for every collection, built by
+   `AppCommand::at(id, command)`. The himark-side `AppEntity` trait
+   declares what the road needs per collection: `family_id` (the
+   scope compare over family rows — the typed `session_of_*_id`
+   lookups retired into one `Hosts::find_session`), `label` (the
+   reconcile trace name, computed at construction since the type is
+   erased after), and `after_route` (the landing's application tail —
+   the changes rearms, the comments card work). `DiffViewCommand` /
+   `CanvasViewCommand` stay separate variants for now: their performs
+   reach their own collection through the store by id (e.g.
+   `Canvas::perform` → `Changes::of`), which under a lease is
+   reentrancy — folding them in is step-4 row-threading per
+   collection, not dispatch work. An entity declares its command type
+   the way views do:
 
    ```rust
    trait Entity: Clone + Send + Sync + 'static {

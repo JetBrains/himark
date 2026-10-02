@@ -443,42 +443,10 @@ impl Hosts {
     // `SessionId` per read would remarry every collection to Hosts.
 
     /// Which session owns a documents collection — an ID COMPARE over
-    /// the family rows, no content resolution: an `At` command scopes
-    /// to its owner whether or not the addressed record still exists.
-    pub(crate) fn session_of_documents_id(
-        store: &Store,
-        documents: Id<crate::OpenDocuments>,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |_store, families| families.documents == documents)
-    }
-
-    pub(crate) fn session_of_chats_id(
-        store: &Store,
-        chats: Id<crate::higent::Chats>,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |_store, families| families.chats == chats)
-    }
-
-    pub(crate) fn session_of_changes_id(
-        store: &Store,
-        changes: Id<crate::hichanges::ChangeSets>,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |_store, families| families.changes == changes)
-    }
-
-    pub(crate) fn session_of_history_id(
-        store: &Store,
-        history: Id<crate::hihistory::History>,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |_store, families| families.history == history)
-    }
-
-    pub(crate) fn session_of_comments_id(
-        store: &Store,
-        comments: Id<crate::hicomments::Comments>,
-    ) -> Option<crate::SessionId> {
-        Self::find_session(store, |_store, families| families.comments == comments)
-    }
+    /// the family rows, no content resolution: an addressed command
+    /// scopes to its owner whether or not the addressed record still
+    /// exists. The per-collection compares live with the collections
+    /// (`AppEntity::family_id`); this is their one iteration.
 
     /// The family whose documents collection this is — the sibling
     /// road for an edge that holds a documents id and needs the
@@ -563,7 +531,7 @@ impl Hosts {
         None
     }
 
-    fn find_session(
+    pub(crate) fn find_session(
         store: &Store,
         matches: impl Fn(&Store, &SessionState) -> bool,
     ) -> Option<crate::SessionId> {

@@ -402,7 +402,7 @@ impl Panel {
                 let (documents, target) = (view.documents(), view.document());
                 fx.scope(
                     move |command| {
-                        crate::AppCommand::At(
+                        crate::AppCommand::at(
                             documents,
                             crate::DocumentsCommand::Editor(target, command),
                         )

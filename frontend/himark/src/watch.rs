@@ -18,7 +18,7 @@ pub fn sync_document_watches(
     fx: &mut AppFx<'_>,
 ) {
     documents::watch::sync_document_watches(store, documents, fx, move |document, subscription| {
-        AppCommand::At(documents, DocumentsCommand::Watched(document, subscription))
+        AppCommand::at(documents, DocumentsCommand::Watched(document, subscription))
     });
 }
 
@@ -34,7 +34,7 @@ pub(crate) fn refetch_watched(
         subscription,
         fx,
         move |document, serial, text| {
-            AppCommand::At(
+            AppCommand::at(
                 documents,
                 DocumentsCommand::Refetched {
                     document,
@@ -61,7 +61,7 @@ pub fn refetch_document(
     let serial = documents::OpenDocuments::stamp_refetch(store, documents_id, document);
     let _ = fx.push(
         imba::effect::AnyEffect::new(crate::FetchDocumentEffect { location }).map(move |text| {
-            AppCommand::At(
+            AppCommand::at(
                 documents_id,
                 DocumentsCommand::Refetched {
                     document,

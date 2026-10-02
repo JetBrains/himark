@@ -1436,7 +1436,7 @@ impl Window {
         let theme = ::editor::env::Themes::of(store);
         let new_editor = fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::DocumentsCommand::Editor(document_id, command),
                 )
@@ -1816,7 +1816,7 @@ impl Window {
         let documents = self.family.documents();
         let editor_id = fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::DocumentsCommand::Editor(document_id, command),
                 )

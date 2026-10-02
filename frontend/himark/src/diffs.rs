@@ -154,7 +154,7 @@ pub(crate) fn sync_diff_lanes(
     fx: &mut AppFx<'_>,
 ) {
     documents::diffs::sync_diff_lanes(store, documents, fx, move |normalized| {
-        AppCommand::At(
+        AppCommand::at(
             documents,
             crate::app::DocumentsCommand::Normalized {
                 diff: normalized.diff,
@@ -175,7 +175,7 @@ pub fn sync_stripe_bases(
     fx: &mut AppFx<'_>,
 ) {
     fx.scope(
-        move |command| AppCommand::At(documents, command),
+        move |command| AppCommand::at(documents, command),
         |fx| {
             documents::diffs::sync_stripe_bases(
                 store,

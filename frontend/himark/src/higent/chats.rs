@@ -153,6 +153,18 @@ impl imba::store::Entity for Chats {
     }
 }
 
+impl crate::AppEntity for Chats {
+    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
+        family.chats()
+    }
+
+    fn label(command: &ChatsCommand) -> &'static str {
+        match command {
+            ChatsCommand::Panel(..) => "chat",
+        }
+    }
+}
+
 pub(crate) struct EnsureChatFeed {
     pub(crate) chats: imba::store::Id<Chats>,
     pub(crate) chat: ChatUri,
@@ -187,7 +199,7 @@ impl crate::DynamicCommand for EnsureChatFeed {
         let landing = self.chat.clone();
         fx.push(
             AnyEffect::new(crate::higent::SubscribeChatEffect { seat, chat }).map(move |result| {
-                AppCommand::AtChats(
+                AppCommand::at(
                     chats,
                     ChatsCommand::Panel(landing.clone(), ChatPanelCommand::Snapshot(result)),
                 )

@@ -374,7 +374,7 @@ impl DynamicCommand for CompletionTrigger {
                         crate::AppCommand::Dynamic(window, Arc::new(CompletionLanded(found)))
                     },
                     move |command| {
-                        AppCommand::At(documents, crate::app::DocumentsCommand::Editor(id, command))
+                        AppCommand::at(documents, crate::app::DocumentsCommand::Editor(id, command))
                     },
                 );
             }
@@ -505,7 +505,7 @@ impl DynamicCommand for FindStep {
                 };
                 fx.scope(
                     move |command| {
-                        crate::AppCommand::At(
+                        crate::AppCommand::at(
                             documents,
                             crate::DocumentsCommand::Editor(document, command),
                         )
@@ -544,7 +544,7 @@ fn find_sync_slot(
     };
     fx.scope(
         move |command| {
-            crate::AppCommand::At(
+            crate::AppCommand::at(
                 documents,
                 crate::DocumentsCommand::Editor(document, command),
             )
@@ -593,7 +593,7 @@ impl DynamicCommand for FindScanLanded {
             };
             fx.scope(
                 move |command| {
-                    crate::AppCommand::At(
+                    crate::AppCommand::at(
                         documents,
                         crate::DocumentsCommand::Editor(document, command),
                     )

@@ -810,7 +810,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
                 SyncSeats::expect(store, &self.location, identity);
                 let applied = fx.scope(
                     move |command| {
-                        himark::AppCommand::At(
+                        himark::AppCommand::at(
                             documents,
                             himark::DocumentsCommand::Editor(document_id, command),
                         )
@@ -934,7 +934,7 @@ impl himark::DynamicCommand for ApplyOffer {
         SyncSeats::expect(store, &self.location, identity);
         let applied = fx.scope(
             move |command| {
-                himark::AppCommand::At(
+                himark::AppCommand::at(
                     documents,
                     himark::DocumentsCommand::Editor(document_id, command),
                 )

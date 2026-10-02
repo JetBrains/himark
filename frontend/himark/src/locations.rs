@@ -446,7 +446,7 @@ impl crate::DynamicCommand for WashDocument {
         let entity = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(entity, command),
                 )
@@ -487,7 +487,7 @@ fn remove_washes(
         let entity = *id;
         fx.scope(
             move |command| {
-                crate::AppCommand::At(
+                crate::AppCommand::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(entity, command),
                 )
