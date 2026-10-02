@@ -651,11 +651,10 @@ impl EditorView {
                     | InlayMode::Instead(crate::markup::InsteadKind::Inline) => {
                         let byte = inlay_anchor_byte(interval.inlay.mode, &interval.range);
                         let positioner = positioner.get_or_insert_with(|| {
-                            self.document.shape_line(
+                            positioner_line(
+                                &self.document,
                                 editor_id,
                                 line_range.clone(),
-                                0.0,
-                                true,
                                 store,
                                 ui,
                                 &fonts,
@@ -679,11 +678,10 @@ impl EditorView {
                     }
                     InlayMode::Instead(crate::markup::InsteadKind::FullLine) => {
                         let positioner = positioner.get_or_insert_with(|| {
-                            self.document.shape_line(
+                            positioner_line(
+                                &self.document,
                                 editor_id,
                                 line_range.clone(),
-                                0.0,
-                                true,
                                 store,
                                 ui,
                                 &fonts,
@@ -717,6 +715,91 @@ impl EditorView {
             }
         }
     }
+}
+
+/// The inlay positioner cache, an env slot on the warm `UiCtx`. The
+/// positioner is a line shaped ONLY to answer byte→x questions for
+/// anchored inlays, and those answers don't depend on the scroll
+/// offset — yet every realize walk (the scroll route, the settle
+/// pulse, the animation clock, the paint) re-shaped it from scratch,
+/// 3–4 full skia shapings per visible inlay line per frame. One
+/// shaping serves them all, and every later frame the line stays
+/// visible. Validation rides the SAME signals the repair door trusts
+/// (`repair_landable`): any text edit bumps the revision, any markup
+/// change bumps the generation, and width/theme pin the layout
+/// inputs. `EditorId`s are minted from a global counter, so the key
+/// never collides across documents.
+#[derive(Default)]
+struct PositionerCache {
+    entries: std::cell::RefCell<
+        std::collections::HashMap<(crate::editor::EditorId, u32), PositionerEntry>,
+    >,
+}
+
+struct PositionerEntry {
+    revision: u64,
+    markup_generation: u64,
+    line_end: u32,
+    width: f32,
+    theme: std::sync::Arc<str>,
+    shaped: std::rc::Rc<crate::shaped_line::ShapedLine>,
+}
+
+/// Beyond this many standing lines the cache clears outright — a
+/// scroll repopulates the visible band within a frame, and the sweep
+/// keeps closed documents' lines from accumulating.
+const POSITIONER_CACHE_CAP: usize = 512;
+
+fn positioner_line(
+    document: &Document,
+    editor_id: crate::editor::EditorId,
+    line_range: std::ops::Range<u32>,
+    store: &Store,
+    ui: &UiCtx,
+    fonts: &skia_safe::textlayout::FontCollection,
+    theme: &crate::theme::Theme,
+) -> std::rc::Rc<crate::shaped_line::ShapedLine> {
+    let cache = ui.env::<PositionerCache>(PositionerCache::default);
+    let revision = document.revision();
+    let markup_generation = document.markup_generation();
+    let width = document.editor(editor_id).layout.layout_width();
+    let key = (editor_id, line_range.start);
+    if let Some(entry) = cache.entries.borrow().get(&key) {
+        if entry.revision == revision
+            && entry.markup_generation == markup_generation
+            && entry.line_end == line_range.end
+            && entry.width == width
+            && *entry.theme == *theme.name()
+        {
+            return entry.shaped.clone();
+        }
+    }
+    let shaped = std::rc::Rc::new(document.shape_line(
+        editor_id,
+        line_range.clone(),
+        0.0,
+        true,
+        store,
+        ui,
+        fonts,
+        theme,
+    ));
+    let mut entries = cache.entries.borrow_mut();
+    if entries.len() >= POSITIONER_CACHE_CAP {
+        entries.clear();
+    }
+    entries.insert(
+        key,
+        PositionerEntry {
+            revision,
+            markup_generation,
+            line_end: line_range.end,
+            width,
+            theme: theme.name_shared(),
+            shaped: shaped.clone(),
+        },
+    );
+    shaped
 }
 
 impl View for EditorView {
