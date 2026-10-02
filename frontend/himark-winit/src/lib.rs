@@ -902,10 +902,7 @@ impl WindowState {
                 let row_bytes = buffer_width as usize * 4;
                 let pixels = &mut *buffer;
                 let bytes = unsafe {
-                    std::slice::from_raw_parts_mut(
-                        pixels.as_mut_ptr() as *mut u8,
-                        pixels.len() * 4,
-                    )
+                    std::slice::from_raw_parts_mut(pixels.as_mut_ptr() as *mut u8, pixels.len() * 4)
                 };
 
                 let image_info = ImageInfo::new(
@@ -916,8 +913,8 @@ impl WindowState {
                 );
                 let mut skia_surface = surfaces::wrap_pixels(&image_info, bytes, row_bytes, None)
                     .ok_or_else(|| {
-                        std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels")
-                    })?;
+                    std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels")
+                })?;
                 let reconciling = paint(
                     skia_surface.canvas(),
                     buffer_width as f32,
