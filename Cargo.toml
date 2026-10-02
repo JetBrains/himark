@@ -87,5 +87,5 @@ opt-level = 2
 opt-level = 2
 
 [patch.crates-io]
-skia-bindings = { path = "vendor/skia-bindings-0.99.0" }
+skia-bindings = { path = "vendor/skia-bindings-0.153.3" }
 tree-sitter = { path = "vendor/tree-sitter-0.26.8" }

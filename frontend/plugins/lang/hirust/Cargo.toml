@@ -16,5 +16,5 @@ himark = { path = "../../../himark", features = ["test-support"] }
 himarkdown = { path = "../../himarkdown" }
 imba = { path = "../../../imba" }
 operation = { path = "../../../operation" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../../../text" }

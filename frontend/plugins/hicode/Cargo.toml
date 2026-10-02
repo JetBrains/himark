@@ -8,7 +8,7 @@ license = "Apache-2.0"
 himark = { path = "../../himark" }
 imba = { path = "../../imba" }
 text = { path = "../../text" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 
 [dev-dependencies]
 himark = { path = "../../himark", features = ["test-support"] }

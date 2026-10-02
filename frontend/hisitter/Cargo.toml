@@ -7,7 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 editor = { path = "../editor" }
 operation = { path = "../operation" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 streaming-iterator = "0.1"
 text = { path = "../text" }
 tree-sitter = "0.26.8"
