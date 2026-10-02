@@ -1155,6 +1155,12 @@ pub(crate) struct OpenEffect {
     build: DocumentBuild,
 }
 
+impl std::fmt::Display for OpenEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "open document {}", self.name)
+    }
+}
+
 impl Effect for OpenEffect {
     type Result = AppCommand;
 }

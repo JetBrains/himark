@@ -18,6 +18,12 @@ pub struct LspHoverEffect {
     pub position: LineCol,
 }
 
+impl std::fmt::Display for LspHoverEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "lsp hover /{}", self.location.path().join("/"))
+    }
+}
+
 impl imba::effect::Effect for LspHoverEffect {
     type Result = Option<HoverInfo>;
 }

@@ -253,6 +253,12 @@ pub struct FilePickerEffect {
     window: himark::WindowId,
 }
 
+impl std::fmt::Display for FilePickerEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("pick files")
+    }
+}
+
 impl Effect for FilePickerEffect {
     type Result = Vec<ResourceLocation>;
 }
@@ -552,6 +558,12 @@ pub struct NewTerminalEffect {
     pub(crate) home: himark::SessionId,
     pub(crate) cwd: Option<String>,
     pub(crate) window: himark::WindowId,
+}
+
+impl std::fmt::Display for NewTerminalEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "new terminal {}", self.home.session.as_str())
+    }
 }
 
 impl Effect for NewTerminalEffect {

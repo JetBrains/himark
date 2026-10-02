@@ -12,12 +12,24 @@ pub struct StoreDocumentEffect {
     pub text: String,
 }
 
+impl std::fmt::Display for StoreDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "store document /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for StoreDocumentEffect {
     type Result = bool;
 }
 
 pub struct ListDirectoryEffect {
     pub location: ResourceLocation,
+}
+
+impl std::fmt::Display for ListDirectoryEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "list directory /{}", self.location.path().join("/"))
+    }
 }
 
 impl Effect for ListDirectoryEffect {
@@ -30,6 +42,12 @@ pub struct CreateDocumentEffect {
     pub location: ResourceLocation,
 }
 
+impl std::fmt::Display for CreateDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "create document /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for CreateDocumentEffect {
     type Result = bool;
 }
@@ -37,6 +55,12 @@ impl Effect for CreateDocumentEffect {
 pub struct DeleteResourceEffect {
     pub location: ResourceLocation,
     pub recursive: bool,
+}
+
+impl std::fmt::Display for DeleteResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "delete resource /{}", self.location.path().join("/"))
+    }
 }
 
 impl Effect for DeleteResourceEffect {
@@ -49,12 +73,29 @@ pub struct MoveResourceEffect {
     pub to: ResourceLocation,
 }
 
+impl std::fmt::Display for MoveResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "move resource /{} -> /{}",
+            self.from.path().join("/"),
+            self.to.path().join("/")
+        )
+    }
+}
+
 impl Effect for MoveResourceEffect {
     type Result = bool;
 }
 
 pub struct PickSaveEffect {
     pub suggested: String,
+}
+
+impl std::fmt::Display for PickSaveEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "pick save {}", self.suggested)
+    }
 }
 
 impl Effect for PickSaveEffect {
@@ -76,6 +117,12 @@ pub struct OpenByLocationEffect {
     pub focus: bool,
 }
 
+impl std::fmt::Display for OpenByLocationEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "open by location /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for OpenByLocationEffect {
     type Result = AppCommand;
 }
@@ -90,6 +137,12 @@ pub struct OpenDiffByLocationsEffect {
     pub documents: imba::store::Id<crate::OpenDocuments>,
     pub old: DiffSideInput,
     pub new: DiffSideInput,
+}
+
+impl std::fmt::Display for OpenDiffByLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("open diff by locations")
+    }
 }
 
 impl Effect for OpenDiffByLocationsEffect {
@@ -108,6 +161,12 @@ pub struct OpenDiffPairEffect {
     pub new: DiffSideInput,
     /// The half width to lay the editors at (the canvas's content width).
     pub width: f32,
+}
+
+impl std::fmt::Display for OpenDiffPairEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("open diff pair")
+    }
 }
 
 impl Effect for OpenDiffPairEffect {
@@ -294,6 +353,12 @@ pub struct FindEffect {
     pub term: String,
 }
 
+impl std::fmt::Display for FindEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "find paths {}", self.term)
+    }
+}
+
 impl Effect for FindEffect {
     type Result = Vec<ResourceLocation>;
 }
@@ -320,6 +385,12 @@ pub struct SearchLocationsEffect {
     pub limit: usize,
 }
 
+impl std::fmt::Display for SearchLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "search locations {}", self.query)
+    }
+}
+
 impl Effect for SearchLocationsEffect {
     type Result = Result<LocationsChannel, String>;
 }
@@ -336,6 +407,17 @@ pub struct LspLocationsEffect {
     pub location: ResourceLocation,
     pub position: crate::LineCol,
     pub kind: LspLocationsKind,
+}
+
+impl std::fmt::Display for LspLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "lsp locations {:?} /{}",
+            self.kind,
+            self.location.path().join("/")
+        )
+    }
 }
 
 impl Effect for LspLocationsEffect {

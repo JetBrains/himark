@@ -1135,6 +1135,12 @@ pub struct TableRelayoutEffect {
     width: f32,
 }
 
+impl std::fmt::Display for TableRelayoutEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "relayout table at width {}", self.width)
+    }
+}
+
 impl imba::effect::Effect for TableRelayoutEffect {
     type Result = TableCommand;
 }

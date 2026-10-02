@@ -215,6 +215,12 @@ impl StripeOutcome {
     }
 }
 
+impl std::fmt::Display for ScrollStripeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "compute scroll stripes {:?}", self.work.editor)
+    }
+}
+
 impl imba::effect::Effect for ScrollStripeEffect {
     type Result = StripeOutcome;
 }

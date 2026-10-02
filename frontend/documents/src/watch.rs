@@ -32,12 +32,24 @@ pub struct SubscribeEffect {
     pub location: ResourceLocation,
 }
 
+impl std::fmt::Display for SubscribeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe watch /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for SubscribeEffect {
     type Result = Option<Subscription>;
 }
 
 pub struct UnsubscribeEffect {
     pub subscription: Subscription,
+}
+
+impl std::fmt::Display for UnsubscribeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "unsubscribe watch {:?}", self.subscription)
+    }
 }
 
 impl Effect for UnsubscribeEffect {
@@ -81,6 +93,12 @@ pub struct RefetchRebase {
     /// text — computed on the worker, where the strings already
     /// exist; the landing must not compare texts on the UI thread.
     pub synced: bool,
+}
+
+impl std::fmt::Display for RefetchDiffEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("diff refetched text")
+    }
 }
 
 impl Effect for RefetchDiffEffect {

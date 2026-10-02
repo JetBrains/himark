@@ -89,6 +89,12 @@ pub struct RunScriptEffect {
     pub capture: ScriptCapture,
 }
 
+impl std::fmt::Display for RunScriptEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("run script")
+    }
+}
+
 impl Effect for RunScriptEffect {
     type Result = ScriptLanding;
 }

@@ -1365,6 +1365,12 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
     }
 }
 
+impl std::fmt::Display for RepairDiffEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "repair diff pair seq {}", self.seq)
+    }
+}
+
 impl Effect for RepairDiffEffect {
     type Result = SplitDiffCommand;
 }

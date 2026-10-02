@@ -93,6 +93,12 @@ pub struct SpeedSearchMatches {
     pub(crate) stamp: (String, u64),
 }
 
+impl std::fmt::Display for SpeedSearchEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "speed search {}", self.stamp.0)
+    }
+}
+
 impl Effect for SpeedSearchEffect {
     type Result = SpeedSearchMatches;
 }
@@ -113,6 +119,12 @@ impl EffectHandler<SpeedSearchEffect> for SpeedSearchHandler {
 /// round-trips through this always-ready effect and descends from
 /// the root — the surface sees it like every other selection edit.
 pub struct AnnounceSelect;
+
+impl std::fmt::Display for AnnounceSelect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("announce select")
+    }
+}
 
 impl Effect for AnnounceSelect {
     type Result = ();

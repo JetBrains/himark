@@ -111,6 +111,12 @@ pub struct PickFoldersEffect {
     pub window: crate::WindowId,
 }
 
+impl std::fmt::Display for PickFoldersEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("pick folders")
+    }
+}
+
 impl imba::effect::Effect for PickFoldersEffect {
     type Result = Vec<crate::ResourceLocation>;
 }

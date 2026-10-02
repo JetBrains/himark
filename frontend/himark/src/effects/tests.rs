@@ -11,6 +11,12 @@ struct Probe {
     tag: &'static str,
 }
 
+impl std::fmt::Display for Probe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("probe")
+    }
+}
+
 impl Effect for Probe {
     type Result = String;
 }
@@ -28,6 +34,12 @@ impl EffectHandler<Probe> for Recording {
 }
 
 struct SlowProbe;
+
+impl std::fmt::Display for SlowProbe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("slow probe")
+    }
+}
 
 impl Effect for SlowProbe {
     type Result = String;
@@ -193,6 +205,12 @@ fn caller_for(handlers: &Arc<Handlers>) -> imba::effect::EffectCaller {
 
 struct RelayProbe;
 
+impl std::fmt::Display for RelayProbe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("relay probe")
+    }
+}
+
 impl Effect for RelayProbe {
     type Result = String;
 }
@@ -209,6 +227,12 @@ impl EffectHandler<RelayProbe> for Relay {
 }
 
 struct HostRelayProbe;
+
+impl std::fmt::Display for HostRelayProbe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("host relay probe")
+    }
+}
 
 impl Effect for HostRelayProbe {
     type Result = String;

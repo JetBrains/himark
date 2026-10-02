@@ -26,6 +26,12 @@ pub struct FindDefinitionEffect {
     pub position: LineCol,
 }
 
+impl std::fmt::Display for FindDefinitionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "find definition /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for FindDefinitionEffect {
     type Result = Option<Vec<CodeTarget>>;
 }
@@ -44,6 +50,12 @@ pub struct NavigationOutcome {
     pub title: String,
     pub targets: Option<Vec<CodeTarget>>,
     pub built: Vec<(ResourceLocation, Document)>,
+}
+
+impl std::fmt::Display for CodeNavigationEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "navigate code /{}", self.location.path().join("/"))
+    }
 }
 
 impl Effect for CodeNavigationEffect {

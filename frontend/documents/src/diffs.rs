@@ -1049,6 +1049,16 @@ pub struct Normalized {
     pub target_revision: u64,
 }
 
+impl std::fmt::Display for DiffNormalizeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "normalize diff {:?} @ ({}, {})",
+            self.diff, self.base_revision, self.target_revision
+        )
+    }
+}
+
 impl Effect for DiffNormalizeEffect {
     type Result = Normalized;
 }

@@ -456,6 +456,12 @@ pub struct OutlineEffect {
     stamp: (u64, u64),
 }
 
+impl std::fmt::Display for OutlineEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "outline revision {}", self.stamp.0)
+    }
+}
+
 impl imba::effect::Effect for OutlineEffect {
     type Result = OutlineRows;
 }

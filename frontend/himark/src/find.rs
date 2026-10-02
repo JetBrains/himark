@@ -61,6 +61,12 @@ pub struct FindScanEffect {
     revision: u64,
 }
 
+impl std::fmt::Display for FindScanEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "scan find matches {:?}", self.document)
+    }
+}
+
 impl imba::effect::Effect for FindScanEffect {
     type Result = Scan;
 }

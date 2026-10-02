@@ -89,6 +89,12 @@ pub struct LspCompletionEffect {
     pub position: LineCol,
 }
 
+impl std::fmt::Display for LspCompletionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "lsp completion /{}", self.location.path().join("/"))
+    }
+}
+
 impl imba::effect::Effect for LspCompletionEffect {
     type Result = Option<LspAnswer>;
 }

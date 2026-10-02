@@ -29,6 +29,12 @@ pub struct FetchDocumentEffect {
     pub location: editor::ResourceLocation,
 }
 
+impl std::fmt::Display for FetchDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "fetch document /{}", self.location.path().join("/"))
+    }
+}
+
 impl imba::effect::Effect for FetchDocumentEffect {
     type Result = Option<String>;
 }
@@ -37,6 +43,12 @@ pub struct FetchResourceBytesEffect {
     pub origin: editor::ResourceLocation,
 
     pub reference: String,
+}
+
+impl std::fmt::Display for FetchResourceBytesEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "fetch resource {}", self.reference)
+    }
 }
 
 impl imba::effect::Effect for FetchResourceBytesEffect {
@@ -48,6 +60,12 @@ impl imba::effect::Effect for FetchResourceBytesEffect {
 pub struct BuildDocumentEffect {
     pub location: editor::ResourceLocation,
     pub text: String,
+}
+
+impl std::fmt::Display for BuildDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "build document /{}", self.location.path().join("/"))
+    }
 }
 
 impl imba::effect::Effect for BuildDocumentEffect {

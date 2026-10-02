@@ -131,6 +131,12 @@ impl RepairHandler {
     }
 }
 
+impl std::fmt::Display for RepairEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "repair layout for {} editors", self.editors.len())
+    }
+}
+
 impl Effect for RepairEffect {
     type Result = EditorCommand;
 }
