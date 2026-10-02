@@ -2079,6 +2079,8 @@ mod chat_flow_tests;
 #[cfg(test)]
 mod findroute_tests;
 #[cfg(test)]
+mod reconnect_tests;
+#[cfg(test)]
 mod tests;
 
 #[cfg(test)]

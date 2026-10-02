@@ -365,17 +365,24 @@ fn session_config_values(
 
 type Outbox = tokio::sync::mpsc::UnboundedSender<Vec<u8>>;
 
+/// ONE subscription per channel per connection — the protocol's model:
+/// a subscription is addressed by its channel URI alone (`unsubscribe`
+/// takes the channel, `reconnect` lists channels), so a second
+/// `subscribe` from the same connection cannot be told apart from the
+/// first and is the same subscription: it answers a fresh snapshot and
+/// keeps the one row. A client that taps a channel for several reasons
+/// counts its taps itself (hiahp/wire.rs). Two rows per connection
+/// meant two copies of every action to that client (2026-10-02).
 fn subscribe_outbox(state: &mut State, channel: &Uri, connection: u64, outbox: &Outbox) {
     let mut rows = state
         .subscribers
         .get(channel)
         .cloned()
         .unwrap_or_else(rpds::VectorSync::new_sync);
+    if rows.iter().any(|(held, _)| *held == connection) {
+        return;
+    }
     rows.push_back_mut((connection, outbox.clone()));
-    eprintln!(
-        "[host-probe] subscribe {channel} conn={connection} rows={}",
-        rows.len()
-    );
     state.subscribers.insert_mut(channel.clone(), rows);
 }
 

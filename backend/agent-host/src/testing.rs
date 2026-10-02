@@ -109,6 +109,23 @@ while True:
         # The expansion oracle: reply with the EXACT prompt received.
         stream_text(text)
         result()
+    elif "trickle:" in text:
+        # A LONG stream, one character every few ms: the text between
+        # "trickle:" and ":end" is echoed back as that many deltas.
+        # Reconnect tests break the wire under it and check nothing
+        # doubled or went missing.
+        payload = text.split("trickle:", 1)[1].split(":end", 1)[0]
+        out({"type": "stream_event", "session_id": session,
+             "event": {"type": "content_block_start", "index": 0, "content_block": {"type": "text", "text": ""}}})
+        for ch in payload:
+            out({"type": "stream_event", "session_id": session,
+                 "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": ch}}})
+            time.sleep(0.002)
+        out({"type": "stream_event", "session_id": session,
+             "event": {"type": "content_block_stop", "index": 0}})
+        out({"type": "assistant", "session_id": session,
+             "message": {"role": "assistant", "content": [{"type": "text", "text": payload}]}})
+        result()
     else:
         stream_text("OK")
         result()

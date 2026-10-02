@@ -59,7 +59,26 @@ pub fn test_runtime() -> tokio::runtime::Handle {
 }
 
 pub struct WireHost {
-    active: Mutex<Option<Arc<Active>>>,
+    active: Arc<Mutex<Option<Arc<Active>>>>,
+
+    /// Held for the whole of a reconnect. `active` is released while
+    /// the new connection dials (a dial blocks for seconds), and every
+    /// ask that lands meanwhile must WAIT for that one connection —
+    /// not dial its own: two dials are two connections, the second
+    /// carries no feeds, and whichever stores last orphans the
+    /// other's subscriptions.
+    reconnecting: Mutex<()>,
+
+    /// Reconnect attempts, counted as they finish, with the last
+    /// one's failure. An ask that waited out an attempt which then
+    /// failed takes that failure instead of dialing again: a host
+    /// that is down answers every waiter at once, not one dial
+    /// (and one connect timeout) per waiter in a row.
+    attempts: Mutex<Attempts>,
+
+    /// Rung when a connection becomes ACTIVE. Polls that found no
+    /// connection wait on this (or a backoff) before re-arming.
+    connected: Arc<tokio::sync::Notify>,
     next_turn: AtomicU64,
     discovery: Discovery,
 
@@ -74,16 +93,51 @@ pub struct WireHost {
     connector: Arc<dyn crate::transport::Connector>,
 }
 
+#[derive(Default)]
+struct Attempts {
+    finished: u64,
+    failed: Option<String>,
+}
+
+/// How long a poll waits, with no connection to park on, before it
+/// re-arms and the re-arm dials again.
+const RECONNECT_BACKOFF: std::time::Duration = std::time::Duration::from_secs(3);
+
 struct Active {
     client: ahp::Client,
 
     dead: Arc<std::sync::atomic::AtomicBool>,
+
+    /// Rung once `dead` is set — by whoever set it, or by the death
+    /// watch (`watch_death`) for the transport, which only has the
+    /// flag. Parked polls and asks wait on this, not on a timer each.
+    died: tokio::sync::Notify,
 
     feeds: Mutex<HashMap<Uri, Arc<Feed>>>,
 
     root: Mutex<Option<Arc<RootFeed>>>,
 
     agents: Mutex<Vec<AgentInfo>>,
+}
+
+impl Active {
+    fn die(&self) {
+        self.dead.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.died.notify_waiters();
+    }
+
+    /// Resolves once this connection is dead.
+    async fn died(self: Arc<Self>) {
+        loop {
+            let notified = self.died.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.dead.load(std::sync::atomic::Ordering::Relaxed) {
+                return;
+            }
+            notified.await;
+        }
+    }
 }
 
 impl WireHost {
@@ -119,7 +173,10 @@ impl WireHost {
         let tag = format!("seat#{}", SEAT.fetch_add(1, Ordering::Relaxed));
         tracing::info!(target: "ahp_wire", seat = %tag, ?discovery, "seat opened");
         Self {
-            active: Mutex::new(None),
+            active: Arc::new(Mutex::new(None)),
+            reconnecting: Mutex::new(()),
+            attempts: Mutex::new(Attempts::default()),
+            connected: Arc::new(tokio::sync::Notify::new()),
             next_turn: AtomicU64::new(1),
             discovery,
             runtime,
@@ -234,15 +291,7 @@ impl WireHost {
     {
         let tag = self.tag.clone();
         self.run(move |active| async move {
-            let dead = Arc::clone(&active.dead);
-            let died = async move {
-                loop {
-                    if dead.load(std::sync::atomic::Ordering::Relaxed) {
-                        break;
-                    }
-                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
-                }
-            };
+            let died = Arc::clone(&active).died();
             tokio::select! {
                 outcome = work(active) => outcome,
                 () = died => {
@@ -253,29 +302,199 @@ impl WireHost {
         })
     }
 
+    /// `run_ask` for a SUBSCRIBE: an ask the host answers the same
+    /// however often it is made (one subscription per channel per
+    /// connection). Died under a reconnect, it is made once more on
+    /// the connection that comes up — a chat opened at the moment the
+    /// keepalive gave up opens, instead of failing for the user to
+    /// retry. The wait is bounded; nothing reconnects on this road.
+    fn run_subscribe<T, F>(
+        &self,
+        work: impl Fn(Arc<Active>) -> F + Send + Sync + 'static,
+    ) -> RunFuture<T>
+    where
+        T: Send + 'static,
+        F: Future<Output = Result<T, String>> + Send + 'static,
+    {
+        let tag = self.tag.clone();
+        let connected = Arc::clone(&self.connected);
+        let slot = Arc::clone(&self.active);
+        self.run(move |active| async move {
+            let died = Arc::clone(&active).died();
+            let first = tokio::select! {
+                outcome = work(active) => return outcome,
+                () = died => Err("the agent host connection died".to_owned()),
+            };
+            tracing::warn!(target: "ahp_wire", seat = %tag, "subscribe died under a reconnect: asking again on the next connection");
+            let up = connected.notified();
+            tokio::pin!(up);
+            up.as_mut().enable();
+            let next = {
+                let held = slot.lock().expect("wire active").clone();
+                held.filter(|active| !active.dead.load(std::sync::atomic::Ordering::Relaxed))
+            };
+            let active = match next {
+                Some(active) => active,
+                None => {
+                    let waited = tokio::time::timeout(RECONNECT_BACKOFF * 4, up).await;
+                    if waited.is_err() {
+                        return first;
+                    }
+                    match slot.lock().expect("wire active").clone() {
+                        Some(active) => active,
+                        None => return first,
+                    }
+                }
+            };
+            let died = Arc::clone(&active).died();
+            tokio::select! {
+                outcome = work(active) => outcome,
+                () = died => first,
+            }
+        })
+    }
+
     fn ensure_active(&self) -> Result<Arc<Active>, String> {
+        let live = |active: &Arc<Active>| !active.dead.load(std::sync::atomic::Ordering::Relaxed);
+        if let Some(active) = self.active.lock().expect("wire active").as_ref() {
+            if live(active) {
+                return Ok(Arc::clone(active));
+            }
+        }
+        // Dead or absent: ONE reconnect at a time. Whoever waited here
+        // re-reads `active` — the reconnect they waited for is theirs,
+        // its failure too.
+        let seen = self.attempts.lock().expect("wire attempts").finished;
+        let _reconnecting = self.reconnecting.lock().expect("wire reconnecting");
         let previous = {
             let mut held = self.active.lock().expect("wire active");
-            match held.clone() {
-                Some(active) if !active.dead.load(std::sync::atomic::Ordering::Relaxed) => {
-                    return Ok(active);
+            if let Some(active) = held.as_ref().filter(|active| live(active)) {
+                return Ok(Arc::clone(active));
+            }
+            // An attempt finished while this ask waited for the lock
+            // and the connection is still not live: that attempt
+            // failed, and this ask waited for it.
+            let attempts = self.attempts.lock().expect("wire attempts");
+            if attempts.finished > seen {
+                if let Some(error) = attempts.failed.clone() {
+                    return Err(error);
                 }
+            }
+            drop(attempts);
+            match held.take() {
                 Some(active) => {
                     tracing::warn!(target: "ahp_wire", seat = %self.tag, "connection DEAD — reconnecting");
-                    *held = None;
                     Some(active)
                 }
                 None => None,
             }
         };
-        match self.connect_fresh(&previous) {
-            Ok(active) => Ok(active),
+        let outcome = self.connect_fresh(&previous);
+        {
+            let mut attempts = self.attempts.lock().expect("wire attempts");
+            attempts.finished += 1;
+            attempts.failed = outcome.as_ref().err().cloned();
+        }
+        match outcome {
+            Ok(active) => {
+                if let Some(previous) = previous {
+                    self.retire(previous);
+                }
+                self.connected.notify_waiters();
+                Ok(active)
+            }
             Err(error) => {
                 if let Some(previous) = previous {
                     *self.active.lock().expect("wire active") = Some(previous);
                 }
                 Err(error)
             }
+        }
+    }
+
+    /// A poll with no connection to park on: wait for one to come up
+    /// (some ask reconnected) or for the backoff, then answer EMPTY so
+    /// the re-arm dials. Parked for good, the channel would stay
+    /// frozen after the host came back.
+    fn poll_unconnected<T: Send + 'static>(&self) -> SeatFuture<Vec<T>> {
+        let connected = Arc::clone(&self.connected);
+        let backoff = self
+            .runtime
+            .spawn(async { tokio::time::sleep(RECONNECT_BACKOFF).await });
+        Box::pin(async move {
+            let up = connected.notified();
+            tokio::select! {
+                () = up => {}
+                _ = backoff => {}
+            }
+            Vec::new()
+        })
+    }
+
+    /// Drop a channel's feed and, on a LIVE connection, its subscription
+    /// on the host. A dead connection takes its rows with it when it
+    /// closes, and the reconnect carries only the feeds it finds: no
+    /// dial is made just to unsubscribe (a host that is down would
+    /// hold the caller for the whole connect timeout).
+    fn unsubscribe_channel(&self, channel: Uri) -> RunFuture<()> {
+        let slot = OneShot::new();
+        let live = {
+            let held = self.active.lock().expect("wire active");
+            match held.as_ref() {
+                Some(active) if !active.dead.load(std::sync::atomic::Ordering::Relaxed) => {
+                    Some(Arc::clone(active))
+                }
+                Some(active) => {
+                    active.feeds.lock().expect("wire feeds").remove(&channel);
+                    None
+                }
+                None => None,
+            }
+        };
+        let Some(active) = live else {
+            slot.fill(Ok(()));
+            return RunFuture { slot };
+        };
+        let filler = slot.clone();
+        let tag = self.tag.clone();
+        self.runtime.spawn(async move {
+            active.feeds.lock().expect("wire feeds").remove(&channel);
+            let outcome = active
+                .client
+                .unsubscribe(channel.clone())
+                .await
+                .map_err(|error| format!("unsubscribe {channel}: {error}"));
+            if let Err(error) = &outcome {
+                tracing::warn!(target: "ahp_wire", seat = %tag, %error, "unsubscribe failed");
+            }
+            filler.fill(outcome);
+        });
+        RunFuture { slot }
+    }
+
+    /// Close a connection that was declared dead. The declaration is
+    /// the client's (a deaf host, a failed ping) — the socket itself may
+    /// well be open, and while it is the host keeps every subscription
+    /// on it and broadcasts to BOTH connections: each action arrives
+    /// twice and every chat delta is appended twice. The pumps stop
+    /// pushing the moment `dead` is set (`pump_channel`); this ends the
+    /// transport, so the host drops the old rows. Polls parked on the
+    /// old `Active` are released by its death (`poll_channel`) and
+    /// re-arm on the new one; the feeds are shared, nothing is lost.
+    fn retire(&self, previous: Arc<Active>) {
+        let tag = self.tag.clone();
+        self.runtime.spawn(async move {
+            previous.client.shutdown().await;
+            tracing::info!(target: "ahp_wire", seat = %tag, "dead connection closed");
+        });
+    }
+
+    /// TEST SUPPORT: declare the live connection dead, the way a timed
+    /// out keepalive does — the next ask reconnects.
+    #[doc(hidden)]
+    pub fn mark_dead(&self) {
+        if let Some(active) = self.active.lock().expect("wire active").as_ref() {
+            active.die();
         }
     }
 
@@ -307,13 +526,16 @@ impl WireHost {
         let connector = Arc::clone(&self.connector);
         let dial_url = url.clone();
         let dial_tag = tag.clone();
+        let last_seen = Arc::clone(&self.last_seen);
         let client = self.runtime.block_on(async {
             tokio::time::timeout(connect_deadline, async {
-                let transport = connector.dial(dial_url, dial_tag, transport_dead).await?;
+                let transport = connector
+                    .dial(dial_url, dial_tag.clone(), transport_dead)
+                    .await?;
                 let client = ahp::Client::connect(transport, ahp::ClientConfig::default())
                     .await
                     .map_err(|error| format!("connect: {error}"))?;
-                client
+                let initialized = client
                     .initialize(
                         "himark".to_owned(),
                         vec![ahp_types::version::PROTOCOL_VERSION.to_owned()],
@@ -321,6 +543,21 @@ impl WireHost {
                     )
                     .await
                     .map_err(|error| format!("initialize: {error}"))?;
+                // The host's seq is at or past anything this client has
+                // seen — unless the host RESTARTED and counts from zero
+                // again. A cursor from the old count would tell the new
+                // host every gap is covered and lose it; follow the host.
+                let behind = last_seen.load(std::sync::atomic::Ordering::Relaxed);
+                if initialized.server_seq < behind {
+                    tracing::warn!(
+                        target: "ahp_wire",
+                        seat = %dial_tag,
+                        host_seq = initialized.server_seq,
+                        last_seen = behind,
+                        "the host counts from before this client's cursor — a restart; following it"
+                    );
+                    last_seen.store(initialized.server_seq, std::sync::atomic::Ordering::Relaxed);
+                }
 
                 let mut config = ahp_types::common::JsonObject::new();
                 config.insert("claudeUseCopilotProxy".to_owned(), serde_json::json!(false));
@@ -359,7 +596,13 @@ impl WireHost {
 
         let (feeds, root, agents) = match &previous {
             Some(previous) => (
-                previous.feeds.lock().expect("wire feeds").clone(),
+                {
+                    let feeds = previous.feeds.lock().expect("wire feeds").clone();
+                    for feed in feeds.values() {
+                        feed.carried();
+                    }
+                    feeds
+                },
                 previous.root.lock().expect("wire root").clone(),
                 previous.agents.lock().expect("wire agents").clone(),
             ),
@@ -368,6 +611,7 @@ impl WireHost {
         let active = Arc::new(Active {
             client,
             dead,
+            died: tokio::sync::Notify::new(),
             feeds: Mutex::new(feeds),
             root: Mutex::new(root),
             agents: Mutex::new(agents),
@@ -391,6 +635,7 @@ impl WireHost {
             }
         }
         self.spawn_keepalive(&active);
+        self.watch_death(&active);
         tracing::info!(
             target: "ahp_wire",
             seat = %self.tag,
@@ -418,6 +663,13 @@ impl WireHost {
             return Ok(());
         }
 
+        // The local ends are attached BEFORE the reconnect request, so
+        // nothing the host broadcasts after re-subscribing is missed —
+        // but they are pumped only once the replay has landed: the
+        // replay holds every action up to the host's subscribe, the
+        // live ends everything after, and the feed must see them in
+        // that order. Until then the live ends buffer.
+        let mut attached = Vec::with_capacity(channels.len());
         for channel in &channels {
             let sub = active.client.attach_subscription(channel).await;
             let feed = active
@@ -427,9 +679,9 @@ impl WireHost {
                 .get(channel)
                 .cloned()
                 .expect("a carried channel keeps its feed");
-            pump_channel(sub, feed, Arc::clone(&self.last_seen), self.tag.clone());
+            attached.push((sub, feed));
         }
-        if had_root {
+        let root_attached = if had_root {
             let sub = active.client.attach_subscription(ROOT).await;
             let feed = active
                 .root
@@ -437,7 +689,26 @@ impl WireHost {
                 .expect("wire root")
                 .clone()
                 .expect("had_root");
-            pump_root(sub, feed, Arc::clone(&self.last_seen), self.tag.clone());
+            Some((sub, feed))
+        } else {
+            None
+        };
+        // The dead connection's pumps push under their feed's lock
+        // (`Feed::push_live`), and `dead` was set before this reconnect
+        // began: passing every lock here lets a push already past its
+        // dead check finish — and bump `last_seen` — before the replay
+        // point is read, and refuses every push after. Without the
+        // pass, that one straddling action comes back in the replay.
+        for channel in &channels {
+            if let Some(feed) = active
+                .feeds
+                .lock()
+                .expect("wire feeds")
+                .get(channel)
+                .cloned()
+            {
+                feed.settle();
+            }
         }
         let last_seen = self.last_seen.load(std::sync::atomic::Ordering::Relaxed);
         tracing::info!(
@@ -482,7 +753,7 @@ impl WireHost {
                         .get(&envelope.channel)
                         .cloned();
                     if let Some(feed) = feed {
-                        feed.push(envelope.action);
+                        feed.push_replayed(envelope.server_seq, envelope.action);
                     }
                 }
                 for channel in replay.missing {
@@ -503,6 +774,24 @@ impl WireHost {
                     "reconnect replay TOO OLD — fresh snapshots, the gap is lost"
                 );
             }
+        }
+        for (sub, feed) in attached {
+            pump_channel(
+                sub,
+                feed,
+                Arc::clone(&self.last_seen),
+                self.tag.clone(),
+                Arc::clone(&active.dead),
+            );
+        }
+        if let Some((sub, feed)) = root_attached {
+            pump_root(
+                sub,
+                feed,
+                Arc::clone(&self.last_seen),
+                self.tag.clone(),
+                Arc::clone(&active.dead),
+            );
         }
         Ok(())
     }
@@ -532,17 +821,73 @@ impl WireHost {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
                         tracing::error!(target: "ahp_wire", seat = %tag, %error, "keepalive ping failed — marking dead");
-                        active.dead.store(true, std::sync::atomic::Ordering::Relaxed);
+                        active.die();
                         break;
                     }
                     Err(_) => {
                         tracing::error!(target: "ahp_wire", seat = %tag, "keepalive ping TIMED OUT — the host is DEAF; marking dead");
-                        active.dead.store(true, std::sync::atomic::Ordering::Relaxed);
+                        active.die();
                         break;
                     }
                 }
             }
         });
+    }
+
+    /// The transport latches `dead` on a failed read or write and
+    /// holds nothing else: ONE task per connection turns that flag
+    /// into the `died` ring, so every waiter wakes within a tick
+    /// instead of each running a timer of its own.
+    fn watch_death(&self, active: &Arc<Active>) {
+        let weak = Arc::downgrade(active);
+        self.runtime.spawn(async move {
+            loop {
+                tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+                let Some(active) = weak.upgrade() else {
+                    break;
+                };
+                if active.dead.load(std::sync::atomic::Ordering::Relaxed) {
+                    active.died.notify_waiters();
+                    break;
+                }
+            }
+        });
+    }
+
+    /// The extension channels' subscribe (documents, history,
+    /// locations): the same road as `subscribe_pumped`, answering the
+    /// raw result. The local end is attached BEFORE the request so no
+    /// action slips between the snapshot and the pump, the feed is
+    /// the channel's existing one if it has one (a second tap, or a
+    /// poll already waiting on it), and the pump advances `last_seen`
+    /// like every other — a bespoke pump that did not left the cursor
+    /// behind, and the reconnect re-requested edits already applied:
+    /// character doubling after a reconnect.
+    async fn subscribe_ext(
+        active: &Arc<Active>,
+        channel: Uri,
+        last_seen: Arc<std::sync::atomic::AtomicI64>,
+        seat: String,
+    ) -> Result<serde_json::Value, String> {
+        let sub = active.client.attach_subscription(&channel).await;
+        let feed = Arc::clone(
+            active
+                .feeds
+                .lock()
+                .expect("wire feeds")
+                .entry(channel.clone())
+                .or_default(),
+        );
+        pump_channel(sub, feed, last_seen, seat, Arc::clone(&active.dead));
+        let result: serde_json::Value = active
+            .client
+            .request("subscribe", serde_json::json!({ "channel": channel }))
+            .await
+            .map_err(|error| format!("subscribe {channel}: {error}"))?;
+        if active.dead.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(format!("subscribe {channel}: the connection died under it"));
+        }
+        Ok(result)
     }
 
     async fn subscribe_pumped(
@@ -556,39 +901,54 @@ impl WireHost {
             .subscribe(channel.clone())
             .await
             .map_err(|error| format!("subscribe {channel}: {error}"))?;
+        // Answered — by a connection declared dead meanwhile? Its
+        // rows live on the host side of a socket about to close, and
+        // the reconnect that replaced it carried the feeds it found
+        // BEFORE this answer: a feed filed now would be pumped by
+        // nobody. Refuse; the caller subscribes again on the live one.
+        if active.dead.load(std::sync::atomic::Ordering::Relaxed) {
+            return Err(format!("subscribe {channel}: the connection died under it"));
+        }
 
-        let feed = active
-            .feeds
-            .lock()
-            .expect("wire feeds")
-            .get(&channel)
-            .cloned()
-            .unwrap_or_default();
-        active
-            .feeds
-            .lock()
-            .expect("wire feeds")
-            .insert(channel, Arc::clone(&feed));
-        pump_channel(sub, feed, last_seen, seat);
+        // The channel's existing feed if it has one — a second tap on
+        // the channel, or a poll already waiting on it — else a new
+        // one; looked up and filed under the one lock, so two
+        // subscribes landing together share a feed instead of the
+        // second replacing the first's.
+        let feed = Arc::clone(
+            active
+                .feeds
+                .lock()
+                .expect("wire feeds")
+                .entry(channel)
+                .or_default(),
+        );
+        pump_channel(sub, feed, last_seen, seat, Arc::clone(&active.dead));
         Ok(result)
     }
 }
 
+/// Pump one channel's events into its feed — for as long as the
+/// connection is TRUSTED. A connection declared dead keeps receiving
+/// until its socket is closed; nothing it hears after that is pushed:
+/// the reconnect replays the gap and the new connection delivers the
+/// rest, so pushing here would deliver every action twice.
 fn pump_channel(
     mut sub: ahp::SessionSubscription,
     feed: Arc<Feed>,
     last_seen: Arc<std::sync::atomic::AtomicI64>,
     seat: String,
+    dead: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let channel = sub.uri().to_owned();
     tokio::spawn(async move {
         while let Some(event) = sub.recv().await {
             if let ahp::SubscriptionEvent::Action(envelope) = event {
-                last_seen.fetch_max(
-                    envelope.server_seq as i64,
-                    std::sync::atomic::Ordering::Relaxed,
-                );
-                feed.push(envelope.action);
+                if !feed.push_live(&dead, &last_seen, envelope.server_seq, envelope.action) {
+                    break;
+                }
+            } else if dead.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
             }
         }
         tracing::info!(target: "ahp_wire", seat = %seat, %channel, "pump ended");
@@ -600,9 +960,13 @@ fn pump_root(
     feed: Arc<RootFeed>,
     last_seen: Arc<std::sync::atomic::AtomicI64>,
     seat: String,
+    dead: Arc<std::sync::atomic::AtomicBool>,
 ) {
     tokio::spawn(async move {
         while let Some(event) = sub.recv().await {
+            if dead.load(std::sync::atomic::Ordering::Relaxed) {
+                break;
+            }
             match event {
                 ahp::SubscriptionEvent::SessionAdded(params) => {
                     feed.push(ServerEvent::SessionAdded(params.summary));
@@ -668,7 +1032,7 @@ impl AhpServer for WireHost {
                 .map_err(|error| format!("subscribe root: {error}"))?;
             let feed = Arc::new(RootFeed::default());
             *active.root.lock().expect("wire root") = Some(Arc::clone(&feed));
-            pump_root(sub, feed, last_seen, tag);
+            pump_root(sub, feed, last_seen, tag, Arc::clone(&active.dead));
             let agents = match result.snapshot.map(|snapshot| snapshot.state) {
                 Some(SnapshotState::Root(root)) => root.agents,
                 _ => return Err("the subscribe answered no root snapshot".to_owned()),
@@ -701,18 +1065,26 @@ impl AhpServer for WireHost {
     }
 
     fn poll_root(&self) -> SeatFuture<Vec<ServerEvent>> {
-        let feed = self
-            .ensure_active()
-            .ok()
-            .and_then(|active| active.root.lock().expect("wire root").clone());
-        match feed {
-            Some(feed) => Box::pin(PollRootFeed { feed }),
-            None => {
-                tracing::info!(target: "ahp_wire", seat = %self.tag, "root poll parked: not connected");
-                eprintln!("[hiahp] root poll parked: not connected");
-                Box::pin(std::future::pending())
+        let found = self.ensure_active().ok().and_then(|active| {
+            let feed = active.root.lock().expect("wire root").clone()?;
+            Some((active, feed))
+        });
+        let Some((active, feed)) = found else {
+            tracing::info!(target: "ahp_wire", seat = %self.tag, "root poll waiting: not connected");
+            return self.poll_unconnected();
+        };
+        // As `poll_channel`: released empty when the connection dies,
+        // so the re-armed poll reconnects; driven by the caller.
+        let tag = self.tag.clone();
+        Box::pin(async move {
+            tokio::select! {
+                events = PollRootFeed { feed } => events,
+                () = active.died() => {
+                    tracing::warn!(target: "ahp_wire", seat = %tag, "root poll released: the connection died under it");
+                    Vec::new()
+                }
             }
-        }
+        })
     }
 
     fn create_session(
@@ -840,9 +1212,12 @@ impl AhpServer for WireHost {
         let session = session.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            let result = WireHost::subscribe_pumped(&active, session, last_seen, tag).await?;
-            session_state(result)
+        Box::pin(self.run_subscribe(move |active| {
+            let (session, last_seen, tag) = (session.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_pumped(&active, session, last_seen, tag).await?;
+                session_state(result)
+            }
         }))
     }
 
@@ -884,9 +1259,12 @@ impl AhpServer for WireHost {
         let chat = chat.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            let result = WireHost::subscribe_pumped(&active, chat, last_seen, tag).await?;
-            chat_state(result)
+        Box::pin(self.run_subscribe(move |active| {
+            let (chat, last_seen, tag) = (chat.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_pumped(&active, chat, last_seen, tag).await?;
+                chat_state(result)
+            }
         }))
     }
 
@@ -982,11 +1360,14 @@ impl AhpServer for WireHost {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            let result = WireHost::subscribe_pumped(&active, channel, last_seen, tag).await?;
-            match result.snapshot.map(|snapshot| snapshot.state) {
-                Some(SnapshotState::Changeset(state)) => Ok(*state),
-                _ => Err("the subscribe answered no changeset snapshot".to_owned()),
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_pumped(&active, channel, last_seen, tag).await?;
+                match result.snapshot.map(|snapshot| snapshot.state) {
+                    Some(SnapshotState::Changeset(state)) => Ok(*state),
+                    _ => Err("the subscribe answered no changeset snapshot".to_owned()),
+                }
             }
         }))
     }
@@ -997,15 +1378,7 @@ impl AhpServer for WireHost {
     }
 
     fn unsubscribe_changeset(&self, channel: &himark::higent::ChannelUri) {
-        let channel = channel.as_str().to_owned();
-        let _ = self.run_ask(move |active| async move {
-            active.feeds.lock().expect("wire feeds").remove(&channel);
-            active
-                .client
-                .unsubscribe(channel.clone())
-                .await
-                .map_err(|error| format!("unsubscribe {channel}: {error}"))
-        });
+        let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
 
     fn subscribe_history(
@@ -1013,28 +1386,15 @@ impl AhpServer for WireHost {
         channel: himark::higent::ChannelUri,
     ) -> SeatFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
         let channel = channel.into_string();
-        Box::pin(self.run_ask(move |active| async move {
-            let mut sub = active.client.attach_subscription(&channel).await;
-            let feed = Arc::new(Feed::default());
-            active
-                .feeds
-                .lock()
-                .expect("wire feeds")
-                .insert(channel.clone(), Arc::clone(&feed));
-            tokio::spawn(async move {
-                while let Some(event) = sub.recv().await {
-                    if let ahp::SubscriptionEvent::Action(envelope) = event {
-                        feed.push(envelope.action);
-                    }
-                }
-            });
-            let result: serde_json::Value = active
-                .client
-                .request("subscribe", serde_json::json!({ "channel": channel }))
-                .await
-                .map_err(|error| format!("subscribe {channel}: {error}"))?;
-            serde_json::from_value(result["snapshot"]["state"].clone())
-                .map_err(|error| format!("history snapshot: {error}"))
+        let last_seen = Arc::clone(&self.last_seen);
+        let tag = self.tag.clone();
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_ext(&active, channel, last_seen, tag).await?;
+                serde_json::from_value(result["snapshot"]["state"].clone())
+                    .map_err(|error| format!("history snapshot: {error}"))
+            }
         }))
     }
 
@@ -1042,15 +1402,17 @@ impl AhpServer for WireHost {
         &self,
         session: himark::higent::SessionUri,
     ) -> SeatFuture<Result<ahp_types::state::AnnotationsState, String>> {
-        let session = session.into_string();
+        let channel = annotations_channel(&session.into_string());
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            let channel = annotations_channel(&session);
-            let result = WireHost::subscribe_pumped(&active, channel, last_seen, tag).await?;
-            match result.snapshot.map(|snapshot| snapshot.state) {
-                Some(SnapshotState::Annotations(state)) => Ok(*state),
-                _ => Err("the subscribe answered no annotations snapshot".to_owned()),
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_pumped(&active, channel, last_seen, tag).await?;
+                match result.snapshot.map(|snapshot| snapshot.state) {
+                    Some(SnapshotState::Annotations(state)) => Ok(*state),
+                    _ => Err("the subscribe answered no annotations snapshot".to_owned()),
+                }
             }
         }))
     }
@@ -1076,15 +1438,7 @@ impl AhpServer for WireHost {
     }
 
     fn unsubscribe_annotations(&self, session: &himark::higent::SessionUri) {
-        let channel = annotations_channel(session.as_str());
-        let _ = self.run_ask(move |active| async move {
-            active.feeds.lock().expect("wire feeds").remove(&channel);
-            active
-                .client
-                .unsubscribe(channel.clone())
-                .await
-                .map_err(|error| format!("unsubscribe {channel}: {error}"))
-        });
+        let _ = self.unsubscribe_channel(annotations_channel(session.as_str()));
     }
 
     fn open_document(
@@ -1124,22 +1478,13 @@ impl AhpServer for WireHost {
         // a reconnect.
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            let sub = active.client.attach_subscription(&channel).await;
-            let feed = Arc::new(Feed::default());
-            active
-                .feeds
-                .lock()
-                .expect("wire feeds")
-                .insert(channel.clone(), Arc::clone(&feed));
-            pump_channel(sub, feed, last_seen, tag);
-            let result: serde_json::Value = active
-                .client
-                .request("subscribe", serde_json::json!({ "channel": channel }))
-                .await
-                .map_err(|error| format!("subscribe {channel}: {error}"))?;
-            serde_json::from_value(result["snapshot"]["state"].clone())
-                .map_err(|error| format!("document snapshot: {error}"))
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_ext(&active, channel, last_seen, tag).await?;
+                serde_json::from_value(result["snapshot"]["state"].clone())
+                    .map_err(|error| format!("document snapshot: {error}"))
+            }
         }))
     }
 
@@ -1204,17 +1549,7 @@ impl AhpServer for WireHost {
     }
 
     fn unsubscribe_document(&self, channel: &himark::higent::ChannelUri) -> SeatFuture<()> {
-        let channel = channel.as_str().to_owned();
-        let ask = self.run_ask(move |active| async move {
-            active.feeds.lock().expect("wire feeds").remove(&channel);
-            active
-                .client
-                .unsubscribe(channel.clone())
-                .await
-                .map_err(|error| format!("unsubscribe {channel}: {error}"))
-        });
-        // A failed unsubscribe means the connection died — and a dead
-        // connection takes its subscriptions with it.
+        let ask = self.unsubscribe_channel(channel.as_str().to_owned());
         Box::pin(async move {
             let _ = ask.await;
         })
@@ -1667,26 +2002,13 @@ impl AhpServer for WireHost {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
-        Box::pin(self.run_ask(move |active| async move {
-            // Attach BEFORE the request so no action slips between
-            // the snapshot and the pump (the docsync lesson), and
-            // pump through the shared path so `last_seen` advances
-            // (unlike the history pump).
-            let sub = active.client.attach_subscription(&channel).await;
-            let feed = Arc::new(Feed::default());
-            active
-                .feeds
-                .lock()
-                .expect("wire feeds")
-                .insert(channel.clone(), Arc::clone(&feed));
-            pump_channel(sub, feed, last_seen, tag);
-            let result: serde_json::Value = active
-                .client
-                .request("subscribe", serde_json::json!({ "channel": channel }))
-                .await
-                .map_err(|error| format!("subscribe {channel}: {error}"))?;
-            serde_json::from_value(result["snapshot"]["state"].clone())
-                .map_err(|error| format!("locations snapshot: {error}"))
+        Box::pin(self.run_subscribe(move |active| {
+            let (channel, last_seen, tag) = (channel.clone(), Arc::clone(&last_seen), tag.clone());
+            async move {
+                let result = WireHost::subscribe_ext(&active, channel, last_seen, tag).await?;
+                serde_json::from_value(result["snapshot"]["state"].clone())
+                    .map_err(|error| format!("locations snapshot: {error}"))
+            }
         }))
     }
 
@@ -1713,15 +2035,7 @@ impl AhpServer for WireHost {
     }
 
     fn unsubscribe_locations(&self, channel: &himark::higent::ChannelUri) {
-        let channel = channel.as_str().to_owned();
-        let _ = self.run_ask(move |active| async move {
-            active.feeds.lock().expect("wire feeds").remove(&channel);
-            active
-                .client
-                .unsubscribe(channel.clone())
-                .await
-                .map_err(|error| format!("unsubscribe {channel}: {error}"))
-        });
+        let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
 
     fn terminal_open(
@@ -1915,36 +2229,62 @@ impl AhpServer for WireHost {
 }
 
 impl WireHost {
+    /// A poll parks on the channel's feed — and on the connection it
+    /// found live. When THAT connection is declared dead the poll
+    /// answers an EMPTY batch: the pumps feeding it have stopped, and
+    /// the caller's re-armed poll is the ask that reconnects. A poll
+    /// that stayed parked would freeze the channel until some other
+    /// ask happened by (the chat froze mid-stream after a keepalive
+    /// timeout, 2026-10-02).
+    ///
+    /// The future is the CALLER's to drive, never a task of the
+    /// runtime's: callers cancel a poll and arm another (every
+    /// relaunch does), and a task parked on the feed would go on to
+    /// take the next batch for nobody.
     fn poll_channel(&self, channel: Uri) -> SeatFuture<Vec<StateAction>> {
-        let active = self.ensure_active().ok();
+        let Ok(active) = self.ensure_active() else {
+            return self.poll_unconnected();
+        };
+        let tag = self.tag.clone();
+        let runtime = self.runtime.clone();
         Box::pin(async move {
-            let Some(active) = active else {
-                // Not connected: park. Reconnect re-subscribes and
-                // re-arms the poll from scratch.
-                return std::future::pending().await;
-            };
-            let mut waited = false;
-            loop {
-                let feed = active
-                    .feeds
-                    .lock()
-                    .expect("wire feeds")
-                    .get(&channel)
-                    .cloned();
-                match feed {
-                    Some(feed) => return PollFeed { feed }.await,
-                    None => {
-                        // The SUBSCRIBE may still be in flight — the
-                        // poll loop re-arms only when this future
-                        // resolves, so parking forever here would
-                        // orphan the channel mirror for good. WAIT
-                        // for the feed instead.
-                        if !waited {
-                            waited = true;
-                            eprintln!("[hiahp] poll waiting: not subscribed yet: {channel}");
+            let died = Arc::clone(&active).died();
+            let batch = async {
+                let mut waited = false;
+                loop {
+                    let feed = active
+                        .feeds
+                        .lock()
+                        .expect("wire feeds")
+                        .get(&channel)
+                        .cloned();
+                    match feed {
+                        Some(feed) => return PollFeed { feed }.await,
+                        None => {
+                            // The SUBSCRIBE may still be in flight — the
+                            // poll loop re-arms only when this future
+                            // resolves, so parking forever here would
+                            // orphan the channel mirror for good. WAIT
+                            // for the feed instead. (The timer lives on
+                            // the runtime; this future is driven off it.)
+                            if !waited {
+                                waited = true;
+                                eprintln!("[hiahp] poll waiting: not subscribed yet: {channel}");
+                            }
+                            let _ = runtime
+                                .spawn(async {
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await
+                                })
+                                .await;
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                     }
+                }
+            };
+            tokio::select! {
+                batch = batch => batch,
+                () = died => {
+                    tracing::warn!(target: "ahp_wire", seat = %tag, "poll released: the connection died under it");
+                    Vec::new()
                 }
             }
         })
@@ -1960,6 +2300,17 @@ pub struct Feed {
 struct FeedState {
     actions: VecDeque<StateAction>,
 
+    /// The highest server seq landed on this connection. The host
+    /// keeps ONE ROW PER TAP on a channel and serves each row (a
+    /// client may tap a channel twice, for different reasons and
+    /// lifetimes — that is the host's contract, not a bug), so every
+    /// action reaches the client once per row, and each copy reaches
+    /// every pump of the channel. They fold here: a seq at or below
+    /// the mark has landed. Reset with every connection
+    /// (`Feed::carried`): the seq space is the host's, and a host
+    /// that restarted starts over.
+    landed: u64,
+
     /// EVERY pending waiter, not a single slot. Refetch roads arm a
     /// second poll on a channel that already has one standing (the
     /// changes refresh chip does), and a one-slot waker means the
@@ -1971,8 +2322,56 @@ struct FeedState {
 }
 
 impl Feed {
+    /// A live pump's push: the connection's `dead` is read UNDER the
+    /// feed lock, together with the `last_seen` bump, so a reconnect
+    /// that `settle`s the feed sees either the whole push or none of
+    /// it. Returns false when the connection is dead — the pump ends.
+    fn push_live(
+        &self,
+        dead: &std::sync::atomic::AtomicBool,
+        last_seen: &std::sync::atomic::AtomicI64,
+        server_seq: u64,
+        action: StateAction,
+    ) -> bool {
+        let mut state = self.state.lock().expect("feed state");
+        if dead.load(std::sync::atomic::Ordering::Relaxed) {
+            return false;
+        }
+        last_seen.fetch_max(server_seq as i64, std::sync::atomic::Ordering::Relaxed);
+        if server_seq <= state.landed {
+            return true;
+        }
+        state.landed = server_seq;
+        Self::land(&mut state, action);
+        true
+    }
+
+    /// A replayed action: landed unless a copy of it already has.
+    fn push_replayed(&self, server_seq: u64, action: StateAction) {
+        let mut state = self.state.lock().expect("feed state");
+        if server_seq <= state.landed {
+            return;
+        }
+        state.landed = server_seq;
+        Self::land(&mut state, action);
+    }
+
+    /// Carried onto a new connection: the seq fold starts over.
+    fn carried(&self) {
+        self.state.lock().expect("feed state").landed = 0;
+    }
+
+    /// Wait out a push in flight on this feed (see `push_live`).
+    fn settle(&self) {
+        drop(self.state.lock().expect("feed state"));
+    }
+
     fn push(&self, action: StateAction) {
         let mut state = self.state.lock().expect("feed state");
+        Self::land(&mut state, action);
+    }
+
+    fn land(state: &mut FeedState, action: StateAction) {
         if let StateAction::ChatTurnsLoaded(loaded) = &action {
             if let Some(capture) = state.turns_capture.take() {
                 capture.fill(TurnsPage {

@@ -1281,6 +1281,47 @@ async fn fetch_turns_pages_the_history_to_exhaustion() {
 }
 
 #[tokio::test]
+async fn a_second_subscribe_on_one_connection_is_the_same_subscription() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let host = host_at(dir.path());
+    let mut client = Client::connect(Arc::clone(&host)).await;
+    let (_session, chat) = open_session(&mut client, dir.path()).await;
+    // A second tap on the chat answers a snapshot again…
+    let again = client.request("subscribe", json!({"channel": chat})).await;
+    assert!(again["snapshot"]["state"].is_object(), "{again}");
+    // …and another connection subscribes for itself.
+    let mut other = Client::connect(Arc::clone(&host)).await;
+    other
+        .request(
+            "initialize",
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "other"}),
+        )
+        .await;
+    other.request("subscribe", json!({"channel": chat})).await;
+
+    client.dispatch(&chat, turn_started("t-1", "hello")).await;
+    let actions = client.actions_until(&chat, "chat/turnComplete").await;
+    let count = |kind: &str| {
+        actions
+            .iter()
+            .filter(|action| action["type"] == kind)
+            .count()
+    };
+    assert_eq!(
+        count("chat/turnStarted"),
+        1,
+        "the turn started twice: {actions:?}"
+    );
+    assert_eq!(count("chat/turnComplete"), 1);
+    let theirs = other.actions_until(&chat, "chat/turnComplete").await;
+    assert_eq!(
+        theirs.len(),
+        actions.len(),
+        "the other connection saw a different turn"
+    );
+}
+
+#[tokio::test]
 async fn reconnect_replays_the_missed_tail_or_answers_snapshots() {
     let dir = tempfile::tempdir().expect("tempdir");
     let host = host_at(dir.path());
