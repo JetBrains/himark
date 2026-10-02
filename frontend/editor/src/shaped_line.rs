@@ -296,6 +296,13 @@ pub(crate) struct ShapedLine {
     line_height_shrink: f32,
 
     first_baseline: Option<f32>,
+
+    /// The visual lines' display-UTF-16 ranges, snapshotted at shape
+    /// time for lines that carry bands — `extended_bands` runs on
+    /// EVERY paint, and querying skia's full line-metrics vector
+    /// there (per-line style maps and all) was a measurable slice of
+    /// the diff-scrolling frame. Empty when there are no bands.
+    band_line_ranges: Vec<Range<usize>>,
 }
 
 impl ShapedLine {
@@ -402,6 +409,15 @@ impl ShapedLine {
             .get_line_metrics_at(0)
             .map(|metrics| metrics.baseline as f32);
 
+        let band_line_ranges = if backgrounds.is_empty() {
+            Vec::new()
+        } else {
+            (0..paragraph.line_number())
+                .filter_map(|row| paragraph.get_line_metrics_at(row))
+                .map(|metrics| metrics.start_index..metrics.end_index)
+                .collect()
+        };
+
         Self {
             byte_start: line_range.start,
             byte_size,
@@ -414,6 +430,7 @@ impl ShapedLine {
             extent_right,
             line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
+            band_line_ranges,
         }
     }
 
@@ -458,6 +475,7 @@ impl ShapedLine {
             extent_right,
             line_height_shrink: resolved.line_height.unwrap_or(1.0).max(0.5),
             first_baseline,
+            band_line_ranges: Vec::new(),
         }
     }
 
@@ -631,12 +649,12 @@ impl ShapedLine {
             }
             return;
         }
-        for line in self.paragraph.get_line_metrics() {
-            let line_end = line.end_index.min(display_end);
-            if band.range.start >= line_end || band.range.end <= line.start_index {
+        for line in &self.band_line_ranges {
+            let line_end = line.end.min(display_end);
+            if band.range.start >= line_end || band.range.end <= line.start {
                 continue;
             }
-            let seg = band.range.start.max(line.start_index)..band.range.end.min(line_end);
+            let seg = band.range.start.max(line.start)..band.range.end.min(line_end);
             let rects = self.line_bands(seg);
             let Some(mut union) = rects.first().copied() else {
                 continue;
@@ -644,7 +662,7 @@ impl ShapedLine {
             for rect in &rects[1..] {
                 union.join(*rect);
             }
-            let last_line = line.end_index >= display_end;
+            let last_line = line.end >= display_end;
             let covers_end = band.range.end >= line_end && (!last_line || band.through_end);
 
             let stretch = if last_line && covers_end {
