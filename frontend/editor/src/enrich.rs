@@ -630,6 +630,24 @@ mod tests {
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
+        // SHOWN means painted: the landing's sync repair serves the
+        // reported visible band and nothing else.
+        {
+            let mut store = imba::store::Store::new();
+            let ui = crate::test_document::test_ui();
+            document.perform(
+                &mut store,
+                &ui,
+                editor,
+                crate::editor_view::EditorCommand::Viewport {
+                    width: 400.0,
+                    top: 0.0,
+                    bottom: 300.0,
+                    anchor: 0,
+                },
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         let subject = document
             .text()
             .byte_string(0, document.text().byte_count())

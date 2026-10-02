@@ -2755,18 +2755,27 @@ impl Document {
                 continue;
             };
 
-            let anchor = editor
-                .viewport
-                .as_ref()
-                .map(|viewport| editor.layout.byte_at_y(viewport.start))
-                .unwrap_or(0);
-            let Some(pending) = editor
-                .layout
-                .repair_pending_at_or_after(anchor)
-                .or_else(|| editor.layout.repair_pending())
-            else {
+            // UI-thread shaping is bound to the VISIBLE band. An
+            // editor that never painted has no viewport and nothing a
+            // user can see go stale — its damage rides the background
+            // lanes (`pending_repairs` for plain editors, the pair
+            // lane for pair-managed halves). Damage outside the band
+            // defers the same way: a landing that dresses a whole
+            // document must not shape the whole document under the
+            // frame. (It used to: the no-viewport fallback shaped
+            // 4000px from byte 0 per editor — a diff landing on a
+            // canvas dropped frames exactly there.)
+            let Some(viewport) = editor.viewport.clone() else {
                 continue;
             };
+            let anchor = editor.layout.byte_at_y(viewport.start);
+            let band_end = editor.layout.byte_at_y(viewport.end);
+            let Some(pending) = editor.layout.repair_pending_at_or_after(anchor) else {
+                continue;
+            };
+            if pending > band_end {
+                continue;
+            }
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
             {
