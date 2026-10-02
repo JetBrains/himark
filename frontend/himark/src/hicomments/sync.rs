@@ -380,8 +380,10 @@ impl Comments {
                     let Some(mut record) = self.records.get(&updated.annotation_id).cloned() else {
                         continue;
                     };
-                    if let Some(turn) = &updated.turn_id {
-                        record.turn_id = turn.clone();
+                    if let Some(origin) = &updated.origin {
+                        // The action replaces provenance wholesale
+                        // (AHP 0.9) — adopt its turn, present or not.
+                        record.turn_id = origin.turn_id.clone().unwrap_or_default();
                     }
                     if let Some(range) = &updated.range {
                         record.range = Some(from_wire(range));
@@ -757,7 +759,7 @@ impl Comments {
                     &record.session,
                     StateAction::AnnotationsUpdated(AnnotationsUpdatedAction {
                         annotation_id: id.clone(),
-                        turn_id: None,
+                        origin: None,
                         resource: None,
                         range: None,
                         resolved: Some(resolved),
@@ -863,7 +865,7 @@ fn fold_set(
         session: session.clone(),
         location: location.clone(),
         range: annotation.range.as_ref().map(from_wire),
-        turn_id: annotation.turn_id.clone(),
+        turn_id: annotation.origin.turn_id.clone().unwrap_or_default(),
         resolved: annotation.resolved,
         entries: annotation
             .entries
@@ -1172,7 +1174,11 @@ fn dispatch_set(
         StateAction::AnnotationsSet(AnnotationsSetAction {
             annotation: Annotation {
                 id: id.clone(),
-                turn_id: record.turn_id.clone(),
+                origin: crate::higent::ahp_types::state::AnnotationOrigin {
+                    session: record.session.to_string(),
+                    chat: None,
+                    turn_id: (!record.turn_id.is_empty()).then(|| record.turn_id.clone()),
+                },
                 resource: uri,
                 range: record.range.as_ref().map(to_wire),
                 resolved: record.resolved,

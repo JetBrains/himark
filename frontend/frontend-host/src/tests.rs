@@ -5585,7 +5585,11 @@ fn two_wire_clients_share_annotations() {
     use himark::higent::ahp_types::state;
     let annotation = state::Annotation {
         id: "e2e-1".to_owned(),
-        turn_id: String::new(),
+        origin: state::AnnotationOrigin {
+            session: session.to_string(),
+            chat: None,
+            turn_id: None,
+        },
         resource: "file:///tmp/shared.md".to_owned(),
         range: Some(state::TextRange {
             start: state::TextPosition {

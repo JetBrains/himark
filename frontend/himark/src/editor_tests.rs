@@ -4877,7 +4877,7 @@ mod dock_tests {
         crate::higent::Agents::seed(&mut store, host, "Test Host");
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
         let summary =
-            |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
+            |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary { origin: None,
                 provider: "test".to_owned(),
                 title: title.to_owned(),
                 // Idle and read — labels stay bare of activity marks.
@@ -4998,7 +4998,7 @@ mod dock_tests {
         let host = crate::SessionId::local_default(&store).host;
         crate::higent::Agents::seed(&mut store, host, "Test Host");
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
-        let summary = |title: &str| ahp_types::state::SessionSummary {
+        let summary = |title: &str| ahp_types::state::SessionSummary { origin: None,
             provider: "test".to_owned(),
             title: title.to_owned(),
             status: 33,
@@ -5062,7 +5062,7 @@ mod dock_tests {
         let host = crate::SessionId::local_default(&store).host;
         crate::higent::Agents::seed(&mut store, host, "Test Host");
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
-        let summary = |title: &str| ahp_types::state::SessionSummary {
+        let summary = |title: &str| ahp_types::state::SessionSummary { origin: None,
             provider: "test".to_owned(),
             title: title.to_owned(),
             status: 33,

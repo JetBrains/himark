@@ -16,6 +16,7 @@ use ahp_types::commands::{
     UnsubscribeParams,
 };
 use ahp_types::common::Uri;
+use ahp_types::state::{TerminalLifecycleState, TerminalRunningLifecycleState};
 use ahp_types::messages::{JsonRpcMessage, JsonRpcRequest};
 use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{
@@ -1272,6 +1273,8 @@ impl Host {
                 completion_trigger_characters: None,
                 terminal_command_prefix: None,
                 telemetry: None,
+                automations: None,
+                meta: None,
             },
         )
     }
@@ -2524,11 +2527,14 @@ impl Host {
             chat,
             StateAction::ChatError(ahp_types::actions::ChatErrorAction {
                 turn_id: turn_id.to_owned(),
-                error: ahp_types::state::ErrorInfo {
-                    error_type: "sendFailed".to_owned(),
-                    message: error.to_owned(),
-                    stack: None,
-                    meta: None,
+                part: ahp_types::state::ErrorResponsePart {
+                    error: ahp_types::state::ErrorInfo {
+                        error_type: "sendFailed".to_owned(),
+                        message: error.to_owned(),
+                        stack: None,
+                        meta: None,
+                    },
+                    resumable: None,
                 },
                 duration: 0,
                 meta: None,
@@ -3032,7 +3038,7 @@ impl Host {
             cols: Some(cols as i64),
             rows: Some(rows as i64),
             content: Vec::new(),
-            exit_code: None,
+            lifecycle: TerminalLifecycleState::Running(TerminalRunningLifecycleState {}),
             claim: params.claim.clone(),
             supports_command_detection: Some(false),
             is_pty: Some(true),
@@ -3147,7 +3153,7 @@ impl Host {
                     resource: uri.clone(),
                     title: entry.state.title.clone(),
                     claim: entry.state.claim.clone(),
-                    exit_code: entry.state.exit_code,
+                    lifecycle: entry.state.lifecycle.clone(),
                 })
                 .collect()
         };
@@ -3163,7 +3169,7 @@ impl Host {
             let Some(entry) = state.terminals.get(channel) else {
                 return;
             };
-            if entry.state.exit_code.is_some() {
+            if matches!(entry.state.lifecycle, TerminalLifecycleState::Exited(_)) {
                 return;
             }
             entry.pty.as_ref().map(|pty| Arc::clone(&pty.writer))
@@ -4280,7 +4286,6 @@ impl Host {
                     StateAction::ChangesetContentChanged(Box::new(ChangesetContentChangedAction {
                         files,
                         operations: None,
-                        error: None,
                     })),
                 );
                 if !ready {
@@ -5059,6 +5064,7 @@ fn session_state(manifest: &Manifest) -> SessionState {
         status: STATUS_IDLE_READ,
         activity: None,
         project: None,
+        origin: None,
         working_directories: Some(manifest.working_directories.clone()),
         annotations: Some(annotations_summary(
             &manifest.session,
@@ -5123,6 +5129,7 @@ fn summary(store: &Store, entry: &SessionEntry) -> SessionSummary {
         status: entry.state.status,
         activity: entry.state.activity.clone(),
         project: None,
+        origin: None,
         working_directories: Some(entry.manifest.working_directories.clone()),
         annotations: entry.state.annotations.clone(),
         resource: entry.manifest.session.clone(),
@@ -5141,6 +5148,7 @@ fn cli_summary(session: &crate::catalog::CliSession) -> SessionSummary {
         status: STATUS_IDLE_READ,
         activity: None,
         project: None,
+        origin: None,
         working_directories: session
             .cwd
             .as_ref()
@@ -5161,6 +5169,7 @@ fn summary_of(manifest: &Manifest) -> SessionSummary {
         status: STATUS_IDLE_READ,
         activity: None,
         project: None,
+        origin: None,
         working_directories: Some(manifest.working_directories.clone()),
         annotations: Some(annotations_summary(
             &manifest.session,

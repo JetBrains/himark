@@ -74,7 +74,7 @@ async fn drive_turn(agent: &ScriptAgent, prompt: String) -> Result<String, Strin
                         .join("\n\n"));
                 }
                 StateAction::ChatError(failed) => {
-                    return Err(format!("the turn failed: {}", failed.error.message));
+                    return Err(format!("the turn failed: {}", failed.part.error.message));
                 }
                 StateAction::ChatTurnCancelled(_) => {
                     return Err("the turn was cancelled".to_owned());

@@ -21,8 +21,8 @@ documents = { path = "../documents" }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }
 base64 = "0.22"
-ahp = "0.7"
-ahp-types = "0.7"
+ahp = "0.9"
+ahp-types = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tracing = "0.1"

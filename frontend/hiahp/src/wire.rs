@@ -316,7 +316,7 @@ impl WireHost {
                 client
                     .initialize(
                         "himark".to_owned(),
-                        vec!["0.8.0".to_owned(), "0.7.0".to_owned()],
+                        vec![ahp_types::version::PROTOCOL_VERSION.to_owned()],
                         Vec::new(),
                     )
                     .await
@@ -684,7 +684,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "listSessions",
-                    ListSessionsParams {
+                    ListSessionsParams { meta: None,
                         channel: ROOT.to_owned(),
                         limit: None,
                         cursor,
@@ -819,7 +819,7 @@ impl AhpServer for WireHost {
         Box::pin(self.run_ask(move |active| async move {
             let _: serde_json::Value = active
                 .client
-                .request("disposeSession", DisposeSessionParams { channel: session })
+                .request("disposeSession", DisposeSessionParams { meta: None, channel: session })
                 .await
                 .map_err(|error| format!("disposeSession: {error}"))?;
             Ok(())
@@ -855,7 +855,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "createChat",
-                    CreateChatParams {
+                    CreateChatParams { meta: None,
                         channel: session,
                         chat: chat.clone(),
                         initial_message: None,
@@ -904,7 +904,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "fetchTurns",
-                    FetchTurnsParams {
+                    FetchTurnsParams { meta: None,
                         channel: chat,
                         cursor,
                     },
@@ -1298,7 +1298,7 @@ impl AhpServer for WireHost {
         let asked = self.run_ask(move |active| async move {
             let result = active
                 .client
-                .resource_read(ResourceReadParams {
+                .resource_read(ResourceReadParams { meta: None,
                     channel: session,
                     uri: uri.as_str().to_owned(),
                     encoding: None,
@@ -1327,7 +1327,7 @@ impl AhpServer for WireHost {
         let asked = self.run_ask(move |active| async move {
             let result = active
                 .client
-                .resource_read(ResourceReadParams {
+                .resource_read(ResourceReadParams { meta: None,
                     channel: session,
                     uri: uri.as_str().to_owned(),
                     encoding: Some(ContentEncoding::Base64),
@@ -1365,7 +1365,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "resourceWrite",
-                    ResourceWriteParams {
+                    ResourceWriteParams { meta: None,
                         channel: session,
                         uri: uri.as_str().to_owned(),
                         data: text,
@@ -1400,7 +1400,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "resourceWrite",
-                    ResourceWriteParams {
+                    ResourceWriteParams { meta: None,
                         channel: session,
                         uri: uri.as_str().to_owned(),
                         data: String::new(),
@@ -1436,7 +1436,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "resourceDelete",
-                    ResourceDeleteParams {
+                    ResourceDeleteParams { meta: None,
                         channel: session,
                         uri: uri.as_str().to_owned(),
                         recursive: Some(recursive),
@@ -1466,7 +1466,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "resourceMove",
-                    ResourceMoveParams {
+                    ResourceMoveParams { meta: None,
                         channel: session,
                         source: from.as_str().to_owned(),
                         destination: to.as_str().to_owned(),
@@ -1496,7 +1496,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "resourceList",
-                    ResourceListParams {
+                    ResourceListParams { meta: None,
                         channel: session,
                         uri: uri.as_str().to_owned(),
                     },
@@ -1534,7 +1534,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "createResourceWatch",
-                    CreateResourceWatchParams {
+                    CreateResourceWatchParams { meta: None,
                         channel: session,
                         uri: uri.as_str().to_owned(),
                         recursive: None,
@@ -1722,7 +1722,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "createTerminal",
-                    ahp_types::commands::CreateTerminalParams {
+                    ahp_types::commands::CreateTerminalParams { meta: None,
                         channel: channel.clone(),
                         claim: ahp_types::state::TerminalClaim::Client(
                             ahp_types::state::TerminalClientClaim {
@@ -1755,8 +1755,12 @@ impl AhpServer for WireHost {
                         _ => {}
                     }
                 }
-                if let Some(code) = state.exit_code {
-                    events(himark::higent::TerminalEvent::Exited(Some(code as i32)));
+                if let ahp_types::state::TerminalLifecycleState::Exited(exited) =
+                    &state.lifecycle
+                {
+                    events(himark::higent::TerminalEvent::Exited(
+                        exited.exit_code.map(|code| code as i32),
+                    ));
                 }
             }
             tokio::spawn(async move {
@@ -1826,7 +1830,7 @@ impl AhpServer for WireHost {
                 .client
                 .request(
                     "disposeTerminal",
-                    ahp_types::commands::DisposeTerminalParams {
+                    ahp_types::commands::DisposeTerminalParams { meta: None,
                         channel: channel.clone(),
                     },
                 )
@@ -1869,7 +1873,7 @@ impl AhpServer for WireHost {
                         return Ok::<Option<String>, String>(None);
                     };
                     let result = client
-                        .resource_read(ResourceReadParams {
+                        .resource_read(ResourceReadParams { meta: None,
                             channel: String::new(),
                             uri: uri.as_str().to_owned(),
                             encoding: None,

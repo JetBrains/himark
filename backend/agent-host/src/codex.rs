@@ -988,11 +988,14 @@ impl CodexAgent {
         self.emit(StateAction::ChatError(
             ahp_types::actions::ChatErrorAction {
                 turn_id,
-                error: ahp_types::state::ErrorInfo {
-                    error_type: kind.to_owned(),
-                    message: message.to_owned(),
-                    stack: None,
-                    meta: None,
+                part: ahp_types::state::ErrorResponsePart {
+                    error: ahp_types::state::ErrorInfo {
+                        error_type: kind.to_owned(),
+                        message: message.to_owned(),
+                        stack: None,
+                        meta: None,
+                    },
+                    resumable: None,
                 },
                 duration,
                 meta: None,
