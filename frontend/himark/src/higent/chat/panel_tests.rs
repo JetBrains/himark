@@ -16,8 +16,8 @@ use ahp_types::actions::{
 };
 use ahp_types::common::StringOrMarkdown;
 use ahp_types::state::{
-    ErrorResponsePart, ChatState, ErrorInfo, MarkdownResponsePart, Message, MessageKind, MessageOrigin,
-    PendingMessageKind, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState,
+    ChatState, ErrorInfo, ErrorResponsePart, MarkdownResponsePart, Message, MessageKind,
+    MessageOrigin, PendingMessageKind, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState,
 };
 
 use super::*;

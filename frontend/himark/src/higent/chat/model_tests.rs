@@ -13,8 +13,9 @@ use ahp_types::actions::{
 };
 use ahp_types::common::StringOrMarkdown;
 use ahp_types::state::{
-    ErrorResponsePart, ActiveTurn, ChatState, ErrorInfo, MarkdownResponsePart, Message, MessageKind, MessageOrigin,
-    ReasoningResponsePart, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState, UsageInfo,
+    ActiveTurn, ChatState, ErrorInfo, ErrorResponsePart, MarkdownResponsePart, Message,
+    MessageKind, MessageOrigin, ReasoningResponsePart, ResponsePart, ToolCallResult,
+    Turn as WireTurn, TurnState, UsageInfo,
 };
 
 use super::model::{Change, Conversation, Life, Part, PartId, ToolStatus};
@@ -1299,15 +1300,16 @@ fn a_cancelled_wire_turn_reads_cancelled() {
 #[test]
 fn a_failed_wire_turn_carries_its_error() {
     let mut wire = bare_turn("t1", "one", TurnState::Error);
-    wire.response_parts.push(ResponsePart::Error(ErrorResponsePart {
-        error: ErrorInfo {
-            error_type: "boom".to_owned(),
-            message: "it broke".to_owned(),
-            stack: None,
-            meta: None,
-        },
-        resumable: None,
-    }));
+    wire.response_parts
+        .push(ResponsePart::Error(ErrorResponsePart {
+            error: ErrorInfo {
+                error_type: "boom".to_owned(),
+                message: "it broke".to_owned(),
+                stack: None,
+                meta: None,
+            },
+            resumable: None,
+        }));
     let (chat, _) = Conversation::default().landed(&snapshot(vec![wire], None, None));
     assert!(matches!(turn(&chat, "t1").life, Life::Failed(said) if said.contains("it broke")));
 }

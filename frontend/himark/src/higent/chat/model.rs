@@ -236,10 +236,9 @@ impl Turn {
                     .iter()
                     .rev()
                     .find_map(|part| match part {
-                        ResponsePart::Error(part) => Some(format!(
-                            "{}: {}",
-                            part.error.error_type, part.error.message
-                        )),
+                        ResponsePart::Error(part) => {
+                            Some(format!("{}: {}", part.error.error_type, part.error.message))
+                        }
                         _ => None,
                     })
                     .unwrap_or_else(|| "the turn failed".to_owned()),

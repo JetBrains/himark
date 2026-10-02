@@ -239,11 +239,17 @@ async fn an_annotations_attachment_expands_into_the_prompt() {
         .await;
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set(&session, "a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     client.next_action(&channel).await;
     client
-        .dispatch(&channel, annotation_set(&session, "a-2", &file, "rename this"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-2", &file, "rename this"),
+        )
         .await;
     client.next_action(&channel).await;
 
@@ -865,7 +871,10 @@ async fn a_queued_review_drains_with_its_comments_expanded() {
         .await;
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set(&session, "a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     client.next_action(&channel).await;
 
@@ -2312,7 +2321,10 @@ async fn annotations_fold_echo_and_count() {
 
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set(&session, "a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     let echo = client.next_action(&channel).await;
     assert_eq!(echo["type"], "annotations/set");

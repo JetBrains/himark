@@ -16,7 +16,6 @@ use ahp_types::commands::{
     UnsubscribeParams,
 };
 use ahp_types::common::Uri;
-use ahp_types::state::{TerminalLifecycleState, TerminalRunningLifecycleState};
 use ahp_types::messages::{JsonRpcMessage, JsonRpcRequest};
 use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{
@@ -25,6 +24,7 @@ use ahp_types::state::{
     RootState, SessionLifecycle, SessionState, SessionStatus, SessionSummary, Snapshot,
     SnapshotState, TerminalContentPart, TerminalInfo, TerminalState,
 };
+use ahp_types::state::{TerminalLifecycleState, TerminalRunningLifecycleState};
 use serde_json::Value;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
