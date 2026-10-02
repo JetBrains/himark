@@ -419,11 +419,14 @@ impl ClaudeAgent {
             self.emit(StateAction::ChatError(
                 ahp_types::actions::ChatErrorAction {
                     turn_id,
-                    error: ahp_types::state::ErrorInfo {
-                        error_type: "agentGone".to_owned(),
-                        message: message.clone(),
-                        stack: None,
-                        meta: None,
+                    part: ahp_types::state::ErrorResponsePart {
+                        error: ahp_types::state::ErrorInfo {
+                            error_type: "agentGone".to_owned(),
+                            message: message.clone(),
+                            stack: None,
+                            meta: None,
+                        },
+                        resumable: None,
                     },
                     duration: 0,
                     meta: None,
@@ -899,11 +902,14 @@ impl ClaudeAgent {
             self.emit(StateAction::ChatError(
                 ahp_types::actions::ChatErrorAction {
                     turn_id,
-                    error: ahp_types::state::ErrorInfo {
-                        error_type: subtype.to_owned(),
-                        message: event["result"].as_str().unwrap_or("turn failed").to_owned(),
-                        stack: None,
-                        meta: None,
+                    part: ahp_types::state::ErrorResponsePart {
+                        error: ahp_types::state::ErrorInfo {
+                            error_type: subtype.to_owned(),
+                            message: event["result"].as_str().unwrap_or("turn failed").to_owned(),
+                            stack: None,
+                            meta: None,
+                        },
+                        resumable: None,
                     },
                     duration,
                     meta: None,

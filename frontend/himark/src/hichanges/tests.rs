@@ -343,7 +343,6 @@ fn the_fold_mirrors_the_official_reducers() {
                     wire_file("c.md", None, false, (1, 0)),
                 ],
                 operations: None,
-                error: None,
             },
         ))],
     );

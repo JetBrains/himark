@@ -16,8 +16,8 @@ use ahp_types::actions::{
 };
 use ahp_types::common::StringOrMarkdown;
 use ahp_types::state::{
-    ChatState, ErrorInfo, MarkdownResponsePart, Message, MessageKind, MessageOrigin,
-    PendingMessageKind, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState,
+    ChatState, ErrorInfo, ErrorResponsePart, MarkdownResponsePart, Message, MessageKind,
+    MessageOrigin, PendingMessageKind, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState,
 };
 
 use super::*;
@@ -324,11 +324,14 @@ fn failed(turn: &str) -> StateAction {
     StateAction::ChatError(ChatErrorAction {
         turn_id: turn.to_owned(),
         duration: 1,
-        error: ErrorInfo {
-            error_type: "boom".to_owned(),
-            message: "it broke".to_owned(),
-            stack: None,
-            meta: None,
+        part: ErrorResponsePart {
+            error: ErrorInfo {
+                error_type: "boom".to_owned(),
+                message: "it broke".to_owned(),
+                stack: None,
+                meta: None,
+            },
+            resumable: None,
         },
         meta: None,
     })
@@ -369,7 +372,6 @@ fn said_turn(id: &str, prompt: &str, reply: &str) -> WireTurn {
         })],
         usage: None,
         state: TurnState::Complete,
-        error: None,
     }
 }
 

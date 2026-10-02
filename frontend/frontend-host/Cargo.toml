@@ -28,8 +28,8 @@ rebase = { path = "../rebase" }
 documents = { path = "../documents" }
 serde_json = "1"
 hicode = { path = "../plugins/hicode" }
-ahp = "0.7"
-ahp-types = "0.7"
+ahp = "0.9"
+ahp-types = "0.9"
 humantime = "2"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }

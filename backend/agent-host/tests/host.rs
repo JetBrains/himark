@@ -156,7 +156,7 @@ async fn open_session(client: &mut Client, dir: &Path) -> (String, String) {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/test-{}", std::process::id());
@@ -200,7 +200,7 @@ async fn open_codex_session(client: &mut Client, dir: &Path) -> (String, String)
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/codex-test-{}", std::process::id());
@@ -239,11 +239,17 @@ async fn an_annotations_attachment_expands_into_the_prompt() {
         .await;
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set("a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     client.next_action(&channel).await;
     client
-        .dispatch(&channel, annotation_set("a-2", &file, "rename this"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-2", &file, "rename this"),
+        )
         .await;
     client.next_action(&channel).await;
 
@@ -422,7 +428,7 @@ async fn codex_streams_natively_and_resumes_its_thread() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test-2"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test-2"}),
         )
         .await;
     let listed = client
@@ -578,7 +584,7 @@ async fn terminal_codex_threads_list_backfill_and_resume() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let listed = client
@@ -638,7 +644,7 @@ async fn restart_replays_the_transcript() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let listed = client
@@ -865,7 +871,10 @@ async fn a_queued_review_drains_with_its_comments_expanded() {
         .await;
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set("a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     client.next_action(&channel).await;
 
@@ -1170,7 +1179,7 @@ async fn terminal_sessions_list_and_open_with_backfilled_turns() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let listed = client
@@ -1225,7 +1234,7 @@ async fn fetch_turns_pages_the_history_to_exhaustion() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/{native}");
@@ -1286,7 +1295,7 @@ async fn reconnect_replays_the_missed_tail_or_answers_snapshots() {
     reborn
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let result = reborn
@@ -1473,7 +1482,7 @@ async fn a_terminal_echoes_resizes_and_exits() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     client.request("subscribe", json!({"channel": ROOT})).await;
@@ -1543,7 +1552,7 @@ async fn a_terminal_echoes_resizes_and_exits() {
     let mut late = Client::connect(host.clone()).await;
     late.request(
         "initialize",
-        json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "late"}),
+        json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "late"}),
     )
     .await;
     let snapshot = late
@@ -1573,7 +1582,7 @@ async fn a_terminal_echoes_resizes_and_exits() {
     loop {
         let action = client.next_action(ROOT).await;
         if action["type"] == "root/terminalsChanged" {
-            if action["terminals"][0]["exitCode"] == json!(3) {
+            if action["terminals"][0]["lifecycle"]["exitCode"] == json!(3) {
                 break;
             }
         }
@@ -2051,7 +2060,7 @@ async fn a_changeset_channel_serves_the_folders_changes() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
 
@@ -2236,7 +2245,7 @@ async fn a_non_repo_changeset_answers_an_error_status() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let plain = dir.path().join("plain");
@@ -2278,12 +2287,12 @@ async fn a_non_repo_changeset_answers_an_error_status() {
     }
 }
 
-fn annotation_set(id: &str, resource: &str, text: &str) -> Value {
+fn annotation_set(session: &str, id: &str, resource: &str, text: &str) -> Value {
     json!({
         "type": "annotations/set",
         "annotation": {
             "id": id,
-            "turnId": "",
+            "origin": {"session": session},
             "resource": resource,
             "range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 4}},
             "resolved": false,
@@ -2312,7 +2321,10 @@ async fn annotations_fold_echo_and_count() {
 
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set("a-1", &file, "why unwrap?"))
+        .dispatch(
+            &channel,
+            annotation_set(&session, "a-1", &file, "why unwrap?"),
+        )
         .await;
     let echo = client.next_action(&channel).await;
     assert_eq!(echo["type"], "annotations/set");
@@ -2344,7 +2356,7 @@ async fn annotations_fold_echo_and_count() {
     other
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "other"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "other"}),
         )
         .await;
     let snapshot = other
@@ -2405,13 +2417,13 @@ async fn empty_annotations_are_rejected() {
         .dispatch(
             &channel,
             json!({"type": "annotations/set",
-                   "annotation": {"id": "a-empty", "turnId": "", "resource": file,
+                   "annotation": {"id": "a-empty", "origin": {"session": session}, "resource": file,
                                    "resolved": false, "entries": []}}),
         )
         .await;
 
     client
-        .dispatch(&channel, annotation_set("a-1", &file, "note"))
+        .dispatch(&channel, annotation_set(&session, "a-1", &file, "note"))
         .await;
     let echo = client.next_action(&channel).await;
     assert_eq!(
@@ -2450,11 +2462,11 @@ async fn annotations_survive_restart_and_reconnect() {
         .await;
     let file = format!("file://{}/src/main.rs", dir.path().display());
     client
-        .dispatch(&channel, annotation_set("a-1", &file, "first"))
+        .dispatch(&channel, annotation_set(&session, "a-1", &file, "first"))
         .await;
     client.next_action(&channel).await;
     client
-        .dispatch(&channel, annotation_set("a-2", &file, "second"))
+        .dispatch(&channel, annotation_set(&session, "a-2", &file, "second"))
         .await;
     client.next_action(&channel).await;
 
@@ -2462,7 +2474,7 @@ async fn annotations_survive_restart_and_reconnect() {
     reborn
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let result = reborn
@@ -2495,7 +2507,7 @@ async fn annotations_survive_restart_and_reconnect() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let snapshot = client
@@ -2525,7 +2537,7 @@ async fn local_fs_annotations_survive_restart() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let channel = "hihost-fs:/local/annotations";
@@ -2534,7 +2546,10 @@ async fn local_fs_annotations_survive_restart() {
         .await;
     let file = format!("file://{}/notes.md", dir.path().display());
     client
-        .dispatch(channel, annotation_set("a-local", &file, "local comment"))
+        .dispatch(
+            channel,
+            annotation_set("hihost-fs:/local", "a-local", &file, "local comment"),
+        )
         .await;
     client.next_action(channel).await;
 
@@ -2543,7 +2558,7 @@ async fn local_fs_annotations_survive_restart() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let snapshot = client
@@ -2621,7 +2636,7 @@ async fn a_document_channel_applies_chained_operations() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let (channel, v0) = open_standalone(&mut client, "hello\nworld\n").await;
@@ -2652,7 +2667,7 @@ async fn a_document_channel_applies_chained_operations() {
     other
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "other"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "other"}),
         )
         .await;
     let snapshot = other
@@ -2670,13 +2685,13 @@ async fn conflicting_document_edits_converge_by_rebase() {
     alice
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "alice"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "alice"}),
         )
         .await;
     let mut bob = Client::connect(host.clone()).await;
     bob.request(
         "initialize",
-        json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "bob"}),
+        json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "bob"}),
     )
     .await;
 
@@ -2717,7 +2732,7 @@ async fn conflicting_document_edits_converge_by_rebase() {
     carol
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "carol"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "carol"}),
         )
         .await;
     let snapshot = carol
@@ -2735,7 +2750,7 @@ async fn stale_and_malformed_document_dispatches_discard() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let (channel, v0) = open_standalone(&mut client, "abc\n").await;
@@ -2787,7 +2802,7 @@ async fn a_mirrored_document_opens_idempotently_and_disposes() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let uri = format!("file://{}", file.display());
@@ -2857,7 +2872,7 @@ async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::Host>, Client, String, Stri
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = "hihost-fs:/local".to_owned();
@@ -3041,7 +3056,7 @@ async fn session_config_resolves_and_creation_honors_it() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
 
@@ -3145,7 +3160,7 @@ async fn a_dirless_session_mutates_mid_flight() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/dirless-{}", std::process::id());
@@ -3336,7 +3351,7 @@ async fn a_history_channel_serves_the_commit_log() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = "hihost-fs:/local";
@@ -3483,7 +3498,7 @@ async fn an_unlisted_session_surfaces_on_its_first_turn_or_dies_at_boot() {
             "initialize",
             json!({
                 "channel": ROOT,
-                "protocolVersions": ["0.7.0"],
+                "protocolVersions": ["0.9.0"],
                 "clientId": "test",
                 "initialSubscriptions": [ROOT],
             }),
@@ -3559,7 +3574,7 @@ async fn an_unlisted_session_surfaces_on_its_first_turn_or_dies_at_boot() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let listed = client
@@ -3650,7 +3665,7 @@ async fn a_mirrored_files_change_broadcasts_as_the_hosts_edit() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let uri = format!("file://{}", file.display());
@@ -3723,7 +3738,7 @@ async fn unflushed_client_edits_survive_the_hosts_file_reload() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let uri = format!("file://{}", file.display());
@@ -3772,7 +3787,7 @@ async fn unflushed_client_edits_survive_the_hosts_file_reload() {
     witness
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "witness"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "witness"}),
         )
         .await;
     let snapshot = witness
@@ -4275,7 +4290,7 @@ async fn fsp_registers_only_open_sessions() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     client
@@ -4369,7 +4384,7 @@ async fn a_worktree_session_works_in_the_worktree() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/wt-{}", std::process::id());
@@ -4420,7 +4435,7 @@ async fn a_worktree_tick_outside_git_works_in_place() {
     client
         .request(
             "initialize",
-            json!({"channel": ROOT, "protocolVersions": ["0.7.0"], "clientId": "test"}),
+            json!({"channel": ROOT, "protocolVersions": ["0.9.0"], "clientId": "test"}),
         )
         .await;
     let session = format!("ahp-session:/wt-plain-{}", std::process::id());

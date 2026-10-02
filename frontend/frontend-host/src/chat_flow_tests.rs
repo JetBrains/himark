@@ -136,6 +136,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
             status: 0,
             activity: None,
             project: None,
+            origin: None,
             working_directories: None,
             annotations: None,
             lifecycle: SessionLifecycle::Ready,
@@ -332,7 +333,6 @@ fn completed_turn(id: &str, prompt: &str, reply: &str) -> Turn {
         })],
         usage: None,
         state: TurnState::Complete,
-        error: None,
     }
 }
 

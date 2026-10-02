@@ -229,9 +229,18 @@ impl Turn {
             TurnState::Complete => Life::Complete,
             TurnState::Cancelled => Life::Cancelled,
             TurnState::Error => Life::Failed(
-                wire.error
-                    .as_ref()
-                    .map(|error| format!("{}: {}", error.error_type, error.message))
+                // The error is a durable response part (AHP 0.9) —
+                // the last one in the stream is the one that ended
+                // the turn.
+                wire.response_parts
+                    .iter()
+                    .rev()
+                    .find_map(|part| match part {
+                        ResponsePart::Error(part) => {
+                            Some(format!("{}: {}", part.error.error_type, part.error.message))
+                        }
+                        _ => None,
+                    })
                     .unwrap_or_else(|| "the turn failed".to_owned()),
             ),
         };
@@ -623,7 +632,10 @@ impl Conversation {
             A::ChatTurnCancelled(a) => self.retired(&a.turn_id, Life::Cancelled),
             A::ChatError(a) => self.retired(
                 &a.turn_id,
-                Life::Failed(format!("{}: {}", a.error.error_type, a.error.message)),
+                Life::Failed(format!(
+                    "{}: {}",
+                    a.part.error.error_type, a.part.error.message
+                )),
             ),
 
             A::ChatTurnsLoaded(a) => self.prepended(&a.turns, a.turns_next_cursor.clone()),
@@ -704,9 +716,12 @@ fn voiced(message: &Message) -> (CellKind, String) {
     match message.origin.kind {
         MessageKind::User => (CellKind::User, message.text.clone()),
         MessageKind::Agent => (CellKind::Agent, message.text.clone()),
-        MessageKind::Tool | MessageKind::SystemNotification => {
+        MessageKind::Tool | MessageKind::SystemNotification | MessageKind::Automation => {
             (CellKind::Notice, format!("*{}*", message.text))
         }
+        // A kind from a newer protocol: still a message — show it in
+        // the neutral voice rather than dropping it.
+        MessageKind::Unknown(_) => (CellKind::Notice, format!("*{}*", message.text)),
     }
 }
 

@@ -80,6 +80,7 @@ pub fn seed_session_folders(
             status: 0,
             activity: None,
             project: None,
+            origin: None,
             working_directories: Some(working_directories),
             annotations: None,
             resource: id.session.as_str().to_owned(),

@@ -489,11 +489,13 @@ fn a_failed_turn_fails_the_run() {
         himark::higent::ahp_types::actions::ChatErrorAction {
             turn_id: "turn:1".to_owned(),
             duration: 1,
-            error: serde_json::from_value(serde_json::json!({
-                "errorType": "provider",
-                "message": "quota exhausted",
+            part: serde_json::from_value(serde_json::json!({
+                "error": {
+                    "errorType": "provider",
+                    "message": "quota exhausted",
+                },
             }))
-            .expect("an error info"),
+            .expect("an error part"),
             meta: None,
         },
     )]]);

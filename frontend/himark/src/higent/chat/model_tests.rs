@@ -13,8 +13,9 @@ use ahp_types::actions::{
 };
 use ahp_types::common::StringOrMarkdown;
 use ahp_types::state::{
-    ActiveTurn, ChatState, ErrorInfo, MarkdownResponsePart, Message, MessageKind, MessageOrigin,
-    ReasoningResponsePart, ResponsePart, ToolCallResult, Turn as WireTurn, TurnState, UsageInfo,
+    ActiveTurn, ChatState, ErrorInfo, ErrorResponsePart, MarkdownResponsePart, Message,
+    MessageKind, MessageOrigin, ReasoningResponsePart, ResponsePart, ToolCallResult,
+    Turn as WireTurn, TurnState, UsageInfo,
 };
 
 use super::model::{Change, Conversation, Life, Part, PartId, ToolStatus};
@@ -212,11 +213,14 @@ fn failed(turn: &str, kind: &str, message: &str) -> StateAction {
     StateAction::ChatError(ChatErrorAction {
         turn_id: turn.to_owned(),
         duration: 1,
-        error: ErrorInfo {
-            error_type: kind.to_owned(),
-            message: message.to_owned(),
-            stack: None,
-            meta: None,
+        part: ErrorResponsePart {
+            error: ErrorInfo {
+                error_type: kind.to_owned(),
+                message: message.to_owned(),
+                stack: None,
+                meta: None,
+            },
+            resumable: None,
         },
         meta: None,
     })
@@ -254,7 +258,6 @@ fn said_turn(id: &str, prompt: &str, reply: &str) -> WireTurn {
         })],
         usage: None,
         state: TurnState::Complete,
-        error: None,
     }
 }
 
@@ -267,7 +270,6 @@ fn bare_turn(id: &str, prompt: &str, state: TurnState) -> WireTurn {
         response_parts: Vec::new(),
         usage: None,
         state,
-        error: None,
     }
 }
 
@@ -1298,12 +1300,16 @@ fn a_cancelled_wire_turn_reads_cancelled() {
 #[test]
 fn a_failed_wire_turn_carries_its_error() {
     let mut wire = bare_turn("t1", "one", TurnState::Error);
-    wire.error = Some(ErrorInfo {
-        error_type: "boom".to_owned(),
-        message: "it broke".to_owned(),
-        stack: None,
-        meta: None,
-    });
+    wire.response_parts
+        .push(ResponsePart::Error(ErrorResponsePart {
+            error: ErrorInfo {
+                error_type: "boom".to_owned(),
+                message: "it broke".to_owned(),
+                stack: None,
+                meta: None,
+            },
+            resumable: None,
+        }));
     let (chat, _) = Conversation::default().landed(&snapshot(vec![wire], None, None));
     assert!(matches!(turn(&chat, "t1").life, Life::Failed(said) if said.contains("it broke")));
 }

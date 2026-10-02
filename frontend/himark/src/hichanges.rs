@@ -325,6 +325,9 @@ impl ChangesStatus {
             ChangesetStatus::Error => {
                 ChangesStatus::Error(error.unwrap_or("changeset error").to_owned())
             }
+            // A status from a newer protocol: not an error, not
+            // provably ready — keep the chip spinning.
+            ChangesetStatus::Unknown(_) => ChangesStatus::Computing,
         }
     }
 }

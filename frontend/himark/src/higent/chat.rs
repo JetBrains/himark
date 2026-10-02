@@ -1429,11 +1429,14 @@ impl ChatPanel {
         let action = StateAction::ChatError(ahp_types::actions::ChatErrorAction {
             turn_id: turn.as_str().to_owned(),
             duration: 0,
-            error: ahp_types::state::ErrorInfo {
-                error_type: "not-delivered".to_owned(),
-                message: error,
-                stack: None,
-                meta: None,
+            part: ahp_types::state::ErrorResponsePart {
+                error: ahp_types::state::ErrorInfo {
+                    error_type: "not-delivered".to_owned(),
+                    message: error,
+                    stack: None,
+                    meta: None,
+                },
+                resumable: None,
             },
             meta: None,
         });
