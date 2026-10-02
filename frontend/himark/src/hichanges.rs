@@ -595,10 +595,6 @@ impl imba::store::Entity for ChangeSets {
 }
 
 impl crate::AppEntity for ChangeSets {
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
-        family.changes()
-    }
-
     fn label(_: &ChangesCommand) -> &'static str {
         "changes"
     }

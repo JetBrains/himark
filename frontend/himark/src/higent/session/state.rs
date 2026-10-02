@@ -312,6 +312,21 @@ impl Hosts {
         session.clone()
     }
 
+    /// Every session family, host order — the batch tail's domain:
+    /// the sync lanes run over all of them, each lane draining its own
+    /// pending queue, so a clean family costs map reads. A family is a
+    /// row of ids; the clone is pointer bumps.
+    pub(crate) fn families(store: &Store) -> Vec<SessionState> {
+        let Some(hosts) = store.get::<Hosts>() else {
+            return Vec::new();
+        };
+        hosts
+            .entries
+            .values()
+            .flat_map(|host| host.families.values().cloned())
+            .collect()
+    }
+
     pub fn family<'a>(store: &'a Store, session: &crate::SessionId) -> Option<&'a SessionState> {
         let session = Self::addressed(store, session);
         store
@@ -525,24 +540,6 @@ impl Hosts {
                         },
                         families.clone(),
                     ));
-                }
-            }
-        }
-        None
-    }
-
-    pub(crate) fn find_session(
-        store: &Store,
-        matches: impl Fn(&Store, &SessionState) -> bool,
-    ) -> Option<crate::SessionId> {
-        let hosts = store.get::<Hosts>()?;
-        for (id, host) in hosts.entries.iter() {
-            for (session, families) in host.families.iter() {
-                if matches(store, families) {
-                    return Some(crate::SessionId {
-                        host: *id,
-                        session: session.clone(),
-                    });
                 }
             }
         }

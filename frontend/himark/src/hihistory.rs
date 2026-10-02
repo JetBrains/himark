@@ -161,10 +161,6 @@ impl imba::store::Entity for History {
 }
 
 impl crate::AppEntity for History {
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
-        family.history()
-    }
-
     fn label(_: &HistoryCommand) -> &'static str {
         "history"
     }

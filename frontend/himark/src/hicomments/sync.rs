@@ -214,10 +214,6 @@ impl imba::store::Entity for Comments {
 }
 
 impl crate::AppEntity for Comments {
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
-        family.comments()
-    }
-
     fn label(_: &CommentsCommand) -> &'static str {
         "comments"
     }

@@ -154,10 +154,6 @@ impl imba::store::Entity for Chats {
 }
 
 impl crate::AppEntity for Chats {
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
-        family.chats()
-    }
-
     fn label(command: &ChatsCommand) -> &'static str {
         match command {
             ChatsCommand::Panel(..) => "chat",

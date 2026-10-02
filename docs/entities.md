@@ -42,20 +42,26 @@ direction is recorded at the tail, not legislated).
    is. Cross-collection links are `(Id<X>, private key)`.
 5. **One command road: `At(Id<T>, T::Command)` — carried by the
    `Entity` trait.** LANDED as `AppCommand::At(Addressed)` — ONE
-   type-erased variant for every collection, built by
-   `AppCommand::at(id, command)`. The himark-side `AppEntity` trait
-   declares what the road needs per collection: `family_id` (the
-   scope compare over family rows — the typed `session_of_*_id`
-   lookups retired into one `Hosts::find_session`), `label` (the
-   reconcile trace name, computed at construction since the type is
-   erased after), and `after_route` (the landing's application tail —
-   the changes rearms, the comments card work). `DiffViewCommand` /
-   `CanvasViewCommand` stay separate variants for now: their performs
-   reach their own collection through the store by id (e.g.
-   `Canvas::perform` → `Changes::of`), which under a lease is
-   reentrancy — folding them in is step-4 row-threading per
-   collection, not dispatch work. An entity declares its command type
-   the way views do:
+   type-erased variant for every collection (`Addressed` boxes the
+   typed `AtCommand<T> { id, command }` behind the one-impl
+   `AddressedCommand` trait), built by `AppCommand::at(id, command)`.
+   The himark-side `AppEntity` trait declares what the road needs per
+   collection: `label` (the reconcile trace name — the type is erased
+   by the time the trace reads one) and `after_route` (the landing's
+   application tail — the changes rearms, the comments card work).
+   An addressed command answers NO session scope: gather ignores
+   sessions (the store is single and global), and the batch tail runs
+   the sync lanes over EVERY family — each lane drains its own
+   pending queue, so a clean family costs map reads. The typed
+   `session_of_*_id` scans retired with nothing replacing them; what
+   remains of scope is the window half (its projection) and the
+   session a window names, which feeds the empty-family housekeeping
+   on scatter. `DiffViewCommand` / `CanvasViewCommand` stay separate
+   variants for now: their performs reach their own collection
+   through the store by id (e.g. `Canvas::perform` → `Changes::of`),
+   which under a lease is reentrancy — folding them in is step-4
+   row-threading per collection, not dispatch work. An entity
+   declares its command type the way views do:
 
    ```rust
    trait Entity: Clone + Send + Sync + 'static {

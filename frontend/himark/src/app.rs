@@ -161,15 +161,46 @@ pub enum AppCommand {
 pub use documents::DocumentsCommand;
 
 /// An addressed command with its entity type erased — what `At`
-/// carries. The address (the typed id) lives inside the closures:
-/// `scope` answers the owning session for the batch gather, `run` is
-/// the lease-perform-unlease road plus the collection's own landing
-/// tail. Erasure is per COMMAND, not per collection — the enum stays
-/// one arm no matter how many collections become addressable.
-pub struct Addressed {
-    label: &'static str,
-    scope: Box<dyn Fn(&Store) -> Option<crate::SessionId> + Send + Sync>,
-    run: Box<dyn FnOnce(&mut Store, &imba::UiCtx, &mut AppFx<'_>) + Send + Sync>,
+/// carries: one box around the typed `AtCommand<T>` pair below.
+/// Erasure is per COMMAND, not per collection — the enum stays one
+/// arm no matter how many collections become addressable. An `At`
+/// answers NO session scope: the store is single and global (gather
+/// ignores scope), and the batch-tail lanes run over every family,
+/// so the address owes nothing beyond the id it already is.
+pub struct Addressed(Box<dyn AddressedCommand>);
+
+/// The erased face of `AtCommand<T>` — implemented exactly once; a
+/// collection joins the road through `AppEntity`, never through this.
+trait AddressedCommand: Send + Sync {
+    /// The reconcile trace's name for this command.
+    fn label(&self) -> &'static str;
+    /// The lease-perform-unlease road (`Store::route`), then the
+    /// collection's application tail (`AppEntity::after_route`) —
+    /// the one place the erased entity type is still known.
+    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>);
+}
+
+struct AtCommand<T: AppEntity>
+where
+    T::Command: Send + Sync,
+{
+    id: imba::store::Id<T>,
+    command: T::Command,
+}
+
+impl<T: AppEntity> AddressedCommand for AtCommand<T>
+where
+    T::Command: Send + Sync,
+{
+    fn label(&self) -> &'static str {
+        T::label(&self.command)
+    }
+
+    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
+        let AtCommand { id, command } = *self;
+        store.route(id, command, ui, move |command| AppCommand::at(id, command), fx);
+        T::after_route(store, ui, id, fx);
+    }
 }
 
 /// What a collection declares to ride the `At` road: where it sits in
@@ -181,12 +212,6 @@ pub trait AppEntity: imba::store::Entity
 where
     Self::Command: Send + Sync,
 {
-    /// This collection's id in a session family — `At` scopes by an id
-    /// compare over the family rows, no content resolution: a command
-    /// for a gone record still comes home to discard in the right
-    /// place.
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self>;
-
     fn label(command: &Self::Command) -> &'static str;
 
     /// The landing's application tail, run after the lease returns —
@@ -202,10 +227,6 @@ where
 }
 
 impl AppEntity for OpenDocuments {
-    fn family_id(family: &crate::higent::SessionState) -> imba::store::Id<Self> {
-        family.documents()
-    }
-
     fn label(command: &DocumentsCommand) -> &'static str {
         match command {
             DocumentsCommand::Editor(_, EditorCommand::ApplyRepair(_)) => "repair",
@@ -231,16 +252,7 @@ impl AppCommand {
     where
         T::Command: Send + Sync,
     {
-        AppCommand::At(Addressed {
-            label: T::label(&command),
-            scope: Box::new(move |store| {
-                crate::higent::Hosts::find_session(store, |_, family| T::family_id(family) == id)
-            }),
-            run: Box::new(move |store, ui, fx| {
-                store.route(id, command, ui, move |command| AppCommand::at(id, command), fx);
-                T::after_route(store, ui, id, fx);
-            }),
-        })
+        AppCommand::At(Addressed(Box::new(AtCommand { id, command })))
     }
 
     pub fn dynamic_in(
@@ -572,46 +584,13 @@ impl Application {
             | AppCommand::ViewportResized(window, _) => *window,
             AppCommand::CloseModal(window) => *window,
 
-            AppCommand::At(addressed) => {
-                // The address IS the scope: the owning session falls
-                // out of an id compare over the family rows — no
-                // content scan, and a command for a gone record
-                // still comes home to discard in the right place.
-                return (None, (addressed.scope)(store));
-            }
-            AppCommand::FileChanged(subscription) => {
-                // The one id-less border road: file events arrive from
-                // the watcher with a subscription and nothing else, so
-                // the owner is located once, here.
-                return (
-                    None,
-                    crate::higent::Hosts::documents_of_watch(store, *subscription).and_then(
-                        |documents| {
-                            crate::higent::Hosts::find_session(store, |_, family| {
-                                family.documents() == documents
-                            })
-                        },
-                    ),
-                );
-            }
-            AppCommand::DiffViewCommand { documents, .. } => {
-                let documents = *documents;
-                return (
-                    None,
-                    crate::higent::Hosts::find_session(store, |_, family| {
-                        family.documents() == documents
-                    }),
-                );
-            }
-            AppCommand::CanvasViewCommand { changes, .. } => {
-                let changes = *changes;
-                return (
-                    None,
-                    crate::higent::Hosts::find_session(store, |_, family| {
-                        family.changes() == changes
-                    }),
-                );
-            }
+            // Addressed commands (`At`, the view roads, the watch
+            // border) answer NO scope: gather ignores sessions (the
+            // store is single and global) and the batch-tail lanes
+            // run over every family — the session scope's two old
+            // consumers. What remains of scope is the WINDOW half
+            // (its projection) and the session a window names (the
+            // empty-family housekeeping on scatter).
             _ => return (None, None),
         };
 
@@ -996,14 +975,12 @@ impl Application {
 
         {
             let mut fx = batch.effects();
-            // The document lanes run over the batch's LAST scope — the
-            // loop's own variable, not an ambient marker; a scopeless
-            // tail has no documents to serve.
-            if let Some(family) = scope
-                .1
-                .as_ref()
-                .and_then(|session| crate::higent::Hosts::family(&store, session).cloned())
-            {
+            // The lanes run over EVERY family: each drains its own
+            // pending queue, so a clean family costs map reads — and a
+            // landing's family gets its sweep THIS batch whatever the
+            // batch's scope (the old tail served only the LAST scope's
+            // family, so a cross-session batch starved the others).
+            for family in crate::higent::Hosts::families(&store) {
                 let documents = family.documents();
                 crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
                 documents::scroll_stripes::sync_scroll_stripe_lanes(
@@ -1286,7 +1263,7 @@ fn command_label(command: &AppCommand) -> &'static str {
         // The addressed commands label at construction
         // (`AppEntity::label`) — the type is erased by the time the
         // trace reads one.
-        AppCommand::At(addressed) => addressed.label,
+        AppCommand::At(addressed) => addressed.0.label(),
         AppCommand::Opened(..) => "opened",
         AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::CanvasViewCommand { .. } => "canvas view",
@@ -1520,7 +1497,7 @@ impl Application {
                 // the row, perform under its own address, put it back,
                 // then the collection's application tail
                 // (`AppEntity::after_route`).
-                (addressed.run)(store, ui, fx);
+                addressed.0.run(store, ui, fx);
             }
             AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
