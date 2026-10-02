@@ -31,7 +31,7 @@ pub fn typeface() -> Typeface {
         TYPEFACE
             .get_or_init(|| {
                 FontMgr::new()
-                    .new_from_data(NOTO_SANS, None)
+                    .new_from_data(skia_safe::Data::new_copy(NOTO_SANS), None)
                     .expect("embedded Noto Sans loads")
             })
             .clone()

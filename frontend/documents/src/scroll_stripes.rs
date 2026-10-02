@@ -37,20 +37,25 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
     fx: &mut imba::effect::Effects<'_, R>,
     wrap: impl Fn(DocumentId, editor::EditorCommand) -> R + Send + Clone + 'static,
 ) {
-    let wanting: Vec<DocumentId> = store
-        .entity(documents)
-        .map(|docs| {
-            docs.entries
-                .iter()
-                .filter(|(_, entity)| entity.document.wants_scroll_stripes())
-                .map(|(id, _)| *id)
-                .collect()
-        })
-        .unwrap_or_default();
+    let theme = editor::env::Themes::of(store);
+    // O(touched): the write doors queue every entry write; the sweep
+    // reads ITS queue, not the whole registry — this is the header's
+    // "O(1) when nothing is flagged", delivered (docs/perf-issue.md
+    // §1c). A theme switch re-queues every document once.
+    let mut wanting: Vec<DocumentId> = Vec::new();
+    store.update_entity(documents, |docs| {
+        for id in docs.take_stripe_pending(theme.name()) {
+            let Some(entity) = docs.entries.get(&id) else {
+                continue;
+            };
+            if entity.document.wants_scroll_stripes() {
+                wanting.push(id);
+            }
+        }
+    });
     if wanting.is_empty() {
         return;
     }
-    let theme = editor::env::Themes::of(store);
     for id in wanting {
         let Some(mut document) = OpenDocuments::document(store, documents, id) else {
             continue;

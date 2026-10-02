@@ -22,3 +22,11 @@ rustflags = [
     "-C",
     "link-arg=-sINITIAL_MEMORY=134217728",
 ]
+# Skia must be compiled by APPLE clang: with Homebrew LLVM first on
+# PATH, gn resolves bare `clang++` to it, and Homebrew's libc++
+# headers emit strong refs to new symbols (std::__1::__hash_memory)
+# that Apple's linker then rejects at the default deployment minimum.
+# Linux/emscripten skia builds don't read these (prebuilts / emcc).
+[env]
+CLANGCC = "/usr/bin/clang"
+CLANGCXX = "/usr/bin/clang++"

@@ -262,7 +262,7 @@ mod app {
         );
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
         let typeface = FontMgr::new()
-            .new_from_data(bytes, None)
+            .new_from_data(skia_safe::Data::new_copy(bytes), None)
             .expect("failed to load JetBrains Mono WOFF2");
         himark::embedded_fonts::install(typeface);
 

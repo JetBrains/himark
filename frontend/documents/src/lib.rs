@@ -119,6 +119,7 @@ impl OpenDocuments {
             entity.watch = None;
             entity.watch_requested = false;
             documents.entries.insert_mut(document, entity);
+            documents.note_write(document);
         });
     }
 }
@@ -496,6 +497,35 @@ pub struct OpenDocuments {
     by_watch: rpds::HashTrieMapSync<crate::Subscription, rpds::VectorSync<DocumentId>>,
 
     pub(crate) diffs: crate::diffs::Diffs,
+
+    pub(crate) pending: PendingSweeps,
+}
+
+/// The batch-tail lanes' work queues: every entry write enqueues the
+/// document for each lane, and a lane drains ITS queue when it runs —
+/// O(touched since the last sweep), never O(all documents ever)
+/// (docs/perf-issue.md). Three queues, one per lane: the lanes run at
+/// different tail positions, so a shared queue drained by the first
+/// would starve the rest. `theme` is the stripe lane's last-swept
+/// theme — stripes derive from theme colors, so a switch re-queues
+/// every document once.
+#[derive(Clone)]
+pub(crate) struct PendingSweeps {
+    pub(crate) diff_lanes: rpds::HashTrieSetSync<DocumentId>,
+    pub(crate) stripes: rpds::HashTrieSetSync<DocumentId>,
+    pub(crate) dressing: rpds::HashTrieSetSync<DocumentId>,
+    pub(crate) theme: Option<String>,
+}
+
+impl Default for PendingSweeps {
+    fn default() -> Self {
+        Self {
+            diff_lanes: rpds::HashTrieSetSync::new_sync(),
+            stripes: rpds::HashTrieSetSync::new_sync(),
+            dressing: rpds::HashTrieSetSync::new_sync(),
+            theme: None,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -560,6 +590,7 @@ impl OpenDocuments {
                 base_requested: false,
             },
         );
+        self.note_write(id);
         for hook in Self::hooks(store).iter() {
             hook.opened(store, documents, id, hook_location.as_ref());
         }
@@ -678,6 +709,34 @@ impl OpenDocuments {
         };
         mutate(&mut entity);
         self.entries.insert_mut(id, entity);
+        self.note_write(id);
+    }
+
+    /// An entry write the batch-tail lanes care about: queue the
+    /// document for each lane's next sweep. Every door that replaces
+    /// an entry calls this — the lanes see exactly the writes, so
+    /// their sweeps stay O(touched) (docs/perf-issue.md).
+    pub(crate) fn note_write(&mut self, id: DocumentId) {
+        self.pending.diff_lanes.insert_mut(id);
+        self.pending.stripes.insert_mut(id);
+        self.pending.dressing.insert_mut(id);
+    }
+
+    pub(crate) fn take_diff_lane_pending(&mut self) -> rpds::HashTrieSetSync<DocumentId> {
+        std::mem::take(&mut self.pending.diff_lanes)
+    }
+
+    /// Drain the stripe lane's queue. A theme switch — and the very
+    /// first sweep — re-queues EVERY document once: the stripes derive
+    /// from theme colors, which no entry write announces.
+    pub(crate) fn take_stripe_pending(&mut self, theme: &str) -> Vec<DocumentId> {
+        if self.pending.theme.as_deref() != Some(theme) {
+            self.pending.theme = Some(theme.to_owned());
+            self.pending.stripes = rpds::HashTrieSetSync::new_sync();
+            return self.entries.keys().copied().collect();
+        }
+        let drained = std::mem::take(&mut self.pending.stripes);
+        drained.iter().copied().collect()
     }
 
     pub fn contains(
@@ -877,6 +936,7 @@ impl OpenDocuments {
         let old = entity.watch;
         entity.watch = watch;
         self.entries.insert_mut(document, entity);
+        self.note_write(document);
         if old != watch {
             if let Some(old) = old {
                 self.unindex_watch(document, old);
@@ -1150,6 +1210,7 @@ impl OpenDocuments {
                 }
             }
             documents.entries.remove_mut(&document);
+            documents.note_write(document);
         });
     }
 
@@ -1160,11 +1221,7 @@ impl OpenDocuments {
         mutate: impl FnOnce(&mut OpenDocument),
     ) {
         store.update_entity(documents, |documents| {
-            let Some(mut entity) = documents.entries.get(&document).cloned() else {
-                return;
-            };
-            mutate(&mut entity);
-            documents.entries.insert_mut(document, entity);
+            documents.update_row(document, mutate);
         });
     }
 

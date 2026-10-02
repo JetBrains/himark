@@ -68,4 +68,4 @@ host-discovery = { path = "../../protocol/host-discovery" }
 himark = { path = "../../frontend/himark" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
-skia-safe = { version = "0.99.0", features = ["freetype-woff2", "gl", "textlayout"] }
+skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl", "textlayout"] }

@@ -83,6 +83,12 @@ pub(crate) struct Diffs {
     by_target: rpds::HashTrieMapSync<DocumentId, Vec<DiffId>>,
 
     by_base: rpds::HashTrieMapSync<DocumentId, Vec<DiffId>>,
+
+    /// Side document → the views it fronts in — the dressing sweep's
+    /// reverse index: a document write names exactly the views whose
+    /// state can lag, so the sweep never walks `diff_views` whole
+    /// (docs/perf-issue.md §1b).
+    views_by_document: rpds::HashTrieMapSync<DocumentId, Vec<u64>>,
 }
 
 impl Diffs {
@@ -92,10 +98,6 @@ impl Diffs {
 
     pub(crate) fn record(&self, id: DiffId) -> Option<&DiffRecord> {
         self.records.get(&id)
-    }
-
-    pub(crate) fn ids(&self) -> Vec<DiffId> {
-        self.records.keys().copied().collect()
     }
 
     pub(crate) fn touches(&self, document: DocumentId) -> bool {
@@ -145,6 +147,60 @@ impl Diffs {
         self.records.insert_mut(id, record);
     }
 
+    /// BOTH side documents' diffs — the diff-lane sweep's candidates
+    /// for one touched document.
+    pub(crate) fn of_document(&self, document: DocumentId) -> impl Iterator<Item = DiffId> + '_ {
+        self.by_base
+            .get(&document)
+            .into_iter()
+            .chain(self.by_target.get(&document))
+            .flatten()
+            .copied()
+    }
+
+    pub(crate) fn join_view(&mut self, id: u64, view: &DiffView) {
+        let mut join = |document: DocumentId| {
+            let mut ids = self
+                .views_by_document
+                .get(&document)
+                .cloned()
+                .unwrap_or_default();
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+            self.views_by_document.insert_mut(document, ids);
+        };
+        join(view.left.document());
+        join(view.right.document());
+    }
+
+    pub(crate) fn leave_view(&mut self, id: u64) {
+        let Some(view) = self.diff_views.get(&id) else {
+            return;
+        };
+        let sides = [view.left.document(), view.right.document()];
+        for document in sides {
+            let Some(mut ids) = self.views_by_document.get(&document).cloned() else {
+                continue;
+            };
+            ids.retain(|other| *other != id);
+            match ids.is_empty() {
+                true => {
+                    self.views_by_document.remove_mut(&document);
+                }
+                false => self.views_by_document.insert_mut(document, ids),
+            }
+        }
+    }
+
+    pub(crate) fn views_of(&self, document: DocumentId) -> impl Iterator<Item = DiffViewId> + '_ {
+        self.views_by_document
+            .get(&document)
+            .into_iter()
+            .flatten()
+            .map(|id| DiffViewId(*id))
+    }
+
     pub(crate) fn remove(&mut self, id: DiffId) -> Option<DiffRecord> {
         let record = self.records.get(&id).cloned()?;
         let leave = |index: &mut rpds::HashTrieMapSync<DocumentId, Vec<DiffId>>,
@@ -183,6 +239,7 @@ impl OpenDocuments {
         pair: DiffView,
     ) {
         store.update_entity(documents, |docs| {
+            docs.diffs.join_view(id.0, &pair);
             docs.diffs.diff_views.insert_mut(id.0, pair);
         });
     }
@@ -215,8 +272,31 @@ impl OpenDocuments {
         id: DiffViewId,
     ) {
         store.update_entity(documents, |docs| {
+            docs.diffs.leave_view(id.0);
             docs.diffs.diff_views.remove_mut(&id.0);
         });
+    }
+
+    /// Drain the dressing sweep's queue: the tracked views whose SIDE
+    /// documents were written since the last sweep — the only views
+    /// whose state can lag. O(touched views), never O(all views ever)
+    /// (docs/perf-issue.md §1b).
+    pub fn take_stale_view_candidates(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+    ) -> Vec<DiffViewId> {
+        let mut candidates = Vec::new();
+        store.update_entity(documents, |docs| {
+            let touched = std::mem::take(&mut docs.pending.dressing);
+            for document in touched.iter() {
+                for view in docs.diffs.views_of(*document) {
+                    if !candidates.contains(&view) {
+                        candidates.push(view);
+                    }
+                }
+            }
+        });
+        candidates
     }
 
     /// The STANDALONE pairs — the family rows a peeker can front.
@@ -321,6 +401,7 @@ impl OpenDocuments {
                         let mut entity = target_entity.clone();
                         entity.document = target_document;
                         self.entries.insert_mut(target, entity);
+                        self.note_write(target);
                     }
                 }
             }
@@ -351,6 +432,7 @@ impl OpenDocuments {
         let mut entity = target_entity.clone();
         entity.document = target_document;
         self.entries.insert_mut(target, entity);
+        self.note_write(target);
 
         let base_entity = self.entries.get(&base).expect("checked above");
         let mut base_document = base_entity.document.clone();
@@ -358,6 +440,7 @@ impl OpenDocuments {
         let mut entity = base_entity.clone();
         entity.document = base_document;
         self.entries.insert_mut(base, entity);
+        self.note_write(base);
 
         self.diffs.insert(
             id,
@@ -495,6 +578,7 @@ impl OpenDocuments {
                     let mut entity = target_entity.clone();
                     entity.document = target_document;
                     docs.entries.insert_mut(document, entity);
+                    docs.note_write(document);
                 }
             }
         });
@@ -526,7 +610,23 @@ pub fn sync_diff_lanes<R: 'static>(
     }
     let policy = editor::env::Differ::of(store);
     store.update_entity(documents, |docs| {
-        for id in docs.diffs.ids() {
+        // O(touched): only a diff whose SIDE document was written since
+        // the last sweep can owe a rebase or a normalize — the write
+        // doors queue exactly those (docs/perf-issue.md §1a). Everything
+        // else never enters the loop.
+        let touched = docs.take_diff_lane_pending();
+        if touched.is_empty() {
+            return;
+        }
+        let mut lanes: Vec<DiffId> = Vec::new();
+        for document in touched.iter() {
+            for id in docs.diffs.of_document(*document) {
+                if !lanes.contains(&id) {
+                    lanes.push(id);
+                }
+            }
+        }
+        for id in lanes {
             let Some(mut record) = docs.diffs.record(id).cloned() else {
                 continue;
             };
@@ -534,9 +634,6 @@ pub fn sync_diff_lanes<R: 'static>(
                 continue;
             };
             let base_revision = base_entity.document.revision();
-            let base_log = base_entity.document.log().clone();
-            let base_text = base_entity.document.text().clone();
-            let base_syntax = syntax_snapshot(&base_entity.document);
             let Some(target_entity) = docs.entries.get(&record.target) else {
                 continue;
             };
@@ -547,12 +644,14 @@ pub fn sync_diff_lanes<R: 'static>(
                 .map(|entry| entry.base_revision());
             let mut force_normalize = false;
             if cursor.is_some_and(|cursor| cursor != base_revision) {
+                let base_log = base_entity.document.log().clone();
                 let mut document = target_entity.document.clone();
                 match document.apply_diff_base_edits(id, &base_log) {
                     true => {
                         let mut entity = target_entity.clone();
                         entity.document = document;
                         docs.entries.insert_mut(record.target, entity);
+                        docs.note_write(record.target);
                     }
 
                     false => force_normalize = true,
@@ -566,6 +665,13 @@ pub fn sync_diff_lanes<R: 'static>(
                 if probe() {
                     eprintln!("[diffs] normalize {id:?} at {now:?}");
                 }
+                // The captures — text, log and above all the SYNTAX
+                // TREE copies — live BEHIND the staleness gate: an
+                // already-normalized diff costs two map reads here,
+                // never a ts_tree_copy (docs/perf-issue.md §1a).
+                let base_entity = docs.entries.get(&record.base).expect("present above");
+                let base_text = base_entity.document.text().clone();
+                let base_syntax = syntax_snapshot(&base_entity.document);
                 let target_syntax = syntax_snapshot(&target_entity.document);
                 let language = target_syntax
                     .as_ref()
@@ -575,7 +681,7 @@ pub fn sync_diff_lanes<R: 'static>(
                     .map(|snapshot| (snapshot.tree, snapshot.fresh));
                 let effect = DiffNormalizeEffect {
                     diff: id,
-                    base_text: base_text.clone(),
+                    base_text,
                     target_text: target_entity.document.text().clone(),
                     previous: target_entity
                         .document
@@ -647,6 +753,7 @@ impl OpenDocuments {
                     let mut entity = target_entity.clone();
                     entity.document = document;
                     self.entries.insert_mut(record.target, entity);
+                    self.note_write(record.target);
                     landed = true;
                 }
             }
@@ -1165,5 +1272,90 @@ mod tests {
             "the base released with the record"
         );
         assert!(OpenDocuments::diff_handle(&store, documents, handle.id).is_none());
+    }
+}
+
+#[cfg(test)]
+mod perf_tests {
+    use super::*;
+    use editor::test_document::plain_document;
+
+    /// PERF REGRESSION (docs/perf-issue.md §1): the batch-tail sweeps
+    /// run per input event, so their cost must scale with the
+    /// documents TOUCHED that batch — one, on a scroll tick — never
+    /// with how many diffs/documents the registry tracks (a skia-sized
+    /// status diff accumulates thousands). Before the dirty queues the
+    /// diff lane walked every record and copied syntax trees per diff
+    /// per tick: 30 fps.
+    #[test]
+    fn batch_tail_sweep_cost_is_tracked_count_independent() {
+        let sweep_median_ms = |pairs: usize| -> f64 {
+            let mut store = Store::new();
+            let documents = imba::store::Id::mint();
+            let mut targets = Vec::new();
+            for n in 0..pairs {
+                let base = OpenDocuments::register(
+                    &mut store,
+                    documents,
+                    plain_document(&format!("base {n}\nsame\n")),
+                    Some(editor::ResourceLocation::new(
+                        editor::ResourceType::document(),
+                        editor::Authority::new("local"),
+                        vec![format!("file{n}.md.base")],
+                    )),
+                    format!("file{n}.md.base"),
+                    0,
+                );
+                let target = OpenDocuments::register(
+                    &mut store,
+                    documents,
+                    plain_document(&format!("target {n}\nsame\n")),
+                    Some(editor::ResourceLocation::new(
+                        editor::ResourceType::document(),
+                        editor::Authority::new("local"),
+                        vec![format!("file{n}.md")],
+                    )),
+                    format!("file{n}.md"),
+                    0,
+                );
+                let tracked =
+                    OpenDocuments::track_diff(&mut store, documents, base, target, false);
+                assert!(tracked.is_some());
+                targets.push(target);
+            }
+
+            // The landing sweep: every registration is queued, every
+            // diff normalizes once — drained here, off the clock.
+            let mut warmup = imba::effect::Batch::<()>::new();
+            sync_diff_lanes(&mut store, documents, &mut warmup.effects(), |_| ());
+            crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut warmup.effects(), |_, _| ());
+            let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
+
+            // The per-tick shape: ONE document written, then the tail.
+            let touched = targets[pairs / 2];
+            let mut times = Vec::new();
+            for _ in 0..30 {
+                OpenDocuments::update_entity(&mut store, documents, touched, |_| {});
+                let mut batch = imba::effect::Batch::<()>::new();
+                let started = std::time::Instant::now();
+                sync_diff_lanes(&mut store, documents, &mut batch.effects(), |_| ());
+                crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut batch.effects(), |_, _| ());
+                let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
+                times.push(started.elapsed().as_secs_f64() * 1000.0);
+            }
+            times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            times[times.len() / 2]
+        };
+
+        let small = sweep_median_ms(50);
+        let large = sweep_median_ms(3000);
+        eprintln!("[perf] batch-tail sweep median: 50 pairs {small:.4}ms, 3000 pairs {large:.4}ms");
+        // The old sweep walked every record per tick — 30x the pairs
+        // measured way past this bound; machine speed cancels out.
+        assert!(
+            large < (small * 3.0).max(0.05),
+            "the batch-tail sweeps must cost O(touched), not O(tracked): \
+             50 pairs {small:.4}ms vs 3000 pairs {large:.4}ms"
+        );
     }
 }

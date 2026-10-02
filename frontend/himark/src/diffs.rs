@@ -106,14 +106,17 @@ pub struct DressedViews(pub Vec<DiffViewId>);
 /// tracked view whose basis lags its pair — a normalize landed, or
 /// another editor moved a shared document — resyncs NOW, id-routed,
 /// no paint probe. Runs right after the diff lanes, so a landing and
-/// its re-dress share a batch. O(views) stale checks on refs.
+/// its re-dress share a batch. O(touched views): the write doors queue
+/// side-document writes, and the queue names exactly the views whose
+/// state can lag (docs/perf-issue.md §1b) — never a walk of every
+/// view a canvas ever dressed.
 pub(crate) fn sync_diff_dressing(
     store: &mut Store,
     documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     fx: &mut AppFx<'_>,
 ) {
-    for id in crate::OpenDocuments::diff_view_ids(store, documents) {
+    for id in crate::OpenDocuments::take_stale_view_candidates(store, documents) {
         let stale = crate::OpenDocuments::diff_view_ref(store, documents, id).is_some_and(|pair| {
             let Some(state) = &pair.state else {
                 // Never gathered: no face was built, nothing owes.

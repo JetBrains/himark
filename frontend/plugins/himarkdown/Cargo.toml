@@ -9,7 +9,7 @@ himark = { path = "../../himark", features = ["test-support"] }
 imba = { path = "../../imba" }
 mdparser = { path = "../../mdparser" }
 operation = { path = "../../operation" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../../text" }
 hisitter = { path = "../../hisitter" }
 tree-sitter = "0.26.8"

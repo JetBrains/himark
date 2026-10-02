@@ -5,9 +5,10 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 ROOT="$(cd ../.. && pwd)"
-SKIA_BINDINGS_DIR="$ROOT/vendor/skia-bindings-0.99.0"
-SKIA_SOURCE_TAG="$(sed -nE 's/^skia[[:space:]]*=[[:space:]]*"([^"]+)"$/\1/p' "$SKIA_BINDINGS_DIR/Cargo.toml")"
-SKIA_HEADERS_DIR="$ROOT/target/skia-headers/$SKIA_SOURCE_TAG"
+SKIA_BINDINGS_DIR="$(ls -d "$ROOT"/vendor/skia-bindings-* | sort -V | tail -n 1)"
+# The vendored crate ships the pinned Skia source tree — the Metal
+# bridge headers come straight from it, version-matched by construction.
+SKIA_HEADERS_DIR="$SKIA_BINDINGS_DIR/skia"
 
 case "$(uname -m)" in
   arm64)
@@ -39,21 +40,8 @@ ensure_skia_headers() {
     return
   fi
 
-  [[ -n "$SKIA_SOURCE_TAG" ]] || {
-    echo "could not determine the pinned Skia source revision" >&2
-    exit 1
-  }
-
-  if [[ -d "$SKIA_HEADERS_DIR/.git" ]]; then
-    git -C "$SKIA_HEADERS_DIR" sparse-checkout set include modules
-    return
-  fi
-
-  echo "==> fetching Skia $SKIA_SOURCE_TAG headers for the Metal bridge"
-  mkdir -p "$(dirname "$SKIA_HEADERS_DIR")"
-  git clone --depth 1 --filter=blob:none --sparse --branch "$SKIA_SOURCE_TAG" \
-    https://github.com/rust-skia/skia.git "$SKIA_HEADERS_DIR"
-  git -C "$SKIA_HEADERS_DIR" sparse-checkout set include modules
+  echo "the vendored Skia tree at $SKIA_HEADERS_DIR is missing its headers" >&2
+  exit 1
 }
 
 resolve() {

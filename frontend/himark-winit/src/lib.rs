@@ -25,6 +25,9 @@ use winit::{
     window::{Window, WindowId},
 };
 
+#[cfg(all(target_os = "macos", feature = "graphite"))]
+mod graphite_metal;
+
 const INITIAL_WIDTH: u32 = 1280;
 const INITIAL_HEIGHT: u32 = 860;
 const MIN_WIDTH: u32 = 640;
@@ -784,8 +787,16 @@ enum MenuInteraction {
 
 type RenderSurface = softbuffer::Surface<OwnedDisplayHandle, std::sync::Arc<Window>>;
 
+/// The frame's road to the screen: the CPU softbuffer blit, or the
+/// Graphite/Metal lane when it is compiled in and the device answers.
+enum Renderer {
+    Soft(RenderSurface),
+    #[cfg(all(target_os = "macos", feature = "graphite"))]
+    Graphite(graphite_metal::GraphiteSurface),
+}
+
 struct WindowState {
-    surface: RenderSurface,
+    renderer: Renderer,
     window: std::sync::Arc<Window>,
     cursor_position: Option<PhysicalPosition<f64>>,
 
@@ -801,10 +812,19 @@ impl WindowState {
         window: Window,
     ) -> Result<Self, Box<dyn Error>> {
         let window = std::sync::Arc::new(window);
-        let surface = softbuffer::Surface::new(context, window.clone())?;
+        #[cfg(all(target_os = "macos", feature = "graphite"))]
+        let renderer = match graphite_metal::GraphiteSurface::new(&window) {
+            Ok(surface) => Renderer::Graphite(surface),
+            Err(error) => {
+                eprintln!("[winit] graphite unavailable ({error}) — the softbuffer serves");
+                Renderer::Soft(softbuffer::Surface::new(context, window.clone())?)
+            }
+        };
+        #[cfg(not(all(target_os = "macos", feature = "graphite")))]
+        let renderer = Renderer::Soft(softbuffer::Surface::new(context, window.clone())?);
         let size = window.inner_size();
         let mut state = Self {
-            surface,
+            renderer,
             window,
             cursor_position: None,
             left_down: false,
@@ -824,7 +844,11 @@ impl WindowState {
         let Some(height) = NonZeroU32::new(size.height) else {
             return Ok(());
         };
-        self.surface.resize(width, height)?;
+        match &mut self.renderer {
+            Renderer::Soft(surface) => surface.resize(width, height)?,
+            #[cfg(all(target_os = "macos", feature = "graphite"))]
+            Renderer::Graphite(surface) => surface.resize(width.get(), height.get()),
+        }
         self.window.request_redraw();
         Ok(())
     }
@@ -850,52 +874,69 @@ impl WindowState {
         let Some(height) = NonZeroU32::new(size.height) else {
             return Ok(false);
         };
-        self.surface.resize(width, height)?;
 
-        let mut buffer = self.surface.buffer_mut()?;
-        let buffer_width = buffer.width().get();
-        let buffer_height = buffer.height().get();
-        let row_bytes = buffer_width as usize * 4;
-        let pixels = &mut *buffer;
-        let bytes = unsafe {
-            std::slice::from_raw_parts_mut(pixels.as_mut_ptr() as *mut u8, pixels.len() * 4)
-        };
-
-        let image_info = ImageInfo::new(
-            (buffer_width as i32, buffer_height as i32),
-            ColorType::BGRA8888,
-            AlphaType::Opaque,
-            ColorSpace::new_srgb(),
-        );
-        let mut skia_surface = surfaces::wrap_pixels(&image_info, bytes, row_bytes, None)
-            .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels"))?;
         let scale = self.window.scale_factor() as f32;
         let menu_height = menu.bar_height(scale);
-        skia_surface.canvas().save();
-        skia_surface.canvas().translate((0.0, menu_height));
-        skia_surface.canvas().clip_rect(
-            Rect::from_xywh(
-                0.0,
-                0.0,
-                buffer_width as f32,
-                (buffer_height as f32 - menu_height).max(1.0),
-            ),
-            None,
-            true,
-        );
-        let reconciling = engine.draw(
-            skia_surface.canvas(),
-            buffer_width as f32,
-            (buffer_height as f32 - menu_height).max(1.0),
-            scale,
-        );
-        skia_surface.canvas().restore();
-        menu.paint(skia_surface.canvas(), buffer_width as f32, scale);
-        drop(skia_surface);
+        // The one painting pass, whatever carries it to the screen.
+        let mut paint = |canvas: &skia_safe::Canvas, width: f32, height: f32| -> bool {
+            canvas.save();
+            canvas.translate((0.0, menu_height));
+            canvas.clip_rect(
+                Rect::from_xywh(0.0, 0.0, width, (height - menu_height).max(1.0)),
+                None,
+                true,
+            );
+            let reconciling = engine.draw(canvas, width, (height - menu_height).max(1.0), scale);
+            canvas.restore();
+            menu.paint(canvas, width, scale);
+            reconciling
+        };
 
-        self.window.pre_present_notify();
-        buffer.present()?;
-        Ok(reconciling)
+        match &mut self.renderer {
+            Renderer::Soft(surface) => {
+                surface.resize(width, height)?;
+
+                let mut buffer = surface.buffer_mut()?;
+                let buffer_width = buffer.width().get();
+                let buffer_height = buffer.height().get();
+                let row_bytes = buffer_width as usize * 4;
+                let pixels = &mut *buffer;
+                let bytes = unsafe {
+                    std::slice::from_raw_parts_mut(pixels.as_mut_ptr() as *mut u8, pixels.len() * 4)
+                };
+
+                let image_info = ImageInfo::new(
+                    (buffer_width as i32, buffer_height as i32),
+                    ColorType::BGRA8888,
+                    AlphaType::Opaque,
+                    ColorSpace::new_srgb(),
+                );
+                let mut skia_surface = surfaces::wrap_pixels(&image_info, bytes, row_bytes, None)
+                    .ok_or_else(|| {
+                    std::io::Error::new(std::io::ErrorKind::Other, "skia wrap_pixels")
+                })?;
+                let reconciling = paint(
+                    skia_surface.canvas(),
+                    buffer_width as f32,
+                    buffer_height as f32,
+                );
+                drop(skia_surface);
+
+                self.window.pre_present_notify();
+                buffer.present()?;
+                Ok(reconciling)
+            }
+            #[cfg(all(target_os = "macos", feature = "graphite"))]
+            Renderer::Graphite(surface) => {
+                surface.resize(width.get(), height.get());
+                self.window.pre_present_notify();
+                let mut reconciling = false;
+                surface.frame(|canvas| {
+                    reconciling = paint(canvas, width.get() as f32, height.get() as f32);
+                })?;
+                Ok(reconciling)
+            }
+        }
     }
 }
 

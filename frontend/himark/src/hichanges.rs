@@ -104,10 +104,14 @@ pub(crate) fn entry_of(
     folder: &ResourceLocation,
     file: &ChangesetFile,
 ) -> Option<ChangeEntry> {
+    use serde::Deserialize as _;
+    // Deserialized BY REFERENCE: the wire `Value` trees are arbitrary
+    // and large, and this reads two strings out of them — never pay a
+    // deep clone for that (docs/perf-issue.md §2).
     let side = |value: &Option<serde_json::Value>| -> Option<WireSide> {
         value
             .as_ref()
-            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .and_then(|value| WireSide::deserialize(value).ok())
     };
     let before = side(&file.edit.before);
     let after = side(&file.edit.after);
@@ -136,7 +140,7 @@ pub(crate) fn entry_of(
         .edit
         .diff
         .as_ref()
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .and_then(|value| WireCounts::deserialize(value).ok())
         .unwrap_or_default();
     Some(ChangeEntry {
         id: file.id.clone(),
@@ -184,6 +188,97 @@ pub enum ChangesStatus {
     Computing,
     Ready,
     Error(String),
+}
+
+/// A changeset snapshot digested OFF the UI thread: the wire `Value`
+/// trees are parsed and the uris resolved inside the effect's landing
+/// map (the background runner's thread), so the UI-thread adopt only
+/// stamps and swaps finished entries (docs/perf-issue.md §2).
+pub struct DigestedChangeset {
+    pub(crate) status: ChangesStatus,
+    pub(crate) entries: Vec<ChangeEntry>,
+}
+
+/// A polled wire action digested OFF the UI thread — `entry_of` has
+/// already run; the UI-thread fold only splices finished entries.
+pub enum ChangeAction {
+    Content(Vec<ChangeEntry>),
+    Status(ChangesStatus),
+    /// `entry` is `None` when the wire file resolves outside the
+    /// folder — the standing entry under `id` still leaves.
+    FileSet {
+        id: String,
+        entry: Option<ChangeEntry>,
+    },
+    FileRemoved(String),
+    Cleared,
+}
+
+fn digest_state(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    state: &ChangesetState,
+) -> DigestedChangeset {
+    DigestedChangeset {
+        status: ChangesStatus::of_wire(
+            &state.status,
+            state.error.as_ref().map(|error| error.message.as_str()),
+        ),
+        entries: state
+            .files
+            .iter()
+            .filter_map(|file| entry_of(uris, folder, file))
+            .collect(),
+    }
+}
+
+fn digest_actions(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    actions: &[StateAction],
+) -> Vec<ChangeAction> {
+    // A full snapshot wholesale replaces the file list, so every file
+    // mutation BEFORE the batch's last one is superseded — skip its
+    // conversion entirely; only status changes survive in order
+    // (docs/perf-issue.md §4 measure 3).
+    let last_content = actions
+        .iter()
+        .rposition(|action| matches!(action, StateAction::ChangesetContentChanged(_)));
+    let mut digested = Vec::new();
+    for (at, action) in actions.iter().enumerate() {
+        let superseded = last_content.is_some_and(|last| at < last);
+        match action {
+            StateAction::ChangesetContentChanged(content) if !superseded => {
+                digested.push(ChangeAction::Content(
+                    content
+                        .files
+                        .iter()
+                        .filter_map(|file| entry_of(uris, folder, file))
+                        .collect(),
+                ));
+            }
+            StateAction::ChangesetStatusChanged(status) => {
+                digested.push(ChangeAction::Status(ChangesStatus::of_wire(
+                    &status.status,
+                    status.error.as_ref().map(|error| error.message.as_str()),
+                )));
+            }
+            StateAction::ChangesetFileSet(set) if !superseded => {
+                digested.push(ChangeAction::FileSet {
+                    id: set.file.id.clone(),
+                    entry: entry_of(uris, folder, &set.file),
+                });
+            }
+            StateAction::ChangesetFileRemoved(removed) if !superseded => {
+                digested.push(ChangeAction::FileRemoved(removed.file_id.clone()));
+            }
+            StateAction::ChangesetCleared(_) if !superseded => {
+                digested.push(ChangeAction::Cleared);
+            }
+            _ => {}
+        }
+    }
+    digested
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -386,6 +481,12 @@ pub struct ChangeSets {
     /// Source → set: the reuse lookup for BOTH flavors.
     pub(crate) by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
 
+    /// Set → the serial of ITS one standing poll loop. A relaunch
+    /// bumps it; a `Polled` landing re-arms only when it carries the
+    /// current serial, so a re-subscribe (refetch, catalog re-route)
+    /// supersedes the old loop instead of multiplying it.
+    polls: rpds::HashTrieMapSync<ChangeSetId, u64>,
+
     session: Option<SessionFeed>,
 
     pub(crate) uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
@@ -418,15 +519,20 @@ pub type Changes = ChangeSets;
 /// sets. Each is stamped with the collection id at launch and comes
 /// home by it — no scope is re-derived.
 pub enum ChangesCommand {
-    /// A changeset subscribe answered for one folder's set.
+    /// A changeset subscribe answered for one folder's set — digested
+    /// on the effect worker, never on this thread.
     Snapshot {
         folder: ResourceLocation,
-        result: Result<ChangesetState, String>,
+        result: Result<DigestedChangeset, String>,
     },
-    /// A changeset poll drained for one folder's set.
+    /// A changeset poll drained for one folder's set — digested on the
+    /// effect worker. `serial` names the poll loop that drained it:
+    /// only the CURRENT loop's landing re-arms (docs/perf-issue.md §4
+    /// measure 5).
     Polled {
         folder: ResourceLocation,
-        actions: Vec<StateAction>,
+        serial: u64,
+        actions: Vec<ChangeAction>,
     },
 }
 
@@ -450,21 +556,34 @@ impl imba::store::Entity for ChangeSets {
     ) {
         match command {
             ChangesCommand::Snapshot { folder, result } => {
-                match &result {
-                    Ok(state) => self.adopt(&folder, state),
-                    Err(error) => self.adopt_error(&folder, error.clone()),
+                let adopted = result.is_ok();
+                match result {
+                    Ok(digested) => self.adopt(&folder, digested),
+                    Err(error) => self.adopt_error(&folder, error),
                 }
                 self.nudge_folder_in_place(&folder);
                 self.note_rearm(store, &folder);
-                if result.is_ok() {
+                if adopted {
                     self.relaunch_poll(&folder, fx);
                 }
             }
-            ChangesCommand::Polled { folder, actions } => {
-                self.fold(&folder, &actions);
+            ChangesCommand::Polled {
+                folder,
+                serial,
+                actions,
+            } => {
+                self.fold(&folder, actions);
                 self.nudge_folder_in_place(&folder);
                 self.note_rearm(store, &folder);
-                self.relaunch_poll(&folder, fx);
+                // Only the CURRENT loop re-arms: a superseding
+                // subscribe bumped the serial and owns the next poll.
+                // A stale landing still folds its batch — a drained
+                // action is never dropped — but it does not multiply
+                // loops (each loop re-polls full snapshots, so extra
+                // loops snowball; docs/perf-issue.md §2).
+                if self.poll_serial(&folder) == Some(serial) {
+                    self.relaunch_poll(&folder, fx);
+                }
             }
         }
     }
@@ -487,6 +606,7 @@ impl Changes {
             history,
             sets: rpds::HashTrieMapSync::new_sync(),
             by_source: rpds::HashTrieMapSync::new_sync(),
+            polls: rpds::HashTrieMapSync::new_sync(),
             session: None,
             uris: None,
             views: rpds::HashTrieMapSync::new_sync(),
@@ -523,19 +643,42 @@ impl Changes {
         store.put_entity(changes, row);
     }
 
+    fn folder_set_id(&self, folder: &ResourceLocation) -> Option<ChangeSetId> {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.by_source.get(&source).copied()
+    }
+
+    fn poll_serial(&self, folder: &ResourceLocation) -> Option<u64> {
+        self.polls.get(&self.folder_set_id(folder)?).copied()
+    }
+
     /// The landing's own poll relaunch — the next batch of the set's
-    /// channel comes home as `Polled`, stamped by the router.
+    /// channel comes home as `Polled`, stamped by the router. The
+    /// batch is DIGESTED in the landing map, on the effect worker:
+    /// the UI thread never parses wire `Value` trees
+    /// (docs/perf-issue.md §2). Bumps the set's poll serial — the
+    /// loop this launch starts is the one standing loop.
     fn relaunch_poll(
-        &self,
+        &mut self,
         folder: &ResourceLocation,
         fx: &mut imba::effect::Effects<'_, ChangesCommand>,
     ) {
-        let Some(feed) = self.folder_set(folder).and_then(|set| set.feed.clone()) else {
+        let Some(uris) = self.uris.clone() else {
+            return;
+        };
+        let Some(id) = self.folder_set_id(folder) else {
+            return;
+        };
+        let Some(feed) = self.sets.get(&id).and_then(|set| set.feed.clone()) else {
             return;
         };
         let Some(channel) = feed.channel else {
             return;
         };
+        let serial = self.polls.get(&id).copied().unwrap_or(0) + 1;
+        self.polls.insert_mut(id, serial);
         let landing = folder.clone();
         fx.push(
             AnyEffect::new(PollChangesetEffect {
@@ -543,8 +686,9 @@ impl Changes {
                 channel,
             })
             .map(move |actions| ChangesCommand::Polled {
-                folder: landing.clone(),
-                actions,
+                serial,
+                actions: digest_actions(&*uris, &landing, &actions),
+                folder: landing,
             }),
         );
     }
@@ -1133,8 +1277,11 @@ impl Changes {
             Changes::nudge_folder(store, changes, folder);
         }
         let _ = window;
+        let Some(uris) = Self::of(store, changes).and_then(|held| held.uris.clone()) else {
+            return;
+        };
         for (folder, seat, channel) in riding {
-            fx.push(subscribe_set(changes, folder, seat, channel));
+            fx.push(subscribe_set(changes, folder, seat, channel, uris.clone()));
         }
     }
 
@@ -1199,20 +1346,13 @@ impl Changes {
         fresh
     }
 
-    fn adopt(&mut self, folder: &ResourceLocation, state: &ChangesetState) {
-        let Some(uris) = self.uris.clone() else {
-            return;
-        };
+    /// Adopt a snapshot the effect worker already digested: stamp the
+    /// finished entries against the standing ones and swap — the only
+    /// UI-thread work left is value compares (docs/perf-issue.md §2).
+    fn adopt(&mut self, folder: &ResourceLocation, digested: DigestedChangeset) {
         self.update_folder_set(folder, |set| {
-            set.status = ChangesStatus::of_wire(
-                &state.status,
-                state.error.as_ref().map(|error| error.message.as_str()),
-            );
-            let mut fresh: Vec<ChangeEntry> = state
-                .files
-                .iter()
-                .filter_map(|file| entry_of(&*uris, folder, file))
-                .collect();
+            set.status = digested.status;
+            let mut fresh = digested.entries;
             stamp_entries(set.files.iter(), fresh.iter_mut(), set.generation + 1);
             set.files = fresh.into_iter().collect();
             set.note_bases();
@@ -1243,14 +1383,14 @@ impl Changes {
         });
     }
 
-    fn fold(&mut self, folder: &ResourceLocation, actions: &[StateAction]) {
-        let Some(uris) = self.uris.clone() else {
-            return;
-        };
+    /// Fold a polled batch the effect worker already digested — the
+    /// wire parsing happened there, and the superseded file mutations
+    /// (everything a later full snapshot overwrites) never arrive
+    /// (docs/perf-issue.md §2, §4 measure 3).
+    fn fold(&mut self, folder: &ResourceLocation, actions: Vec<ChangeAction>) {
         self.update_folder_set(folder, |set| {
             let entry = set;
             let stamp = entry.generation + 1;
-            let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
             let mut files: Vec<Option<ChangeEntry>> =
                 entry.files.iter().cloned().map(Some).collect();
             let mut by_id: std::collections::HashMap<String, usize> = files
@@ -1260,13 +1400,15 @@ impl Changes {
                 .collect();
             for action in actions {
                 match action {
-                    StateAction::ChangesetContentChanged(content) => {
-                        let mut fresh: Vec<ChangeEntry> = content
-                            .files
-                            .iter()
-                            .filter_map(|file| entry_of(&*uris, folder, file))
-                            .collect();
-                        stamp_entries(previous.iter(), fresh.iter_mut(), stamp);
+                    ChangeAction::Content(mut fresh) => {
+                        // At most one per batch (the digest dropped the
+                        // superseded ones), so the standing `files` ARE
+                        // the previous list to stamp against.
+                        stamp_entries(
+                            files.iter().filter_map(|slot| slot.as_ref()),
+                            fresh.iter_mut(),
+                            stamp,
+                        );
                         files = fresh.into_iter().map(Some).collect();
                         by_id = files
                             .iter()
@@ -1276,17 +1418,14 @@ impl Changes {
                             })
                             .collect();
                     }
-                    StateAction::ChangesetStatusChanged(status) => {
-                        entry.status = ChangesStatus::of_wire(
-                            &status.status,
-                            status.error.as_ref().map(|error| error.message.as_str()),
-                        );
+                    ChangeAction::Status(status) => {
+                        entry.status = status;
                     }
-                    StateAction::ChangesetFileSet(set) => {
-                        if let Some(at) = by_id.remove(&set.file.id) {
+                    ChangeAction::FileSet { id, entry: fresh } => {
+                        if let Some(at) = by_id.remove(&id) {
                             files[at] = None;
                         }
-                        if let Some(mut fresh) = entry_of(&*uris, folder, &set.file) {
+                        if let Some(mut fresh) = fresh {
                             // The host resends a file exactly when it
                             // changed — stamp unconditionally; value
                             // equality cannot see a same-stats edit.
@@ -1295,16 +1434,15 @@ impl Changes {
                             files.push(Some(fresh));
                         }
                     }
-                    StateAction::ChangesetFileRemoved(removed) => {
-                        if let Some(at) = by_id.remove(&removed.file_id) {
+                    ChangeAction::FileRemoved(id) => {
+                        if let Some(at) = by_id.remove(&id) {
                             files[at] = None;
                         }
                     }
-                    StateAction::ChangesetCleared(_) => {
+                    ChangeAction::Cleared => {
                         files.clear();
                         by_id.clear();
                     }
-                    _ => {}
                 }
             }
             entry.files = files.into_iter().flatten().collect();
@@ -1444,19 +1582,22 @@ pub(crate) fn adopt_session_catalog(
 }
 
 /// One folder's changeset subscribe, launched at the collection's
-/// address: the snapshot comes home as `ChangesCommand::Snapshot`.
+/// address: the snapshot comes home as `ChangesCommand::Snapshot`,
+/// DIGESTED in the landing map on the effect worker — the UI thread
+/// receives finished entries (docs/perf-issue.md §2).
 fn subscribe_set(
     changes: imba::store::Id<ChangeSets>,
     folder: ResourceLocation,
     seat: Arc<dyn AhpServer>,
     channel: crate::higent::ChannelUri,
+    uris: Arc<dyn crate::higent::ResourceUriMap>,
 ) -> crate::AppEffect {
     AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
         AppCommand::AtChanges(
             changes,
             ChangesCommand::Snapshot {
-                folder: folder.clone(),
-                result,
+                result: result.map(|state| digest_state(&*uris, &folder, &state)),
+                folder,
             },
         )
     })
@@ -1480,8 +1621,11 @@ fn subscribe_fresh(
     if let Some(history) = Changes::of(store, changes).map(|held| held.history) {
         crate::hihistory::subscribe_fresh(store, window, home, history, &entries, fx);
     }
+    let Some(uris) = Changes::of(store, changes).and_then(|held| held.uris.clone()) else {
+        return;
+    };
     for (folder, seat, channel) in fresh {
-        fx.push(subscribe_set(changes, folder, seat, channel));
+        fx.push(subscribe_set(changes, folder, seat, channel, uris.clone()));
     }
 }
 
