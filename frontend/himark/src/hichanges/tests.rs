@@ -150,6 +150,17 @@ impl crate::higent::ResourceUriMap for FileUris {
     }
 }
 
+/// The wire roads, the way the landings travel them now: digest on
+/// one side (the effect worker's job), adopt/fold the finished
+/// entries on the other.
+fn adopt_wire(changes: &mut Changes, folder: &ResourceLocation, state: &ChangesetState) {
+    changes.adopt(folder, digest_state(&FileUris, folder, state));
+}
+
+fn fold_wire(changes: &mut Changes, folder: &ResourceLocation, actions: &[StateAction]) {
+    changes.fold(folder, digest_actions(&FileUris, folder, actions));
+}
+
 fn mirror() -> (Changes, ResourceLocation) {
     let mut changes = wired();
     changes.uris = Some(Arc::new(FileUris));
@@ -283,7 +294,8 @@ fn a_lone_folder_takes_a_lone_foreign_entry() {
 #[test]
 fn a_snapshot_adopts_into_digested_entries_and_refs() {
     let (mut changes, folder) = mirror();
-    changes.adopt(
+    adopt_wire(
+        &mut changes,
         &folder,
         &ready(vec![
             wire_file("src/notes.md", Some("hihost-git:/one"), false, (2, 1)),
@@ -329,12 +341,14 @@ fn a_snapshot_adopts_into_digested_entries_and_refs() {
 #[test]
 fn the_fold_mirrors_the_official_reducers() {
     let (mut changes, folder) = mirror();
-    changes.adopt(
+    adopt_wire(
+        &mut changes,
         &folder,
         &ready(vec![wire_file("a.md", Some("r1"), false, (1, 1))]),
     );
 
-    changes.fold(
+    fold_wire(
+        &mut changes,
         &folder,
         &[StateAction::ChangesetContentChanged(Box::new(
             ChangesetContentChangedAction {
@@ -356,7 +370,8 @@ fn the_fold_mirrors_the_official_reducers() {
     );
     assert!(changes.base_lookup("/tmp/repo/b.md").is_some());
 
-    changes.fold(
+    fold_wire(
+        &mut changes,
         &folder,
         &[StateAction::ChangesetFileSet(ChangesetFileSetAction {
             file: wire_file("b.md", Some("r3"), false, (9, 9)),
@@ -370,7 +385,8 @@ fn the_fold_mirrors_the_official_reducers() {
         .find(|change| change.working.name() == "b.md")
         .unwrap();
     assert_eq!(b.added, Some(9));
-    changes.fold(
+    fold_wire(
+        &mut changes,
         &folder,
         &[StateAction::ChangesetFileRemoved(
             ChangesetFileRemovedAction {
@@ -380,7 +396,8 @@ fn the_fold_mirrors_the_official_reducers() {
     );
     assert_eq!(changes.folder_set(&folder).unwrap().files.len(), 1);
 
-    changes.fold(
+    fold_wire(
+        &mut changes,
         &folder,
         &[StateAction::ChangesetStatusChanged(
             ChangesetStatusChangedAction {
@@ -393,7 +410,8 @@ fn the_fold_mirrors_the_official_reducers() {
         changes.folder_set(&folder).unwrap().status,
         ChangesStatus::Computing
     );
-    changes.fold(
+    fold_wire(
+        &mut changes,
         &folder,
         &[StateAction::ChangesetCleared(ChangesetClearedAction {})],
     );
@@ -445,7 +463,8 @@ fn rows_of(node: &ForestNode<ResourceLocation>) -> Vec<(u8, String, bool)> {
 #[test]
 fn the_tree_nests_dirs_first_and_compacts_chains() {
     let (mut changes, folder) = mirror();
-    changes.adopt(
+    adopt_wire(
+        &mut changes,
         &folder,
         &ready(vec![
             wire_file("top.md", Some("r0"), false, (1, 0)),
@@ -479,7 +498,8 @@ fn the_tree_nests_dirs_first_and_compacts_chains() {
 #[test]
 fn activation_pairs_carry_the_exact_locations() {
     let (mut changes, folder) = mirror();
-    changes.adopt(
+    adopt_wire(
+        &mut changes,
         &folder,
         &ready(vec![
             wire_file("mod.md", Some("hihost-git:/base"), false, (1, 1)),
@@ -539,4 +559,147 @@ fn activation_pairs_carry_the_exact_locations() {
         super::EMPTY_AUTHORITY,
         "an add's old side is the empty authority"
     );
+}
+
+#[test]
+fn a_later_snapshot_supersedes_earlier_file_mutations_in_the_batch() {
+    let (mut changes, folder) = mirror();
+    // Three full snapshots and an interleaved upsert in ONE batch —
+    // only the last snapshot (and what follows it) may cost a
+    // conversion or a fold.
+    let batch = vec![
+        StateAction::ChangesetContentChanged(Box::new(ChangesetContentChangedAction {
+            files: vec![wire_file("stale-one.md", None, false, (1, 0))],
+            operations: None,
+            error: None,
+        })),
+        StateAction::ChangesetFileSet(ChangesetFileSetAction {
+            file: wire_file("stale-upsert.md", None, false, (1, 0)),
+        }),
+        StateAction::ChangesetContentChanged(Box::new(ChangesetContentChangedAction {
+            files: vec![wire_file("stale-two.md", None, false, (1, 0))],
+            operations: None,
+            error: None,
+        })),
+        StateAction::ChangesetStatusChanged(ChangesetStatusChangedAction {
+            status: ChangesetStatus::Ready,
+            error: None,
+        }),
+        StateAction::ChangesetContentChanged(Box::new(ChangesetContentChangedAction {
+            files: vec![wire_file("final.md", None, false, (2, 0))],
+            operations: None,
+            error: None,
+        })),
+        StateAction::ChangesetFileSet(ChangesetFileSetAction {
+            file: wire_file("after.md", None, false, (3, 0)),
+        }),
+    ];
+    let digested = digest_actions(&FileUris, &folder, &batch);
+    let contents = digested
+        .iter()
+        .filter(|action| matches!(action, ChangeAction::Content(_)))
+        .count();
+    assert_eq!(contents, 1, "superseded snapshots never convert");
+    changes.fold(&folder, digested);
+    let entry = changes.folder_set(&folder).unwrap();
+    assert_eq!(entry.status, ChangesStatus::Ready, "statuses all apply");
+    let mut names: Vec<&str> = entry
+        .files
+        .iter()
+        .map(|file| file.working.name())
+        .collect();
+    names.sort_unstable();
+    assert_eq!(
+        names,
+        vec!["after.md", "final.md"],
+        "the last snapshot plus the mutations after it"
+    );
+}
+
+#[test]
+fn a_superseded_poll_folds_its_batch_but_never_rearms() {
+    use imba::store::Entity as _;
+
+    let (mut changes, folder) = mirror();
+    let mut store = imba::store::Store::new();
+    let ui = imba::UiCtx::dont_use_too_slow();
+    let launches = |batch: imba::effect::Batch<ChangesCommand>| {
+        batch
+            .drain()
+            .into_iter()
+            .filter(|message| matches!(message, imba::effect::Message::Launch(..)))
+            .count()
+    };
+
+    // The subscribe landing arms the ONE standing loop.
+    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
+    changes.perform(
+        changes_id(),
+        ChangesCommand::Snapshot {
+            folder: folder.clone(),
+            result: Ok(digest_state(&FileUris, &folder, &ready(vec![]))),
+        },
+        &mut store,
+        &ui,
+        &mut batch.effects(),
+    );
+    assert_eq!(launches(batch), 1, "the snapshot arms the poll");
+    let armed = changes.poll_serial(&folder).expect("a serial stands");
+
+    // A re-subscribe supersedes the loop: its landing bumps the serial.
+    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
+    changes.perform(
+        changes_id(),
+        ChangesCommand::Snapshot {
+            folder: folder.clone(),
+            result: Ok(digest_state(&FileUris, &folder, &ready(vec![]))),
+        },
+        &mut store,
+        &ui,
+        &mut batch.effects(),
+    );
+    assert_eq!(launches(batch), 1);
+    let current = changes.poll_serial(&folder).expect("a serial stands");
+    assert_ne!(armed, current);
+
+    // The OLD loop's landing: the batch folds, the loop dies.
+    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
+    changes.perform(
+        changes_id(),
+        ChangesCommand::Polled {
+            folder: folder.clone(),
+            serial: armed,
+            actions: digest_actions(
+                &FileUris,
+                &folder,
+                &[StateAction::ChangesetFileSet(ChangesetFileSetAction {
+                    file: wire_file("late.md", None, false, (1, 0)),
+                })],
+            ),
+        },
+        &mut store,
+        &ui,
+        &mut batch.effects(),
+    );
+    assert_eq!(launches(batch), 0, "a stale landing never rearms");
+    assert_eq!(
+        changes.folder_set(&folder).unwrap().files.len(),
+        1,
+        "its drained actions still fold"
+    );
+
+    // The CURRENT loop's landing re-arms as ever.
+    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
+    changes.perform(
+        changes_id(),
+        ChangesCommand::Polled {
+            folder: folder.clone(),
+            serial: current,
+            actions: Vec::new(),
+        },
+        &mut store,
+        &ui,
+        &mut batch.effects(),
+    );
+    assert_eq!(launches(batch), 1, "the standing loop keeps polling");
 }

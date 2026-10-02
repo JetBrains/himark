@@ -1,5 +1,13 @@
 # Perf issue: skia-sized status diff — 30 fps scrolling, multi-second UI freezes
 
+> **Status:** measures 1–5 below are implemented on branch `perf-sweeps`.
+> The sync lanes drain per-lane dirty queues written at the entry-write
+> doors (`OpenDocuments::note_write`); `sync_diff_lanes` captures behind
+> the staleness gate; changeset snapshots/polls are digested in the
+> effect landing map on the worker (`digest_state`/`digest_actions`,
+> which also drops superseded snapshots); poll loops are serial-guarded
+> (`ChangeSets::polls`). Measure 6 (memory reclamation) is NOT done.
+
 Diagnosed 2026-10-02 from an Instruments CPU Profiler trace (`skia-diff-scrolling.trace`, 56 s,
 himark-macOS) and three 1 ms `sample` captures (`random-freeze.txt`, `another-random-freeze.txt`,
 `changes-view-scroll-freeze.txt`) of the same process. Reproducer: the entire vendored skia tree
