@@ -856,15 +856,12 @@ impl ModalView for Peeker {
         query: &str,
         fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
     ) {
-        fx.scope(
-            imba::DynCommand::new::<PeekerCommand>,
-            |fx| {
-                let query = query.trim();
-                self.filter(store, ui, query);
-                self.launch_find(store, ui, query, fx);
-                self.ensure_preview(store, ui, fx);
-            },
-        )
+        fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
+            let query = query.trim();
+            self.filter(store, ui, query);
+            self.launch_find(store, ui, query, fx);
+            self.ensure_preview(store, ui, fx);
+        })
     }
 
     fn release_widgets(&mut self) -> Vec<(WidgetOrigin, Box<dyn himark::DynPanelView>)> {
@@ -904,14 +901,11 @@ pub fn overlay_surface() -> himark::OverlaySurface {
 
             let documents = entity.family().documents();
             let peeker = fx.scope(himark::modal_scope(window), |fx| {
-                fx.scope(
-                    imba::DynCommand::new::<PeekerCommand>,
-                    |fx| {
-                        Peeker::open(
-                            store, ui, documents, viewport, recents, widgets, folders, fx,
-                        )
-                    },
-                )
+                fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
+                    Peeker::open(
+                        store, ui, documents, viewport, recents, widgets, folders, fx,
+                    )
+                })
             });
             himark::Windows::put(store, window, entity);
             Box::new(peeker)

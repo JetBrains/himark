@@ -599,11 +599,7 @@ fn a_later_snapshot_supersedes_earlier_file_mutations_in_the_batch() {
     changes.fold(&folder, digested);
     let entry = changes.folder_set(&folder).unwrap();
     assert_eq!(entry.status, ChangesStatus::Ready, "statuses all apply");
-    let mut names: Vec<&str> = entry
-        .files
-        .iter()
-        .map(|file| file.working.name())
-        .collect();
+    let mut names: Vec<&str> = entry.files.iter().map(|file| file.working.name()).collect();
     names.sort_unstable();
     assert_eq!(
         names,
@@ -762,7 +758,9 @@ fn digesting_a_backlogged_skia_sized_batch_costs_one_snapshot() {
     let backlog: Vec<StateAction> = (0..8).map(snapshot).collect();
     let one = median_ms(&lone, &folder);
     let eight = median_ms(&backlog, &folder);
-    eprintln!("[perf] digest median over {files} files: 1 snapshot {one:.2}ms, 8 snapshots {eight:.2}ms");
+    eprintln!(
+        "[perf] digest median over {files} files: 1 snapshot {one:.2}ms, 8 snapshots {eight:.2}ms"
+    );
     assert!(
         eight < (one * 3.0).max(2.0),
         "superseded snapshots must never convert: 1x {one:.2}ms vs 8x {eight:.2}ms"

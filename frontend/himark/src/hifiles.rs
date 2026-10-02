@@ -1534,21 +1534,10 @@ impl crate::DynamicCommand for ToggleSessionTree {
         let trees = entity.family().trees();
         let folders = crate::higent::session_folders(store, &workspace);
         let panel = fx.scope(crate::dock_scope(window), |fx| {
-            fx.scope(
-                imba::DynCommand::new::<TreeCommand>,
-                |fx| {
-                    SessionTreeView::open(
-                        store,
-                        &app.ui_ctx(),
-                        workspace,
-                        trees,
-                        &folders,
-                        reveal,
-                        fx,
-                    )
+            fx.scope(imba::DynCommand::new::<TreeCommand>, |fx| {
+                SessionTreeView::open(store, &app.ui_ctx(), workspace, trees, &folders, reveal, fx)
                     .following(window)
-                },
-            )
+            })
         });
         let owner = self.id();
         fx.scope(

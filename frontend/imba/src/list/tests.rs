@@ -128,12 +128,14 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
         ) -> impl crate::Layout<'a, EchoedPoint> + crate::LayoutValue + 'a {
             crate::laid(
                 move |_arena: &'a crate::arena::Arena, _constraints: Constraints| {
-                    crate::leaf::leaf::<EchoedPoint>(200.0, 30.0).event(
-                        |_arena, event, _size| match event {
-                            Event::MouseDrag { point, .. } => EventResult::Command(EchoedPoint(*point)),
+                    crate::leaf::leaf::<EchoedPoint>(200.0, 30.0).event(|_arena, event, _size| {
+                        match event {
+                            Event::MouseDrag { point, .. } => {
+                                EventResult::Command(EchoedPoint(*point))
+                            }
                             _ => EventResult::Ignored,
-                        },
-                    )
+                        }
+                    })
                 },
             )
         }

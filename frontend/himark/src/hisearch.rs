@@ -767,10 +767,9 @@ impl crate::ModalView for SearchView {
     ) {
         self.input = seeded_input(store, ui, query);
         self.focus = SearchArea::Input;
-        fx.scope(
-            imba::DynCommand::new::<SearchCommand>,
-            |fx| self.requery(store, ui, query.to_owned(), fx),
-        );
+        fx.scope(imba::DynCommand::new::<SearchCommand>, |fx| {
+            self.requery(store, ui, query.to_owned(), fx)
+        });
     }
 
     fn as_any(&self) -> &dyn std::any::Any {

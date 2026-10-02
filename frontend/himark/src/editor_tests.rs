@@ -1785,8 +1785,8 @@ fn palette_commands_follow_the_modal_focus() {
 
         request: std::sync::Arc<std::sync::Mutex<Option<ModalRequest>>>,
     }
-#[derive(Clone, Debug)]
-        enum TestModalCommand {
+    #[derive(Clone, Debug)]
+    enum TestModalCommand {
         Close,
         Show,
     }
@@ -2222,7 +2222,10 @@ fn switching_dismisses_the_overlays_first() {
             imba::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
-                    imba::leaf::leaf::<std::convert::Infallible>(constraints.max.width, constraints.max.height)
+                    imba::leaf::leaf::<std::convert::Infallible>(
+                        constraints.max.width,
+                        constraints.max.height,
+                    )
                 },
             )
         }
@@ -4253,8 +4256,8 @@ mod dock_tests {
         )
     }
 
-#[derive(Clone, Debug)]
-        enum StubCommand {
+    #[derive(Clone, Debug)]
+    enum StubCommand {
         Close,
         Ask,
     }
@@ -5570,11 +5573,13 @@ fn a_pane_documents_popup_paints_in_the_window() {
                 move |_arena: &'a imba::arena::Arena,
                       _constraints: imba::constraints::Constraints| {
                     use imba::thunk_ext::ThunkExt;
-                    imba::leaf::leaf::<std::convert::Infallible>(90.0, 40.0).paint_instead(|_arena, canvas, rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_color(skia_safe::Color::from_rgb(0xff, 0x00, 0xff));
-                        canvas.draw_rect(rect, &paint);
-                    })
+                    imba::leaf::leaf::<std::convert::Infallible>(90.0, 40.0).paint_instead(
+                        |_arena, canvas, rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_color(skia_safe::Color::from_rgb(0xff, 0x00, 0xff));
+                            canvas.draw_rect(rect, &paint);
+                        },
+                    )
                 },
             )
         }

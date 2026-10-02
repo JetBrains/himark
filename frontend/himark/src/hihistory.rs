@@ -106,7 +106,9 @@ impl std::fmt::Display for HistoryCommand {
             HistoryCommand::Snapshot { .. } => out.write_str("history snapshot"),
             HistoryCommand::Polled { .. } => out.write_str("history polled"),
             HistoryCommand::CommitFiles { .. } => out.write_str("history commit files"),
-            HistoryCommand::CommitFilesPolled { .. } => out.write_str("history commit files polled"),
+            HistoryCommand::CommitFilesPolled { .. } => {
+                out.write_str("history commit files polled")
+            }
         }
     }
 }

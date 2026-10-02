@@ -1328,8 +1328,7 @@ mod perf_tests {
                     format!("file{n}.md"),
                     0,
                 );
-                let tracked =
-                    OpenDocuments::track_diff(&mut store, documents, base, target, false);
+                let tracked = OpenDocuments::track_diff(&mut store, documents, base, target, false);
                 assert!(tracked.is_some());
                 targets.push(target);
             }
@@ -1338,7 +1337,12 @@ mod perf_tests {
             // diff normalizes once — drained here, off the clock.
             let mut warmup = imba::effect::Batch::<()>::new();
             sync_diff_lanes(&mut store, documents, &mut warmup.effects(), |_| ());
-            crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut warmup.effects(), |_, _| ());
+            crate::scroll_stripes::sync_scroll_stripe_lanes(
+                &mut store,
+                documents,
+                &mut warmup.effects(),
+                |_, _| (),
+            );
             let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
 
             // The per-tick shape: ONE document written, then the tail.
@@ -1349,7 +1353,12 @@ mod perf_tests {
                 let mut batch = imba::effect::Batch::<()>::new();
                 let started = std::time::Instant::now();
                 sync_diff_lanes(&mut store, documents, &mut batch.effects(), |_| ());
-                crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut batch.effects(), |_, _| ());
+                crate::scroll_stripes::sync_scroll_stripe_lanes(
+                    &mut store,
+                    documents,
+                    &mut batch.effects(),
+                    |_, _| (),
+                );
                 let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
                 times.push(started.elapsed().as_secs_f64() * 1000.0);
             }

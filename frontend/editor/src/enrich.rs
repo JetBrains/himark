@@ -224,7 +224,12 @@ impl EnrichEffect {
 
 impl std::fmt::Display for EnrichEffect {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "enrich {} markup {:?}", self.work.enricher.id().0, self.work.markup)
+        write!(
+            out,
+            "enrich {} markup {:?}",
+            self.work.enricher.id().0,
+            self.work.markup
+        )
     }
 }
 

@@ -4581,10 +4581,12 @@ mod before_inlay_presentation {
             &mut view,
             crate::EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(BeforeCommand::Editor(crate::EditorCommand::Click {
-                    kind: crate::ClickKind::Set,
-                    point: skia_safe::Point::new(2.0, 2.0),
-                })),
+                command: imba::DynCommand::new(BeforeCommand::Editor(
+                    crate::EditorCommand::Click {
+                        kind: crate::ClickKind::Set,
+                        point: skia_safe::Point::new(2.0, 2.0),
+                    },
+                )),
             },
         );
         assert_eq!(

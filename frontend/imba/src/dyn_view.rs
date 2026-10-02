@@ -45,7 +45,11 @@ impl DynCommand {
     /// misroute (a command delivered to a view of another command
     /// type), the caller's debug_assert.
     pub fn downcast<C: 'static>(self) -> Option<C> {
-        self.0.into_any().downcast::<C>().ok().map(|command| *command)
+        self.0
+            .into_any()
+            .downcast::<C>()
+            .ok()
+            .map(|command| *command)
     }
 
     /// A by-reference probe — command routing that only needs to peek
@@ -104,10 +108,9 @@ where
         fx: &mut crate::effect::Effects<'_, DynCommand>,
     ) {
         match command.downcast::<V::Command>() {
-            Some(command) => fx.scope(
-                DynCommand::new::<V::Command>,
-                |fx| self.perform(store, ui, command, fx),
-            ),
+            Some(command) => fx.scope(DynCommand::new::<V::Command>, |fx| {
+                self.perform(store, ui, command, fx)
+            }),
             None => {
                 debug_assert!(false, "command routed to a view with another command type");
             }

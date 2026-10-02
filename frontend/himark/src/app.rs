@@ -18,8 +18,8 @@ use skia_safe::{Canvas, Rect, Size};
 use text::Text;
 
 use crate::{
-    mount_editor, Document, EditorIdView, Markup, ModalRequest, ModalView,
-    OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode,
+    mount_editor, Document, EditorIdView, Markup, ModalRequest, ModalView, OpenDocuments, Panel,
+    Window, WindowId, Windows, Workbench, WorkbenchNode,
 };
 
 use crate::stats::{Stats, StatsCommand};
@@ -199,7 +199,13 @@ impl std::fmt::Display for Addressed {
 impl<T: AppEntity> AddressedCommand for AtCommand<T> {
     fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
         let AtCommand { id, command } = *self;
-        store.route(id, command, ui, move |command| AppCommand::at(id, command), fx);
+        store.route(
+            id,
+            command,
+            ui,
+            move |command| AppCommand::at(id, command),
+            fx,
+        );
         T::after_route(store, ui, id, fx);
     }
 }

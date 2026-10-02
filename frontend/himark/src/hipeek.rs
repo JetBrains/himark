@@ -999,7 +999,10 @@ mod tests {
             _ui: &'a imba::UiCtx,
         ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
             imba::laid(move |arena: &'a imba::arena::Arena, _constraints| {
-                imba::ThunkBox::new(arena, imba::leaf::leaf::<std::convert::Infallible>(200.0, 111.0))
+                imba::ThunkBox::new(
+                    arena,
+                    imba::leaf::leaf::<std::convert::Infallible>(200.0, 111.0),
+                )
             })
         }
     }
