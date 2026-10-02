@@ -4,9 +4,30 @@ version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
 
+[features]
+default = []
+# Render through Skia's Graphite backend over Metal instead of the
+# CPU softbuffer blit (macOS only; elsewhere the feature is inert).
+graphite = [
+    "skia-safe/graphite",
+    "skia-safe/metal",
+    "dep:objc2",
+    "dep:objc2-app-kit",
+    "dep:objc2-core-foundation",
+    "dep:objc2-metal",
+    "dep:objc2-quartz-core",
+]
+
 [dependencies]
 desktop = { path = "../desktop" }
 frontend-host = { path = "../frontend-host" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 softbuffer = "0.4.8"
 winit = { version = "0.30.13", default-features = false, features = ["rwh_06", "wayland", "wayland-csd-adwaita-crossfont", "wayland-dlopen", "x11"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = { version = "0.6.3", default-features = false, optional = true }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["objc2-quartz-core", "NSView", "NSResponder"], optional = true }
+objc2-core-foundation = { version = "0.3.2", default-features = false, optional = true }
+objc2-metal = { version = "0.3.2", default-features = false, features = ["MTLDevice", "MTLCommandBuffer", "MTLCommandQueue", "MTLDrawable", "MTLPixelFormat", "MTLTexture"], optional = true }
+objc2-quartz-core = { version = "0.3.2", default-features = false, features = ["objc2-core-foundation", "objc2-metal", "CAMetalLayer"], optional = true }
