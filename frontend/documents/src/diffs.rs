@@ -1274,3 +1274,88 @@ mod tests {
         assert!(OpenDocuments::diff_handle(&store, documents, handle.id).is_none());
     }
 }
+
+#[cfg(test)]
+mod perf_tests {
+    use super::*;
+    use editor::test_document::plain_document;
+
+    /// PERF REGRESSION (docs/perf-issue.md §1): the batch-tail sweeps
+    /// run per input event, so their cost must scale with the
+    /// documents TOUCHED that batch — one, on a scroll tick — never
+    /// with how many diffs/documents the registry tracks (a skia-sized
+    /// status diff accumulates thousands). Before the dirty queues the
+    /// diff lane walked every record and copied syntax trees per diff
+    /// per tick: 30 fps.
+    #[test]
+    fn batch_tail_sweep_cost_is_tracked_count_independent() {
+        let sweep_median_ms = |pairs: usize| -> f64 {
+            let mut store = Store::new();
+            let documents = imba::store::Id::mint();
+            let mut targets = Vec::new();
+            for n in 0..pairs {
+                let base = OpenDocuments::register(
+                    &mut store,
+                    documents,
+                    plain_document(&format!("base {n}\nsame\n")),
+                    Some(editor::ResourceLocation::new(
+                        editor::ResourceType::document(),
+                        editor::Authority::new("local"),
+                        vec![format!("file{n}.md.base")],
+                    )),
+                    format!("file{n}.md.base"),
+                    0,
+                );
+                let target = OpenDocuments::register(
+                    &mut store,
+                    documents,
+                    plain_document(&format!("target {n}\nsame\n")),
+                    Some(editor::ResourceLocation::new(
+                        editor::ResourceType::document(),
+                        editor::Authority::new("local"),
+                        vec![format!("file{n}.md")],
+                    )),
+                    format!("file{n}.md"),
+                    0,
+                );
+                let tracked =
+                    OpenDocuments::track_diff(&mut store, documents, base, target, false);
+                assert!(tracked.is_some());
+                targets.push(target);
+            }
+
+            // The landing sweep: every registration is queued, every
+            // diff normalizes once — drained here, off the clock.
+            let mut warmup = imba::effect::Batch::<()>::new();
+            sync_diff_lanes(&mut store, documents, &mut warmup.effects(), |_| ());
+            crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut warmup.effects(), |_, _| ());
+            let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
+
+            // The per-tick shape: ONE document written, then the tail.
+            let touched = targets[pairs / 2];
+            let mut times = Vec::new();
+            for _ in 0..30 {
+                OpenDocuments::update_entity(&mut store, documents, touched, |_| {});
+                let mut batch = imba::effect::Batch::<()>::new();
+                let started = std::time::Instant::now();
+                sync_diff_lanes(&mut store, documents, &mut batch.effects(), |_| ());
+                crate::scroll_stripes::sync_scroll_stripe_lanes(&mut store, documents, &mut batch.effects(), |_, _| ());
+                let _ = OpenDocuments::take_stale_view_candidates(&mut store, documents);
+                times.push(started.elapsed().as_secs_f64() * 1000.0);
+            }
+            times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            times[times.len() / 2]
+        };
+
+        let small = sweep_median_ms(50);
+        let large = sweep_median_ms(3000);
+        eprintln!("[perf] batch-tail sweep median: 50 pairs {small:.4}ms, 3000 pairs {large:.4}ms");
+        // The old sweep walked every record per tick — 30x the pairs
+        // measured way past this bound; machine speed cancels out.
+        assert!(
+            large < (small * 3.0).max(0.05),
+            "the batch-tail sweeps must cost O(touched), not O(tracked): \
+             50 pairs {small:.4}ms vs 3000 pairs {large:.4}ms"
+        );
+    }
+}

@@ -703,3 +703,82 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     );
     assert_eq!(launches(batch), 1, "the standing loop keeps polling");
 }
+
+/// PERF REGRESSION (docs/perf-issue.md §2): a poll batch carrying
+/// SEVERAL full snapshots of a skia-sized changeset must digest at
+/// the cost of ONE — the superseded ones are dropped before any wire
+/// `Value` is parsed. Before the coalesce (and with `entry_of`
+/// deep-cloning every payload) a backlogged batch cost O(snapshots ×
+/// files × payload): the multi-second drawer freezes.
+#[test]
+fn digesting_a_backlogged_skia_sized_batch_costs_one_snapshot() {
+    let files = 1500usize;
+    // The wire payloads carry arbitrary host JSON — give each side
+    // real bulk so a hidden deep-clone would surface in the ratio.
+    let bulk: Vec<String> = (0..40).map(|n| format!("hunk payload line {n}")).collect();
+    let snapshot = |salt: usize| -> StateAction {
+        let files = (0..files)
+            .map(|n| {
+                let abs = format!("/tmp/repo/src/file{n}.md");
+                ChangesetFile {
+                    id: format!("file://{abs}"),
+                    edit: FileEdit {
+                        before: Some(json!({
+                            "uri": format!("file://{abs}"),
+                            "content": {"uri": format!("hihost-git:/r{salt}")},
+                            "bulk": bulk,
+                        })),
+                        after: Some(json!({"uri": format!("file://{abs}"), "bulk": bulk})),
+                        diff: Some(json!({"added": salt as i64, "removed": 1, "bulk": bulk})),
+                    },
+                    reviewed: None,
+                    meta: None,
+                }
+            })
+            .collect();
+        StateAction::ChangesetContentChanged(Box::new(ChangesetContentChangedAction {
+            files,
+            operations: None,
+            error: None,
+        }))
+    };
+
+    let (mut changes, folder) = mirror();
+    let median_ms = |actions: &[StateAction], folder: &ResourceLocation| -> f64 {
+        let mut times = Vec::new();
+        for _ in 0..5 {
+            let started = std::time::Instant::now();
+            let digested = digest_actions(&FileUris, folder, actions);
+            times.push(started.elapsed().as_secs_f64() * 1000.0);
+            assert_eq!(
+                digested
+                    .iter()
+                    .filter(|action| matches!(action, ChangeAction::Content(_)))
+                    .count(),
+                1,
+                "one surviving snapshot per batch"
+            );
+        }
+        times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        times[times.len() / 2]
+    };
+
+    let lone = [snapshot(7)];
+    let backlog: Vec<StateAction> = (0..8).map(snapshot).collect();
+    let one = median_ms(&lone, &folder);
+    let eight = median_ms(&backlog, &folder);
+    eprintln!("[perf] digest median over {files} files: 1 snapshot {one:.2}ms, 8 snapshots {eight:.2}ms");
+    assert!(
+        eight < (one * 3.0).max(2.0),
+        "superseded snapshots must never convert: 1x {one:.2}ms vs 8x {eight:.2}ms"
+    );
+
+    // And the UI-thread share — the fold of finished entries — stays
+    // a fraction of the digestion it was freed from.
+    let digested = digest_actions(&FileUris, &folder, &backlog);
+    let started = std::time::Instant::now();
+    changes.fold(&folder, digested);
+    let fold_ms = started.elapsed().as_secs_f64() * 1000.0;
+    eprintln!("[perf] fold median over {files} files: {fold_ms:.2}ms");
+    assert_eq!(changes.folder_set(&folder).unwrap().files.len(), files);
+}
