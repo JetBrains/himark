@@ -34,11 +34,23 @@ pub struct SessionToolbar {
     pub strip_origin: Arc<AtomicU64>,
 }
 
+#[derive(Clone)]
 pub enum ToolbarCommand {
     Model(ComboCommand),
     Effort(ComboCommand),
     Edits(ComboCommand),
     AddFolder,
+}
+
+impl std::fmt::Display for ToolbarCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolbarCommand::Model(command) => command.fmt(out),
+            ToolbarCommand::Effort(command) => command.fmt(out),
+            ToolbarCommand::Edits(command) => command.fmt(out),
+            ToolbarCommand::AddFolder => out.write_str("add folder"),
+        }
+    }
 }
 
 pub enum ToolbarAsk {

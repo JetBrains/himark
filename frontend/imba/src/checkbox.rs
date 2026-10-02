@@ -15,8 +15,17 @@ pub struct CheckboxStyle {
     pub check: skia_safe::Color,
 }
 
+#[derive(Clone)]
 pub enum CheckboxCommand {
     Toggle,
+}
+
+impl std::fmt::Display for CheckboxCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CheckboxCommand::Toggle => out.write_str("checkbox toggle"),
+        }
+    }
 }
 
 pub fn checkbox<'a>(checked: bool, style: CheckboxStyle) -> impl Thunk<'a, CheckboxCommand> + 'a {

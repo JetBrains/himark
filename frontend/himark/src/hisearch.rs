@@ -46,6 +46,7 @@ pub enum SearchArea {
     Results,
 }
 
+#[derive(Clone)]
 pub enum SearchCommand {
     Input(EditorCommand),
     List(ListKeyCommand<TreeListCommand>),
@@ -62,6 +63,21 @@ pub enum SearchCommand {
         feed: FeedId,
         outcome: Result<crate::LocationsChannel, String>,
     },
+}
+
+impl std::fmt::Display for SearchCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchCommand::Input(command) => command.fmt(out),
+            SearchCommand::List(command) => command.fmt(out),
+            SearchCommand::Focus(_, Some(command)) => command.fmt(out),
+            SearchCommand::Focus(_, None) => out.write_str("search focus"),
+            SearchCommand::Cancel => out.write_str("search cancel"),
+            SearchCommand::Dismiss => out.write_str("search dismiss"),
+            SearchCommand::Refresh => out.write_str("search refresh"),
+            SearchCommand::Asked { .. } => out.write_str("search asked"),
+        }
+    }
 }
 
 pub struct SearchView {
@@ -752,7 +768,7 @@ impl crate::ModalView for SearchView {
         self.input = seeded_input(store, ui, query);
         self.focus = SearchArea::Input;
         fx.scope(
-            |command: SearchCommand| Box::new(command) as imba::DynCommand,
+            imba::DynCommand::new::<SearchCommand>,
             |fx| self.requery(store, ui, query.to_owned(), fx),
         );
     }
@@ -886,7 +902,7 @@ impl crate::DynamicCommand for FocusSearchView {
                     move |command| {
                         crate::AppCommand::Content(
                             window,
-                            crate::WindowCommand::Dock(Box::new(
+                            crate::WindowCommand::Dock(imba::DynCommand::new(
                                 crate::dock::DockCommand::Content(command),
                             )),
                         )
@@ -896,7 +912,7 @@ impl crate::DynamicCommand for FocusSearchView {
                             panel.as_mut(),
                             store,
                             &ui,
-                            Box::new(SearchCommand::Focus(SearchArea::Input, None)),
+                            imba::DynCommand::new(SearchCommand::Focus(SearchArea::Input, None)),
                             fx,
                         )
                     },

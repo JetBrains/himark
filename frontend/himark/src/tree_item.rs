@@ -50,6 +50,15 @@ pub enum TreeLabelCommand {
     Context,
 }
 
+impl std::fmt::Display for TreeLabelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeLabelCommand::Action => out.write_str("row action"),
+            TreeLabelCommand::Context => out.write_str("row context"),
+        }
+    }
+}
+
 /// The one definition of "secondary press" — shells that cannot send
 /// `MouseButton::Right` still deliver control as a modifier.
 pub fn secondary_press(button: imba::event::MouseButton, mods: &imba::event::Modifiers) -> bool {
@@ -196,9 +205,19 @@ pub struct TreeItemView<V: Clone> {
     action_first: bool,
 }
 
+#[derive(Clone)]
 pub enum TreeItemCommand<C> {
     Toggle,
     Inner(C),
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for TreeItemCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeItemCommand::Toggle => out.write_str("toggle"),
+            TreeItemCommand::Inner(command) => command.fmt(out),
+        }
+    }
 }
 
 impl<V: Clone> TreeItemView<V> {

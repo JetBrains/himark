@@ -253,6 +253,7 @@ pub struct SplitDiffView {
     pub state: DiffViewState,
 }
 
+#[derive(Clone)]
 pub enum SplitDiffCommand {
     Left(EditorCommand),
     Right(EditorCommand),
@@ -269,6 +270,17 @@ pub enum SplitDiffCommand {
     },
 
     Resync,
+}
+
+impl std::fmt::Display for SplitDiffCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SplitDiffCommand::Left(command) => command.fmt(out),
+            SplitDiffCommand::Right(command) => command.fmt(out),
+            SplitDiffCommand::PairRepaired { .. } => out.write_str("pair repaired"),
+            SplitDiffCommand::Resync => out.write_str("resync"),
+        }
+    }
 }
 
 pub type SplitDiffEffects<'a> = Effects<'a, SplitDiffCommand>;
@@ -1229,6 +1241,7 @@ struct MarksJob {
     fold_bans: crate::diff::FoldBans,
 }
 
+#[derive(Clone)]
 pub struct MarksLanding {
     window: Range<u32>,
     left_markup: crate::markup::Markup,

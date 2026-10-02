@@ -59,6 +59,7 @@ pub struct Peeker {
 
 pub type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
 
+#[derive(Clone)]
 pub enum PeekerCommand {
     Preview(PaneCommand),
 
@@ -84,6 +85,21 @@ pub enum PeekerCommand {
     Widget(imba::DynCommand),
 
     Rows(RowsCommand),
+}
+
+impl std::fmt::Display for PeekerCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeekerCommand::Preview(command) => command.fmt(out),
+            PeekerCommand::Widget(command) => command.fmt(out),
+            PeekerCommand::Rows(command) => command.fmt(out),
+            PeekerCommand::Pick(_) => out.write_str("peeker pick"),
+            PeekerCommand::Close => out.write_str("peeker close"),
+            PeekerCommand::Found { .. } => out.write_str("peeker found"),
+            PeekerCommand::FetchedPreview { .. } => out.write_str("peeker fetched preview"),
+            PeekerCommand::BuiltPreview { .. } => out.write_str("peeker built preview"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -841,7 +857,7 @@ impl ModalView for Peeker {
         fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
     ) {
         fx.scope(
-            |command: PeekerCommand| Box::new(command) as imba::DynCommand,
+            imba::DynCommand::new::<PeekerCommand>,
             |fx| {
                 let query = query.trim();
                 self.filter(store, ui, query);
@@ -889,7 +905,7 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             let documents = entity.family().documents();
             let peeker = fx.scope(himark::modal_scope(window), |fx| {
                 fx.scope(
-                    |command: PeekerCommand| Box::new(command) as imba::DynCommand,
+                    imba::DynCommand::new::<PeekerCommand>,
                     |fx| {
                         Peeker::open(
                             store, ui, documents, viewport, recents, widgets, folders, fx,

@@ -33,7 +33,7 @@ impl HostId {
 
 pub type SeatFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ServerEvent {
     SessionAdded(SessionSummary),
     SessionRemoved(SessionUri),
@@ -45,12 +45,12 @@ pub enum ServerEvent {
     AgentsChanged(Vec<AgentInfo>),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct RootInfo {
     pub agents: Vec<AgentInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SessionsPage {
     pub sessions: Vec<SessionSummary>,
     pub next_cursor: Option<String>,

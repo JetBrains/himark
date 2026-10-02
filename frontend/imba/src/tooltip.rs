@@ -18,6 +18,18 @@ const HOVER_DELAY_MS: f32 = 450.0;
 
 const TIP_GAP: f32 = 8.0;
 
+impl<C: std::fmt::Display> std::fmt::Display for TooltipCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TooltipCommand::Host(command) => command.fmt(out),
+            TooltipCommand::Moved(_) => out.write_str("tooltip moved"),
+            TooltipCommand::Left => out.write_str("tooltip left"),
+            TooltipCommand::Tick(_) => out.write_str("tooltip tick"),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum TooltipCommand<C> {
     Host(C),
 

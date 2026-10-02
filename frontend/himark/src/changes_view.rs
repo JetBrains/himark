@@ -87,6 +87,7 @@ pub(crate) type Rows = TooltipView<
     crate::hihistory::CommitTip,
 >;
 
+#[derive(Clone)]
 pub enum ChangesViewCommand {
     Rows(TooltipCommand<ListKeyCommand<TreeListCommand>>),
 
@@ -97,6 +98,17 @@ pub enum ChangesViewCommand {
     AutoGrow,
 
     Dismiss,
+}
+
+impl std::fmt::Display for ChangesViewCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangesViewCommand::Rows(command) => command.fmt(out),
+            ChangesViewCommand::Refetch(_) => out.write_str("changes refetch"),
+            ChangesViewCommand::AutoGrow => out.write_str("changes auto grow"),
+            ChangesViewCommand::Dismiss => out.write_str("changes dismiss"),
+        }
+    }
 }
 
 /// The unified tree view record — store truth, owned by the

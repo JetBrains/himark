@@ -95,7 +95,7 @@ impl documents::DocumentCommand for SaveDocument {
                 AnyEffect::new(crate::PickSaveEffect { suggested }).map(|picked| {
                     crate::EditorCommand::Dynamic {
                         id: "file.save",
-                        payload: Some(Box::new(picked)),
+                        payload: Some(crate::DynPayload::new(picked)),
                     }
                 }),
             );
@@ -135,7 +135,7 @@ impl SaveDocument {
             })
             .map(move |stored| crate::EditorCommand::Dynamic {
                 id: "file.save",
-                payload: Some(Box::new((stored, revision, snapshot))),
+                payload: Some(crate::DynPayload::new((stored, revision, snapshot))),
             }),
         );
         if let Some(previous) = previous {

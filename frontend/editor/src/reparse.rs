@@ -288,6 +288,7 @@ impl ReparseWork {
     }
 }
 
+#[derive(Clone)]
 pub struct ReparseOutcome {
     token: crate::document::DocumentToken,
     revision: u64,

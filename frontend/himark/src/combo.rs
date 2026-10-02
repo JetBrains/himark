@@ -161,6 +161,7 @@ where
     menu: ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
 }
 
+#[derive(Clone)]
 pub enum ComboCommand<C = std::convert::Infallible> {
     Open,
     Close,
@@ -168,6 +169,17 @@ pub enum ComboCommand<C = std::convert::Infallible> {
     Pick(usize),
 
     Menu(Box<ListKeyCommand<ScrollCommand<ListCommand<C>>>>),
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for ComboCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComboCommand::Menu(command) => command.fmt(out),
+            ComboCommand::Open => out.write_str("combo open"),
+            ComboCommand::Close => out.write_str("combo close"),
+            ComboCommand::Pick(_) => out.write_str("combo pick"),
+        }
+    }
 }
 
 impl<C> ComboCommand<C> {

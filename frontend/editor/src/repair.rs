@@ -10,6 +10,7 @@ use crate::{
     editor_view::EditorCommand,
 };
 
+#[derive(Clone)]
 pub struct RepairedLayout {
     pub(crate) editor: EditorId,
     pub(crate) revision: u64,

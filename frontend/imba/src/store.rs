@@ -100,7 +100,7 @@ impl<T> Default for EntityRows<T> {
 /// the router stamps the address. `destroy` runs at dispose and
 /// retracts the entities this one owns.
 pub trait Entity: Component {
-    type Command: 'static;
+    type Command: crate::Command;
 
     fn perform(
         &mut self,

@@ -8,6 +8,22 @@ use imba::store::Store;
 use crate::document::Document;
 use crate::editor::{EditorEffects, EditorId};
 
+/// A dynamic command's argument, erased behind a clone-shared slot:
+/// commands must clone (`imba::Command`), but a payload is a one-shot
+/// hand-off — clones share the slot and the first `take` wins.
+#[derive(Clone)]
+pub struct DynPayload(Arc<std::sync::Mutex<Option<Box<dyn std::any::Any + Send + Sync>>>>);
+
+impl DynPayload {
+    pub fn new(payload: impl std::any::Any + Send + Sync) -> Self {
+        Self(Arc::new(std::sync::Mutex::new(Some(Box::new(payload)))))
+    }
+
+    pub fn take(self) -> Option<Box<dyn std::any::Any + Send + Sync>> {
+        self.0.lock().unwrap().take()
+    }
+}
+
 pub trait DynamicEditorCommand: Send + Sync + 'static {
     fn id(&self) -> &'static str;
 

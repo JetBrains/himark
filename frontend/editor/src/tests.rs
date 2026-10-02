@@ -1932,13 +1932,13 @@ struct FixedInlay {
 }
 
 impl imba::View for FixedInlay {
-    type Command = ();
+    type Command = std::convert::Infallible;
 
     fn perform(
         &mut self,
         _store: &mut imba::store::Store,
         _ui: &imba::UiCtx,
-        _command: (),
+        _command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
     }
@@ -3618,7 +3618,7 @@ mod folding {
                 editor,
                 crate::EditorCommand::Inlay {
                     key,
-                    command: Box::new(crate::fold::FoldCommand::Tick(
+                    command: imba::DynCommand::new(crate::fold::FoldCommand::Tick(
                         imba::anim::AnimationClock::from_millis(millis),
                     )),
                 },
@@ -3929,7 +3929,7 @@ mod folding {
             editor,
             crate::EditorCommand::Inlay {
                 key,
-                command: Box::new(crate::fold::FoldCommand::Unfold),
+                command: imba::DynCommand::new(crate::fold::FoldCommand::Unfold),
             },
             fx!(),
         );
@@ -4518,7 +4518,7 @@ mod before_inlay_presentation {
             view,
             crate::EditorCommand::Inlay {
                 key,
-                command: Box::new(BeforeCommand::Tick(
+                command: imba::DynCommand::new(BeforeCommand::Tick(
                     imba::anim::AnimationClock::from_millis(at_ms),
                 )),
             },
@@ -4557,7 +4557,7 @@ mod before_inlay_presentation {
             &mut view,
             crate::EditorCommand::Inlay {
                 key,
-                command: Box::new(BeforeCommand::Rewrap(before + 120.0)),
+                command: imba::DynCommand::new(BeforeCommand::Rewrap(before + 120.0)),
             },
         );
         assert_eq!(
@@ -4581,7 +4581,7 @@ mod before_inlay_presentation {
             &mut view,
             crate::EditorCommand::Inlay {
                 key,
-                command: Box::new(BeforeCommand::Editor(crate::EditorCommand::Click {
+                command: imba::DynCommand::new(BeforeCommand::Editor(crate::EditorCommand::Click {
                     kind: crate::ClickKind::Set,
                     point: skia_safe::Point::new(2.0, 2.0),
                 })),

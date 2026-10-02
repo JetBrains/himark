@@ -45,6 +45,7 @@ use crate::higent::composer::{Composer, ComposerCommand, ComposerProps};
 use crate::higent::stack::{PermissionAsk, StackCommand, WidgetStack};
 use crate::higent::turn::{CellSpec, TurnCommand, TurnView};
 
+#[derive(Clone)]
 pub enum RowCommand {
     Activate,
 
@@ -58,6 +59,17 @@ pub enum RowCommand {
         height: f32,
     },
     Turn(TurnCommand),
+}
+
+impl std::fmt::Display for RowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RowCommand::Turn(command) => command.fmt(out),
+            RowCommand::Activate => out.write_str("row activate"),
+            RowCommand::Wake => out.write_str("row wake"),
+            RowCommand::Place { .. } => out.write_str("row place"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -319,6 +331,7 @@ pub enum ChatArea {
     Composer,
 }
 
+#[derive(Clone)]
 pub enum ChatPanelCommand {
     /// A command addressed to ONE view record — how an effect armed
     /// while rolling a view finds its way back to that view when it
@@ -369,6 +382,33 @@ pub enum ChatPanelCommand {
     ToolbarSync,
 
     CompletionFound(crate::completion::CompletionFound),
+}
+
+impl std::fmt::Display for ChatPanelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatPanelCommand::InView(_, command) => command.fmt(out),
+            ChatPanelCommand::Rows(command) => command.fmt(out),
+            ChatPanelCommand::Focus(_, Some(command)) => command.fmt(out),
+            ChatPanelCommand::Focus(_, None) => out.write_str("chat focus"),
+            ChatPanelCommand::Cell { command, .. } => command.fmt(out),
+            ChatPanelCommand::Composer(command) => command.fmt(out),
+            ChatPanelCommand::Stack(command) => command.fmt(out),
+            ChatPanelCommand::Toolbar(command) => command.fmt(out),
+            ChatPanelCommand::Boot => out.write_str("chat boot"),
+            ChatPanelCommand::Snapshot(_) => out.write_str("chat snapshot"),
+            ChatPanelCommand::Older(_) => out.write_str("chat older"),
+            ChatPanelCommand::Sent => out.write_str("chat sent"),
+            ChatPanelCommand::SendFailed { .. } => out.write_str("chat send failed"),
+            ChatPanelCommand::Actions(_) => out.write_str("chat actions"),
+            ChatPanelCommand::Send => out.write_str("chat send"),
+            ChatPanelCommand::Answer(_) => out.write_str("chat answer"),
+            ChatPanelCommand::Dispatched { .. } => out.write_str("chat dispatched"),
+            ChatPanelCommand::Blurred(_) => out.write_str("chat blurred"),
+            ChatPanelCommand::ToolbarSync => out.write_str("toolbar sync"),
+            ChatPanelCommand::CompletionFound(_) => out.write_str("completion found"),
+        }
+    }
 }
 
 impl ChatPanelCommand {
@@ -2429,13 +2469,15 @@ impl ChatView {
                 },
             )));
         }
-        let popup = match inlay.downcast::<crate::completion::CompletionCommand>() {
-            Ok(popup) => *popup,
-            Err(other) => {
+        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
+            Some(_) => inlay
+                .downcast::<crate::completion::CompletionCommand>()
+                .expect("probed above"),
+            None => {
                 return Some(ComposerCommand::Editor(ScrollCommand::Content(
                     ::editor::EditorCommand::Inlay {
                         key,
-                        command: other,
+                        command: inlay,
                     },
                 )))
             }

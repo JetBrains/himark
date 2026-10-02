@@ -20,6 +20,7 @@ use crate::DocumentId;
 
 const MAX_MATCHES: usize = 20_000;
 
+#[derive(Clone)]
 pub enum FindCommand {
     Input(EditorCommand),
 
@@ -31,6 +32,19 @@ pub enum FindCommand {
     Scanned(Scan),
 }
 
+impl std::fmt::Display for FindCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FindCommand::Input(command) => command.fmt(out),
+            FindCommand::Next => out.write_str("find next"),
+            FindCommand::Previous => out.write_str("find previous"),
+            FindCommand::Close => out.write_str("find close"),
+            FindCommand::Scanned(_) => out.write_str("find scanned"),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Scan {
     serial: u64,
     document: crate::DocumentId,

@@ -128,6 +128,7 @@ impl OpenDocuments {
 /// (docs/entities.md law 5): the editor road plus every
 /// document-addressed landing. The variants carry the collection's
 /// PRIVATE keys (`DocumentId`); the table never sees them.
+#[derive(Clone)]
 pub enum DocumentsCommand {
     Editor(DocumentId, editor::EditorCommand),
 
@@ -182,6 +183,23 @@ pub enum DocumentsCommand {
         base_revision: u64,
         target_revision: u64,
     },
+}
+
+// The leaf labels are grepped in reconcile traces — keep them stable.
+impl std::fmt::Display for DocumentsCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DocumentsCommand::Editor(_, command) => command.fmt(out),
+            DocumentsCommand::BaseLocated { .. } => out.write_str("base located"),
+            DocumentsCommand::BaseFetched { .. } => out.write_str("base fetched"),
+            DocumentsCommand::BaseBuilt { .. } => out.write_str("base built"),
+            DocumentsCommand::Stored { .. } => out.write_str("document stored"),
+            DocumentsCommand::Watched(..) => out.write_str("watched"),
+            DocumentsCommand::Refetched { .. } => out.write_str("refetched"),
+            DocumentsCommand::RefetchDiffed { .. } => out.write_str("refetch-diffed"),
+            DocumentsCommand::Normalized { .. } => out.write_str("diff normalized"),
+        }
+    }
 }
 
 /// The one command road (docs/entities.md law 5): the router leases

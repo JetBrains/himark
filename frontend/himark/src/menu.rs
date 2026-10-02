@@ -20,10 +20,20 @@ use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 type MenuList = ScrollView<ListView<ComboOption, String>>;
 type Controller = ListKeyboardController<MenuList>;
 
+#[derive(Clone)]
 pub enum MenuCommand {
     Close,
 
     Rows(Box<ListKeyCommand<ScrollCommand<ListCommand<std::convert::Infallible>>>>),
+}
+
+impl std::fmt::Display for MenuCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MenuCommand::Rows(command) => command.fmt(out),
+            MenuCommand::Close => out.write_str("menu close"),
+        }
+    }
 }
 
 /// The menu itself: rows, arrow keys, Enter and click picks. Where

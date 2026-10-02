@@ -19,6 +19,7 @@ use crate::{
 };
 use crate::{EditorIdView, ModalRequest, ModalView, NodeCommand, Panel, Workbench, WorkbenchNode};
 
+#[derive(Clone)]
 pub enum WindowCommand {
     Base(NodeCommand),
 
@@ -32,6 +33,20 @@ pub enum WindowCommand {
     SideFocusLost,
 
     Focus(LayerFocus),
+}
+
+impl std::fmt::Display for WindowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WindowCommand::Base(command) => command.fmt(out),
+            WindowCommand::Toolbar(command) => command.fmt(out),
+            WindowCommand::Side(command) => command.fmt(out),
+            WindowCommand::Dock(command) => command.fmt(out),
+            WindowCommand::Modal(command) => command.fmt(out),
+            WindowCommand::SideFocusLost => out.write_str("side focus lost"),
+            WindowCommand::Focus(_) => out.write_str("layer focus"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1158,9 +1173,7 @@ impl Window {
                     .swap(panel, owner);
                 fx.scope(WindowCommand::Dock, |fx| {
                     fx.scope(
-                        |command| {
-                            Box::new(crate::dock::DockCommand::Content(command)) as imba::DynCommand
-                        },
+                        |command| imba::DynCommand::new(crate::dock::DockCommand::Content(command)),
                         |fx| imba::DynView::destroy_dyn(outgoing.as_mut(), store, fx),
                     )
                 });

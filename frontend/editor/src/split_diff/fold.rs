@@ -355,6 +355,18 @@ pub enum FoldCommand {
     Remove,
 }
 
+impl std::fmt::Display for FoldCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FoldCommand::RevealTop => out.write_str("fold reveal top"),
+            FoldCommand::HideTop => out.write_str("fold hide top"),
+            FoldCommand::RevealBottom => out.write_str("fold reveal bottom"),
+            FoldCommand::HideBottom => out.write_str("fold hide bottom"),
+            FoldCommand::Remove => out.write_str("fold remove"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct FoldStrip {
     pub lines: u32,

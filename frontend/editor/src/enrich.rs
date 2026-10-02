@@ -187,6 +187,7 @@ pub struct EnrichWork {
     pub(crate) languages: Option<Arc<crate::reparse::SyntaxLanguages>>,
 }
 
+#[derive(Clone)]
 pub struct EnrichOutcome {
     pub(crate) token: DocumentToken,
     pub(crate) revision: u64,

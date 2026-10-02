@@ -18,7 +18,7 @@ use skia_safe::{Canvas, Rect, Size};
 use text::Text;
 
 use crate::{
-    mount_editor, Document, EditorCommand, EditorIdView, Markup, ModalRequest, ModalView,
+    mount_editor, Document, EditorIdView, Markup, ModalRequest, ModalView,
     OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode,
 };
 
@@ -171,31 +171,32 @@ pub struct Addressed(Box<dyn AddressedCommand>);
 
 /// The erased face of `AtCommand<T>` — implemented exactly once; a
 /// collection joins the road through `AppEntity`, never through this.
-trait AddressedCommand: Send + Sync {
-    /// The reconcile trace's name for this command.
-    fn label(&self) -> &'static str;
+/// `Display` is the reconcile trace's name for the command.
+trait AddressedCommand: Send + Sync + std::fmt::Display {
     /// The lease-perform-unlease road (`Store::route`), then the
     /// collection's application tail (`AppEntity::after_route`) —
     /// the one place the erased entity type is still known.
     fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>);
 }
 
-struct AtCommand<T: AppEntity>
-where
-    T::Command: Send + Sync,
-{
+struct AtCommand<T: AppEntity> {
     id: imba::store::Id<T>,
     command: T::Command,
 }
 
-impl<T: AppEntity> AddressedCommand for AtCommand<T>
-where
-    T::Command: Send + Sync,
-{
-    fn label(&self) -> &'static str {
-        T::label(&self.command)
+impl<T: AppEntity> std::fmt::Display for AtCommand<T> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.command.fmt(out)
     }
+}
 
+impl std::fmt::Display for Addressed {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(out)
+    }
+}
+
+impl<T: AppEntity> AddressedCommand for AtCommand<T> {
     fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
         let AtCommand { id, command } = *self;
         store.route(id, command, ui, move |command| AppCommand::at(id, command), fx);
@@ -204,16 +205,10 @@ where
 }
 
 /// What a collection declares to ride the `At` road: where it sits in
-/// a session family (the scope compare), what the reconcile trace
-/// calls its commands, and the application-side tail its landings owe
-/// — effects the entity cannot push itself because its own fx are
-/// scoped to `Self::Command`.
-pub trait AppEntity: imba::store::Entity
-where
-    Self::Command: Send + Sync,
-{
-    fn label(command: &Self::Command) -> &'static str;
-
+/// a session family (the scope compare) and the application-side tail
+/// its landings owe — effects the entity cannot push itself because
+/// its own fx are scoped to `Self::Command`.
+pub trait AppEntity: imba::store::Entity {
     /// The landing's application tail, run after the lease returns —
     /// store notes the perform left (rearms, card work) convert into
     /// app-scoped effects here.
@@ -226,32 +221,12 @@ where
     }
 }
 
-impl AppEntity for OpenDocuments {
-    fn label(command: &DocumentsCommand) -> &'static str {
-        match command {
-            DocumentsCommand::Editor(_, EditorCommand::ApplyRepair(_)) => "repair",
-            DocumentsCommand::Editor(_, EditorCommand::ApplyReparse(_)) => "reparse",
-            DocumentsCommand::Editor(_, EditorCommand::ApplyEnrichment(_)) => "enrich",
-            DocumentsCommand::Editor(..) => "entity",
-            DocumentsCommand::BaseLocated { .. } => "base located",
-            DocumentsCommand::BaseFetched { .. } => "base fetched",
-            DocumentsCommand::BaseBuilt { .. } => "base built",
-            DocumentsCommand::Stored { .. } => "document stored",
-            DocumentsCommand::Watched(..) => "watched",
-            DocumentsCommand::Refetched { .. } => "refetched",
-            DocumentsCommand::RefetchDiffed { .. } => "refetch-diffed",
-            DocumentsCommand::Normalized { .. } => "diff normalized",
-        }
-    }
-}
+impl AppEntity for OpenDocuments {}
 
 impl AppCommand {
     /// The one addressed-command constructor: every launch stamp and
     /// every landing re-wrap goes through here.
-    pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand
-    where
-        T::Command: Send + Sync,
-    {
+    pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand {
         AppCommand::At(Addressed(Box::new(AtCommand { id, command })))
     }
 
@@ -1027,11 +1002,11 @@ impl Application {
                 let Some(window) = Windows::window_ref(&store, id) else {
                     continue;
                 };
-                validate_panes(label, &store, &window.workbench().root);
+                validate_panes(&label, &store, &window.workbench().root);
 
                 for (session, stashed) in window.stashed_workbenches() {
                     let store = self.state.gather(Some(id), Some(session), &self.seats);
-                    validate_panes(label, &store, &stashed.root);
+                    validate_panes(&label, &store, &stashed.root);
                 }
             }
         }
@@ -1226,8 +1201,14 @@ pub fn open_effect(
     })
 }
 
-fn command_label(command: &AppCommand) -> &'static str {
-    match command {
+fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
+    // The addressed commands print themselves (`Display` through the
+    // erased `Addressed`) — the type is erased by the time the trace
+    // reads one.
+    if let AppCommand::At(addressed) = command {
+        return addressed.to_string().into();
+    }
+    std::borrow::Cow::Borrowed(match command {
         AppCommand::Content(_, crate::WindowCommand::Base(_)) => "pane",
         AppCommand::Content(_, crate::WindowCommand::Toolbar(_)) => "toolbar",
         AppCommand::Content(_, crate::WindowCommand::Side(command)) => {
@@ -1260,15 +1241,12 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::RegisterDiffPolicy(_) => "register diff policy",
         AppCommand::RegisterEnrichers(_) => "register enrichers",
         AppCommand::Stats(_) => "stats",
-        // The addressed commands label at construction
-        // (`AppEntity::label`) — the type is erased by the time the
-        // trace reads one.
-        AppCommand::At(addressed) => addressed.0.label(),
+        AppCommand::At(..) => unreachable!(),
         AppCommand::Opened(..) => "opened",
         AppCommand::DiffViewCommand { .. } => "diff view",
         AppCommand::CanvasViewCommand { .. } => "canvas view",
         AppCommand::FileChanged(..) => "file changed",
-    }
+    })
 }
 
 fn trace_reconcile(source: &str, commands: &[AppCommand]) {
@@ -1276,7 +1254,7 @@ fn trace_reconcile(source: &str, commands: &[AppCommand]) {
     if !*ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_RECONCILE").is_some()) {
         return;
     }
-    let labels: Vec<&str> = commands.iter().map(command_label).collect();
+    let labels: Vec<_> = commands.iter().map(command_label).collect();
     eprintln!("[reconcile] {source} reported: {}", labels.join(", "));
 }
 

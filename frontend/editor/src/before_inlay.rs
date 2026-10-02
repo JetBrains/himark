@@ -347,12 +347,23 @@ fn hard_lines(view: &mut text::TextView, range: Range<u32>) -> Range<u32> {
     start..end.max(start)
 }
 
+#[derive(Clone)]
 pub enum BeforeCommand {
     Editor(crate::editor_view::EditorCommand),
 
     Rewrap(f32),
 
     Tick(AnimationClock),
+}
+
+impl std::fmt::Display for BeforeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeforeCommand::Editor(command) => command.fmt(out),
+            BeforeCommand::Rewrap(_) => out.write_str("before rewrap"),
+            BeforeCommand::Tick(_) => out.write_str("before tick"),
+        }
+    }
 }
 
 impl BeforeCommand {

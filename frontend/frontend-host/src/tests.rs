@@ -2384,12 +2384,12 @@ fn an_addressed_fence_embeds_a_sibling_file() {
             himark::test_document::test_ui(),
             himark::EditorCommand::Inlay {
                 key: inlay_key,
-                command: Box::new(himark::EditorCommand::Viewport {
+                command: imba::DynCommand::new(himark::EditorCommand::Viewport {
                     width: 1300.0,
                     top: 0.0,
                     bottom: 400.0,
                     anchor: 0,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut batch.effects(),
         );

@@ -71,8 +71,18 @@ pub use layout::{
     MapLayout, OnClick, OnEvent, Pad, Row, Shield, SizedBox, Text, TextShaper, WithBaseline, ZBox,
 };
 
+/// What a command IS, wherever one routes — a view's, an entity's:
+/// printable (`Display` is the trace label), cloneable, and
+/// thread-mobile for the effect road. Blanket-implemented — the
+/// bound is the whole definition; a command type joins by
+/// implementing `Display` and deriving `Clone`. A view with no
+/// commands says so with `std::convert::Infallible`.
+pub trait Command: std::fmt::Display + Clone + Send + Sync + 'static {}
+
+impl<T: std::fmt::Display + Clone + Send + Sync + 'static> Command for T {}
+
 pub trait View {
-    type Command;
+    type Command: Command;
 
     fn perform(
         &mut self,

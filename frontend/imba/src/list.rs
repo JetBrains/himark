@@ -352,6 +352,7 @@ pub struct ListView<T: Clone, K: Clone + Eq + Hash = ()> {
     sticky: Option<StickySource>,
 }
 
+#[derive(Clone)]
 pub enum ListCommand<C> {
     Child(usize, C),
 
@@ -383,6 +384,21 @@ pub enum ListCommand<C> {
     Animate(AnimationClock),
 
     Revealed,
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for ListCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ListCommand::Child(_, command) => command.fmt(out),
+            ListCommand::Focus(..) => out.write_str("list focus"),
+            ListCommand::Select(_) => out.write_str("list select"),
+            ListCommand::Activate(..) => out.write_str("list activate"),
+            ListCommand::ViewportTop(..) => out.write_str("list viewport"),
+            ListCommand::SetHeight(..) => out.write_str("list set height"),
+            ListCommand::Animate(_) => out.write_str("list animate"),
+            ListCommand::Revealed => out.write_str("list revealed"),
+        }
+    }
 }
 
 /// EXHAUSTIVE on purpose: a surface must match every trigger and

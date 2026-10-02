@@ -100,12 +100,23 @@ pub enum ToolbarRequest {
     Query(String),
 }
 
+#[derive(Clone)]
 pub enum ToolbarCommand {
     Button(usize),
 
     Begin,
 
     Input(EditorCommand),
+}
+
+impl std::fmt::Display for ToolbarCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolbarCommand::Input(command) => command.fmt(out),
+            ToolbarCommand::Button(_) => out.write_str("toolbar button"),
+            ToolbarCommand::Begin => out.write_str("toolbar begin"),
+        }
+    }
 }
 
 #[derive(Clone)]

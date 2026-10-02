@@ -222,6 +222,7 @@ impl crate::DynamicCommand for SendComments {
     }
 }
 
+#[derive(Clone)]
 pub enum CommentCommand {
     Editor(EditorCommand),
 
@@ -232,6 +233,18 @@ pub enum CommentCommand {
     Resolve,
 
     Send,
+}
+
+impl std::fmt::Display for CommentCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommentCommand::Editor(command) => command.fmt(out),
+            CommentCommand::Rewrap(_) => out.write_str("comment rewrap"),
+            CommentCommand::Remove => out.write_str("comment remove"),
+            CommentCommand::Resolve => out.write_str("comment resolve"),
+            CommentCommand::Send => out.write_str("comment send"),
+        }
+    }
 }
 
 fn markdown_comment_document(text: crate::Text) -> Document {

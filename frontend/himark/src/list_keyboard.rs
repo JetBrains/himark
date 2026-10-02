@@ -85,8 +85,11 @@ pub struct SpeedSearchEffect {
     stamp: (String, u64),
 }
 
+/// `matched` rides an `Arc`: the landing is read-only (the fold only
+/// borrows the keys), and the command must clone (`imba::Command`).
+#[derive(Clone)]
 pub struct SpeedSearchMatches {
-    pub(crate) matched: Box<dyn Any + Send + Sync>,
+    pub(crate) matched: std::sync::Arc<dyn Any + Send + Sync>,
     pub(crate) stamp: (String, u64),
 }
 
@@ -99,7 +102,7 @@ pub struct SpeedSearchHandler;
 impl EffectHandler<SpeedSearchEffect> for SpeedSearchHandler {
     async fn handle(&self, effect: SpeedSearchEffect) -> SpeedSearchMatches {
         SpeedSearchMatches {
-            matched: (effect.run)(),
+            matched: std::sync::Arc::from((effect.run)()),
             stamp: effect.stamp,
         }
     }
@@ -121,6 +124,7 @@ impl EffectHandler<AnnounceSelect> for AnnounceSelectHandler {
     async fn handle(&self, _effect: AnnounceSelect) {}
 }
 
+#[derive(Clone)]
 pub enum ListKeyCommand<C> {
     Inner(C),
 
@@ -141,6 +145,19 @@ pub enum ListKeyCommand<C> {
     Clear,
 
     Refresh,
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for ListKeyCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ListKeyCommand::Inner(command) => command.fmt(out),
+            ListKeyCommand::Input(command) => command.fmt(out),
+            ListKeyCommand::Fold { .. } => out.write_str("fold"),
+            ListKeyCommand::Landed(_) => out.write_str("speed search landed"),
+            ListKeyCommand::Clear => out.write_str("speed search clear"),
+            ListKeyCommand::Refresh => out.write_str("speed search refresh"),
+        }
+    }
 }
 
 struct SearchLane<S> {

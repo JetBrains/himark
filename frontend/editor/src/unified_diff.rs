@@ -27,11 +27,22 @@ impl DiffLayout {
     }
 }
 
+#[derive(Clone)]
 pub enum UnifiedDiffCommand {
     Split(SplitDiffCommand),
 
     Inline(EditorCommand),
     SetLayout(DiffLayout),
+}
+
+impl std::fmt::Display for UnifiedDiffCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnifiedDiffCommand::Split(command) => command.fmt(out),
+            UnifiedDiffCommand::Inline(command) => command.fmt(out),
+            UnifiedDiffCommand::SetLayout(_) => out.write_str("set layout"),
+        }
+    }
 }
 
 pub type UnifiedDiffEffects<'a> = imba::effect::Effects<'a, UnifiedDiffCommand>;

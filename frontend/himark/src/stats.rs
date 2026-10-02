@@ -28,7 +28,14 @@ pub struct Stats {
     reconcile_streak: u32,
 }
 
+#[derive(Clone)]
 pub enum StatsCommand {}
+
+impl std::fmt::Display for StatsCommand {
+    fn fmt(&self, _out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
 
 impl Stats {
     pub(crate) fn new(font: Font) -> Self {

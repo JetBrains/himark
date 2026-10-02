@@ -35,7 +35,14 @@ impl std::fmt::Debug for ImageView {
     }
 }
 
+#[derive(Clone)]
 pub enum ImageCommand {}
+
+impl std::fmt::Display for ImageCommand {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
 
 impl ImageView {
     pub fn new(bytes: impl Into<Arc<[u8]>>) -> Option<Self> {

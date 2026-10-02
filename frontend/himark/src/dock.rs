@@ -26,6 +26,7 @@ const SLIDE_MS: f64 = 160.0;
 
 const HANDLE_REACH: f32 = 4.0;
 
+#[derive(Clone)]
 pub enum DockCommand {
     Tick(AnimationClock),
 
@@ -36,6 +37,18 @@ pub enum DockCommand {
     EndResize,
 
     Content(imba::DynCommand),
+}
+
+impl std::fmt::Display for DockCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DockCommand::Content(command) => command.fmt(out),
+            DockCommand::Tick(_) => out.write_str("dock tick"),
+            DockCommand::BeginResize => out.write_str("dock begin resize"),
+            DockCommand::Resize(_) => out.write_str("dock resize"),
+            DockCommand::EndResize => out.write_str("dock end resize"),
+        }
+    }
 }
 
 pub(crate) struct Dock {

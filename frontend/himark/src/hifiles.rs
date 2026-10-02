@@ -360,6 +360,7 @@ impl SessionTree {
     }
 }
 
+#[derive(Clone)]
 pub enum TreeCommand {
     Rows(ListKeyCommand<crate::TreeListCommand>),
 
@@ -412,6 +413,27 @@ pub enum TreeCommand {
         location: ResourceLocation,
         generation: u64,
     },
+}
+
+impl std::fmt::Display for TreeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeCommand::Rows(command) => command.fmt(out),
+            TreeCommand::Menu(command) => command.fmt(out),
+            TreeCommand::Edit(command) => command.fmt(out),
+            TreeCommand::Retheme => out.write_str("tree retheme"),
+            TreeCommand::Listed { .. } => out.write_str("tree listed"),
+            TreeCommand::Watched { .. } => out.write_str("tree watched"),
+            TreeCommand::Changed(_) => out.write_str("tree changed"),
+            TreeCommand::SyncRoots { .. } => out.write_str("tree sync roots"),
+            TreeCommand::CommitEdit => out.write_str("tree commit edit"),
+            TreeCommand::CancelEdit => out.write_str("tree cancel edit"),
+            TreeCommand::Mutated { .. } => out.write_str("tree mutated"),
+            TreeCommand::Dispatched(_) => out.write_str("tree dispatched"),
+            TreeCommand::Dismiss => out.write_str("tree dismiss"),
+            TreeCommand::Follow { .. } => out.write_str("tree follow"),
+        }
+    }
 }
 
 /// The context menu standing over a row, with the row it serves.
@@ -1513,7 +1535,7 @@ impl crate::DynamicCommand for ToggleSessionTree {
         let folders = crate::higent::session_folders(store, &workspace);
         let panel = fx.scope(crate::dock_scope(window), |fx| {
             fx.scope(
-                |command: TreeCommand| Box::new(command) as imba::DynCommand,
+                imba::DynCommand::new::<TreeCommand>,
                 |fx| {
                     SessionTreeView::open(
                         store,

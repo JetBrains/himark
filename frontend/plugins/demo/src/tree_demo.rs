@@ -60,8 +60,17 @@ struct TreeDemoRow {
     expanded: bool,
 }
 
+#[derive(Clone)]
 pub enum RowCommand {
     Toggle,
+}
+
+impl std::fmt::Display for RowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RowCommand::Toggle => out.write_str("row toggle"),
+        }
+    }
 }
 
 impl TreeDemoRow {
@@ -170,8 +179,17 @@ impl<'a> Widget<'a, RowCommand> for TreeDemoRowWidget<'a> {
 
 type Rows = ScrollView<ListView<TreeDemoRow, u64>>;
 
+#[derive(Clone)]
 pub enum Command {
     Rows(ScrollCommand<ListCommand<RowCommand>>),
+}
+
+impl std::fmt::Display for Command {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Command::Rows(command) => command.fmt(out),
+        }
+    }
 }
 
 #[derive(Clone)]

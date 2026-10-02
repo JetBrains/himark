@@ -228,6 +228,7 @@ impl Clone for Panel {
     }
 }
 
+#[derive(Clone)]
 pub enum PanelCommand {
     Editor(PaneCommand),
     Plugin(imba::DynCommand),
@@ -239,6 +240,19 @@ pub enum PanelCommand {
     Hover(crate::hover::HoverFound),
 
     HoverTick(imba::anim::AnimationClock),
+}
+
+impl std::fmt::Display for PanelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PanelCommand::Editor(command) => command.fmt(out),
+            PanelCommand::Plugin(command) => command.fmt(out),
+            PanelCommand::Find(command) => command.fmt(out),
+            PanelCommand::Completion(_) => out.write_str("completion found"),
+            PanelCommand::Hover(_) => out.write_str("hover found"),
+            PanelCommand::HoverTick(_) => out.write_str("hover tick"),
+        }
+    }
 }
 
 impl Panel {
@@ -773,9 +787,11 @@ impl PaneSlot {
         if Some(key) != self.completion.inlay_key() {
             return Some(rewrap(inlay));
         }
-        let popup = match inlay.downcast::<crate::completion::CompletionCommand>() {
-            Ok(popup) => *popup,
-            Err(other) => return Some(rewrap(other)),
+        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
+            Some(_) => inlay
+                .downcast::<crate::completion::CompletionCommand>()
+                .expect("probed above"),
+            None => return Some(rewrap(inlay)),
         };
         use crate::completion::CompletionCommand;
         let Some((id, editor)) = self.completion.installed() else {
@@ -1119,6 +1135,7 @@ impl PaneSlot {
     }
 }
 
+#[derive(Clone)]
 pub enum NodeCommand {
     Leaf {
         /// The occupant this command was addressed to; a leaf drops it if
@@ -1128,6 +1145,15 @@ pub enum NodeCommand {
         command: PanelCommand,
     },
     Split(Box<SplitCommand<NodeCommand, NodeCommand>>),
+}
+
+impl std::fmt::Display for NodeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeCommand::Leaf { command, .. } => command.fmt(out),
+            NodeCommand::Split(command) => command.fmt(out),
+        }
+    }
 }
 
 /// Tag a leaf's outgoing commands with the occupant they belong to.

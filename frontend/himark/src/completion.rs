@@ -32,6 +32,7 @@ const SHOWN: usize = 128;
 const POPUP_WIDTH: f32 = 560.0;
 const VISIBLE_ROWS: usize = 9;
 
+#[derive(Clone)]
 pub enum CompletionCommand {
     Select(isize),
 
@@ -40,6 +41,17 @@ pub enum CompletionCommand {
     Rows(PopupRowsCommand),
 
     Close,
+}
+
+impl std::fmt::Display for CompletionCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompletionCommand::Rows(command) => command.fmt(out),
+            CompletionCommand::Select(_) => out.write_str("completion select"),
+            CompletionCommand::PickCursor => out.write_str("completion pick"),
+            CompletionCommand::Close => out.write_str("completion close"),
+        }
+    }
 }
 
 #[derive(Clone)]

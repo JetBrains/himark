@@ -36,11 +36,22 @@ pub enum Pane {
     Second,
 }
 
+#[derive(Clone)]
 pub enum SplitCommand<FirstCommand, SecondCommand> {
     First(FirstCommand),
     Second(SecondCommand),
 
     Focus(Pane, Option<Box<SplitCommand<FirstCommand, SecondCommand>>>),
+}
+
+impl<A: std::fmt::Display, B: std::fmt::Display> std::fmt::Display for SplitCommand<A, B> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SplitCommand::First(command) => command.fmt(out),
+            SplitCommand::Second(command) => command.fmt(out),
+            SplitCommand::Focus(..) => out.write_str("split focus"),
+        }
+    }
 }
 
 impl<First, Second> SplitView<First, Second> {

@@ -41,6 +41,7 @@ pub(crate) enum CanvasKey {
 type CanvasRows = ListView<CanvasRow, CanvasKey>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
+#[derive(Clone)]
 pub enum CanvasCommand {
     Rows(RowsCommand),
 
@@ -70,6 +71,18 @@ pub enum CanvasCommand {
         key: ResourceLocation,
         command: RowCommand,
     },
+}
+
+impl std::fmt::Display for CanvasCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CanvasCommand::Rows(command) => command.fmt(out),
+            CanvasCommand::BannerEditor(command) => command.fmt(out),
+            CanvasCommand::ToRow { command, .. } => command.fmt(out),
+            CanvasCommand::ToPending { command, .. } => command.fmt(out),
+            CanvasCommand::Landed { .. } => out.write_str("canvas landed"),
+        }
+    }
 }
 
 /// The canvas STATE, store-held in `Canvases` (the `OpenDocuments`
@@ -2115,6 +2128,7 @@ pub enum HeaderAction {
     ToggleCollapse,
 }
 
+#[derive(Clone)]
 pub enum RowCommand {
     /// The placeholder painted un-armed: build me, at this width.
     Arm(f32),
@@ -2128,6 +2142,19 @@ pub enum RowCommand {
     Rewrap(f32),
 }
 
+impl std::fmt::Display for RowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RowCommand::Diff(command) => command.fmt(out),
+            RowCommand::Composer(command) => command.fmt(out),
+            RowCommand::Arm(_) => out.write_str("row arm"),
+            RowCommand::Header(_) => out.write_str("row header"),
+            RowCommand::Rewrap(_) => out.write_str("row rewrap"),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum ComposerCommand {
     Message(crate::EditorCommand),
 
@@ -2138,6 +2165,16 @@ pub enum ComposerCommand {
     /// ask (it owns the source folder and the panel request); the row
     /// then resets its box.
     Commit,
+}
+
+impl std::fmt::Display for ComposerCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComposerCommand::Message(command) => command.fmt(out),
+            ComposerCommand::Focus => out.write_str("composer focus"),
+            ComposerCommand::Commit => out.write_str("composer commit"),
+        }
+    }
 }
 
 #[derive(Clone)]

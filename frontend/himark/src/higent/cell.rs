@@ -39,6 +39,7 @@ fn note_mount() {
     MOUNTED.with(|mounted| mounted.set(mounted.get() + 1));
 }
 
+#[derive(Clone)]
 pub enum CellCommand {
     Editor(EditorCommand),
 
@@ -72,6 +73,24 @@ pub enum CellCommand {
     /// edited file. The uri is the wire's (`file:///…`); the panel
     /// resolves it against the session's seat and opens the location.
     OpenFile(ahp_types::common::Uri),
+}
+
+impl std::fmt::Display for CellCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CellCommand::Editor(command) => command.fmt(out),
+            CellCommand::Diff(command) => command.fmt(out),
+            CellCommand::ToolRows(command) => command.fmt(out),
+            CellCommand::ToolRow { command, .. } => command.fmt(out),
+            CellCommand::Rewrite(_) => out.write_str("cell rewrite"),
+            CellCommand::Rewrap(_) => out.write_str("cell rewrap"),
+            CellCommand::ResolveDiff(_) => out.write_str("resolve diff"),
+            CellCommand::ResolveText { .. } => out.write_str("resolve text"),
+            CellCommand::Tool(_) => out.write_str("tool update"),
+            CellCommand::Append(_) => out.write_str("cell append"),
+            CellCommand::OpenFile(_) => out.write_str("open file"),
+        }
+    }
 }
 
 #[derive(Clone)]

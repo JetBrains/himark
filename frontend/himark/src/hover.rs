@@ -22,6 +22,7 @@ impl imba::effect::Effect for LspHoverEffect {
     type Result = Option<HoverInfo>;
 }
 
+#[derive(Clone)]
 pub struct HoverFound {
     serial: u64,
     answer: Option<HoverInfo>,

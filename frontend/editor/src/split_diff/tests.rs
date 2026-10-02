@@ -1180,7 +1180,7 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Inlay {
             key,
-            command: Box::new(fold::FoldCommand::RevealTop),
+            command: imba::DynCommand::new(fold::FoldCommand::RevealTop),
         }),
     );
     let left_after = strips(&view.left.document, lm);
@@ -1209,7 +1209,7 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
         &ui,
         SplitDiffCommand::Right(EditorCommand::Inlay {
             key,
-            command: Box::new(fold::FoldCommand::Remove),
+            command: imba::DynCommand::new(fold::FoldCommand::Remove),
         }),
     );
     drain(&mut view, effects);
@@ -1569,7 +1569,7 @@ fn folds_at_the_end_of_the_diff_survive_every_edge_command() {
             &ui,
             SplitDiffCommand::Left(EditorCommand::Inlay {
                 key,
-                command: Box::new(command),
+                command: imba::DynCommand::new(command),
             }),
         );
         drain(&mut view, effects);
@@ -1624,7 +1624,7 @@ fn a_removed_fold_survives_rederivation() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Inlay {
             key,
-            command: Box::new(fold::FoldCommand::Remove),
+            command: imba::DynCommand::new(fold::FoldCommand::Remove),
         }),
     );
     drain(&mut view, effects);

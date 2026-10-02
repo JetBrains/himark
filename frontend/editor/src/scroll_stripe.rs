@@ -201,6 +201,7 @@ pub(crate) struct StripeWork {
     pub(crate) layout: DocumentLayout,
 }
 
+#[derive(Clone)]
 pub struct StripeOutcome {
     pub(crate) token: DocumentToken,
     pub(crate) editor: EditorId,

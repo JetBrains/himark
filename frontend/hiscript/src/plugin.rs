@@ -416,7 +416,7 @@ impl himark::DynamicEditorCommand for RunScript {
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
             himark::EditorCommand::Dynamic {
                 id: "script.run",
-                payload: Some(Box::new(landing)),
+                payload: Some(himark::DynPayload::new(landing)),
             }
         }));
         let mut lanes = store.get::<ScriptLanes>().cloned().unwrap_or_default();
@@ -480,7 +480,7 @@ fn land(
                     AnyEffect::new(himark::StoreDocumentEffect { location, text }).map(
                         move |stored| himark::EditorCommand::Dynamic {
                             id: "script.run",
-                            payload: Some(Box::new(ScriptStored { stored, show })),
+                            payload: Some(himark::DynPayload::new(ScriptStored { stored, show })),
                         },
                     ),
                 );

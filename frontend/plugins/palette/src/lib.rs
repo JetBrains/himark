@@ -33,12 +33,23 @@ struct Entry {
     command: std::sync::Arc<std::sync::Mutex<Option<AppCommand>>>,
 }
 
+#[derive(Clone)]
 pub enum PaletteCommand {
     Rows(RowsCommand),
 
     Pick(usize),
 
     Close,
+}
+
+impl std::fmt::Display for PaletteCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PaletteCommand::Rows(command) => command.fmt(out),
+            PaletteCommand::Pick(_) => out.write_str("palette pick"),
+            PaletteCommand::Close => out.write_str("palette close"),
+        }
+    }
 }
 
 const PALETTE_SHOWN: usize = 200;

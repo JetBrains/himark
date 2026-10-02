@@ -340,7 +340,7 @@ fn stream_navigation(
             })
             .map(move |outcome| himark::EditorCommand::Dynamic {
                 id,
-                payload: Some(Box::new(StreamOutcome { feed, outcome })),
+                payload: Some(himark::DynPayload::new(StreamOutcome { feed, outcome })),
             }),
         );
         return;
@@ -391,7 +391,7 @@ fn navigation(
             })
             .map(move |outcome| himark::EditorCommand::Dynamic {
                 id,
-                payload: Some(Box::new(outcome)),
+                payload: Some(himark::DynPayload::new(outcome)),
             }),
         );
         return;

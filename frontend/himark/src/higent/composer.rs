@@ -20,6 +20,7 @@ use crate::higent::cell::document_text;
 
 type ChatChrome = crate::theme::ChatChrome;
 
+#[derive(Clone)]
 pub enum ComposerCommand {
     Editor(ScrollCommand<EditorCommand>),
 
@@ -32,6 +33,19 @@ pub enum ComposerCommand {
     Tick(AnimationClock),
 
     Rewrap(f32),
+}
+
+impl std::fmt::Display for ComposerCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComposerCommand::Editor(command) => command.fmt(out),
+            ComposerCommand::Submit => out.write_str("composer submit"),
+            ComposerCommand::Stop => out.write_str("composer stop"),
+            ComposerCommand::ToggleExpand => out.write_str("composer toggle expand"),
+            ComposerCommand::Tick(_) => out.write_str("composer tick"),
+            ComposerCommand::Rewrap(_) => out.write_str("composer rewrap"),
+        }
+    }
 }
 
 pub(crate) struct ComposerProps {

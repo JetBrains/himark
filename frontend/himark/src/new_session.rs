@@ -229,6 +229,7 @@ pub struct NewSessionProbe {
     pub cells: Vec<(f32, f32)>,
 }
 
+#[derive(Clone)]
 pub enum NewSessionCommand {
     Editor(ScrollCommand<EditorCommand>),
     Host(ComboCommand),
@@ -243,6 +244,24 @@ pub enum NewSessionCommand {
 
     Rewrap(f32),
     Start,
+}
+
+impl std::fmt::Display for NewSessionCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NewSessionCommand::Editor(command) => command.fmt(out),
+            NewSessionCommand::Host(command) => command.fmt(out),
+            NewSessionCommand::Dir(command) => command.fmt(out),
+            NewSessionCommand::Mode(command) => command.fmt(out),
+            NewSessionCommand::Model(command) => command.fmt(out),
+            NewSessionCommand::Effort(command) => command.fmt(out),
+            NewSessionCommand::Edits(command) => command.fmt(out),
+            NewSessionCommand::ToggleWorktree => out.write_str("toggle worktree"),
+            NewSessionCommand::Sync => out.write_str("new session sync"),
+            NewSessionCommand::Rewrap(_) => out.write_str("new session rewrap"),
+            NewSessionCommand::Start => out.write_str("new session start"),
+        }
+    }
 }
 
 #[derive(Clone)]

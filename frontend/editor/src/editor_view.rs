@@ -58,6 +58,7 @@ pub enum ClickKind {
     Line,
 }
 
+#[derive(Clone)]
 pub enum EditorCommand {
     InsertText {
         text: String,
@@ -119,7 +120,7 @@ pub enum EditorCommand {
 
     Dynamic {
         id: &'static str,
-        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        payload: Option<crate::dynamic::DynPayload>,
     },
 
     ToggleFold {
@@ -183,6 +184,56 @@ pub enum EditorCommand {
         start: u32,
         end: u32,
     },
+}
+
+impl std::fmt::Display for EditorCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // "repair" / "reparse" / "enrich" are grepped in traces.
+            EditorCommand::ApplyRepair(_) => out.write_str("repair"),
+            EditorCommand::ApplyReparse(_) => out.write_str("reparse"),
+            EditorCommand::ApplyEnrichment(_) => out.write_str("enrich"),
+            EditorCommand::ApplyScrollStripes(_) => out.write_str("scroll stripes"),
+            EditorCommand::Inlay { command, .. } => command.fmt(out),
+            EditorCommand::Dynamic { id, .. } => out.write_str(id),
+            EditorCommand::InsertText { .. } => out.write_str("insert text"),
+            EditorCommand::Enter { .. } => out.write_str("enter"),
+            EditorCommand::Indent => out.write_str("indent"),
+            EditorCommand::Outdent => out.write_str("outdent"),
+            EditorCommand::Backspace => out.write_str("backspace"),
+            EditorCommand::DeleteForward => out.write_str("delete forward"),
+            EditorCommand::DeleteWordBack => out.write_str("delete word back"),
+            EditorCommand::DeleteWordForward => out.write_str("delete word forward"),
+            EditorCommand::DeleteSelections => out.write_str("delete selections"),
+            EditorCommand::Paste { .. } => out.write_str("paste"),
+            EditorCommand::Undo => out.write_str("undo"),
+            EditorCommand::Redo => out.write_str("redo"),
+            EditorCommand::Move { .. } => out.write_str("move"),
+            EditorCommand::SelectAll => out.write_str("select all"),
+            EditorCommand::CollapseCarets => out.write_str("collapse carets"),
+            EditorCommand::AddCaretAbove => out.write_str("add caret above"),
+            EditorCommand::AddCaretBelow => out.write_str("add caret below"),
+            EditorCommand::SelectNextOccurrence => out.write_str("select next occurrence"),
+            EditorCommand::SelectAllOccurrences => out.write_str("select all occurrences"),
+            EditorCommand::Click { .. } => out.write_str("click"),
+            EditorCommand::Drag { .. } => out.write_str("drag"),
+            EditorCommand::DragEnd => out.write_str("drag end"),
+            EditorCommand::RevealSettled => out.write_str("reveal settled"),
+            EditorCommand::RevealAt { .. } => out.write_str("reveal at"),
+            EditorCommand::ToggleFold { .. } => out.write_str("toggle fold"),
+            EditorCommand::ToggleBeforeInlay { .. } => out.write_str("toggle before inlay"),
+            EditorCommand::Viewport { .. } => out.write_str("viewport"),
+            EditorCommand::ViewportTop(_) => out.write_str("viewport top"),
+            EditorCommand::ToggleSoftwrap => out.write_str("toggle softwrap"),
+            EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
+            EditorCommand::Hover(_) => out.write_str("hover"),
+            EditorCommand::Retheme { .. } => out.write_str("retheme"),
+            EditorCommand::InsertTextReplacing { .. } => out.write_str("insert text replacing"),
+            EditorCommand::SetMarkedText { .. } => out.write_str("set marked text"),
+            EditorCommand::UnmarkText => out.write_str("unmark text"),
+            EditorCommand::SetSelectionUtf16 { .. } => out.write_str("set selection utf16"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -861,7 +912,7 @@ impl View for EditorView {
                 &mut self.document,
                 self.editor,
                 &location,
-                payload,
+                payload.and_then(crate::dynamic::DynPayload::take),
                 fx,
             );
         }

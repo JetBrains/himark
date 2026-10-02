@@ -137,7 +137,7 @@ impl View for EditorIdView {
                     &mut document,
                     self.editor,
                     &location,
-                    payload,
+                    payload.and_then(editor::DynPayload::take),
                     fx,
                 );
                 crate::OpenDocuments::put_document(store, self.documents, self.document, document);

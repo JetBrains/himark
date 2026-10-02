@@ -64,6 +64,7 @@ pub struct RefetchDiffEffect {
     pub policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 
+#[derive(Clone)]
 pub struct RefetchRebase {
     pub operation: operation::Operation,
 

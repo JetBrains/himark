@@ -41,7 +41,7 @@ pub use before_inlay::{BeforeCommand, BeforeInlay};
 pub use caret::{Caret, MultiCaret};
 pub use change_sink::{ChangeSink, InstalledChangeSink};
 pub use document::{Document, EditorBuild};
-pub use dynamic::{DynamicEditorCommand, EditorCommands};
+pub use dynamic::{DynPayload, DynamicEditorCommand, EditorCommands};
 pub use edit_log::{bridge, common_base, EditIdentity, EditLog};
 pub use location::{Authority, ResourceLocation, ResourceType};
 pub use unified_diff::{DiffLayout, UnifiedDiffCommand, UnifiedDiffEffects, UnifiedDiffView};

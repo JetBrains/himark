@@ -19,10 +19,20 @@ pub const DRAWER_WIDTH: f32 = 664.0;
 
 const SLIDE_MS: f64 = 160.0;
 
+#[derive(Clone)]
 pub enum DrawerCommand {
     Tick(AnimationClock),
 
     Content(imba::DynCommand),
+}
+
+impl std::fmt::Display for DrawerCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DrawerCommand::Content(command) => command.fmt(out),
+            DrawerCommand::Tick(_) => out.write_str("drawer tick"),
+        }
+    }
 }
 
 pub(crate) struct Drawer {

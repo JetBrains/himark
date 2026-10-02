@@ -110,7 +110,7 @@ impl Effect for SubscribeChatEffect {
     type Result = Result<ChatState, String>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TurnsPage {
     pub turns: Vec<Turn>,
 

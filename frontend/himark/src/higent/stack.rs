@@ -18,12 +18,23 @@ use crate::higent::turn::TurnView;
 
 type ChatChrome = crate::theme::ChatChrome;
 
+#[derive(Clone)]
 pub enum StackCommand {
     Answer(usize),
 
     ToggleQueue,
 
     RemoveQueued(String),
+}
+
+impl std::fmt::Display for StackCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StackCommand::Answer(_) => out.write_str("stack answer"),
+            StackCommand::ToggleQueue => out.write_str("toggle queue"),
+            StackCommand::RemoveQueued(_) => out.write_str("remove queued"),
+        }
+    }
 }
 
 #[derive(Clone)]

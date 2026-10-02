@@ -220,7 +220,14 @@ impl MermaidView {
     }
 }
 
+#[derive(Clone)]
 pub enum MermaidCommand {}
+
+impl std::fmt::Display for MermaidCommand {
+    fn fmt(&self, _out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
 
 impl View for MermaidView {
     type Command = MermaidCommand;

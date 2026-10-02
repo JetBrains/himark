@@ -513,14 +513,14 @@ fn a_focused_table_cell_presents_structural_commands() {
         &ui,
         EditorCommand::Inlay {
             key,
-            command: Box::new(table::TableCommand::Cell {
+            command: imba::DynCommand::new(table::TableCommand::Cell {
                 row: 1,
                 col: 0,
                 command: EditorCommand::Click {
                     kind: himark::ClickKind::Set,
                     point: skia_safe::Point::new(2.0, 2.0),
                 },
-            }) as himark::InlayCommand,
+            }),
         },
         &mut imba::effect::Batch::new().effects(),
     );
@@ -648,7 +648,7 @@ fn adding_a_table_row_keeps_the_inlay_covering_the_block() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(command) as himark::InlayCommand,
+                command: imba::DynCommand::new(command),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -732,7 +732,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
         himark::test_document::test_ui(),
         EditorCommand::Inlay {
             key,
-            command: Box::new(table::TableCommand::InsertRow(2)) as himark::InlayCommand,
+            command: imba::DynCommand::new(table::TableCommand::InsertRow(2)),
         },
         &mut imba::effect::Batch::new().effects(),
     );
@@ -808,11 +808,11 @@ fn multibyte_typing_in_a_cell_stays_utf8() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 0,
                     col: 1,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -901,11 +901,11 @@ fn a_stale_reparse_landing_mid_burst_must_not_revert_cell_state() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 0,
                     col: 1,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -986,11 +986,11 @@ fn click_placed_carets_in_multibyte_cells_stay_on_boundaries() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 0,
                     col: 1,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1045,11 +1045,11 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 0,
                     col: 1,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         )
@@ -1103,13 +1103,13 @@ fn typing_in_a_cell_writes_through_and_survives_the_reparse() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 0,
                     col: 1,
                     command: EditorCommand::InsertText {
                         text: "!".to_owned(),
                     },
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         )
@@ -1259,11 +1259,11 @@ fn enter_in_a_cell_becomes_a_br_and_survives_the_next_letter() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 1,
                     col: 0,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1347,11 +1347,11 @@ fn unmapped_cell_mutations_are_swallowed_not_diverged() {
             himark::test_document::test_ui(),
             EditorCommand::Inlay {
                 key,
-                command: Box::new(table::TableCommand::Cell {
+                command: imba::DynCommand::new(table::TableCommand::Cell {
                     row: 1,
                     col: 0,
                     command,
-                }) as himark::InlayCommand,
+                }),
             },
             &mut imba::effect::Batch::new().effects(),
         );
@@ -1531,27 +1531,27 @@ fn undoing_a_cell_edit_rebuilds_the_table_at_the_next_reparse() {
         &mut store,
         EditorCommand::Inlay {
             key,
-            command: Box::new(table::TableCommand::Cell {
+            command: imba::DynCommand::new(table::TableCommand::Cell {
                 row: 1,
                 col: 0,
                 command: EditorCommand::Click {
                     kind: himark::ClickKind::Set,
                     point: skia_safe::Point::new(1.0, 1.0),
                 },
-            }) as himark::InlayCommand,
+            }),
         },
     );
     send(
         &mut store,
         EditorCommand::Inlay {
             key,
-            command: Box::new(table::TableCommand::Cell {
+            command: imba::DynCommand::new(table::TableCommand::Cell {
                 row: 1,
                 col: 0,
                 command: EditorCommand::InsertText {
                     text: "X".to_owned(),
                 },
-            }) as himark::InlayCommand,
+            }),
         },
     );
     let text_of = |store: &Store| {
@@ -1623,25 +1623,25 @@ fn a_faithful_reparse_still_carries_the_live_table() {
         &mut store,
         EditorCommand::Inlay {
             key,
-            command: Box::new(table::TableCommand::Cell {
+            command: imba::DynCommand::new(table::TableCommand::Cell {
                 row: 1,
                 col: 0,
                 command: EditorCommand::Click {
                     kind: himark::ClickKind::Set,
                     point: skia_safe::Point::new(1.0, 1.0),
                 },
-            }) as himark::InlayCommand,
+            }),
         },
     );
     let type_in_cell = |text: &str| EditorCommand::Inlay {
         key,
-        command: Box::new(table::TableCommand::Cell {
+        command: imba::DynCommand::new(table::TableCommand::Cell {
             row: 1,
             col: 0,
             command: EditorCommand::InsertText {
                 text: text.to_owned(),
             },
-        }) as himark::InlayCommand,
+        }),
     };
 
     send(&mut store, type_in_cell("X"));

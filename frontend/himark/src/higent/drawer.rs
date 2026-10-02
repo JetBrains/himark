@@ -82,6 +82,7 @@ impl crate::Searcher for SessionSearcher {
     }
 }
 
+#[derive(Clone)]
 pub enum AgentsCommand {
     Rows(ListKeyCommand<TreeListCommand>),
 
@@ -102,6 +103,22 @@ pub enum AgentsCommand {
     SubmitAddHost,
 
     CancelAddHost,
+}
+
+impl std::fmt::Display for AgentsCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentsCommand::Rows(command) => command.fmt(out),
+            AgentsCommand::AddHostInput(command) => command.fmt(out),
+            AgentsCommand::Boot => out.write_str("agents boot"),
+            AgentsCommand::Connected(..) => out.write_str("agents connected"),
+            AgentsCommand::Listed { .. } => out.write_str("agents listed"),
+            AgentsCommand::Events(..) => out.write_str("agents events"),
+            AgentsCommand::Dismiss => out.write_str("agents dismiss"),
+            AgentsCommand::SubmitAddHost => out.write_str("submit add host"),
+            AgentsCommand::CancelAddHost => out.write_str("cancel add host"),
+        }
+    }
 }
 
 pub struct AgentsPanel {

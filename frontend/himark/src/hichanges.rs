@@ -194,6 +194,7 @@ pub enum ChangesStatus {
 /// trees are parsed and the uris resolved inside the effect's landing
 /// map (the background runner's thread), so the UI-thread adopt only
 /// stamps and swaps finished entries (docs/perf-issue.md §2).
+#[derive(Clone)]
 pub struct DigestedChangeset {
     pub(crate) status: ChangesStatus,
     pub(crate) entries: Vec<ChangeEntry>,
@@ -201,6 +202,7 @@ pub struct DigestedChangeset {
 
 /// A polled wire action digested OFF the UI thread — `entry_of` has
 /// already run; the UI-thread fold only splices finished entries.
+#[derive(Clone)]
 pub enum ChangeAction {
     Content(Vec<ChangeEntry>),
     Status(ChangesStatus),
@@ -518,6 +520,7 @@ pub type Changes = ChangeSets;
 /// (docs/entities.md law 5): the feed landings of its working-copy
 /// sets. Each is stamped with the collection id at launch and comes
 /// home by it — no scope is re-derived.
+#[derive(Clone)]
 pub enum ChangesCommand {
     /// A changeset subscribe answered for one folder's set — digested
     /// on the effect worker, never on this thread.
@@ -534,6 +537,15 @@ pub enum ChangesCommand {
         serial: u64,
         actions: Vec<ChangeAction>,
     },
+}
+
+impl std::fmt::Display for ChangesCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangesCommand::Snapshot { .. } => out.write_str("changes snapshot"),
+            ChangesCommand::Polled { .. } => out.write_str("changes polled"),
+        }
+    }
 }
 
 /// A note the collection leaves for the application road after a
@@ -595,10 +607,6 @@ impl imba::store::Entity for ChangeSets {
 }
 
 impl crate::AppEntity for ChangeSets {
-    fn label(_: &ChangesCommand) -> &'static str {
-        "changes"
-    }
-
     /// The landing's note: the stripe bases under the folders it
     /// touched re-ask — application effects the entity itself does
     /// not hold.

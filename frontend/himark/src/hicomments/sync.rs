@@ -95,6 +95,7 @@ pub struct CommentsInstall;
 /// What the collection answers to behind its `At` address
 /// (docs/entities.md law 5): the annotations feed's landings and the
 /// send-turn's answer, each stamped with the collection id at launch.
+#[derive(Clone)]
 pub enum CommentsCommand {
     /// The annotations subscribe answered for the feed's session.
     Snapshot {
@@ -111,6 +112,16 @@ pub enum CommentsCommand {
         ids: Vec<AnnotationId>,
         result: Result<(), String>,
     },
+}
+
+impl std::fmt::Display for CommentsCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommentsCommand::Snapshot { .. } => out.write_str("comments snapshot"),
+            CommentsCommand::Polled { .. } => out.write_str("comments polled"),
+            CommentsCommand::Sent { .. } => out.write_str("comments sent"),
+        }
+    }
 }
 
 /// A note the collection leaves for the application road after a
@@ -214,10 +225,6 @@ impl imba::store::Entity for Comments {
 }
 
 impl crate::AppEntity for Comments {
-    fn label(_: &CommentsCommand) -> &'static str {
-        "comments"
-    }
-
     /// The landing's note: cards whose records died drop their inlays
     /// and the records settle into cards — document-addressed effects
     /// the entity itself does not hold.

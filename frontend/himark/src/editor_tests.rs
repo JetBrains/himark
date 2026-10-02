@@ -7,7 +7,7 @@ use std::str;
 use editor::{
     inlay_anchors_line,
     test_document::{fenced_code_document, list_document, plain_document},
-    Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayCommand, InlayMode,
+    Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayMode,
 };
 
 use crate::AppExt;
@@ -361,7 +361,7 @@ fn inlay_command_updates_interval_view_and_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(pane.gathered().content_height() >= inlay_height + 10.0);
@@ -385,7 +385,7 @@ fn inline_inlay_height_change_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(9),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -416,7 +416,7 @@ fn under_inlay_height_change_repairs_end_anchor_line() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(13),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -443,7 +443,7 @@ fn inline_inlay_width_change_rewraps_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(11),
-        command: Box::new(TestInlayCommand::GrowWide) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::GrowWide),
     });
 
     assert!(
@@ -684,7 +684,7 @@ fn focus_moves_between_text_and_inlays() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
     assert_eq!(
         pane.gathered().focus(),
@@ -802,9 +802,16 @@ struct TestInlay {
     height: f32,
 }
 
+#[derive(Clone, Debug)]
 enum TestInlayCommand {
     Grow,
     GrowWide,
+}
+
+impl std::fmt::Display for TestInlayCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 impl View for TestInlay {
@@ -863,7 +870,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 
     pane.perform(EditorCommand::Inlay {
         key,
-        command: Box::new(ProbeCommand::Poke) as InlayCommand,
+        command: imba::DynCommand::new(ProbeCommand::Poke),
     });
     let focus = |pane: &TestPane| {
         let entity = pane.view;
@@ -924,8 +931,15 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 #[derive(Clone)]
 struct FocusProbe;
 
+#[derive(Clone, Debug)]
 enum ProbeCommand {
     Poke,
+}
+
+impl std::fmt::Display for ProbeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 impl View for FocusProbe {
@@ -1771,9 +1785,16 @@ fn palette_commands_follow_the_modal_focus() {
 
         request: std::sync::Arc<std::sync::Mutex<Option<ModalRequest>>>,
     }
-    enum TestModalCommand {
+#[derive(Clone, Debug)]
+        enum TestModalCommand {
         Close,
         Show,
+    }
+
+    impl std::fmt::Display for TestModalCommand {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
     }
     impl imba::View for TestModal {
         type Command = TestModalCommand;
@@ -1945,7 +1966,7 @@ fn palette_commands_follow_the_modal_focus() {
     ));
     app.perform_batch(vec![AppCommand::Content(
         app.sole_window(),
-        crate::WindowCommand::Modal(Box::new(TestModalCommand::Show) as imba::DynCommand),
+        crate::WindowCommand::Modal(imba::DynCommand::new(TestModalCommand::Show)),
     )]);
     assert!(app.plugin_modal().is_none(), "the show dismissed the modal");
     assert_eq!(
@@ -2183,12 +2204,12 @@ fn switching_dismisses_the_overlays_first() {
     #[derive(Clone)]
     struct NullModal;
     impl imba::View for NullModal {
-        type Command = ();
+        type Command = std::convert::Infallible;
         fn perform(
             &mut self,
             _store: &mut Store,
             _ui: &imba::UiCtx,
-            _command: (),
+            _command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
         }
@@ -2197,11 +2218,11 @@ fn switching_dismisses_the_overlays_first() {
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
             _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, ()> + imba::LayoutValue + 'a {
+        ) -> impl imba::Layout<'a, std::convert::Infallible> + imba::LayoutValue + 'a {
             imba::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
-                    imba::leaf::leaf::<()>(constraints.max.width, constraints.max.height)
+                    imba::leaf::leaf::<std::convert::Infallible>(constraints.max.width, constraints.max.height)
                 },
             )
         }
@@ -4232,9 +4253,16 @@ mod dock_tests {
         )
     }
 
-    enum StubCommand {
+#[derive(Clone, Debug)]
+        enum StubCommand {
         Close,
         Ask,
+    }
+
+    impl std::fmt::Display for StubCommand {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
     }
 
     #[derive(Clone)]
@@ -5523,13 +5551,13 @@ fn a_pane_documents_popup_paints_in_the_window() {
     #[derive(Clone)]
     struct MagentaPopup;
     impl imba::View for MagentaPopup {
-        type Command = ();
+        type Command = std::convert::Infallible;
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
             _ui: &imba::UiCtx,
-            _command: (),
-            _fx: &mut imba::effect::Effects<'_, ()>,
+            _command: Self::Command,
+            _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
         }
         fn display<'a>(
@@ -5542,7 +5570,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
                 move |_arena: &'a imba::arena::Arena,
                       _constraints: imba::constraints::Constraints| {
                     use imba::thunk_ext::ThunkExt;
-                    imba::leaf::leaf::<()>(90.0, 40.0).paint_instead(|_arena, canvas, rect| {
+                    imba::leaf::leaf::<std::convert::Infallible>(90.0, 40.0).paint_instead(|_arena, canvas, rect| {
                         let mut paint = skia_safe::Paint::default();
                         paint.set_color(skia_safe::Color::from_rgb(0xff, 0x00, 0xff));
                         canvas.draw_rect(rect, &paint);

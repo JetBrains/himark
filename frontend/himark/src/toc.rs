@@ -22,9 +22,19 @@ pub(crate) const OUTLINE_CAP: usize = 2_000;
 
 pub type SearchListCommand = ListKeyCommand<TreeListCommand>;
 
+#[derive(Clone)]
 pub enum TocCommand {
     List(SearchListCommand),
     Dismiss,
+}
+
+impl std::fmt::Display for TocCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TocCommand::List(command) => command.fmt(out),
+            TocCommand::Dismiss => out.write_str("toc dismiss"),
+        }
+    }
 }
 
 pub struct TocView {
@@ -490,6 +500,7 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
     }
 }
 
+#[derive(Clone)]
 pub enum OutlineCommand {
     List(SearchListCommand),
     Dismiss,
@@ -497,6 +508,17 @@ pub enum OutlineCommand {
     Refresh,
 
     Landed(OutlineRows),
+}
+
+impl std::fmt::Display for OutlineCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OutlineCommand::List(command) => command.fmt(out),
+            OutlineCommand::Dismiss => out.write_str("outline dismiss"),
+            OutlineCommand::Refresh => out.write_str("outline refresh"),
+            OutlineCommand::Landed(_) => out.write_str("outline landed"),
+        }
+    }
 }
 
 pub struct OutlineView {

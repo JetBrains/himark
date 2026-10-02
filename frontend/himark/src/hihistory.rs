@@ -78,6 +78,7 @@ pub struct History {
 /// What the collection answers to behind its `At` address
 /// (docs/entities.md law 5): its folders' feed landings and the
 /// commit-file fetches, each stamped with the collection id at launch.
+#[derive(Clone)]
 pub enum HistoryCommand {
     Snapshot {
         folder: ResourceLocation,
@@ -97,6 +98,17 @@ pub enum HistoryCommand {
         commit: crate::hichanges::Revision,
         actions: Vec<StateAction>,
     },
+}
+
+impl std::fmt::Display for HistoryCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HistoryCommand::Snapshot { .. } => out.write_str("history snapshot"),
+            HistoryCommand::Polled { .. } => out.write_str("history polled"),
+            HistoryCommand::CommitFiles { .. } => out.write_str("history commit files"),
+            HistoryCommand::CommitFilesPolled { .. } => out.write_str("history commit files polled"),
+        }
+    }
 }
 
 impl imba::store::Entity for History {
@@ -160,11 +172,7 @@ impl imba::store::Entity for History {
     fn destroy(&mut self, _store: &mut Store) {}
 }
 
-impl crate::AppEntity for History {
-    fn label(_: &HistoryCommand) -> &'static str {
-        "history"
-    }
-}
+impl crate::AppEntity for History {}
 
 impl History {
     /// A collection wired to the sets its commits are — minted by the

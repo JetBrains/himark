@@ -43,6 +43,7 @@ const HEADER_HEIGHT: f32 = 24.0;
 
 const FALLBACK_WIDTH: f32 = 600.0;
 
+#[derive(Clone)]
 pub enum PeekCommand {
     Tree(ListKeyCommand<TreeListCommand>),
     Close,
@@ -59,6 +60,20 @@ pub enum PeekCommand {
         index: usize,
         built: crate::BuiltDocument,
     },
+}
+
+impl std::fmt::Display for PeekCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PeekCommand::Tree(command) => command.fmt(out),
+            PeekCommand::Preview(command) => command.fmt(out),
+            PeekCommand::Close => out.write_str("peek close"),
+            PeekCommand::Promote => out.write_str("peek promote"),
+            PeekCommand::Refresh => out.write_str("peek refresh"),
+            PeekCommand::Fetched { .. } => out.write_str("peek fetched"),
+            PeekCommand::Built { .. } => out.write_str("peek built"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -791,7 +806,7 @@ impl documents::DocumentCommand for GoToReference {
             })
             .map(move |outcome| EditorCommand::Dynamic {
                 id: "code.go-to-reference",
-                payload: Some(Box::new((feed, outcome))),
+                payload: Some(::editor::DynPayload::new((feed, outcome))),
             }),
         );
     }
@@ -968,7 +983,7 @@ mod tests {
     struct ProbeCard;
 
     impl imba::View for ProbeCard {
-        type Command = ();
+        type Command = std::convert::Infallible;
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
@@ -984,7 +999,7 @@ mod tests {
             _ui: &'a imba::UiCtx,
         ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
             imba::laid(move |arena: &'a imba::arena::Arena, _constraints| {
-                imba::ThunkBox::new(arena, imba::leaf::leaf::<()>(200.0, 111.0))
+                imba::ThunkBox::new(arena, imba::leaf::leaf::<std::convert::Infallible>(200.0, 111.0))
             })
         }
     }

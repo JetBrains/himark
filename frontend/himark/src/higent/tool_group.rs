@@ -48,8 +48,17 @@ pub enum ToolRowKey {
     Body(String),
 }
 
+#[derive(Clone)]
 pub enum ToolRowCommand {
     Cell(Box<CellCommand>),
+}
+
+impl std::fmt::Display for ToolRowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolRowCommand::Cell(command) => command.fmt(out),
+        }
+    }
 }
 
 pub type ToolRowsCommand = ListCommand<TreeItemCommand<ToolRowCommand>>;

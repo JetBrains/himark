@@ -117,8 +117,17 @@ impl Chats {
 /// What the chats collection answers to, behind its `At` address
 /// (docs/entities.md law 5): the panel road — feed landings and model
 /// performs, keyed by the collection's PRIVATE uri.
+#[derive(Clone)]
 pub enum ChatsCommand {
     Panel(ChatUri, ChatPanelCommand),
+}
+
+impl std::fmt::Display for ChatsCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatsCommand::Panel(_, command) => command.fmt(out),
+        }
+    }
 }
 
 impl imba::store::Entity for Chats {
@@ -153,13 +162,7 @@ impl imba::store::Entity for Chats {
     }
 }
 
-impl crate::AppEntity for Chats {
-    fn label(command: &ChatsCommand) -> &'static str {
-        match command {
-            ChatsCommand::Panel(..) => "chat",
-        }
-    }
-}
+impl crate::AppEntity for Chats {}
 
 pub(crate) struct EnsureChatFeed {
     pub(crate) chats: imba::store::Id<Chats>,

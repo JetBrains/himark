@@ -158,6 +158,7 @@ impl Drop for Session {
     }
 }
 
+#[derive(Clone)]
 pub enum TerminalCommand {
     Resize {
         cols: u16,
@@ -169,6 +170,15 @@ pub enum TerminalCommand {
     Scroll {
         lines: i32,
     },
+}
+
+impl std::fmt::Display for TerminalCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TerminalCommand::Resize { .. } => out.write_str("terminal resize"),
+            TerminalCommand::Scroll { .. } => out.write_str("terminal scroll"),
+        }
+    }
 }
 
 #[derive(Clone)]

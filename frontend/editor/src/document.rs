@@ -2616,7 +2616,7 @@ impl Document {
                         crate::before_inlay::BeforeCommand::Tick(_) => "Before(Tick)".into(),
                     }
                 } else {
-                    format!("{:?}", command.type_id())
+                    command.to_string()
                 };
                 eprintln!("[focus-trace] host {editor:?} -> Inlay({key:?}) via {label}",);
             }

@@ -203,6 +203,7 @@ fn dir_children(
 
 type Rows = ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>;
 
+#[derive(Clone)]
 pub enum CommentsViewCommand {
     Rows(ListKeyCommand<TreeListCommand>),
 
@@ -211,6 +212,17 @@ pub enum CommentsViewCommand {
     Refresh,
 
     Dismiss,
+}
+
+impl std::fmt::Display for CommentsViewCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CommentsViewCommand::Rows(command) => command.fmt(out),
+            CommentsViewCommand::SendAll => out.write_str("comments send all"),
+            CommentsViewCommand::Refresh => out.write_str("comments refresh"),
+            CommentsViewCommand::Dismiss => out.write_str("comments dismiss"),
+        }
+    }
 }
 
 pub struct CommentsView {
