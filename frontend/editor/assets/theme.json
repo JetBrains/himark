@@ -162,7 +162,7 @@
     },
     "diff-added": {
       "stripe": "#cc3ecf6e",
-      "background": "#243ecf6e"
+      "background": "#163ecf6e"
     },
     "diff-deleted": {
       "stripe": "#cceb5d5d",
@@ -173,7 +173,7 @@
       "background": "#24e0a73a"
     },
     "diff-added-word": {
-      "background": "#583ecf6e",
+      "background": "#3a3ecf6e",
       "background_extent": "glyphs",
       "background_height": "tight"
     },
