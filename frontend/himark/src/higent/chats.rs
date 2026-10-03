@@ -164,6 +164,46 @@ impl imba::store::Entity for Chats {
 
 impl crate::AppEntity for Chats {}
 
+/// Boot a chat's feed by id, pane or no pane: liveness never depends
+/// on the chat being laid out — a hidden or not-yet-shown chat still
+/// connects and streams (the window merely chooses what to paint).
+pub(crate) struct BootChat {
+    pub(crate) chats: imba::store::Id<Chats>,
+    pub(crate) chat: ChatUri,
+}
+
+impl crate::DynamicCommand for BootChat {
+    fn id(&self) -> &'static str {
+        "agent.chat-boot"
+    }
+    fn name(&self) -> String {
+        "Boot Chat".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        _window: WindowId,
+        _fx: &mut crate::AppFx<'_>,
+    ) {
+
+        let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
+            return;
+        };
+        let boots = panel.boot_feed();
+        Chats::put(store, self.chats, self.chat.clone(), panel);
+        if boots {
+            crate::AppRequests::push(
+                store,
+                std::sync::Arc::new(EnsureChatFeed {
+                    chats: self.chats,
+                    chat: self.chat.clone(),
+                }),
+            );
+        }
+    }
+}
+
 pub(crate) struct EnsureChatFeed {
     pub(crate) chats: imba::store::Id<Chats>,
     pub(crate) chat: ChatUri,

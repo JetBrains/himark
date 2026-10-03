@@ -17,10 +17,31 @@ use skia_safe::{Contains, Rect, Size};
 pub struct SplitView<First, Second> {
     arrangement: Arrangement,
 
-    ratio: f32,
+    sizing: Sizing,
     focused: Pane,
     first: First,
     second: Second,
+}
+
+/// How the split's STATE remembers the first pane's share. Most
+/// splits want `Ratio` -- the proportion survives window resizes. A
+/// dock-like split pins the first pane in pixels instead.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Sizing {
+    /// The first pane takes this fraction of the axis.
+    Ratio(f32),
+
+    /// The first pane takes this many pixels of the axis.
+    FirstAbsolute(f32),
+}
+
+impl Sizing {
+    pub fn first_extent(self, axis: f32) -> f32 {
+        match self {
+            Sizing::Ratio(ratio) => (axis * ratio).floor(),
+            Sizing::FirstAbsolute(px) => px.clamp(0.0, axis).floor(),
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -58,7 +79,7 @@ impl<First, Second> SplitView<First, Second> {
     pub fn new(arrangement: Arrangement, first: First, second: Second) -> Self {
         Self {
             arrangement,
-            ratio: 0.5,
+            sizing: Sizing::Ratio(0.5),
             focused: Pane::First,
             first,
             second,
@@ -74,12 +95,24 @@ impl<First, Second> SplitView<First, Second> {
     }
 
     pub fn with_ratio(mut self, ratio: f32) -> Self {
-        self.ratio = ratio.clamp(0.0, 1.0);
+        self.sizing = Sizing::Ratio(ratio.clamp(0.0, 1.0));
         self
     }
 
+    pub fn with_sizing(mut self, sizing: Sizing) -> Self {
+        self.sizing = sizing;
+        self
+    }
+
+    pub fn sizing(&self) -> Sizing {
+        self.sizing
+    }
+
     pub fn ratio(&self) -> f32 {
-        self.ratio
+        match self.sizing {
+            Sizing::Ratio(ratio) => ratio,
+            Sizing::FirstAbsolute(_) => 0.5,
+        }
     }
 
     pub fn arrangement(&self) -> Arrangement {
@@ -117,11 +150,11 @@ impl<First, Second> SplitView<First, Second> {
     pub fn divider_rect(&self, size: Size) -> Rect {
         match self.arrangement {
             Arrangement::Row => {
-                let first_width = (size.width * self.ratio).floor();
+                let first_width = self.sizing.first_extent(size.width);
                 Rect::from_xywh(first_width, 0.0, 1.0, size.height)
             }
             Arrangement::Column => {
-                let first_height = (size.height * self.ratio).floor();
+                let first_height = self.sizing.first_extent(size.height);
                 Rect::from_xywh(0.0, first_height, size.width, 1.0)
             }
         }

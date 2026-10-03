@@ -528,6 +528,7 @@ const SESSION: &str = "ahp-session:/scripted";
 fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
+    let expected_turns = snapshot.turns.len();
     let script = Script::new(CHAT, SESSION, snapshot);
     let host = engine.register_agent_server(
         "scripted",
@@ -544,6 +545,7 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     )]));
     settle_until(&mut engine, window, "the scripted chat came up", |engine| {
         chat_record(engine).is_some_and(|chat| chat.ready())
+            && transcript(engine).len() == expected_turns
     });
     (engine, window, script)
 }

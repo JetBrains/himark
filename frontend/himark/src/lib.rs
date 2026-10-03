@@ -122,7 +122,10 @@ pub use watch::{
     Subscription, UnsubscribeEffect, Watching,
 };
 pub use window::{LayerFocus, Window, WindowCommand, WindowId, Windows};
-pub use workbench::{workbench_geometry, Workbench, WorkbenchGeometry};
+pub use workbench::{
+    chat_column_engaged, chat_column_width, workbench_geometry, ChatColumn, Workbench,
+    WorkbenchCommand, WorkbenchGeometry,
+};
 pub use workbench_node::{
     DynPanelView, EditorPane, NodeCommand, PaneCommand, Panel, PanelCommand, PanelRequest,
     PanelView, WidgetOrigin, WorkbenchNode,

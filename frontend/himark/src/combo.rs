@@ -156,6 +156,10 @@ where
 {
     pub label: &'static str,
 
+    /// A compact cell drops the legend label once a value is picked —
+    /// the label only serves as the placeholder.
+    pub compact: bool,
+
     pub picked: usize,
     pub open: bool,
     menu: ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
@@ -202,6 +206,7 @@ where
     pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, label: &'static str) -> Self {
         Self {
             label,
+            compact: false,
             picked: 0,
             open: false,
             menu: ListKeyboardController::searchable(
@@ -282,12 +287,21 @@ where
     pub fn cell_width(&self, ui: &UiCtx, chrome: &ComboChrome) -> f32 {
         let label_font = crate::fonts::ui_font(ui, chrome.label_size);
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
-        let label = tracked_width(ui, &label_font, self.label);
         let value = self
             .value()
-            .map(|option| imba::text_advance(ui, &value_font, &option.cell_label()))
-            .unwrap_or(0.0);
-        chrome.pad + label + chrome.gap + value + chrome.gap + chrome.chevron + chrome.pad
+            .map(|option| imba::text_advance(ui, &value_font, &option.cell_label()));
+        let label = match self.compact && value.is_some() {
+            true => None,
+            false => Some(tracked_width(ui, &label_font, self.label)),
+        };
+        let mut width = chrome.pad;
+        if let Some(label) = label {
+            width += label + chrome.gap;
+        }
+        if let Some(value) = value {
+            width += value;
+        }
+        width + chrome.gap + chrome.chevron + chrome.pad
     }
 
     pub fn cell<'a>(
@@ -305,8 +319,11 @@ where
         let width = self.cell_width(ui, &chrome);
         let label_font = crate::fonts::ui_font(ui, chrome.label_size);
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
-        let label = self.label;
         let value = self.value().map(|option| option.cell_label());
+        let label = match self.compact && value.is_some() {
+            true => None,
+            false => Some(self.label),
+        };
         let open = self.open;
 
         let cell = leaf::<ComboCommand<T::Command>>(width, height)
@@ -328,16 +345,18 @@ where
 
                     let mut x = rect.left + chrome.pad;
                     let mid = rect.top + rect.height() * 0.5;
-                    x = draw_tracked(
-                        &shaper,
-                        canvas,
-                        &label_font,
-                        chrome.label_color.0,
-                        label,
-                        x,
-                        mid + chrome.label_size * 0.35,
-                    );
-                    x += chrome.gap;
+                    if let Some(label) = label {
+                        x = draw_tracked(
+                            &shaper,
+                            canvas,
+                            &label_font,
+                            chrome.label_color.0,
+                            label,
+                            x,
+                            mid + chrome.label_size * 0.35,
+                        );
+                        x += chrome.gap;
+                    }
                     if let Some(value) = &value {
                         x += shaper.draw(
                             canvas,

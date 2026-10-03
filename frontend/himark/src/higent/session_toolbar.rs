@@ -5,16 +5,9 @@ use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
 use crate::higent::SessionUri;
-use ::editor::theme::ComboChrome;
 use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
 use imba::{
-    container::Container,
-    effect::AnyEffect,
-    event::{Event, EventResult, MouseButton},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
+    container::Container, effect::AnyEffect, store::Store, thunk_ext::ThunkExt, UiCtx, View,
 };
 
 use super::session::SessionChannel;
@@ -39,7 +32,6 @@ pub enum ToolbarCommand {
     Model(ComboCommand),
     Effort(ComboCommand),
     Edits(ComboCommand),
-    AddFolder,
 }
 
 impl std::fmt::Display for ToolbarCommand {
@@ -48,7 +40,6 @@ impl std::fmt::Display for ToolbarCommand {
             ToolbarCommand::Model(command) => command.fmt(out),
             ToolbarCommand::Effort(command) => command.fmt(out),
             ToolbarCommand::Edits(command) => command.fmt(out),
-            ToolbarCommand::AddFolder => out.write_str("add folder"),
         }
     }
 }
@@ -57,16 +48,18 @@ pub enum ToolbarAsk {
     None,
 
     Edits(String),
-
-    AddFolder,
 }
 
 impl SessionToolbar {
     pub(crate) fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+        let compact = |mut combo: Combo| {
+            combo.compact = true;
+            combo
+        };
         Self {
-            model: Combo::new(store, ui, "MODEL"),
-            effort: Combo::new(store, ui, "EFFORT"),
-            edits: Combo::new(store, ui, "EDITS"),
+            model: compact(Combo::new(store, ui, "MODEL")),
+            effort: compact(Combo::new(store, ui, "EFFORT")),
+            edits: compact(Combo::new(store, ui, "EDITS")),
             synced: 0,
             cell_spans: Arc::new((0..4).map(|_| AtomicU64::new(0)).collect()),
             strip_origin: Arc::new(AtomicU64::new(0)),
@@ -195,10 +188,13 @@ impl SessionToolbar {
                     None => ToolbarAsk::None,
                 }
             }
-            ToolbarCommand::AddFolder => ToolbarAsk::AddFolder,
         }
     }
 
+    /// Lay the combo strip left to right within `budget`. The strip
+    /// degrades gracefully: a cell that would overflow the budget is
+    /// dropped along with everything after it — never clipped, and
+    /// never under whatever the caller anchors to the right (SEND).
     pub fn place<'a>(
         &'a self,
         arena: &'a imba::arena::Arena,
@@ -207,6 +203,7 @@ impl SessionToolbar {
         ui: &'a UiCtx,
         y: f32,
         height: f32,
+        budget: f32,
     ) -> f32 {
         let themes = crate::env::Themes::of(store);
         let theme = themes.ui();
@@ -224,8 +221,14 @@ impl SessionToolbar {
                 );
             }
         };
+        let mut dropped = false;
         for (index, (combo, wrap)) in combos.into_iter().enumerate() {
             let width = combo.cell_width(ui, &theme.combo);
+            if dropped || x + width > budget {
+                dropped = true;
+                span(index, x, 0.0);
+                continue;
+            }
             span(index, x, width);
             root.place(
                 x,
@@ -236,10 +239,8 @@ impl SessionToolbar {
             );
             x += width;
         }
-        let width = action_cell_width(ui, &theme.combo, ADD_FOLDER_LABEL);
-        span(3, x, width);
-        root.place(x, y, action_cell(store, ui, width, height));
-        x + width
+        span(3, x, 0.0);
+        x
     }
 }
 
@@ -287,56 +288,6 @@ impl SessionToolbar {
                 .collect(),
         }
     }
-}
-
-const ADD_FOLDER_LABEL: &str = "＋ FOLDER";
-
-fn action_cell_width(ui: &UiCtx, chrome: &ComboChrome, label: &str) -> f32 {
-    let font = crate::fonts::ui_font(ui, chrome.label_size);
-    chrome.pad + crate::combo::tracked_width(ui, &font, label) + chrome.pad
-}
-
-fn action_cell<'a>(
-    store: &'a Store,
-    ui: &'a UiCtx,
-    width: f32,
-    height: f32,
-) -> impl Thunk<'a, super::chat::ChatPanelCommand> + 'a {
-    let themes = crate::env::Themes::of(store);
-    let theme = themes.ui();
-    let chrome = theme.combo.clone();
-    let rule = theme.toolbar.rule.0;
-    let font = crate::fonts::ui_font(ui, chrome.label_size);
-    let shaper = imba::TextShaper::of(ui);
-    leaf::<super::chat::ChatPanelCommand>(width, height)
-        .paint_below(move |_arena, canvas, rect| {
-            let mut paint = skia_safe::Paint::default();
-            paint.set_anti_alias(false);
-            paint.set_color(rule);
-            canvas.draw_rect(
-                skia_safe::Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
-                &paint,
-            );
-            let mid = rect.top + rect.height() * 0.5;
-            crate::combo::draw_tracked(
-                &shaper,
-                canvas,
-                &font,
-                chrome.label_color.0,
-                ADD_FOLDER_LABEL,
-                rect.left + chrome.pad,
-                mid + chrome.label_size * 0.35,
-            );
-        })
-        .event(|_arena, event, _size| match event {
-            Event::MouseDown {
-                button: MouseButton::Left,
-                ..
-            } => EventResult::Command(super::chat::ChatPanelCommand::Toolbar(
-                ToolbarCommand::AddFolder,
-            )),
-            _ => EventResult::Ignored,
-        })
 }
 
 pub(crate) fn agent_models(

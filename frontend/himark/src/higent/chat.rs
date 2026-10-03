@@ -765,6 +765,18 @@ impl ChatPanel {
         band + self.stack.height(&chrome) + theme.ui().toolbar.height
     }
 
+    /// Idle -> Subscribing, exactly once: the double-subscription
+    /// guard every boot road shares (paint, install, walk-back).
+    pub(crate) fn boot_feed(&mut self) -> bool {
+        match self.state {
+            Link::Idle => {
+                self.state = Link::Subscribing;
+                true
+            }
+            _ => false,
+        }
+    }
+
     pub fn ready(&self) -> bool {
         matches!(self.state, Link::Ready)
     }
@@ -1513,8 +1525,7 @@ impl ChatPanel {
                 self.perform_in_view(store, ui, id, *inner, fx);
             }
             ChatPanelCommand::Boot => {
-                if matches!(self.state, Link::Idle) {
-                    self.state = Link::Subscribing;
+                if self.boot_feed() {
                     crate::AppRequests::push(
                         store,
                         std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
@@ -1800,15 +1811,6 @@ impl ChatPanel {
                         }
                     }
 
-                    super::ToolbarAsk::AddFolder => {
-                        crate::AppRequests::push(
-                            store,
-                            std::sync::Arc::new(super::AddSessionFolders {
-                                server: self.server,
-                                session: self.session.clone(),
-                            }),
-                        );
-                    }
                     super::ToolbarAsk::None => {}
                 }
             }
@@ -1949,6 +1951,31 @@ impl ChatPanel {
                     );
                 }
 
+                // The SEND cell's width, computed up front: the combo
+                // strip's budget ends where SEND begins — the button
+                // always fits and nothing ever covers it.
+                let send_cell_width = {
+                    let ui_theme = theme.ui();
+                    let busy = self.busy();
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font =
+                        crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    label
+                        .chars()
+                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                        .sum::<f32>()
+                        + imba::text_advance(ui, &key_font, "⌘⏎")
+                        + ui_theme.combo.gap
+                        + ui_theme.combo.pad * 2.0
+                };
                 let toolbar_cells_right = view.toolbar.place(
                     arena,
                     &mut panel,
@@ -1956,6 +1983,7 @@ impl ChatPanel {
                     ui,
                     size.height - toolbar_h + 1.0,
                     toolbar_h - 1.0,
+                    (size.width - send_cell_width - theme.ui().combo.gap).max(0.0),
                 );
 
                 // The footer's edges: a hairline between the transcript
@@ -1997,13 +2025,7 @@ impl ChatPanel {
                     let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
                     let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
                     let pad = ui_theme.combo.pad;
-                    let cell_width = label
-                        .chars()
-                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                        .sum::<f32>()
-                        + imba::text_advance(ui, &key_font, "⌘⏎")
-                        + ui_theme.combo.gap
-                        + pad * 2.0;
+                    let cell_width = send_cell_width;
                     let accent = if stop {
                         chrome.stop_color.0
                     } else {

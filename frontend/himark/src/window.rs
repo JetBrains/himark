@@ -17,11 +17,13 @@ use crate::{
     app::{panel_width, AppFx},
     Application,
 };
-use crate::{EditorIdView, ModalRequest, ModalView, NodeCommand, Panel, Workbench, WorkbenchNode};
+use crate::{
+    EditorIdView, ModalRequest, ModalView, Panel, Workbench, WorkbenchCommand, WorkbenchNode,
+};
 
 #[derive(Clone)]
 pub enum WindowCommand {
-    Base(NodeCommand),
+    Base(WorkbenchCommand),
 
     Toolbar(crate::toolbar::ToolbarCommand),
 
@@ -364,6 +366,19 @@ impl View for Layers {
     }
 }
 
+/// The chat connects the moment it is OPEN, painted or not — its
+/// feed is addressed by id, like any panel's commands.
+fn boot_chat_feed(
+    store: &mut Store,
+    chats: imba::store::Id<crate::higent::Chats>,
+    chat: crate::higent::ChatUri,
+) {
+    crate::AppRequests::push(
+        store,
+        std::sync::Arc::new(crate::higent::chats::BootChat { chats, chat }),
+    );
+}
+
 fn below_layer<'a, Command: 'a>(
     arena: &'a Arena,
     size: Size,
@@ -392,7 +407,7 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
 impl<'a, BaseThunk, ToolbarThunk, DynThunk> Thunk<'a, WindowCommand>
     for LayersWidget<BaseThunk, ToolbarThunk, DynThunk>
 where
-    BaseThunk: Thunk<'a, NodeCommand> + 'a,
+    BaseThunk: Thunk<'a, WorkbenchCommand> + 'a,
     ToolbarThunk: Thunk<'a, crate::toolbar::ToolbarCommand> + 'a,
     DynThunk: Thunk<'a, imba::DynCommand> + 'a,
 {
@@ -433,7 +448,7 @@ where
 }
 
 struct RealizedLayers<'a> {
-    base: imba::WidgetBox<'a, NodeCommand>,
+    base: imba::WidgetBox<'a, WorkbenchCommand>,
     toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
     side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
@@ -756,6 +771,18 @@ impl Windows {
         store.get::<Windows>()?.entries.get(&id)
     }
 
+    pub(crate) fn any_window_holds(
+        store: &imba::store::Store,
+        session: &crate::SessionId,
+    ) -> bool {
+        store.get::<Windows>().is_some_and(|windows| {
+            windows
+                .entries
+                .values()
+                .any(|window| window.holds_session(session))
+        })
+    }
+
     pub fn put(store: &mut imba::store::Store, id: WindowId, entity: Window) {
         store.update::<Windows>(|windows| {
             windows.entries.insert_mut(id, entity);
@@ -880,6 +907,13 @@ impl Window {
 
     pub fn current_session(&self) -> crate::SessionId {
         self.current_session.clone()
+    }
+
+    /// The window holds a session while it shows it or keeps its
+    /// stashed workbench — the grip that spares the family from the
+    /// all-empty sweep.
+    pub(crate) fn holds_session(&self, session: &crate::SessionId) -> bool {
+        self.current_session == *session || self.workbenches.get(session).is_some()
     }
 
     pub fn family(&self) -> &crate::higent::SessionState {
@@ -1102,33 +1136,81 @@ impl Window {
         self.content.side.as_ref().map(|drawer| drawer.content())
     }
 
-    /// `chat.composer` (the toolbar bubble, ⌘I): FRONT the session's
-    /// chat as an ordinary workbench panel — focus the standing chat
-    /// pane if one is open in this workbench, otherwise mount the
-    /// session's chat into the focused pane.
+    /// Is the chat SHOWING right now, by the same derivation the
+    /// layout uses? Vacant tree or fronted means yes; side by side
+    /// means yes; a narrow window with panels means no.
+    fn chat_showing(&self, store: &Store) -> bool {
+        let workbench = self.workbench();
+        if workbench.chat().is_none() || workbench.root.full_bleed() {
+            return false;
+        }
+        if workbench.root.is_vacant() || workbench.chat_fronted() {
+            return true;
+        }
+        let theme = ::editor::env::Themes::of(store);
+        crate::chat_column_engaged(self.viewport_size().width, &theme.ui().window)
+    }
+
+    /// `chat.composer` (the toolbar bubble, ⌘I): the chat is ALWAYS
+    /// open from the workbench's point of view — this fills the slot
+    /// on first use and gives it the keyboard. Whether it is VISIBLE
+    /// is the layout's call alone (full when the tree is vacant, the
+    /// left column when the window fits both, hidden otherwise).
     pub(crate) fn front_chat(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut AppFx<'_>) {
+        let _ = (ui, fx);
         if self.has_modal() {
             return;
         }
-        let is_chat = |panel: &Panel| {
-            matches!(panel, Panel::Plugin(view)
-                if matches!(view.family_row(), Some(crate::FamilyRow::Chat(..))))
-        };
-        if self.workbench_mut().root.focus_where(&is_chat) {
-            self.content.focus = LayerFocus::Content;
-            return;
+        if self.workbench().chat().is_none() {
+            let chats = self.family.chats();
+            let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
+                return;
+            };
+            let Some(pane) =
+                crate::family_rows::mint(store, &crate::FamilyRow::Chat(chats, chat.clone()))
+            else {
+                return;
+            };
+            self.workbench_mut().dock_chat(Panel::Plugin(pane));
+            boot_chat_feed(store, chats, chat);
         }
-        let chats = self.family.chats();
-        let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
-            return;
-        };
-        let Some(pane) = crate::family_rows::mint(store, &crate::FamilyRow::Chat(chats, chat))
-        else {
-            return;
-        };
-        if self.open_panel(store, ui, pane, fx) {
-            self.content.focus = LayerFocus::Content;
+        self.workbench_mut().focus_chat(true);
+        // Hidden by the single-panel presentation? Cmd-I means SHOW
+        // it — front the chat until a panel is opened again.
+        if !self.chat_showing(store) {
+            self.workbench_mut().front_chat_over_panels();
         }
+        self.content.focus = LayerFocus::Content;
+    }
+
+    /// A freshly minted chat pane lands in the workbench's chat slot —
+    /// never in the split tree.
+    pub(crate) fn open_chat_panel<R: 'static>(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        pane: Box<dyn crate::DynPanelView>,
+        fx: &mut Effects<'_, R>,
+    ) -> bool {
+        if self.has_modal() {
+            return false;
+        }
+        let row = pane.family_row();
+        match self.workbench_mut().chat_mut() {
+            Some(chat) => {
+                let displaced = chat.replace_panel(Panel::Plugin(pane));
+                self.retire_displaced(store, ui, displaced, fx);
+            }
+            None => {
+                self.workbench_mut().dock_chat(Panel::Plugin(pane));
+            }
+        }
+        if let Some(crate::FamilyRow::Chat(chats, chat)) = row {
+            boot_chat_feed(store, chats, chat);
+        }
+        self.workbench_mut().focus_chat(true);
+        self.content.focus = LayerFocus::Content;
+        true
     }
 
     #[doc(hidden)]
@@ -1289,6 +1371,11 @@ impl Window {
 
     pub(crate) fn take_panel_request(&mut self) -> Option<crate::PanelRequest> {
         let mut request = None;
+        if let Some(chat) = self.workbench_mut().chat_mut() {
+            if let Panel::Plugin(view) = chat.panel_mut() {
+                request = view.take_request();
+            }
+        }
         self.workbench_mut().root.for_each_pane_mut(&mut |panel| {
             if request.is_none() {
                 if let Panel::Plugin(view) = panel {
@@ -1378,6 +1465,7 @@ impl Window {
     }
 
     pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn crate::DynPanelView>) {
+        self.workbench_mut().yield_chat();
         let displaced = self
             .workbench_mut()
             .root
@@ -1392,6 +1480,11 @@ impl Window {
         panel: Box<dyn crate::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
+        // A chat pane has ONE home, whatever road carried it here:
+        // the workbench's chat slot, never a tree leaf.
+        if matches!(panel.family_row(), Some(crate::FamilyRow::Chat(..))) {
+            return self.open_chat_panel(store, ui, panel, fx);
+        }
         if self.has_modal() {
             return false;
         }
@@ -1404,9 +1497,16 @@ impl Window {
             return false;
         }
 
+        // The chat never closes; content merely displaces it. The
+        // guard holds only while the chat is actually SHOWING — a
+        // hidden chat's stale focus must not block closing the panel.
+        if self.workbench().chat_focused() && self.chat_showing(store) {
+            return false;
+        }
+
         let displaced =
             std::mem::replace(self.workbench_mut().root.focused_pane_mut(), Panel::blank());
-        match self.workbench_mut().root.close_focused() {
+        let closed = match self.workbench_mut().root.close_focused() {
             true => {
                 self.stash_displaced(store, displaced);
                 true
@@ -1415,7 +1515,12 @@ impl Window {
                 *self.workbench_mut().root.focused_pane_mut() = displaced;
                 false
             }
+        };
+        // Closing the last panel hands the workbench back to the chat.
+        if self.workbench().root.is_vacant() {
+            self.workbench_mut().focus_chat(true);
         }
+        closed
     }
 
     pub(crate) fn split_current(
@@ -1508,6 +1613,7 @@ impl Window {
             if same_editor_location(&walk.target, target)
                 && self.complete_walk(store, ui, window, &walk.target, walk.step, fx)
             {
+                self.workbench_mut().yield_chat();
                 return true;
             }
         }
@@ -1522,6 +1628,9 @@ impl Window {
                     }
                 }
                 Self::touch_recent(store, self.family.recents(), target);
+                // The focused pane absorbed the location — a landing
+                // all the same: the fronted chat hands the window back.
+                self.workbench_mut().yield_chat();
                 return true;
             }
         }
@@ -1593,6 +1702,13 @@ impl Window {
         if self.has_modal() {
             return false;
         }
+
+        // The chat never closes; content merely displaces it. The
+        // guard holds only while the chat is actually SHOWING — a
+        // hidden chat's stale focus must not block closing the panel.
+        if self.workbench().chat_focused() && self.chat_showing(store) {
+            return false;
+        }
         let closed = {
             let slot = self.workbench_mut().root.focused_slot_mut();
             slot.replace_panel(Panel::blank())
@@ -1636,6 +1752,10 @@ impl Window {
                 });
             }
         }
+        // Closing the last panel hands the workbench back to the chat.
+        if self.workbench().root.is_vacant() {
+            self.workbench_mut().focus_chat(true);
+        }
         true
     }
 
@@ -1661,6 +1781,9 @@ impl Window {
         panel: Panel,
         fx: &mut Effects<'_, R>,
     ) {
+        // A panel landing in the tree takes the window back from the
+        // chat — keyboard and any fronting.
+        self.workbench_mut().yield_chat();
         let slot = self.workbench_mut().root.focused_slot_mut();
         if let Some(place) = slot.panel.navigation_location(store) {
             slot.back.push_back_mut(place);
@@ -1713,6 +1836,8 @@ impl Window {
             WalkStep::Forward
         };
         if self.complete_walk(store, ui, window, &target, step, fx) {
+            // Walking history is tree work — the fronted chat yields.
+            self.workbench_mut().yield_chat();
             return true;
         }
 
@@ -1720,6 +1845,7 @@ impl Window {
             true => {
                 let slot = self.workbench_mut().root.focused_slot_mut();
                 slot.pending = Some(PendingWalk { target, step });
+                self.workbench_mut().yield_chat();
                 true
             }
             false => false,
@@ -1760,6 +1886,9 @@ impl Window {
         if focus {
             self.focus_content_layer(store, ui, window, fx);
         }
+        // The document lands in the tree — the window comes back from
+        // the chat.
+        self.workbench_mut().yield_chat();
         let documents = self.family.documents();
         let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
         else {

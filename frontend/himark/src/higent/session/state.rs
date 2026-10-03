@@ -260,7 +260,11 @@ impl Hosts {
         else {
             return;
         };
-        if families.is_empty(store) {
+        // A family a live window HOLDS is not garbage, however empty:
+        // fresh sessions start with nothing open (the chat owns the
+        // workbench), and the window's grip is what keeps the bundle's
+        // ids valid until content arrives.
+        if families.is_empty(store) && !crate::Windows::any_window_holds(store, scope) {
             families.retract_all(store);
             if let Some(host) = self.entries.get(&scope.host) {
                 let mut host = host.clone();

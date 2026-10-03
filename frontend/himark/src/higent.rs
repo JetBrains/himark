@@ -5,7 +5,7 @@ pub use ahp_types;
 
 pub mod cell;
 mod chat;
-mod chats;
+pub(crate) mod chats;
 mod composer;
 mod drawer;
 mod effects;

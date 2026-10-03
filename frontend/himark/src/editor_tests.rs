@@ -1917,6 +1917,7 @@ fn palette_commands_follow_the_modal_focus() {
             "theme.dark",
             "theme.light",
             "chat.composer",
+            "session.add-folder",
             "session.new",
         ],
         "text focus offers the editor's caret commands, then the workbench actions"
@@ -2075,6 +2076,7 @@ fn registered_commands_present_and_dispatch_by_id() {
             "theme.dark",
             "theme.light",
             "chat.composer",
+            "session.add-folder",
             "session.new",
             "test.probe",
         ],
@@ -2161,11 +2163,13 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     assert_eq!(app.pane_count(), 1, "a fresh workbench for B");
     assert_eq!(
         app.document_count(),
-        1,
-        "B's world holds its own scratch alone (documents are per session)"
+        0,
+        "B starts with nothing open — a fresh session's workbench is vacant"
     );
-    let b_text = app.focused_document_text().expect("B text");
-    assert!(!b_text.contains("hello A"), "B does not show A's document");
+    assert!(
+        app.focused_document_text().is_none(),
+        "B does not show A's document"
+    );
 
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(app.pane_count(), 2, "A's split survived the stash");
@@ -2176,8 +2180,8 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let _ = switch(&mut app, Some(second.clone()));
     assert_eq!(
         app.document_count(),
-        1,
-        "toggling creates exactly one scratch per session, ever"
+        0,
+        "toggling back mints nothing — B stays as it was left"
     );
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(
@@ -4523,10 +4527,10 @@ mod dock_tests {
         );
     }
 
-    /// `chat.composer` (⌘I, the toolbar bubble) FRONTS the session's
-    /// chat as an ordinary workbench panel: it mounts the chat when
-    /// none is open, keeps a standing one, and re-fronts a displaced
-    /// one — the floating sheet is gone.
+    /// `chat.composer` (\u{2318}I): the chat is always open from the
+    /// workbench's point of view — the command fills the dedicated
+    /// slot on first use, re-focuses it after, and the chat NEVER
+    /// lands in the split tree or closes.
     #[test]
     fn the_composer_command_fronts_the_chat_panel() {
         let mut app = Application::new(AppFonts::embedded());
@@ -4576,7 +4580,19 @@ mod dock_tests {
         crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut surface);
 
-        let mounted_chat = |app: &crate::Application| -> Option<String> {
+        let slot_chat = |app: &crate::Application| -> Option<String> {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let chat = entity.workbench().chat()?;
+            match chat.panel() {
+                crate::Panel::Plugin(view) => view
+                    .as_any()
+                    .downcast_ref::<crate::higent::ChatPane>()
+                    .map(|pane| pane.chat().as_str().to_owned()),
+                crate::Panel::Editor(_) => None,
+            }
+        };
+        let tree_chat = |app: &crate::Application| -> Option<String> {
             let entity =
                 crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
             let mut found = None;
@@ -4589,57 +4605,464 @@ mod dock_tests {
             });
             found
         };
-        assert_eq!(mounted_chat(&app), None, "nothing mounted the chat yet");
+        assert_eq!(slot_chat(&app), None, "nothing filled the chat slot yet");
 
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut surface);
         assert_eq!(
-            mounted_chat(&app).as_deref(),
+            slot_chat(&app).as_deref(),
             Some("ahp-chat:/volatile"),
-            "the command mounts the session's chat as a workbench panel"
+            "the command fills the workbench's chat slot"
         );
+        assert_eq!(tree_chat(&app), None, "the chat never enters the tree");
 
-        // Idempotent: the standing pane is fronted, not duplicated.
+        // Idempotent: the standing slot is fronted, not duplicated.
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut surface);
-        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
+        assert_eq!(slot_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
 
-        // CLOSED outright (dismantle runs), the command reopens it:
-        // closing the pane must not end the conversation.
+        // The chat never closes: \u{2318}W on the focused chat is refused.
         assert!(app.perform_registered(window, "workbench.close"));
         settle(&mut app, &mut surface);
-        assert_eq!(mounted_chat(&app), None, "the chat pane was closed");
-        assert!(app.perform_registered(window, "chat.composer"));
-        settle(&mut app, &mut surface);
         assert_eq!(
-            mounted_chat(&app).as_deref(),
+            slot_chat(&app).as_deref(),
             Some("ahp-chat:/volatile"),
-            "closing the pane did not kill the chat — \u{2318}I reopens it"
-        );
-
-        // Displaced by another occupant, the command fronts it again.
-        {
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.replace_focused_panel(&mut app.store_mut(), crate::Panel::blank());
-            crate::Windows::put(&mut app.store_mut(), window, entity);
-        }
-        settle(&mut app, &mut surface);
-        assert_eq!(mounted_chat(&app), None, "the chat pane was displaced");
-        assert!(app.perform_registered(window, "chat.composer"));
-        settle(&mut app, &mut surface);
-        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
-        let entity = crate::Windows::window_ref(app.store(), window).expect("window");
-        assert!(
-            matches!(entity.workbench().root.focused_pane(), crate::Panel::Plugin(view)
-                if view.as_any().is::<crate::higent::ChatPane>()),
-            "the fronted chat pane holds the focus"
+            "the chat slot refuses to close"
         );
     }
 
-    /// A chat pane is a real navigation stop: leaving it records its
-    /// place, and back re-mints it off the family row.
+    /// Presentation is the layout's call alone: a vacant tree hands
+    /// the whole workbench to the chat, a document splits the space
+    /// when the window fits both, a narrow window shows the document
+    /// alone (the chat slot stays, hidden), and closing the last
+    /// panel hands it all back.
     #[test]
-    fn back_returns_to_the_chat_panel() {
+    fn the_chat_docks_left_when_the_window_is_wide() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        // House units are 2x pixels: 3200 here is a 1600pt window.
+        let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+        let slot_filled =
+            |app: &crate::Application| -> bool { held(app).workbench().chat().is_some() };
+        let tree_chat = |app: &crate::Application| -> Option<String> {
+            let mut found = None;
+            held(app).workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                        found = Some(pane.chat().as_str().to_owned());
+                    }
+                }
+            });
+            found
+        };
+        let vacant =
+            |app: &crate::Application| -> bool { held(app).workbench().root.is_vacant() };
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+        assert!(slot_filled(&app), "\u{2318}I fills the chat slot");
+        assert_eq!(tree_chat(&app), None, "the chat never enters the tree");
+        assert!(vacant(&app), "a fresh session has nothing open");
+
+        // Narrowing changes NOTHING about the state — visibility is
+        // the layout's business, the slot stays put.
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        settle(&mut app, &mut narrow);
+        assert!(slot_filled(&app), "the slot survives a narrow window");
+        assert_eq!(tree_chat(&app), None);
+
+        settle(&mut app, &mut wide);
+        assert!(slot_filled(&app));
+
+        // Opening a document splits the space with the chat...
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    crate::app::markdown_scratch(),
+                    None,
+                    "doc".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut wide);
+        assert!(!vacant(&app), "the document fills the vacant leaf");
+        assert!(slot_filled(&app), "the chat stays beside it");
+
+        // ...and closing the last panel hands it all back.
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut wide);
+        assert!(vacant(&app), "closing the last panel empties the tree");
+        assert!(slot_filled(&app), "the chat owns the workbench again");
+    }
+
+    /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_narrow_screenshot -- --ignored`
+    /// — the squeezed case: a document open in a window too narrow
+    /// for both; the panel must win the whole workbench.
+    #[test]
+    #[ignore]
+    fn dump_chat_narrow_screenshot() {
+        let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+            return;
+        };
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        // The user's real squeezed window: 1392pt at 2x = 2784 device px.
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((2784, 1700)).expect("surface");
+        crate::Window::draw(window, &mut app, narrow.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut narrow);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let document = crate::app::markdown_scratch();
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    document,
+                    None,
+                    "narrow.md".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+
+        let image = narrow.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png");
+        std::fs::write(format!("{dir}/chat-narrow.png"), data.as_bytes()).expect("write");
+    }
+
+    /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_column_screenshot -- --ignored`
+    #[test]
+    #[ignore]
+    fn dump_chat_column_screenshot() {
+        let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+            return;
+        };
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut wide = skia_safe::surfaces::raster_n32_premul((1920, 1080)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+
+        let image = wide.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png");
+        std::fs::write(format!("{dir}/chat-column.png"), data.as_bytes()).expect("write");
+    }
+
+    /// The single-panel presentation: Cmd-I fronts the hidden chat
+    /// over the panel, opening a panel hands the window back, and
+    /// Cmd-W closes the panel — a hidden chat's stale focus must
+    /// never block it. Closing the last panel returns the chat.
+    #[test]
+    fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(window, &mut app, narrow.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut narrow);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+        assert!(held(&app).workbench().chat().is_some());
+        assert!(
+            !held(&app).workbench().chat_fronted(),
+            "a vacant tree shows the chat without fronting"
+        );
+
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    crate::app::markdown_scratch(),
+                    None,
+                    "doc".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+        assert!(!held(&app).workbench().root.is_vacant());
+        assert!(
+            !held(&app).workbench().chat_focused(),
+            "the panel took the window and the keyboard"
+        );
+
+        // Cmd-I over the single panel FRONTS the chat.
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+        assert!(
+            held(&app).workbench().chat_fronted(),
+            "\u{2318}I shows the hidden chat"
+        );
+
+        // Opening a panel hands the window back.
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+        assert!(
+            !held(&app).workbench().chat_fronted(),
+            "a landing panel wins the window back"
+        );
+
+        // A STALE chat focus while the chat is hidden must not block
+        // closing the panel.
+        {
+            let mut entity = crate::Windows::window(app.store(), window).expect("window");
+            entity.workbench_mut().focus_chat(true);
+            crate::Windows::put(&mut app.store_mut(), window, entity);
+        }
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut narrow);
+        assert!(
+            held(&app).workbench().root.is_vacant(),
+            "\u{2318}W closed the panel despite the hidden chat's focus"
+        );
+    }
+
+    /// EVERY open road converges on the chat slot: a chat pane sent
+    /// down the generic `open_panel` lands there, never in the tree.
+    #[test]
+    fn any_open_road_lands_the_chat_in_the_slot() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
         let window = app.sole_window();
@@ -4676,45 +5099,18 @@ mod dock_tests {
         }
         settle(&mut app, &mut surface);
 
-        let mounted_chat = |app: &crate::Application| -> Option<String> {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let mut found = None;
-            entity.workbench().root.for_each_pane(&mut |panel| {
-                if let crate::Panel::Plugin(view) = panel {
-                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
-                        found = Some(pane.chat().as_str().to_owned());
-                    }
-                }
-            });
-            found
-        };
-        assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/walkable"));
-
-        // Navigate away through the recording road (install_panel).
-        {
-            let ui = app.ui_ctx();
-            let mut store = app.store_mut();
-            let mut entity = crate::Windows::window(&store, window).expect("window");
-            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
-            let _ = entity.open_panel(
-                &mut store,
-                &ui,
-                Box::new(crate::workbench_node::ClosedPanel),
-                &mut batch.effects(),
-            );
-            crate::Windows::put(&mut store, window, entity);
-        }
-        settle(&mut app, &mut surface);
-        assert_eq!(mounted_chat(&app), None, "the chat pane was displaced");
-
-        assert!(app.perform_registered(window, "navigation.back"));
-        settle(&mut app, &mut surface);
-        assert_eq!(
-            mounted_chat(&app).as_deref(),
-            Some("ahp-chat:/walkable"),
-            "back walks to the recorded chat place"
+        let entity = crate::Windows::window_ref(app.store(), window).expect("window");
+        assert!(
+            entity.workbench().chat().is_some(),
+            "the generic road landed the chat in the slot"
         );
+        let mut in_tree = false;
+        entity.workbench().root.for_each_pane(&mut |panel| {
+            if let crate::Panel::Plugin(view) = panel {
+                in_tree |= view.as_any().is::<crate::higent::ChatPane>();
+            }
+        });
+        assert!(!in_tree, "the chat never enters the tree");
     }
 
     #[test]
@@ -4778,15 +5174,16 @@ mod dock_tests {
         }
         settle(&mut app, &mut surface);
         let chat_mounted = |app: &crate::Application| -> bool {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let mut found = false;
-            entity.workbench().root.for_each_pane(&mut |panel| {
-                if let crate::Panel::Plugin(view) = panel {
-                    found |= view.as_any().is::<crate::higent::ChatPane>();
-                }
-            });
-            found
+            crate::Windows::window_ref(app.store(), app.sole_window())
+                .expect("window")
+                .workbench()
+                .chat()
+                .is_some_and(|chat| match chat.panel() {
+                    crate::Panel::Plugin(view) => {
+                        view.as_any().is::<crate::higent::ChatPane>()
+                    }
+                    crate::Panel::Editor(_) => false,
+                })
         };
         let entity = crate::Windows::window_ref(app.store(), window).expect("window");
         assert!(entity.current_session().names_session());
@@ -5521,18 +5918,17 @@ fn switching_workspaces_stashes_the_chat_panel() {
         );
         crate::Windows::put(&mut store, window, entity);
     }
-    let mounted_chat = |app: &crate::Application| -> Option<String> {
+    fn mounted_chat(app: &crate::Application) -> Option<String> {
         let entity = crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-        let mut found = None;
-        entity.workbench().root.for_each_pane(&mut |panel| {
-            if let crate::Panel::Plugin(view) = panel {
-                if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
-                    found = Some(pane.chat().as_str().to_owned());
-                }
-            }
-        });
-        found
-    };
+        let chat = entity.workbench().chat()?;
+        match chat.panel() {
+            crate::Panel::Plugin(view) => view
+                .as_any()
+                .downcast_ref::<crate::higent::ChatPane>()
+                .map(|pane| pane.chat().as_str().to_owned()),
+            crate::Panel::Editor(_) => None,
+        }
+    }
     assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/a"));
 
     let second = switch(&mut app, None);
@@ -5740,6 +6136,9 @@ fn the_at_completion_opens_finds_and_picks() {
         uri.clone(),
     );
     crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    // Retire the launch scratch: at this width the chat is visible
+    // only over a vacant tree, and the composer needs the screen.
+    assert!(app.perform_registered(window, "workbench.close"));
     {
         let ui = app.ui_ctx();
         let mut store = app.store_mut();

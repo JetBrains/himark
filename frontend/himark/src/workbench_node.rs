@@ -1166,6 +1166,17 @@ impl WorkbenchNode {
         Self::Leaf(PaneSlot::of(Panel::Editor(pane)))
     }
 
+    /// A tree with nothing open: the sole leaf holds the blank panel.
+    pub fn vacant() -> Self {
+        Self::Leaf(PaneSlot::of(Panel::blank()))
+    }
+
+    /// Nothing open — the chat column (when present) owns the whole
+    /// workbench, and closing the last panel brings the chat back.
+    pub fn is_vacant(&self) -> bool {
+        matches!(self, Self::Leaf(slot) if slot.panel.panel.is_blank())
+    }
+
     pub fn split_of(first: EditorPane, second: EditorPane, ratio: f32) -> Self {
         Self::Split(Box::new(
             SplitView::row(Self::editor_leaf(first), Self::editor_leaf(second)).with_ratio(ratio),
@@ -1216,26 +1227,6 @@ impl WorkbenchNode {
     /// Swap the focused leaf's occupant, minting it a fresh `PanelId`.
     pub(crate) fn replace_focused_panel(&mut self, panel: Panel) -> Panel {
         self.focused_slot_mut().replace_panel(panel)
-    }
-
-    /// Focus the leaf holding a panel the predicate accepts — re-aiming
-    /// each split's focus along the found branch. Leaves focus untouched
-    /// and answers false when nothing matches.
-    pub(crate) fn focus_where(&mut self, matches: &dyn Fn(&Panel) -> bool) -> bool {
-        match self {
-            Self::Leaf(slot) => matches(&slot.panel.panel),
-            Self::Split(split) => {
-                if split.first_mut().focus_where(matches) {
-                    split.focus(Pane::First);
-                    true
-                } else if split.second_mut().focus_where(matches) {
-                    split.focus(Pane::Second);
-                    true
-                } else {
-                    false
-                }
-            }
-        }
     }
 
     pub(crate) fn focused_slot(&self) -> &PaneSlot {

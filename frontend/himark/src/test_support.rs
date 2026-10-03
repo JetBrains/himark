@@ -402,6 +402,13 @@ impl Application {
     }
 
     pub fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn crate::DynPanelView)) {
+        // The chat slot is a workbench panel too — always open, just
+        // not a tree citizen.
+        if let Some(chat) = self.workbench().chat() {
+            if let Panel::Plugin(view) = chat.panel() {
+                visit(view.as_ref());
+            }
+        }
         self.workbench().root.for_each_pane(&mut |panel| {
             if let Panel::Plugin(view) = panel {
                 visit(view.as_ref());

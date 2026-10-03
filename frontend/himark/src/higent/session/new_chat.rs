@@ -94,7 +94,7 @@ impl DynamicCommand for OpenCreatedChat {
             chat,
         );
 
-        let _ = entity.open_panel(store, ui, pane, fx);
+        let _ = entity.open_chat_panel(store, ui, pane, fx);
         Windows::put(store, window, entity);
     }
 }

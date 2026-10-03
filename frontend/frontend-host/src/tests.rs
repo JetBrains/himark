@@ -1595,16 +1595,9 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     let inked = ink(&mut engine);
     assert!(inked > 50, "the prompt painted: {inked} inked pixels");
 
-    assert!(engine.app.open_panel(
-        engine.app.sole_window(),
-        Box::new(himark::higent::ChatPane::new(
-            himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
-                .expect("the window entity")
-                .family()
-                .chats(),
-            himark::higent::ChatUri::new("test-chat:displacer"),
-        ))
-    ));
+    // A chat pane routes to the workbench's chat slot now — displace
+    // the terminal with an ordinary document instead.
+    assert!(engine.perform_command(window, "workbench.new-document"));
     settle(&mut engine);
     let mut mounted = false;
     engine.app.for_each_plugin_panel(&mut |panel| {
@@ -4497,15 +4490,16 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         &mut |engine| replies(engine) >= 1,
     );
 
-    // Phase 1: close the pane; reopen; the conversation survives.
+    // Phase 1: the chat NEVER closes — \u{2318}W on it is refused and
+    // the conversation stays on screen.
     assert!(engine.perform_command(window, "workbench.close"));
     pump(&mut engine, &mut surface);
-    assert!(shown_chat(&engine).is_none(), "the chat pane closed");
+    assert!(shown_chat(&engine).is_some(), "the chat never closes");
     assert!(engine.perform_command(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
-        "the reopened pane rebuilt the transcript",
+        "the standing pane keeps the transcript",
         &mut |engine| replies(engine) >= 1,
     );
 
@@ -4514,14 +4508,14 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     assert!(engine.perform_command(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
-        shown_chat(&engine).is_none(),
-        "the document displaced the chat pane"
+        shown_chat(&engine).is_some(),
+        "the document opens beside the chat — the slot stays"
     );
     assert!(engine.perform_command(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
-        "the displaced-and-fronted pane rebuilt the transcript",
+        "the fronted chat keeps the transcript",
         &mut |engine| replies(engine) >= 1,
     );
 
@@ -4530,14 +4524,14 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     assert!(engine.perform_command(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
-        shown_chat(&engine).is_none(),
-        "the document displaced the chat pane"
+        shown_chat(&engine).is_some(),
+        "the document opens beside the chat — the slot stays"
     );
     assert!(engine.perform_command(window, "chat.composer"));
     wait_for(
         &mut engine,
         &mut surface,
-        "the displaced-and-fronted pane rebuilt the transcript",
+        "the fronted chat keeps the transcript",
         &mut |engine| replies(engine) >= 1,
     );
 
@@ -4563,7 +4557,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     wait_for(
         &mut engine,
         &mut surface,
-        "the pane-less reply reached the reopened transcript",
+        "the reply reached the standing transcript",
         &mut |engine| replies(engine) >= 2,
     );
 }
@@ -4821,8 +4815,8 @@ fn the_chat_runs_through_the_himark_host() {
     assert!(engine.perform_command(window, "workbench.new-document"));
     pump(&mut engine, &mut surface);
     assert!(
-        chat_transcript(&engine).is_none(),
-        "the scratch displaced the chat panel"
+        chat_transcript(&engine).is_some(),
+        "the scratch opens beside the chat — the slot stays"
     );
     assert!(engine.app.perform_batch(vec![himark::AppCommand::Dynamic(
         engine.app.sole_window(),
@@ -6734,14 +6728,12 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
         },
     );
 
-    let add_cell = toolbar(&engine).cells[3];
-    assert!(himark::test_driver::click(
-        &mut engine.app,
-        strip_x + add_cell.0 + add_cell.1 * 0.5,
-        strip_y + 20.0,
-        1200.0,
-        800.0,
-    ));
+    // The composer button is gone — adding a folder is a palette
+    // command now.
+    let window_id = engine.app.sole_window();
+    assert!(engine
+        .app
+        .perform_registered(window_id, "session.add-folder"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &host_seat);
     assert!(engine.host_picked(request, vec![fs.dir(&[])]));

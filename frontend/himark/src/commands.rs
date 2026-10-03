@@ -628,6 +628,40 @@ impl DynamicCommand for ChatComposer {
     }
 }
 
+/// `session.add-folder`, from the palette: grant the current agent
+/// session another working folder — the composer button it replaces
+/// is gone.
+pub(crate) struct AddFolder;
+
+impl DynamicCommand for AddFolder {
+    fn id(&self) -> &'static str {
+        "session.add-folder"
+    }
+    fn name(&self) -> String {
+        "Add Session Folder…".to_owned()
+    }
+    fn perform(
+        &self,
+        app: &mut Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(entity) = crate::Windows::window_ref(store, window) else {
+            return;
+        };
+        let current = entity.current_session();
+        if crate::higent::Servers::seat(store, current.host).is_none() {
+            return;
+        }
+        crate::higent::AddSessionFolders {
+            server: current.host,
+            session: current.session,
+        }
+        .perform(app, store, window, fx);
+    }
+}
+
 pub(crate) fn register_builtins(store: &mut Store) {
     Commands::register(store, Arc::new(FindOpen));
     Commands::register(store, Arc::new(CompletionTrigger));
@@ -644,6 +678,7 @@ pub(crate) fn register_builtins(store: &mut Store) {
     Commands::register(store, Arc::new(SetTheme { dark: true }));
     Commands::register(store, Arc::new(SetTheme { dark: false }));
     Commands::register(store, Arc::new(ChatComposer));
+    Commands::register(store, Arc::new(AddFolder));
 
     // The panels himark itself owns answer navigation walks: a
     // recorded chat/terminal place must be able to walk back.

@@ -382,9 +382,11 @@ impl crate::DynamicCommand for EnterFreshSession {
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let family = entity.family().clone();
-        let root = fresh_workbench_root(store, &family, ui, fx);
-        entity.install_fresh(self.previous.clone(), Workbench::new(root));
+        let _ = (ui, fx);
+        // A fresh session starts with nothing open: the chat (once it
+        // arrives) owns the whole workbench until a panel opens beside
+        // it. Scratches are minted on demand (`workbench.new-document`).
+        entity.install_fresh(self.previous.clone(), Workbench::new(WorkbenchNode::vacant()));
         crate::Windows::put(store, window, entity);
     }
 }
@@ -1489,7 +1491,15 @@ impl Application {
                 // (`AppEntity::after_route`).
                 addressed.0.run(store, ui, fx);
             }
-            AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
+            AppCommand::Dynamic(window, command) => {
+                command.perform(self, store, window, fx);
+                // Deferred requests must not wait for the next CONTENT
+                // command — an idle window (nothing painted, nothing
+                // clicked) would starve them forever.
+                for request in crate::commands::AppRequests::drain(store) {
+                    self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
+                }
+            }
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
 
             AppCommand::InSession(_, command) => self.perform(store, ui, *command, fx),
