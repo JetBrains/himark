@@ -404,8 +404,6 @@ impl HimarkEngine {
         app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
 
-        app.register_overlay_surface(peeker::overlay_surface());
-        app.register_overlay_surface(palette::overlay_surface());
 
         app.register_command(Arc::new(himark::OpenDiff));
         app.register_row_minter(himark::pair_row_minter());

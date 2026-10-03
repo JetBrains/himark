@@ -719,21 +719,11 @@ pub struct ToolbarChrome {
 
     pub rule: Rgba,
 
-    pub well_width_ratio: f32,
-    pub well_width_min: f32,
-    pub well_width_max: f32,
-    pub well_height: f32,
-    pub well_radius: f32,
-    pub well_fill: Rgba,
-
-    pub well_fill_focused: Rgba,
+    /// The active button's backdrop.
+    pub pressed_fill: Rgba,
 
     pub title_size: f32,
     pub title_color: Rgba,
-
-    pub input_inset_x: f32,
-
-    pub input_shrink: f32,
 
     pub button_size: f32,
     pub button_gap: f32,
@@ -748,17 +738,9 @@ impl Default for ToolbarChrome {
             height: 64.0,
             background: Rgba(Color::new(0xff0b0d13)),
             rule: Rgba(Color::new(0x8950565f)),
-            well_width_ratio: 0.32,
-            well_width_min: 360.0,
-            well_width_max: 560.0,
-            well_height: 44.0,
-            well_radius: 10.0,
-            well_fill: Rgba(Color::new(0xff171c2a)),
-            well_fill_focused: Rgba(Color::new(0xff1d2436)),
+            pressed_fill: Rgba(Color::new(0xff1d2436)),
             title_size: 24.0,
             title_color: Rgba(Color::new(0xa896828d)),
-            input_inset_x: 18.0,
-            input_shrink: 8.0,
             button_size: 44.0,
             button_gap: 10.0,
             button_inset: 18.0,

@@ -1032,7 +1032,6 @@ impl Window {
 
     pub fn dismiss_modal(&mut self, store: &mut Store, fx: &mut Effects<'_, WindowCommand>) {
         self.release_modal_for_swap(store, fx);
-        self.content.toolbar.end_session();
         self.content.focus = LayerFocus::Content;
     }
 
@@ -1053,50 +1052,6 @@ impl Window {
                 imba::DynView::destroy_dyn(modal.as_mut(), store, fx)
             });
         }
-    }
-
-    pub(crate) fn set_overlay(
-        &mut self,
-        store: &mut Store,
-        modal: Box<dyn ModalView>,
-        fx: &mut Effects<'_, WindowCommand>,
-    ) {
-        self.dismiss_side_panel(store, fx);
-        self.content.modal = Some(modal);
-    }
-
-    pub(crate) fn modal_set_query(
-        &mut self,
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        query: &str,
-        fx: &mut Effects<'_, imba::DynCommand>,
-    ) {
-        if let Some(modal) = &mut self.content.modal {
-            modal.set_query(store, ui, query, fx);
-        }
-    }
-
-    pub(crate) fn toolbar_session_class(&self) -> Option<Option<char>> {
-        self.content.toolbar.session_class()
-    }
-
-    pub(crate) fn toolbar_start_session(
-        &mut self,
-        store: &Store,
-        ui: &imba::UiCtx,
-        class: Option<char>,
-        text: &str,
-        width: f32,
-    ) {
-        self.content
-            .toolbar
-            .start_session(store, ui, class, text, width);
-        self.content.focus = LayerFocus::Toolbar;
-    }
-
-    pub(crate) fn toolbar_set_session_class(&mut self, class: Option<char>) {
-        self.content.toolbar.set_session_class(class);
     }
 
     pub fn plugin_modal(&self) -> Option<&dyn ModalView> {

@@ -114,7 +114,7 @@ pub use toc::{
     ToggleToc,
 };
 pub use toolbar::{
-    composer_button, toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton,
+    composer_button, ToolbarButton,
     ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,
 };
 pub use watch::{

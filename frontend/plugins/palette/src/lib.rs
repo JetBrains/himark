@@ -35,6 +35,9 @@ struct Entry {
 
 #[derive(Clone)]
 pub enum PaletteCommand {
+    /// The palette's OWN input editor — the query lives here.
+    Input(himark::EditorCommand),
+
     Rows(RowsCommand),
 
     Pick(usize),
@@ -45,6 +48,7 @@ pub enum PaletteCommand {
 impl std::fmt::Display for PaletteCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PaletteCommand::Input(command) => command.fmt(out),
             PaletteCommand::Rows(command) => command.fmt(out),
             PaletteCommand::Pick(_) => out.write_str("palette pick"),
             PaletteCommand::Close => out.write_str("palette close"),
@@ -56,6 +60,9 @@ const PALETTE_SHOWN: usize = 200;
 
 #[derive(Clone)]
 pub struct PaletteView {
+    /// The palette's own query input: the overlay owns its text.
+    input: himark::EditorView,
+
     entries: Vec<Entry>,
 
     matches: Vec<usize>,
@@ -77,7 +84,10 @@ impl PaletteView {
                 command: std::sync::Arc::new(std::sync::Mutex::new(Some(presentable.command))),
             })
             .collect();
+        let mut input = himark::EditorView::input(600.0, store, ui, himark::fonts::source());
+        input.focus_text();
         let mut palette = Self {
+            input,
             entries,
             matches: Vec::new(),
             list: ListKeyboardController::new(ScrollView::new(ListView::empty())),
@@ -85,6 +95,12 @@ impl PaletteView {
         };
         palette.filter(store, ui, "");
         palette
+    }
+
+    fn query(&self) -> String {
+        let mut view = self.input.document.text().view();
+        let byte_count = view.byte_count();
+        view.byte_string(0, byte_count)
     }
 
     pub fn labels(&self) -> Vec<String> {
@@ -155,6 +171,11 @@ impl View for PaletteView {
             ..imba::focus::FocusData::default()
         };
         own.merge_under(self.list.focus_data(_store, _ui).map(PaletteCommand::Rows))
+            .merge_under(
+                self.input
+                    .focus_data(_store, _ui)
+                    .map(PaletteCommand::Input),
+            )
     }
 
     fn perform(
@@ -165,6 +186,13 @@ impl View for PaletteView {
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
         match command {
+            PaletteCommand::Input(command) => {
+                fx.scope(PaletteCommand::Input, |fx| {
+                    self.input.perform(store, ui, command, fx)
+                });
+                let query = self.query();
+                self.filter(store, ui, query.trim());
+            }
             PaletteCommand::Rows(command) => {
                 if let Some((row, _trigger)) = Rows::activated(&command) {
                     // Enter and click both run the command; the note
@@ -206,7 +234,8 @@ impl View for PaletteView {
 
             let list_width = size.width;
             let list_x = 0.0;
-            let list_top = chrome.margin;
+            let input_height = chrome.input_height;
+            let list_top = chrome.margin + input_height;
 
             let list_height =
                 (size.height - list_top - chrome.hint_bottom - chrome.row_height).max(row_height);
@@ -232,6 +261,22 @@ impl View for PaletteView {
                     _ => EventResult::Ignored,
                 });
             container.place(0.0, 0.0, backdrop);
+
+            let input_w = (list_width - chrome.input_inset_x * 2.0).max(chrome.input_min_width);
+            let input_h = (input_height - chrome.input_inset_y * 2.0).max(1.0);
+            container.place(
+                chrome.input_inset_x,
+                chrome.margin * 0.5 + chrome.input_inset_y,
+                imba::Layout::layout(
+                    self.input.display(arena, store, ui),
+                    arena,
+                    Constraints {
+                        min: Size::new(input_w, input_h),
+                        max: Size::new(input_w, input_h),
+                    },
+                )
+                .map(PaletteCommand::Input),
+            );
 
             // The chrome labels as `imba::text`, centered in their
             // row band (the design-system row rule); the texts ignore
@@ -305,29 +350,17 @@ impl ModalView for PaletteView {
         self.request.take()
     }
 
-    fn set_query(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        query: &str,
-        _fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
-    ) {
-        self.filter(store, ui, query.trim());
-    }
-
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 }
 
-pub fn overlay_surface() -> himark::OverlaySurface {
-    himark::OverlaySurface {
-        prefix: Some('>'),
-        open: std::sync::Arc::new(|store, ui, window, _fx| {
-            let commands = himark::palette_commands(store, ui, window);
-            Box::new(PaletteView::new(store, ui, commands))
-        }),
-    }
+/// Build the palette overlay: a plain z-stacked modal layer that
+/// OWNS its input. The command walk runs BEFORE the modal mounts, so
+/// the window's own commands are all collected.
+pub fn build(store: &mut Store, ui: &UiCtx, window: himark::WindowId) -> Box<dyn ModalView> {
+    let commands = himark::palette_commands(store, ui, window);
+    Box::new(PaletteView::new(store, ui, commands))
 }
 
 pub struct TogglePalette;
@@ -346,8 +379,24 @@ impl himark::DynamicCommand for TogglePalette {
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
+        let entity = himark::Windows::window_ref(store, window).expect("the window entity");
+        if entity.has_modal() {
+            let mut entity = entity.clone();
+            fx.scope(
+                move |command| himark::AppCommand::Content(window, command),
+                |fx| entity.dismiss_modal(store, fx),
+            );
+            himark::Windows::put(store, window, entity);
+            return;
+        }
         let ui = app.ui_handle();
-        himark::toggle_toolbar_session(store, &ui, window, &overlay_surface(), ">", fx);
+        let modal = build(store, &ui, window);
+        let mut entity = himark::Windows::window(store, window).expect("the window entity");
+        fx.scope(
+            move |command| himark::AppCommand::Content(window, command),
+            |fx| entity.show_modal(store, modal, fx),
+        );
+        himark::Windows::put(store, window, entity);
     }
 }
 

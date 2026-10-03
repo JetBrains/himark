@@ -646,10 +646,6 @@ impl Application {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }
 
-    pub fn register_overlay_surface(&mut self, surface: crate::OverlaySurface) {
-        self.setup(|store| crate::toolbar::OverlaySurfaces::register(store, surface));
-    }
-
     pub fn register_row_minter(&mut self, minter: std::sync::Arc<crate::RowMinter>) {
         self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
     }
@@ -1468,9 +1464,6 @@ impl Application {
                         {
                             self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
                         }
-                    }
-                    Some(crate::ToolbarRequest::Query(raw)) => {
-                        crate::toolbar::toolbar_query(store, ui, window, &raw, fx);
                     }
                     None => {}
                 }

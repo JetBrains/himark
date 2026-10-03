@@ -19,6 +19,10 @@ use skia_safe::{Paint, Rect, Size};
 
 #[derive(Clone)]
 pub struct Peeker {
+    /// The peeker's own query input: the overlay owns its text, typed
+    /// directly — no omnibox in between.
+    input: himark::EditorView,
+
     /// The documents collection this peeker fronts — its id is wired
     /// at open from the window.s family bundle (docs/entities.md law 3).
     documents: imba::store::Id<himark::OpenDocuments>,
@@ -61,6 +65,10 @@ pub type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
 
 #[derive(Clone)]
 pub enum PeekerCommand {
+    /// The peeker's OWN input editor — the query lives here, not in
+    /// any toolbar.
+    Input(himark::EditorCommand),
+
     Preview(PaneCommand),
 
     Pick(usize),
@@ -90,6 +98,7 @@ pub enum PeekerCommand {
 impl std::fmt::Display for PeekerCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            PeekerCommand::Input(command) => command.fmt(out),
             PeekerCommand::Preview(command) => command.fmt(out),
             PeekerCommand::Widget(command) => command.fmt(out),
             PeekerCommand::Rows(command) => command.fmt(out),
@@ -160,8 +169,11 @@ impl Peeker {
             .map(|(_, widget)| widget.title(store))
             .collect();
         let chrome = himark::env::Themes::of(store).ui().peeker.clone();
+        let mut input = himark::EditorView::input(600.0, store, ui, himark::fonts::source());
+        input.focus_text();
 
         let mut peeker = Self {
+            input,
             documents,
             recents,
             workspace,
@@ -185,6 +197,20 @@ impl Peeker {
         peeker.filter(store, ui, "");
         peeker.ensure_preview(store, ui, fx);
         peeker
+    }
+
+    fn query(&self) -> String {
+        let mut view = self.input.document.text().view();
+        let byte_count = view.byte_count();
+        view.byte_string(0, byte_count)
+    }
+
+    fn apply_query(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut PeekerEffects<'_>) {
+        let query = self.query();
+        let query = query.trim();
+        self.filter(store, ui, query);
+        self.launch_find(store, ui, query, fx);
+        self.ensure_preview(store, ui, fx);
     }
 
     fn location_at(&self, row: usize) -> Option<&ResourceLocation> {
@@ -496,6 +522,11 @@ impl View for Peeker {
             ..imba::focus::FocusData::default()
         };
         own.merge_under(self.list.focus_data(_store, _ui).map(PeekerCommand::Rows))
+            .merge_under(
+                self.input
+                    .focus_data(_store, _ui)
+                    .map(PeekerCommand::Input),
+            )
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -515,6 +546,12 @@ impl View for Peeker {
         fx: &mut PeekerEffects<'_>,
     ) {
         match command {
+            PeekerCommand::Input(command) => {
+                fx.scope(PeekerCommand::Input, |fx| {
+                    self.input.perform(store, ui, command, fx)
+                });
+                self.apply_query(store, ui, fx);
+            }
             PeekerCommand::Preview(command) => {
                 if let Some(PreviewSlot::Editor(preview)) = &mut self.preview {
                     fx.scope(PeekerCommand::Preview, |fx| {
@@ -658,7 +695,8 @@ impl View for Peeker {
 
             let inset = margin * 4.0 / 3.0;
             let list_x = inset + 1.0;
-            let list_top = inset + 8.0;
+            let input_height = chrome.input_height;
+            let list_top = inset + 8.0 + input_height;
             let list_height = (size.height - inset - row_height - 2.0 - list_top).max(row_height);
 
             let sheet_rule = himark::env::Themes::of(store).ui().toolbar.rule.0;
@@ -667,6 +705,18 @@ impl View for Peeker {
             let has_preview = self.preview.is_some();
 
             let mut container = imba::container::container(arena, size);
+
+            let input_w = (list_width - chrome.input_inset_x * 2.0).max(chrome.input_min_width);
+            let input_h = (input_height - chrome.input_inset_y * 2.0).max(1.0);
+            let input_editor = imba::Layout::layout(
+                self.input.display(arena, store, ui),
+                arena,
+                Constraints {
+                    min: Size::new(input_w, input_h),
+                    max: Size::new(input_w, input_h),
+                },
+            )
+            .map(PeekerCommand::Input);
 
             let backdrop = leaf::<PeekerCommand>(size.width, size.height)
                 .paint_instead(move |_arena, canvas, rect| {
@@ -715,12 +765,29 @@ impl View for Peeker {
                         ),
                         &rule,
                     );
+
+                    // The peeker's OWN input well, top of the panel.
+                    let well = Rect::from_xywh(
+                        panel.left + chrome.input_inset_x * 0.5,
+                        panel.top + chrome.input_inset_y * 0.5,
+                        panel.width() - chrome.input_inset_x,
+                        input_height - chrome.input_inset_y,
+                    );
+                    let mut fill = Paint::default();
+                    fill.set_anti_alias(true);
+                    fill.set_color(chrome.well.0);
+                    canvas.draw_round_rect(well, chrome.well_radius, chrome.well_radius, &fill);
                 })
                 .event(|_arena, event, _size| match event {
                     Event::MouseDown { .. } => EventResult::Command(PeekerCommand::Close),
                     _ => EventResult::Ignored,
                 });
             container.place(0.0, 0.0, backdrop);
+            container.place(
+                list_x + chrome.input_inset_x,
+                inset + chrome.input_inset_y + 2.0,
+                input_editor,
+            );
 
             // The chrome labels as `imba::text`, centered in the
             // bottom row band (the design-system row rule); the texts
@@ -849,21 +916,6 @@ impl ModalView for Peeker {
         self.request.take()
     }
 
-    fn set_query(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        query: &str,
-        fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
-    ) {
-        fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
-            let query = query.trim();
-            self.filter(store, ui, query);
-            self.launch_find(store, ui, query, fx);
-            self.ensure_preview(store, ui, fx);
-        })
-    }
-
     fn release_widgets(&mut self) -> Vec<(WidgetOrigin, Box<dyn himark::DynPanelView>)> {
         if matches!(self.preview, Some(PreviewSlot::Widget(_))) {
             self.preview = None;
@@ -876,10 +928,15 @@ impl ModalView for Peeker {
     }
 }
 
-pub fn overlay_surface() -> himark::OverlaySurface {
-    himark::OverlaySurface {
-        prefix: None,
-        open: std::sync::Arc::new(|store, ui, window, fx| {
+/// Build the goto-file overlay: a plain z-stacked modal layer that
+/// OWNS its input — no toolbar session involved.
+pub fn build(
+    store: &mut Store,
+    ui: &UiCtx,
+    window: himark::WindowId,
+    fx: &mut himark::AppFx<'_>,
+) -> Box<dyn himark::ModalView> {
+    {
             let mut entity = himark::Windows::window(store, window).expect("the window entity");
             let viewport = entity.viewport_size();
 
@@ -909,7 +966,6 @@ pub fn overlay_surface() -> himark::OverlaySurface {
             });
             himark::Windows::put(store, window, entity);
             Box::new(peeker)
-        }),
     }
 }
 
@@ -930,11 +986,9 @@ impl himark::DynamicCommand for TogglePeeker {
         fx: &mut himark::AppFx<'_>,
     ) {
         let entity = himark::Windows::window_ref(store, window).expect("the window entity");
-        if entity.has_modal()
-            && entity
-                .plugin_modal()
-                .is_none_or(|m| !m.as_any().is::<Peeker>())
-        {
+        if entity.has_modal() {
+            // Toggle: any standing modal is dismissed; the peeker
+            // opens only over a clear window.
             let mut entity = entity.clone();
             fx.scope(
                 move |command| himark::AppCommand::Content(window, command),
@@ -944,7 +998,13 @@ impl himark::DynamicCommand for TogglePeeker {
             return;
         }
         let ui = app.ui_handle();
-        himark::toggle_toolbar_session(store, &ui, window, &overlay_surface(), "", fx);
+        let modal = build(store, &ui, window, fx);
+        let mut entity = himark::Windows::window(store, window).expect("the window entity");
+        fx.scope(
+            move |command| himark::AppCommand::Content(window, command),
+            |fx| entity.show_modal(store, modal, fx),
+        );
+        himark::Windows::put(store, window, entity);
     }
 }
 
