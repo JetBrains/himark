@@ -788,10 +788,7 @@ impl Windows {
         store.get::<Windows>()?.entries.get(&id)
     }
 
-    pub(crate) fn any_window_holds(
-        store: &imba::store::Store,
-        session: &crate::SessionId,
-    ) -> bool {
+    pub(crate) fn any_window_holds(store: &imba::store::Store, session: &crate::SessionId) -> bool {
         store.get::<Windows>().is_some_and(|windows| {
             windows
                 .entries
@@ -2116,10 +2113,8 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                 .workbench
                 .dock()
                 .map_or(0.0, crate::dock::Dock::revealed);
-            let base_below = Constraints::tight(Size::new(
-                (size.width - revealed).max(1.0),
-                size.height,
-            ));
+            let base_below =
+                Constraints::tight(Size::new((size.width - revealed).max(1.0), size.height));
 
             LayersWidget {
                 focus: layers.focus,

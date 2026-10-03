@@ -114,8 +114,7 @@ pub use toc::{
     ToggleToc,
 };
 pub use toolbar::{
-    composer_button, ToolbarButton,
-    ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,
+    composer_button, ToolbarButton, ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,
 };
 pub use watch::{
     refetch_document, sync_document_watches, FileChanged, ReloadDocument, SubscribeEffect,

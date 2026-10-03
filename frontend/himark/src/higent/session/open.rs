@@ -159,6 +159,10 @@ impl DynamicCommand for EnterSessionWork {
                 crate::hicomments::Comments::ensure(store, family.comments(), &folder, fx);
             }
         }
+        // The poll is the session MIRROR's lifeline, not the chat's:
+        // launched before the chat-open block so no early return in
+        // it can orphan the channel mirror for good.
+        relaunch_session_poll(store, window, self.server, self.session.clone(), fx);
         if let Some(chat) = self.default_chat.clone().filter(|_| self.open_chat) {
             let prompt = self
                 .initial_prompt
@@ -186,8 +190,6 @@ impl DynamicCommand for EnterSessionWork {
             let _ = entity.open_chat_panel(store, ui, pane, fx);
             Windows::put(store, window, entity);
         }
-
-        relaunch_session_poll(store, window, self.server, self.session.clone(), fx);
     }
 }
 
@@ -246,6 +248,14 @@ impl DynamicCommand for ApplySessionActions {
 
         if Agents::live_session(store, &key).is_some() {
             relaunch_session_poll(store, window, self.server, self.session.clone(), fx);
+        } else {
+            // The chain's one legitimate end — a disposed session.
+            // Anything else parked here is a mirror frozen for good,
+            // so the retirement leaves a trace.
+            eprintln!(
+                "[higent] session poll retired: {} is no longer live",
+                self.session.as_str()
+            );
         }
     }
 }

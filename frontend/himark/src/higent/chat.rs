@@ -1966,8 +1966,7 @@ impl ChatPanel {
                         "SEND"
                     };
                     let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                    let key_font =
-                        crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
                     label
                         .chars()
                         .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)

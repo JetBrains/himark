@@ -522,11 +522,7 @@ impl View for Peeker {
             ..imba::focus::FocusData::default()
         };
         own.merge_under(self.list.focus_data(_store, _ui).map(PeekerCommand::Rows))
-            .merge_under(
-                self.input
-                    .focus_data(_store, _ui)
-                    .map(PeekerCommand::Input),
-            )
+            .merge_under(self.input.focus_data(_store, _ui).map(PeekerCommand::Input))
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
@@ -937,35 +933,35 @@ pub fn build(
     fx: &mut himark::AppFx<'_>,
 ) -> Box<dyn himark::ModalView> {
     {
-            let mut entity = himark::Windows::window(store, window).expect("the window entity");
-            let viewport = entity.viewport_size();
+        let mut entity = himark::Windows::window(store, window).expect("the window entity");
+        let viewport = entity.viewport_size();
 
-            let recents = himark::RecentLocations::list(store, entity.family().recents());
+        let recents = himark::RecentLocations::list(store, entity.family().recents());
 
-            let mut widgets = entity.unmount_all_widgets();
-            let fronted: Vec<himark::FamilyRow> = widgets
-                .iter()
-                .filter_map(|(_, widget)| widget.family_row())
-                .collect();
+        let mut widgets = entity.unmount_all_widgets();
+        let fronted: Vec<himark::FamilyRow> = widgets
+            .iter()
+            .filter_map(|(_, widget)| widget.family_row())
+            .collect();
 
-            let family = entity.family().clone();
-            widgets.extend(
-                himark::mint_unfronted(store, &family, &fronted)
-                    .into_iter()
-                    .map(|widget| (WidgetOrigin::Family, widget)),
-            );
-            let folders = himark::higent::session_folders(store, &entity.current_session());
+        let family = entity.family().clone();
+        widgets.extend(
+            himark::mint_unfronted(store, &family, &fronted)
+                .into_iter()
+                .map(|widget| (WidgetOrigin::Family, widget)),
+        );
+        let folders = himark::higent::session_folders(store, &entity.current_session());
 
-            let documents = entity.family().documents();
-            let peeker = fx.scope(himark::modal_scope(window), |fx| {
-                fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
-                    Peeker::open(
-                        store, ui, documents, viewport, recents, widgets, folders, fx,
-                    )
-                })
-            });
-            himark::Windows::put(store, window, entity);
-            Box::new(peeker)
+        let documents = entity.family().documents();
+        let peeker = fx.scope(himark::modal_scope(window), |fx| {
+            fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
+                Peeker::open(
+                    store, ui, documents, viewport, recents, widgets, folders, fx,
+                )
+            })
+        });
+        himark::Windows::put(store, window, entity);
+        Box::new(peeker)
     }
 }
 

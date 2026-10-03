@@ -2062,6 +2062,12 @@ impl Host {
 
             StateAction::SessionWorkingDirectorySet(set) => {
                 if crate::uris::file_path(&set.directory).is_none() {
+                    // A dropped grant is a folder the client believes
+                    // it gave the session — never refuse it silently.
+                    eprintln!(
+                        "[hihost] workingDirectorySet REFUSED on {channel}: not a file uri: {}",
+                        set.directory
+                    );
                     return;
                 }
                 let directory = set.directory.clone();

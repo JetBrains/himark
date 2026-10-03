@@ -588,7 +588,12 @@ fn typed_insertions_paint_washes() {
         let (mut added, mut deleted) = (0usize, 0usize);
         for pixel in pixels.chunks_exact(4) {
             let (r, g, b) = (pixel[0] as i32, pixel[1] as i32, pixel[2] as i32);
-            if g > r + 12 && g > b + 6 && g < 120 {
+            // The added wash is #3ecf6e at 9% alpha: over the dark row
+            // it lands only ~12 green over red and ~3 green over blue,
+            // so the gates sit just under that — the (0, 0) baseline
+            // assert below is what keeps them honest against static
+            // chrome.
+            if g > r + 8 && g > b + 1 && g < 120 {
                 added += 1;
             }
             if r > g + 12 && r > b + 6 && r < 130 {

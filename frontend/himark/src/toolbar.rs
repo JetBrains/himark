@@ -302,10 +302,7 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
     let available = (width - inset - trailing - chrome.button_inset * 2.0).max(1.0);
     let mut title = title;
     while imba::text_advance(ui, &title_font, &title) > available {
-        let Some((_, rest)) = title
-            .trim_start_matches("…/")
-            .split_once('/')
-        else {
+        let Some((_, rest)) = title.trim_start_matches("…/").split_once('/') else {
             break;
         };
         title = format!("…/{rest}");

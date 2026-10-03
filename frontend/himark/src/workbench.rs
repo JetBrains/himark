@@ -11,7 +11,7 @@ use imba::{
 };
 use skia_safe::{Contains as _, Rect, Size};
 
-use crate::workbench_node::{NodeCommand, Panel, PaneSlot, WorkbenchNode};
+use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
 
 // Like every theme metric, these are PHYSICAL pixels tuned for 2x
 // displays — the shell hands the engine device pixels and the scale
@@ -272,7 +272,6 @@ impl Workbench {
         self.chat = Some(ChatColumn::of(panel));
         self.chat_focused = true;
     }
-
 }
 
 #[derive(Clone, Copy)]
@@ -552,8 +551,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         };
         let presented = workbench.chat_presented(size.width, &theme.ui().window);
         let cluster = crate::toolbar::global_cluster_width(store, ui, !presented);
-        let tree_buttons =
-            theme.ui().toolbar.button_inset + 2.0 * theme.ui().toolbar.button_size;
+        let tree_buttons = theme.ui().toolbar.button_inset + 2.0 * theme.ui().toolbar.button_size;
         // The dock cluster mirrors the global one top-right: the
         // RIGHTMOST column header leaves room for it while the dock
         // is closed (open, the dock's own header holds the buttons).
@@ -834,11 +832,7 @@ impl<'a> Thunk<'a, WorkbenchCommand> for ColumnsWidget<'a> {
         Thunk::size(&self.panes)
     }
 
-    fn realize(
-        self,
-        arena: &'a Arena,
-        viewport: Rect,
-    ) -> imba::WidgetBox<'a, WorkbenchCommand> {
+    fn realize(self, arena: &'a Arena, viewport: Rect) -> imba::WidgetBox<'a, WorkbenchCommand> {
         let ColumnsWidget {
             background,
             panes,

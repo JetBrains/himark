@@ -386,7 +386,10 @@ impl crate::DynamicCommand for EnterFreshSession {
         // A fresh session starts with nothing open: the chat (once it
         // arrives) owns the whole workbench until a panel opens beside
         // it. Scratches are minted on demand (`workbench.new-document`).
-        entity.install_fresh(self.previous.clone(), Workbench::new(WorkbenchNode::vacant()));
+        entity.install_fresh(
+            self.previous.clone(),
+            Workbench::new(WorkbenchNode::vacant()),
+        );
         crate::Windows::put(store, window, entity);
     }
 }
@@ -1469,8 +1472,7 @@ impl Application {
                     None => {}
                 }
                 if let Some(id) = dock_command {
-                    if let Some(command) = crate::commands::Commands::of(store).find(id).cloned()
-                    {
+                    if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
                         self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
                     }
                 }

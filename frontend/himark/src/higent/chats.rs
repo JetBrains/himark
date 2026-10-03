@@ -186,7 +186,6 @@ impl crate::DynamicCommand for BootChat {
         _window: WindowId,
         _fx: &mut crate::AppFx<'_>,
     ) {
-
         let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
             return;
         };

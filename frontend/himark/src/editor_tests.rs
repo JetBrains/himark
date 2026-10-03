@@ -4702,8 +4702,7 @@ mod dock_tests {
             });
             found
         };
-        let vacant =
-            |app: &crate::Application| -> bool { held(app).workbench().root.is_vacant() };
+        let vacant = |app: &crate::Application| -> bool { held(app).workbench().root.is_vacant() };
 
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut wide);
@@ -5269,9 +5268,7 @@ mod dock_tests {
                 .workbench()
                 .chat()
                 .is_some_and(|chat| match chat.panel() {
-                    crate::Panel::Plugin(view) => {
-                        view.as_any().is::<crate::higent::ChatPane>()
-                    }
+                    crate::Panel::Plugin(view) => view.as_any().is::<crate::higent::ChatPane>(),
                     crate::Panel::Editor(_) => false,
                 })
         };

@@ -314,7 +314,6 @@ mod app {
             state.register_navigator(himark::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
-
             himark::hicomments::Comments::install(&mut state.store_mut());
             himark::OpenDocuments::install_hook(
                 &mut state.store_mut(),

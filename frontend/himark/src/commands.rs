@@ -689,5 +689,4 @@ pub(crate) fn register_builtins(store: &mut Store) {
         store,
         Arc::new(crate::new_session::OpenNewSession { host: None }),
     );
-
 }

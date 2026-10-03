@@ -418,28 +418,44 @@ impl crate::DynamicCommand for SessionFoldersPicked {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(seat) = crate::higent::Servers::seat(store, self.server) else {
+            eprintln!(
+                "[higent] folder grant DROPPED: no seat for {:?} ({})",
+                self.server,
+                self.session.as_str()
+            );
             return;
         };
         let Some(uris) = Hosts::uris(store, self.server) else {
+            eprintln!(
+                "[higent] folder grant DROPPED: no uri map for {:?} ({})",
+                self.server,
+                self.session.as_str()
+            );
             return;
         };
         for location in &self.locations {
             let directory = uris.uri_of(location).as_str().to_owned();
+            let channel = self.session.as_channel();
+            eprintln!("[higent] granting folder {directory} to {channel}");
             fx.push(
                 AnyEffect::new(crate::higent::DispatchChatActionEffect {
                     seat: seat.clone(),
-                    channel: self.session.as_channel(),
+                    channel,
                     action: StateAction::SessionWorkingDirectorySet(
                         SessionWorkingDirectorySetAction { directory },
                     ),
                 })
-                .map(move |_result| crate::app::AppCommand::Dynamic(window, Arc::new(GrantAck))),
+                .map(move |result| {
+                    crate::app::AppCommand::Dynamic(window, Arc::new(GrantAck { result }))
+                }),
             );
         }
     }
 }
 
-struct GrantAck;
+struct GrantAck {
+    result: Result<(), String>,
+}
 
 impl crate::DynamicCommand for GrantAck {
     fn id(&self) -> &'static str {
@@ -457,5 +473,12 @@ impl crate::DynamicCommand for GrantAck {
         _window: crate::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
+        // The dispatch is a wire notification: this result is the
+        // only trace the grant left the client. A swallowed error
+        // here is a folder the user granted and the session never
+        // gained — loud beats lost.
+        if let Err(error) = &self.result {
+            eprintln!("[higent] folder grant dispatch FAILED: {error}");
+        }
     }
 }
