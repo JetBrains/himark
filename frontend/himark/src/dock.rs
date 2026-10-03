@@ -28,6 +28,10 @@ const HANDLE_REACH: f32 = 4.0;
 
 #[derive(Clone)]
 pub enum DockCommand {
+    /// The dock's OWN header buttons (the `ToolbarSide::Right`
+    /// registrations live here now).
+    HeaderButton(usize),
+
     Tick(AnimationClock),
 
     BeginResize,
@@ -43,6 +47,7 @@ impl std::fmt::Display for DockCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DockCommand::Content(command) => command.fmt(out),
+            DockCommand::HeaderButton(_) => out.write_str("dock header button"),
             DockCommand::Tick(_) => out.write_str("dock tick"),
             DockCommand::BeginResize => out.write_str("dock begin resize"),
             DockCommand::Resize(_) => out.write_str("dock resize"),
@@ -65,6 +70,10 @@ pub(crate) struct Dock {
     resizing: bool,
 
     request: Option<ModalRequest>,
+
+    /// A pressed header button's registered command id, drained by
+    /// the app loop like any toolbar request.
+    command: Option<&'static str>,
 }
 
 impl Clone for Dock {
@@ -78,6 +87,7 @@ impl Clone for Dock {
             resizing: self.resizing,
 
             request: None,
+            command: None,
         }
     }
 }
@@ -100,6 +110,7 @@ impl Dock {
             closing: false,
             resizing: false,
             request: None,
+            command: None,
         }
     }
 
@@ -205,6 +216,11 @@ impl View for Dock {
             DockCommand::Content(command) => fx.scope(DockCommand::Content, |fx| {
                 self.content.as_mut().perform_dyn(store, ui, command, fx)
             }),
+            DockCommand::HeaderButton(index) => {
+                if let Some(button) = crate::ToolbarButtons::of(store).iter().nth(index) {
+                    self.command = Some(button.command);
+                }
+            }
         }
     }
 
@@ -244,6 +260,92 @@ impl View for Dock {
                 })
                 .hit_opaque();
             body.place(0.0, 0.0, backdrop);
+
+            // The dock's OWN header: its buttons, right-aligned, the
+            // active owner pressed — the window has no toolbar.
+            let bar = theme.ui().toolbar.clone();
+            let header_h = bar.height;
+            let buttons = crate::ToolbarButtons::of(store);
+            let owner = self.owner;
+            {
+                let bar = bar.clone();
+                let header = leaf::<DockCommand>(body_width, header_h).paint_below(
+                    move |_arena, canvas, rect| {
+                        let mut paint = Paint::default();
+                        paint.set_color(bar.background.0);
+                        canvas.draw_rect(rect, &paint);
+                        paint.set_anti_alias(false);
+                        paint.set_color(bar.rule.0);
+                        canvas.draw_rect(
+                            Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
+                            &paint,
+                        );
+                        // The dock's SEPARATOR runs through its header
+                        // too — the column edge is one line, top to
+                        // bottom.
+                        canvas.draw_rect(
+                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                            &paint,
+                        );
+                    },
+                );
+                body.place(0.0, 0.0, header);
+            }
+            let mut x = body_width
+                - bar.button_inset
+                - buttons
+                    .iter()
+                    .filter(|button| matches!(button.side, crate::ToolbarSide::Right))
+                    .count() as f32
+                    * bar.button_size;
+            for (index, button) in buttons.iter().enumerate() {
+                if !matches!(button.side, crate::ToolbarSide::Right) {
+                    continue;
+                }
+                let glyph = button.glyph.clone();
+                let pressed = button.command == owner;
+                let bar = bar.clone();
+                let cell = leaf::<DockCommand>(bar.button_size, header_h)
+                    .paint_below(move |_arena, canvas, rect| {
+                        let mut paint = Paint::default();
+                        paint.set_anti_alias(false);
+                        paint.set_color(bar.rule.0);
+                        canvas.draw_rect(
+                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                            &paint,
+                        );
+                        if pressed {
+                            paint.set_color(bar.pressed_fill.0);
+                            canvas.draw_rect(
+                                Rect::from_xywh(
+                                    rect.left,
+                                    rect.top,
+                                    rect.width(),
+                                    rect.height() - 1.0,
+                                ),
+                                &paint,
+                            );
+                        }
+                        paint.set_anti_alias(true);
+                        let square = Rect::from_xywh(
+                            rect.left,
+                            rect.top + (rect.height() - rect.width()) * 0.5,
+                            rect.width(),
+                            rect.width(),
+                        );
+                        let inset = (rect.width() * 0.25).max(1.0);
+                        glyph(canvas, square.with_inset((inset, inset)), bar.glyph_color.0);
+                    })
+                    .event(move |_arena, event, _size| match event {
+                        Event::MouseDown { .. } => {
+                            EventResult::Command(DockCommand::HeaderButton(index))
+                        }
+                        _ => EventResult::Ignored,
+                    });
+                body.place(x, 0.0, cell);
+                x += bar.button_size;
+            }
+
             let content = self
                 .content
                 .as_ref()
@@ -251,10 +353,13 @@ impl View for Dock {
                     arena,
                     store,
                     ui,
-                    Constraints::tight(Size::new((body_width - 1.0).max(1.0), size.height)),
+                    Constraints::tight(Size::new(
+                        (body_width - 1.0).max(1.0),
+                        (size.height - header_h).max(1.0),
+                    )),
                 )
                 .map(DockCommand::Content);
-            body.place(1.0, 0.0, content);
+            body.place(1.0, header_h, content);
             surface.place(edge, 0.0, body);
 
             let animating = self.reveal.running();
@@ -297,6 +402,10 @@ impl View for Dock {
 }
 
 impl Dock {
+    pub(crate) fn take_command(&mut self) -> Option<&'static str> {
+        self.command.take()
+    }
+
     pub(crate) fn take_request(&mut self) -> Option<ModalRequest> {
         if let Some(request) = self.request.take() {
             return Some(request);

@@ -1,9 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The toolbar band: burger and action buttons around a centered
-//! title. There is NO input here — goto-file and the command palette
-//! are standalone overlays that own their own input boxes.
+//! The GLOBAL CLUSTER: the only window-level chrome — a small strip
+//! pinned top-left, after the platform semaphore clearance, holding
+//! the window-scoped buttons (drawer, toc, chat). Everything else a
+//! toolbar used to show lives in the COLUMN headers now: the chat
+//! column names its session, the split tree names its file, the dock
+//! carries its own buttons ([docs/ui/toolbar.md]).
 
 use imba::{
     arena::Arena,
@@ -18,11 +21,14 @@ use skia_safe::{Canvas, Paint, Rect, Size};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub enum ToolbarSide {
+    /// The global cluster, top-left of the window.
     #[default]
     Left,
+
+    /// The dock's own header.
     Right,
 
-    /// Beside the centered title, hugging its left edge.
+    /// Legacy name — rides the global cluster after the Left group.
     Well,
 }
 
@@ -38,7 +44,7 @@ pub struct ToolbarButton {
 }
 
 #[derive(Clone, Default)]
-pub struct ToolbarButtons(Vec<ToolbarButton>);
+pub struct ToolbarButtons(pub(crate) Vec<ToolbarButton>);
 
 impl ToolbarButtons {
     pub fn of(store: &Store) -> ToolbarButtons {
@@ -54,6 +60,15 @@ impl ToolbarButtons {
 
     pub fn iter(&self) -> impl Iterator<Item = &ToolbarButton> {
         self.0.iter()
+    }
+
+    /// The global cluster's buttons: the Left side always, the Well
+    /// side (the chat bubble) only while the chat is NOT displayed.
+    fn cluster(&self, show_chat: bool) -> impl Iterator<Item = (usize, &ToolbarButton)> {
+        self.0.iter().enumerate().filter(move |(_, button)| {
+            matches!(button.side, ToolbarSide::Left)
+                || (show_chat && matches!(button.side, ToolbarSide::Well))
+        })
     }
 }
 
@@ -73,6 +88,19 @@ impl std::fmt::Display for ToolbarCommand {
             ToolbarCommand::Button(_) => out.write_str("toolbar button"),
         }
     }
+}
+
+/// The width the global cluster occupies at the window's top-left:
+/// the platform clearance plus its buttons. The leftmost column's
+/// header insets its content by this much.
+pub(crate) fn global_cluster_width(store: &Store, ui: &UiCtx, show_chat: bool) -> f32 {
+    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
+    let clearance = ui
+        .get::<crate::app::ChromeClearance>()
+        .map(|clearance| clearance.0)
+        .unwrap_or(0.0);
+    let buttons = ToolbarButtons::of(store).cluster(show_chat).count() as f32;
+    chrome.button_inset + clearance + buttons * chrome.button_size + 1.0
 }
 
 #[derive(Clone, Default)]
@@ -109,163 +137,153 @@ impl Toolbar {
         }
     }
 
+    /// The cluster strip: transparent over the leftmost column's own
+    /// header — buttons only, no backdrop of its own.
     pub(crate) fn layout<'a>(
         &'a self,
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-        width: f32,
-        title: String,
-        active: Option<&'static str>,
+        show_chat: bool,
     ) -> impl Thunk<'a, ToolbarCommand> + 'a {
         let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
-        let size = Size::new(width, chrome.height);
-        let title_font = crate::fonts::ui_text_font(ui, chrome.title_size);
-
         let clearance = ui
             .get::<crate::app::ChromeClearance>()
             .map(|clearance| clearance.0)
             .unwrap_or(0.0);
-
         let buttons = ToolbarButtons::of(store);
+        let count = buttons.cluster(show_chat).count();
+        let width = chrome.button_inset + clearance + count as f32 * chrome.button_size + 1.0;
+        let size = Size::new(width.max(1.0), chrome.height);
 
         let mut strip = imba::container::container(arena, size);
-
-        let backdrop = leaf::<ToolbarCommand>(size.width, size.height).paint_below({
-            let chrome = chrome.clone();
-            move |_arena, canvas, rect| {
-                let mut paint = Paint::default();
-                paint.set_color(chrome.background.0);
-                canvas.draw_rect(rect, &paint);
-
-                paint.set_anti_alias(false);
-                paint.set_color(chrome.rule.0);
-                canvas.draw_rect(
-                    Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
-                    &paint,
-                );
-                paint.set_anti_alias(true);
-            }
-        });
-        strip.place(0.0, 0.0, backdrop);
-
-        // The title, centered in the band. Text paints its baseline
-        // at top + ascent, so placing at (baseline − ascent) keeps
-        // the old glyph positions.
-        let baseline = (chrome.height + chrome.title_size * 0.7) * 0.5;
-        let ascent = -title_font.metrics().1.ascent;
-        let bounds = Constraints {
-            min: Size::default(),
-            max: Size::new(width, chrome.height),
-        };
-        let label = imba::text(ui, title, title_font.clone(), chrome.title_color.0)
-            .layout(arena, bounds);
-        let title_x = ((width - label.size().width) * 0.5).max(0.0);
-        let title_width = label.size().width;
-        strip.place_boxed(title_x, baseline - ascent, label);
-
-        let button_widget = |index: usize, button: &ToolbarButton| {
+        let mut x = chrome.button_inset + clearance;
+        for (index, button) in buttons.cluster(show_chat) {
             let glyph = button.glyph.clone();
-            let box_size = chrome.button_size;
-            let pressed = active == Some(button.command);
-
-            leaf::<ToolbarCommand>(box_size, chrome.height)
-                .paint_below({
-                    let chrome = chrome.clone();
-                    move |_arena, canvas, rect| {
-                        let mut paint = Paint::default();
-                        if pressed {
-                            paint.set_color(chrome.pressed_fill.0);
-                            canvas.draw_rect(
-                                Rect::from_xywh(
-                                    rect.left,
-                                    rect.top,
-                                    rect.width(),
-                                    rect.height() - 1.0,
-                                ),
-                                &paint,
-                            );
-                        }
-                        paint.set_color(chrome.rule.0);
-                        canvas.draw_rect(
-                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                            &paint,
-                        );
-                        paint.set_anti_alias(true);
-                        let square = Rect::from_xywh(
-                            rect.left,
-                            rect.top + (rect.height() - rect.width()) * 0.5,
-                            rect.width(),
-                            rect.width(),
-                        );
-                        let inset = (rect.width() * 0.25).max(1.0);
-                        glyph(
-                            canvas,
-                            square.with_inset((inset, inset)),
-                            chrome.glyph_color.0,
-                        );
-                    }
+            let chrome = chrome.clone();
+            let cell = leaf::<ToolbarCommand>(chrome.button_size, chrome.height)
+                .paint_below(move |_arena, canvas, rect| {
+                    let mut paint = Paint::default();
+                    // The group's STYLE: a hairline on every cell edge.
+                    paint.set_anti_alias(false);
+                    paint.set_color(chrome.rule.0);
+                    canvas.draw_rect(
+                        Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                        &paint,
+                    );
+                    paint.set_anti_alias(true);
+                    let square = Rect::from_xywh(
+                        rect.left,
+                        rect.top + (rect.height() - rect.width()) * 0.5,
+                        rect.width(),
+                        rect.width(),
+                    );
+                    let inset = (rect.width() * 0.25).max(1.0);
+                    glyph(
+                        canvas,
+                        square.with_inset((inset, inset)),
+                        chrome.glyph_color.0,
+                    );
                 })
                 .event(move |_arena, event, _size| match event {
                     Event::MouseDown { .. } => EventResult::Command(ToolbarCommand::Button(index)),
                     _ => EventResult::Ignored,
-                })
-        };
-
-        let rule_color = chrome.rule.0;
-        let closing_edge = || {
-            leaf::<ToolbarCommand>(1.0, chrome.height).paint_below(move |_arena, canvas, rect| {
-                let mut paint = Paint::default();
-                paint.set_color(rule_color);
-                canvas.draw_rect(rect, &paint);
-            })
-        };
-        // Each side's buttons are a ROW (vec order, left to right);
-        // the hairline edges keep their absolute homes.
-        let side_row = |side: ToolbarSide| -> Option<imba::ThunkBox<'a, ToolbarCommand>> {
-            let mut row = imba::Row::new(arena);
-            let mut any = false;
-            for (index, button) in buttons.0.iter().enumerate() {
-                if button.side != side {
-                    continue;
-                }
-                row = row.child(imba::fixed(button_widget(index, button)));
-                any = true;
-            }
-            any.then(|| {
-                row.layout(
-                    arena,
-                    Constraints {
-                        min: Size::default(),
-                        max: Size::new(width, chrome.height),
-                    },
-                )
-            })
-        };
-        if let Some(row) = side_row(ToolbarSide::Left) {
-            let end = chrome.button_inset + clearance + row.size().width;
-            strip.place_boxed(chrome.button_inset + clearance, 0.0, row);
-            strip.place(end, 0.0, closing_edge());
+                });
+            strip.place(x, 0.0, cell);
+            x += chrome.button_size;
         }
-        if let Some(row) = side_row(ToolbarSide::Well) {
-            let anchor = match title_width > 0.0 {
-                true => title_x,
-                false => width * 0.5,
-            };
-            strip.place_boxed((anchor - 6.0 - row.size().width).max(0.0), 0.0, row);
+        if count > 0 {
+            let rule = chrome.rule.0;
+            let edge = leaf::<ToolbarCommand>(1.0, chrome.height).paint_below(
+                move |_arena, canvas, rect| {
+                    let mut paint = Paint::default();
+                    paint.set_color(rule);
+                    canvas.draw_rect(rect, &paint);
+                },
+            );
+            strip.place(x, 0.0, edge);
         }
-        if let Some(row) = side_row(ToolbarSide::Right) {
-            let end = width - chrome.button_inset;
-            strip.place_boxed(end - row.size().width, 0.0, row);
-            strip.place(end - 1.0, 0.0, closing_edge());
-        }
-
-        strip
+        imba::Layout::layout(
+            imba::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
+            arena,
+            Constraints::tight(size),
+        )
     }
 }
 
-/// The chat bubble beside the title — `chat.composer` (⌘I): front
-/// the session's chat.
+/// A COLUMN HEADER: the per-column strip every column draws at its
+/// own top — background, bottom rule, a left-aligned title. The
+/// leftmost column passes the global cluster's width as `inset` so
+/// its title clears the semaphore and the cluster buttons.
+pub(crate) fn column_header<'a, Command: Clone + 'a>(
+    arena: &'a Arena,
+    store: &'a Store,
+    ui: &'a UiCtx,
+    width: f32,
+    title: String,
+    inset: f32,
+    trailing: f32,
+) -> imba::ThunkBox<'a, Command> {
+    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
+    let size = Size::new(width.max(1.0), chrome.height);
+    let title_font = crate::fonts::ui_text_font(ui, chrome.title_size);
+
+    // A long path DEGRADES gracefully: drop leading segments behind
+    // an ellipsis until the title fits what the buttons leave it.
+    let available = (width - inset - trailing - chrome.button_inset * 2.0).max(1.0);
+    let mut title = title;
+    while imba::text_advance(ui, &title_font, &title) > available {
+        let Some((_, rest)) = title
+            .trim_start_matches("…/")
+            .split_once('/')
+        else {
+            break;
+        };
+        title = format!("…/{rest}");
+    }
+
+    let mut strip = imba::container::container(arena, size);
+    let backdrop = leaf::<Command>(size.width, size.height).paint_below({
+        let chrome = chrome.clone();
+        move |_arena, canvas, rect| {
+            let mut paint = Paint::default();
+            paint.set_color(chrome.background.0);
+            canvas.draw_rect(rect, &paint);
+            paint.set_anti_alias(false);
+            paint.set_color(chrome.rule.0);
+            canvas.draw_rect(
+                Rect::from_xywh(rect.left, rect.bottom - 1.0, rect.width(), 1.0),
+                &paint,
+            );
+        }
+    });
+    strip.place(0.0, 0.0, backdrop);
+
+    let baseline = (chrome.height + chrome.title_size * 0.7) * 0.5;
+    let ascent = -title_font.metrics().1.ascent;
+    let bounds = Constraints {
+        min: Size::default(),
+        max: Size::new(
+            (width - inset - trailing - chrome.button_inset).max(1.0),
+            chrome.height,
+        ),
+    };
+    let label =
+        imba::text(ui, title, title_font.clone(), chrome.title_color.0).layout(arena, bounds);
+    strip.place_boxed(inset + chrome.button_inset, baseline - ascent, label);
+
+    imba::ThunkBox::new(
+        arena,
+        imba::Layout::layout(
+            imba::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
+            arena,
+            Constraints::tight(size),
+        ),
+    )
+}
+
+/// The chat bubble in the global cluster — `chat.composer` (⌘I):
+/// front the session's chat.
 pub fn composer_button() -> crate::ToolbarButton {
     crate::ToolbarButton {
         command: "chat.composer",

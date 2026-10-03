@@ -5059,6 +5059,96 @@ mod dock_tests {
         );
     }
 
+    /// The tree header's MAXIMIZE hides the chat; \u{2318}I and the
+    /// minimize button bring it back.
+    #[test]
+    fn maximize_hides_the_chat_and_restore_brings_it_back() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::MaximizeTree),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(
+            held(&app).workbench().chat_minimized(),
+            "maximize hides the chat"
+        );
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+        assert!(
+            !held(&app).workbench().chat_minimized(),
+            "\u{2318}I brings the chat back"
+        );
+
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::MaximizeTree),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(held(&app).workbench().chat_minimized());
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::RestoreChat),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(
+            !held(&app).workbench().chat_minimized(),
+            "the minimize button brings the chat back"
+        );
+    }
+
     /// EVERY open road converges on the chat slot: a chat pane sent
     /// down the generic `open_panel` lands there, never in the tree.
     #[test]
@@ -5593,6 +5683,68 @@ mod dock_tests {
     }
 
     #[test]
+    fn dock_header_buttons_dispatch_their_commands() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Mark {
+            hits: Arc<AtomicUsize>,
+        }
+        impl crate::DynamicCommand for Mark {
+            fn id(&self) -> &'static str {
+                "test.dock-mark"
+            }
+            fn name(&self) -> String {
+                "Dock Mark".to_owned()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                _store: &mut Store,
+                _window: crate::WindowId,
+                _fx: &mut crate::AppFx<'_>,
+            ) {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let hits = Arc::new(AtomicUsize::new(0));
+        {
+            let mut store = app.store_mut();
+            crate::commands::Commands::register(
+                &mut store,
+                Arc::new(Mark {
+                    hits: Arc::clone(&hits),
+                }),
+            );
+        }
+        app.register_toolbar_button(crate::ToolbarButton {
+            command: "test.dock-mark",
+            order: 10.0,
+            side: crate::ToolbarSide::Right,
+            glyph: Arc::new(|_canvas, _rect, _color| {}),
+        });
+        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        show_dock(&mut app, "files", "test.files");
+        settle(&mut app, &mut surface);
+
+        let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
+        let dock_width = entity(&app).dock_target_width();
+        let edge = 800.0 - dock_width;
+        let x = edge + dock_width - chrome.button_inset - chrome.button_size * 0.5;
+        assert!(
+            test_driver::click(&mut app, x, chrome.height * 0.5, 800.0, 600.0),
+            "the dock header button answers the click"
+        );
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            hits.load(Ordering::Relaxed),
+            1,
+            "the dock header button ran its command"
+        );
+    }
+
+    #[test]
     fn the_dock_swaps_content_in_place() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
@@ -5830,7 +5982,20 @@ mod toolbar_side_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
 
         let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
-        let x = 800.0 - chrome.button_inset - chrome.button_size * 0.5;
+        // LEFT buttons live in the global cluster, top-left.
+        let cluster_index = crate::toolbar::ToolbarButtons::of(app.store())
+            .iter()
+            .filter(|button| {
+                matches!(
+                    button.side,
+                    crate::ToolbarSide::Left | crate::ToolbarSide::Well
+                )
+            })
+            .position(|button| button.command == "test.left-mark")
+            .expect("the left button is in the cluster");
+        let x = chrome.button_inset
+            + cluster_index as f32 * chrome.button_size
+            + chrome.button_size * 0.5;
         assert!(test_driver::click(
             &mut app,
             x,
@@ -5839,11 +6004,19 @@ mod toolbar_side_tests {
             600.0
         ));
         assert_eq!(
-            right_hits.load(Ordering::Relaxed),
+            left_hits.load(Ordering::Relaxed),
             1,
-            "the right button fired"
+            "the cluster button fired"
         );
-        assert_eq!(left_hits.load(Ordering::Relaxed), 0, "the left one did not");
+        // RIGHT buttons live in the DOCK's own header now — with no
+        // dock open, the window's top-right corner is nobody's.
+        let right_x = 800.0 - chrome.button_inset - chrome.button_size * 0.5;
+        let _ = test_driver::click(&mut app, right_x, chrome.height * 0.5, 800.0, 600.0);
+        assert_eq!(
+            right_hits.load(Ordering::Relaxed),
+            0,
+            "no dock, no right button"
+        );
     }
 }
 

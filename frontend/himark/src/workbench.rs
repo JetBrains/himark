@@ -73,6 +73,18 @@ pub enum WorkbenchCommand {
     ChatBeginResize,
     ChatResize(f32),
     ChatEndResize,
+
+    /// A header button running a REGISTERED command (toc…): looked
+    /// up and queued for the app loop.
+    RunCommand(&'static str),
+
+    /// The tree header's maximize: hide the chat until it is asked
+    /// back (Cmd-I or the minimize button).
+    MaximizeTree,
+
+    /// The tree header's minimize: the chat returns — beside the
+    /// tree when the window fits both, fronted over it otherwise.
+    RestoreChat,
 }
 
 impl std::fmt::Display for WorkbenchCommand {
@@ -84,6 +96,9 @@ impl std::fmt::Display for WorkbenchCommand {
             WorkbenchCommand::ChatBeginResize => out.write_str("chat column begin resize"),
             WorkbenchCommand::ChatResize(_) => out.write_str("chat column resize"),
             WorkbenchCommand::ChatEndResize => out.write_str("chat column end resize"),
+            WorkbenchCommand::RunCommand(id) => out.write_str(id),
+            WorkbenchCommand::MaximizeTree => out.write_str("maximize tree"),
+            WorkbenchCommand::RestoreChat => out.write_str("restore chat"),
         }
     }
 }
@@ -147,6 +162,11 @@ pub struct Workbench {
     /// consulted when the window is too narrow for both.
     chat_fronted: bool,
 
+    /// The tree header's MAXIMIZE: the user hid the chat explicitly.
+    /// Cmd-I or the minimize button bring it back; the vacant tree
+    /// shows the chat regardless (there is nothing else to show).
+    chat_minimized: bool,
+
     dock: Option<crate::dock::Dock>,
 }
 
@@ -157,6 +177,7 @@ impl Workbench {
             chat: None,
             chat_focused: false,
             chat_fronted: false,
+            chat_minimized: false,
             dock: None,
         }
     }
@@ -207,6 +228,32 @@ impl Workbench {
 
     pub(crate) fn chat_fronted(&self) -> bool {
         self.chat_fronted && self.chat.is_some()
+    }
+
+    pub(crate) fn chat_minimized(&self) -> bool {
+        self.chat_minimized && self.chat.is_some()
+    }
+
+    pub(crate) fn restore_chat(&mut self) {
+        self.chat_minimized = false;
+    }
+
+    /// Is the chat DISPLAYED at this width, by the layout's own
+    /// derivation? The global cluster shows the chat button exactly
+    /// when this is false.
+    pub(crate) fn chat_presented(
+        &self,
+        width: f32,
+        window: &::editor::theme::WindowChrome,
+    ) -> bool {
+        if self.chat.is_none() || self.root.full_bleed() {
+            return false;
+        }
+        if self.root.is_vacant() {
+            return true;
+        }
+        let engaged = chat_column_engaged(width, window) && !self.chat_minimized();
+        engaged || (self.chat_fronted() && !engaged)
     }
 
     pub(crate) fn front_chat_over_panels(&mut self) {
@@ -309,6 +356,21 @@ impl View for Workbench {
                     chat.resizing = false;
                 }
             }
+            WorkbenchCommand::RunCommand(id) => {
+                if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
+                    crate::AppRequests::push(store, command);
+                }
+            }
+            WorkbenchCommand::MaximizeTree => {
+                self.chat_minimized = self.chat.is_some();
+                self.chat_fronted = false;
+                self.chat_focused = false;
+            }
+            WorkbenchCommand::RestoreChat => {
+                self.chat_minimized = false;
+                self.chat_fronted = self.chat.is_some();
+                self.chat_focused = self.chat.is_some();
+            }
         }
     }
 
@@ -324,6 +386,120 @@ impl View for Workbench {
             ui,
         }
     }
+}
+
+/// The tree header's title: the focused editor's FULL path relative
+/// to the workspace (the location's segments), the plain panel title
+/// otherwise.
+fn tree_header_title(workbench: &Workbench, store: &Store) -> String {
+    let slot = workbench.root.focused_slot();
+    if let (Some(documents), Some((document, _))) = (slot.documents_id(), slot.find_target()) {
+        if let Some(location) = crate::OpenDocuments::location(store, documents, document) {
+            if !location.path().is_empty() {
+                return location.path().join("/");
+            }
+        }
+    }
+    workbench.root.focused_pane().title(store)
+}
+
+/// The tree header's right-aligned buttons: TOC, then the chat
+/// toggle chevrons — each cell ruled on its left, the group's style.
+fn place_tree_buttons<'a>(
+    container: &mut imba::container::Container<'a, WorkbenchCommand>,
+    arena: &'a Arena,
+    theme: &::editor::theme::Theme,
+    right: f32,
+    top: f32,
+    header_h: f32,
+    toggle: Option<WorkbenchCommand>,
+) {
+    let chrome = theme.ui().toolbar.clone();
+    let mut x = right - chrome.button_inset;
+    if let Some(command) = toggle {
+        x -= chrome.button_size;
+        container.place(x, top, chat_toggle_button(header_h, theme, command));
+    }
+    x -= chrome.button_size;
+    let toc = crate::toc::toolbar_button();
+    let glyph = toc.glyph.clone();
+    let rule = chrome.rule.0;
+    let glyph_color = chrome.glyph_color.0;
+    let button_size = chrome.button_size;
+    let cell = imba::leaf::leaf::<WorkbenchCommand>(button_size, header_h)
+        .paint_below(move |_arena, canvas, rect| {
+            let mut paint = skia_safe::Paint::default();
+            paint.set_anti_alias(false);
+            paint.set_color(rule);
+            canvas.draw_rect(
+                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                &paint,
+            );
+            paint.set_anti_alias(true);
+            let square = skia_safe::Rect::from_xywh(
+                rect.left,
+                rect.top + (rect.height() - rect.width()) * 0.5,
+                rect.width(),
+                rect.width(),
+            );
+            let inset = (rect.width() * 0.25).max(1.0);
+            glyph(canvas, square.with_inset((inset, inset)), glyph_color);
+        })
+        .event(|_arena, event, _size| match event {
+            Event::MouseDown { .. } => {
+                EventResult::Command(WorkbenchCommand::RunCommand("toc.toggle"))
+            }
+            _ => EventResult::Ignored,
+        });
+    container.place(x, top, cell);
+}
+
+/// The tree header's chat toggle: MAXIMIZE (hide the chat) when the
+/// chat stands beside the tree, MINIMIZE (bring it back) when it is
+/// hidden — stroked chevrons pointing out or in.
+fn chat_toggle_button<'a>(
+    header_h: f32,
+    theme: &::editor::theme::Theme,
+    command: WorkbenchCommand,
+) -> impl Thunk<'a, WorkbenchCommand> + 'a {
+    use imba::thunk_ext::ThunkExt;
+    let chrome = theme.ui().toolbar.clone();
+    let maximize = matches!(command, WorkbenchCommand::MaximizeTree);
+    imba::leaf::leaf::<WorkbenchCommand>(chrome.button_size, header_h)
+        .paint_below(move |_arena, canvas, rect| {
+            let mut paint = skia_safe::Paint::default();
+            paint.set_anti_alias(false);
+            paint.set_color(chrome.rule.0);
+            canvas.draw_rect(
+                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                &paint,
+            );
+            paint.set_anti_alias(true);
+            paint.set_color(chrome.glyph_color.0);
+            paint.set_style(skia_safe::paint::Style::Stroke);
+            paint.set_stroke_width((rect.width() * 0.08).max(1.0));
+            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
+            let cx = rect.left + rect.width() * 0.5;
+            let cy = rect.top + rect.height() * 0.5;
+            let reach = rect.width() * 0.16;
+            let gap = rect.width() * 0.1;
+            // Two chevrons: outward = maximize, inward = restore.
+            let (near, far) = match maximize {
+                true => (gap, gap + reach),
+                false => (gap + reach, gap),
+            };
+            for direction in [-1.0f32, 1.0] {
+                let mut path = skia_safe::PathBuilder::new();
+                path.move_to((cx + direction * near, cy - reach));
+                path.line_to((cx + direction * far, cy));
+                path.line_to((cx + direction * near, cy + reach));
+                canvas.draw_path(&path.detach(), &paint);
+            }
+        })
+        .event(move |_arena, event, _size| match event {
+            Event::MouseDown { .. } => EventResult::Command(command.clone()),
+            _ => EventResult::Ignored,
+        })
 }
 
 /// The workbench frame, reified: the chat column (when engaged)
@@ -355,25 +531,68 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let chat = workbench.chat.as_ref().filter(|_| !full_bleed);
 
         let geometry = match full_bleed {
+            // Full-bleed covers the workbench, not the window's top
+            // band: the semaphore and the global cluster keep their
+            // corner.
             true => WorkbenchGeometry {
                 x: 0.0,
-                top: 0.0,
+                top: theme.ui().toolbar.height,
                 split_width: size.width,
             },
             false => workbench_geometry(size.width, size.height, &theme.ui().window),
         };
         let split_height = (size.height - geometry.top).max(1.0);
 
+        // Every COLUMN draws its own header; the leftmost one insets
+        // past the global cluster (semaphore + window buttons). A
+        // full-bleed root (the composer) owns the window whole.
+        let header_h = match full_bleed {
+            true => 0.0,
+            false => theme.ui().toolbar.height,
+        };
+        let presented = workbench.chat_presented(size.width, &theme.ui().window);
+        let cluster = crate::toolbar::global_cluster_width(store, ui, !presented);
+        let tree_buttons =
+            theme.ui().toolbar.button_inset + 2.0 * theme.ui().toolbar.button_size;
+
         let Some(chat) = chat else {
             let root = imba::Layout::layout(
                 workbench.root.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(geometry.split_width, split_height)),
+                Constraints::tight(Size::new(
+                    geometry.split_width,
+                    (split_height - header_h).max(1.0),
+                )),
             )
             .map(WorkbenchCommand::Node);
 
             let mut container = imba::container::container(arena, size);
-            container.place(geometry.x, geometry.top, root);
+            if header_h > 0.0 {
+                let title = tree_header_title(workbench, store);
+                container.place_boxed(
+                    geometry.x,
+                    geometry.top,
+                    crate::toolbar::column_header::<WorkbenchCommand>(
+                        arena,
+                        store,
+                        ui,
+                        geometry.split_width,
+                        title,
+                        cluster,
+                        tree_buttons,
+                    ),
+                );
+                place_tree_buttons(
+                    &mut container,
+                    arena,
+                    &theme,
+                    geometry.x + geometry.split_width,
+                    geometry.top,
+                    header_h,
+                    None,
+                );
+            }
+            container.place(geometry.x, geometry.top + header_h, root);
 
             return imba::ThunkBox::new(
                 arena,
@@ -388,17 +607,35 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         //   tree vacant          -> the chat owns the whole workbench
         //   both fit             -> chat column | split tree
         //   too narrow for both  -> the tree alone, the chat hidden
-        let engaged = chat_column_engaged(size.width, &theme.ui().window);
+        let engaged =
+            chat_column_engaged(size.width, &theme.ui().window) && !workbench.chat_minimized();
         if workbench.root.is_vacant() || (workbench.chat_fronted() && !engaged) {
             let column = imba::Layout::layout(
                 chat.node.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(geometry.split_width, split_height)),
+                Constraints::tight(Size::new(
+                    geometry.split_width,
+                    (split_height - header_h).max(1.0),
+                )),
             )
             .map(WorkbenchCommand::Chat);
 
             let mut container = imba::container::container(arena, size);
-            container.place(geometry.x, geometry.top, column);
+            let title = chat.panel().title(store);
+            container.place_boxed(
+                geometry.x,
+                geometry.top,
+                crate::toolbar::column_header::<WorkbenchCommand>(
+                    arena,
+                    store,
+                    ui,
+                    geometry.split_width,
+                    title,
+                    cluster,
+                    0.0,
+                ),
+            );
+            container.place(geometry.x, geometry.top + header_h, column);
 
             return imba::ThunkBox::new(
                 arena,
@@ -412,12 +649,45 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
             let root = imba::Layout::layout(
                 workbench.root.display(arena, store, ui),
                 arena,
-                Constraints::tight(Size::new(geometry.split_width, split_height)),
+                Constraints::tight(Size::new(
+                    geometry.split_width,
+                    (split_height - header_h).max(1.0),
+                )),
             )
             .map(WorkbenchCommand::Node);
 
             let mut container = imba::container::container(arena, size);
-            container.place(geometry.x, geometry.top, root);
+            let title = tree_header_title(workbench, store);
+            container.place_boxed(
+                geometry.x,
+                geometry.top,
+                crate::toolbar::column_header::<WorkbenchCommand>(
+                    arena,
+                    store,
+                    ui,
+                    geometry.split_width,
+                    title,
+                    cluster,
+                    tree_buttons,
+                ),
+            );
+            if header_h > 0.0 {
+                // The restore button only when there IS a chat.
+                let toggle = workbench
+                    .chat
+                    .is_some()
+                    .then_some(WorkbenchCommand::RestoreChat);
+                place_tree_buttons(
+                    &mut container,
+                    arena,
+                    &theme,
+                    geometry.x + geometry.split_width,
+                    geometry.top,
+                    header_h,
+                    toggle,
+                );
+            }
+            container.place(geometry.x, geometry.top + header_h, root);
 
             return imba::ThunkBox::new(
                 arena,
@@ -441,7 +711,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
             arena,
             Constraints::tight(Size::new(
                 (column_width - divider_width).max(1.0),
-                split_height,
+                (split_height - header_h).max(1.0),
             )),
         )
         .map(WorkbenchCommand::Chat)
@@ -450,7 +720,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let root = imba::Layout::layout(
             workbench.root.display(arena, store, ui),
             arena,
-            Constraints::tight(Size::new(root_width, split_height)),
+            Constraints::tight(Size::new(root_width, (split_height - header_h).max(1.0))),
         )
         .map(WorkbenchCommand::Node)
         .focus_scope(!workbench.chat_focused());
@@ -482,9 +752,47 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         );
 
         let mut container = imba::container::container(arena, size);
-        container.place(geometry.x, geometry.top, column);
+        // Each column's OWN header: the chat names its session (the
+        // leftmost, so it insets past the global cluster), the tree
+        // names its focused file.
+        container.place_boxed(
+            geometry.x,
+            geometry.top,
+            crate::toolbar::column_header::<WorkbenchCommand>(
+                arena,
+                store,
+                ui,
+                (column_width - divider_width).max(1.0),
+                chat.panel().title(store),
+                cluster,
+                0.0,
+            ),
+        );
+        container.place_boxed(
+            root_x,
+            geometry.top,
+            crate::toolbar::column_header::<WorkbenchCommand>(
+                arena,
+                store,
+                ui,
+                root_width,
+                tree_header_title(workbench, store),
+                0.0,
+                tree_buttons,
+            ),
+        );
+        place_tree_buttons(
+            &mut container,
+            arena,
+            &theme,
+            root_x + root_width,
+            geometry.top,
+            header_h,
+            Some(WorkbenchCommand::MaximizeTree),
+        );
+        container.place(geometry.x, geometry.top + header_h, column);
         container.place(root_x - divider_width, geometry.top, rule);
-        container.place(root_x, geometry.top, root);
+        container.place(root_x, geometry.top + header_h, root);
         container.place(root_x - HANDLE_REACH, geometry.top, handle);
 
         imba::ThunkBox::new(

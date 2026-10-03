@@ -690,5 +690,4 @@ pub(crate) fn register_builtins(store: &mut Store) {
         Arc::new(crate::new_session::OpenNewSession { host: None }),
     );
 
-    crate::toolbar::ToolbarButtons::register(store, crate::toc::toolbar_button());
 }
