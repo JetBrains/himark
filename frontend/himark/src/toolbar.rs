@@ -103,6 +103,23 @@ pub(crate) fn global_cluster_width(store: &Store, ui: &UiCtx, show_chat: bool) -
     chrome.button_inset + clearance + buttons * chrome.button_size + 1.0
 }
 
+/// The DOCK CLUSTER's width: the right-side mirror of the global
+/// cluster — the dock's buttons, pinned top-right at all times. The
+/// rightmost column header reserves this much trailing room while
+/// the dock is closed (open, the dock's own header takes over in
+/// the same pixels).
+pub(crate) fn dock_cluster_width(store: &Store) -> f32 {
+    let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
+    let buttons = ToolbarButtons::of(store)
+        .iter()
+        .filter(|button| matches!(button.side, ToolbarSide::Right))
+        .count() as f32;
+    match buttons > 0.0 {
+        true => chrome.button_inset + buttons * chrome.button_size,
+        false => 0.0,
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct Toolbar {
     request: crate::modal::RequestSlot<ToolbarRequest>,
@@ -145,6 +162,8 @@ impl Toolbar {
         store: &'a Store,
         ui: &'a UiCtx,
         show_chat: bool,
+        window_width: f32,
+        dock_open: bool,
     ) -> impl Thunk<'a, ToolbarCommand> + 'a {
         let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
         let clearance = ui
@@ -153,8 +172,7 @@ impl Toolbar {
             .unwrap_or(0.0);
         let buttons = ToolbarButtons::of(store);
         let count = buttons.cluster(show_chat).count();
-        let width = chrome.button_inset + clearance + count as f32 * chrome.button_size + 1.0;
-        let size = Size::new(width.max(1.0), chrome.height);
+        let size = Size::new(window_width.max(1.0), chrome.height);
 
         let mut strip = imba::container::container(arena, size);
         let mut x = chrome.button_inset + clearance;
@@ -202,6 +220,57 @@ impl Toolbar {
                 },
             );
             strip.place(x, 0.0, edge);
+        }
+
+        // The right mirror: the dock's buttons, always discoverable.
+        // While the dock is OPEN its own header renders them (same
+        // pixels, pressed state, rides the slide) — the strip yields.
+        if !dock_open {
+            let mut x = window_width
+                - chrome.button_inset
+                - buttons
+                    .iter()
+                    .filter(|button| matches!(button.side, ToolbarSide::Right))
+                    .count() as f32
+                    * chrome.button_size;
+            for (index, button) in buttons.iter().enumerate() {
+                if !matches!(button.side, ToolbarSide::Right) {
+                    continue;
+                }
+                let glyph = button.glyph.clone();
+                let chrome = chrome.clone();
+                let cell = leaf::<ToolbarCommand>(chrome.button_size, chrome.height)
+                    .paint_below(move |_arena, canvas, rect| {
+                        let mut paint = Paint::default();
+                        paint.set_anti_alias(false);
+                        paint.set_color(chrome.rule.0);
+                        canvas.draw_rect(
+                            Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
+                            &paint,
+                        );
+                        paint.set_anti_alias(true);
+                        let square = Rect::from_xywh(
+                            rect.left,
+                            rect.top + (rect.height() - rect.width()) * 0.5,
+                            rect.width(),
+                            rect.width(),
+                        );
+                        let inset = (rect.width() * 0.25).max(1.0);
+                        glyph(
+                            canvas,
+                            square.with_inset((inset, inset)),
+                            chrome.glyph_color.0,
+                        );
+                    })
+                    .event(move |_arena, event, _size| match event {
+                        Event::MouseDown { .. } => {
+                            EventResult::Command(ToolbarCommand::Button(index))
+                        }
+                        _ => EventResult::Ignored,
+                    });
+                strip.place(x, 0.0, cell);
+                x += chrome.button_size;
+            }
         }
         imba::Layout::layout(
             imba::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),

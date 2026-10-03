@@ -6008,14 +6008,20 @@ mod toolbar_side_tests {
             1,
             "the cluster button fired"
         );
-        // RIGHT buttons live in the DOCK's own header now — with no
-        // dock open, the window's top-right corner is nobody's.
+        // RIGHT buttons ride the DOCK CLUSTER top-right — the mirror
+        // of the global cluster, present even with the dock closed.
         let right_x = 800.0 - chrome.button_inset - chrome.button_size * 0.5;
-        let _ = test_driver::click(&mut app, right_x, chrome.height * 0.5, 800.0, 600.0);
+        assert!(test_driver::click(
+            &mut app,
+            right_x,
+            chrome.height * 0.5,
+            800.0,
+            600.0
+        ));
         assert_eq!(
             right_hits.load(Ordering::Relaxed),
-            0,
-            "no dock, no right button"
+            1,
+            "the dock cluster fires with the dock closed"
         );
     }
 }

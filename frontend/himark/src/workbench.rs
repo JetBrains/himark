@@ -407,7 +407,7 @@ fn tree_header_title(workbench: &Workbench, store: &Store) -> String {
 /// toggle chevrons — each cell ruled on its left, the group's style.
 fn place_tree_buttons<'a>(
     container: &mut imba::container::Container<'a, WorkbenchCommand>,
-    arena: &'a Arena,
+    _arena: &'a Arena,
     theme: &::editor::theme::Theme,
     right: f32,
     top: f32,
@@ -554,6 +554,16 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let cluster = crate::toolbar::global_cluster_width(store, ui, !presented);
         let tree_buttons =
             theme.ui().toolbar.button_inset + 2.0 * theme.ui().toolbar.button_size;
+        // The dock cluster mirrors the global one top-right: the
+        // RIGHTMOST column header leaves room for it while the dock
+        // is closed (open, the dock's own header holds the buttons).
+        let dock_strip = match workbench
+            .dock()
+            .is_some_and(|dock| dock.target_width() > 0.0)
+        {
+            true => 0.0,
+            false => crate::toolbar::dock_cluster_width(store),
+        };
 
         let Some(chat) = chat else {
             let root = imba::Layout::layout(
@@ -579,14 +589,14 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                         geometry.split_width,
                         title,
                         cluster,
-                        tree_buttons,
+                        tree_buttons + dock_strip,
                     ),
                 );
                 place_tree_buttons(
                     &mut container,
                     arena,
                     &theme,
-                    geometry.x + geometry.split_width,
+                    geometry.x + geometry.split_width - dock_strip,
                     geometry.top,
                     header_h,
                     None,
@@ -632,7 +642,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                     geometry.split_width,
                     title,
                     cluster,
-                    0.0,
+                    dock_strip,
                 ),
             );
             container.place(geometry.x, geometry.top + header_h, column);
@@ -668,7 +678,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                     geometry.split_width,
                     title,
                     cluster,
-                    tree_buttons,
+                    tree_buttons + dock_strip,
                 ),
             );
             if header_h > 0.0 {
@@ -681,7 +691,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                     &mut container,
                     arena,
                     &theme,
-                    geometry.x + geometry.split_width,
+                    geometry.x + geometry.split_width - dock_strip,
                     geometry.top,
                     header_h,
                     toggle,
@@ -778,14 +788,14 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                 root_width,
                 tree_header_title(workbench, store),
                 0.0,
-                tree_buttons,
+                tree_buttons + dock_strip,
             ),
         );
         place_tree_buttons(
             &mut container,
             arena,
             &theme,
-            root_x + root_width,
+            root_x + root_width - dock_strip,
             geometry.top,
             header_h,
             Some(WorkbenchCommand::MaximizeTree),

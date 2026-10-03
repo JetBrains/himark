@@ -405,6 +405,10 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
     /// this top-left corner — column headers own the rest of the band.
     cluster_width: f32,
 
+    /// The dock cluster's left edge while the dock is CLOSED — the
+    /// toolbar layer claims that top-right corner too.
+    dock_strip_x: Option<f32>,
+
     dock_edge_x: Option<f32>,
 }
 
@@ -433,6 +437,7 @@ where
             focus,
             toolbar_height,
             cluster_width,
+            dock_strip_x,
             dock_edge_x,
         } = self;
 
@@ -447,6 +452,7 @@ where
                 focus,
                 toolbar_height,
                 cluster_width,
+                dock_strip_x,
                 dock_edge_x,
             },
         )
@@ -462,6 +468,7 @@ struct RealizedLayers<'a> {
     focus: LayerFocus,
     toolbar_height: f32,
     cluster_width: f32,
+    dock_strip_x: Option<f32>,
     dock_edge_x: Option<f32>,
 }
 
@@ -649,7 +656,9 @@ impl<'a> RealizedLayers<'a> {
             {
                 let event = tick(
                     &mut claimed,
-                    point.y < self.toolbar_height && point.x < self.cluster_width,
+                    point.y < self.toolbar_height
+                        && (point.x < self.cluster_width
+                            || self.dock_strip_x.is_some_and(|edge| point.x >= edge)),
                 );
                 merged = merged.merge(
                     self.toolbar
@@ -2122,6 +2131,14 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                         .workbench
                         .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
                 ),
+                dock_strip_x: match layers
+                    .workbench
+                    .dock()
+                    .is_some_and(|dock| dock.target_width() > 0.0)
+                {
+                    true => None,
+                    false => Some(size.width - crate::toolbar::dock_cluster_width(store)),
+                },
                 dock_edge_x: layers.workbench.dock().map(|_| size.width - revealed),
                 base: below_layer(
                     arena,
@@ -2143,6 +2160,11 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     !layers
                         .workbench
                         .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
+                    size.width,
+                    layers
+                        .workbench
+                        .dock()
+                        .is_some_and(|dock| dock.target_width() > 0.0),
                 ),
                 side: layers.side.as_ref().map(|side| {
                     below_layer(
