@@ -12653,3 +12653,9 @@ timestamp,commit,profile,bench,metric,value_ms
 1790983114,962284e18,debug,chat-edits,frame_p95_ms,77.3856
 1790983114,962284e18,debug,chat-edits,frame_max_ms,91.2153
 1790983114,962284e18,debug,chat-edits,background_total_ms,2458.9256
+1790986174,415524bfc,debug,monster-resize,sync_ms,2.8315
+1790986174,415524bfc,debug,monster-resize,repair_effect_ms,17.9284
+1790986216,415524bfc,debug,editor-scroll,build_p50_ms,0.1244
+1790986216,415524bfc,debug,editor-scroll,build_p95_ms,0.2664
+1790986218,415524bfc,debug,plain-typing,keystroke_p50_ms,0.3199
+1790986220,415524bfc,debug,fold-toggle,monster_ms,1.9801
