@@ -297,6 +297,12 @@ pub struct ChangeSets {
 
     sets: rpds::HashTrieMapSync<ChangeSetId, ChangeSet>,
 
+    /// The session folders this collection serves, in attach order —
+    /// stamped by the wire driver as the catalog grants them. The
+    /// views derive their root rows from HERE, never from a session
+    /// consult.
+    folders: rpds::VectorSync<ResourceLocation>,
+
     /// Source → set: the reuse lookup for BOTH flavors.
     pub(crate) by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
 
@@ -383,6 +389,7 @@ impl Changes {
             documents,
             history,
             sets: rpds::HashTrieMapSync::new_sync(),
+            folders: rpds::VectorSync::new_sync(),
             by_source: rpds::HashTrieMapSync::new_sync(),
             rearms: Vec::new(),
             refetch_asks: Vec::new(),
@@ -394,6 +401,44 @@ impl Changes {
 
     pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
         self.documents
+    }
+
+    /// The session folders this collection serves — the views' root
+    /// rows. Attach order; append-only (a session's folders only
+    /// grow).
+    pub fn folders(store: &Store, changes: imba::store::Id<ChangeSets>) -> Vec<ResourceLocation> {
+        Self::of(store, changes)
+            .map(|held| held.folders.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// The driver's stamp: adopt any folder not yet held, keeping
+    /// attach order. New folders nudge every view (their root rows
+    /// appear).
+    pub(crate) fn adopt_folders(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        folders: &[ResourceLocation],
+    ) {
+        let fresh: Vec<ResourceLocation> = {
+            let Some(held) = Self::of(store, changes) else {
+                return;
+            };
+            folders
+                .iter()
+                .filter(|folder| !held.folders.iter().any(|known| known == *folder))
+                .cloned()
+                .collect()
+        };
+        if fresh.is_empty() {
+            return;
+        }
+        Self::update(store, changes, |held| {
+            for folder in &fresh {
+                held.folders.push_back_mut(folder.clone());
+            }
+            held.nudge_all();
+        });
     }
 
     pub fn history(&self) -> imba::store::Id<crate::hihistory::History> {
@@ -1280,6 +1325,18 @@ impl crate::DynamicCommand for ToggleChangesView {
         let wire = entity.family().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
         crate::drivers::changes::ensure(store, window, wire, folders, fx);
+        // The canvas-open verb the tree emits — the window rides in
+        // the closure; the view never holds one.
+        let open_canvas: crate::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
+            crate::shell_verb(crate::AppCommand::Dynamic(
+                window,
+                Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                    changes,
+                    source,
+                    reveal,
+                }),
+            ))
+        });
 
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
@@ -1291,11 +1348,9 @@ impl crate::DynamicCommand for ToggleChangesView {
             crate::changes_view::ChangesView::open(
                 store,
                 &_app.ui_ctx(),
-                window,
                 changes,
-                wire,
-                workspace,
                 crate::changes_view::ViewSets::WorkingCopies,
+                open_canvas,
             ),
         );
         let owner = self.id();

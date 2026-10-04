@@ -130,6 +130,9 @@ pub fn ensure(
     folders: Vec<ResourceLocation>,
     fx: &mut crate::AppFx<'_>,
 ) {
+    if let Some(changes) = of(store, wire).map(|row| row.changes) {
+        Changes::adopt_folders(store, changes, &folders);
+    }
     for folder in folders {
         ensure_folder(store, window, wire, folder, fx);
     }

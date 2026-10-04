@@ -111,6 +111,14 @@ impl std::fmt::Display for ChangesViewCommand {
     }
 }
 
+/// How a row OPENS a canvas: a verb built by whoever mounted the
+/// view — the shell wires its window in; the tree never holds one.
+pub type CanvasOpener = Arc<
+    dyn Fn(crate::hichanges::CanvasSource, Option<ResourceLocation>) -> imba::command::Verb
+        + Send
+        + Sync,
+>;
+
 /// The unified tree view record — store truth, owned by the
 /// `ChangeSets` collection, referenced from panes by id.
 pub struct ChangesView {
@@ -119,13 +127,10 @@ pub struct ChangesView {
 
     /// The collection whose sets this view unites — the store road.
     changes: imba::store::Id<ChangeSets>,
-    /// The collection's wire driver — the refresh chip's refetch
-    /// address, stamped at mint.
-    wire: imba::store::Id<crate::drivers::changes::ChangesWire>,
-    /// The session, as the CATALOG's name for its folders — never a
-    /// store road (the folder list is the host's, not the collection's).
-    workspace: crate::SessionId,
-    window: crate::WindowId,
+
+    /// The canvas-open verb, injected at mount (the shell's window
+    /// rides inside the closure, never in the view).
+    open_canvas: CanvasOpener,
 
     sets: ViewSets,
 
@@ -142,9 +147,7 @@ impl Clone for ChangesView {
             list: self.list.clone(),
             items: self.items.clone(),
             changes: self.changes,
-            wire: self.wire,
-            workspace: self.workspace.clone(),
-            window: self.window,
+            open_canvas: self.open_canvas.clone(),
             sets: self.sets,
             grown: self.grown.clone(),
 
@@ -154,15 +157,12 @@ impl Clone for ChangesView {
 }
 
 impl ChangesView {
-    #[allow(clippy::too_many_arguments)]
     pub fn open(
         store: &Store,
         ui: &UiCtx,
-        window: crate::WindowId,
         changes: imba::store::Id<ChangeSets>,
-        wire: imba::store::Id<crate::drivers::changes::ChangesWire>,
-        workspace: crate::SessionId,
         sets: ViewSets,
+        open_canvas: CanvasOpener,
     ) -> Self {
         let mut view = Self {
             list: TooltipView::new(
@@ -181,9 +181,7 @@ impl ChangesView {
             ),
             items: rpds::HashTrieMapSync::new_sync(),
             changes,
-            wire,
-            workspace,
-            window,
+            open_canvas,
             sets,
             grown: rpds::HashTrieMapSync::new_sync(),
             request: None,
@@ -220,26 +218,25 @@ impl ChangesView {
         let chat = crate::env::Themes::of(store).ui().chat.clone();
         let counts = (chat.added_color.0, chat.removed_color.0);
         let history = Changes::of(store, self.changes).map(|held| held.history());
-        let nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .map(|folder| match (self.sets, history) {
-                    (ViewSets::History, Some(history)) => crate::hihistory::graph_node(
-                        store,
-                        history,
-                        folder,
-                        History::folder(store, history, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    ),
-                    _ => crate::hichanges::folder_node(
-                        folder,
-                        Changes::folder(store, self.changes, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    ),
-                })
-                .collect();
+        let nodes: Vec<ForestNode<ResourceLocation>> = Changes::folders(store, self.changes)
+            .iter()
+            .map(|folder| match (self.sets, history) {
+                (ViewSets::History, Some(history)) => crate::hihistory::graph_node(
+                    store,
+                    history,
+                    folder,
+                    History::folder(store, history, folder).as_ref(),
+                    &mut items,
+                    counts,
+                ),
+                _ => crate::hichanges::folder_node(
+                    folder,
+                    Changes::folder(store, self.changes, folder).as_ref(),
+                    &mut items,
+                    counts,
+                ),
+            })
+            .collect();
 
         // A commit row arrives collapsed; only rows the view has
         // never shown are preset, so a user's expansion survives.
@@ -263,7 +260,7 @@ impl ChangesView {
     fn displayed_sets(&self, store: &Store) -> Vec<crate::hichanges::ChangeSetId> {
         let mut sets = Vec::new();
         let history = Changes::of(store, self.changes).map(|held| held.history());
-        for folder in crate::higent::session_folders(store, &self.workspace) {
+        for folder in Changes::folders(store, self.changes) {
             sets.extend(Changes::id_for_folder(store, self.changes, &folder));
             if let (ViewSets::History, Some(history)) = (self.sets, history) {
                 if let Some(entry) = History::folder(store, history, &folder) {
@@ -309,16 +306,7 @@ impl ChangesView {
                 if toggle {
                     self.list.view_mut().inner_mut().toggle(key, store, ui);
                 }
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                    AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                            changes: self.changes,
-                            source,
-                            reveal,
-                        }),
-                    ),
-                )));
+                self.request = Some(ModalRequest::Perform((self.open_canvas)(source, reveal)));
             }
             Some(RowItem::Grow { folder }) => {
                 let Some(history) = Changes::of(store, self.changes).map(|held| held.history())
@@ -467,7 +455,7 @@ impl View for ChangesView {
                 else {
                     return;
                 };
-                for folder in crate::higent::session_folders(store, &self.workspace) {
+                for folder in Changes::folders(store, self.changes) {
                     let Some(entry) = History::folder(store, history, &folder) else {
                         continue;
                     };
@@ -537,15 +525,13 @@ impl View for ChangesView {
             let history = Changes::of(store, self.changes).map(|held| held.history());
             let pageable = self.sets == ViewSets::History
                 && history.is_some_and(|history| {
-                    crate::higent::session_folders(store, &self.workspace)
-                        .iter()
-                        .any(|folder| {
-                            History::folder(store, history, folder).is_some_and(|entry| {
-                                entry.more.as_deref().is_some_and(|more| {
-                                    self.grown.get(folder).map(String::as_str) != Some(more)
-                                })
+                    Changes::folders(store, self.changes).iter().any(|folder| {
+                        History::folder(store, history, folder).is_some_and(|entry| {
+                            entry.more.as_deref().is_some_and(|more| {
+                                self.grown.get(folder).map(String::as_str) != Some(more)
                             })
                         })
+                    })
                 });
             let grow = near_tail && pageable;
             section.wrap(move |inner| GrowShell { inner, grow })

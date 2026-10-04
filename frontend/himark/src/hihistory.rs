@@ -749,6 +749,18 @@ impl crate::DynamicCommand for ToggleHistoryView {
         let wire = entity.family().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
         crate::drivers::changes::ensure(store, window, wire, folders, fx);
+        // The canvas-open verb the tree emits — the window rides in
+        // the closure; the view never holds one.
+        let open_canvas: crate::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
+            crate::shell_verb(crate::AppCommand::Dynamic(
+                window,
+                Arc::new(crate::diff_canvas::OpenDiffCanvas {
+                    changes,
+                    source,
+                    reveal,
+                }),
+            ))
+        });
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
@@ -759,11 +771,9 @@ impl crate::DynamicCommand for ToggleHistoryView {
             crate::changes_view::ChangesView::open(
                 store,
                 &_app.ui_ctx(),
-                window,
                 changes,
-                wire,
-                workspace,
                 crate::changes_view::ViewSets::History,
+                open_canvas,
             ),
         );
         let owner = self.id();
