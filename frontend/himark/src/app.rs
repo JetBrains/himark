@@ -929,13 +929,15 @@ impl Application {
                 // note (id-routed landings appended mid-batch), taken
                 // by the one lane that reads it.
                 let dressed = crate::OpenDocuments::take_dressed(&mut store, documents);
-                crate::diff_canvas::canvas::sync_canvases(
-                    &mut store,
-                    family.canvas_router(),
-                    &self.ui_ctx(),
-                    &dressed,
-                    &mut fx,
-                );
+                fx.scope(AppCommand::Verb, |fx| {
+                    crate::diff_canvas::canvas::sync_canvases(
+                        &mut store,
+                        family.canvas_router(),
+                        &self.ui_ctx(),
+                        &dressed,
+                        fx,
+                    )
+                });
                 // The comments lane: the model's announce and card
                 // notes drain onto the wire — a clean collection
                 // costs a map read.
@@ -1440,6 +1442,34 @@ impl Application {
                 match panel_request {
                     Some(crate::PanelRequest::OpenLocations(locations)) => {
                         crate::open_locations(store, ui, window, &locations, fx);
+                    }
+                    Some(crate::PanelRequest::OpenDiff(old_side, new_side)) => {
+                        self.perform(
+                            store,
+                            ui,
+                            AppCommand::Dynamic(
+                                window,
+                                std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
+                                    old: old_side,
+                                    new: new_side,
+                                }),
+                            ),
+                            fx,
+                        );
+                    }
+                    Some(crate::PanelRequest::OpenAt(location, target)) => {
+                        self.perform(
+                            store,
+                            ui,
+                            AppCommand::Dynamic(
+                                window,
+                                std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
+                                    location,
+                                    target,
+                                }),
+                            ),
+                            fx,
+                        );
                     }
                     Some(crate::PanelRequest::Perform(command)) => {
                         self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);

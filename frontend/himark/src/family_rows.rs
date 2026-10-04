@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
+pub use ::canvas::{CanvasRow, PairRow};
 pub use hikit::FamilyRow;
 
 /// A terminal pane's row: the collection and the terminal.
@@ -29,21 +30,6 @@ pub struct ChatRow(
 );
 
 impl hikit::Row for ChatRow {}
-
-/// A tracked diff pair's row: the documents collection and the view.
-#[derive(Clone, PartialEq)]
-pub struct PairRow(
-    pub imba::store::Id<crate::OpenDocuments>,
-    pub crate::DiffViewId,
-);
-
-impl hikit::Row for PairRow {}
-
-/// A diff canvas's row: its source names it.
-#[derive(Clone, PartialEq)]
-pub struct CanvasRow(pub crate::diff_canvas::CanvasSource);
-
-impl hikit::Row for CanvasRow {}
 
 pub type RowMinter =
     dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;

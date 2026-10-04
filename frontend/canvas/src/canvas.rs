@@ -14,7 +14,8 @@
 use crate::diff_canvas::{
     canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
 };
-use crate::{env, ResourceLocation, UnifiedDiffCommand};
+use editor::env;
+use editor::{ResourceLocation, UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
@@ -32,7 +33,7 @@ const EST_CONTEXT_LINES: i64 = 4;
 /// keys itself beside it. The banner heads the list and covers
 /// nothing, so the sticky machinery never plants it.
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
-pub(crate) enum CanvasKey {
+pub enum CanvasKey {
     Banner,
     File(ResourceLocation),
     Diff(ResourceLocation),
@@ -48,11 +49,11 @@ pub enum CanvasCommand {
     /// An async landing for the commit banner's message box (the
     /// Bounded build's tail, the markdown reparse) — routed to the
     /// banner row wherever it currently sits.
-    BannerEditor(crate::EditorCommand),
+    BannerEditor(editor::EditorCommand),
 
     Landed {
         key: ResourceLocation,
-        prep: crate::OpenedDiffPair,
+        prep: documents::diff_views::OpenedDiffPair,
     },
 
     /// A key-addressed row command — effect landings route by KEY,
@@ -100,7 +101,7 @@ pub struct Canvas {
     note: Option<String>,
     seen: Option<u64>,
     populated: bool,
-    request: Option<crate::PanelRequest>,
+    request: Option<hikit::PanelRequest>,
 
     phases: rpds::HashTrieMapSync<ResourceLocation, RowPhase>,
 
@@ -120,7 +121,7 @@ pub struct Canvas {
     /// Built rows by their diff view — the DRESSING sweep names the
     /// views it touched (crate::DressedViews) and the canvas resizes
     /// exactly those rows, O(touched), no scan.
-    pairs: rpds::HashTrieMapSync<crate::DiffViewId, ResourceLocation>,
+    pairs: rpds::HashTrieMapSync<documents::diffs::DiffViewId, ResourceLocation>,
 
     /// Relaunched builds for rows whose diff the user has already
     /// SEEN (`ever_dressed`): the fresh pane dresses off-row while
@@ -134,7 +135,7 @@ pub struct Canvas {
 /// built at (it lands into the row's standing geometry).
 #[derive(Clone)]
 struct Succession {
-    pane: crate::PairPane,
+    pane: crate::diff_pane::PairPane,
     built_width: f32,
 }
 
@@ -312,7 +313,7 @@ impl Canvas {
 
     /// TEST SUPPORT: the registered `DiffViewId` backing a built row.
     #[doc(hidden)]
-    pub fn probe_pair(&self, key: &ResourceLocation) -> Option<crate::DiffViewId> {
+    pub fn probe_pair(&self, key: &ResourceLocation) -> Option<documents::diffs::DiffViewId> {
         let row = self
             .rows
             .content()
@@ -339,7 +340,9 @@ impl Canvas {
                 let RowBody::Built { pane } = &diff.body else {
                     return None;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return None;
                 };
                 let left = &view.split.left;
@@ -359,14 +362,16 @@ impl Canvas {
 
     /// Per Built row (parked ones included): (title, current face).
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, crate::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::DiffLayout)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(title, diff)| {
                 let RowBody::Built { pane } = &diff.body else {
                     return None;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return None;
                 };
                 Some((title, view.layout))
@@ -383,7 +388,9 @@ impl Canvas {
                 let RowBody::Built { pane } = &diff.body else {
                     return None;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -410,7 +417,9 @@ impl Canvas {
                 let RowBody::Built { pane } = &diff.body else {
                     return None;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -441,7 +450,9 @@ impl Canvas {
                 let RowBody::Built { pane } = &diff.body else {
                     return None;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return None;
                 };
                 let inline = view.inline_editor?;
@@ -518,7 +529,7 @@ impl Canvas {
         };
         self.successions.remove_mut(key);
         let Some(file) = self.files.get(key).cloned() else {
-            crate::teardown_diff_view(store, next.pane.documents(), next.pane.id());
+            documents::diff_views::teardown_diff_view(store, next.pane.documents(), next.pane.id());
             return;
         };
         // The old pane dies only now — the swap is dressed-for-dressed.
@@ -577,7 +588,7 @@ impl Canvas {
         &mut self,
         store: &mut Store,
         ui: &imba::UiCtx,
-        dressed: &[crate::DiffViewId],
+        dressed: &[documents::diffs::DiffViewId],
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         if self.seen != Some(canvas_generation(store, self.changes, &self.source)) {
@@ -590,7 +601,7 @@ impl Canvas {
             .successions
             .iter()
             .filter(|(_, next)| {
-                crate::gathered_view(store, next.pane.documents(), next.pane.id())
+                crate::diff_pane::gathered_view(store, next.pane.documents(), next.pane.id())
                     .is_some_and(|view| view.dressed())
             })
             .map(|(key, _)| key.clone())
@@ -659,7 +670,7 @@ impl Canvas {
         else {
             return;
         };
-        let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+        let Some(view) = crate::diff_pane::gathered_view(store, pane.documents(), pane.id()) else {
             return;
         };
         // The row holds its reserved band under the skeleton until the
@@ -669,14 +680,14 @@ impl Canvas {
             return;
         }
         let body = match view.layout {
-            crate::DiffLayout::Inline => match view
+            editor::DiffLayout::Inline => match view
                 .inline_editor
                 .map(|editor| view.split.right.document.content_height(editor))
             {
                 Some(height) => height,
                 None => return,
             },
-            crate::DiffLayout::Split => {
+            editor::DiffLayout::Split => {
                 let left = view
                     .split
                     .left
@@ -931,17 +942,17 @@ impl Canvas {
     fn teardown_row(&mut self, store: &mut Store, key: &ResourceLocation) {
         if let Some(next) = self.successions.get(key).cloned() {
             self.successions.remove_mut(key);
-            crate::teardown_diff_view(store, next.pane.documents(), next.pane.id());
+            documents::diff_views::teardown_diff_view(store, next.pane.documents(), next.pane.id());
         }
         if let Some(pane) = self.row_pane(key) {
             self.pairs.remove_mut(&pane.id());
-            crate::teardown_diff_view(store, pane.documents(), pane.id());
+            documents::diff_views::teardown_diff_view(store, pane.documents(), pane.id());
         }
     }
 
     /// The row's standing BUILT pane — live in the list or parked in
     /// the collapse stash.
-    fn row_pane(&self, key: &ResourceLocation) -> Option<crate::PairPane> {
+    fn row_pane(&self, key: &ResourceLocation) -> Option<crate::diff_pane::PairPane> {
         let row = self
             .rows
             .content()
@@ -1033,15 +1044,15 @@ impl Canvas {
         let Some(documents) = Changes::of(store, changes).map(|held| held.documents()) else {
             return;
         };
-        let old = crate::DiffSideInput::resolve(store, documents, file.old.clone());
-        let new = crate::DiffSideInput::resolve(store, documents, file.new.clone());
+        let old = documents::diff_views::DiffSideInput::resolve(store, documents, file.old.clone());
+        let new = documents::diff_views::DiffSideInput::resolve(store, documents, file.new.clone());
         fx.push(
-            AnyEffect::new(crate::OpenDiffPairEffect { old, new, width }).map(move |prep| {
-                CanvasCommand::Landed {
+            AnyEffect::new(documents::diff_views::OpenDiffPairEffect { old, new, width }).map(
+                move |prep| CanvasCommand::Landed {
                     key: key.clone(),
                     prep,
-                }
-            }),
+                },
+            ),
         );
     }
 
@@ -1080,7 +1091,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         file: CanvasFile,
-        prep: crate::OpenedDiffPair,
+        prep: documents::diff_views::OpenedDiffPair,
     ) {
         let theme = env::Themes::of(store);
         let key = file.new.clone();
@@ -1129,7 +1140,7 @@ impl Canvas {
         store: &mut Store,
         ui: &UiCtx,
         key: ResourceLocation,
-        prep: crate::OpenedDiffPair,
+        prep: documents::diff_views::OpenedDiffPair,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         let Some(file) = self.files.get(&key).cloned() else {
@@ -1142,7 +1153,7 @@ impl Canvas {
         // failure face beats a silently stale diff.
         if !prep.failed {
             let shown = self.row_pane(&key).is_some_and(|standing| {
-                crate::gathered_view(store, standing.documents(), standing.id())
+                crate::diff_pane::gathered_view(store, standing.documents(), standing.id())
                     .is_some_and(|view| view.ever_dressed())
             });
             if shown {
@@ -1157,7 +1168,7 @@ impl Canvas {
                 );
                 if let Some((pane, _)) = parked {
                     if let Some(previous) = self.successions.get(&key).cloned() {
-                        crate::teardown_diff_view(
+                        documents::diff_views::teardown_diff_view(
                             store,
                             previous.pane.documents(),
                             previous.pane.id(),
@@ -1198,8 +1209,9 @@ impl Canvas {
                     // (`resize_row`, once the view answers dressed).
                     Some((pane, height)) => {
                         self.pairs.insert_mut(pane.id(), key.clone());
-                        let dressed = crate::gathered_view(store, pane.documents(), pane.id())
-                            .is_none_or(|view| view.dressed());
+                        let dressed =
+                            crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                                .is_none_or(|view| view.dressed());
                         let height = match dressed {
                             true => height,
                             false => (reserved_body(&theme, &file) - chrome.gap).max(0.0),
@@ -1343,26 +1355,24 @@ impl Canvas {
         match action {
             HeaderAction::OpenFile => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
-                        crate::diff_canvas::OpenCanvasFile {
-                            location: file.new.clone(),
-                            // Land on the caret the row's diff editor
-                            // holds — cmd-enter continues where the
-                            // user was reading, like the standalone
-                            // split-diff pane.
-                            target: self.row_caret(store, key),
-                        },
-                    )));
+                    // Land on the caret the row's diff editor holds —
+                    // cmd-enter continues where the user was reading,
+                    // like the standalone split-diff pane. The shell
+                    // supplies the window at the drain.
+                    self.request = Some(hikit::PanelRequest::OpenAt(
+                        file.new.clone(),
+                        self.row_caret(store, key),
+                    ));
                 }
             }
             HeaderAction::OpenPane => {
                 if let Some(file) = self.files.get(key) {
-                    self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
-                        crate::hichanges::OpenDiffForPair {
-                            old: file.old.clone(),
-                            new: file.new.clone(),
-                        },
-                    )));
+                    // The standalone pane for this pair — the shell
+                    // supplies the window at the drain.
+                    self.request = Some(hikit::PanelRequest::OpenDiff(
+                        file.old.clone(),
+                        file.new.clone(),
+                    ));
                 }
             }
             HeaderAction::ToggleCollapse => self.toggle_collapse(key, fx),
@@ -1380,7 +1390,7 @@ impl Canvas {
         &self,
         store: &Store,
         key: &ResourceLocation,
-    ) -> Option<std::ops::Range<crate::LineCol>> {
+    ) -> Option<std::ops::Range<documents::LineCol>> {
         let pane = self
             .rows
             .content()
@@ -1394,7 +1404,7 @@ impl Canvas {
         else {
             return None;
         };
-        let view = crate::OpenDocuments::diff_view_ref(store, pane.documents(), pane.id())?;
+        let view = documents::OpenDocuments::diff_view_ref(store, pane.documents(), pane.id())?;
         let right = view.right;
         // The canvas shows the INLINE face by default, where the
         // user's caret lives on the inline editor; both it and the
@@ -1405,10 +1415,10 @@ impl Canvas {
             .and_then(|state| state.inline_editor())
             .unwrap_or_else(|| right.editor());
         let document =
-            crate::OpenDocuments::document_ref(store, right.documents(), right.document())?;
+            documents::OpenDocuments::document_ref(store, right.documents(), right.document())?;
         let byte = document.caret_byte(editor);
         let mut text = document.text().view();
-        let at = crate::line_col_at(&mut text, byte as usize);
+        let at = documents::line_col_at(&mut text, byte as usize);
         Some(at..at)
     }
 
@@ -1480,23 +1490,23 @@ fn mounted(
     store: &mut Store,
     changes: imba::store::Id<Changes>,
     ui: &UiCtx,
-    prep: crate::OpenedDiffPair,
+    prep: documents::diff_views::OpenedDiffPair,
     fx: &mut Effects<'_, RowCommand>,
-) -> Option<(crate::PairPane, f32)> {
+) -> Option<(crate::diff_pane::PairPane, f32)> {
     let theme = env::Themes::of(store);
     let gutter = theme.ui().editor_gutter.width;
     let editor_width = (prep.width - gutter).max(120.0);
 
     let documents = Changes::of(store, changes)?.documents();
-    let id = crate::install_opened_pair(store, documents, ui, prep, true)?;
-    let mut pane = crate::PairPane::over(documents, id);
+    let id = documents::diff_views::install_opened_pair(store, documents, ui, prep, true)?;
+    let mut pane = crate::diff_pane::PairPane::over(documents, id);
 
     // Default to the inline face.
     fx.scope(RowCommand::Diff, |fx| {
         pane.perform(
             store,
             ui,
-            UnifiedDiffCommand::SetLayout(crate::DiffLayout::Inline),
+            UnifiedDiffCommand::SetLayout(editor::DiffLayout::Inline),
             fx,
         )
     });
@@ -1571,8 +1581,8 @@ impl Canvas {
                         let text = self.composer_text().unwrap_or_default();
                         let history = Changes::of(store, self.changes).map(|held| held.history());
                         if let (false, Some(history)) = (text.trim().is_empty(), history) {
-                            self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
-                                crate::hihistory::CommitHistory {
+                            self.request = Some(hikit::PanelRequest::Perform(std::sync::Arc::new(
+                                changesview::hihistory::CommitHistory {
                                     history,
                                     folder: self.source.folder().clone(),
                                     message: text,
@@ -1611,7 +1621,7 @@ impl Canvas {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
                     let text = note.clone();
-                    let font = crate::fonts::ui_text_font(ui, chrome.title_size);
+                    let font = hikit::fonts::ui_text_font(ui, chrome.title_size);
                     let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let size = constraints.max;
@@ -1649,7 +1659,7 @@ impl Canvas {
 
 // ------------------------------------------------------------ canvases
 
-pub use crate::hichanges::CanvasId;
+pub use changesview::hichanges::CanvasId;
 
 /// Stateless FACADE over the sets' owned canvases
 /// (docs/model-view.md: `ChangeSet.canvases`): at most one canvas per
@@ -1658,7 +1668,7 @@ pub use crate::hichanges::CanvasId;
 /// stays once opened.
 pub struct Canvases;
 
-use crate::hichanges::{ChangeSetId, ChangeSetSource, Changes};
+use changesview::hichanges::{ChangeSetId, ChangeSetSource, Changes};
 
 fn set_source(source: &CanvasSource) -> ChangeSetSource {
     match source {
@@ -1789,7 +1799,7 @@ impl CanvasRouter {
         Self { changes }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         true
     }
 }
@@ -1834,18 +1844,18 @@ impl imba::store::Entity for CanvasRouter {
 /// canvases; no plugin observer, no window): reconcile every canvas in
 /// the gathered session, launching builds through the canvases' own At
 /// address (`CanvasRouted`, the DiffView shape).
-pub(crate) fn sync_canvases(
+pub fn sync_canvases(
     store: &mut Store,
     router: imba::store::Id<CanvasRouter>,
     ui: &UiCtx,
-    dressed: &[crate::DiffViewId],
-    fx: &mut crate::AppFx<'_>,
+    dressed: &[documents::diffs::DiffViewId],
+    fx: &mut imba::command::Fx<'_>,
 ) {
     let Some(changes) = store.entity::<CanvasRouter>(router).map(|row| row.changes) else {
         return;
     };
     fx.scope(
-        move |command| crate::AppCommand::at(router, command),
+        move |command| imba::command::Verb::at(router, command),
         |fx| {
             for (set, id) in Changes::canvas_ids(store, changes) {
                 let Some(mut canvas) = Changes::take_canvas::<Canvas>(store, changes, set, id)
@@ -1872,7 +1882,7 @@ fn route_canvas(
 
 /// Perform one command against a SET-OWNED canvas — the panel-free
 /// road (`perform_diff_view`'s twin), reached through the router.
-pub(crate) fn perform_canvas(
+pub fn perform_canvas(
     store: &mut Store,
     ui: &UiCtx,
     changes: imba::store::Id<Changes>,
@@ -1898,7 +1908,7 @@ pub struct DiffCanvasView {
     /// The collection that owns this canvas's set.
     changes: imba::store::Id<Changes>,
     source: CanvasSource,
-    request: Option<crate::PanelRequest>,
+    request: Option<hikit::PanelRequest>,
 }
 
 impl DiffCanvasView {
@@ -1937,7 +1947,7 @@ impl DiffCanvasView {
         changes: imba::store::Id<Changes>,
         source: CanvasSource,
         file: CanvasFile,
-        prep: crate::OpenedDiffPair,
+        prep: documents::diff_views::OpenedDiffPair,
     ) -> Self {
         let view = Self::over(store, changes, source);
         if let Some(mut canvas) = Canvases::take(store, view.changes, view.id) {
@@ -1952,13 +1962,13 @@ impl DiffCanvasView {
     pub fn probe_pair(
         &self,
         store: &Store,
-        key: &crate::ResourceLocation,
-    ) -> Option<crate::DiffViewId> {
+        key: &editor::ResourceLocation,
+    ) -> Option<documents::diffs::DiffViewId> {
         self.canvas(store)?.probe_pair(key)
     }
 
     #[doc(hidden)]
-    pub fn probe_cover(&self, store: &Store, key: &crate::ResourceLocation) -> Option<usize> {
+    pub fn probe_cover(&self, store: &Store, key: &editor::ResourceLocation) -> Option<usize> {
         self.canvas(store)?.probe_cover(key)
     }
 
@@ -2023,8 +2033,8 @@ impl DiffCanvasView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        key: crate::ResourceLocation,
-        prep: crate::OpenedDiffPair,
+        key: editor::ResourceLocation,
+        prep: documents::diff_views::OpenedDiffPair,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.changes, self.id) {
             let mut batch = imba::effect::Batch::new();
@@ -2068,7 +2078,7 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, crate::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::DiffLayout)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_layouts(store))
             .unwrap_or_default()
@@ -2203,7 +2213,7 @@ impl std::fmt::Display for RowCommand {
 
 #[derive(Clone)]
 pub enum ComposerCommand {
-    Message(crate::EditorCommand),
+    Message(editor::EditorCommand),
 
     /// A press on the well outside the editor's own face.
     Focus,
@@ -2228,11 +2238,11 @@ impl std::fmt::Display for ComposerCommand {
 enum RowBody {
     Placeholder { armed: bool },
     Failed(String),
-    Built { pane: crate::PairPane },
+    Built { pane: crate::diff_pane::PairPane },
 }
 
 #[derive(Clone)]
-pub(crate) enum CanvasRow {
+pub enum CanvasRow {
     Banner(BannerRow),
     Header(HeaderRow),
     Diff(DiffRow),
@@ -2242,20 +2252,20 @@ pub(crate) enum CanvasRow {
 /// and author on a commit canvas, the commit composer on the
 /// working-copy canvas.
 #[derive(Clone)]
-pub(crate) enum BannerRow {
+pub enum BannerRow {
     Commit {
-        message: crate::EditorView,
+        message: editor::EditorView,
         author: String,
         focused: bool,
     },
     Composer {
-        message: crate::EditorView,
+        message: editor::EditorView,
         focused: bool,
     },
 }
 
 #[derive(Clone)]
-pub(crate) struct HeaderRow {
+pub struct HeaderRow {
     file: CanvasFile,
     collapsed: bool,
 
@@ -2265,7 +2275,7 @@ pub(crate) struct HeaderRow {
 }
 
 #[derive(Clone)]
-pub(crate) struct DiffRow {
+pub struct DiffRow {
     file: CanvasFile,
     body: RowBody,
 
@@ -2282,8 +2292,8 @@ pub(crate) struct DiffRow {
     built_width: Option<f32>,
 }
 
-fn header_band(theme: &crate::Theme) -> f32 {
-    let h1 = theme.resolve([crate::StyleId::Header(1)]);
+fn header_band(theme: &editor::theme::Theme) -> f32 {
+    let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
     h1.font_size.unwrap_or(48.0) + h1.block_gap.unwrap_or(24.0)
 }
 
@@ -2292,7 +2302,7 @@ fn header_band(theme: &crate::Theme) -> f32 {
 /// = pad × 0.75 above and below) and the TOOLBAR row under it, ruled
 /// off. The box grows UNBOUNDED with the message — a commit message
 /// is as long as its author wants it; the canvas just scrolls.
-fn composer_band(theme: &crate::Theme, message: Option<&crate::EditorView>) -> f32 {
+fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::EditorView>) -> f32 {
     let chat = theme.ui().chat.clone();
     let one_line = chat.title_size * 1.6;
     let grown = message
@@ -2305,15 +2315,16 @@ fn composer_band(theme: &crate::Theme, message: Option<&crate::EditorView>) -> f
 /// A fresh commit box — the CHAT composer's input recipe
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
-fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> crate::EditorView {
+fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> editor::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let document = crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
-        .with_syntax(
-            crate::Syntax::new("markdown", None, crate::Markup::new()),
-            &[],
-        );
-    let mut view = crate::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
+    let document =
+        editor::Document::new(editor::Text::from_string_exact(""), editor::Markup::new())
+            .with_syntax(
+                editor::Syntax::new("markdown", None, editor::Markup::new()),
+                &[],
+            );
+    let mut view = editor::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
 }
@@ -2328,22 +2339,22 @@ fn commit_banner_box(
     ui: &imba::UiCtx,
     message: &str,
     fx: &mut Effects<'_, CanvasCommand>,
-) -> crate::EditorView {
+) -> editor::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let mut document = crate::Document::new(
-        crate::Text::from_string_exact(message),
-        crate::Markup::new(),
+    let mut document = editor::Document::new(
+        editor::Text::from_string_exact(message),
+        editor::Markup::new(),
     )
     .with_syntax(
-        crate::Syntax::new("markdown", None, crate::Markup::new()),
+        editor::Syntax::new("markdown", None, editor::Markup::new()),
         &[],
     );
     fx.scope(CanvasCommand::BannerEditor, |fx| {
         let editor = document.add_editor(
             600.0,
             None,
-            crate::EditorBuild::Bounded,
+            editor::EditorBuild::Bounded,
             &[],
             store,
             ui,
@@ -2354,7 +2365,7 @@ fn commit_banner_box(
         if let Some(parsers) = env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
-        crate::EditorView {
+        editor::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -2365,7 +2376,7 @@ fn commit_banner_box(
     })
 }
 
-fn commit_band(theme: &crate::Theme, message: &crate::EditorView) -> f32 {
+fn commit_band(theme: &editor::theme::Theme, message: &editor::EditorView) -> f32 {
     let chat = theme.ui().chat.clone();
     let line = chat.title_size * 1.5;
     // The full message and the author line under it — no truncation;
@@ -2373,7 +2384,7 @@ fn commit_band(theme: &crate::Theme, message: &crate::EditorView) -> f32 {
     message.content_height().max(line) + line + chat.pad * 2.0
 }
 
-fn reserved_body(theme: &crate::Theme, file: &CanvasFile) -> f32 {
+fn reserved_body(theme: &editor::theme::Theme, file: &CanvasFile) -> f32 {
     let chrome = theme.ui().chat.clone();
     let line = chrome.title_size * 1.5;
     let known = file.added.is_some() || file.removed.is_some();
@@ -2454,7 +2465,7 @@ impl View for CanvasRow {
             ..
         }) = self
         {
-            crate::teardown_diff_view(store, pane.documents(), pane.id());
+            documents::diff_views::teardown_diff_view(store, pane.documents(), pane.id());
         }
     }
 
@@ -2478,7 +2489,7 @@ impl View for CanvasRow {
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if matches!(command, crate::EditorCommand::Click { .. }) && !*focused {
+                        if matches!(command, editor::EditorCommand::Click { .. }) && !*focused {
                             *focused = true;
                             message.focus_text();
                         }
@@ -2523,7 +2534,9 @@ impl View for CanvasRow {
                 let RowBody::Built { pane } = &diff.body else {
                     return;
                 };
-                let Some(view) = crate::gathered_view(store, pane.documents(), pane.id()) else {
+                let Some(view) =
+                    crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                else {
                     return;
                 };
                 let next = view.layout.other();
@@ -2556,7 +2569,7 @@ impl View for CanvasRow {
                 let id = pane.id();
                 let documents = pane.documents();
                 fx.scope(RowCommand::Diff, |fx| {
-                    crate::rewrap_pair(store, documents, ui, id, width, fx)
+                    documents::diff_views::rewrap_pair(store, documents, ui, id, width, fx)
                 });
             }
         }
@@ -2606,7 +2619,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let band = commit_band(&theme, message);
                 let line = chrome.title_size * 1.5;
                 let inset = chrome.pad;
-                let body_font = crate::fonts::ui_text_font(ui, chrome.title_size * 0.9);
+                let body_font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.9);
                 let dim = chrome.loader_color.0;
                 let editor_w = (width - inset * 2.0).max(120.0);
                 let content = message.content_height().max(line);
@@ -2682,8 +2695,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let editor_h = band - toolbar_h - box_pad * 2.0;
 
                 let combo = ui_theme.combo.clone();
-                let caps_font = crate::fonts::ui_font(ui, combo.label_size * 1.1);
-                let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                let caps_font = hikit::fonts::ui_font(ui, combo.label_size * 1.1);
+                let key_font = hikit::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
                 let label = "COMMIT";
                 let cell_width = label
                     .chars()
@@ -2808,7 +2821,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
             CanvasRow::Header(header) => {
                 use crate::diff_header::{DiffHeaderFace, DiffHeaderPress, DiffHeaderSpec};
                 let band = header_band(&theme);
-                let h1 = theme.resolve([crate::StyleId::Header(1)]);
+                let h1 = theme.resolve([editor::theme::StyleId::Header(1)]);
                 let size = h1.font_size.unwrap_or(48.0);
                 let mut buttons = vec![DiffHeaderPress::OpenPane, DiffHeaderPress::OpenFile];
                 if header.built {
@@ -2864,7 +2877,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 }
                 RowBody::Failed(error) => {
                     let text = format!("{} — {error}", diff.file.title);
-                    let font = crate::fonts::ui_text_font(ui, chrome.title_size * 0.85);
+                    let font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.85);
                     let shaper = imba::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
@@ -2916,8 +2929,9 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     // reports the reserved size, so the taller
                     // undressed body neither bleeds nor fights the
                     // list's visible-resize measure.
-                    let presentable = crate::gathered_view(store, pane.documents(), pane.id())
-                        .is_none_or(|view| view.dressed() || view.ever_dressed());
+                    let presentable =
+                        crate::diff_pane::gathered_view(store, pane.documents(), pane.id())
+                            .is_none_or(|view| view.dressed() || view.ever_dressed());
                     if !presentable {
                         let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
                         let mut face = imba::container::container(
@@ -2939,20 +2953,21 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     // resize themselves to the half-pane width — a
                     // row-level rewrap to the full width would fight
                     // them every frame.
-                    let rewrap = match crate::gathered_view(store, pane.documents(), pane.id()) {
-                        Some(view) => match view.layout {
-                            crate::DiffLayout::Split => None,
-                            crate::DiffLayout::Inline => {
-                                let laid = view
-                                    .split
-                                    .right
-                                    .document
-                                    .layout_width(view.split.right.editor);
-                                ((laid - editor_target).abs() > 1.0).then_some(editor_target)
-                            }
-                        },
-                        None => None,
-                    };
+                    let rewrap =
+                        match crate::diff_pane::gathered_view(store, pane.documents(), pane.id()) {
+                            Some(view) => match view.layout {
+                                editor::DiffLayout::Split => None,
+                                editor::DiffLayout::Inline => {
+                                    let laid = view
+                                        .split
+                                        .right
+                                        .document
+                                        .layout_width(view.split.right.editor);
+                                    ((laid - editor_target).abs() > 1.0).then_some(editor_target)
+                                }
+                            },
+                            None => None,
+                        };
                     let card = imba::ZBox::new(arena)
                         .child(imba::spacer(width, body_height))
                         .child(imba::fixed(body))
@@ -2981,7 +2996,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
 /// stands for.
 fn skeleton_layout<'a>(
     arena: &'a Arena,
-    theme: &crate::Theme,
+    theme: &editor::theme::Theme,
     file: &CanvasFile,
     width: f32,
     height: f32,
@@ -3109,7 +3124,7 @@ use crate::diff_canvas::CanvasPlace;
 /// the lookup; nothing is ever rebuilt for a second open.
 pub struct CanvasNavigator;
 
-impl crate::Navigator for CanvasNavigator {
+impl hikit::Navigator for CanvasNavigator {
     type Place = CanvasPlace;
 
     fn navigate(
@@ -3118,7 +3133,7 @@ impl crate::Navigator for CanvasNavigator {
         _ui: &imba::UiCtx,
         place: &CanvasPlace,
         _fx: &mut imba::command::Fx<'_>,
-    ) -> Option<Box<dyn crate::DynPanelView>> {
+    ) -> Option<Box<dyn hikit::DynPanelView>> {
         let view = DiffCanvasView::over(store, place.changes, place.source.clone());
         if let Some(key) = &place.reveal {
             Canvases::set_reveal(store, view.changes, view.id(), key.clone());
@@ -3127,11 +3142,11 @@ impl crate::Navigator for CanvasNavigator {
     }
 }
 
-impl crate::PanelView for DiffCanvasView {
+impl hikit::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
-    fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::new(crate::CanvasRow(self.source.clone())))
+    fn family_row(&self) -> Option<hikit::FamilyRow> {
+        Some(hikit::FamilyRow::new(crate::CanvasRow(self.source.clone())))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
@@ -3163,7 +3178,7 @@ impl crate::PanelView for DiffCanvasView {
         self.source.title(store, self.changes)
     }
 
-    fn take_request(&mut self) -> Option<crate::PanelRequest> {
+    fn take_request(&mut self) -> Option<hikit::PanelRequest> {
         self.request.take()
     }
 

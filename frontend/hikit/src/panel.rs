@@ -20,6 +20,17 @@ pub enum WidgetOrigin {
 pub enum PanelRequest {
     OpenLocations(Vec<editor::ResourceLocation>),
 
+    /// Open one location, honoring a caret target — the canvas
+    /// header's click; the shell supplies the window.
+    OpenAt(
+        editor::ResourceLocation,
+        Option<std::ops::Range<documents::LineCol>>,
+    ),
+
+    /// Open a standalone diff pane over a pair of locations — the
+    /// canvas header's other click; the shell supplies the window.
+    OpenDiff(editor::ResourceLocation, editor::ResourceLocation),
+
     Perform(std::sync::Arc<dyn imba::command::DynamicCommand>),
 
     /// The shell-payload escape: an application-level ask the kit
@@ -156,3 +167,8 @@ impl Clone for Box<dyn DynPanelView> {
         self.clone_panel()
     }
 }
+
+/// A registered re-minter for one family-row type — the walk-back
+/// road's table entry.
+pub type RowMinter =
+    dyn Fn(&imba::store::Store, &FamilyRow) -> Option<Box<dyn DynPanelView>> + Send + Sync;

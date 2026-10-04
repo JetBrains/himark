@@ -17,11 +17,11 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::env;
+use editor::env;
 
 /// What a press on the band means — the canvas header's affordances.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum DiffHeaderPress {
+pub enum DiffHeaderPress {
     /// The band's body (and the open-file button): the live file.
     OpenFile,
     /// The framed pair: the standalone side-by-side pane.
@@ -33,7 +33,7 @@ pub(crate) enum DiffHeaderPress {
 }
 
 /// What a call site asks the band to show.
-pub(crate) struct DiffHeaderSpec {
+pub struct DiffHeaderSpec {
     pub title: String,
     pub added: Option<i64>,
     pub removed: Option<i64>,
@@ -53,7 +53,7 @@ pub(crate) struct DiffHeaderSpec {
     pub baseline: f32,
 }
 
-pub(crate) struct DiffHeaderFace {
+pub struct DiffHeaderFace {
     title: String,
     added: Option<i64>,
     removed: Option<i64>,
@@ -77,16 +77,10 @@ pub(crate) struct DiffHeaderFace {
 }
 
 impl DiffHeaderFace {
-    pub(crate) fn new(
-        store: &Store,
-        ui: &UiCtx,
-        spec: DiffHeaderSpec,
-        band: f32,
-        width: f32,
-    ) -> Self {
+    pub fn new(store: &Store, ui: &UiCtx, spec: DiffHeaderSpec, band: f32, width: f32) -> Self {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
-        let mut title_font = crate::fonts::ui_text_font(ui, spec.title_size);
+        let mut title_font = hikit::fonts::ui_text_font(ui, spec.title_size);
         if spec.bold {
             title_font.set_embolden(true);
         }
@@ -113,7 +107,7 @@ impl DiffHeaderFace {
             baseline: spec.baseline,
             title_font,
             title_color: spec.title_color.unwrap_or(chrome.text_color.0),
-            trail_font: crate::fonts::ui_text_font(ui, chrome.title_size),
+            trail_font: hikit::fonts::ui_text_font(ui, chrome.title_size),
             shaper: imba::TextShaper::of(ui),
             added_color: chrome.added_color.0,
             removed_color: chrome.removed_color.0,
@@ -129,7 +123,7 @@ impl DiffHeaderFace {
         }
     }
 
-    pub(crate) fn widget<Command, Map>(self, map: Map) -> DiffHeaderWidget<Map>
+    pub fn widget<Command, Map>(self, map: Map) -> DiffHeaderWidget<Map>
     where
         Map: Fn(DiffHeaderPress) -> Option<Command>,
     {
@@ -284,7 +278,7 @@ impl DiffHeaderFace {
     }
 }
 
-pub(crate) struct DiffHeaderWidget<Map> {
+pub struct DiffHeaderWidget<Map> {
     face: DiffHeaderFace,
     map: Map,
 }
