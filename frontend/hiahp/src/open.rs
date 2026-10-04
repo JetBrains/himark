@@ -19,18 +19,26 @@ pub fn document_for(
     theme: &himark::Theme,
 ) -> himark::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    if extension != "md" && extension != "markdown" && languages.knows(&extension) {
-        return himark::Document::from_language(
-            himark::Text::from_string_exact(source),
-            &extension,
-            languages,
-            store,
-            ui,
-            fonts,
-            theme,
-        );
+    // Markdown is just another registered language; anything the
+    // registry does not know reads as markdown, like it always has.
+    let language = match extension.as_str() {
+        "md" | "markdown" => "markdown",
+        known if languages.knows(known) => known,
+        _ => "markdown",
+    };
+    let mut document = himark::Document::from_language(
+        himark::Text::from_string_exact(source),
+        language,
+        languages,
+        store,
+        ui,
+        fonts,
+        theme,
+    );
+    if let Some(enrichers) = ::editor::env::Enrichers::of(store) {
+        document.enrich_now(&enrichers, store, ui, fonts, theme);
     }
-    himarkdown::document_from_markdown(source, store, ui, fonts, theme)
+    document
 }
 
 /// Building a document from text in hand (Text, layout, syntax) is not a

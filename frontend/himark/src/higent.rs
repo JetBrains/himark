@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 pub use ahp_types;
+pub use host_discovery::LOCAL_FS_SESSION;
 
 pub mod cell;
 mod chat;

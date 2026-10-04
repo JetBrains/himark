@@ -313,6 +313,46 @@ fn enrichment_passes() -> himark::Enrichers {
     enrichers
 }
 
+/// Find — or autostart — the local himark agent host. The lockfile
+/// dance is the EMBEDDER's: the wire takes a resolver and never
+/// touches discovery itself.
+fn himark_host_resolver() -> Arc<dyn Fn() -> Result<String, String> + Send + Sync> {
+    Arc::new(|| {
+        if let Some(lock) = host_discovery::default_dir()
+            .as_deref()
+            .and_then(host_discovery::read_live)
+        {
+            return Ok(format!("unix:{}", lock.socket.display()));
+        }
+        autostart_himark_host().ok_or_else(|| {
+            "no himark agent host running — start one with `himark-agent-host`".to_owned()
+        })
+    })
+}
+
+fn autostart_himark_host() -> Option<String> {
+    let gate = std::env::var("HIMARK_HOST_AUTOSTART").ok()?;
+    let dir = host_discovery::default_dir()?;
+    let binary = match gate.as_str() {
+        "1" => host_discovery::resolve_daemon_binary()?,
+        path => std::path::PathBuf::from(path),
+    };
+    std::process::Command::new(binary)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+
+    for _ in 0..100 {
+        if let Some(lock) = host_discovery::read_live(&dir) {
+            return Some(format!("unix:{}", lock.socket.display()));
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    None
+}
+
 fn syntax_languages() -> himark::SyntaxLanguages {
     static LANGUAGES: std::sync::OnceLock<himark::SyntaxLanguages> = std::sync::OnceLock::new();
     LANGUAGES
@@ -477,6 +517,7 @@ impl HimarkEngine {
             })
         }));
 
+        host_discovery::logging::init("app");
         let connector: Arc<dyn hiahp::transport::Connector> = Arc::new(desktop::DesktopConnector);
 
         register_agent_server(
@@ -493,9 +534,10 @@ impl HimarkEngine {
             &mut app,
             &seats,
             "himark Agent Host",
-            Arc::new(hiahp::wire::WireHost::himark_host(
+            Arc::new(hiahp::wire::WireHost::discovered(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
+                himark_host_resolver(),
             )),
         );
         seats.set_local(local_backend);

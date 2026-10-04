@@ -1697,7 +1697,9 @@ impl Application {
                 store.put(::editor::env::Differ(policy));
             }
             AppCommand::RegisterEnrichers(enrichers) => {
-                store.put(::editor::env::Enrichers(std::sync::Arc::new(enrichers)));
+                let enrichers = std::sync::Arc::new(enrichers);
+                self.workshop.install_enrichers(enrichers.clone());
+                store.put(::editor::env::Enrichers(enrichers));
             }
         }
     }

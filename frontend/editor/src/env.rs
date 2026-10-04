@@ -109,6 +109,9 @@ pub struct Workshop {
     /// background layout pass that can meet an inlay. The UI thread
     /// passes its real store/ui instead; nothing is static.
     measure: std::sync::Mutex<(imba::store::Store, imba::UiCtx)>,
+    /// The installed enrichment passes, mirrored into the measure
+    /// store so background document builds enrich like the app's.
+    enrichers: std::sync::Mutex<Option<std::sync::Arc<crate::enrich::Enrichers>>>,
 }
 
 unsafe impl Send for Workshop {}
@@ -123,7 +126,20 @@ impl Workshop {
             fonts: std::sync::Mutex::new(None),
             theme: std::sync::Mutex::new(theme),
             measure: std::sync::Mutex::new((seeded, imba::UiCtx::dont_use_too_slow())),
+            enrichers: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Mirror the app's enrichment passes into the workshop's measure
+    /// store — background builds (`with_ctx`) pick them up through
+    /// `env::Enrichers::of` like any store reader.
+    pub fn install_enrichers(&self, enrichers: std::sync::Arc<crate::enrich::Enrichers>) {
+        self.measure
+            .lock()
+            .expect("workshop measure")
+            .0
+            .put(Enrichers(enrichers.clone()));
+        *self.enrichers.lock().expect("workshop enrichers") = Some(enrichers);
     }
 
     /// Run `f` with this handler's measure ctx.
@@ -156,6 +172,9 @@ impl Workshop {
     pub fn set_theme(&self, theme: crate::theme::Theme) {
         let mut seeded = imba::store::Store::new();
         Themes::set(&mut seeded, theme.clone());
+        if let Some(enrichers) = self.enrichers.lock().expect("workshop enrichers").clone() {
+            seeded.put(Enrichers(enrichers));
+        }
         self.measure.lock().expect("workshop measure").0 = seeded;
         *self.theme.lock().expect("workshop theme") = theme;
     }

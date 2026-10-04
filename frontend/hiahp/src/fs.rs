@@ -39,7 +39,7 @@ impl SeatDirectory {
         let seat = self.seat(server)?;
         Some((
             seat,
-            himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+            himark::higent::SessionUri::new(himark::higent::LOCAL_FS_SESSION),
         ))
     }
 

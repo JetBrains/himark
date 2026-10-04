@@ -30,13 +30,25 @@ fn annotations_channel(session: &str) -> Uri {
     format!("{session}/annotations")
 }
 
-#[derive(Debug)]
 pub enum Discovery {
     Explicit(String),
 
     VsCode,
 
-    HimarkHost,
+    /// The embedder's own way to find — or start — its agent host,
+    /// injected at construction: the wire never reads lockfiles or
+    /// spawns daemons itself.
+    Resolver(Arc<dyn Fn() -> Result<String, String> + Send + Sync>),
+}
+
+impl std::fmt::Debug for Discovery {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Discovery::Explicit(url) => out.debug_tuple("Explicit").field(url).finish(),
+            Discovery::VsCode => out.write_str("VsCode"),
+            Discovery::Resolver(_) => out.write_str("Resolver"),
+        }
+    }
 }
 
 #[cfg(not(target_os = "emscripten"))]
@@ -156,11 +168,12 @@ impl WireHost {
         Self::with(Discovery::Explicit(url.into()), runtime, connector)
     }
 
-    pub fn himark_host(
+    pub fn discovered(
         runtime: tokio::runtime::Handle,
         connector: Arc<dyn crate::transport::Connector>,
+        resolver: Arc<dyn Fn() -> Result<String, String> + Send + Sync>,
     ) -> Self {
-        Self::with(Discovery::HimarkHost, runtime, connector)
+        Self::with(Discovery::Resolver(resolver), runtime, connector)
     }
 
     fn with(
@@ -169,7 +182,6 @@ impl WireHost {
         connector: Arc<dyn crate::transport::Connector>,
     ) -> Self {
         static SEAT: AtomicU64 = AtomicU64::new(1);
-        host_discovery::logging::init("app");
         let tag = format!("seat#{}", SEAT.fetch_add(1, Ordering::Relaxed));
         tracing::info!(target: "ahp_wire", seat = %tag, ?discovery, "seat opened");
         Self {
@@ -200,41 +212,8 @@ impl WireHost {
                 }
                 Self::discover_vscode_url()
             }
-            Discovery::HimarkHost => {
-                if let Some(lock) = host_discovery::default_dir()
-                    .as_deref()
-                    .and_then(host_discovery::read_live)
-                {
-                    return Ok(format!("unix:{}", lock.socket.display()));
-                }
-                Self::autostart().ok_or_else(|| {
-                    "no himark agent host running — start one with `himark-agent-host`".to_owned()
-                })
-            }
+            Discovery::Resolver(resolve) => resolve(),
         }
-    }
-
-    fn autostart() -> Option<String> {
-        let gate = std::env::var("HIMARK_HOST_AUTOSTART").ok()?;
-        let dir = host_discovery::default_dir()?;
-        let binary = match gate.as_str() {
-            "1" => host_discovery::resolve_daemon_binary()?,
-            path => std::path::PathBuf::from(path),
-        };
-        std::process::Command::new(binary)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .ok()?;
-
-        for _ in 0..100 {
-            if let Some(lock) = host_discovery::read_live(&dir) {
-                return Some(format!("unix:{}", lock.socket.display()));
-            }
-            std::thread::sleep(std::time::Duration::from_millis(20));
-        }
-        None
     }
 
     fn discover_vscode_url() -> Result<String, String> {
