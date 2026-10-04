@@ -160,15 +160,11 @@ impl DynamicCommand for EnterSessionWork {
                 folders.clone(),
                 fx,
             );
-            for folder in folders {
-                crate::drivers::comments::ensure(
-                    store,
-                    window,
-                    family.comments_wire(),
-                    &folder,
-                    fx,
-                );
-            }
+            fx.scope(crate::AppCommand::Verb, |fx| {
+                for folder in folders {
+                    crate::drivers::comments::ensure(store, family.comments_wire(), &folder, fx);
+                }
+            });
         }
         // The poll is the session MIRROR's lifeline, not the chat's:
         // launched before the chat-open block so no early return in
@@ -279,7 +275,7 @@ impl DynamicCommand for ApplySessionActions {
 /// loses the rest of the batch for everyone.
 pub(crate) fn apply_channel_actions(
     store: &mut Store,
-    window: crate::WindowId,
+    _window: crate::WindowId,
     key: &SessionId,
     actions: &[StateAction],
     fx: &mut crate::AppFx<'_>,
@@ -376,9 +372,12 @@ pub(crate) fn apply_channel_actions(
         if let Some(wire) =
             crate::higent::Hosts::family(store, key).map(|family| family.comments_wire())
         {
-            for folder in crate::higent::session_folders(store, key) {
-                crate::drivers::comments::ensure(store, window, wire, &folder, fx);
-            }
+            let folders = crate::higent::session_folders(store, key);
+            fx.scope(crate::AppCommand::Verb, |fx| {
+                for folder in folders {
+                    crate::drivers::comments::ensure(store, wire, &folder, fx);
+                }
+            });
         }
     }
 }

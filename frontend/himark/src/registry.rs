@@ -19,9 +19,6 @@ pub(crate) struct Registry {
     pub(crate) keymap: Option<crate::keymap::Keymap>,
     pub(crate) row_minters: crate::family_rows::RowMinters,
     pub(crate) toolbar_buttons: crate::toolbar::ToolbarButtons,
-    /// The comments capability: armed by the shell that provides the
-    /// annotation roads (`Comments::install`).
-    pub(crate) comments: bool,
 }
 
 impl Registry {

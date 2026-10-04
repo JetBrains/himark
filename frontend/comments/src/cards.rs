@@ -9,32 +9,20 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::{AppCommand, AppFx, DocumentId, InlayKey, LineCol, WindowId};
+use crate::{AnnotationId, CardWork, CommentRecord, Comments};
+use documents::{DocumentId, LineCol};
+use editor::InlayKey;
+use imba::command::{Fx, Verb};
 use imba::store::Store;
 
-use crate::hicomments::{comments_markup, CommentView};
-
-pub use ::comments::{
-    AnnotationId, Announce, CardWork, CommentDelta, CommentRecord, CommentSeed, Comments,
-    EntryRecord,
-};
-
-/// The comments feature gate — a workbench registry flag, not model
-/// state: hosts that serve no annotations never install it.
-pub fn install(store: &mut Store) {
-    crate::registry::Registry::update(store, |registry| registry.comments = true);
-}
-
-pub fn installed(store: &Store) -> bool {
-    crate::registry::Registry::of(store).is_some_and(|registry| registry.comments)
-}
+use crate::view::{comments_markup, CommentView};
 
 pub fn run_card_work(
     store: &mut Store,
     ui: &imba::UiCtx,
     comments: imba::store::Id<Comments>,
     work: CardWork,
-    fx: &mut AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     if let Some(documents) = Comments::documents_of(store, comments) {
         for (document, key) in work.dead {
@@ -52,7 +40,7 @@ fn settle_cards(
     store: &mut Store,
     ui: &imba::UiCtx,
     comments: imba::store::Id<Comments>,
-    fx: &mut AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments);
     for (id, record) in records {
@@ -61,7 +49,7 @@ fn settle_cards(
             None => {
                 if let Some(document) =
                     Comments::documents_of(store, comments).and_then(|documents| {
-                        crate::OpenDocuments::by_location(store, documents, &record.location)
+                        documents::OpenDocuments::by_location(store, documents, &record.location)
                     })
                 {
                     materialize(store, ui, comments, &id, &record, document, fx);
@@ -73,27 +61,27 @@ fn settle_cards(
 
 fn remove_card(
     store: &mut Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
+    documents: imba::store::Id<documents::OpenDocuments>,
     ui: &imba::UiCtx,
     document: DocumentId,
     key: InlayKey,
-    fx: &mut AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
-    let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
+    let Some(mut doc) = documents::OpenDocuments::document(store, documents, document) else {
         return;
     };
-    let fonts = crate::env::Fonts::of(store)();
-    let theme = crate::env::Themes::of(store);
+    let fonts = editor::env::Fonts::of(store)();
+    let theme = editor::env::Themes::of(store);
     fx.scope(
         move |command| {
-            AppCommand::at(
+            Verb::at(
                 documents,
-                crate::app::DocumentsCommand::Editor(document, command),
+                documents::DocumentsCommand::Editor(document, command),
             )
         },
         |fx| doc.remove_inlay(key, store, ui, &fonts, &theme, fx),
     );
-    crate::OpenDocuments::put_document(store, documents, document, doc);
+    documents::OpenDocuments::put_document(store, documents, document, doc);
 }
 
 /// The document observer, WIRED: minted by the family ceremony with
@@ -104,13 +92,13 @@ pub struct CommentsHook {
     pub comments: imba::store::Id<Comments>,
 }
 
-impl crate::DocumentHook for CommentsHook {
+impl documents::DocumentHook for CommentsHook {
     fn opened(
         &self,
         store: &mut Store,
-        _documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<documents::OpenDocuments>,
         document: DocumentId,
-        location: Option<&crate::ResourceLocation>,
+        location: Option<&editor::ResourceLocation>,
     ) {
         let Some(location) = location else {
             return;
@@ -119,17 +107,17 @@ impl crate::DocumentHook for CommentsHook {
         // documents, and the cards' collection is its own record.
         let comments = self.comments;
         if Comments::owes_cards_at(store, comments, location) {
-            crate::AppRequests::push(store, Arc::new(MaterializeFor { comments, document }));
+            imba::command::Requests::push(store, Arc::new(MaterializeFor { comments, document }));
         }
     }
 
     fn closing(
         &self,
         store: &mut Store,
-        _documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<documents::OpenDocuments>,
         document: DocumentId,
-        _location: Option<&crate::ResourceLocation>,
-        doc: &crate::Document,
+        _location: Option<&editor::ResourceLocation>,
+        doc: &editor::Document,
     ) {
         let comments = self.comments;
         for (id, key) in Comments::cards_in(store, comments, document) {
@@ -148,26 +136,19 @@ struct MaterializeFor {
     document: DocumentId,
 }
 
-impl crate::DynamicCommand for MaterializeFor {
+impl imba::command::DynamicCommand for MaterializeFor {
     fn id(&self) -> &'static str {
         "comments.materialize"
     }
     fn name(&self) -> String {
         "Materialize Comments".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
-        let _ = window;
-        let ui = &app.ui_ctx();
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(documents) = Comments::documents_of(store, self.comments) else {
             return;
         };
-        let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
+        let Some(location) = documents::OpenDocuments::location(store, documents, self.document)
+        else {
             return;
         };
         let owed: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, self.comments)
@@ -185,14 +166,14 @@ impl crate::DynamicCommand for MaterializeFor {
 /// The card's live range read off the CLOSING row itself — the hook
 /// is handed the document; a store read here would be lease
 /// reentrancy (docs/entities.md law 5).
-fn live_card_range(doc: &crate::Document, key: InlayKey) -> Option<Range<LineCol>> {
+fn live_card_range(doc: &editor::Document, key: InlayKey) -> Option<Range<LineCol>> {
     let markup = doc.feature_markup(comments_markup())?;
 
     let (range, _) = markup.inlay_at_key(comments_markup(), key)?;
     let mut view = doc.text().view();
     Some(
-        crate::line_col_at(&mut view, range.start as usize)
-            ..crate::line_col_at(&mut view, range.end as usize),
+        documents::line_col_at(&mut view, range.start as usize)
+            ..documents::line_col_at(&mut view, range.end as usize),
     )
 }
 
@@ -203,22 +184,23 @@ fn materialize(
     id: &AnnotationId,
     record: &CommentRecord,
     document: DocumentId,
-    fx: &mut AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(documents) = Comments::documents_of(store, comments) else {
         return;
     };
-    let Some(mut doc) = crate::OpenDocuments::document(store, documents, document) else {
+    let Some(mut doc) = documents::OpenDocuments::document(store, documents, document) else {
         return;
     };
-    let fonts = crate::env::Fonts::of(store)();
-    let theme = crate::env::Themes::of(store);
+    let fonts = editor::env::Fonts::of(store)();
+    let theme = editor::env::Themes::of(store);
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let range = match &record.range {
         Some(range) => {
             let mut view = doc.text().view();
-            let start = crate::offset_at(&mut view, range.start).min(byte_count as usize) as u32;
-            let end = crate::offset_at(&mut view, range.end).min(byte_count as usize) as u32;
+            let start =
+                documents::offset_at(&mut view, range.start).min(byte_count as usize) as u32;
+            let end = documents::offset_at(&mut view, range.end).min(byte_count as usize) as u32;
             start..end.max(start)
         }
         None => 0..byte_count,
@@ -226,7 +208,7 @@ fn materialize(
     let view = CommentView::materialized(
         comments,
         Some(document),
-        crate::hicomments::FALLBACK_WIDTH,
+        crate::view::FALLBACK_WIDTH,
         store,
         ui,
         &fonts,
@@ -241,16 +223,16 @@ fn materialize(
     let mut minted = None;
     fx.scope(
         move |command| {
-            AppCommand::at(
+            Verb::at(
                 documents,
-                crate::app::DocumentsCommand::Editor(document, command),
+                documents::DocumentsCommand::Editor(document, command),
             )
         },
         |fx| {
             let key = doc.push_inlay(
                 markup,
                 range.clone(),
-                crate::Inlay::new(crate::InlayMode::Under, view.clone()),
+                editor::Inlay::new(editor::InlayMode::Under, view.clone()),
                 store,
                 ui,
                 &fonts,
@@ -260,12 +242,12 @@ fn materialize(
             doc.swap_inlay(
                 key,
                 range.clone(),
-                crate::Inlay::new(crate::InlayMode::Under, view.clone().keyed(key)),
+                editor::Inlay::new(editor::InlayMode::Under, view.clone().keyed(key)),
             );
             minted = Some(key);
         },
     );
-    crate::OpenDocuments::put_document(store, documents, document, doc);
+    documents::OpenDocuments::put_document(store, documents, document, doc);
     if let Some(key) = minted {
         Comments::card_born(store, comments, id, document, key);
     }
@@ -284,7 +266,7 @@ fn refresh_card(
     let Some(documents) = Comments::documents_of(store, comments) else {
         return;
     };
-    let Some(doc) = crate::OpenDocuments::document_ref(store, documents, document) else {
+    let Some(doc) = documents::OpenDocuments::document_ref(store, documents, document) else {
         return;
     };
     let Some(markup) = doc.feature_markup(comments_markup()) else {
@@ -300,12 +282,12 @@ fn refresh_card(
         return;
     }
     let live_text = view.map(|view| view.text_rope());
-    let fonts = crate::env::Fonts::of(store)();
-    let theme = crate::env::Themes::of(store);
+    let fonts = editor::env::Fonts::of(store)();
+    let theme = editor::env::Themes::of(store);
     let rebuilt = CommentView::materialized(
         comments,
         Some(document),
-        crate::hicomments::FALLBACK_WIDTH,
+        crate::view::FALLBACK_WIDTH,
         store,
         ui,
         &fonts,
@@ -316,11 +298,12 @@ fn refresh_card(
         record.thread_stamp,
     )
     .keyed(key);
-    let mut doc = crate::OpenDocuments::document(store, documents, document).expect("held above");
+    let mut doc =
+        documents::OpenDocuments::document(store, documents, document).expect("held above");
     doc.swap_inlay(
         key,
         range,
-        crate::Inlay::new(crate::InlayMode::Under, rebuilt),
+        editor::Inlay::new(editor::InlayMode::Under, rebuilt),
     );
-    crate::OpenDocuments::put_document(store, documents, document, doc);
+    documents::OpenDocuments::put_document(store, documents, document, doc);
 }

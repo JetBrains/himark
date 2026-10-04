@@ -426,7 +426,9 @@ impl DynamicCommand for OpenPicked {
                         spelled.clone(),
                         fx,
                     );
-                    himark::drivers::comments::ensure(store, window, comments_wire, &spelled, fx);
+                    fx.scope(AppCommand::Verb, |fx| {
+                        himark::drivers::comments::ensure(store, comments_wire, &spelled, fx)
+                    });
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
                 eprintln!("[host] folder pick dropped: no local agent host to session it");

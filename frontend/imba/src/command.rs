@@ -129,3 +129,31 @@ impl<T: Entity> AddressedCommand for AtVerb<T> {
         store.route(id, command, ui, move |command| Verb::at(id, command), fx);
     }
 }
+
+/// Deferred, windowless asks — the outbox a model door or a document
+/// hook fills when it cannot push effects itself (it runs behind a
+/// lease, or inside another entity's perform). The shell's batch
+/// loop drains it into the verb lane the same batch.
+#[derive(Clone, Default)]
+pub struct Requests(Vec<Arc<dyn DynamicCommand>>);
+
+impl Requests {
+    pub fn push(store: &mut Store, request: Arc<dyn DynamicCommand>) {
+        store.update::<Requests>(|requests| requests.0.push(request));
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn drain(store: &mut Store) -> Vec<Arc<dyn DynamicCommand>> {
+        let Some(requests) = store.get::<Requests>() else {
+            return Vec::new();
+        };
+        let drained = requests.0.clone();
+        if !drained.is_empty() {
+            store.put(Requests(Vec::new()));
+        }
+        drained
+    }
+}

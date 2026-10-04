@@ -15,6 +15,24 @@ use editor::{InlayKey, ResourceLocation};
 use imba::store::Store;
 use text::Text;
 
+pub mod cards;
+pub mod panel;
+pub mod view;
+
+/// The feature gate — app configuration, owned by the feature:
+/// hosts that serve no annotations never install it. Live state, so
+/// an install after a family minted still takes effect.
+#[derive(Clone, Default)]
+struct Gate(bool);
+
+pub fn install(store: &mut Store) {
+    store.put(Gate(true));
+}
+
+pub fn installed(store: &Store) -> bool {
+    store.get::<Gate>().is_some_and(|gate| gate.0)
+}
+
 pub type AnnotationId = String;
 
 #[derive(Clone)]
@@ -114,6 +132,15 @@ pub struct Comments {
 
     records: rpds::HashTrieMapSync<AnnotationId, CommentRecord>,
 
+    /// The session folders the dock groups by — stamped by the wire
+    /// driver as it attaches them; the panel never consults a
+    /// session.
+    folders: rpds::VectorSync<ResourceLocation>,
+
+    /// Send-to-agent intents the faces NOTED — the wire lane drains
+    /// them; no face carries a wire or a window.
+    send_asks: Vec<Vec<AnnotationId>>,
+
     cards: rpds::HashTrieMapSync<AnnotationId, (DocumentId, InlayKey)>,
 
     /// A landing's pending card work (inlay mint and removal) — the
@@ -158,6 +185,8 @@ impl Comments {
         Self {
             documents,
             records: rpds::HashTrieMapSync::new_sync(),
+            folders: rpds::VectorSync::new_sync(),
+            send_asks: Vec::new(),
             cards: rpds::HashTrieMapSync::new_sync(),
             work: CardWork::default(),
             announce: Vec::new(),
@@ -548,11 +577,74 @@ impl Comments {
         });
     }
 
+    /// The session folders the dock groups by.
+    pub fn folders(store: &Store, comments: imba::store::Id<Comments>) -> Vec<ResourceLocation> {
+        Self::of(store, comments)
+            .map(|held| held.folders.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// The driver's stamp: adopt a folder not yet held, keeping
+    /// attach order.
+    pub fn adopt_folder(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        folder: &ResourceLocation,
+    ) {
+        let known = Self::of(store, comments)
+            .is_some_and(|held| held.folders.iter().any(|known| known == folder));
+        if known {
+            return;
+        }
+        Self::update(store, comments, |held| {
+            held.folders.push_back_mut(folder.clone());
+            held.generation += 1;
+        });
+    }
+
+    /// Note a send-to-agent ask for the wire lane.
+    pub fn ask_send(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        ids: Vec<AnnotationId>,
+    ) {
+        if ids.is_empty() {
+            return;
+        }
+        Self::update(store, comments, |held| held.send_asks.push(ids));
+    }
+
+    pub fn take_send_asks(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+    ) -> Vec<Vec<AnnotationId>> {
+        let Some(mut held) = store.entity::<Comments>(comments).cloned() else {
+            return Vec::new();
+        };
+        let asks = std::mem::take(&mut held.send_asks);
+        store.put_entity(comments, held);
+        asks
+    }
+
     /// The wire lane's gates and drains: the model notes, the driver
     /// moves.
     pub fn owes_sync(store: &Store, comments: imba::store::Id<Comments>) -> bool {
-        Self::of(store, comments)
-            .is_some_and(|held| !held.announce.is_empty() || !held.work.is_empty())
+        Self::of(store, comments).is_some_and(|held| {
+            !held.announce.is_empty() || !held.work.is_empty() || !held.send_asks.is_empty()
+        })
+    }
+
+    /// Any record's location — the lane's self-ensure resolves the
+    /// channel's seat from it when announces wait with no channel.
+    pub fn any_location(
+        store: &Store,
+        comments: imba::store::Id<Comments>,
+    ) -> Option<ResourceLocation> {
+        Self::of(store, comments)?
+            .records
+            .iter()
+            .next()
+            .map(|(_, record)| record.location.clone())
     }
 
     pub fn take_announces(store: &mut Store, comments: imba::store::Id<Comments>) -> Vec<Announce> {

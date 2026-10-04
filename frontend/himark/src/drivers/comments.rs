@@ -26,7 +26,8 @@ use crate::higent::ahp_types::state::{
 };
 use crate::higent::AhpServer;
 use crate::higent::SessionUri as Uri;
-use crate::{AppCommand, ResourceLocation};
+use crate::ResourceLocation;
+use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
 /// The one channel a family's comments ride.
@@ -99,13 +100,17 @@ fn update(
 /// the seat and AHP session come off the folder's authority.
 pub fn ensure(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<CommentsWire>,
     location: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     if !crate::hicomments::installed(store) {
         return;
+    }
+    if let Some(comments) = of(store, wire).map(|row| row.comments) {
+        if location.kind().is_directory() {
+            Comments::adopt_folder(store, comments, location);
+        }
     }
     let Some((server, seat, session)) =
         crate::higent::seat::route_seat(store, location.authority().as_str())
@@ -132,14 +137,11 @@ pub fn ensure(
             session: session.clone(),
         })
         .map(move |result| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(SnapshotLanded {
-                    wire,
-                    session: session.clone(),
-                    result: result.map(|state| state.annotations),
-                }),
-            )
+            Verb::Dynamic(Arc::new(SnapshotLanded {
+                wire,
+                session: session.clone(),
+                result: result.map(|state| state.annotations),
+            }))
         }),
     );
 }
@@ -219,20 +221,14 @@ struct SnapshotLanded {
     result: Result<Vec<Annotation>, String>,
 }
 
-impl crate::DynamicCommand for SnapshotLanded {
+impl imba::command::DynamicCommand for SnapshotLanded {
     fn id(&self) -> &'static str {
         "comments.snapshot"
     }
     fn name(&self) -> String {
         "Comments Snapshot".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire).cloned() else {
             return;
         };
@@ -262,8 +258,8 @@ impl crate::DynamicCommand for SnapshotLanded {
                 });
                 Comments::land_seeds(store, row.comments, seeds);
                 let _ = held;
-                sync(store, self.wire, &app.ui_ctx(), fx);
-                relaunch_poll(store, window, self.wire, fx);
+                sync(store, self.wire, ui, fx);
+                relaunch_poll(store, self.wire, fx);
             }
         }
     }
@@ -275,20 +271,14 @@ struct Polled {
     actions: Vec<StateAction>,
 }
 
-impl crate::DynamicCommand for Polled {
+impl imba::command::DynamicCommand for Polled {
     fn id(&self) -> &'static str {
         "comments.polled"
     }
     fn name(&self) -> String {
         "Comments Update".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire).cloned() else {
             return;
         };
@@ -301,17 +291,12 @@ impl crate::DynamicCommand for Polled {
         }
         let deltas = digest_deltas(&row, &self.session, &self.actions);
         Comments::fold_deltas(store, row.comments, deltas);
-        sync(store, self.wire, &app.ui_ctx(), fx);
-        relaunch_poll(store, window, self.wire, fx);
+        sync(store, self.wire, ui, fx);
+        relaunch_poll(store, self.wire, fx);
     }
 }
 
-fn relaunch_poll(
-    store: &Store,
-    window: crate::WindowId,
-    wire: imba::store::Id<CommentsWire>,
-    fx: &mut crate::AppFx<'_>,
-) {
+fn relaunch_poll(store: &Store, wire: imba::store::Id<CommentsWire>, fx: &mut Fx<'_>) {
     let Some(held) = of(store, wire).and_then(|row| row.channel.clone()) else {
         return;
     };
@@ -322,14 +307,11 @@ fn relaunch_poll(
             session: session.clone(),
         })
         .map(move |actions| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(Polled {
-                    wire,
-                    session: session.clone(),
-                    actions,
-                }),
-            )
+            Verb::Dynamic(Arc::new(Polled {
+                wire,
+                session: session.clone(),
+                actions,
+            }))
         }),
     );
 }
@@ -341,7 +323,7 @@ pub fn sync(
     store: &mut Store,
     wire: imba::store::Id<CommentsWire>,
     ui: &imba::UiCtx,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire).cloned() else {
         return;
@@ -349,6 +331,14 @@ pub fn sync(
     let comments = row.comments;
     if !Comments::owes_sync(store, comments) {
         return;
+    }
+    // A note waits with no channel: dial it from any record's
+    // authority — the first offline-born comment ensures its own
+    // feed, no window ask involved.
+    if row.channel.is_none() {
+        if let Some(location) = Comments::any_location(store, comments) {
+            ensure(store, wire, &location, fx);
+        }
     }
     // Announces drain ONLY onto a live channel — taken earlier they
     // would be lost; they wait in the model's note until the feed
@@ -360,6 +350,17 @@ pub fn sync(
         for announce in Comments::take_announces(store, comments) {
             match announce {
                 Announce::Set(id) => {
+                    // A record born without provenance takes the
+                    // session's freshest turn NOW — the driver knows
+                    // the wire; the gesture never did.
+                    if let Some(record) = Comments::record(store, comments, &id) {
+                        if record.turn_id.is_empty() {
+                            let turn = latest_turn(store, wire);
+                            Comments::update_record(store, comments, &id, move |record| {
+                                record.turn_id = turn;
+                            });
+                        }
+                    }
                     if let Some(record) = Comments::record(store, comments, &id) {
                         dispatch_set(uris, &held.seat, &held.session, &id, &record);
                         Comments::update_record(store, comments, &id, |record| {
@@ -416,6 +417,9 @@ pub fn sync(
             }
         }
     }
+    for ids in Comments::take_send_asks(store, comments) {
+        send_to_agent(store, wire, ids, fx);
+    }
     let work = Comments::take_card_work(store, comments);
     crate::hicomments::run_card_work(store, ui, comments, work, fx);
 }
@@ -425,10 +429,9 @@ pub fn sync(
 /// wire business.
 pub fn send_to_agent(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<CommentsWire>,
     ids: Vec<AnnotationId>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire).cloned() else {
         return;
@@ -455,10 +458,15 @@ pub fn send_to_agent(
     let mut chat =
         crate::higent::Agents::channel(store, &key).and_then(|channel| channel.default_chat);
     if chat.is_none() {
-        let bound = crate::Windows::window_ref(store, window)
-            .map(|entity| entity.current_session())
-            .and_then(|workspace| crate::higent::Agents::live_session(store, &workspace))
-            .filter(|bound| bound.host == held.server);
+        // The fallback workspace is the comments' own family — the
+        // catalog names it; no window consulted.
+        let bound = crate::higent::Hosts::home_of_documents(
+            store,
+            Comments::documents_of(store, comments).unwrap_or(imba::store::Id::mint()),
+        )
+        .map(|(workspace, _)| workspace)
+        .and_then(|workspace| crate::higent::Agents::live_session(store, &workspace))
+        .filter(|bound| bound.host == held.server);
         if let Some(bound) = bound {
             chat = crate::higent::Agents::channel(store, &bound)
                 .and_then(|channel| channel.default_chat);
@@ -493,14 +501,11 @@ pub fn send_to_agent(
             model: None,
         })
         .map(move |result| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(Sent {
-                    wire,
-                    ids: sent.clone(),
-                    result,
-                }),
-            )
+            Verb::Dynamic(Arc::new(Sent {
+                wire,
+                ids: sent.clone(),
+                result,
+            }))
         }),
     );
 }
@@ -512,25 +517,19 @@ struct Sent {
     result: Result<(), String>,
 }
 
-impl crate::DynamicCommand for Sent {
+impl imba::command::DynamicCommand for Sent {
     fn id(&self) -> &'static str {
         "comments.sent"
     }
     fn name(&self) -> String {
         "Comments Sent".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        _window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(comments) = of(store, self.wire).map(|row| row.comments) else {
             return;
         };
         Comments::sent_outcome(store, comments, &self.ids, self.result.clone());
-        sync(store, self.wire, &app.ui_ctx(), fx);
+        sync(store, self.wire, ui, fx);
     }
 }
 

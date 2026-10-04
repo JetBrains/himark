@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
+use crate::{Document, EditorCommand, EditorFocus, InlayKey};
+use imba::UiCtx;
 
 use std::ops::Range;
 

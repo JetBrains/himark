@@ -4,10 +4,10 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::{
-    ActivateTrigger, AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
-    ListKeyboardController, ModalRequest, ModalView, ResourceLocation, ResourceType,
-    TreeListCommand,
+use editor::{ResourceLocation, ResourceType};
+use hikit::{
+    ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
+    ListKeyboardController, ModalRequest, ModalView, TreeListCommand,
 };
 use imba::list::ListOps;
 use imba::{
@@ -23,8 +23,8 @@ use imba::{
 };
 use skia_safe::{Rect, Size};
 
-use crate::hicomments::comments_markup;
-use crate::hicomments::sync::{AnnotationId, CommentRecord, Comments};
+use crate::view::comments_markup;
+use crate::{AnnotationId, CommentRecord, Comments};
 
 const PANEL_PAD: f32 = 6.0;
 
@@ -120,7 +120,7 @@ fn folder_node(
         pick: false,
         dim: false,
         trail: Vec::new(),
-        tint: crate::TreeTint::Label,
+        tint: hikit::TreeTint::Label,
         action: None,
         children: dir_children(folder, trie, items),
     })
@@ -151,7 +151,7 @@ fn dir_children(
             pick: false,
             dim: true,
             trail: Vec::new(),
-            tint: crate::TreeTint::Label,
+            tint: hikit::TreeTint::Label,
             action: None,
             children: nested,
         });
@@ -182,7 +182,7 @@ fn dir_children(
                 pick: true,
                 dim: record.resolved,
                 trail: Vec::new(),
-                tint: crate::TreeTint::Label,
+                tint: hikit::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -193,7 +193,7 @@ fn dir_children(
             pick: false,
             dim: false,
             trail: Vec::new(),
-            tint: crate::TreeTint::Label,
+            tint: hikit::TreeTint::Label,
             action: None,
             children: leaves,
         });
@@ -230,9 +230,6 @@ pub struct CommentsView {
     items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     /// The collection whose records this dock lists.
     comments: imba::store::Id<Comments>,
-    /// The session, as the CATALOG's name for its folders.
-    workspace: crate::SessionId,
-    window: crate::WindowId,
 
     seen: u64,
     request: Option<ModalRequest>,
@@ -244,8 +241,6 @@ impl Clone for CommentsView {
             list: self.list.clone(),
             items: self.items.clone(),
             comments: self.comments,
-            workspace: self.workspace.clone(),
-            window: self.window,
             seen: self.seen,
 
             request: None,
@@ -254,26 +249,18 @@ impl Clone for CommentsView {
 }
 
 impl CommentsView {
-    pub fn open(
-        store: &Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        comments: imba::store::Id<Comments>,
-        workspace: crate::SessionId,
-    ) -> Self {
+    pub fn open(store: &Store, ui: &UiCtx, comments: imba::store::Id<Comments>) -> Self {
         let mut panel = Self {
             list: ListKeyboardController::searchable(
                 ForestList::new(store),
                 ForestSearcher::default(),
                 store,
                 ui,
-                crate::env::Fonts::of(store),
+                editor::env::Fonts::of(store),
             )
             .with_folds(),
             items: rpds::HashTrieMapSync::new_sync(),
             comments,
-            workspace,
-            window,
             seen: 0,
             request: None,
         };
@@ -290,15 +277,14 @@ impl CommentsView {
         self.seen = Comments::generation(store, self.comments);
         let records = Comments::records(store, self.comments);
         let mut items = rpds::HashTrieMapSync::new_sync();
-        let mut nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .filter_map(|folder| folder_node(folder, &records, &mut items))
-                .collect();
+        let mut nodes: Vec<ForestNode<ResourceLocation>> = Comments::folders(store, self.comments)
+            .iter()
+            .filter_map(|folder| folder_node(folder, &records, &mut items))
+            .collect();
         if nodes.is_empty() {
             let note = ResourceLocation::new(
                 ResourceType::new("note"),
-                crate::Authority::new("comments"),
+                editor::Authority::new("comments"),
                 vec!["empty".to_owned()],
             );
             items.insert_mut(note.clone(), RowItem::Note);
@@ -308,7 +294,7 @@ impl CommentsView {
                 pick: false,
                 dim: true,
                 trail: Vec::new(),
-                tint: crate::TreeTint::Label,
+                tint: hikit::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -329,16 +315,21 @@ impl CommentsView {
             Some(RowItem::Branch) => self.list.inner_mut().toggle(key, store, ui),
             Some(RowItem::Comment(id)) => {
                 self.list.inner_mut().list_mut().select_only(key.clone());
-
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                    AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(NavigateToComment {
-                            comments: self.comments,
-                            annotation: id,
-                        }),
-                    ),
-                )));
+                let Some(record) = Comments::record(store, self.comments, &id) else {
+                    return;
+                };
+                // The caret target: the card's LIVE range when its
+                // document is open, else the stored one — resolved
+                // here; the shell only supplies the window.
+                let target = live_range(store, self.comments, &id)
+                    .or(record.range.clone())
+                    .unwrap_or(
+                        documents::LineCol { line: 0, col: 0 }..documents::LineCol {
+                            line: 0,
+                            col: 0,
+                        },
+                    );
+                self.request = Some(ModalRequest::OpenAt(record.location, Some(target)));
             }
             Some(RowItem::Note) | None => {}
         }
@@ -395,7 +386,7 @@ impl View for CommentsView {
                         return self.list.inner_mut().fold_cursor(*expand, store, ui);
                     }
                     ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = crate::tree_toggle(inner) {
+                        if let Some(index) = hikit::tree_toggle(inner) {
                             return self.activate(index, store, ui);
                         }
                     }
@@ -435,14 +426,11 @@ impl View for CommentsView {
                 if ids.is_empty() {
                     return;
                 }
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                    AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::hicomments::SendComments {
-                            comments: self.comments,
-                            ids,
-                        }),
-                    ),
+                self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
+                    Arc::new(crate::view::SendComments {
+                        comments: self.comments,
+                        ids,
+                    }),
                 )));
             }
             CommentsViewCommand::Dismiss => {
@@ -461,7 +449,7 @@ impl View for CommentsView {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let chrome = crate::env::Themes::of(store).ui().peeker.clone();
+            let chrome = editor::env::Themes::of(store).ui().peeker.clone();
             let chip_height = chrome.hint_size * 2.0;
             let band = chrome.margin + chip_height + PANEL_PAD;
             let rows = imba::Layout::layout(
@@ -472,7 +460,7 @@ impl View for CommentsView {
             .map(CommentsViewCommand::Rows);
             overlay.place(0.0, band, rows);
 
-            let chip_font = crate::fonts::ui_font(ui, chrome.hint_size);
+            let chip_font = hikit::fonts::ui_font(ui, chrome.hint_size);
             let advance = chip_font.measure_str("SEND ALL", None).0;
             let chip_width = advance + chrome.hint_size * 2.0;
             let chip_radius = chrome.well_radius;
@@ -587,143 +575,24 @@ impl ModalView for CommentsView {
     }
 }
 
-struct NavigateToComment {
-    comments: imba::store::Id<Comments>,
-    annotation: AnnotationId,
-}
-
-impl crate::DynamicCommand for NavigateToComment {
-    fn id(&self) -> &'static str {
-        "comments.navigate"
-    }
-    fn name(&self) -> String {
-        "Go to Comment".to_owned()
-    }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
-        let Some(record) = Comments::record(store, self.comments, &self.annotation) else {
-            return;
-        };
-        let target = live_range(store, self.comments, &self.annotation)
-            .or(record.range.clone())
-            .unwrap_or(crate::LineCol { line: 0, col: 0 }..crate::LineCol { line: 0, col: 0 });
-        let Some(documents) = Comments::documents_of(store, self.comments) else {
-            return;
-        };
-        match crate::OpenDocuments::by_location(store, documents, &record.location) {
-            Some(document) => {
-                let Some(mut entity) = crate::Windows::window(store, window) else {
-                    return;
-                };
-                entity.show_document(store, ui, window, document, Some(target), false, fx);
-                crate::Windows::put(store, window, entity);
-            }
-            None => {
-                fx.push(crate::open_by_location_effect(
-                    window,
-                    documents,
-                    record.location.clone(),
-                    true,
-                    false,
-                    Some(target),
-                ));
-            }
-        }
-    }
-}
-
 fn live_range(
     store: &Store,
     comments: imba::store::Id<Comments>,
     annotation: &AnnotationId,
-) -> Option<std::ops::Range<crate::LineCol>> {
+) -> Option<std::ops::Range<documents::LineCol>> {
     let (document, key) = Comments::card(store, comments, annotation)?;
     let documents = Comments::documents_of(store, comments)?;
-    let doc = crate::OpenDocuments::document_ref(store, documents, document)?;
+    let doc = documents::OpenDocuments::document_ref(store, documents, document)?;
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let markup = doc.feature_markup(comments_markup())?;
     let extras = [(comments_markup(), markup)];
-    let interval = crate::OverlaidMarkup::new(doc.markup(), &extras)
+    let interval = editor::OverlaidMarkup::new(doc.markup(), &extras)
         .all_inlays_in(0..byte_count)
         .into_iter()
         .find(|interval| interval.key == key)?;
     let mut view = doc.text().view();
     Some(
-        crate::line_col_at(&mut view, interval.range.start as usize)
-            ..crate::line_col_at(&mut view, interval.range.end as usize),
+        documents::line_col_at(&mut view, interval.range.start as usize)
+            ..documents::line_col_at(&mut view, interval.range.end as usize),
     )
-}
-
-pub struct ToggleCommentsView;
-
-impl crate::DynamicCommand for ToggleCommentsView {
-    fn id(&self) -> &'static str {
-        "comments.view"
-    }
-    fn name(&self) -> String {
-        "Comments".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
-        if entity.dock_owner() == Some(self.id()) {
-            entity.roll_away_dock();
-            crate::Windows::put(store, window, entity);
-            return;
-        }
-        let workspace = entity.current_session();
-        let wire = entity.family().comments_wire();
-        for folder in crate::higent::session_folders(store, &workspace) {
-            crate::drivers::comments::ensure(store, window, wire, &folder, fx);
-        }
-
-        fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.dismiss_modal(store, fx),
-        );
-        let panel = CommentsView::open(store, &_app.ui_ctx(), window, comments, workspace);
-        let owner = self.id();
-        fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
-        );
-        crate::Windows::put(store, window, entity);
-    }
-}
-
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
-        command: "comments.view",
-        order: 1.5,
-        side: crate::ToolbarSide::Right,
-        glyph: Arc::new(|canvas, rect, color| {
-            let mut paint = skia_safe::Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_color(color);
-            paint.set_style(skia_safe::paint::Style::Stroke);
-            paint.set_stroke_width((rect.width() * 0.09).max(1.0));
-            paint.set_stroke_cap(skia_safe::paint::Cap::Round);
-            let (l, t, w, h) = (rect.left, rect.top, rect.width(), rect.height());
-
-            let body = Rect::from_xywh(l + w * 0.18, t + h * 0.2, w * 0.64, h * 0.44);
-            let radius = h * 0.12;
-            canvas.draw_round_rect(body, radius, radius, &paint);
-            let mut path = skia_safe::PathBuilder::new();
-            path.move_to((l + w * 0.34, t + h * 0.64));
-            path.line_to((l + w * 0.30, t + h * 0.8));
-            path.line_to((l + w * 0.46, t + h * 0.64));
-            canvas.draw_path(&path.detach(), &paint);
-        }),
-    }
 }

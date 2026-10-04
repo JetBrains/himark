@@ -941,12 +941,14 @@ impl Application {
                 // The comments lane: the model's announce and card
                 // notes drain onto the wire — a clean collection
                 // costs a map read.
-                crate::drivers::comments::sync(
-                    &mut store,
-                    family.comments_wire(),
-                    &self.ui_ctx(),
-                    &mut fx,
-                );
+                fx.scope(AppCommand::Verb, |fx| {
+                    crate::drivers::comments::sync(
+                        &mut store,
+                        family.comments_wire(),
+                        &self.ui_ctx(),
+                        fx,
+                    )
+                });
                 // The gesture-ask lanes: the views noted onto their
                 // MODELS (grow, commit fetches, refetches); the
                 // drivers drain the notes onto the wires here — no
@@ -1319,6 +1321,25 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                     }
+                    Some(ModalRequest::OpenAt(location, target)) => {
+                        fx.scope(
+                            move |command| AppCommand::Content(window, command),
+                            |fx| entity.dismiss_modal(store, fx),
+                        );
+                        crate::Windows::put(store, window, entity);
+                        self.perform(
+                            store,
+                            ui,
+                            AppCommand::Dynamic(
+                                window,
+                                std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
+                                    location,
+                                    target,
+                                }),
+                            ),
+                            fx,
+                        );
+                    }
                     Some(ModalRequest::ShowDocument(document)) => {
                         fx.scope(
                             move |command| AppCommand::Content(window, command),
@@ -1371,6 +1392,21 @@ impl Application {
                                 self.perform(store, ui, command, fx);
                             }
                         }
+                        ModalRequest::OpenAt(location, target) => {
+                            crate::Windows::put(store, window, entity);
+                            self.perform(
+                                store,
+                                ui,
+                                AppCommand::Dynamic(
+                                    window,
+                                    std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
+                                        location,
+                                        target,
+                                    }),
+                                ),
+                                fx,
+                            );
+                        }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
@@ -1413,6 +1449,21 @@ impl Application {
                             if let Some(command) = verb_command(window, verb) {
                                 self.perform(store, ui, command, fx);
                             }
+                        }
+                        ModalRequest::OpenAt(location, target) => {
+                            crate::Windows::put(store, window, entity);
+                            self.perform(
+                                store,
+                                ui,
+                                AppCommand::Dynamic(
+                                    window,
+                                    std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
+                                        location,
+                                        target,
+                                    }),
+                                ),
+                                fx,
+                            );
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);

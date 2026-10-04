@@ -40,6 +40,13 @@ pub enum ModalRequest {
 
     Perform(imba::command::Verb),
 
+    /// Open one location, honoring a caret target — the shell
+    /// supplies the window.
+    OpenAt(
+        editor::ResourceLocation,
+        Option<std::ops::Range<documents::LineCol>>,
+    ),
+
     ShowDocument(documents::DocumentId),
 
     OpenLocations(Vec<editor::ResourceLocation>),

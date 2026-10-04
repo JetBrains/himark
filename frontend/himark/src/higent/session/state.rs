@@ -496,7 +496,6 @@ impl Hosts {
             family.documents,
             std::sync::Arc::new(crate::hicomments::AddComment {
                 comments: family.comments,
-                wire: family.comments_wire,
             }),
         );
         store.put_entity(
