@@ -61,6 +61,8 @@ pub struct SessionState {
 
     changes_wire: Id<crate::drivers::changes::ChangesWire>,
 
+    canvas_router: Id<crate::diff_canvas::canvas::CanvasRouter>,
+
     history_wire: Id<crate::drivers::history::HistoryWire>,
 
     comments_wire: Id<crate::drivers::comments::CommentsWire>,
@@ -99,6 +101,10 @@ impl SessionState {
 
     pub fn changes_wire(&self) -> Id<crate::drivers::changes::ChangesWire> {
         self.changes_wire
+    }
+
+    pub fn canvas_router(&self) -> Id<crate::diff_canvas::canvas::CanvasRouter> {
+        self.canvas_router
     }
 
     pub fn history_wire(&self) -> Id<crate::drivers::history::HistoryWire> {
@@ -144,6 +150,7 @@ impl SessionState {
             recents: Id::mint(),
             changes: Id::mint(),
             changes_wire: Id::mint(),
+            canvas_router: Id::mint(),
             history_wire: Id::mint(),
             comments_wire: Id::mint(),
             history: Id::mint(),
@@ -166,6 +173,7 @@ impl SessionState {
         }
         empty(store, self.chats, |it| it.is_empty())
             && empty(store, self.changes_wire, |it| it.is_empty())
+            && empty(store, self.canvas_router, |it| it.is_empty())
             && empty(store, self.history_wire, |it| it.is_empty())
             && empty(store, self.comments_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
@@ -188,6 +196,7 @@ impl SessionState {
         store.retract(self.recents);
         store.retract(self.changes);
         store.retract(self.changes_wire);
+        store.retract(self.canvas_router);
         store.retract(self.history_wire);
         store.retract(self.comments_wire);
         // The ceremony installed the scoped hooks and commands; the
@@ -438,6 +447,10 @@ impl Hosts {
         store.put_entity(
             family.changes,
             crate::hichanges::ChangeSets::wired(family.documents, family.history),
+        );
+        store.put_entity(
+            family.canvas_router,
+            crate::diff_canvas::canvas::CanvasRouter::wired(family.changes),
         );
         store.put_entity(
             family.changes_wire,

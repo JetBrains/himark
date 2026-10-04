@@ -339,23 +339,16 @@ pub struct ChangeSets {
 pub type Changes = ChangeSets;
 
 /// What the collection answers to behind its `At` address
-/// (docs/entities.md law 5).
-pub enum ChangesCommand {
-    /// A command for a SET-OWNED canvas — the DiffView shape: routed
-    /// by the collection, the set and the canvas; no window, no
-    /// session.
-    Canvas(
-        ChangeSetId,
-        crate::diff_canvas::canvas::CanvasId,
-        Box<crate::diff_canvas::canvas::CanvasCommand>,
-    ),
-}
+/// (docs/entities.md law 5) — nothing yet: the canvases route
+/// through their own router row; the tree views roll in the
+/// batch-tail lane. The entity stands so landings can address the
+/// model when they need to.
+#[derive(Clone)]
+pub enum ChangesCommand {}
 
 impl std::fmt::Display for ChangesCommand {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ChangesCommand::Canvas(_, _, command) => command.fmt(out),
-        }
+    fn fmt(&self, _out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
     }
 }
 
@@ -364,30 +357,13 @@ impl imba::store::Entity for ChangeSets {
 
     fn perform(
         &mut self,
-        id: imba::store::Id<Self>,
+        _id: imba::store::Id<Self>,
         command: ChangesCommand,
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+        _store: &mut Store,
+        _ui: &imba::UiCtx,
+        _fx: &mut imba::effect::Effects<'_, ChangesCommand>,
     ) {
-        match command {
-            ChangesCommand::Canvas(set, canvas, command) => {
-                // The canvas perform legitimately reopens this
-                // collection (set rows, sibling documents) — give the
-                // row back for the duration and pick up the fresh
-                // state after, the documents-entity escape. The
-                // stand-in is an EMPTY wired row, never Default: the
-                // sibling ids stay real.
-                let stand_in = Self::wired(self.documents, self.history);
-                store.unlease(id, std::mem::replace(self, stand_in));
-                crate::diff_canvas::canvas::perform_canvas(
-                    store, ui, id, set, canvas, *command, fx,
-                );
-                if let Some(fresh) = store.lease(id) {
-                    *self = fresh;
-                }
-            }
-        }
+        match command {}
     }
 
     fn destroy(&mut self, _store: &mut Store) {

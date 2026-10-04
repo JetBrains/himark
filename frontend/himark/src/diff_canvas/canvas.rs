@@ -1775,19 +1775,77 @@ impl Canvases {
     }
 }
 
+/// The canvases' own At address — a stateless ROUTER row minted by
+/// the family ceremony beside the collection: canvas commands land
+/// on canvas code here, and the model (which stores canvases as
+/// SLOTS) never calls up into a face.
+#[derive(Clone)]
+pub struct CanvasRouter {
+    changes: imba::store::Id<Changes>,
+}
+
+impl CanvasRouter {
+    pub fn wired(changes: imba::store::Id<Changes>) -> Self {
+        Self { changes }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        true
+    }
+}
+
+#[derive(Clone)]
+pub enum CanvasRouted {
+    Canvas(ChangeSetId, CanvasId, Box<CanvasCommand>),
+}
+
+impl std::fmt::Display for CanvasRouted {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CanvasRouted::Canvas(_, _, command) => command.fmt(out),
+        }
+    }
+}
+
+impl imba::store::Entity for CanvasRouter {
+    type Command = CanvasRouted;
+
+    fn perform(
+        &mut self,
+        _id: imba::store::Id<Self>,
+        command: CanvasRouted,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut imba::effect::Effects<'_, CanvasRouted>,
+    ) {
+        // The router row is stateless: the canvases live on the SETS
+        // (slot doors), so no lease escape is owed here.
+        match command {
+            CanvasRouted::Canvas(set, canvas, command) => {
+                perform_canvas(store, ui, self.changes, set, canvas, *command, fx);
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {}
+}
+
 /// The batch-tail canvas sweep — a DIRECT lane now (the sets own their
 /// canvases; no plugin observer, no window): reconcile every canvas in
-/// the gathered session, launching builds through the collection's At
-/// address (`ChangesCommand::Canvas`, the DiffView shape).
+/// the gathered session, launching builds through the canvases' own At
+/// address (`CanvasRouted`, the DiffView shape).
 pub(crate) fn sync_canvases(
     store: &mut Store,
-    changes: imba::store::Id<Changes>,
+    router: imba::store::Id<CanvasRouter>,
     ui: &UiCtx,
     dressed: &[crate::DiffViewId],
     fx: &mut crate::AppFx<'_>,
 ) {
+    let Some(changes) = store.entity::<CanvasRouter>(router).map(|row| row.changes) else {
+        return;
+    };
     fx.scope(
-        move |command| crate::AppCommand::at(changes, command),
+        move |command| crate::AppCommand::at(router, command),
         |fx| {
             for (set, id) in Changes::canvas_ids(store, changes) {
                 let Some(mut canvas) = Changes::take_canvas::<Canvas>(store, changes, set, id)
@@ -1803,33 +1861,26 @@ pub(crate) fn sync_canvases(
 }
 
 /// Map a canvas's commands home BY IDS — the set and the canvas; the
-/// collection is the At address wrapping outside (no window, no
-/// landing box, no session).
+/// router is the At address wrapping outside (no window, no landing
+/// box, no session).
 fn route_canvas(
     set: ChangeSetId,
     canvas: CanvasId,
-) -> impl Fn(CanvasCommand) -> crate::hichanges::ChangesCommand + Clone {
-    move |command| {
-        crate::hichanges::ChangesCommand::Canvas(set, canvas, imba::DynCommand::new(command))
-    }
+) -> impl Fn(CanvasCommand) -> CanvasRouted + Clone {
+    move |command| CanvasRouted::Canvas(set, canvas, Box::new(command))
 }
 
 /// Perform one command against a SET-OWNED canvas — the panel-free
-/// road (`perform_diff_view`'s twin), reached through the entity
-/// route.
+/// road (`perform_diff_view`'s twin), reached through the router.
 pub(crate) fn perform_canvas(
     store: &mut Store,
     ui: &UiCtx,
     changes: imba::store::Id<Changes>,
     set: ChangeSetId,
     id: CanvasId,
-    command: imba::DynCommand,
-    fx: &mut imba::effect::Effects<'_, crate::hichanges::ChangesCommand>,
+    command: CanvasCommand,
+    fx: &mut imba::effect::Effects<'_, CanvasRouted>,
 ) {
-    let Some(command) = command.downcast::<CanvasCommand>() else {
-        debug_assert!(false, "a canvas slot was addressed with a foreign command");
-        return;
-    };
     let Some(mut canvas) = Changes::take_canvas::<Canvas>(store, changes, set, id) else {
         return;
     };

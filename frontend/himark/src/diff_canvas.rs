@@ -13,52 +13,7 @@ use imba::store::Store;
 use crate::hichanges::{empty_side, ChangeEntry, Changes, ChangesStatus};
 use crate::{ResourceLocation, WindowId};
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum CanvasSource {
-    /// The uncommitted changeset of a workspace folder — the changes
-    /// view's root row.
-    WorkingCopy { folder: ResourceLocation },
-
-    /// One commit's changeset — a history view revision row.
-    Commit {
-        folder: ResourceLocation,
-        id: crate::hichanges::Revision,
-    },
-}
-
-impl CanvasSource {
-    pub fn folder(&self) -> &ResourceLocation {
-        match self {
-            CanvasSource::WorkingCopy { folder } => folder,
-            CanvasSource::Commit { folder, .. } => folder,
-        }
-    }
-
-    pub fn title(&self, store: &Store, changes: imba::store::Id<Changes>) -> String {
-        match self {
-            CanvasSource::WorkingCopy { folder } => format!("Changes — {}", folder.name()),
-            CanvasSource::Commit { folder, id } => {
-                let summary = Changes::of(store, changes)
-                    .and_then(|held| {
-                        crate::hihistory::History::folder(store, held.history(), folder)
-                    })
-                    .and_then(|held| {
-                        held.commits
-                            .iter()
-                            .find(|commit| commit.id == id.as_str())
-                            .map(|commit| commit.summary.clone())
-                    });
-                match summary {
-                    Some(summary) => summary,
-                    None => {
-                        let short: String = id.as_str().chars().take(8).collect();
-                        format!("Commit {short}")
-                    }
-                }
-            }
-        }
-    }
-}
+pub use crate::hichanges::CanvasSource;
 
 /// One canvas item: the pair the diff compares, normalized the way
 /// the tree rows activate today (absent sides become the empty

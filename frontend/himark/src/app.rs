@@ -931,7 +931,7 @@ impl Application {
                 let dressed = crate::OpenDocuments::take_dressed(&mut store, documents);
                 crate::diff_canvas::canvas::sync_canvases(
                     &mut store,
-                    family.changes(),
+                    family.canvas_router(),
                     &self.ui_ctx(),
                     &dressed,
                     &mut fx,
