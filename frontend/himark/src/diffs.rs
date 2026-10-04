@@ -50,4 +50,4 @@ pub(crate) fn sync_diff_lanes(
     });
 }
 
-pub use ::hiahp::sync_stripe_bases;
+pub use documents::lanes::sync_stripe_bases;

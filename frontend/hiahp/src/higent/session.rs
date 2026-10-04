@@ -9,5 +9,5 @@ mod state;
 pub use agents::Agents;
 pub use folders::{all_session_folders, session_folders};
 pub use recents::RecentLocations;
-pub use state::ChannelActionsRoad;
+pub use ahp_wire::ChannelActionsRoad;
 pub use state::{Host, HostStatus, Hosts, SessionChannel, SessionState, WindowGrip};

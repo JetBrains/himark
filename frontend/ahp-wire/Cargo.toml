@@ -1,0 +1,25 @@
+[package]
+name = "ahp-wire"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+ahp = "0.9"
+ahp-types = "0.9"
+base64 = "0.22"
+editor = { path = "../editor" }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+humantime = "2"
+imba = { path = "../imba" }
+rpds = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+tracing = "0.1"
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[features]
+test-support = []

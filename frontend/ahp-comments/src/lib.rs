@@ -12,17 +12,17 @@
 
 use std::sync::Arc;
 
-use crate::higent::ahp_types::actions::{
+use ahp_types::actions::{
     AnnotationsEntrySetAction, AnnotationsRemovedAction, AnnotationsSetAction,
     AnnotationsUpdatedAction, StateAction,
 };
-use crate::higent::ahp_types::common::StringOrMarkdown;
-use crate::higent::ahp_types::state::{
+use ahp_types::common::StringOrMarkdown;
+use ahp_types::state::{
     Annotation, AnnotationEntry, MessageAnnotationsAttachment, MessageAttachment, TextPosition,
     TextRange,
 };
 
-use crate::higent::SessionUri as Uri;
+use ahp_wire::client::SessionUri as Uri;
 use comments::{
     AnnotationId, Announce, CommentDelta, CommentRecord, CommentSeed, Comments, EntryRecord,
 };
@@ -30,43 +30,63 @@ use editor::ResourceLocation;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
+/// The catalog consults the driver needs, wired at the ceremony —
+/// the one place that knows the catalog (law 4). The driver sits
+/// below it and holds only these roads.
+#[derive(Clone)]
+pub struct CatalogRoads {
+    /// The default chat serving a session — with the comments' own
+    /// session as the fallback workspace, resolved catalog-side.
+    pub default_chat: Arc<
+        dyn Fn(&Store, ahp_wire::client::HostId, &Uri) -> Option<ahp_wire::client::ChatUri>
+            + Send
+            + Sync,
+    >,
+    /// The freshest turn stamp of the wire's session.
+    pub latest_turn:
+        Arc<dyn Fn(&Store, ahp_wire::client::HostId, &Uri) -> Option<String> + Send + Sync>,
+}
+
 /// The one channel a session's comments ride.
 #[derive(Clone)]
 struct ChannelWire {
-    server: crate::higent::HostId,
+    server: ahp_wire::client::HostId,
     session: Uri,
-    client: crate::higent::Client,
+    client: ahp_wire::client::Client,
     live: bool,
 }
 
 #[derive(Clone)]
 pub struct CommentsWire {
     comments: imba::store::Id<Comments>,
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
     channel: Option<ChannelWire>,
+    roads: CatalogRoads,
 }
 
 impl CommentsWire {
     pub fn wired(
         comments: imba::store::Id<Comments>,
-        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+        uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
+        roads: CatalogRoads,
     ) -> Self {
         Self {
             comments,
             uris,
             channel: None,
+            roads,
         }
     }
 
-    pub(crate) fn stamp_uris(
+    pub fn stamp_uris(
         store: &mut Store,
         wire: imba::store::Id<CommentsWire>,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
+        uris: &Arc<dyn ahp_wire::client::ResourceUriMap>,
     ) {
         update(store, wire, |row| row.uris = Some(Arc::clone(uris)));
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.channel.is_none()
     }
 }
@@ -113,7 +133,7 @@ pub fn ensure(
         }
     }
     let Some((server, client, session)) =
-        crate::higent::client::route_client(store, location.authority().as_str())
+        ahp_wire::client::route_client(store, location.authority().as_str())
     else {
         return;
     };
@@ -132,7 +152,7 @@ pub fn ensure(
         });
     });
     fx.push(
-        AnyEffect::new(crate::higent::SubscribeAnnotationsEffect {
+        AnyEffect::new(ahp_wire::effects::SubscribeAnnotationsEffect {
             client: client.annotations.clone(),
             session: session.clone(),
         })
@@ -172,9 +192,9 @@ fn seed_of(row: &CommentsWire, session: &Uri, annotation: &Annotation) -> Option
 fn place(row: &CommentsWire, session: &Uri, annotation: &Annotation) -> Option<ResourceLocation> {
     let server = row.channel.as_ref()?.server;
     let uris = row.uris.clone()?;
-    let authority = crate::higent::client::route_authority(server, session);
+    let authority = ahp_wire::client::route_authority(server, session);
     uris.location_of(
-        &crate::higent::ResourceUri::new(annotation.resource.clone()),
+        &ahp_wire::client::ResourceUri::new(annotation.resource.clone()),
         editor::ResourceType::document(),
         &authority,
     )
@@ -302,7 +322,7 @@ fn relaunch_poll(store: &Store, wire: imba::store::Id<CommentsWire>, fx: &mut Fx
     };
     let session = held.session.clone();
     fx.push(
-        AnyEffect::new(crate::higent::PollAnnotationsEffect {
+        AnyEffect::new(ahp_wire::effects::PollAnnotationsEffect {
             client: held.client.annotations.clone(),
             session: session.clone(),
         })
@@ -451,27 +471,7 @@ pub fn send_to_agent(
         return;
     }
     let session = held.session.clone();
-    let key = crate::higent::SessionId {
-        host: held.server,
-        session: session.clone(),
-    };
-    let mut chat =
-        crate::higent::Agents::channel(store, &key).and_then(|channel| channel.default_chat);
-    if chat.is_none() {
-        // The fallback workspace is the comments' own session — the
-        // catalog names it; no window consulted.
-        let bound = crate::higent::Hosts::home_of_documents(
-            store,
-            Comments::documents_of(store, comments).unwrap_or(imba::store::Id::mint()),
-        )
-        .map(|(workspace, _)| workspace)
-        .and_then(|workspace| crate::higent::Agents::live_session(store, &workspace))
-        .filter(|bound| bound.host == held.server);
-        if let Some(bound) = bound {
-            chat = crate::higent::Agents::channel(store, &bound)
-                .and_then(|channel| channel.default_chat);
-        }
-    }
+    let chat = (row.roads.default_chat)(store, held.server, &session);
     let Some(chat) = chat else {
         eprintln!("[comments] no chat serves {session} — send skipped");
         return;
@@ -493,7 +493,7 @@ pub fn send_to_agent(
     }
     let sent = group.clone();
     fx.push(
-        AnyEffect::new(crate::higent::StartTurnEffect {
+        AnyEffect::new(ahp_wire::effects::StartTurnEffect {
             client: held.client.chat.clone(),
             chat,
             text: format!("Please address the attached review {noun}."),
@@ -537,22 +537,16 @@ impl imba::command::DynamicCommand for Sent {
 /// provenance.
 pub(crate) fn latest_turn(store: &Store, wire: imba::store::Id<CommentsWire>) -> String {
     of(store, wire)
-        .and_then(|row| row.channel.as_ref())
-        .and_then(|held| {
-            crate::higent::Agents::latest_turn(
-                store,
-                &crate::higent::SessionId {
-                    host: held.server,
-                    session: held.session.clone(),
-                },
-            )
+        .and_then(|row| {
+            let held = row.channel.as_ref()?;
+            (row.roads.latest_turn)(store, held.server, &held.session)
         })
         .unwrap_or_default()
 }
 
 fn dispatch_set(
-    uris: &Arc<dyn crate::higent::ResourceUriMap>,
-    client: &crate::higent::Client,
+    uris: &Arc<dyn ahp_wire::client::ResourceUriMap>,
+    client: &ahp_wire::client::Client,
     session: &Uri,
     id: &AnnotationId,
     record: &CommentRecord,
@@ -563,7 +557,7 @@ fn dispatch_set(
         StateAction::AnnotationsSet(AnnotationsSetAction {
             annotation: Annotation {
                 id: id.clone(),
-                origin: crate::higent::ahp_types::state::AnnotationOrigin {
+                origin: ahp_types::state::AnnotationOrigin {
                     session: session.to_string(),
                     chat: None,
                     turn_id: (!record.turn_id.is_empty()).then(|| record.turn_id.clone()),

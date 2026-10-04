@@ -5,12 +5,13 @@ use std::sync::Arc;
 
 use ahp_types::actions::StateAction;
 use ahp_types::common::Uri;
-use ahp_types::state::{ChatState, SessionState, Turn};
+use ahp_types::state::{ChatState, SessionState};
 use imba::effect::Effect;
 
-use crate::higent::client::{
-    AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, HistoryClient,
-    LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri, SessionsPage, TurnId,
+use crate::client::{
+    AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, FileEditContents,
+    HistoryClient, LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri,
+    SessionsPage, TurnId, TurnsPage,
 };
 
 pub struct ConnectServerEffect {
@@ -73,7 +74,7 @@ impl Effect for PollServerEffect {
 pub struct CreateSessionEffect {
     pub client: Arc<dyn SessionClient>,
     pub working_directories: Vec<Uri>,
-    pub options: crate::higent::SessionOptions,
+    pub options: crate::client::SessionOptions,
 }
 
 impl std::fmt::Display for CreateSessionEffect {
@@ -175,13 +176,6 @@ impl std::fmt::Display for SubscribeChatEffect {
 
 impl Effect for SubscribeChatEffect {
     type Result = Result<ChatState, String>;
-}
-
-#[derive(Clone, Debug)]
-pub struct TurnsPage {
-    pub turns: Vec<Turn>,
-
-    pub next_cursor: Option<String>,
 }
 
 pub struct FetchTurnsEffect {
@@ -396,12 +390,6 @@ pub struct FetchFileEditEffect {
     pub after: Option<Uri>,
 }
 
-#[derive(Debug, Clone)]
-pub struct FileEditContents {
-    pub before: Option<String>,
-    pub after: Option<String>,
-}
-
 impl std::fmt::Display for FetchFileEditEffect {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         out.write_str("fetch file edit")
@@ -410,26 +398,4 @@ impl std::fmt::Display for FetchFileEditEffect {
 
 impl Effect for FetchFileEditEffect {
     type Result = Result<FileEditContents, String>;
-}
-
-/// Both sides of a file edit, fetched AND built (two documents with
-/// syntax, the diff, the prepared marks) off the UI thread — the chat's
-/// diff cell only mounts the result. A coding turn brings hundreds of
-/// edits; none of this is frame work.
-pub struct BuildFileEditEffect {
-    pub client: Arc<dyn ChatClient>,
-    pub before: Option<Uri>,
-    pub after: Option<Uri>,
-    /// The edited file's name — it names the language.
-    pub name: String,
-}
-
-impl std::fmt::Display for BuildFileEditEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "build file edit {}", self.name)
-    }
-}
-
-impl Effect for BuildFileEditEffect {
-    type Result = Result<crate::higent::BuiltFileEdit, String>;
 }

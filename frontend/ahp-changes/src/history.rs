@@ -11,9 +11,9 @@
 
 use std::sync::Arc;
 
-use crate::drivers::changes::{digest_actions, digest_state, entry_serves, CatalogEntry};
-use crate::higent::ahp_types::actions::StateAction;
-use crate::higent::{
+use crate::changes::{digest_actions, digest_state, entry_serves, CatalogEntry};
+use ahp_types::actions::StateAction;
+use ahp_wire::effects::{
     DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
     SubscribeHistoryEffect,
 };
@@ -32,10 +32,10 @@ use imba::{effect::AnyEffect, store::Store};
 /// model's rows never carry wire uris).
 #[derive(Clone)]
 struct FolderWire {
-    client: crate::higent::Client,
-    session: crate::higent::SessionUri,
-    channel: Option<crate::higent::ChannelUri>,
-    commit_channels: rpds::HashTrieMapSync<String, crate::higent::ChannelUri>,
+    client: ahp_wire::client::Client,
+    session: ahp_wire::client::SessionUri,
+    channel: Option<ahp_wire::client::ChannelUri>,
+    commit_channels: rpds::HashTrieMapSync<String, ahp_wire::client::ChannelUri>,
 }
 
 /// The driver's row — wire state only, minted by the ceremony
@@ -44,7 +44,7 @@ struct FolderWire {
 pub struct HistoryWire {
     history: imba::store::Id<History>,
     changes: imba::store::Id<changesview::hichanges::ChangeSets>,
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderWire>,
 }
 
@@ -52,7 +52,7 @@ impl HistoryWire {
     pub fn wired(
         history: imba::store::Id<History>,
         changes: imba::store::Id<changesview::hichanges::ChangeSets>,
-        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+        uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
     ) -> Self {
         Self {
             history,
@@ -62,15 +62,15 @@ impl HistoryWire {
         }
     }
 
-    pub(crate) fn stamp_uris(
+    pub fn stamp_uris(
         store: &mut Store,
         wire: imba::store::Id<HistoryWire>,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
+        uris: &Arc<dyn ahp_wire::client::ResourceUriMap>,
     ) {
         update(store, wire, |row| row.uris = Some(Arc::clone(uris)));
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.folders.is_empty()
     }
 }
@@ -98,9 +98,9 @@ fn update(
 pub(crate) fn ensure_folder(
     store: &mut Store,
     wire: imba::store::Id<HistoryWire>,
-    scope: &crate::SessionId,
+    scope: &ahp_wire::SessionId,
     folder: &ResourceLocation,
-    client: &crate::higent::Client,
+    client: &ahp_wire::client::Client,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -129,7 +129,7 @@ pub(crate) fn ensure_folder(
 /// each fresh claim.
 pub(crate) fn subscribe_fresh(
     store: &mut Store,
-    home: &crate::SessionId,
+    home: &ahp_wire::SessionId,
     wire: imba::store::Id<HistoryWire>,
     entries: &[CatalogEntry],
     fx: &mut Fx<'_>,
@@ -147,8 +147,8 @@ pub(crate) fn subscribe_fresh(
     }
     let fresh: Vec<(
         ResourceLocation,
-        crate::higent::Client,
-        crate::higent::ChannelUri,
+        ahp_wire::client::Client,
+        ahp_wire::client::ChannelUri,
     )> = row
         .folders
         .iter()
@@ -188,7 +188,7 @@ pub(crate) fn subscribe_fresh(
 pub(crate) fn session_failed(
     store: &mut Store,
     wire: imba::store::Id<HistoryWire>,
-    session: &crate::higent::SessionUri,
+    session: &ahp_wire::client::SessionUri,
     error: &str,
 ) {
     let Some(row) = of(store, wire) else {
@@ -229,7 +229,7 @@ pub fn digest_snapshot(state: history_wire::HistoryState) -> (HistorySnapshot, H
     (snapshot, harvest)
 }
 
-type Harvest = Vec<(String, crate::higent::ChannelUri)>;
+type Harvest = Vec<(String, ahp_wire::client::ChannelUri)>;
 
 fn harvest_channels(commits: &[history_wire::Commit]) -> Harvest {
     commits
@@ -237,7 +237,7 @@ fn harvest_channels(commits: &[history_wire::Commit]) -> Harvest {
         .map(|commit| {
             (
                 commit.id.clone(),
-                crate::higent::ChannelUri::new(commit.changeset.clone()),
+                ahp_wire::client::ChannelUri::new(commit.changeset.clone()),
             )
         })
         .collect()
@@ -595,7 +595,7 @@ pub(crate) fn grow(
                 },
             )),
         })
-        .map(move |result| Verb::Dynamic(Arc::new(crate::drivers::changes::Dispatched { result }))),
+        .map(move |result| Verb::Dynamic(Arc::new(crate::changes::Dispatched { result }))),
     );
 }
 
@@ -624,7 +624,7 @@ pub(crate) fn commit(
                 },
             )),
         })
-        .map(move |result| Verb::Dynamic(Arc::new(crate::drivers::changes::Dispatched { result }))),
+        .map(move |result| Verb::Dynamic(Arc::new(crate::changes::Dispatched { result }))),
     );
 }
 

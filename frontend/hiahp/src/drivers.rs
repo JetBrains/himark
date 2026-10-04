@@ -8,7 +8,7 @@
 //! who run coroutines. Session/channel/host vocabulary is legal
 //! here and nowhere inside a collection.
 
-pub mod changes;
-pub mod comments;
-pub mod history;
-pub mod locations;
+pub use ahp_changes::{changes, history};
+
+pub use ahp_comments as comments;
+pub use ahp_locations::driver as locations;

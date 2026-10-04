@@ -1,0 +1,17 @@
+[package]
+name = "ahp-locations"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+ahp-types = "0.9"
+ahp-wire = { path = "../ahp-wire" }
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+imba = { path = "../imba" }
+locations = { path = "../locations" }
+rpds = "1"
+serde_json = "1"
+tracing = "0.1"

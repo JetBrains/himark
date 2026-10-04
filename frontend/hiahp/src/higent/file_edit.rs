@@ -202,3 +202,25 @@ mod tests {
         assert!(FileEditRefs::parse(&junk).is_none());
     }
 }
+
+/// Both sides of a file edit, fetched AND built (two documents with
+/// syntax, the diff, the prepared marks) off the UI thread — the chat's
+/// diff cell only mounts the result. A coding turn brings hundreds of
+/// edits; none of this is frame work.
+pub struct BuildFileEditEffect {
+    pub client: std::sync::Arc<dyn crate::higent::ChatClient>,
+    pub before: Option<Uri>,
+    pub after: Option<Uri>,
+    /// The edited file's name — it names the language.
+    pub name: String,
+}
+
+impl std::fmt::Display for BuildFileEditEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "build file edit {}", self.name)
+    }
+}
+
+impl imba::effect::Effect for BuildFileEditEffect {
+    type Result = Result<BuiltFileEdit, String>;
+}

@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use crate::fs::ClientDirectory;
-use crate::higent::{SearchAsk, SearchKind, SearchTarget};
+use ahp_wire::fs::ClientDirectory;
+use ahp_wire::client::{SearchAsk, SearchKind, SearchTarget};
 use crate::FindEffect;
 use editor::{ResourceLocation, ResourceType};
 use imba::effect::EffectHandler;
@@ -29,12 +29,12 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
             if remaining == 0 {
                 break;
             }
-            let Some((client, session)) = crate::fsroute::client_of(&self.directory, folder) else {
+            let Some((client, session)) = ahp_wire::fs::client_of(&self.directory, folder) else {
                 continue;
             };
             let ask = SearchAsk {
-                folders: vec![crate::higent::ResourceUriMap::uri_of(
-                    &crate::uris::FileUris,
+                folders: vec![ahp_wire::client::ResourceUriMap::uri_of(
+                    &ahp_wire::uris::FileUris,
                     folder,
                 )
                 .into_string()],
@@ -59,7 +59,7 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
 
 fn location_under(folder: &ResourceLocation, uri: &str) -> Option<ResourceLocation> {
     let prefix =
-        crate::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder).into_string();
+        ahp_wire::client::ResourceUriMap::uri_of(&ahp_wire::uris::FileUris, folder).into_string();
     let rest = uri.strip_prefix(&prefix)?.strip_prefix('/')?;
     let mut location = folder.clone();
     let mut segments = rest

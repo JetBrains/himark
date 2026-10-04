@@ -77,6 +77,54 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahp-changes"
+version = "0.1.0"
+dependencies = [
+ "ahp-types",
+ "ahp-wire",
+ "changesview",
+ "documents",
+ "editor",
+ "himark-ahp-ext-types",
+ "imba",
+ "rpds",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "ahp-comments"
+version = "0.1.0"
+dependencies = [
+ "ahp-types",
+ "ahp-wire",
+ "comments",
+ "documents",
+ "editor",
+ "imba",
+ "rpds",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
+name = "ahp-locations"
+version = "0.1.0"
+dependencies = [
+ "ahp-types",
+ "ahp-wire",
+ "documents",
+ "editor",
+ "himark-ahp-ext-types",
+ "imba",
+ "locations",
+ "rpds",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "ahp-types"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -85,6 +133,24 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_repr",
+]
+
+[[package]]
+name = "ahp-wire"
+version = "0.1.0"
+dependencies = [
+ "ahp",
+ "ahp-types",
+ "base64 0.22.1",
+ "editor",
+ "himark-ahp-ext-types",
+ "humantime",
+ "imba",
+ "rpds",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1807,7 +1873,11 @@ name = "hiahp"
 version = "0.1.0"
 dependencies = [
  "ahp",
+ "ahp-changes",
+ "ahp-comments",
+ "ahp-locations",
  "ahp-types",
+ "ahp-wire",
  "base64 0.22.1",
  "canvas",
  "changesview",

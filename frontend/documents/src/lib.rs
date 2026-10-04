@@ -13,6 +13,7 @@ mod lifecycle;
 pub mod scroll_stripes;
 pub mod sync;
 pub mod text_ext;
+pub mod lanes;
 pub mod watch;
 
 pub use diffs::{

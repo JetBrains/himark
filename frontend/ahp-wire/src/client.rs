@@ -14,7 +14,18 @@ pub use himark_ahp_ext_types::{
 };
 use imba::store::Store;
 
-use crate::higent::effects::{FileEditContents, TurnsPage};
+#[derive(Clone, Debug)]
+pub struct TurnsPage {
+    pub turns: Vec<ahp_types::state::Turn>,
+
+    pub next_cursor: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FileEditContents {
+    pub before: Option<String>,
+    pub after: Option<String>,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct HostId(u64);

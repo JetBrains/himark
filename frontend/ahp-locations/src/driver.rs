@@ -35,7 +35,7 @@ impl LocationsWire {
         }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.feeds.is_empty()
     }
 }
@@ -135,7 +135,7 @@ impl imba::command::DynamicCommand for AttachFeedStream {
                 });
                 let (wire, feed) = (self.wire, self.feed);
                 let _ = fx.push(
-                    AnyEffect::new(crate::higent::SubscribeLocationsEffect {
+                    AnyEffect::new(ahp_wire::effects::SubscribeLocationsEffect {
                         client: channel.client,
                         channel: channel.channel,
                     })
@@ -190,7 +190,7 @@ impl imba::command::DynamicOnceCommand for FeedBatch {
         let (wire, feed) = (self.wire, self.feed);
         let poll = running.then(|| {
             fx.push(
-                AnyEffect::new(crate::higent::PollLocationsEffect {
+                AnyEffect::new(ahp_wire::effects::PollLocationsEffect {
                     client: Arc::clone(&held.channel.client),
                     channel: held.channel.channel.clone(),
                 })
@@ -294,7 +294,7 @@ fn dispose(
 
 fn unsubscribe(channel: crate::LocationsChannel, fx: &mut imba::command::Fx<'_>) {
     let _ = fx.push(
-        AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
+        AnyEffect::new(ahp_wire::effects::UnsubscribeLocationsEffect {
             client: channel.client,
             channel: channel.channel,
         })

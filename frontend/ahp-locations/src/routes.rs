@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use crate::fs::ClientDirectory;
-use crate::higent::{LocationsAsk, ResourceUriMap, SearchKind};
+use ahp_wire::fs::ClientDirectory;
+use ahp_wire::client::{LocationsAsk, ResourceUriMap, SearchKind};
 use crate::{LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect};
 use editor::{Authority, ResourceLocation, ResourceType};
 use imba::effect::EffectHandler;
@@ -18,7 +18,7 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
         let Some(first) = effect.folders.first() else {
             return Err("no folders to search".to_owned());
         };
-        let Some((client, session)) = crate::fsroute::client_of(&self.directory, first) else {
+        let Some((client, session)) = ahp_wire::fs::client_of(&self.directory, first) else {
             return Err(format!("no client serves {}", first.authority().as_str()));
         };
         // A session's folders live on one client; a stray foreign
@@ -28,7 +28,7 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
             .folders
             .iter()
             .filter(|folder| folder.authority().as_str() == authority.as_str())
-            .map(|folder| ResourceUriMap::uri_of(&crate::uris::FileUris, folder).into_string())
+            .map(|folder| ResourceUriMap::uri_of(&ahp_wire::uris::FileUris, folder).into_string())
             .collect();
         let ask = LocationsAsk {
             folders,
@@ -56,7 +56,7 @@ pub struct RouteLspLocations {
 
 impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
     async fn handle(&self, effect: LspLocationsEffect) -> Result<LocationsChannel, String> {
-        let Some((client, session)) = crate::fsroute::client_of(&self.directory, &effect.location)
+        let Some((client, session)) = ahp_wire::fs::client_of(&self.directory, &effect.location)
         else {
             let authority = effect.location.authority().as_str();
             tracing::warn!(target: "ahp_wire", %authority, "lsp/locations: no client serves the asked document");
@@ -95,8 +95,8 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
 fn resolver(authority: Authority) -> Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync> {
     Arc::new(move |uri| {
         ResourceUriMap::location_of(
-            &crate::uris::FileUris,
-            &crate::higent::client::ResourceUri::new(uri),
+            &ahp_wire::uris::FileUris,
+            &ahp_wire::client::ResourceUri::new(uri),
             ResourceType::document(),
             &authority,
         )

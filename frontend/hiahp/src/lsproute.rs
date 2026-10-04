@@ -16,7 +16,7 @@ pub struct CompletionRoute {
 
 impl EffectHandler<crate::LspCompletionEffect> for CompletionRoute {
     async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<crate::LspAnswer> {
-        let (client, session) = crate::fsroute::client_of(&self.directory, &effect.location)?;
+        let (client, session) = ahp_wire::fs::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },
@@ -95,7 +95,7 @@ impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
         &self,
         effect: documents::hover::LspHoverEffect,
     ) -> Option<documents::hover::HoverInfo> {
-        let (client, session) = crate::fsroute::client_of(&self.directory, &effect.location)?;
+        let (client, session) = ahp_wire::fs::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },

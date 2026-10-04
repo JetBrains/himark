@@ -1,12 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::higent::ResourceUri;
+use crate::client::ResourceUri;
 use editor::{Authority, ResourceLocation, ResourceType};
 
 pub struct FileUris;
 
-impl crate::higent::ResourceUriMap for FileUris {
+impl crate::client::ResourceUriMap for FileUris {
     fn uri_of(&self, location: &ResourceLocation) -> ResourceUri {
         ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }

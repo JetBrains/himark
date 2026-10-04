@@ -677,8 +677,8 @@ impl imba::command::DynamicCommand for Drained {
                         documents::OpenDocuments::set_host_synced(
                             store, documents, document, false, fx,
                         );
-                        crate::sync_document_watches(store, documents, fx);
-                        crate::refetch_document(store, documents, document, fx);
+                        documents::lanes::sync_document_watches(store, documents, fx);
+                        documents::lanes::refetch_document(store, documents, document, fx);
                     }
                 }
             }
@@ -843,8 +843,8 @@ impl imba::command::DynamicCommand for GiveUp {
                 documents::OpenDocuments::by_location(store, documents, &self.location)
             {
                 documents::OpenDocuments::set_host_synced(store, documents, document, false, fx);
-                crate::sync_document_watches(store, documents, fx);
-                crate::refetch_document(store, documents, document, fx);
+                documents::lanes::sync_document_watches(store, documents, fx);
+                documents::lanes::refetch_document(store, documents, document, fx);
             }
         }
     }
@@ -968,7 +968,7 @@ impl documents::DocumentHook for DocsyncHook {
         if documents::is_synthetic(location) || !location.kind().is_document() {
             return;
         }
-        let Some((client, session)) = crate::fsroute::client_of(&self.directory, location) else {
+        let Some((client, session)) = ahp_wire::fs::client_of(&self.directory, location) else {
             return;
         };
         DocumentChannels::ensure(

@@ -5,12 +5,12 @@ use ahp_types::actions::StateAction;
 use ahp_types::state::{ChatState, SessionState};
 use imba::effect::EffectHandler;
 
-use crate::higent::{
+use crate::client::{FileEditContents, RootInfo, ServerEvent, SessionsPage, TurnsPage};
+use crate::effects::{
     CancelTurnEffect, ConnectServerEffect, CreateChatEffect, CreateSessionEffect,
     DispatchChatActionEffect, DisposeSessionEffect, FetchFileEditEffect, FetchTurnsEffect,
-    FileEditContents, ListSessionsEffect, PollChatActionsEffect, PollServerEffect,
-    PollSessionEffect, RootInfo, ServerEvent, SessionsPage, StartTurnEffect, SubscribeChatEffect,
-    SubscribeSessionEffect, TurnsPage,
+    ListSessionsEffect, PollChatActionsEffect, PollServerEffect, PollSessionEffect,
+    StartTurnEffect, SubscribeChatEffect, SubscribeSessionEffect,
 };
 
 pub struct HandleConnectServer;
@@ -43,7 +43,7 @@ impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
     async fn handle(
         &self,
         effect: CreateSessionEffect,
-    ) -> Result<crate::higent::SessionUri, String> {
+    ) -> Result<crate::client::SessionUri, String> {
         effect
             .client
             .create_session(effect.working_directories, effect.options)
@@ -53,10 +53,10 @@ impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
 
 pub struct HandleResolveSessionConfig;
 
-impl EffectHandler<crate::higent::ResolveSessionConfigEffect> for HandleResolveSessionConfig {
+impl EffectHandler<crate::effects::ResolveSessionConfigEffect> for HandleResolveSessionConfig {
     async fn handle(
         &self,
-        effect: crate::higent::ResolveSessionConfigEffect,
+        effect: crate::effects::ResolveSessionConfigEffect,
     ) -> Result<ahp_types::commands::ResolveSessionConfigResult, String> {
         effect
             .client
@@ -92,7 +92,7 @@ impl EffectHandler<PollSessionEffect> for HandlePollSession {
 pub struct HandleCreateChat;
 
 impl EffectHandler<CreateChatEffect> for HandleCreateChat {
-    async fn handle(&self, effect: CreateChatEffect) -> Result<crate::higent::ChatUri, String> {
+    async fn handle(&self, effect: CreateChatEffect) -> Result<crate::client::ChatUri, String> {
         effect.client.create_chat(effect.session).await
     }
 }
@@ -126,10 +126,10 @@ impl EffectHandler<StartTurnEffect> for HandleStartTurn {
 
 pub struct HandleSubscribeChangeset;
 
-impl EffectHandler<crate::higent::SubscribeChangesetEffect> for HandleSubscribeChangeset {
+impl EffectHandler<crate::effects::SubscribeChangesetEffect> for HandleSubscribeChangeset {
     async fn handle(
         &self,
-        effect: crate::higent::SubscribeChangesetEffect,
+        effect: crate::effects::SubscribeChangesetEffect,
     ) -> Result<ahp_types::state::ChangesetState, String> {
         effect.client.subscribe_changeset(effect.channel).await
     }
@@ -137,10 +137,10 @@ impl EffectHandler<crate::higent::SubscribeChangesetEffect> for HandleSubscribeC
 
 pub struct HandleSubscribeLocations;
 
-impl EffectHandler<crate::higent::SubscribeLocationsEffect> for HandleSubscribeLocations {
+impl EffectHandler<crate::effects::SubscribeLocationsEffect> for HandleSubscribeLocations {
     async fn handle(
         &self,
-        effect: crate::higent::SubscribeLocationsEffect,
+        effect: crate::effects::SubscribeLocationsEffect,
     ) -> Result<himark_ahp_ext_types::LocationList, String> {
         effect.client.subscribe_locations(effect.channel).await
     }
@@ -148,10 +148,10 @@ impl EffectHandler<crate::higent::SubscribeLocationsEffect> for HandleSubscribeL
 
 pub struct HandlePollLocations;
 
-impl EffectHandler<crate::higent::PollLocationsEffect> for HandlePollLocations {
+impl EffectHandler<crate::effects::PollLocationsEffect> for HandlePollLocations {
     async fn handle(
         &self,
-        effect: crate::higent::PollLocationsEffect,
+        effect: crate::effects::PollLocationsEffect,
     ) -> Vec<himark_ahp_ext_types::LocationList> {
         effect.client.poll_locations(effect.channel).await
     }
@@ -159,18 +159,18 @@ impl EffectHandler<crate::higent::PollLocationsEffect> for HandlePollLocations {
 
 pub struct HandleUnsubscribeLocations;
 
-impl EffectHandler<crate::higent::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
-    async fn handle(&self, effect: crate::higent::UnsubscribeLocationsEffect) {
+impl EffectHandler<crate::effects::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
+    async fn handle(&self, effect: crate::effects::UnsubscribeLocationsEffect) {
         effect.client.unsubscribe_locations(&effect.channel);
     }
 }
 
 pub struct HandleSubscribeHistory;
 
-impl EffectHandler<crate::higent::SubscribeHistoryEffect> for HandleSubscribeHistory {
+impl EffectHandler<crate::effects::SubscribeHistoryEffect> for HandleSubscribeHistory {
     async fn handle(
         &self,
-        effect: crate::higent::SubscribeHistoryEffect,
+        effect: crate::effects::SubscribeHistoryEffect,
     ) -> Result<himark_ahp_ext_types::history::HistoryState, String> {
         effect.client.subscribe_history(effect.channel).await
     }
@@ -178,10 +178,10 @@ impl EffectHandler<crate::higent::SubscribeHistoryEffect> for HandleSubscribeHis
 
 pub struct HandlePollChangeset;
 
-impl EffectHandler<crate::higent::PollChangesetEffect> for HandlePollChangeset {
+impl EffectHandler<crate::effects::PollChangesetEffect> for HandlePollChangeset {
     async fn handle(
         &self,
-        effect: crate::higent::PollChangesetEffect,
+        effect: crate::effects::PollChangesetEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
         effect.client.poll_changeset(effect.channel).await
     }
@@ -189,10 +189,10 @@ impl EffectHandler<crate::higent::PollChangesetEffect> for HandlePollChangeset {
 
 pub struct HandleSubscribeAnnotations;
 
-impl EffectHandler<crate::higent::SubscribeAnnotationsEffect> for HandleSubscribeAnnotations {
+impl EffectHandler<crate::effects::SubscribeAnnotationsEffect> for HandleSubscribeAnnotations {
     async fn handle(
         &self,
-        effect: crate::higent::SubscribeAnnotationsEffect,
+        effect: crate::effects::SubscribeAnnotationsEffect,
     ) -> Result<ahp_types::state::AnnotationsState, String> {
         effect.client.subscribe_annotations(effect.session).await
     }
@@ -200,10 +200,10 @@ impl EffectHandler<crate::higent::SubscribeAnnotationsEffect> for HandleSubscrib
 
 pub struct HandlePollAnnotations;
 
-impl EffectHandler<crate::higent::PollAnnotationsEffect> for HandlePollAnnotations {
+impl EffectHandler<crate::effects::PollAnnotationsEffect> for HandlePollAnnotations {
     async fn handle(
         &self,
-        effect: crate::higent::PollAnnotationsEffect,
+        effect: crate::effects::PollAnnotationsEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
         effect.client.poll_annotations(effect.session).await
     }

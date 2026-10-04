@@ -21,11 +21,11 @@ use ahp_types::state::{
     SnapshotState,
 };
 
-use crate::higent::{
+use crate::client::{
     AnnotationsClient, ChangesClient, ChatClient, DocumentsClient, HistoryClient, LocationsClient, LspClient,
     ResourceClient, RootInfo, ClientFuture, ServerEvent, SessionClient, SessionsPage, TerminalClient,
 };
-use crate::higent::{FileEditContents, TurnsPage};
+use crate::client::{FileEditContents, TurnsPage};
 
 const ROOT: &str = "ahp-root://";
 
@@ -954,13 +954,13 @@ fn pump_root(
                     feed.push(ServerEvent::SessionAdded(params.summary));
                 }
                 ahp::SubscriptionEvent::SessionRemoved(params) => {
-                    feed.push(ServerEvent::SessionRemoved(crate::higent::SessionUri::new(
+                    feed.push(ServerEvent::SessionRemoved(crate::client::SessionUri::new(
                         params.session,
                     )));
                 }
                 ahp::SubscriptionEvent::SessionSummaryChanged(params) => {
                     feed.push(ServerEvent::SessionChanged {
-                        session: crate::higent::SessionUri::new(params.session),
+                        session: crate::client::SessionUri::new(params.session),
                         changes: params.changes,
                     });
                 }
@@ -1072,8 +1072,8 @@ impl SessionClient for WireHost {
     fn create_session(
         &self,
         working_directories: Vec<Uri>,
-        options: crate::higent::SessionOptions,
-    ) -> ClientFuture<Result<crate::higent::SessionUri, String>> {
+        options: crate::client::SessionOptions,
+    ) -> ClientFuture<Result<crate::client::SessionUri, String>> {
         let vscode = matches!(self.discovery, Discovery::VsCode);
         Box::pin(self.run_ask(move |active| async move {
             let uuid = uuid_v4();
@@ -1129,7 +1129,7 @@ impl SessionClient for WireHost {
                 )
                 .await
                 .map_err(|error| format!("createSession: {error}"))?;
-            Ok(crate::higent::SessionUri::new(session))
+            Ok(crate::client::SessionUri::new(session))
         }))
     }
 
@@ -1168,7 +1168,7 @@ impl SessionClient for WireHost {
 
     fn dispose_session(
         &self,
-        session: crate::higent::SessionUri,
+        session: crate::client::SessionUri,
     ) -> ClientFuture<Result<(), String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
@@ -1189,7 +1189,7 @@ impl SessionClient for WireHost {
 
     fn subscribe_session(
         &self,
-        session: crate::higent::SessionUri,
+        session: crate::client::SessionUri,
     ) -> ClientFuture<Result<SessionState, String>> {
         let session = session.into_string();
         let last_seen = Arc::clone(&self.last_seen);
@@ -1203,7 +1203,7 @@ impl SessionClient for WireHost {
         }))
     }
 
-    fn poll_session(&self, session: crate::higent::SessionUri) -> ClientFuture<Vec<StateAction>> {
+    fn poll_session(&self, session: crate::client::SessionUri) -> ClientFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(session)
     }
@@ -1225,7 +1225,7 @@ impl SessionClient for WireHost {
 
     fn dispatch_action(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
         action: StateAction,
     ) -> ClientFuture<Result<(), String>> {
         let channel = channel.into_string();
@@ -1243,8 +1243,8 @@ impl SessionClient for WireHost {
 impl ChatClient for WireHost {
     fn create_chat(
         &self,
-        session: crate::higent::SessionUri,
-    ) -> ClientFuture<Result<crate::higent::ChatUri, String>> {
+        session: crate::client::SessionUri,
+    ) -> ClientFuture<Result<crate::client::ChatUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let chat = format!("ahp-chat:/{}", uuid_v4());
@@ -1263,13 +1263,13 @@ impl ChatClient for WireHost {
                 )
                 .await
                 .map_err(|error| format!("createChat: {error}"))?;
-            Ok(crate::higent::ChatUri::new(chat))
+            Ok(crate::client::ChatUri::new(chat))
         }))
     }
 
     fn subscribe_chat(
         &self,
-        chat: crate::higent::ChatUri,
+        chat: crate::client::ChatUri,
     ) -> ClientFuture<Result<ChatState, String>> {
         let chat = chat.into_string();
         let last_seen = Arc::clone(&self.last_seen);
@@ -1285,7 +1285,7 @@ impl ChatClient for WireHost {
 
     fn fetch_turns(
         &self,
-        chat: crate::higent::ChatUri,
+        chat: crate::client::ChatUri,
         cursor: Option<String>,
     ) -> ClientFuture<Result<TurnsPage, String>> {
         let chat = chat.into_string();
@@ -1323,7 +1323,7 @@ impl ChatClient for WireHost {
 
     fn start_turn(
         &self,
-        chat: crate::higent::ChatUri,
+        chat: crate::client::ChatUri,
         text: String,
         attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
         model: Option<ModelSelection>,
@@ -1363,15 +1363,15 @@ impl ChatClient for WireHost {
         }))
     }
 
-    fn poll_chat(&self, chat: crate::higent::ChatUri) -> ClientFuture<Vec<StateAction>> {
+    fn poll_chat(&self, chat: crate::client::ChatUri) -> ClientFuture<Vec<StateAction>> {
         let chat = chat.into_string();
         self.poll_channel(chat)
     }
 
     fn cancel_turn(
         &self,
-        chat: crate::higent::ChatUri,
-        turn_id: crate::higent::TurnId,
+        chat: crate::client::ChatUri,
+        turn_id: crate::client::TurnId,
     ) -> ClientFuture<()> {
         let chat = chat.into_string();
         let turn_id = turn_id.into_string();
@@ -1436,7 +1436,7 @@ impl ChatClient for WireHost {
 impl ChangesClient for WireHost {
     fn subscribe_changeset(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Result<ahp_types::state::ChangesetState, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
@@ -1453,12 +1453,12 @@ impl ChangesClient for WireHost {
         }))
     }
 
-    fn poll_changeset(&self, channel: crate::higent::ChannelUri) -> ClientFuture<Vec<StateAction>> {
+    fn poll_changeset(&self, channel: crate::client::ChannelUri) -> ClientFuture<Vec<StateAction>> {
         let channel = channel.into_string();
         self.poll_channel(channel)
     }
 
-    fn unsubscribe_changeset(&self, channel: &crate::higent::ChannelUri) {
+    fn unsubscribe_changeset(&self, channel: &crate::client::ChannelUri) {
         let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
 }
@@ -1466,7 +1466,7 @@ impl ChangesClient for WireHost {
 impl HistoryClient for WireHost {
     fn subscribe_history(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
@@ -1485,7 +1485,7 @@ impl HistoryClient for WireHost {
 impl AnnotationsClient for WireHost {
     fn subscribe_annotations(
         &self,
-        session: crate::higent::SessionUri,
+        session: crate::client::SessionUri,
     ) -> ClientFuture<Result<ahp_types::state::AnnotationsState, String>> {
         let channel = annotations_channel(&session.into_string());
         let last_seen = Arc::clone(&self.last_seen);
@@ -1502,12 +1502,12 @@ impl AnnotationsClient for WireHost {
         }))
     }
 
-    fn poll_annotations(&self, session: crate::higent::SessionUri) -> ClientFuture<Vec<StateAction>> {
+    fn poll_annotations(&self, session: crate::client::SessionUri) -> ClientFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(annotations_channel(&session))
     }
 
-    fn dispatch_annotations(&self, session: &crate::higent::SessionUri, action: StateAction) {
+    fn dispatch_annotations(&self, session: &crate::client::SessionUri, action: StateAction) {
         let channel = annotations_channel(session.as_str());
         let _ = self.run_ask(move |active| async move {
             active
@@ -1519,7 +1519,7 @@ impl AnnotationsClient for WireHost {
         });
     }
 
-    fn unsubscribe_annotations(&self, session: &crate::higent::SessionUri) {
+    fn unsubscribe_annotations(&self, session: &crate::client::SessionUri) {
         let _ = self.unsubscribe_channel(annotations_channel(session.as_str()));
     }
 }
@@ -1527,12 +1527,12 @@ impl AnnotationsClient for WireHost {
 impl DocumentsClient for WireHost {
     fn open_document(
         &self,
-        session: crate::higent::SessionUri,
-        uri: Option<crate::higent::client::ResourceUri>,
+        session: crate::client::SessionUri,
+        uri: Option<crate::client::ResourceUri>,
         text: Option<String>,
     ) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
         let session = session.into_string();
-        let uri = uri.map(crate::higent::client::ResourceUri::into_string);
+        let uri = uri.map(crate::client::ResourceUri::into_string);
         Box::pin(self.run_ask(move |active| async move {
             active
                 .client
@@ -1551,7 +1551,7 @@ impl DocumentsClient for WireHost {
 
     fn subscribe_document(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
         let channel = channel.into_string();
         // The pump MUST advance `last_seen` (via `pump_channel`, like
@@ -1574,7 +1574,7 @@ impl DocumentsClient for WireHost {
 
     fn poll_document(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
         let channel = channel.into_string();
         let poll = self.poll_channel(channel);
@@ -1595,7 +1595,7 @@ impl DocumentsClient for WireHost {
 
     fn dispatch_document(
         &self,
-        channel: &crate::higent::ChannelUri,
+        channel: &crate::client::ChannelUri,
         action: himark_ahp_ext_types::DocumentApplied,
     ) {
         let channel = channel.as_str().to_owned();
@@ -1614,8 +1614,8 @@ impl DocumentsClient for WireHost {
 
     fn store_document(
         &self,
-        channel: crate::higent::ChannelUri,
-        uri: crate::higent::client::ResourceUri,
+        channel: crate::client::ChannelUri,
+        uri: crate::client::ResourceUri,
     ) -> ClientFuture<Result<(), String>> {
         let channel = channel.into_string();
         let uri = uri.into_string();
@@ -1632,7 +1632,7 @@ impl DocumentsClient for WireHost {
         }))
     }
 
-    fn unsubscribe_document(&self, channel: &crate::higent::ChannelUri) -> ClientFuture<()> {
+    fn unsubscribe_document(&self, channel: &crate::client::ChannelUri) -> ClientFuture<()> {
         let ask = self.unsubscribe_channel(channel.as_str().to_owned());
         Box::pin(async move {
             let _ = ask.await;
@@ -1643,7 +1643,7 @@ impl DocumentsClient for WireHost {
 impl LspClient for WireHost {
     fn lsp(
         &self,
-        session: crate::higent::SessionUri,
+        session: crate::client::SessionUri,
         method: String,
         params: serde_json::Value,
     ) -> ClientFuture<Result<serde_json::Value, String>> {
@@ -1664,8 +1664,8 @@ impl LspClient for WireHost {
 impl ResourceClient for WireHost {
     fn resource_read(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
     ) -> ClientFuture<Option<String>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -1694,8 +1694,8 @@ impl ResourceClient for WireHost {
 
     fn resource_read_bytes(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
     ) -> ClientFuture<Option<Vec<u8>>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -1730,8 +1730,8 @@ impl ResourceClient for WireHost {
 
     fn resource_write(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
         text: String,
     ) -> ClientFuture<bool> {
         let session = session.into_string();
@@ -1767,8 +1767,8 @@ impl ResourceClient for WireHost {
 
     fn resource_create(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
     ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -1803,8 +1803,8 @@ impl ResourceClient for WireHost {
 
     fn resource_delete(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
         recursive: bool,
     ) -> ClientFuture<bool> {
         let session = session.into_string();
@@ -1834,9 +1834,9 @@ impl ResourceClient for WireHost {
 
     fn resource_move(
         &self,
-        session: crate::higent::SessionUri,
-        from: crate::higent::client::ResourceUri,
-        to: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        from: crate::client::ResourceUri,
+        to: crate::client::ResourceUri,
     ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -1866,8 +1866,8 @@ impl ResourceClient for WireHost {
 
     fn resource_list(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
     ) -> ClientFuture<Option<Vec<(String, bool)>>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
@@ -1904,10 +1904,10 @@ impl ResourceClient for WireHost {
 
     fn resource_watch(
         &self,
-        session: crate::higent::SessionUri,
-        uri: crate::higent::client::ResourceUri,
+        session: crate::client::SessionUri,
+        uri: crate::client::ResourceUri,
         events: Arc<dyn Fn() + Send + Sync>,
-    ) -> ClientFuture<Option<crate::higent::WatchHandle>> {
+    ) -> ClientFuture<Option<crate::client::WatchHandle>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let result: CreateResourceWatchResult = active
@@ -1940,8 +1940,8 @@ impl ResourceClient for WireHost {
                     }
                 }
             });
-            Ok(Some(crate::higent::WatchHandle {
-                channel: crate::higent::ChannelUri::new(channel),
+            Ok(Some(crate::client::WatchHandle {
+                channel: crate::client::ChannelUri::new(channel),
             }))
         });
         Box::pin(async move {
@@ -1952,7 +1952,7 @@ impl ResourceClient for WireHost {
         })
     }
 
-    fn resource_unwatch(&self, handle: crate::higent::WatchHandle) -> ClientFuture<()> {
+    fn resource_unwatch(&self, handle: crate::client::WatchHandle) -> ClientFuture<()> {
         let asked = self.run_ask(move |active| async move {
             active
                 .client
@@ -1969,9 +1969,9 @@ impl ResourceClient for WireHost {
 
     fn search(
         &self,
-        session: crate::higent::SessionUri,
-        ask: crate::higent::SearchAsk,
-    ) -> ClientFuture<Option<crate::higent::SearchResult>> {
+        session: crate::client::SessionUri,
+        ask: crate::client::SearchAsk,
+    ) -> ClientFuture<Option<crate::client::SearchResult>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::SearchParams {
@@ -1983,7 +1983,7 @@ impl ResourceClient for WireHost {
                 target: ask.target,
                 limit: Some(ask.limit as u64),
             };
-            let result: crate::higent::SearchResult = active
+            let result: crate::client::SearchResult = active
                 .client
                 .request("search", params)
                 .await
@@ -1997,9 +1997,9 @@ impl ResourceClient for WireHost {
 impl LocationsClient for WireHost {
     fn search_locations(
         &self,
-        session: crate::higent::SessionUri,
-        ask: crate::higent::LocationsAsk,
-    ) -> ClientFuture<Result<crate::higent::ChannelUri, String>> {
+        session: crate::client::SessionUri,
+        ask: crate::client::LocationsAsk,
+    ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::SearchLocationsParams {
@@ -2015,16 +2015,16 @@ impl LocationsClient for WireHost {
                 .request("searchLocations", params)
                 .await
                 .map_err(|error| format!("searchLocations: {error}"))?;
-            Ok(crate::higent::ChannelUri::new(result.channel))
+            Ok(crate::client::ChannelUri::new(result.channel))
         }))
     }
 
     fn lsp_locations(
         &self,
-        session: crate::higent::SessionUri,
+        session: crate::client::SessionUri,
         method: String,
         params: serde_json::Value,
-    ) -> ClientFuture<Result<crate::higent::ChannelUri, String>> {
+    ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::LspLocationsParams {
@@ -2037,13 +2037,13 @@ impl LocationsClient for WireHost {
                 .request("lsp/locations", params)
                 .await
                 .map_err(|error| format!("lsp/locations: {error}"))?;
-            Ok(crate::higent::ChannelUri::new(result.channel))
+            Ok(crate::client::ChannelUri::new(result.channel))
         }))
     }
 
     fn subscribe_locations(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
@@ -2060,7 +2060,7 @@ impl LocationsClient for WireHost {
 
     fn poll_locations(
         &self,
-        channel: crate::higent::ChannelUri,
+        channel: crate::client::ChannelUri,
     ) -> ClientFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let channel = channel.into_string();
         let polled = self.poll_channel(channel);
@@ -2080,7 +2080,7 @@ impl LocationsClient for WireHost {
         })
     }
 
-    fn unsubscribe_locations(&self, channel: &crate::higent::ChannelUri) {
+    fn unsubscribe_locations(&self, channel: &crate::client::ChannelUri) {
         let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
 }
@@ -2088,13 +2088,13 @@ impl LocationsClient for WireHost {
 impl TerminalClient for WireHost {
     fn terminal_open(
         &self,
-        _session: crate::higent::SessionUri,
-        channel: crate::higent::ChannelUri,
+        _session: crate::client::SessionUri,
+        channel: crate::client::ChannelUri,
         cwd: Option<Uri>,
         cols: u16,
         rows: u16,
-        events: Arc<dyn Fn(crate::higent::TerminalEvent) + Send + Sync>,
-    ) -> ClientFuture<Option<crate::higent::TerminalHandle>> {
+        events: Arc<dyn Fn(crate::client::TerminalEvent) + Send + Sync>,
+    ) -> ClientFuture<Option<crate::client::TerminalHandle>> {
         let channel = channel.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -2127,16 +2127,16 @@ impl TerminalClient for WireHost {
                 for part in &state.content {
                     match part {
                         ahp_types::state::TerminalContentPart::Unclassified(part) => {
-                            events(crate::higent::TerminalEvent::Data(part.value.clone()))
+                            events(crate::client::TerminalEvent::Data(part.value.clone()))
                         }
                         ahp_types::state::TerminalContentPart::Command(part) => {
-                            events(crate::higent::TerminalEvent::Data(part.output.clone()))
+                            events(crate::client::TerminalEvent::Data(part.output.clone()))
                         }
                         _ => {}
                     }
                 }
                 if let ahp_types::state::TerminalLifecycleState::Exited(exited) = &state.lifecycle {
-                    events(crate::higent::TerminalEvent::Exited(
+                    events(crate::client::TerminalEvent::Exited(
                         exited.exit_code.map(|code| code as i32),
                     ));
                 }
@@ -2146,10 +2146,10 @@ impl TerminalClient for WireHost {
                     if let ahp::SubscriptionEvent::Action(envelope) = event {
                         match envelope.action {
                             StateAction::TerminalData(data) => {
-                                events(crate::higent::TerminalEvent::Data(data.data))
+                                events(crate::client::TerminalEvent::Data(data.data))
                             }
                             StateAction::TerminalExited(exited) => {
-                                events(crate::higent::TerminalEvent::Exited(
+                                events(crate::client::TerminalEvent::Exited(
                                     exited.exit_code.map(|code| code as i32),
                                 ))
                             }
@@ -2158,8 +2158,8 @@ impl TerminalClient for WireHost {
                     }
                 }
             });
-            Ok(Some(crate::higent::TerminalHandle {
-                channel: crate::higent::ChannelUri::new(channel),
+            Ok(Some(crate::client::TerminalHandle {
+                channel: crate::client::ChannelUri::new(channel),
             }))
         });
         Box::pin(async move {
@@ -2170,7 +2170,7 @@ impl TerminalClient for WireHost {
         })
     }
 
-    fn terminal_input(&self, channel: &crate::higent::ChannelUri, data: String) {
+    fn terminal_input(&self, channel: &crate::client::ChannelUri, data: String) {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             active
@@ -2184,7 +2184,7 @@ impl TerminalClient for WireHost {
         });
     }
 
-    fn terminal_resize(&self, channel: &crate::higent::ChannelUri, cols: u16, rows: u16) {
+    fn terminal_resize(&self, channel: &crate::client::ChannelUri, cols: u16, rows: u16) {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             active
@@ -2201,7 +2201,7 @@ impl TerminalClient for WireHost {
         });
     }
 
-    fn terminal_dispose(&self, channel: &crate::higent::ChannelUri) {
+    fn terminal_dispose(&self, channel: &crate::client::ChannelUri) {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             let _: serde_json::Value = active

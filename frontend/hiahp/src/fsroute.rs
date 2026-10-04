@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::fs::ClientDirectory;
+use ahp_wire::fs::{client_of, client_of_authority, served, ClientDirectory};
 use crate::higent::client as fs;
 use documents::watch::{SubscribeEffect, Subscription, UnsubscribeEffect};
 use documents::{
@@ -12,35 +12,6 @@ use documents::{
 };
 use editor::ResourceLocation;
 use imba::effect::EffectHandler;
-
-const LOCAL_AUTHORITY: &str = "local";
-
-pub fn client_of_authority(
-    directory: &ClientDirectory,
-    authority: &str,
-) -> Option<(crate::higent::Client, crate::higent::SessionUri)> {
-    if fs::scoped(authority) {
-        let (server, session) = fs::parse(authority)?;
-        let client = directory.client(server)?;
-        return Some((client, session));
-    }
-    if authority == LOCAL_AUTHORITY {
-        return directory.local_client();
-    }
-    None
-}
-
-pub fn client_of(
-    directory: &ClientDirectory,
-    location: &ResourceLocation,
-) -> Option<(crate::higent::Client, crate::higent::SessionUri)> {
-    client_of_authority(directory, location.authority().as_str())
-}
-
-pub fn served(location: &ResourceLocation) -> bool {
-    let authority = location.authority().as_str();
-    fs::scoped(authority) || authority == LOCAL_AUTHORITY
-}
 
 pub struct RouteFetch {
     pub directory: Arc<ClientDirectory>,

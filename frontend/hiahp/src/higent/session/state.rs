@@ -8,6 +8,8 @@ use crate::higent::{ChatUri, SessionUri};
 use ahp_types::state::{AgentInfo, ChatSummary, SessionSummary};
 use imba::store::{Id, Store};
 
+use super::agents::Agents;
+
 #[derive(Clone, Debug)]
 pub enum HostStatus {
     Idle,
@@ -476,9 +478,42 @@ impl Hosts {
             changesview::hihistory::History::wired(state.changes),
         );
         store.put_entity(state.comments, comments::Comments::wired(state.documents));
+        // The driver's catalog consults, closed over HERE — the
+        // ceremony is the one place that knows the catalog and the
+        // sibling ids (law 4); the driver below holds only the roads.
+        let documents = state.documents;
+        let roads = crate::drivers::comments::CatalogRoads {
+            default_chat: std::sync::Arc::new(move |store, host, session| {
+                let key = crate::SessionId {
+                    host,
+                    session: session.clone(),
+                };
+                if let Some(chat) =
+                    Agents::channel(store, &key).and_then(|channel| channel.default_chat)
+                {
+                    return Some(chat);
+                }
+                // The fallback workspace is the comments' own session —
+                // the catalog names it; no window consulted.
+                let bound = Hosts::home_of_documents(store, documents)
+                    .map(|(workspace, _)| workspace)
+                    .and_then(|workspace| Agents::live_session(store, &workspace))
+                    .filter(|bound| bound.host == host)?;
+                Agents::channel(store, &bound).and_then(|channel| channel.default_chat)
+            }),
+            latest_turn: std::sync::Arc::new(|store, host, session| {
+                Agents::latest_turn(
+                    store,
+                    &crate::SessionId {
+                        host,
+                        session: session.clone(),
+                    },
+                )
+            }),
+        };
         store.put_entity(
             state.comments_wire,
-            crate::drivers::comments::CommentsWire::wired(state.comments, uris),
+            crate::drivers::comments::CommentsWire::wired(state.comments, uris, roads),
         );
         // The documents→comments borders (the document hooks, the
         // comment gesture) get INSTANCES wired with the sibling id,
@@ -738,15 +773,4 @@ impl Hosts {
 #[derive(Clone)]
 pub struct WindowGrip(pub std::sync::Arc<dyn Fn(&Store, &crate::SessionId) -> bool + Send + Sync>);
 
-/// The shell's catalog-actions road, installed at boot: session
-/// channel actions (folders joining/leaving, chats appearing) apply
-/// against WINDOWS, so the application lives shell-side; the wire
-/// drains hand the batch through here.
-#[derive(Clone)]
-pub struct ChannelActionsRoad(
-    pub  std::sync::Arc<
-        dyn Fn(&mut Store, &crate::SessionId, Vec<crate::higent::ahp_types::actions::StateAction>)
-            + Send
-            + Sync,
-    >,
-);
+

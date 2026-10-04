@@ -5,7 +5,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::higent::{Client, HostId, ResourceClient, WatchHandle};
+use editor::ResourceLocation;
+
+use crate::client::{Client, HostId, ResourceClient, WatchHandle};
 
 const SUBSCRIPTION_BASE: u64 = 1 << 48;
 
@@ -34,12 +36,12 @@ impl ClientDirectory {
         *self.local.lock().expect("client directory") = Some(server);
     }
 
-    pub fn local_client(&self) -> Option<(Client, crate::higent::SessionUri)> {
+    pub fn local_client(&self) -> Option<(Client, crate::client::SessionUri)> {
         let server = (*self.local.lock().expect("client directory"))?;
         let client = self.client(server)?;
         Some((
             client,
-            crate::higent::SessionUri::new(crate::higent::LOCAL_FS_SESSION),
+            crate::client::SessionUri::new(crate::LOCAL_FS_SESSION),
         ))
     }
 
@@ -77,4 +79,33 @@ impl ClientDirectory {
     pub fn deliver(&self) -> Arc<dyn Fn(u64) + Send + Sync> {
         Arc::clone(&self.deliver)
     }
+}
+
+const LOCAL_AUTHORITY: &str = "local";
+
+pub fn client_of_authority(
+    directory: &ClientDirectory,
+    authority: &str,
+) -> Option<(crate::client::Client, crate::client::SessionUri)> {
+    if crate::client::scoped(authority) {
+        let (server, session) = crate::client::parse(authority)?;
+        let client = directory.client(server)?;
+        return Some((client, session));
+    }
+    if authority == LOCAL_AUTHORITY {
+        return directory.local_client();
+    }
+    None
+}
+
+pub fn client_of(
+    directory: &ClientDirectory,
+    location: &ResourceLocation,
+) -> Option<(crate::client::Client, crate::client::SessionUri)> {
+    client_of_authority(directory, location.authority().as_str())
+}
+
+pub fn served(location: &ResourceLocation) -> bool {
+    let authority = location.authority().as_str();
+    crate::client::scoped(authority) || authority == LOCAL_AUTHORITY
 }

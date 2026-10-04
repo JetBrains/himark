@@ -10,9 +10,9 @@
 
 use std::sync::Arc;
 
-use crate::higent::ahp_types::actions::StateAction;
-use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
-use crate::higent::{PollChangesetEffect, SubscribeChangesetEffect};
+use ahp_types::actions::StateAction;
+use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
+use ahp_wire::effects::{PollChangesetEffect, SubscribeChangesetEffect};
 use changesview::hichanges::{
     before_ref_location, ChangeAction, ChangeEntry, ChangeSets, Changes, ChangesStatus,
     DigestedChangeset,
@@ -28,16 +28,16 @@ use imba::{effect::AnyEffect, store::Store};
 /// subscribe bumps it; docs/perf-issue.md §4 measure 5).
 #[derive(Clone)]
 pub struct FolderWire {
-    pub client: crate::higent::Client,
-    pub session: crate::higent::SessionUri,
-    pub channel: Option<crate::higent::ChannelUri>,
+    pub client: ahp_wire::client::Client,
+    pub session: ahp_wire::client::SessionUri,
+    pub channel: Option<ahp_wire::client::ChannelUri>,
     pub serial: u64,
 }
 
 #[derive(Clone)]
 struct SessionWire {
-    uri: crate::higent::SessionUri,
-    client: crate::higent::Client,
+    uri: ahp_wire::client::SessionUri,
+    client: ahp_wire::client::Client,
 }
 
 /// The driver's row — wire state only, keyed beside the collection
@@ -45,11 +45,11 @@ struct SessionWire {
 #[derive(Clone)]
 pub struct ChangesWire {
     changes: imba::store::Id<ChangeSets>,
-    history_wire: imba::store::Id<crate::drivers::history::HistoryWire>,
+    history_wire: imba::store::Id<crate::history::HistoryWire>,
 
     /// The host's location↔uri translation, stamped by the ceremony
     /// (mint, or the heal after a placeholder rekey).
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
 
     session: Option<SessionWire>,
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderWire>,
@@ -72,8 +72,8 @@ impl ChangesWire {
 
     pub fn wired(
         changes: imba::store::Id<ChangeSets>,
-        history_wire: imba::store::Id<crate::drivers::history::HistoryWire>,
-        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+        history_wire: imba::store::Id<crate::history::HistoryWire>,
+        uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
     ) -> Self {
         Self {
             changes,
@@ -84,15 +84,15 @@ impl ChangesWire {
         }
     }
 
-    pub(crate) fn stamp_uris(
+    pub fn stamp_uris(
         store: &mut Store,
         wire: imba::store::Id<ChangesWire>,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
+        uris: &Arc<dyn ahp_wire::client::ResourceUriMap>,
     ) {
         update(store, wire, |row| row.uris = Some(Arc::clone(uris)));
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.session.is_none() && self.folders.is_empty()
     }
 }
@@ -147,11 +147,11 @@ pub fn ensure_folder(
     // The folder's own authority names the WIRE that serves it: the
     // client and the AHP session the feeds subscribe through.
     let Some((host, client, session)) =
-        crate::higent::client::route_client(store, folder.authority().as_str())
+        ahp_wire::client::route_client(store, folder.authority().as_str())
     else {
         return;
     };
-    let scope = crate::SessionId {
+    let scope = ahp_wire::SessionId {
         host,
         session: session.clone(),
     };
@@ -180,16 +180,16 @@ pub fn ensure_folder(
     // The MODEL half: the set exists (a canvas may have opened it
     // detached already — the door is idempotent and keeps it).
     Changes::ensure_working_set(store, changes, &folder);
-    crate::drivers::history::ensure_folder(store, history_wire, &scope, &folder, &client);
+    crate::history::ensure_folder(store, history_wire, &scope, &folder, &client);
     Changes::nudge_folder(store, changes, &folder);
 
     let directory = uris.uri_of(&folder).into_string();
     fx.push(
-        AnyEffect::new(crate::higent::DispatchChatActionEffect {
+        AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
             client: client.session.clone(),
             channel: session.as_channel(),
             action: StateAction::SessionWorkingDirectorySet(
-                crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction { directory },
+                ahp_types::actions::SessionWorkingDirectorySetAction { directory },
             ),
         })
         .map(move |result| Verb::Dynamic(Arc::new(Dispatched { result }))),
@@ -206,7 +206,7 @@ pub fn ensure_folder(
         });
         let landing = scope.clone();
         fx.push(
-            AnyEffect::new(crate::higent::SubscribeSessionEffect {
+            AnyEffect::new(ahp_wire::effects::SubscribeSessionEffect {
                 client: client.session.clone(),
                 session,
             })
@@ -238,8 +238,8 @@ pub fn refetch(
     let changes = row.changes;
     let riding: Vec<(
         ResourceLocation,
-        crate::higent::Client,
-        crate::higent::ChannelUri,
+        ahp_wire::client::Client,
+        ahp_wire::client::ChannelUri,
     )> = row
         .folders
         .iter()
@@ -267,9 +267,9 @@ pub fn refetch(
 /// poller drained it.
 pub fn adopt_session_catalog(
     store: &mut Store,
-    home: &crate::SessionId,
+    home: &ahp_wire::SessionId,
     wire: imba::store::Id<ChangesWire>,
-    changed: &crate::higent::ahp_types::actions::SessionChangesetsChangedAction,
+    changed: &ahp_types::actions::SessionChangesetsChangedAction,
     fx: &mut Fx<'_>,
 ) {
     let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
@@ -281,12 +281,12 @@ pub fn adopt_session_catalog(
 /// lone-folder fallback. Pure, so the claim is unit-testable.
 pub fn claim_channels(
     folders: &rpds::HashTrieMapSync<ResourceLocation, FolderWire>,
-    session: &crate::higent::SessionUri,
+    session: &ahp_wire::client::SessionUri,
     entries: &[CatalogEntry],
 ) -> Vec<(
     ResourceLocation,
-    crate::higent::Client,
-    crate::higent::ChannelUri,
+    ahp_wire::client::Client,
+    ahp_wire::client::ChannelUri,
 )> {
     let changesets: Vec<&CatalogEntry> = entries
         .iter()
@@ -315,7 +315,7 @@ pub fn claim_channels(
 /// the collection first hears of it when a snapshot lands.
 fn subscribe_fresh(
     store: &mut Store,
-    home: &crate::SessionId,
+    home: &ahp_wire::SessionId,
     wire: imba::store::Id<ChangesWire>,
     entries: Vec<CatalogEntry>,
     fx: &mut Fx<'_>,
@@ -336,7 +336,7 @@ fn subscribe_fresh(
     });
     Changes::nudge_all_in(store, changes);
 
-    crate::drivers::history::subscribe_fresh(store, home, history_wire, &entries, fx);
+    crate::history::subscribe_fresh(store, home, history_wire, &entries, fx);
     let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
         return;
     };
@@ -352,9 +352,9 @@ fn subscribe_fresh(
 fn subscribe_set(
     wire: imba::store::Id<ChangesWire>,
     folder: ResourceLocation,
-    client: crate::higent::Client,
-    channel: crate::higent::ChannelUri,
-    uris: Arc<dyn crate::higent::ResourceUriMap>,
+    client: ahp_wire::client::Client,
+    channel: ahp_wire::client::ChannelUri,
+    uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 ) -> imba::effect::AnyEffect<Verb> {
     AnyEffect::new(SubscribeChangesetEffect {
         client: client.changes.clone(),
@@ -418,7 +418,7 @@ fn relaunch_poll(
 
 fn relaunch_session_poll(
     store: &Store,
-    home: &crate::SessionId,
+    home: &ahp_wire::SessionId,
     wire: imba::store::Id<ChangesWire>,
     fx: &mut Fx<'_>,
 ) {
@@ -430,7 +430,7 @@ fn relaunch_session_poll(
     };
     let landing = home.clone();
     fx.push(
-        AnyEffect::new(crate::higent::PollSessionEffect {
+        AnyEffect::new(ahp_wire::effects::PollSessionEffect {
             client: feed.client.session.clone(),
             session: home.session.clone(),
         })
@@ -463,7 +463,7 @@ fn run_tail(
             location.authority() == &authority
                 && format!("/{}", location.path().join("/")).starts_with(&prefix)
         });
-        crate::sync_stripe_bases(store, documents, ui, fx);
+        documents::lanes::sync_stripe_bases(store, documents, ui, fx);
     }
 }
 
@@ -568,9 +568,9 @@ pub fn apply_poll(
 /// The session channel's own landing — the WIRE is the session's, so
 /// its address rides along; the driver it feeds is the id.
 struct SessionLanded {
-    home: crate::SessionId,
+    home: ahp_wire::SessionId,
     wire: imba::store::Id<ChangesWire>,
-    result: Result<crate::higent::ahp_types::state::SessionState, String>,
+    result: Result<ahp_types::state::SessionState, String>,
 }
 
 impl imba::command::DynamicCommand for SessionLanded {
@@ -606,7 +606,7 @@ impl imba::command::DynamicCommand for SessionLanded {
                     Changes::fold_error(store, changes, &folder, error);
                 }
                 Changes::nudge_all_in(store, changes);
-                crate::drivers::history::session_failed(
+                crate::history::session_failed(
                     store,
                     history_wire,
                     &self.home.session,
@@ -621,7 +621,7 @@ impl imba::command::DynamicCommand for SessionLanded {
 /// feed; the winner takes the whole batch, so hand every action kind
 /// to the shared application, not just the changeset ones.
 struct SessionPolled {
-    home: crate::SessionId,
+    home: ahp_wire::SessionId,
     wire: imba::store::Id<ChangesWire>,
     actions: Vec<StateAction>,
 }
@@ -637,7 +637,7 @@ impl imba::command::DynamicCommand for SessionPolled {
         // The catalog actions apply against windows — the installed
         // shell road carries them; the poll re-arms here either way.
         if let Some(road) = store
-            .get::<crate::higent::ChannelActionsRoad>()
+            .get::<ahp_wire::ChannelActionsRoad>()
             .map(|road| road.0.clone())
         {
             road(store, &self.home, self.actions.clone());
@@ -692,7 +692,7 @@ struct WireCounts {
 }
 
 pub(crate) fn entry_of(
-    uris: &dyn crate::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     folder: &ResourceLocation,
     file: &ChangesetFile,
 ) -> Option<ChangeEntry> {
@@ -709,7 +709,7 @@ pub(crate) fn entry_of(
     let after = side(&file.edit.after);
     let working = after.as_ref().or(before.as_ref()).and_then(|side| {
         uris.location_of(
-            &crate::higent::ResourceUri::new(side.uri.as_str()),
+            &ahp_wire::client::ResourceUri::new(side.uri.as_str()),
             ResourceType::document(),
             folder.authority(),
         )
@@ -746,7 +746,7 @@ pub(crate) fn entry_of(
 }
 
 pub fn digest_state(
-    uris: &dyn crate::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     folder: &ResourceLocation,
     state: &ChangesetState,
 ) -> DigestedChangeset {
@@ -764,7 +764,7 @@ pub fn digest_state(
 }
 
 pub fn digest_actions(
-    uris: &dyn crate::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     folder: &ResourceLocation,
     actions: &[StateAction],
 ) -> Vec<ChangeAction> {
@@ -828,14 +828,14 @@ pub(crate) fn status_of_wire(status: &ChangesetStatus, error: Option<&str>) -> C
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CatalogEntry {
-    pub uri: crate::higent::ChannelUri,
+    pub uri: ahp_wire::client::ChannelUri,
     pub description: Option<String>,
 
     pub kind: String,
 }
 
 pub fn digest_catalog(
-    changesets: &[crate::higent::ahp_types::state::Changeset],
+    changesets: &[ahp_types::state::Changeset],
 ) -> Vec<CatalogEntry> {
     changesets
         .iter()
@@ -845,7 +845,7 @@ pub fn digest_catalog(
                 && !entry.uri_template.contains('{')
         })
         .map(|entry| CatalogEntry {
-            uri: crate::higent::ChannelUri::new(entry.uri_template.clone()),
+            uri: ahp_wire::client::ChannelUri::new(entry.uri_template.clone()),
             description: entry.description.clone(),
             kind: entry.change_kind.clone(),
         })

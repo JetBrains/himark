@@ -34,7 +34,7 @@ async fn locate(
     position: LineCol,
     method: &str,
 ) -> Option<Vec<CodeTarget>> {
-    let (client, session) = crate::fsroute::client_of(directory, location)?;
+    let (client, session) = crate::hiahp::fs::client_of(directory, location)?;
     let uri = uris.uri_of(location).into_string();
     let params = json!({
         "textDocument": { "uri": uri },
