@@ -131,7 +131,7 @@ impl View for TreeLabel {
         let mut style = crate::ui::RowStyle::drawer(store, ui);
         // Tree rows breathe more than menu rows.
         style.air = crate::ui::space::M;
-        let tree = crate::env::Themes::of(store).ui().tree.clone();
+        let tree = editor::env::Themes::of(store).ui().tree.clone();
         let label_style = match (self.dim, self.tint) {
             (true, _) => style.trail.clone(),
             (false, TreeTint::Directory) => style.label.clone().colored(tree.directory.0),
@@ -324,8 +324,8 @@ where
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, TreeItemCommand<V::Command>> {
         let TreeItemChrome { view, store, ui } = self;
-        let tree = crate::env::Themes::of(store).ui().tree.clone();
-        let colors = crate::env::Themes::of(store).ui().peeker.clone();
+        let tree = editor::env::Themes::of(store).ui().tree.clone();
+        let colors = editor::env::Themes::of(store).ui().peeker.clone();
         let inset = f32::from(view.depth) * tree.indent;
         let width = constraints.max.width.max(1.0);
         let offset = inset + tree.text_x;

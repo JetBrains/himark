@@ -1,0 +1,17 @@
+[package]
+name = "hikit"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+editor = { path = "../editor" }
+imba = { path = "../imba" }
+rpds = "1"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+
+[features]
+test-support = []
+
+[dev-dependencies]
+editor = { path = "../editor", features = ["test-support"] }

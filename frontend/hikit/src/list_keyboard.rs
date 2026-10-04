@@ -249,7 +249,7 @@ where
         searcher: S,
         store: &imba::store::Store,
         ui: &imba::UiCtx,
-        fonts: crate::FontSource,
+        fonts: editor::FontSource,
     ) -> Self {
         let mut input = EditorView::input(PILL_INPUT_WIDTH, store, ui, fonts);
         input.focus_text();
@@ -303,8 +303,12 @@ where
         let Some(lane) = &mut self.search else {
             return;
         };
-        lane.input =
-            EditorView::input(PILL_INPUT_WIDTH, store, ui, crate::embedded_fonts::source());
+        lane.input = EditorView::input(
+            PILL_INPUT_WIDTH,
+            store,
+            ui,
+            editor::embedded_fonts::source(),
+        );
         lane.input.focus_text();
         lane.launched = None;
         if let Some(token) = lane.lane.take() {
@@ -558,7 +562,7 @@ where
             let searching = self.searching();
 
             if let Some(lane) = &self.search {
-                let chrome = crate::env::Themes::of(store).ui().peeker.clone();
+                let chrome = editor::env::Themes::of(store).ui().peeker.clone();
                 // The pill wraps the input editor's TRUE line height —
                 // the chrome never clips the text it hosts.
                 let input_height = lane.input.content_height().max(1.0);

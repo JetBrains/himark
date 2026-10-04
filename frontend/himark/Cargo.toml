@@ -15,6 +15,7 @@ serde_json = "1"
 regex = "1"
 rpds = "1"
 comments = { path = "../comments" }
+hikit = { path = "../hikit" }
 documents = { path = "../documents" }
 locations = { path = "../locations" }
 terminals = { path = "../terminals" }
@@ -26,8 +27,9 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 
 [features]
-test-support = ["editor/test-support"]
+test-support = ["editor/test-support", "hikit/test-support"]
 
 [dev-dependencies]
 editor = { path = "../editor", features = ["test-support"] }
+hikit = { path = "../hikit", features = ["test-support"] }
 himarkdown = { path = "../plugins/himarkdown" }

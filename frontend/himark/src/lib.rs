@@ -4,7 +4,6 @@
 mod app;
 mod app_ext;
 pub mod changes_view;
-pub mod combo;
 mod commands;
 pub mod completion;
 mod diffs;
@@ -14,8 +13,6 @@ pub mod drivers;
 mod effects;
 mod find;
 mod focus;
-pub mod fonts;
-mod forest;
 pub mod hichanges;
 pub mod hicomments;
 pub mod hifiles;
@@ -25,14 +22,12 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod hover;
 mod keymap;
-mod list_keyboard;
 pub mod locations;
 pub mod menu;
 mod modal;
 mod navigation;
 pub mod new_session;
 mod registry;
-pub mod rows;
 mod save;
 mod startup_profile;
 mod state;
@@ -43,17 +38,17 @@ pub mod test_driver;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
 mod toc;
-mod tree_item;
-pub mod ui;
-pub use forest::{Forest, ForestList, ForestNode, ForestSearcher, TreeRow};
-pub use list_keyboard::{
-    subsequence_match, ActivateTrigger, AnnounceSelect, AnnounceSelectHandler, ItemSource,
+// The UI kit lives in its own crate; the re-exports below are
+// migration scaffolding — consumers move to `hikit` paths as they
+// convert, and himark shrinks toward the protocol layer.
+pub use hikit::{combo, fonts, forest, list_keyboard, rows, tree_item, ui};
+pub use hikit::{
+    label_slice, paint_panel_chrome, panel_inset, secondary_press, selection_style,
+    subsequence_match, tree_action, tree_context, tree_toggle, ActivateTrigger, AnnounceSelect,
+    AnnounceSelectHandler, Forest, ForestList, ForestNode, ForestSearcher, ItemSource, LabelRow,
     ListKeyCommand, ListKeyboardController, NoSearcher, Searcher, SpeedSearchEffect,
-    SpeedSearchHandler, SpeedSearchMatches,
-};
-pub use tree_item::{
-    secondary_press, tree_action, tree_context, tree_toggle, TreeItemCommand, TreeItemView,
-    TreeLabel, TreeLabelCommand, TreeListCommand, TreeTint,
+    SpeedSearchHandler, SpeedSearchMatches, TreeItemCommand, TreeItemView, TreeLabel,
+    TreeLabelCommand, TreeListCommand, TreeRow, TreeTint,
 };
 pub mod diff_canvas;
 pub(crate) mod diff_header;
@@ -106,7 +101,6 @@ pub use modal::{dock_scope, modal_scope, side_scope, ModalRequest, ModalView, Re
 pub use navigation::{
     EditorPlace, NavigationLocation, Navigator, Navigators, NoPlace, Place, RecentLocations,
 };
-pub use rows::{label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow};
 pub use save::{SaveAll, SaveDocument};
 pub use state::AppState;
 pub use stats::Stats;

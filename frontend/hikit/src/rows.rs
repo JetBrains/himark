@@ -182,7 +182,7 @@ pub fn paint_panel_chrome(
 }
 
 pub fn selection_style(store: &Store) -> SelectionStyle {
-    let ui = crate::env::Themes::of(store).ui().clone();
+    let ui = editor::env::Themes::of(store).ui().clone();
     SelectionStyle {
         fill: ui.tree.highlight.0,
         accent: ui.peeker.accent.0,

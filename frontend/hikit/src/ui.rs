@@ -59,7 +59,7 @@ impl TextStyle {
 pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_text_font(ui, LABEL_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.text.0,
+        color: editor::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
         shaper: imba::TextShaper::of(ui),
     }
@@ -69,7 +69,7 @@ pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
 pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_text_font(ui, CAPTION_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
+        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
         shaper: imba::TextShaper::of(ui),
     }
@@ -79,7 +79,7 @@ pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
 pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_font(ui, HEADING_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.text.0,
+        color: editor::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
         shaper: imba::TextShaper::of(ui),
     }
@@ -90,7 +90,7 @@ pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
 pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_font(ui, CAPS_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
+        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: CAPS_TRACKING,
         shaper: imba::TextShaper::of(ui),
     }
@@ -100,7 +100,7 @@ pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
 pub fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
     TextStyle {
         font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
-        color: crate::env::Themes::of(store).ui().peeker.dim_text.0,
+        color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
         shaper: imba::TextShaper::of(ui),
     }
@@ -215,7 +215,7 @@ impl RowStyle {
     /// (the indent offset); only the trails keep an inset of their
     /// own.
     pub fn drawer(store: &Store, ui: &UiCtx) -> Self {
-        let tree = crate::env::Themes::of(store).ui().tree.clone();
+        let tree = editor::env::Themes::of(store).ui().tree.clone();
         Self {
             inset: 0.0,
             trail_inset: space::L,
@@ -227,7 +227,7 @@ impl RowStyle {
 
     /// Group/section headers (search result groups) — bold label.
     pub fn header(store: &Store, ui: &UiCtx) -> Self {
-        let search = crate::env::Themes::of(store).ui().search.clone();
+        let search = editor::env::Themes::of(store).ui().search.clone();
         Self {
             inset: search.group_text_x,
             trail_inset: search.group_text_x,
@@ -462,7 +462,7 @@ pub fn button<'a, Command: 'a>(
     content: impl Into<String>,
     on_press: impl Fn() -> Command + 'a,
 ) -> imba::Button<'a, Command, impl Fn() -> Command + 'a> {
-    let chat = crate::env::Themes::of(store).ui().chat.clone();
+    let chat = editor::env::Themes::of(store).ui().chat.clone();
     let style = match role {
         ButtonRole::Primary => caps(store, ui).colored(chat.on_accent.0),
         ButtonRole::Ghost => caps(store, ui),

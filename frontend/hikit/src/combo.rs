@@ -216,7 +216,7 @@ where
                 OptionSearcher::default(),
                 store,
                 ui,
-                crate::embedded_fonts::source(),
+                editor::embedded_fonts::source(),
             ),
         }
     }
@@ -311,7 +311,7 @@ where
         ui: &'a UiCtx,
         height: f32,
     ) -> impl Thunk<'a, ComboCommand<T::Command>> + 'a {
-        let themes = crate::env::Themes::of(store);
+        let themes = editor::env::Themes::of(store);
         let theme = themes.ui();
         let chrome = theme.combo.clone();
 
@@ -530,7 +530,7 @@ where
 /// takes the same value where labels ride the layout path.
 pub(crate) const LABEL_TRACKING: f32 = 1.5;
 
-pub(crate) fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
+pub fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
     imba::TextShaper::of(ui).tracked_advance(font, text, LABEL_TRACKING)
 }
 
@@ -721,12 +721,12 @@ mod tests {
     fn opening_recolors_the_selected_row_for_the_current_theme() {
         let mut store = Store::new();
         let ui = test_ui();
-        crate::env::Themes::set(&mut store, crate::Theme::embedded());
+        editor::env::Themes::set(&mut store, editor::theme::Theme::embedded());
         let mut combo = stacked(&store, &ui, 3);
         let dark = crate::rows::selection_style(&store);
         assert_eq!(combo.list().selection_style().unwrap().fill, dark.fill);
 
-        crate::env::Themes::set(&mut store, crate::Theme::light());
+        editor::env::Themes::set(&mut store, editor::theme::Theme::light());
         let light = crate::rows::selection_style(&store);
         assert_ne!(dark.fill, light.fill);
         drive(&mut combo, &mut store, &ui, ComboCommand::Open);
