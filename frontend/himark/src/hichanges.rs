@@ -493,6 +493,12 @@ pub struct ChangeSets {
 
     pub(crate) uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
+    /// A landing's pending stripe-base re-asks (the folders whose
+    /// bases must re-resolve) — the collection's own note to its
+    /// `after_route` tail, drained the same batch. Private schema,
+    /// not a store component.
+    rearms: Vec<ResourceLocation>,
+
     /// The unified tree VIEWS over this collection's sets — one per
     /// mounted dock, changes- or history-flavored only by the data
     /// they derive rows from (crate::changes_view). The collection
@@ -548,13 +554,6 @@ impl std::fmt::Display for ChangesCommand {
     }
 }
 
-/// A note the collection leaves for the application road after a
-/// landing (the `DressedViews` shape): the stripe bases under a folder
-/// must re-ask. The entity has no application effects of its own; the
-/// `AtChanges` arm consumes this with the ones it has.
-#[derive(Clone, Default)]
-pub struct BaseRearms(pub Vec<(imba::store::Id<crate::OpenDocuments>, ResourceLocation)>);
-
 impl imba::store::Entity for ChangeSets {
     type Command = ChangesCommand;
 
@@ -562,7 +561,7 @@ impl imba::store::Entity for ChangeSets {
         &mut self,
         _id: imba::store::Id<Self>,
         command: ChangesCommand,
-        store: &mut Store,
+        _store: &mut Store,
         _ui: &UiCtx,
         fx: &mut imba::effect::Effects<'_, ChangesCommand>,
     ) {
@@ -574,7 +573,7 @@ impl imba::store::Entity for ChangeSets {
                     Err(error) => self.adopt_error(&folder, error),
                 }
                 self.nudge_folder_in_place(&folder);
-                self.note_rearm(store, &folder);
+                self.note_rearm(&folder);
                 if adopted {
                     self.relaunch_poll(&folder, fx);
                 }
@@ -586,7 +585,7 @@ impl imba::store::Entity for ChangeSets {
             } => {
                 self.fold(&folder, actions);
                 self.nudge_folder_in_place(&folder);
-                self.note_rearm(store, &folder);
+                self.note_rearm(&folder);
                 // Only the CURRENT loop re-arms: a superseding
                 // subscribe bumped the serial and owns the next poll.
                 // A stale landing still folds its batch — a drained
@@ -613,14 +612,16 @@ impl crate::AppEntity for ChangeSets {
     fn after_route(
         store: &mut Store,
         ui: &UiCtx,
-        _id: imba::store::Id<Self>,
+        id: imba::store::Id<Self>,
         fx: &mut crate::AppFx<'_>,
     ) {
-        for (documents, folder) in store
-            .take::<BaseRearms>()
-            .map(|rearms| rearms.0)
-            .unwrap_or_default()
-        {
+        let Some(mut row) = store.entity::<ChangeSets>(id).cloned() else {
+            return;
+        };
+        let rearms = std::mem::take(&mut row.rearms);
+        let documents = row.documents;
+        store.put_entity(id, row);
+        for folder in rearms {
             let authority = folder.authority().clone();
             let prefix = format!("/{}/", folder.path().join("/"));
             crate::rearm_base_asks(store, documents, &|location| {
@@ -648,6 +649,7 @@ impl Changes {
             by_source: rpds::HashTrieMapSync::new_sync(),
             polls: rpds::HashTrieMapSync::new_sync(),
             session: None,
+            rearms: Vec::new(),
             views: rpds::HashTrieMapSync::new_sync(),
             viewers: rpds::HashTrieMapSync::new_sync(),
             stale: rpds::HashTrieSetSync::new_sync(),
@@ -742,11 +744,10 @@ impl Changes {
         );
     }
 
-    /// Leave the stripe-base note for the application road.
-    fn note_rearm(&self, store: &mut Store, folder: &ResourceLocation) {
-        let documents = self.documents;
-        let folder = folder.clone();
-        store.update::<BaseRearms>(|rearms| rearms.0.push((documents, folder)));
+    /// Leave the stripe-base note on the row: the re-asks run behind
+    /// the lease, so the work waits for `after_route`.
+    fn note_rearm(&mut self, folder: &ResourceLocation) {
+        self.rearms.push(folder.clone());
     }
 
     fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {

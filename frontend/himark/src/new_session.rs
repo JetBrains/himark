@@ -2411,7 +2411,7 @@ impl crate::DynamicCommand for OpenNewSession {
         if current.names_session() {
             let scratch = crate::SessionId::mint_scratch(store);
             crate::switch_session(store, window, scratch, fx);
-            crate::commands::BatchRequests::push(store, window, Arc::new(MountComposer));
+            fx.follow_up(crate::AppCommand::Dynamic(window, Arc::new(MountComposer)));
             return;
         }
         let Some(mut entity) = crate::Windows::window(store, window) else {

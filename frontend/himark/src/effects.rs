@@ -311,6 +311,15 @@ impl EffectLauncher {
         }
         for message in batch.drain() {
             let _ = self.sender.send(match message {
+                imba::effect::Message::FollowUp(_) => {
+                    // The batch loop drains follow-ups after every
+                    // command; one surviving to the launch was pushed
+                    // where no loop drains — never silently.
+                    eprintln!(
+                        "[effects] follow-up DROPPED at launch: pushed outside the batch loop"
+                    );
+                    continue;
+                }
                 imba::effect::Message::Launch(token, effect) => {
                     trace_effects(|| format!("launch {}", effect.name()));
                     EffectMessage::Launch(token, effect.into_payload())

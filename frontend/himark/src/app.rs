@@ -342,11 +342,10 @@ pub fn switch_session(
     let owed = entity.switch_to(target, family);
     crate::Windows::put(store, window, entity);
     if let Some(previous) = owed {
-        crate::commands::BatchRequests::push(
-            store,
+        fx.follow_up(AppCommand::Dynamic(
             window,
             std::sync::Arc::new(EnterFreshSession { previous }),
-        );
+        ));
     }
 }
 
@@ -937,11 +936,10 @@ impl Application {
             let mut fx = batch.effects();
             self.perform(&mut store, &ui, command, &mut fx);
 
-            for (index, (window, request)) in crate::commands::BatchRequests::drain(&mut store)
-                .into_iter()
-                .enumerate()
-            {
-                queue.insert(index, AppCommand::Dynamic(window, request));
+            // The performed command's follow-ups run next, in push
+            // order — the loop's own lane, not a store note.
+            for (index, follow_up) in batch.take_follow_ups().into_iter().enumerate() {
+                queue.insert(index, follow_up);
             }
         }
 
@@ -990,6 +988,18 @@ impl Application {
             // resized its touched rows); clear it AFTER consumption —
             // id-routed landings append to it mid-batch.
             store.put(crate::diffs::DressedViews::default());
+        }
+        // The safety net for a tail lane's follow-up: the queue loop
+        // is over, so perform them here — late but never lost.
+        loop {
+            let late = batch.take_follow_ups();
+            if late.is_empty() {
+                break;
+            }
+            for command in late {
+                let mut fx = batch.effects();
+                self.perform(&mut store, &ui, command, &mut fx);
+            }
         }
         let probe_perform = probe.elapsed();
         self.commit(store, scope.1.as_ref());

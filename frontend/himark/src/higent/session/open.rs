@@ -109,8 +109,7 @@ impl DynamicCommand for OpenSubscribedSession {
         );
         crate::switch_session(store, window, key.clone(), fx);
 
-        crate::commands::BatchRequests::push(
-            store,
+        fx.follow_up(AppCommand::Dynamic(
             window,
             Arc::new(EnterSessionWork {
                 server: self.server,
@@ -119,7 +118,7 @@ impl DynamicCommand for OpenSubscribedSession {
                 initial_prompt: self.initial_prompt.clone(),
                 default_chat: state.default_chat.clone().map(ChatUri::new),
             }),
-        );
+        ));
     }
 }
 

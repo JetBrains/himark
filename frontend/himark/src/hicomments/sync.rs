@@ -89,6 +89,11 @@ pub struct Comments {
 
     channel: Option<ChannelFeed>,
 
+    /// A landing's pending card work (inlay mint and removal) — the
+    /// collection's own note to its `after_route` tail, drained the
+    /// same batch. Private schema, not a store component.
+    work: CardWork,
+
     generation: u64,
 
     minted: u64,
@@ -129,15 +134,21 @@ impl std::fmt::Display for CommentsCommand {
     }
 }
 
-/// A note the collection leaves for the application road after a
-/// landing (the `BaseRearms` shape): cards whose records died drop
-/// their inlays, and the surviving records settle into cards. The
-/// entity holds no document-addressed effects of its own; the
-/// `AtComments` arm consumes this with the ones it has.
+/// A landing's pending card work: cards whose records died drop
+/// their inlays, and the surviving records settle into cards. Lives
+/// ON the collection row — written behind the lease, drained by
+/// `after_route` the same batch; the entity holds no
+/// document-addressed effects of its own.
 #[derive(Clone, Default)]
 pub struct CardWork {
     pub dead: Vec<(DocumentId, InlayKey)>,
     pub settle: bool,
+}
+
+impl CardWork {
+    fn is_empty(&self) -> bool {
+        self.dead.is_empty() && !self.settle
+    }
 }
 
 impl imba::store::Entity for Comments {
@@ -178,7 +189,7 @@ impl imba::store::Entity for Comments {
                     fold_set(self, feed.server, &session, annotation, location);
                 }
                 self.generation += 1;
-                self.note_card_work(store, Vec::new());
+                self.note_card_work(Vec::new());
                 self.relaunch_poll(&session, fx);
             }
             CommentsCommand::Polled { session, actions } => {
@@ -196,7 +207,7 @@ impl imba::store::Entity for Comments {
                     .collect();
                 let dead = self.fold_polled(feed.server, &session, &actions, &placed);
                 self.generation += 1;
-                self.note_card_work(store, dead);
+                self.note_card_work(dead);
                 self.relaunch_poll(&session, fx);
             }
             CommentsCommand::Sent { ids, result } => {
@@ -218,7 +229,7 @@ impl imba::store::Entity for Comments {
                     }
                     self.remove_in_place(id);
                 }
-                store.update::<CardWork>(|work| work.dead.extend(dead));
+                self.work.dead.extend(dead);
             }
         }
     }
@@ -242,7 +253,12 @@ impl crate::AppEntity for Comments {
         id: imba::store::Id<Self>,
         fx: &mut crate::AppFx<'_>,
     ) {
-        if let Some(work) = store.take::<CardWork>() {
+        let Some(mut row) = store.entity::<Comments>(id).cloned() else {
+            return;
+        };
+        let work = std::mem::take(&mut row.work);
+        store.put_entity(id, row);
+        if !work.is_empty() {
             run_card_work(store, ui, id, work, fx);
         }
     }
@@ -279,6 +295,7 @@ impl Comments {
             records: rpds::HashTrieMapSync::new_sync(),
             cards: rpds::HashTrieMapSync::new_sync(),
             channel: None,
+            work: CardWork::default(),
             generation: 0,
             minted: 0,
         }
@@ -537,13 +554,12 @@ impl Comments {
         self.generation += 1;
     }
 
-    /// Leave the card note for the application road: a landing's
-    /// document work (inlay mint and removal) runs behind the lease.
-    fn note_card_work(&self, store: &mut Store, dead: Vec<(DocumentId, InlayKey)>) {
-        store.update::<CardWork>(|work| {
-            work.dead.extend(dead);
-            work.settle = true;
-        });
+    /// Leave the card note on the row: a landing's document work
+    /// (inlay mint and removal) runs behind the lease, so the work
+    /// waits for `after_route`.
+    fn note_card_work(&mut self, dead: Vec<(DocumentId, InlayKey)>) {
+        self.work.dead.extend(dead);
+        self.work.settle = true;
     }
 
     /// Attach the annotations feed of the wire that serves a folder —

@@ -202,3 +202,31 @@ fn retain_launches_degrades_a_rejected_relaunch_to_its_cancel() {
     assert_eq!(messages.len(), 1, "both launches dropped, the cancel stays");
     assert!(matches!(&messages[0], Message::Cancel(token) if *token == previous));
 }
+
+#[test]
+fn follow_ups_drain_in_push_order_and_scopes_wrap_them() {
+    let mut batch: Batch<Root> = Batch::new();
+    let mut fx = batch.effects();
+    fx.follow_up(Root::A(1));
+    fx.launch(RootProbe(7));
+    fx.scope(Root::A, |fx| fx.follow_up(2));
+    fx.follow_up(Root::A(3));
+
+    let follow_ups = batch.take_follow_ups();
+    assert_eq!(
+        follow_ups.len(),
+        3,
+        "every follow-up extracted, wrapped included"
+    );
+    assert!(matches!(follow_ups[0], Root::A(1)));
+    assert!(
+        matches!(follow_ups[1], Root::A(2)),
+        "the scoped follow-up arrived wrapped"
+    );
+    assert!(matches!(follow_ups[2], Root::A(3)));
+    assert!(
+        batch.take_follow_ups().is_empty(),
+        "a second take finds none"
+    );
+    assert_eq!(batch.drain().len(), 1, "the launch survived the take");
+}

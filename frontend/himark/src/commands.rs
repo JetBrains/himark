@@ -75,22 +75,6 @@ impl Commands {
 #[derive(Clone, Default)]
 pub struct AppRequests(Vec<Arc<dyn DynamicCommand>>);
 
-#[derive(Clone, Default)]
-pub struct BatchRequests(Vec<(crate::WindowId, Arc<dyn DynamicCommand>)>);
-
-impl BatchRequests {
-    pub fn push(store: &mut Store, window: crate::WindowId, request: Arc<dyn DynamicCommand>) {
-        store.update::<BatchRequests>(|requests| requests.0.push((window, request)));
-    }
-
-    pub(crate) fn drain(store: &mut Store) -> Vec<(crate::WindowId, Arc<dyn DynamicCommand>)> {
-        store
-            .take::<BatchRequests>()
-            .map(|requests| requests.0)
-            .unwrap_or_default()
-    }
-}
-
 impl AppRequests {
     pub fn push(store: &mut Store, request: Arc<dyn DynamicCommand>) {
         store.update::<AppRequests>(|requests| requests.0.push(request));

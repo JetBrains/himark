@@ -148,6 +148,14 @@ pub enum Message<R> {
     Cancel(CancellationToken),
 
     Relaunch(CancellationToken, CancellationToken, AnyEffect<R>),
+
+    /// A SYNCHRONOUS follow-up command: the batch loop drains these
+    /// after the pushing command returns and performs them next, in
+    /// push order — the explicit road for "and then, this same
+    /// batch", owned by the loop instead of smuggled through a store
+    /// note. Rides the scope chain like any result, so a scoped
+    /// perform's follow-up arrives already wrapped.
+    FollowUp(R),
 }
 
 pub struct Batch<R> {
@@ -194,6 +202,7 @@ impl<R: 'static> Batch<R> {
                         Message::Launch(token, effect.map(move |result| wrap(result)))
                     }
                     Message::Cancel(token) => Message::Cancel(token),
+                    Message::FollowUp(command) => Message::FollowUp(wrap(command)),
                     Message::Relaunch(previous, token, effect) => {
                         let wrap = wrap.clone();
                         Message::Relaunch(previous, token, effect.map(move |result| wrap(result)))
@@ -211,7 +220,7 @@ impl<R: 'static> Batch<R> {
                 Message::Cancel(token) => Some(*token),
 
                 Message::Relaunch(previous, _, _) => Some(*previous),
-                Message::Launch(..) => None,
+                Message::Launch(..) | Message::FollowUp(_) => None,
             })
             .collect();
         messages
@@ -232,7 +241,7 @@ impl<R: 'static> Batch<R> {
             .into_iter()
             .filter_map(|message| match message {
                 Message::Launch(_, ref effect) => keep(effect).then_some(message),
-                Message::Cancel(_) => Some(message),
+                Message::Cancel(_) | Message::FollowUp(_) => Some(message),
                 Message::Relaunch(previous, _, ref effect) => match keep(effect) {
                     true => Some(message),
                     false => Some(Message::Cancel(previous)),
@@ -247,6 +256,31 @@ impl<R: 'static> Batch<R> {
 
     /// Strip any settle requests out of the batch (they must never
     /// reach a handler) and say whether one was present.
+    /// Extract the follow-up commands, push order kept. The batch
+    /// loop calls this after every performed command; `launch`
+    /// refuses a batch that still holds one.
+    pub fn take_follow_ups(&mut self) -> Vec<R> {
+        if !self
+            .messages
+            .iter()
+            .any(|message| matches!(message, Message::FollowUp(_)))
+        {
+            return Vec::new();
+        }
+        let mut follow_ups = Vec::new();
+        self.messages = std::mem::take(&mut self.messages)
+            .into_iter()
+            .filter_map(|message| match message {
+                Message::FollowUp(command) => {
+                    follow_ups.push(command);
+                    None
+                }
+                kept => Some(kept),
+            })
+            .collect();
+        follow_ups
+    }
+
     pub fn take_settle(&mut self) -> bool {
         let before = self.messages.len();
         self.messages.retain(
@@ -299,6 +333,9 @@ impl<C: 'static, R: 'static, W: Fn(C) -> R + Send + Clone + 'static> Sink<C>
                 ));
             }
             Message::Cancel(token) => self.parent.forward(Message::Cancel(token)),
+            Message::FollowUp(command) => {
+                self.parent.forward(Message::FollowUp((self.wrap)(command)))
+            }
             Message::Relaunch(previous, token, effect) => {
                 let wrap = self.wrap.clone();
                 self.parent.forward(Message::Relaunch(
@@ -325,6 +362,7 @@ impl<C: 'static, K: Fn(&AnyEffect<C>) -> bool> Sink<C> for Filtered<'_, C, K> {
                 }
             }
             Message::Cancel(token) => self.parent.forward(Message::Cancel(token)),
+            Message::FollowUp(command) => self.parent.forward(Message::FollowUp(command)),
 
             Message::Relaunch(previous, token, effect) => match (self.keep)(&effect) {
                 true => self
@@ -375,6 +413,14 @@ impl<'a, R: 'static> Effects<'a, R> {
 
     pub fn notify<E: Effect<Result = ()>>(&mut self, effect: E) -> CancellationToken {
         self.push(AnyEffect::notification(effect))
+    }
+
+    /// Queue a command the batch loop performs right after the
+    /// current one returns, in push order — "and then, this same
+    /// batch". No store note, no async hop; a scoped push arrives
+    /// wrapped like any result.
+    pub fn follow_up(&mut self, command: R) {
+        self.sink.forward(Message::FollowUp(command));
     }
 
     pub fn cancel(&mut self, token: CancellationToken) {
