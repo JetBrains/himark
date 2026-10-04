@@ -161,7 +161,13 @@ impl DynamicCommand for EnterSessionWork {
                 fx,
             );
             for folder in folders {
-                crate::hicomments::Comments::ensure(store, family.comments(), &folder, fx);
+                crate::drivers::comments::ensure(
+                    store,
+                    window,
+                    family.comments_wire(),
+                    &folder,
+                    fx,
+                );
             }
         }
         // The poll is the session MIRROR's lifeline, not the chat's:
@@ -369,11 +375,11 @@ pub(crate) fn apply_channel_actions(
         // every folder; one added mid-session gets the same here.
         // The channel names the session it serves; the family's
         // collection takes the folder.
-        if let Some(comments) =
-            crate::higent::Hosts::family(store, key).map(|family| family.comments())
+        if let Some(wire) =
+            crate::higent::Hosts::family(store, key).map(|family| family.comments_wire())
         {
             for folder in crate::higent::session_folders(store, key) {
-                crate::hicomments::Comments::ensure(store, comments, &folder, fx);
+                crate::drivers::comments::ensure(store, window, wire, &folder, fx);
             }
         }
     }

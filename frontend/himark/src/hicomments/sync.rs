@@ -4,22 +4,10 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use crate::higent::ahp_types::actions::{
-    AnnotationsEntrySetAction, AnnotationsRemovedAction, AnnotationsSetAction,
-    AnnotationsUpdatedAction, StateAction,
-};
-use crate::higent::ahp_types::common::StringOrMarkdown;
-use crate::higent::ahp_types::state::{
-    Annotation, AnnotationEntry, AnnotationsState, MessageAnnotationsAttachment, MessageAttachment,
-    TextPosition, TextRange,
-};
 use crate::{AppCommand, AppFx, DocumentId, InlayKey, LineCol, ResourceLocation, WindowId};
-use imba::effect::{AnyEffect, Effects};
 use imba::store::Store;
 
 use crate::hicomments::{comments_markup, CommentView};
-
-use crate::higent::SessionUri as Uri;
 
 pub type AnnotationId = String;
 
@@ -34,8 +22,6 @@ pub struct EntryRecord {
 
 #[derive(Clone)]
 pub struct CommentRecord {
-    pub server: crate::higent::HostId,
-    pub session: Uri,
     pub location: ResourceLocation,
 
     pub range: Option<Range<LineCol>>,
@@ -64,12 +50,54 @@ impl CommentRecord {
     }
 }
 
+/// The model's MIRROR of an incoming annotation — the driver
+/// digests the wire shape into this; the model folds values.
 #[derive(Clone)]
-struct ChannelFeed {
-    session: Uri,
-    server: crate::higent::HostId,
-    seat: Arc<dyn crate::higent::AhpServer>,
-    live: bool,
+pub struct CommentSeed {
+    pub id: AnnotationId,
+    pub location: ResourceLocation,
+    pub range: Option<Range<LineCol>>,
+    pub turn_id: String,
+    pub resolved: bool,
+    pub entries: Vec<EntryRecord>,
+}
+
+/// A streamed comments update, mirrored.
+#[derive(Clone)]
+pub enum CommentDelta {
+    Set(CommentSeed),
+    Updated {
+        id: AnnotationId,
+        turn_id: Option<String>,
+        range: Option<Range<LineCol>>,
+        resolved: Option<bool>,
+    },
+    Removed {
+        id: AnnotationId,
+    },
+    EntrySet {
+        id: AnnotationId,
+        entry_id: String,
+        text: crate::Text,
+    },
+    EntryRemoved {
+        id: AnnotationId,
+        entry_id: String,
+    },
+}
+
+/// An outbound intent the model NOTED — the wire driver's lane
+/// drains these onto a live channel; the model never dispatches.
+#[derive(Clone)]
+pub enum Announce {
+    /// The whole record (a fresh comment, or one born offline).
+    Set(AnnotationId),
+    /// Our entry's text changed.
+    EntrySet { id: AnnotationId, entry_id: String },
+    /// Resolution (or other record meta) changed.
+    Meta(AnnotationId),
+    /// The record left — announced so the host forgets it too.
+    Removed(AnnotationId),
 }
 
 #[derive(Clone)]
@@ -78,57 +106,22 @@ pub struct Comments {
     /// (docs/entities.md law 4).
     documents: imba::store::Id<crate::OpenDocuments>,
 
-    /// The host's location↔uri translation, stamped by the ceremony
-    /// (mint, or the heal after a placeholder rekey) — read from the
-    /// own record instead of routing through `Hosts` (law 3).
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
-
     records: rpds::HashTrieMapSync<AnnotationId, CommentRecord>,
 
     cards: rpds::HashTrieMapSync<AnnotationId, (DocumentId, InlayKey)>,
 
-    channel: Option<ChannelFeed>,
-
     /// A landing's pending card work (inlay mint and removal) — the
-    /// collection's own note to its `after_route` tail, drained the
+    /// collection's own note to the wire driver's lane, drained the
     /// same batch. Private schema, not a store component.
     work: CardWork,
+
+    /// Outbound intents awaiting a live channel — the other half of
+    /// the note.
+    announce: Vec<Announce>,
 
     generation: u64,
 
     minted: u64,
-}
-
-/// What the collection answers to behind its `At` address
-/// (docs/entities.md law 5): the annotations feed's landings and the
-/// send-turn's answer, each stamped with the collection id at launch.
-#[derive(Clone)]
-pub enum CommentsCommand {
-    /// The annotations subscribe answered for the feed's session.
-    Snapshot {
-        session: Uri,
-        result: Result<AnnotationsState, String>,
-    },
-    /// The annotations poll drained for the feed's session.
-    Polled {
-        session: Uri,
-        actions: Vec<StateAction>,
-    },
-    /// The send-to-agent turn answered for a batch of comments.
-    Sent {
-        ids: Vec<AnnotationId>,
-        result: Result<(), String>,
-    },
-}
-
-impl std::fmt::Display for CommentsCommand {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CommentsCommand::Snapshot { .. } => out.write_str("comments snapshot"),
-            CommentsCommand::Polled { .. } => out.write_str("comments polled"),
-            CommentsCommand::Sent { .. } => out.write_str("comments sent"),
-        }
-    }
 }
 
 /// A landing's pending card work: cards whose records died drop
@@ -148,119 +141,6 @@ impl CardWork {
     }
 }
 
-impl imba::store::Entity for Comments {
-    type Command = CommentsCommand;
-
-    fn perform(
-        &mut self,
-        _id: imba::store::Id<Self>,
-        command: CommentsCommand,
-        store: &mut Store,
-        _ui: &imba::UiCtx,
-        fx: &mut Effects<'_, CommentsCommand>,
-    ) {
-        match command {
-            CommentsCommand::Snapshot { session, result } => {
-                let Some(feed) = self.channel_for(&session).cloned() else {
-                    return;
-                };
-                let state = match result {
-                    Ok(state) => state,
-                    Err(_) => {
-                        self.channel = None;
-                        return;
-                    }
-                };
-                let placed: Vec<(Annotation, ResourceLocation)> = state
-                    .annotations
-                    .iter()
-                    .filter_map(|annotation| {
-                        self.place(store, &session, annotation)
-                            .map(|location| (annotation.clone(), location))
-                    })
-                    .collect();
-                let mut live = feed.clone();
-                live.live = true;
-                self.channel = Some(live);
-                for (annotation, location) in &placed {
-                    fold_set(self, feed.server, &session, annotation, location);
-                }
-                self.generation += 1;
-                self.note_card_work(Vec::new());
-                self.relaunch_poll(&session, fx);
-            }
-            CommentsCommand::Polled { session, actions } => {
-                let Some(feed) = self.channel_for(&session).cloned() else {
-                    return;
-                };
-                let placed: std::collections::HashMap<AnnotationId, ResourceLocation> = actions
-                    .iter()
-                    .filter_map(|action| match action {
-                        StateAction::AnnotationsSet(set) => self
-                            .place(store, &session, &set.annotation)
-                            .map(|location| (set.annotation.id.clone(), location)),
-                        _ => None,
-                    })
-                    .collect();
-                let dead = self.fold_polled(feed.server, &session, &actions, &placed);
-                self.generation += 1;
-                self.note_card_work(dead);
-                self.relaunch_poll(&session, fx);
-            }
-            CommentsCommand::Sent { ids, result } => {
-                if let Err(error) = &result {
-                    eprintln!("[comments] send failed, comments kept: {error}");
-                    for id in &ids {
-                        let Some(mut record) = self.records.get(id).cloned() else {
-                            continue;
-                        };
-                        record.sending = false;
-                        self.records.insert_mut(id.clone(), record);
-                    }
-                    return;
-                }
-                let mut dead = Vec::new();
-                for id in &ids {
-                    if let Some(card) = self.cards.get(id) {
-                        dead.push(*card);
-                    }
-                    self.remove_in_place(id);
-                }
-                self.work.dead.extend(dead);
-            }
-        }
-    }
-
-    fn destroy(&mut self, store: &mut Store) {
-        // Records and cards are the collection's PRIVATE schema —
-        // nothing to retract; the feed dies with the drop. The hook
-        // and the gesture command the ceremony wired to this
-        // collection die with it (law 6 symmetry).
-        crate::OpenDocuments::retire_scope(store, self.documents);
-    }
-}
-
-impl crate::AppEntity for Comments {
-    /// The landing's note: cards whose records died drop their inlays
-    /// and the records settle into cards — document-addressed effects
-    /// the entity itself does not hold.
-    fn after_route(
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        id: imba::store::Id<Self>,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let Some(mut row) = store.entity::<Comments>(id).cloned() else {
-            return;
-        };
-        let work = std::mem::take(&mut row.work);
-        store.put_entity(id, row);
-        if !work.is_empty() {
-            run_card_work(store, ui, id, work, fx);
-        }
-    }
-}
-
 impl Comments {
     pub fn install(store: &mut Store) {
         crate::registry::Registry::update(store, |registry| registry.comments = true);
@@ -270,42 +150,22 @@ impl Comments {
         crate::registry::Registry::of(store).is_some_and(|registry| registry.comments)
     }
 
-    fn channel_for(&self, session: &Uri) -> Option<&ChannelFeed> {
-        self.channel
-            .as_ref()
-            .filter(|feed| feed.session == *session)
-    }
-
     pub(crate) fn is_empty(&self) -> bool {
-        self.records.is_empty() && self.cards.is_empty() && self.channel.is_none()
+        self.records.is_empty() && self.cards.is_empty()
     }
 
     /// A collection wired to the documents its cards live in — minted
     /// by the family ceremony.
-    pub fn wired(
-        documents: imba::store::Id<crate::OpenDocuments>,
-        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
-    ) -> Self {
+    pub fn wired(documents: imba::store::Id<crate::OpenDocuments>) -> Self {
         Self {
             documents,
-            uris,
             records: rpds::HashTrieMapSync::new_sync(),
             cards: rpds::HashTrieMapSync::new_sync(),
-            channel: None,
             work: CardWork::default(),
+            announce: Vec::new(),
             generation: 0,
             minted: 0,
         }
-    }
-
-    /// The ceremony's heal for a uri map that arrived after the mint
-    /// (the local placeholder rekeyed to the real host).
-    pub(crate) fn stamp_uris(
-        store: &mut Store,
-        comments: imba::store::Id<Comments>,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
-    ) {
-        Self::update(store, comments, |row| row.uris = Some(Arc::clone(uris)));
     }
 
     pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
@@ -375,7 +235,7 @@ impl Comments {
         Self::of(store, comments)?.cards.get(id).copied()
     }
 
-    fn update_record(
+    pub(crate) fn update_record(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
         id: &AnnotationId,
@@ -400,134 +260,149 @@ impl Comments {
         id
     }
 
-    /// The annotation's document location through the host's uri
-    /// map — an existing record keeps the location it had.
-    fn place(
-        &self,
-        _store: &Store,
-        session: &Uri,
-        annotation: &Annotation,
-    ) -> Option<ResourceLocation> {
-        if let Some(held) = self.records.get(&annotation.id) {
-            return Some(held.location.clone());
-        }
-        let server = self.channel_for(session)?.server;
-        let uris = self.uris.clone()?;
-        let authority = crate::higent::seat::route_authority(server, session);
-        uris.location_of(
-            &crate::higent::ResourceUri::new(annotation.resource.clone()),
-            crate::ResourceType::document(),
-            &authority,
-        )
-    }
-
     /// Fold the feed's streamed actions; cards whose records died come
     /// back for the application road to drop.
-    fn fold_polled(
-        &mut self,
-        server: crate::higent::HostId,
-        session: &Uri,
-        actions: &[StateAction],
-        placed: &std::collections::HashMap<AnnotationId, ResourceLocation>,
-    ) -> Vec<(DocumentId, InlayKey)> {
-        let mut dead_cards: Vec<(DocumentId, InlayKey)> = Vec::new();
-        for action in actions {
-            match action {
-                StateAction::AnnotationsSet(set) => {
-                    let Some(location) = placed.get(&set.annotation.id) else {
-                        continue;
-                    };
-                    fold_set(self, server, session, &set.annotation, location);
-                }
-                StateAction::AnnotationsUpdated(updated) => {
-                    let Some(mut record) = self.records.get(&updated.annotation_id).cloned() else {
-                        continue;
-                    };
-                    if let Some(origin) = &updated.origin {
-                        // The action replaces provenance wholesale
-                        // (AHP 0.9) — adopt its turn, present or not.
-                        record.turn_id = origin.turn_id.clone().unwrap_or_default();
-                    }
-                    if let Some(range) = &updated.range {
-                        record.range = Some(from_wire(range));
-                    }
-                    if let Some(resolved) = updated.resolved {
-                        record.resolved = resolved;
-                    }
-                    self.records
-                        .insert_mut(updated.annotation_id.clone(), record);
-                }
-                StateAction::AnnotationsRemoved(removed) => {
-                    if let Some(card) = self.cards.get(&removed.annotation_id) {
-                        dead_cards.push(*card);
-                    }
-                    self.records.remove_mut(&removed.annotation_id);
-                    self.cards.remove_mut(&removed.annotation_id);
-                }
-                StateAction::AnnotationsEntrySet(set) => {
-                    let Some(mut record) = self.records.get(&set.annotation_id).cloned() else {
-                        continue;
-                    };
-                    let text = wire_text(&set.entry.text);
-                    let mut entries: Vec<EntryRecord> = record.entries.iter().cloned().collect();
-                    let mut foreign_touch = true;
-                    match entries.iter_mut().find(|held| held.id == set.entry.id) {
-                        Some(held) => {
-                            foreign_touch = !held.ours;
-                            held.text = text;
-                        }
-                        None => entries.push(EntryRecord {
-                            id: set.entry.id.clone(),
-                            text,
-                            ours: false,
-                        }),
-                    }
-                    record.entries = entries.into_iter().collect();
-                    record.thread_stamp += u64::from(foreign_touch);
-                    self.records.insert_mut(set.annotation_id.clone(), record);
-                }
-                StateAction::AnnotationsEntryRemoved(removed) => {
-                    let Some(mut record) = self.records.get(&removed.annotation_id).cloned() else {
-                        continue;
-                    };
-                    let foreign_touch = record
-                        .entries
-                        .iter()
-                        .any(|held| held.id == removed.entry_id && !held.ours);
-                    record.entries = record
-                        .entries
-                        .iter()
-                        .filter(|held| held.id != removed.entry_id)
-                        .cloned()
-                        .collect();
-                    record.thread_stamp += u64::from(foreign_touch);
-                    self.records
-                        .insert_mut(removed.annotation_id.clone(), record);
-                }
-                _ => {}
+    /// Land a snapshot's seeds — the driver digested the wire; this
+    /// is value folding (existing records keep their location, their
+    /// ours-marks and their send flags).
+    pub(crate) fn land_seeds(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        seeds: Vec<CommentSeed>,
+    ) {
+        Self::update(store, comments, |held| {
+            for seed in &seeds {
+                held.fold_seed(seed);
             }
-        }
-        dead_cards
+            held.generation += 1;
+            held.note_card_work(Vec::new());
+        });
     }
 
-    /// The landing's own poll relaunch — the next batch of the feed's
-    /// annotations channel comes home as `Polled`, stamped by the
-    /// router.
-    fn relaunch_poll(&self, session: &Uri, fx: &mut Effects<'_, CommentsCommand>) {
-        let Some(feed) = self.channel_for(session) else {
-            return;
-        };
-        let landing = session.clone();
-        fx.push(
-            AnyEffect::new(crate::higent::PollAnnotationsEffect {
-                seat: feed.seat.clone(),
-                session: session.clone(),
+    /// Fold the driver's mirrored deltas; cards whose records died
+    /// ride the card-work note for the lane to drop.
+    pub(crate) fn fold_deltas(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        deltas: Vec<CommentDelta>,
+    ) {
+        Self::update(store, comments, |held| {
+            let mut dead_cards: Vec<(DocumentId, InlayKey)> = Vec::new();
+            for delta in &deltas {
+                match delta {
+                    CommentDelta::Set(seed) => held.fold_seed(seed),
+                    CommentDelta::Updated {
+                        id,
+                        turn_id,
+                        range,
+                        resolved,
+                    } => {
+                        let Some(mut record) = held.records.get(id).cloned() else {
+                            continue;
+                        };
+                        if let Some(turn) = turn_id {
+                            record.turn_id = turn.clone();
+                        }
+                        if let Some(range) = range {
+                            record.range = Some(range.clone());
+                        }
+                        if let Some(resolved) = resolved {
+                            record.resolved = *resolved;
+                        }
+                        held.records.insert_mut(id.clone(), record);
+                    }
+                    CommentDelta::Removed { id } => {
+                        if let Some(card) = held.cards.get(id) {
+                            dead_cards.push(*card);
+                        }
+                        held.records.remove_mut(id);
+                        held.cards.remove_mut(id);
+                    }
+                    CommentDelta::EntrySet { id, entry_id, text } => {
+                        let Some(mut record) = held.records.get(id).cloned() else {
+                            continue;
+                        };
+                        let mut entries: Vec<EntryRecord> =
+                            record.entries.iter().cloned().collect();
+                        let mut foreign_touch = true;
+                        match entries.iter_mut().find(|entry| entry.id == *entry_id) {
+                            Some(entry) => {
+                                foreign_touch = !entry.ours;
+                                entry.text = text.clone();
+                            }
+                            None => entries.push(EntryRecord {
+                                id: entry_id.clone(),
+                                text: text.clone(),
+                                ours: false,
+                            }),
+                        }
+                        record.entries = entries.into_iter().collect();
+                        record.thread_stamp += u64::from(foreign_touch);
+                        held.records.insert_mut(id.clone(), record);
+                    }
+                    CommentDelta::EntryRemoved { id, entry_id } => {
+                        let Some(mut record) = held.records.get(id).cloned() else {
+                            continue;
+                        };
+                        let foreign_touch = record
+                            .entries
+                            .iter()
+                            .any(|entry| entry.id == *entry_id && !entry.ours);
+                        record.entries = record
+                            .entries
+                            .iter()
+                            .filter(|entry| entry.id != *entry_id)
+                            .cloned()
+                            .collect();
+                        record.thread_stamp += u64::from(foreign_touch);
+                        held.records.insert_mut(id.clone(), record);
+                    }
+                }
+            }
+            held.generation += 1;
+            held.note_card_work(dead_cards);
+        });
+    }
+
+    /// One incoming annotation onto the records — the existing
+    /// record's location, ours-marks, thread stamp and send flag
+    /// survive the fold (the fold_set discipline).
+    fn fold_seed(&mut self, seed: &CommentSeed) {
+        let held = self.records.get(&seed.id);
+        let ours: std::collections::HashSet<String> = held
+            .map(|held| {
+                held.entries
+                    .iter()
+                    .filter(|entry| entry.ours)
+                    .map(|entry| entry.id.clone())
+                    .collect()
             })
-            .map(move |actions| CommentsCommand::Polled {
-                session: landing.clone(),
-                actions,
-            }),
-        );
+            .unwrap_or_default();
+        let location = held
+            .map(|held| held.location.clone())
+            .unwrap_or_else(|| seed.location.clone());
+        let stamp = held.map(|held| held.thread_stamp).unwrap_or(0);
+        let sending = held.is_some_and(|held| held.sending);
+        let foreign_touch = seed.entries.iter().any(|entry| !ours.contains(&entry.id));
+        let record = CommentRecord {
+            location,
+            range: seed.range.clone(),
+            turn_id: seed.turn_id.clone(),
+            resolved: seed.resolved,
+            entries: seed
+                .entries
+                .iter()
+                .map(|entry| EntryRecord {
+                    id: entry.id.clone(),
+                    text: entry.text.clone(),
+                    ours: ours.contains(&entry.id),
+                })
+                .collect(),
+            thread_stamp: stamp + u64::from(foreign_touch),
+            synced: true,
+            sending,
+        };
+        self.records.insert_mut(seed.id.clone(), record);
     }
 
     /// Remove a record (announcing it to the live feed) and forget its
@@ -537,14 +412,7 @@ impl Comments {
             return;
         };
         if record.synced {
-            if let Some(feed) = self.channel_for(&record.session) {
-                feed.seat.dispatch_annotations(
-                    &record.session,
-                    StateAction::AnnotationsRemoved(AnnotationsRemovedAction {
-                        annotation_id: id.clone(),
-                    }),
-                );
-            }
+            self.announce.push(Announce::Removed(id.clone()));
         }
         self.records.remove_mut(id);
         self.cards.remove_mut(id);
@@ -562,68 +430,25 @@ impl Comments {
     /// Attach the annotations feed of the wire that serves a folder —
     /// the collection is the caller's (the window's family), the seat
     /// and AHP session come off the folder's authority.
-    pub fn ensure(
-        store: &mut Store,
-        comments: imba::store::Id<Comments>,
-        location: &ResourceLocation,
-        fx: &mut AppFx<'_>,
-    ) {
-        if !Self::installed(store) {
-            return;
-        }
-        let Some((server, seat, session)) =
-            crate::higent::seat::route_seat(store, location.authority().as_str())
-        else {
-            return;
-        };
-        let known = Self::of(store, comments)
-            .is_some_and(|comments| comments.channel_for(&session).is_some());
-        if known {
-            return;
-        }
-        Self::update(store, comments, |comments| {
-            comments.channel = Some(ChannelFeed {
-                session: session.clone(),
-                server,
-                seat: seat.clone(),
-                live: false,
-            });
-        });
-        fx.push(
-            AnyEffect::new(crate::higent::SubscribeAnnotationsEffect {
-                seat,
-                session: session.clone(),
-            })
-            .map(move |result| {
-                AppCommand::at(
-                    comments,
-                    CommentsCommand::Snapshot {
-                        session: session.clone(),
-                        result,
-                    },
-                )
-            }),
-        );
-    }
-
+    /// A fresh comment record — unsynced; the wire lane announces it
+    /// onto a live channel. `turn_id` is the provenance stamp the
+    /// caller resolved (the driver knows the session's latest turn).
     pub fn created(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
         location: &ResourceLocation,
         range: Range<LineCol>,
+        turn_id: String,
     ) -> Option<AnnotationId> {
         if !Self::installed(store) {
             return None;
         }
-        let (server, session) = crate::higent::seat::route(store, location.authority().as_str())?;
         let id = Self::mint(store, comments);
         let entry_id = format!("{id}-e1");
         let record = CommentRecord {
-            server,
-            session,
             location: location.clone(),
             range: Some(range),
-            turn_id: String::new(),
+            turn_id,
             resolved: false,
             entries: rpds::VectorSync::new_sync().push_back(EntryRecord {
                 id: entry_id,
@@ -634,21 +459,9 @@ impl Comments {
             synced: false,
             sending: false,
         };
-        let stamp = latest_turn(store, record.server, &record.session);
-        let mut record = record;
-        record.turn_id = stamp;
-
-        let row = Self::of(store, comments);
-        let uris = row.and_then(|comments| comments.uris.clone());
-        let feed = row
-            .and_then(|comments| comments.channel_for(&record.session).cloned())
-            .filter(|feed| feed.live);
-        if let (Some(feed), Some(uris)) = (&feed, &uris) {
-            record.synced = true;
-            dispatch_set(uris, &feed.seat, &id, &record);
-        }
         Self::update(store, comments, |comments| {
             comments.records.insert_mut(id.clone(), record.clone());
+            comments.announce.push(Announce::Set(id.clone()));
             comments.generation += 1;
         });
         Some(id)
@@ -671,92 +484,68 @@ impl Comments {
         Self::update(store, comments, |comments| comments.remove_in_place(id));
     }
 
-    pub fn send_to_agent(
+    /// The send-to-agent turn answered — Err keeps the comments and
+    /// clears the flags; Ok removes them (announcing the removals so
+    /// the host forgets them too).
+    pub fn sent_outcome(
         store: &mut Store,
         comments: imba::store::Id<Comments>,
-        window: WindowId,
-        ids: Vec<AnnotationId>,
-        fx: &mut AppFx<'_>,
+        ids: &[AnnotationId],
+        result: Result<(), String>,
     ) {
-        let mut by_session: Vec<(Uri, Vec<AnnotationId>)> = Vec::new();
-        for id in ids {
-            let Some(record) = Self::record(store, comments, &id) else {
-                continue;
-            };
-            if !record.synced || record.sending {
-                continue;
-            }
-            match by_session
-                .iter_mut()
-                .find(|(session, _)| session == &record.session)
-            {
-                Some((_, group)) => group.push(id),
-                None => by_session.push((record.session.clone(), vec![id])),
-            }
-        }
-        for (session, group) in by_session {
-            let Some(feed) = Self::of(store, comments)
-                .and_then(|comments| comments.channel_for(&session).cloned())
-            else {
-                continue;
-            };
-
-            let key = crate::higent::SessionId {
-                host: feed.server,
-                session: session.clone(),
-            };
-            let mut chat = crate::higent::Agents::channel(store, &key)
-                .and_then(|channel| channel.default_chat);
-            if chat.is_none() {
-                let bound = crate::Windows::window_ref(store, window)
-                    .map(|entity| entity.current_session())
-                    .and_then(|workspace| crate::higent::Agents::live_session(store, &workspace))
-                    .filter(|bound| bound.host == feed.server);
-                if let Some(bound) = bound {
-                    chat = crate::higent::Agents::channel(store, &bound)
-                        .and_then(|channel| channel.default_chat);
+        Self::update(store, comments, |held| match &result {
+            Err(error) => {
+                eprintln!("[comments] send failed, comments kept: {error}");
+                for id in ids {
+                    let Some(mut record) = held.records.get(id).cloned() else {
+                        continue;
+                    };
+                    record.sending = false;
+                    held.records.insert_mut(id.clone(), record);
                 }
             }
-            let Some(chat) = chat else {
-                eprintln!("[comments] no chat serves {session} — send skipped");
-                continue;
-            };
-            let noun = match group.len() {
-                1 => "comment",
-                _ => "comments",
-            };
-            let attachment = MessageAttachment::Annotations(MessageAnnotationsAttachment {
-                label: format!("{} review {noun}", group.len()),
-                range: None,
-                display_kind: None,
-                meta: None,
-                resource: format!("{session}/annotations"),
-                annotation_ids: Some(group.clone()),
-            });
-            for id in &group {
-                Self::update_record(store, comments, id, |record| record.sending = true);
+            Ok(()) => {
+                let mut dead = Vec::new();
+                for id in ids {
+                    if let Some(card) = held.cards.get(id) {
+                        dead.push(*card);
+                    }
+                    held.remove_in_place(id);
+                }
+                held.work.dead.extend(dead);
             }
-            let sent = group.clone();
+        });
+    }
 
-            fx.push(
-                AnyEffect::new(crate::higent::StartTurnEffect {
-                    seat: feed.seat.clone(),
-                    chat,
-                    text: format!("Please address the attached review {noun}."),
-                    attachments: Some(vec![attachment]),
-                    model: None,
-                })
-                .map(move |result| {
-                    AppCommand::at(
-                        comments,
-                        CommentsCommand::Sent {
-                            ids: sent.clone(),
-                            result,
-                        },
-                    )
-                }),
-            );
-        }
+    /// The wire lane's gates and drains: the model notes, the driver
+    /// moves.
+    pub(crate) fn owes_sync(store: &Store, comments: imba::store::Id<Comments>) -> bool {
+        Self::of(store, comments)
+            .is_some_and(|held| !held.announce.is_empty() || !held.work.is_empty())
+    }
+
+    pub(crate) fn take_announces(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+    ) -> Vec<Announce> {
+        let Some(mut held) = store.entity::<Comments>(comments).cloned() else {
+            return Vec::new();
+        };
+        let announces = std::mem::take(&mut held.announce);
+        store.put_entity(comments, held);
+        announces
+    }
+
+    pub(crate) fn take_card_work(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+    ) -> CardWork {
+        let Some(mut held) = store.entity::<Comments>(comments).cloned() else {
+            return CardWork::default();
+        };
+        let work = std::mem::take(&mut held.work);
+        store.put_entity(comments, held);
+        work
     }
 
     pub fn text_edited(
@@ -784,24 +573,12 @@ impl Comments {
             });
         }
         if record.synced {
-            if let Some(feed) = Self::of(store, comments)
-                .and_then(|comments| comments.channel_for(&record.session).cloned())
-                .filter(|feed| feed.live)
-            {
-                feed.seat.dispatch_annotations(
-                    &record.session,
-                    StateAction::AnnotationsEntrySet(AnnotationsEntrySetAction {
-                        annotation_id: id.clone(),
-                        entry: AnnotationEntry {
-                            id: own_id,
-                            text: StringOrMarkdown::Markdown {
-                                markdown: wire_string(&text),
-                            },
-                            meta: author_meta("user"),
-                        },
-                    }),
-                );
-            }
+            Self::update(store, comments, |held| {
+                held.announce.push(Announce::EntrySet {
+                    id: id.clone(),
+                    entry_id: own_id,
+                });
+            });
         }
     }
 
@@ -816,38 +593,14 @@ impl Comments {
         };
         Self::update_record(store, comments, id, |record| record.resolved = resolved);
         if record.synced {
-            if let Some(feed) = Self::of(store, comments)
-                .and_then(|comments| comments.channel_for(&record.session).cloned())
-            {
-                feed.seat.dispatch_annotations(
-                    &record.session,
-                    StateAction::AnnotationsUpdated(AnnotationsUpdatedAction {
-                        annotation_id: id.clone(),
-                        origin: None,
-                        resource: None,
-                        range: None,
-                        resolved: Some(resolved),
-                    }),
-                );
-            }
+            Self::update(store, comments, |held| {
+                held.announce.push(Announce::Meta(id.clone()));
+            });
         }
     }
 }
 
-fn latest_turn(store: &Store, server: crate::higent::HostId, session: &Uri) -> String {
-    crate::higent::Agents::latest_turn(
-        store,
-        &crate::higent::SessionId {
-            host: server,
-            session: session.clone(),
-        },
-    )
-    .unwrap_or_default()
-}
-
-/// The `AtComments` arm's drain: a landing's card note runs with the
-/// application effects the entity does not hold.
-pub(crate) fn run_card_work(
+pub fn run_card_work(
     store: &mut Store,
     ui: &imba::UiCtx,
     comments: imba::store::Id<Comments>,
@@ -872,21 +625,8 @@ fn settle_cards(
     comments: imba::store::Id<Comments>,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(feed) = Comments::of(store, comments).and_then(|comments| comments.channel.clone())
-    else {
-        return;
-    };
-    let session = feed.session.clone();
-    let uris = Comments::of(store, comments).and_then(|comments| comments.uris.clone());
-    let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments)
-        .into_iter()
-        .filter(|(_, record)| record.session == session)
-        .collect();
+    let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments);
     for (id, record) in records {
-        if let Some(uris) = uris.as_ref().filter(|_| !record.synced && feed.live) {
-            dispatch_set(uris, &feed.seat, &id, &record);
-            Comments::update_record(store, comments, &id, |record| record.synced = true);
-        }
         match Comments::card(store, comments, &id) {
             Some(_) => refresh_card(store, ui, comments, &id, &record),
             None => {
@@ -900,56 +640,6 @@ fn settle_cards(
             }
         }
     }
-}
-
-fn fold_set(
-    comments: &mut Comments,
-    server: crate::higent::HostId,
-    session: &Uri,
-    annotation: &Annotation,
-    location: &ResourceLocation,
-) {
-    let held = comments.records.get(&annotation.id);
-    let ours: std::collections::HashSet<String> = held
-        .map(|held| {
-            held.entries
-                .iter()
-                .filter(|entry| entry.ours)
-                .map(|entry| entry.id.clone())
-                .collect()
-        })
-        .unwrap_or_default();
-
-    let stamp = held.map(|held| held.thread_stamp).unwrap_or(0);
-    let foreign_touch = annotation
-        .entries
-        .iter()
-        .any(|entry| !ours.contains(&entry.id));
-    let record = CommentRecord {
-        server,
-        session: session.clone(),
-        location: location.clone(),
-        range: annotation.range.as_ref().map(from_wire),
-        turn_id: annotation.origin.turn_id.clone().unwrap_or_default(),
-        resolved: annotation.resolved,
-        entries: annotation
-            .entries
-            .iter()
-            .map(|entry| EntryRecord {
-                id: entry.id.clone(),
-                text: wire_text(&entry.text),
-                ours: ours.contains(&entry.id),
-            })
-            .collect(),
-        thread_stamp: stamp + u64::from(foreign_touch),
-        synced: true,
-
-        sending: comments
-            .records
-            .get(&annotation.id)
-            .is_some_and(|held| held.sending),
-    };
-    comments.records.insert_mut(annotation.id.clone(), record);
 }
 
 fn remove_card(
@@ -1221,86 +911,4 @@ fn refresh_card(
         crate::Inlay::new(crate::InlayMode::Under, rebuilt),
     );
     crate::OpenDocuments::put_document(store, documents, document, doc);
-}
-
-fn dispatch_set(
-    uris: &Arc<dyn crate::higent::ResourceUriMap>,
-    seat: &Arc<dyn crate::higent::AhpServer>,
-    id: &AnnotationId,
-    record: &CommentRecord,
-) {
-    let uri = uris.uri_of(&record.location).into_string();
-    seat.dispatch_annotations(
-        &record.session,
-        StateAction::AnnotationsSet(AnnotationsSetAction {
-            annotation: Annotation {
-                id: id.clone(),
-                origin: crate::higent::ahp_types::state::AnnotationOrigin {
-                    session: record.session.to_string(),
-                    chat: None,
-                    turn_id: (!record.turn_id.is_empty()).then(|| record.turn_id.clone()),
-                },
-                resource: uri,
-                range: record.range.as_ref().map(to_wire),
-                resolved: record.resolved,
-                entries: record
-                    .entries
-                    .iter()
-                    .map(|entry| AnnotationEntry {
-                        id: entry.id.clone(),
-                        text: StringOrMarkdown::Markdown {
-                            markdown: wire_string(&entry.text),
-                        },
-                        meta: author_meta(if entry.ours { "user" } else { "agent" }),
-                    })
-                    .collect(),
-                meta: None,
-            },
-        }),
-    );
-}
-
-fn author_meta(author: &str) -> Option<serde_json::Map<String, serde_json::Value>> {
-    let mut himark = serde_json::Map::new();
-    himark.insert(
-        "author".to_owned(),
-        serde_json::Value::String(author.to_owned()),
-    );
-    let mut meta = serde_json::Map::new();
-    meta.insert("himark".to_owned(), serde_json::Value::Object(himark));
-    Some(meta)
-}
-
-fn wire_text(text: &StringOrMarkdown) -> crate::Text {
-    crate::Text::from_string_exact(match text {
-        StringOrMarkdown::Plain(text) => text,
-        StringOrMarkdown::Markdown { markdown } => markdown,
-    })
-}
-
-fn wire_string(text: &crate::Text) -> String {
-    let mut view = text.view();
-    let end = view.byte_count().min(u32::MAX as usize) as u32;
-    view.substring(0..end)
-}
-
-fn to_wire(range: &Range<LineCol>) -> TextRange {
-    TextRange {
-        start: TextPosition {
-            line: range.start.line as i64,
-            character: range.start.col as i64,
-        },
-        end: TextPosition {
-            line: range.end.line as i64,
-            character: range.end.col as i64,
-        },
-    }
-}
-
-fn from_wire(range: &TextRange) -> Range<LineCol> {
-    let position = |position: &TextPosition| LineCol {
-        line: position.line.max(0) as u32,
-        col: position.character.max(0) as u32,
-    };
-    position(&range.start)..position(&range.end)
 }

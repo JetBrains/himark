@@ -987,6 +987,15 @@ impl Application {
                     &dressed,
                     &mut fx,
                 );
+                // The comments lane: the model's announce and card
+                // notes drain onto the wire — a clean collection
+                // costs a map read.
+                crate::drivers::comments::sync(
+                    &mut store,
+                    family.comments_wire(),
+                    &self.ui_ctx(),
+                    &mut fx,
+                );
             }
         }
         // The safety net for a tail lane's follow-up: the queue loop

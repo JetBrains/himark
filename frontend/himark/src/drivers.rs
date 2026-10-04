@@ -9,3 +9,4 @@
 //! here and nowhere inside a collection.
 
 pub mod changes;
+pub mod comments;

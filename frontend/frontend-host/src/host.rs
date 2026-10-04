@@ -409,7 +409,7 @@ impl DynamicCommand for OpenPicked {
                 .unwrap_or_else(|| himark::SessionId::local_default(store));
             let family = himark::Windows::session_family(store, window);
             if let (true, Some(family)) = (workspace.names_session(), family) {
-                let (wire, comments) = (family.changes_wire(), family.comments());
+                let (wire, comments_wire) = (family.changes_wire(), family.comments_wire());
                 for folder in folders {
                     let spelled = himark::ResourceLocation::new(
                         folder.kind().clone(),
@@ -426,7 +426,7 @@ impl DynamicCommand for OpenPicked {
                         spelled.clone(),
                         fx,
                     );
-                    himark::hicomments::Comments::ensure(store, comments, &spelled, fx);
+                    himark::drivers::comments::ensure(store, window, comments_wire, &spelled, fx);
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
                 eprintln!("[host] folder pick dropped: no local agent host to session it");

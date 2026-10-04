@@ -63,6 +63,8 @@ pub struct SessionState {
 
     history_wire: Id<crate::drivers::history::HistoryWire>,
 
+    comments_wire: Id<crate::drivers::comments::CommentsWire>,
+
     history: Id<crate::hihistory::History>,
 
     comments: Id<crate::hicomments::Comments>,
@@ -101,6 +103,10 @@ impl SessionState {
         self.history_wire
     }
 
+    pub fn comments_wire(&self) -> Id<crate::drivers::comments::CommentsWire> {
+        self.comments_wire
+    }
+
     pub fn history(&self) -> Id<crate::hihistory::History> {
         self.history
     }
@@ -133,6 +139,7 @@ impl SessionState {
             changes: Id::mint(),
             changes_wire: Id::mint(),
             history_wire: Id::mint(),
+            comments_wire: Id::mint(),
             history: Id::mint(),
             comments: Id::mint(),
             terminals: Id::mint(),
@@ -153,6 +160,7 @@ impl SessionState {
         empty(store, self.chats, |it| it.is_empty())
             && empty(store, self.changes_wire, |it| it.is_empty())
             && empty(store, self.history_wire, |it| it.is_empty())
+            && empty(store, self.comments_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
             && empty(store, self.recents, |it| it.is_empty())
             && empty(store, self.changes, |it| it.is_empty())
@@ -173,8 +181,12 @@ impl SessionState {
         store.retract(self.changes);
         store.retract(self.changes_wire);
         store.retract(self.history_wire);
+        store.retract(self.comments_wire);
+        // The ceremony installed the scoped hooks and commands; the
+        // ceremony retires them (law 6 symmetry).
+        crate::OpenDocuments::retire_scope(store, self.documents);
         store.retract(self.history);
-        store.dispose(self.comments);
+        store.retract(self.comments);
         store.retract(self.terminals);
         // Converted collections leave through `dispose`: the row goes,
         // then its `destroy` retracts what it owns (law 6). The others
@@ -265,7 +277,7 @@ impl Hosts {
         for family in families {
             crate::drivers::changes::ChangesWire::stamp_uris(store, family.changes_wire, &map);
             crate::drivers::history::HistoryWire::stamp_uris(store, family.history_wire, &map);
-            crate::hicomments::Comments::stamp_uris(store, family.comments, &map);
+            crate::drivers::comments::CommentsWire::stamp_uris(store, family.comments_wire, &map);
         }
     }
 
@@ -439,7 +451,11 @@ impl Hosts {
         );
         store.put_entity(
             family.comments,
-            crate::hicomments::Comments::wired(family.documents, uris),
+            crate::hicomments::Comments::wired(family.documents),
+        );
+        store.put_entity(
+            family.comments_wire,
+            crate::drivers::comments::CommentsWire::wired(family.comments, uris),
         );
         // The documents→comments borders (the document hooks, the
         // comment gesture) get INSTANCES wired with the sibling id,
@@ -457,6 +473,7 @@ impl Hosts {
             family.documents,
             std::sync::Arc::new(crate::hicomments::AddComment {
                 comments: family.comments,
+                wire: family.comments_wire,
             }),
         );
         store.put_entity(

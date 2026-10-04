@@ -24,7 +24,8 @@ mod sync;
 
 pub use panel::{toolbar_button, CommentsView, ToggleCommentsView};
 pub use sync::{
-    AnnotationId, CardWork, CommentRecord, Comments, CommentsCommand, CommentsHook, EntryRecord,
+    run_card_work, AnnotationId, Announce, CardWork, CommentDelta, CommentRecord, CommentSeed,
+    Comments, CommentsHook, EntryRecord,
 };
 
 #[cfg(test)]
@@ -38,6 +39,7 @@ pub(crate) const FALLBACK_WIDTH: f32 = 600.0;
 /// id is the instance's own record, never resolved back.
 pub struct AddComment {
     pub comments: imba::store::Id<sync::Comments>,
+    pub wire: imba::store::Id<crate::drivers::comments::CommentsWire>,
 }
 
 impl documents::DocumentCommand for AddComment {
@@ -76,7 +78,8 @@ impl documents::DocumentCommand for AddComment {
             let mut view = document.text().view();
             let range = crate::line_col_at(&mut view, selection.start as usize)
                 ..crate::line_col_at(&mut view, selection.end as usize);
-            sync::Comments::created(store, comments, location, range)
+            let turn = crate::drivers::comments::latest_turn(store, self.wire);
+            sync::Comments::created(store, comments, location, range, turn)
         };
 
         let view = CommentView::new(
@@ -114,7 +117,7 @@ impl documents::DocumentCommand for AddComment {
             AppRequests::push(
                 store,
                 Arc::new(EnsureComments {
-                    comments,
+                    wire: self.wire,
                     location: location.clone(),
                 }),
             );
@@ -123,7 +126,7 @@ impl documents::DocumentCommand for AddComment {
 }
 
 struct EnsureComments {
-    comments: imba::store::Id<sync::Comments>,
+    wire: imba::store::Id<crate::drivers::comments::CommentsWire>,
     location: crate::ResourceLocation,
 }
 
@@ -138,10 +141,10 @@ impl crate::DynamicCommand for EnsureComments {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::ensure(store, self.comments, &self.location, fx);
+        crate::drivers::comments::ensure(store, window, self.wire, &self.location, fx);
     }
 }
 
@@ -217,7 +220,16 @@ impl crate::DynamicCommand for SendComments {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        sync::Comments::send_to_agent(store, self.comments, window, self.ids.clone(), fx);
+        // The gesture resolves its family's wire at gesture time; a
+        // mismatched wire (a stale window) drops the ask loudly.
+        let Some(wire) = crate::Windows::session_family(store, window)
+            .map(|family| family.comments_wire())
+            .filter(|wire| crate::drivers::comments::drives(store, *wire, self.comments))
+        else {
+            eprintln!("[comments] send DROPPED: the window's wire serves another collection");
+            return;
+        };
+        crate::drivers::comments::send_to_agent(store, window, wire, self.ids.clone(), fx);
     }
 }
 

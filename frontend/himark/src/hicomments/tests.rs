@@ -343,22 +343,26 @@ fn sending_never_consumes_what_it_cannot_deliver() {
         "the record stands"
     );
 
-    assert!(app.perform_command(AppCommand::at(
-        app.sole_family().comments(),
-        crate::hicomments::CommentsCommand::Sent {
-            ids: ids.clone(),
-            result: Err("wire died".to_owned()),
-        },
+    // The send outcome lands through the model door; the batch-tail
+    // comments lane drains the card work on the next tick.
+    let comments = app.sole_family().comments();
+    crate::hicomments::Comments::sent_outcome(
+        &mut app.store_mut(),
+        comments,
+        &ids,
+        Err("wire died".to_owned()),
+    );
+    assert!(app.perform_command(AppCommand::Content(
+        window,
+        crate::WindowCommand::Focus(crate::LayerFocus::Content),
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
-    assert!(app.perform_command(AppCommand::at(
-        app.sole_family().comments(),
-        crate::hicomments::CommentsCommand::Sent {
-            ids,
-            result: Ok(()),
-        },
+    crate::hicomments::Comments::sent_outcome(&mut app.store_mut(), comments, &ids, Ok(()));
+    assert!(app.perform_command(AppCommand::Content(
+        window,
+        crate::WindowCommand::Focus(crate::LayerFocus::Content),
     )));
     assert!(
         crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),
