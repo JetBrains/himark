@@ -22,6 +22,58 @@ their head instead of on the page. Prefer:
 A single guard at the very top of a function (`let Some(x) = … else {
 return }`) is tolerable; anything past that wants restructuring.
 
+## Expressions over control flow
+
+A value is BUILT, not accumulated. Prefer the iterator chain whose
+shape IS the specification — `filter`/`filter_map`/`map`/`collect` —
+over a `for` loop pushing into a `let mut` through `continue` guards:
+the chain states each step once; the loop makes the reader replay
+iterations and track which guard skips what. The same bias at every
+scale:
+
+- a function body is ideally ONE expression; `let` bindings name its
+  stages, and control flow lives inside combinators (`then`,
+  `map_or`, `and_then`, `unwrap_or_else`), not around them;
+- `let mut` + push is never how a return value is assembled;
+- loops that exist for their side effects (pushing effects, driving
+  doors) are legitimate — this rule is about producing VALUES.
+
+Before (imperative — replay the guards to know what lands):
+
+```rust
+let mut fresh = Vec::new();
+for (folder, held) in folders.iter() {
+    if held.session != *session || held.channel.is_some() {
+        continue;
+    }
+    let matched = changesets
+        .iter()
+        .find(|candidate| entry_serves(folder, candidate))
+        .or_else(|| (lone_folder && changesets.len() == 1).then(|| &changesets[0]));
+    let Some(matched) = matched else {
+        continue;
+    };
+    fresh.push((folder.clone(), held.seat.clone(), matched.uri.clone()));
+}
+fresh
+```
+
+After (the chain is the spec):
+
+```rust
+folders
+    .iter()
+    .filter(|(_, held)| held.session == *session && held.channel.is_none())
+    .filter_map(|(folder, held)| {
+        changesets
+            .iter()
+            .find(|candidate| entry_serves(folder, candidate))
+            .or_else(|| (lone_folder && changesets.len() == 1).then(|| &changesets[0]))
+            .map(|matched| (folder.clone(), held.seat.clone(), matched.uri.clone()))
+    })
+    .collect()
+```
+
 ## Persistent data structures over Vec and HashMap
 
 State that rides the store — anything cloned per frame, per command,

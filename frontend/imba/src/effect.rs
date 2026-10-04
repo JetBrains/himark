@@ -260,25 +260,17 @@ impl<R: 'static> Batch<R> {
     /// loop calls this after every performed command; `launch`
     /// refuses a batch that still holds one.
     pub fn take_follow_ups(&mut self) -> Vec<R> {
-        if !self
-            .messages
-            .iter()
-            .any(|message| matches!(message, Message::FollowUp(_)))
-        {
-            return Vec::new();
-        }
-        let mut follow_ups = Vec::new();
-        self.messages = std::mem::take(&mut self.messages)
+        let (follow_ups, kept): (Vec<_>, Vec<_>) = std::mem::take(&mut self.messages)
             .into_iter()
-            .filter_map(|message| match message {
-                Message::FollowUp(command) => {
-                    follow_ups.push(command);
-                    None
-                }
-                kept => Some(kept),
-            })
-            .collect();
+            .partition(|message| matches!(message, Message::FollowUp(_)));
+        self.messages = kept;
         follow_ups
+            .into_iter()
+            .map(|message| match message {
+                Message::FollowUp(command) => command,
+                _ => unreachable!("partitioned above"),
+            })
+            .collect()
     }
 
     pub fn take_settle(&mut self) -> bool {
