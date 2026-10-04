@@ -293,7 +293,9 @@ impl Panel {
                 pane.set_scroll_y(place.scroll_y);
                 true
             }
-            Self::Plugin(view) => view.navigate_to_dyn(store, target, fx),
+            Self::Plugin(view) => fx.scope(crate::AppCommand::Verb, |fx| {
+                view.navigate_to_dyn(store, target, fx)
+            }),
         }
     }
 

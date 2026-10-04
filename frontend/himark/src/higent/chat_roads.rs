@@ -1,0 +1,119 @@
+// Copyright © 2026 JetBrains s.r.o.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The chat's WINDOW roads: the open-working-copy ask needs the
+//! window's documents, so the shell installs the road at boot and
+//! keeps the command here.
+
+use std::sync::Arc;
+
+use imba::store::Store;
+
+use crate::higent::{HostId, OpenEditedRoad, SessionUri};
+
+/// Install the SHELL roads the protocol crate asks through — the
+/// window grip for the family sweep, the catalog-actions apply, and
+/// the chat's open-working-copy ask. Called once at boot.
+pub(crate) fn install_shell_roads(store: &mut Store) {
+    store.put(crate::higent::WindowGrip(Arc::new(|store, scope| {
+        crate::Windows::any_window_holds(store, scope)
+    })));
+    store.put(crate::higent::ChannelActionsRoad(Arc::new(
+        |store, home, actions| {
+            crate::AppRequests::push(
+                store,
+                Arc::new(ApplyChannelActions {
+                    home: home.clone(),
+                    actions,
+                }),
+            );
+        },
+    )));
+    OpenEditedRoad::install(
+        store,
+        OpenEditedRoad(Arc::new(|store, server, session, uri| {
+            crate::AppRequests::push(
+                store,
+                Arc::new(OpenEditedFile {
+                    server,
+                    session,
+                    uri,
+                }),
+            );
+        })),
+    );
+}
+
+/// Open the working copy behind a chat diff: resolve the wire uri
+/// against the session's seat authority and open the location —
+/// the same road a search hit or a changes row takes.
+pub(crate) struct OpenEditedFile {
+    server: crate::higent::HostId,
+    session: crate::higent::SessionUri,
+    uri: String,
+}
+
+impl crate::DynamicCommand for OpenEditedFile {
+    fn id(&self) -> &'static str {
+        "chat.open-edited-file"
+    }
+
+    fn name(&self) -> String {
+        "Open Edited File".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(uris) = crate::higent::Hosts::uris(store, self.server) else {
+            return;
+        };
+        let authority =
+            editor::Authority::new(crate::higent::seat::authority(self.server, &self.session));
+        let Some(location) = uris.location_of(
+            &crate::higent::ResourceUri::new(self.uri.as_str()),
+            editor::ResourceType::document(),
+            &authority,
+        ) else {
+            return;
+        };
+        // The file opens WHERE the user is: the window's own documents.
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
+            return;
+        };
+        let _ = fx.push(crate::open_by_location_effect(
+            window, documents, location, true, true, None,
+        ));
+    }
+}
+
+/// The catalog batch, applied in whichever window the drain runs —
+/// the session channel's actions open and close against windows.
+struct ApplyChannelActions {
+    home: crate::SessionId,
+    actions: Vec<ahp_types::actions::StateAction>,
+}
+
+impl crate::DynamicCommand for ApplyChannelActions {
+    fn id(&self) -> &'static str {
+        "higent.apply-channel-actions"
+    }
+    fn name(&self) -> String {
+        "Apply Session Catalog".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        crate::higent::apply_channel_actions(store, window, &self.home, &self.actions, fx);
+    }
+}

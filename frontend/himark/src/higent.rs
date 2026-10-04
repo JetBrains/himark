@@ -1,49 +1,27 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use ahp_types;
-pub use host_discovery::LOCAL_FS_SESSION;
+//! The catalog, the seats, the sessions and the chat moved to the
+//! `hiahp` crate; the shell keeps its WINDOW half here — the agents
+//! drawer, the session toolbar, the open-session road and the
+//! new-chat gesture.
 
-pub mod cell;
-mod chat;
-pub(crate) mod chats;
-mod composer;
+mod chat_roads;
 mod drawer;
-mod effects;
-pub(crate) mod file_completion;
-mod file_edit;
-pub mod seat;
+mod flows;
+mod folder_grant;
 mod session;
-mod session_toolbar;
-mod stack;
-mod tool_group;
-mod turn;
+#[cfg(test)]
+mod state_tests;
 
-pub use crate::SessionId;
-pub use cell::{Cell, CellCommand, CellKind};
-pub use chat::{ChatArea, ChatPanel, ChatPanelCommand, RowCommand};
-pub use chats::{ChatNavigator, ChatPane, ChatPlace, Chats, ChatsCommand};
-pub use composer::ComposerCommand;
+pub use ::hiahp::higent::*;
+
+pub(crate) use chat_roads::install_shell_roads;
 pub use drawer::{
     toolbar_button, AddHost, AgentsCommand, AgentsPanel, ShareHost, ToggleAgentsView,
 };
-pub use effects::*;
-pub use file_edit::{
-    build_file_edit, snapshot, BuiltFileEdit, DiffCounts, FileEditRefs, FileSnapshotRef,
-};
-pub use seat::{
-    AhpServer, ChannelUri, ChatUri, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap,
-    RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,
-    SessionOptions, SessionUri, SessionsPage, TerminalEvent, TerminalHandle, TurnId, WatchHandle,
-};
+pub use flows::{AddHostFlow, AgentFlows, NewSessionFlow};
+pub use folder_grant::AddSessionFolders;
 pub(crate) use session::apply_channel_actions;
-pub use session::{
-    all_session_folders, open_session, open_session_with, session_folders, Agents, Host,
-    HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel, SessionState,
-};
-pub(crate) use session_toolbar::sync_effort_for_model;
-pub use session_toolbar::{
-    AddSessionFolders, SessionToolbar, ToolbarAsk, ToolbarCommand, ToolbarProbe,
-};
-pub use stack::StackCommand;
-pub use turn::{TurnCommand, TurnView};
+pub(crate) use session::OpenSessionRow;
+pub use session::{open_session, open_session_with, NewChat, OpenCreatedSession};

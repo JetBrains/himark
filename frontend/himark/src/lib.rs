@@ -72,8 +72,7 @@ pub use crate::diffs::{
     DiffView, DiffViewId, StripeBaseResolver, StripeBases, OPEN_HALF_WIDTH,
 };
 pub use crate::family_rows::{
-    mint, mint_unfronted, CanvasRow, ChatRow, FamilyRow, PairRow, RowMinter, RowMinters,
-    TerminalRow,
+    mint, mint_unfronted, CanvasRow, ChatRow, FamilyRow, PairRow, RowMinters, TerminalRow,
 };
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument,

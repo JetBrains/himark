@@ -419,13 +419,9 @@ impl DynamicCommand for OpenPicked {
                         )),
                         folder.path().to_vec(),
                     );
-                    himark::drivers::changes::ensure_folder(
-                        store,
-                        window,
-                        wire,
-                        spelled.clone(),
-                        fx,
-                    );
+                    fx.scope(AppCommand::Verb, |fx| {
+                        himark::drivers::changes::ensure_folder(store, wire, spelled.clone(), fx)
+                    });
                     fx.scope(AppCommand::Verb, |fx| {
                         himark::drivers::comments::ensure(store, comments_wire, &spelled, fx)
                     });

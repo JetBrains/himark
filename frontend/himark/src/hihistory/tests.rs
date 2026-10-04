@@ -8,6 +8,7 @@ use serde_json::json;
 use super::*;
 use crate::changes_view::RowItem;
 use crate::drivers::history::{digest_deltas, digest_snapshot};
+use crate::hichanges::ChangesStatus;
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use crate::Authority;
@@ -453,7 +454,7 @@ fn the_commit_tip_carries_message_author_and_branches() {
         outgoing: false,
         changeset: "cs:abc".to_owned(),
     };
-    let tip = CommitTip::of(&crate::drivers::history::digest_commit(commit.wire.clone()));
+    let tip = CommitTip::of(&crate::drivers::history::digest_commit(commit));
     let lines: Vec<&str> = tip.lines().iter().map(|(line, _)| line.as_str()).collect();
     assert_eq!(
         lines,

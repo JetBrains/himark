@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use editor::{Authority, ResourceLocation, ResourceType};
 use hikit::ForestNode;
-use imba::{effect::AnyEffect, store::Store};
+use imba::store::Store;
 
 const NOTE_KIND: &str = "changes-note";
 
@@ -45,7 +44,7 @@ pub fn working_copy(location: &ResourceLocation) -> Option<ResourceLocation> {
     ))
 }
 
-pub(crate) fn empty_side(of: &ResourceLocation) -> ResourceLocation {
+pub fn empty_side(of: &ResourceLocation) -> ResourceLocation {
     ResourceLocation::new(
         ResourceType::document(),
         Authority::new(EMPTY_AUTHORITY),
@@ -57,7 +56,7 @@ pub(crate) fn empty_side(of: &ResourceLocation) -> ResourceLocation {
 pub struct ChangeEntry {
     id: String,
 
-    pub(crate) rel: Vec<String>,
+    pub rel: Vec<String>,
 
     pub working: ResourceLocation,
 
@@ -72,7 +71,7 @@ pub struct ChangeEntry {
     /// changed — value equality cannot see a same-stats content edit);
     /// full-snapshot replaces stamp by value comparison against the
     /// previous entry with the same id.
-    pub(crate) updated: u64,
+    pub updated: u64,
 }
 
 impl ChangeEntry {
@@ -80,7 +79,7 @@ impl ChangeEntry {
     /// outside this module; the stamp starts at zero and is the
     /// adopt road's to move.
     #[allow(clippy::too_many_arguments)]
-    pub(crate) fn assembled(
+    pub fn assembled(
         id: String,
         rel: Vec<String>,
         working: ResourceLocation,
@@ -144,8 +143,8 @@ pub enum ChangesStatus {
 /// stamps and swaps finished entries (docs/perf-issue.md §2).
 #[derive(Clone)]
 pub struct DigestedChangeset {
-    pub(crate) status: ChangesStatus,
-    pub(crate) entries: Vec<ChangeEntry>,
+    pub status: ChangesStatus,
+    pub entries: Vec<ChangeEntry>,
 }
 
 /// A polled wire action digested OFF the UI thread — `entry_of` has
@@ -164,11 +163,85 @@ pub enum ChangeAction {
     Cleared,
 }
 
+/// Which SET a canvas (or any face) views — the model's own
+/// source vocabulary: a working copy, or one commit.
+#[derive(Clone, PartialEq, Debug)]
+pub enum CanvasSource {
+    /// The uncommitted changeset of a workspace folder — the changes
+    /// view's root row.
+    WorkingCopy { folder: ResourceLocation },
+
+    /// One commit's changeset — a history view revision row.
+    Commit {
+        folder: ResourceLocation,
+        id: crate::hichanges::Revision,
+    },
+}
+
+impl CanvasSource {
+    pub fn folder(&self) -> &ResourceLocation {
+        match self {
+            CanvasSource::WorkingCopy { folder } => folder,
+            CanvasSource::Commit { folder, .. } => folder,
+        }
+    }
+
+    pub fn title(&self, store: &Store, changes: imba::store::Id<Changes>) -> String {
+        match self {
+            CanvasSource::WorkingCopy { folder } => format!("Changes — {}", folder.name()),
+            CanvasSource::Commit { folder, id } => {
+                let summary = Changes::of(store, changes)
+                    .and_then(|held| {
+                        crate::hihistory::History::folder(store, held.history(), folder)
+                    })
+                    .and_then(|held| {
+                        held.commits
+                            .iter()
+                            .find(|commit| commit.id == id.as_str())
+                            .map(|commit| commit.summary.clone())
+                    });
+                match summary {
+                    Some(summary) => summary,
+                    None => {
+                        let short: String = id.as_str().chars().take(8).collect();
+                        format!("Commit {short}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// A canvas slot's identity on its owning set — model vocabulary:
+/// the set stores and sweeps canvases by it; what a canvas IS lives
+/// with the canvas.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct CanvasId(u64);
+
+impl CanvasId {
+    pub fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// A tree view slot's identity on the collection — same vocabulary,
+/// the uniting-view flavor.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ChangesViewId(u64);
+
+impl ChangesViewId {
+    pub fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct ChangeSetId(u64);
 
 impl ChangeSetId {
-    fn mint() -> Self {
+    pub fn mint() -> Self {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
     }
@@ -235,7 +308,7 @@ pub enum ChangeSetSource {
 /// A set's WIRE side: the seat serving it, the owning AHP session and
 #[derive(Clone)]
 pub struct ChangeSet {
-    pub(crate) source: ChangeSetSource,
+    pub source: ChangeSetSource,
 
     pub status: ChangesStatus,
     pub files: rpds::VectorSync<ChangeEntry>,
@@ -252,11 +325,10 @@ pub struct ChangeSet {
     bases: rpds::HashTrieMapSync<String, ResourceLocation>,
 
     /// The set OWNS its canvases (docs/model-view.md hierarchy) —
-    /// canvas mutations never touch the set's `generation`.
-    pub(crate) canvases: rpds::HashTrieMapSync<
-        crate::diff_canvas::canvas::CanvasId,
-        crate::diff_canvas::canvas::Canvas,
-    >,
+    /// canvas mutations never touch the set's `generation`. The
+    /// values are SLOTS (imba::slot): the model stores and sweeps
+    /// them; the canvas's own code reads them back by downcast.
+    pub canvases: rpds::HashTrieMapSync<CanvasId, Box<dyn imba::slot::ViewSlot>>,
 }
 
 impl ChangeSet {
@@ -305,7 +377,7 @@ pub struct ChangeSets {
     folders: rpds::VectorSync<ResourceLocation>,
 
     /// Source → set: the reuse lookup for BOTH flavors.
-    pub(crate) by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
+    pub by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
 
     /// Set → the serial of ITS one standing poll loop. A relaunch
     /// bumps it; a `Polled` landing re-arms only when it carries the
@@ -327,18 +399,14 @@ pub struct ChangeSets {
     /// they derive rows from (crate::changes_view). The collection
     /// is the views' point of gravity: a uniting view spans many
     /// sets, so the views cannot live inside one.
-    pub(crate) views:
-        rpds::HashTrieMapSync<crate::changes_view::ChangesViewId, crate::changes_view::ChangesView>,
+    pub views: rpds::HashTrieMapSync<ChangesViewId, Box<dyn imba::slot::ViewSlot>>,
 
     /// THE UPDATE RULE's index — the many-to-many `ChangeSetId ↔
     /// ChangesViewId` join: a set mutation marks exactly its viewers
     /// stale; the batch-tail lane rolls them.
-    pub(crate) viewers: rpds::HashTrieMapSync<
-        ChangeSetId,
-        rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
-    >,
+    pub viewers: rpds::HashTrieMapSync<ChangeSetId, rpds::HashTrieSetSync<ChangesViewId>>,
 
-    pub(crate) stale: rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
+    pub stale: rpds::HashTrieSetSync<ChangesViewId>,
 }
 
 /// Transitional alias — the store slot and the wide call-site surface
@@ -416,7 +484,7 @@ impl Changes {
     /// The driver's stamp: adopt any folder not yet held, keeping
     /// attach order. New folders nudge every view (their root rows
     /// appear).
-    pub(crate) fn adopt_folders(
+    pub fn adopt_folders(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folders: &[ResourceLocation],
@@ -446,14 +514,14 @@ impl Changes {
         self.history
     }
 
-    pub(crate) fn of(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<&ChangeSets> {
+    pub fn of(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<&ChangeSets> {
         store.entity(changes)
     }
 
     /// Mutate the collection in place. A gone collection takes no
     /// write — there is no row to mint from: siblings are wired at
     /// the ceremony, never defaulted.
-    pub(crate) fn update(
+    pub fn update(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         mutate: impl FnOnce(&mut ChangeSets),
@@ -478,11 +546,11 @@ impl Changes {
         self.rearms.push(folder.clone());
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.sets.is_empty() && self.refetch_asks.is_empty()
     }
 
-    fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
+    pub fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
         let source = ChangeSetSource::WorkingCopy {
             folder: folder.clone(),
         };
@@ -534,7 +602,7 @@ impl Changes {
     /// Mint — or find — the COMMIT-flavored set (eager and light: the
     /// history row references it from birth; its files land lazily on
     /// first ask). Never bumps the commit set's generation.
-    pub(crate) fn ensure_commit_set(
+    pub fn ensure_commit_set(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -596,7 +664,7 @@ impl Changes {
     /// Mint — or find — the set for a source, WITHOUT a feed when the
     /// feeds have not routed it yet (a canvas may open first; the
     /// feed attaches at `ensure_folder`). Never bumps generations.
-    pub(crate) fn ensure_set_for_source(
+    pub fn ensure_set_for_source(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         source: &ChangeSetSource,
@@ -625,7 +693,7 @@ impl Changes {
         id
     }
 
-    pub(crate) fn id_for_source(
+    pub fn id_for_source(
         store: &Store,
         changes: imba::store::Id<ChangeSets>,
         source: &ChangeSetSource,
@@ -634,27 +702,31 @@ impl Changes {
     }
 
     /// The SET owns its canvases; these reach one by (set, canvas) —
-    /// canvas mutations never touch the set's generation.
-    pub(crate) fn canvas_ref<'a>(
+    /// canvas mutations never touch the set's generation. SLOT
+    /// doors: the model stores erased values; the canvas's code
+    /// names the type.
+    pub fn canvas_ref<'a, V: 'static>(
         store: &'a Store,
         changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
-        canvas: crate::diff_canvas::canvas::CanvasId,
-    ) -> Option<&'a crate::diff_canvas::canvas::Canvas> {
+        canvas: CanvasId,
+    ) -> Option<&'a V> {
         Self::of(store, changes)?
             .sets
             .get(&set)?
             .canvases
-            .get(&canvas)
+            .get(&canvas)?
+            .as_any()
+            .downcast_ref::<V>()
     }
 
-    pub(crate) fn take_canvas(
+    pub fn take_canvas<V: Clone + Send + Sync + 'static>(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
-        canvas: crate::diff_canvas::canvas::CanvasId,
-    ) -> Option<crate::diff_canvas::canvas::Canvas> {
-        let held = Self::canvas_ref(store, changes, set, canvas)?.clone();
+        canvas: CanvasId,
+    ) -> Option<V> {
+        let held = Self::canvas_ref::<V>(store, changes, set, canvas)?.clone();
         Self::update(store, changes, |changes| {
             let Some(mut owner) = changes.sets.get(&set).cloned() else {
                 return;
@@ -665,28 +737,28 @@ impl Changes {
         Some(held)
     }
 
-    pub(crate) fn put_canvas(
+    pub fn put_canvas<V: Clone + Send + Sync + 'static>(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         set: ChangeSetId,
-        canvas: crate::diff_canvas::canvas::CanvasId,
-        held: crate::diff_canvas::canvas::Canvas,
+        canvas: CanvasId,
+        held: V,
     ) {
         Self::update(store, changes, |changes| {
             let Some(mut owner) = changes.sets.get(&set).cloned() else {
                 return;
             };
-            owner.canvases.insert_mut(canvas, held);
+            owner.canvases.insert_mut(canvas, Box::new(held));
             changes.sets.insert_mut(set, owner);
         });
     }
 
     /// Every canvas in the gathered session, with its owning set —
     /// the batch-tail sweep's domain.
-    pub(crate) fn canvas_ids(
+    pub fn canvas_ids(
         store: &Store,
         changes: imba::store::Id<ChangeSets>,
-    ) -> Vec<(ChangeSetId, crate::diff_canvas::canvas::CanvasId)> {
+    ) -> Vec<(ChangeSetId, CanvasId)> {
         Self::of(store, changes)
             .map(|changes| {
                 changes
@@ -700,7 +772,7 @@ impl Changes {
 
     /// The fetch road armed: the set is COMPUTING until its snapshot
     /// lands.
-    pub(crate) fn mark_commit_computing(
+    pub fn mark_commit_computing(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -723,7 +795,7 @@ impl Changes {
 
     /// A commit set's content snapshot landed (the changeset channel
     /// for `?commit=<sha>`): status + files onto the SET.
-    pub(crate) fn adopt_commit_state(
+    pub fn adopt_commit_state(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -752,7 +824,7 @@ impl Changes {
     }
 
     /// Streamed updates for a commit set's changeset channel.
-    pub(crate) fn fold_commit_actions(
+    pub fn fold_commit_actions(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -827,7 +899,7 @@ impl Changes {
     /// passive models — the wire driver calls this): the working-copy
     /// set exists after it. Idempotent — a canvas may have opened the
     /// set detached already, and the door keeps it.
-    pub(crate) fn ensure_working_set(
+    pub fn ensure_working_set(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -857,7 +929,7 @@ impl Changes {
 
     /// A snapshot answered for one folder's set — already digested on
     /// the effect worker; this is value adoption only.
-    pub(crate) fn adopt_snapshot(
+    pub fn adopt_snapshot(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -874,7 +946,7 @@ impl Changes {
     }
 
     /// A polled batch folded into one folder's set — already digested.
-    pub(crate) fn fold_folder(
+    pub fn fold_folder(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -888,7 +960,7 @@ impl Changes {
     }
 
     /// One folder's set resolves errored (the session feed failed).
-    pub(crate) fn fold_error(
+    pub fn fold_error(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -902,7 +974,7 @@ impl Changes {
 
     /// The refetch road's mark: the folder's set shows computing
     /// while the fresh snapshot rides.
-    pub(crate) fn mark_folder_computing(
+    pub fn mark_folder_computing(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -925,11 +997,11 @@ impl Changes {
         Self::update(store, changes, |held| held.refetch_asks.push(only));
     }
 
-    pub(crate) fn owes_refetch(store: &Store, changes: imba::store::Id<ChangeSets>) -> bool {
+    pub fn owes_refetch(store: &Store, changes: imba::store::Id<ChangeSets>) -> bool {
         Self::of(store, changes).is_some_and(|held| !held.refetch_asks.is_empty())
     }
 
-    pub(crate) fn take_refetch_asks(
+    pub fn take_refetch_asks(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
     ) -> Vec<Option<ResourceLocation>> {
@@ -941,7 +1013,7 @@ impl Changes {
         asks
     }
 
-    pub(crate) fn take_rearms(
+    pub fn take_rearms(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
     ) -> Option<(
@@ -981,7 +1053,8 @@ impl Changes {
     /// Adopt a snapshot the effect worker already digested: stamp the
     /// finished entries against the standing ones and swap — the only
     /// UI-thread work left is value compares (docs/perf-issue.md §2).
-    fn adopt(&mut self, folder: &ResourceLocation, digested: DigestedChangeset) {
+    #[doc(hidden)]
+    pub fn adopt(&mut self, folder: &ResourceLocation, digested: DigestedChangeset) {
         self.update_folder_set(folder, |set| {
             set.status = digested.status;
             let mut fresh = digested.entries;
@@ -1004,7 +1077,8 @@ impl Changes {
     /// wire parsing happened there, and the superseded file mutations
     /// (everything a later full snapshot overwrites) never arrive
     /// (docs/perf-issue.md §2, §4 measure 3).
-    fn fold(&mut self, folder: &ResourceLocation, actions: Vec<ChangeAction>) {
+    #[doc(hidden)]
+    pub fn fold(&mut self, folder: &ResourceLocation, actions: Vec<ChangeAction>) {
         self.update_folder_set(folder, |set| {
             let entry = set;
             let stamp = entry.generation + 1;
@@ -1067,8 +1141,33 @@ impl Changes {
         });
     }
 
-    #[cfg(test)]
-    pub(crate) fn base_lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
+    /// TEST SUPPORT: seed an empty working-copy set in place — the
+    /// row-literal the in-place model tests used before the split.
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn seed_working_set_for_tests(&mut self, folder: &ResourceLocation) -> ChangeSetId {
+        let id = ChangeSetId::mint();
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.sets.insert_mut(
+            id,
+            ChangeSet {
+                source: source.clone(),
+                status: ChangesStatus::Computing,
+                files: rpds::VectorSync::new_sync(),
+                generation: 0,
+                bases: rpds::HashTrieMapSync::new_sync(),
+                canvases: rpds::HashTrieMapSync::new_sync(),
+            },
+        );
+        self.by_source.insert_mut(source, id);
+        id
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    #[doc(hidden)]
+    pub fn base_lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
         self.sets
             .values()
             .find_map(|set| set.bases.get(abs_path).cloned())
@@ -1092,13 +1191,13 @@ impl Changes {
 use crate::changes_view::RowItem;
 
 #[derive(Default)]
-pub(crate) struct DirTrie {
+pub struct DirTrie {
     dirs: BTreeMap<String, DirTrie>,
     files: Vec<ChangeEntry>,
 }
 
 impl DirTrie {
-    pub(crate) fn insert(&mut self, entry: ChangeEntry) {
+    pub fn insert(&mut self, entry: ChangeEntry) {
         let mut node = self;
         for segment in &entry.rel[..entry.rel.len() - 1] {
             node = node.dirs.entry(segment.clone()).or_default();
@@ -1107,7 +1206,7 @@ impl DirTrie {
     }
 }
 
-pub(crate) fn folder_node(
+pub fn folder_node(
     folder: &ResourceLocation,
     changes: Option<&FolderChanges>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
@@ -1202,13 +1301,13 @@ pub(crate) fn folder_node(
     }
 }
 
-pub(crate) trait DirSink {
+pub trait DirSink {
     fn branch(&mut self, key: &ResourceLocation);
     fn file_key(&self, entry: &ChangeEntry, at: &ResourceLocation) -> ResourceLocation;
     fn file(&mut self, entry: &ChangeEntry, key: &ResourceLocation);
 }
 
-pub(crate) fn dir_forest(
+pub fn dir_forest(
     at: &ResourceLocation,
     trie: DirTrie,
     counts: (skia_safe::Color, skia_safe::Color),

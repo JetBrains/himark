@@ -357,7 +357,7 @@ mod app {
                         })
                         .expect("wire thread");
                     let handle = handle_rx.recv().expect("wire handle");
-                    himark::hiahp::registry::register_all(&mut state);
+                    himark::hiahp::register_all(&mut state);
 
                     let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
                         std::sync::Arc::new(himark::hiahp::wire::WireHost::at(
@@ -392,8 +392,8 @@ mod app {
                         handle.clone(),
                         Arc::new({
                             let posted = posted.clone();
-                            move |command| {
-                                let _ = posted.send(command);
+                            move |verb| {
+                                let _ = posted.send(himark::AppCommand::Verb(verb));
                             }
                         }),
                         Arc::clone(&resource_uris),
@@ -475,7 +475,7 @@ mod app {
 
                     state.observe_stripe_bases(Arc::new(himark::hiahp::fsroute::resolve_base));
 
-                    himark::hiahp::open::install_open_handlers(
+                    himark::hiahp::install_open_handlers(
                         &mut state,
                         Arc::new(web_languages()),
                         Arc::new(myersdiff::Myers),

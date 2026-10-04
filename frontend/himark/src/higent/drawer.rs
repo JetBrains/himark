@@ -29,7 +29,8 @@ use imba::{
 };
 use skia_safe::{Rect, Size};
 
-use crate::higent::session::{Agents, HostStatus, OpenSessionRow};
+use crate::higent::OpenSessionRow;
+use crate::higent::{Agents, HostStatus};
 use ::editor::{EditorCommand, EditorView};
 
 const PANEL_WIDTH: f32 = crate::DRAWER_WIDTH;
@@ -487,13 +488,13 @@ impl AgentsPanel {
                 )));
             }
             AgentKey::NewSession(server) => {
-                let command: Arc<dyn crate::DynamicCommand> = match Agents::new_session_flow(store)
-                {
-                    Some(flow) => flow(*server),
-                    None => Arc::new(crate::new_session::OpenNewSession {
-                        host: Some(*server),
-                    }),
-                };
+                let command: Arc<dyn crate::DynamicCommand> =
+                    match crate::higent::AgentFlows::new_session_flow(store) {
+                        Some(flow) => flow(*server),
+                        None => Arc::new(crate::new_session::OpenNewSession {
+                            host: Some(*server),
+                        }),
+                    };
                 self.request = Some(ModalRequest::Perform(crate::shell_verb(
                     AppCommand::Dynamic(self.window, command),
                 )));
@@ -998,7 +999,7 @@ impl crate::DynamicCommand for AddHost {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(flow) = Agents::add_host_flow(store) else {
+        let Some(flow) = crate::higent::AgentFlows::add_host_flow(store) else {
             eprintln!("[higent] no add-host capability installed — url dropped");
             return;
         };

@@ -373,7 +373,7 @@ fn boot_chat_feed(
     chats: imba::store::Id<crate::higent::Chats>,
     chat: crate::higent::ChatUri,
 ) {
-    crate::AppRequests::push(
+    imba::command::Requests::push(
         store,
         std::sync::Arc::new(crate::higent::chats::BootChat { chats, chat }),
     );

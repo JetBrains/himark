@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::Agents;
+use crate::higent::Agents;
 use crate::higent::{CreateChatEffect, HostId};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
 use imba::effect::AnyEffect;

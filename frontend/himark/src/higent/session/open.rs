@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use super::{Agents, SessionChannel};
+use crate::higent::{Agents, SessionChannel};
 use crate::higent::{ChatUri, SessionUri};
 use crate::higent::{HostId, PollSessionEffect, SubscribeSessionEffect};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
@@ -153,13 +153,9 @@ impl DynamicCommand for EnterSessionWork {
         };
         let folders = crate::higent::session_folders(store, &key);
         if let Some(family) = Windows::session_family(store, window) {
-            crate::drivers::changes::ensure(
-                store,
-                window,
-                family.changes_wire(),
-                folders.clone(),
-                fx,
-            );
+            fx.scope(crate::AppCommand::Verb, |fx| {
+                crate::drivers::changes::ensure(store, family.changes_wire(), folders.clone(), fx)
+            });
             fx.scope(crate::AppCommand::Verb, |fx| {
                 for folder in folders {
                     crate::drivers::comments::ensure(store, family.comments_wire(), &folder, fx);
@@ -356,7 +352,11 @@ pub(crate) fn apply_channel_actions(
                 if let Some(wire) =
                     crate::higent::Hosts::family(store, key).map(|family| family.changes_wire())
                 {
-                    crate::drivers::changes::adopt_session_catalog(store, key, wire, changed, fx);
+                    fx.scope(crate::AppCommand::Verb, |fx| {
+                        crate::drivers::changes::adopt_session_catalog(
+                            store, key, wire, changed, fx,
+                        )
+                    });
                 }
             }
             _ => {}

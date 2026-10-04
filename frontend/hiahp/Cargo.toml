@@ -1,0 +1,42 @@
+[package]
+name = "hiahp"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+ahp = "0.9"
+ahp-types = "0.9"
+base64 = "0.22"
+canvas = { path = "../canvas" }
+changesview = { path = "../changesview" }
+comments = { path = "../comments" }
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+filetree = { path = "../filetree" }
+hikit = { path = "../hikit" }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+humantime = "2"
+imba = { path = "../imba" }
+locations = { path = "../locations" }
+myersdiff = { path = "../myersdiff" }
+operation = { path = "../operation" }
+rebase = { path = "../rebase" }
+rpds = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
+terminals = { path = "../terminals" }
+text = { path = "../text" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+tracing = "0.1"
+
+[target.'cfg(not(target_os = "emscripten"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread"] }
+
+[features]
+test-support = ["hikit/test-support"]
+
+[dev-dependencies]
+editor = { path = "../editor", features = ["test-support"] }
+hikit = { path = "../hikit", features = ["test-support"] }

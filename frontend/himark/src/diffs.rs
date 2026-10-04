@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use imba::store::Store;
-use imba::View as _;
 
 use crate::{AppCommand, AppFx};
 
@@ -51,23 +50,4 @@ pub(crate) fn sync_diff_lanes(
     });
 }
 
-pub fn sync_stripe_bases(
-    store: &mut Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
-    ui: &imba::UiCtx,
-    fx: &mut imba::command::Fx<'_>,
-) {
-    fx.scope(
-        move |command| imba::command::Verb::at(documents, command),
-        |fx| {
-            documents::diffs::sync_stripe_bases(
-                store,
-                documents,
-                fx,
-                |store, document, base, fx| {
-                    documents::diffs::land_base_located(store, documents, ui, document, base, fx);
-                },
-            );
-        },
-    );
-}
+pub use ::hiahp::sync_stripe_bases;

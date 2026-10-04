@@ -9,6 +9,7 @@ use std::sync::{Arc, Mutex};
 use super::*;
 use crate::AppExt;
 use crate::PanelView;
+use alacritty_terminal::grid::Dimensions;
 use imba::event::Modifiers;
 use imba::store::Store;
 

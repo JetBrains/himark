@@ -467,6 +467,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "canvas"
+version = "0.1.0"
+dependencies = [
+ "changesview",
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
+
+[[package]]
 name = "cbindgen"
 version = "0.29.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -530,6 +543,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "changesview"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
+
+[[package]]
 name = "clang-sys"
 version = "1.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -587,6 +612,19 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "comments"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+ "text",
 ]
 
 [[package]]
@@ -917,7 +955,6 @@ version = "0.1.0"
 dependencies = [
  "ahp",
  "ahp-ws",
- "hiahp",
  "himark",
  "host-discovery",
  "serde_json",
@@ -1241,6 +1278,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "filetree"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1374,7 +1423,6 @@ dependencies = [
  "demo",
  "desktop",
  "documents",
- "hiahp",
  "hibash",
  "hic",
  "hicmake",
@@ -1758,18 +1806,20 @@ checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 name = "hiahp"
 version = "0.1.0"
 dependencies = [
- "agent-host",
  "ahp",
  "ahp-types",
  "base64 0.22.1",
+ "canvas",
+ "changesview",
+ "comments",
  "documents",
  "editor",
- "himark",
+ "filetree",
+ "hikit",
  "himark-ahp-ext-types",
- "himarkdown",
- "host-discovery",
  "humantime",
  "imba",
+ "locations",
  "myersdiff",
  "operation",
  "rebase",
@@ -1777,7 +1827,8 @@ dependencies = [
  "serde",
  "serde_json",
  "skia-safe",
- "tempfile",
+ "terminals",
+ "text",
  "tokio",
  "tracing",
 ]
@@ -2066,6 +2117,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "hikit"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
+
+[[package]]
 name = "hikotlin"
 version = "0.1.0"
 dependencies = [
@@ -2101,21 +2163,31 @@ version = "0.1.0"
 dependencies = [
  "ahp-types",
  "alacritty_terminal",
+ "canvas",
+ "changesview",
+ "comments",
  "documents",
  "editor",
+ "filetree",
+ "hiahp",
+ "hikit",
  "himark-ahp-ext-types",
  "himarkdown",
  "host-discovery",
  "humantime",
  "imba",
+ "locations",
  "myersdiff",
  "operation",
+ "rebase",
  "regex",
  "rpds",
  "serde",
  "serde_json",
  "skia-safe",
+ "terminals",
  "text",
+ "toc",
 ]
 
 [[package]]
@@ -3068,6 +3140,18 @@ name = "litemap"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
+
+[[package]]
+name = "locations"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
 
 [[package]]
 name = "lock_api"
@@ -5051,6 +5135,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "terminals"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
+
+[[package]]
 name = "text"
 version = "0.1.0"
 dependencies = [
@@ -5226,6 +5322,18 @@ name = "tinyvec_macros"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f3ccbac311fea05f86f61904b462b55fb3df8837a366dfc601a0161d0532f20"
+
+[[package]]
+name = "toc"
+version = "0.1.0"
+dependencies = [
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "rpds",
+ "skia-safe",
+]
 
 [[package]]
 name = "tokenize"
@@ -6435,7 +6543,6 @@ version = "0.1.0"
 dependencies = [
  "ahp",
  "demo",
- "hiahp",
  "hibash",
  "hic",
  "hicmake",

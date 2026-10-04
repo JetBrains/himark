@@ -360,6 +360,7 @@ impl Application {
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
         crate::Navigators::register_windowed(&mut store, crate::navigation::EditorNavigator);
+        crate::higent::install_shell_roads(&mut store);
         // The locations wash hook is no longer boot-global: the
         // family ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
@@ -586,7 +587,7 @@ impl Application {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }
 
-    pub fn register_row_minter(&mut self, minter: std::sync::Arc<crate::RowMinter>) {
+    pub fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::RowMinter>) {
         self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
     }
 
@@ -1567,6 +1568,9 @@ impl Application {
                 for request in crate::commands::AppRequests::drain(store) {
                     self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
                 }
+                for request in imba::command::Requests::drain(store) {
+                    self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
+                }
             }
             AppCommand::Stats(command) => {
                 fx.scope(AppCommand::Stats, |fx| {
@@ -1588,6 +1592,9 @@ impl Application {
                 // clicked) would starve them forever.
                 for request in crate::commands::AppRequests::drain(store) {
                     self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
+                }
+                for request in imba::command::Requests::drain(store) {
+                    self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
                 }
             }
             AppCommand::Register(command) => {

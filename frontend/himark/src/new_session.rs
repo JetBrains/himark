@@ -213,12 +213,7 @@ fn store_fingerprint(store: &Store) -> u64 {
     hasher.finish()
 }
 
-#[doc(hidden)]
-pub struct ComboProbe {
-    pub labels: Vec<String>,
-    pub picked: Option<String>,
-    pub open: bool,
-}
+pub use hikit::combo::ComboProbe;
 
 #[doc(hidden)]
 pub struct NewSessionProbe {
@@ -708,25 +703,7 @@ impl NewSessionView {
     }
 }
 
-pub(crate) fn enum_options(
-    values: Option<&[serde_json::Value]>,
-    labels: Option<&[String]>,
-) -> Vec<ComboOption> {
-    let Some(values) = values else {
-        return Vec::new();
-    };
-    values
-        .iter()
-        .enumerate()
-        .filter_map(|(index, value)| {
-            let id = value.as_str()?;
-            let label = labels
-                .and_then(|labels| labels.get(index).cloned())
-                .unwrap_or_else(|| id.to_owned());
-            Some(ComboOption::plain(id, label))
-        })
-        .collect()
-}
+pub(crate) use ::hiahp::higent::session_toolbar::enum_options;
 
 fn host_status(combo: &Combo) -> Option<HostStatus> {
     let value = combo.value()?;

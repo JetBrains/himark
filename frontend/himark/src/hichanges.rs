@@ -77,7 +77,9 @@ impl crate::DynamicCommand for ToggleChangesView {
         let changes = entity.family().changes();
         let wire = entity.family().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
-        crate::drivers::changes::ensure(store, window, wire, folders, fx);
+        fx.scope(crate::AppCommand::Verb, |fx| {
+            crate::drivers::changes::ensure(store, wire, folders, fx)
+        });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
         let open_canvas: crate::changes_view::CanvasOpener = Arc::new(move |source, reveal| {

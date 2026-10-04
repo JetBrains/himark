@@ -16,7 +16,7 @@ use imba::event::{Event, EventResult, Key, Modifiers};
 use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View, Widget};
 use skia_safe::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
-use crate::{Session, TerminalId, Terminals};
+use crate::{Collector, Session, TerminalId, Terminals};
 
 /// A terminal pane's row: the collection and the terminal.
 #[derive(Clone, PartialEq)]

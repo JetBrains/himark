@@ -13,18 +13,10 @@ use imba::store::Store;
 pub use ::canvas::{CanvasRow, PairRow};
 pub use ::terminals::TerminalRow;
 pub use hikit::FamilyRow;
+use hikit::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
-#[derive(Clone, PartialEq)]
-pub struct ChatRow(
-    pub imba::store::Id<crate::higent::Chats>,
-    pub crate::higent::ChatUri,
-);
-
-impl hikit::Row for ChatRow {}
-
-pub type RowMinter =
-    dyn Fn(&Store, &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> + Send + Sync;
+pub use ::hiahp::higent::ChatRow;
 
 #[derive(Clone, Default)]
 pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);

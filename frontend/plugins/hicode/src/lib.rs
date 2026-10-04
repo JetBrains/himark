@@ -198,7 +198,9 @@ fn navigate(
     himark::Windows::put(store, window, window_entity);
 
     himark::sync_document_watches(store, documents, fx);
-    himark::sync_stripe_bases(store, documents, ui, fx);
+    fx.scope(himark::AppCommand::Verb, |fx| {
+        himark::sync_stripe_bases(store, documents, ui, fx)
+    });
 }
 
 pub struct GoDefinition;

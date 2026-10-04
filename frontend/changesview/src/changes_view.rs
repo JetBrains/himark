@@ -22,9 +22,10 @@ use std::sync::Arc;
 
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
-use crate::{
-    ActivateTrigger, AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
-    ListKeyboardController, ModalRequest, ResourceLocation, TreeListCommand,
+use editor::ResourceLocation;
+use hikit::{
+    ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
+    ListKeyboardController, ModalRequest, TreeListCommand,
 };
 use imba::list::ListOps;
 use imba::thunk_ext::ThunkExt;
@@ -47,7 +48,7 @@ const PANEL_PAD: f32 = 6.0;
 /// behavioural difference, carried as data minted by the node
 /// builders (`hichanges::folder_node`, `hihistory::graph_node`).
 #[derive(Clone)]
-pub(crate) enum RowItem {
+pub enum RowItem {
     /// A toggling branch row. `select` mirrors the builder's habit:
     /// history rows move the selection, changes directories don't.
     Branch {
@@ -82,7 +83,7 @@ pub enum ViewSets {
     History,
 }
 
-pub(crate) type Rows = TooltipView<
+pub type Rows = TooltipView<
     ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     crate::hihistory::CommitTip,
 >;
@@ -213,7 +214,7 @@ impl ChangesView {
             .map(|key| key.name().to_owned())
     }
 
-    pub(crate) fn refresh(&mut self, store: &Store, ui: &UiCtx) {
+    pub fn refresh(&mut self, store: &Store, ui: &UiCtx) {
         let mut items = rpds::HashTrieMapSync::new_sync();
         let chat = editor::env::Themes::of(store).ui().chat.clone();
         let counts = (chat.added_color.0, chat.removed_color.0);
@@ -662,6 +663,12 @@ impl ChangeSets {
         });
     }
 
+    fn view_ids(store: &Store, changes: imba::store::Id<ChangeSets>) -> Vec<ChangesViewId> {
+        Self::of(store, changes)
+            .map(|views| views.views.keys().copied().collect())
+            .unwrap_or_default()
+    }
+
     /// Rebuild the join rows for one view from what it now displays
     /// — the view's code computes `displayed`; the join is model
     /// bookkeeping.
@@ -704,7 +711,7 @@ impl ChangeSets {
 
     /// The update rule: a change set moved — mark exactly its
     /// uniting views stale. The batch-tail lane rolls them.
-    pub(crate) fn nudge_set(
+    pub fn nudge_set(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         set: crate::hichanges::ChangeSetId,
@@ -714,7 +721,7 @@ impl ChangeSets {
 
     /// The same marks, on the row itself — what a landing under the
     /// collection's own lease does.
-    pub(crate) fn nudge_set_in_place(&mut self, set: crate::hichanges::ChangeSetId) {
+    pub fn nudge_set_in_place(&mut self, set: crate::hichanges::ChangeSetId) {
         let Some(viewing) = self.viewers.get(&set).cloned() else {
             return;
         };
@@ -723,7 +730,7 @@ impl ChangeSets {
         }
     }
 
-    pub(crate) fn nudge_folder_in_place(&mut self, folder: &ResourceLocation) {
+    pub fn nudge_folder_in_place(&mut self, folder: &ResourceLocation) {
         let source = crate::hichanges::ChangeSetSource::WorkingCopy {
             folder: folder.clone(),
         };
@@ -733,7 +740,7 @@ impl ChangeSets {
         }
     }
 
-    pub(crate) fn nudge_all(&mut self) {
+    pub fn nudge_all(&mut self) {
         let ids: Vec<ChangesViewId> = self.views.keys().copied().collect();
         for id in ids {
             self.stale.insert_mut(id);
@@ -746,7 +753,7 @@ impl ChangeSets {
     /// on it. No anchor yet means no view derived rows from the
     /// folder either, but the views still show its placeholder
     /// notes, so fall back to marking everything.
-    pub(crate) fn nudge_folder(
+    pub fn nudge_folder(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
@@ -757,7 +764,7 @@ impl ChangeSets {
         }
     }
 
-    pub(crate) fn nudge_all_in(store: &mut Store, changes: imba::store::Id<ChangeSets>) {
+    pub fn nudge_all_in(store: &mut Store, changes: imba::store::Id<ChangeSets>) {
         Self::update(store, changes, |views| views.nudge_all());
     }
 }
@@ -768,11 +775,7 @@ impl ChangeSets {
 /// (gather/park), so every view in the record belongs to the
 /// gathered session already; the workspace guard just asserts that
 /// invariant.
-pub(crate) fn sync_changes_views(
-    store: &mut Store,
-    changes: imba::store::Id<ChangeSets>,
-    ui: &UiCtx,
-) {
+pub fn sync_changes_views(store: &mut Store, changes: imba::store::Id<ChangeSets>, ui: &UiCtx) {
     let stale: Vec<ChangesViewId> = Changes::of(store, changes)
         .map(|views| views.stale.iter().copied().collect())
         .unwrap_or_default();
@@ -781,8 +784,9 @@ pub(crate) fn sync_changes_views(
             continue;
         };
         view.refresh(store, ui);
+        let displayed = view.displayed_sets(store);
         Changes::put_view(store, changes, id, view);
-        Changes::register(store, changes, id);
+        Changes::register(store, changes, id, displayed);
         Changes::update(store, changes, |views| {
             views.stale.remove_mut(&id);
         });

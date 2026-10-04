@@ -9,6 +9,7 @@ use imba::store::Store;
 use crate::app::AppFx;
 use crate::Panel;
 
+pub use ::hiahp::higent::RecentLocations;
 pub use hikit::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
@@ -90,54 +91,6 @@ impl Navigators {
             .get(&location.place_type())
             .cloned()?;
         entry(store, ui, window, location, fx)
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct RecentLocations(Vec<crate::ResourceLocation>);
-
-/// Recents belong to the session you are working in; its family row
-/// hands the id to whoever has that context (docs/entities.md law 3) —
-/// this module never sees a `SessionId`.
-impl RecentLocations {
-    const CAP: usize = 100;
-
-    pub fn touch(
-        store: &mut Store,
-        recents: imba::store::Id<Self>,
-        location: &crate::ResourceLocation,
-    ) {
-        store.update_entity(recents, |recents| {
-            let recents = &mut recents.0;
-            recents.retain(|listed| listed != location);
-            recents.insert(0, location.clone());
-            recents.truncate(Self::CAP);
-        });
-    }
-
-    pub fn replace(
-        store: &mut Store,
-        recents: imba::store::Id<Self>,
-        old: &crate::ResourceLocation,
-        new: &crate::ResourceLocation,
-    ) {
-        store.update_entity(recents, |recents| {
-            let recents = &mut recents.0;
-            recents.retain(|listed| listed != old && listed != new);
-            recents.insert(0, new.clone());
-            recents.truncate(Self::CAP);
-        });
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn list(store: &Store, recents: imba::store::Id<Self>) -> Vec<crate::ResourceLocation> {
-        store
-            .entity(recents)
-            .map(|recents| recents.0.clone())
-            .unwrap_or_default()
     }
 }
 

@@ -151,15 +151,17 @@ fn remove_comment_clears_the_card_and_returns_focus() {
     invoke(&mut app, window, "comments.add");
     let (document, inlays) = commented_document(&app);
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(RemoveComment {
-            comments: app.sole_family().comments(),
-            document,
-            key: inlays[0].0,
-            annotation: None,
-        }),
-    )));
+    let _ = window;
+    assert!(
+        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(
+            std::sync::Arc::new(RemoveComment {
+                comments: app.sole_family().comments(),
+                document,
+                key: inlays[0].0,
+                annotation: None,
+            }),
+        )))
+    );
 
     let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
         .expect("the document");
@@ -330,13 +332,14 @@ fn sending_never_consumes_what_it_cannot_deliver() {
             .collect();
     assert_eq!(ids.len(), 1, "the record registered");
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(crate::hicomments::SendComments {
-            comments: app.sole_family().comments(),
-            ids: ids.clone(),
-        }),
-    )));
+    assert!(
+        app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(
+            std::sync::Arc::new(crate::hicomments::SendComments {
+                comments: app.sole_family().comments(),
+                ids: ids.clone(),
+            }),
+        )))
+    );
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "the card stands");
     assert_eq!(

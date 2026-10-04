@@ -5308,7 +5308,7 @@ mod dock_tests {
         let received = std::sync::Arc::new(std::sync::Mutex::new(None::<String>));
         {
             let received = received.clone();
-            crate::higent::Agents::install_add_host(
+            crate::higent::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 std::sync::Arc::new(move |_app, _store, url| {
                     *received.lock().expect("recorder") = Some(url.to_owned());
@@ -7238,10 +7238,12 @@ mod wash_tests {
 
         // Disposal removes the wash and survives the walk.
         let wire = family_wire(&app);
-        assert!(app.perform_command(AppCommand::Dynamic(
-            window,
-            Arc::new(DisposeFeed { wire, feed }),
-        )));
+        let _ = window;
+        assert!(
+            app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                DisposeFeed { wire, feed }
+            ),)))
+        );
         assert!(LocationLists::row(app.store(), lists, feed).is_none());
         assert!(
             crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), *document)

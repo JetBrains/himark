@@ -8,7 +8,9 @@
 use imba::store::Store;
 
 use crate::{ResourceLocation, WindowId};
-use changesview::hichanges::{CanvasSource, Changes};
+use changesview::hichanges::Changes;
+
+pub use changesview::hichanges::CanvasSource;
 
 pub use ::canvas::canvas;
 pub use ::canvas::diff_canvas::*;

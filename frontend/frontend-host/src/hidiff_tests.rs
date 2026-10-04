@@ -2082,8 +2082,12 @@ fn the_unified_view_switches_between_split_and_inline() {
     let pair_id = {
         let mut id = None;
         app.for_each_plugin_panel(&mut |panel| {
-            if let Some(himark::FamilyRow::Pair(_, pair)) = panel.family_row() {
-                id = Some(pair);
+            if let Some(himark::PairRow(_, pair)) = panel
+                .family_row()
+                .as_ref()
+                .and_then(|row| row.row::<himark::PairRow>())
+            {
+                id = Some(*pair);
             }
         });
         id.expect("the diff pane stands")

@@ -1,8 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
-
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use editor::{ResourceLocation, ResourceType};
 use hikit::{ForestList, ForestNode, ForestSearcher, ListKeyboardController};
@@ -158,7 +156,7 @@ impl History {
         store.put_entity(history, row);
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.folders.is_empty() && self.asks.is_empty()
     }
 
@@ -168,16 +166,13 @@ impl History {
         Self::update_folder(store, history, |held| held.asks.push(ask));
     }
 
-    pub(crate) fn owes_asks(store: &Store, history: imba::store::Id<History>) -> bool {
+    pub fn owes_asks(store: &Store, history: imba::store::Id<History>) -> bool {
         store
             .entity::<History>(history)
             .is_some_and(|held| !held.asks.is_empty())
     }
 
-    pub(crate) fn take_asks(
-        store: &mut Store,
-        history: imba::store::Id<History>,
-    ) -> Vec<HistoryAsk> {
+    pub fn take_asks(store: &mut Store, history: imba::store::Id<History>) -> Vec<HistoryAsk> {
         let Some(mut held) = store.entity::<History>(history).cloned() else {
             return Vec::new();
         };
@@ -187,7 +182,7 @@ impl History {
     }
 
     /// The driver's attach door: an empty folder row, idempotent.
-    pub(crate) fn ensure_folder(
+    pub fn ensure_folder(
         store: &mut Store,
         history: imba::store::Id<History>,
         folder: &ResourceLocation,
@@ -232,7 +227,7 @@ impl History {
 
     /// A history snapshot lands: mint the rows' sets (in the sibling
     /// collection), then adopt. The driver's door.
-    pub(crate) fn land_snapshot(
+    pub fn land_snapshot(
         store: &mut Store,
         history: imba::store::Id<History>,
         folder: &ResourceLocation,
@@ -275,7 +270,7 @@ impl History {
     }
 
     /// One folder's history resolves errored — the driver's door.
-    pub(crate) fn fold_error(
+    pub fn fold_error(
         store: &mut Store,
         history: imba::store::Id<History>,
         folder: &ResourceLocation,
@@ -288,7 +283,7 @@ impl History {
 
     /// The paging cursor the host handed with the last landing — the
     /// grow ask carries it back.
-    pub(crate) fn more(
+    pub fn more(
         store: &Store,
         history: imba::store::Id<History>,
         folder: &ResourceLocation,
@@ -298,7 +293,7 @@ impl History {
 
     /// Fold the driver's mirrored deltas — every incoming commit row
     /// mints its change set in the sibling collection first.
-    pub(crate) fn fold_deltas(
+    pub fn fold_deltas(
         store: &mut Store,
         history: imba::store::Id<History>,
         folder: &ResourceLocation,
@@ -456,7 +451,7 @@ impl DirSink for CommitSink<'_> {
     }
 }
 
-pub(crate) fn graph_node(
+pub fn graph_node(
     store: &Store,
     history: imba::store::Id<History>,
     folder: &ResourceLocation,
@@ -701,7 +696,7 @@ impl imba::View for CommitTip {
     }
 }
 
-pub(crate) fn commit_tip(
+pub fn commit_tip(
     rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
     history: imba::store::Id<History>,

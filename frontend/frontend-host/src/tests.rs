@@ -3221,7 +3221,7 @@ fn real_claude_answers_through_the_agent_host() {
     let servers = himark::higent::Servers::list(engine.app.store());
     let vscode = servers[0];
     let repo = std::env::current_dir().expect("cwd");
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4198,7 +4198,7 @@ fn the_drawer_connects_to_the_himark_host() {
             format!("unix:{}", socket.display()),
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4250,7 +4250,7 @@ fn dump_chat_pane_snapshot() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = dir.path().to_owned();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4399,7 +4399,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = dir.path().to_owned();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4595,7 +4595,7 @@ fn the_chat_runs_through_the_himark_host() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = dir.path().to_owned();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -4940,7 +4940,7 @@ fn real_claude_answers_through_the_himark_host() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = dir.path().to_owned();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -5044,7 +5044,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = work.clone();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {
@@ -6781,7 +6781,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
         ));
     let _ours = engine.register_agent_server("himark Host", seat);
     let workdir = dir.path().to_owned();
-    himark::higent::Agents::install_new_session(
+    himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
             std::sync::Arc::new(StubNewSession {

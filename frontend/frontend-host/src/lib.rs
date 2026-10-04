@@ -454,8 +454,8 @@ impl HimarkEngine {
         himarkdown::register_handlers(&mut app);
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
-        himark::hiahp::registry::register_all(&mut app);
-        himark::hiahp::open::install_build_handler(&mut app, languages, diff_policy);
+        himark::hiahp::register_all(&mut app);
+        himark::hiahp::install_build_handler(&mut app, languages, diff_policy);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
         // The comments hook and the comment gesture are no longer
@@ -493,7 +493,10 @@ impl HimarkEngine {
 
         let document_channels = docsync::DocumentChannels::new(
             runtime.handle().clone(),
-            dispatcher.clone(),
+            {
+                let dispatcher = dispatcher.clone();
+                Arc::new(move |verb| dispatcher(himark::AppCommand::Verb(verb)))
+            },
             Arc::clone(&resource_uris),
         );
 
@@ -548,7 +551,7 @@ impl HimarkEngine {
             let seats = seats.clone();
             let handle = runtime.handle().clone();
             let connector = Arc::clone(&connector);
-            himark::higent::Agents::install_add_host(
+            himark::higent::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 Arc::new(move |app, store, url| {
                     let seat: Arc<dyn himark::higent::AhpServer> =
@@ -1045,7 +1048,7 @@ impl HimarkEngine {
         let installed = self.agent_host_filesystem;
 
         if capabilities.fetch_document && !installed.fetch_document {
-            himark::hiahp::open::install_open_handlers(
+            himark::hiahp::install_open_handlers(
                 &mut self.app,
                 Arc::new(syntax_languages()),
                 Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),

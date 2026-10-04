@@ -13,7 +13,7 @@ use serde_json::json;
 use super::*;
 use crate::changes_view::RowItem;
 use crate::drivers::changes::{digest_actions, digest_state, CatalogEntry};
-use crate::{ForestNode, ResourceLocation, ResourceType};
+use crate::{Authority, ForestNode, ResourceLocation, ResourceType};
 
 struct InertSeat;
 
@@ -166,21 +166,7 @@ fn fold_wire(changes: &mut Changes, folder: &ResourceLocation, actions: &[StateA
 
 fn mirror() -> (Changes, ResourceLocation) {
     let mut changes = wired();
-    let id = ChangeSetId::mint();
-    changes.sets.insert_mut(
-        id,
-        ChangeSet {
-            source: ChangeSetSource::WorkingCopy { folder: folder() },
-            status: ChangesStatus::Computing,
-            files: rpds::VectorSync::new_sync(),
-            generation: 0,
-            bases: rpds::HashTrieMapSync::new_sync(),
-            canvases: rpds::HashTrieMapSync::new_sync(),
-        },
-    );
-    changes
-        .by_source
-        .insert_mut(ChangeSetSource::WorkingCopy { folder: folder() }, id);
+    changes.seed_working_set_for_tests(&folder());
     (changes, folder())
 }
 

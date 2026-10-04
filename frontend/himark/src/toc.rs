@@ -5,8 +5,6 @@
 //! and the windowed jump — the views are the `toc` crate's (the UI
 //! lives with its machinery, docs/entities.md).
 
-use std::sync::Arc;
-
 use imba::store::Store;
 use skia_safe::Paint;
 

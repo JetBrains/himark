@@ -34,7 +34,7 @@ pub trait ComboItem: View + Clone + Send + Sync + 'static {
     }
 }
 
-pub(crate) fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
+pub fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
 where
     T::Command: Send + 'static,
 {
@@ -754,4 +754,12 @@ mod tests {
             ]
         );
     }
+}
+
+/// A combo's test-visible shape — shared by every surface probe.
+#[doc(hidden)]
+pub struct ComboProbe {
+    pub labels: Vec<String>,
+    pub picked: Option<String>,
+    pub open: bool,
 }
