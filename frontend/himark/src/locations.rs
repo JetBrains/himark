@@ -46,28 +46,6 @@ impl FoundLocation {
     }
 }
 
-/// Resolve a wire batch against its channel's route — locations
-/// whose URI the route cannot place are dropped.
-pub fn resolve_batch(
-    channel: &crate::LocationsChannel,
-    batch: himark_ahp_ext_types::LocationList,
-) -> Vec<FoundLocation> {
-    batch
-        .locations
-        .into_iter()
-        .filter_map(|location| {
-            Some(FoundLocation {
-                location: (channel.resolve)(&location.uri)?,
-                line: location.line,
-                column: location.column,
-                length: location.length,
-                context: location.context,
-                context_column_start: location.context_column_start,
-            })
-        })
-        .collect()
-}
-
 /// Tree rows address by domain key — no id minting
 /// (docs/ui/list-tree.md): a directory or file row IS its location;
 /// an occurrence row its (location, line, column).
@@ -93,10 +71,10 @@ impl FeedId {
     }
 }
 
-/// One feed: the accumulated results plus the live stream end (the
-/// channel rides behind Arcs, the Terminals precedent; the poll
-/// token is a Copy id for cancellation). `generation` bumps on every
-/// fold so faces refresh on paint.
+/// One feed: the accumulated results and the stream's resolution
+/// flags — the live stream end itself (channel, poll token) is the
+/// DRIVER's (`drivers::locations`), in the family's wire row.
+/// `generation` bumps on every fold so faces refresh on paint.
 #[derive(Clone, Default)]
 pub struct LocationsFeedRow {
     pub title: String,
@@ -106,8 +84,6 @@ pub struct LocationsFeedRow {
     pub locations: rpds::VectorSync<FoundLocation>,
     pub done: bool,
     pub truncated: bool,
-    pub channel: Option<crate::LocationsChannel>,
-    pub poll: Option<imba::effect::CancellationToken>,
     /// The find-results washes this feed installed on opened
     /// documents: markup id plus the ranges last pushed (the change
     /// set a removal brings, the find-bar discipline).
@@ -190,6 +166,54 @@ impl LocationLists {
 
     pub fn set_search(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
         Self::update(store, lists, |held| held.search = Some(feed));
+    }
+
+    /// Fold a resolved batch into the feed: results append, the
+    /// stream flags OR in, the generation moves so faces refresh.
+    pub fn fold_locations(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+        locations: Vec<FoundLocation>,
+        done: bool,
+        truncated: bool,
+    ) {
+        Self::update_row(store, lists, feed, |row| {
+            for found in locations {
+                row.locations.push_back_mut(found);
+            }
+            row.done |= done;
+            row.truncated |= truncated;
+            row.generation += 1;
+        });
+    }
+
+    /// Resolve a feed cut-off in plain sight: a failed ask, a failed
+    /// batch, or a deliberate stop — a still-running row reads done
+    /// and truncated after; a finished one only repaints.
+    pub fn mark_cut(store: &mut Store, lists: imba::store::Id<LocationLists>, feed: FeedId) {
+        Self::update_row(store, lists, feed, |row| {
+            if !row.done {
+                row.done = true;
+                row.truncated = true;
+            }
+            row.generation += 1;
+        });
+    }
+
+    /// Mutate one feed row in place; a gone row takes no write.
+    fn update_row(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        feed: FeedId,
+        mutate: impl FnOnce(&mut LocationsFeedRow),
+    ) {
+        Self::update(store, lists, |held| {
+            if let Some(mut row) = held.feeds.get(&feed).cloned() {
+                mutate(&mut row);
+                held.feeds.insert_mut(feed, row);
+            }
+        });
     }
 
     /// The documents collection this one's washes land in.
@@ -284,130 +308,6 @@ pub fn open_feed(
             ..LocationsFeedRow::default()
         },
     );
-}
-
-/// Phase two of every ask: the channel landed — subscribe and start
-/// the feed's own pump, view-independent. Pushed through
-/// `AppRequests` by whichever surface asked.
-pub struct AttachFeedStream {
-    pub lists: imba::store::Id<LocationLists>,
-    pub feed: FeedId,
-    pub outcome: Result<crate::LocationsChannel, String>,
-}
-
-impl crate::DynamicCommand for AttachFeedStream {
-    fn id(&self) -> &'static str {
-        "locations.attach-stream"
-    }
-
-    fn name(&self) -> String {
-        "Attach Location Stream".to_owned()
-    }
-
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
-            return;
-        };
-        match self.outcome.clone() {
-            Err(_) => {
-                row.done = true;
-                row.truncated = true;
-                row.generation += 1;
-                LocationLists::put(store, self.lists, self.feed, row);
-            }
-            Ok(channel) => {
-                row.channel = Some(channel.clone());
-                LocationLists::put(store, self.lists, self.feed, row);
-                let (lists, feed) = (self.lists, self.feed);
-                let _ = fx.push(
-                    imba::effect::AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                        seat: channel.seat,
-                        channel: channel.channel,
-                    })
-                    .map(move |outcome| {
-                        crate::AppCommand::Landing(
-                            window,
-                            Box::new(FeedBatch {
-                                lists,
-                                feed,
-                                batches: outcome.map(|snapshot| vec![snapshot]),
-                            }),
-                        )
-                    }),
-                );
-            }
-        }
-    }
-}
-
-/// The pump's landing: fold, then poll again while the stream runs.
-struct FeedBatch {
-    lists: imba::store::Id<LocationLists>,
-    feed: FeedId,
-    batches: Result<Vec<himark_ahp_ext_types::LocationList>, String>,
-}
-
-impl crate::LandingCommand for FeedBatch {
-    fn perform(
-        self: Box<Self>,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
-            return; // disposed while in flight — the unsubscribe ran
-        };
-        let Some(channel) = row.channel.clone() else {
-            return;
-        };
-        match self.batches {
-            Err(_) => {
-                row.done = true;
-                row.truncated = true;
-            }
-            Ok(batches) => {
-                for batch in batches {
-                    row.done |= batch.done;
-                    row.truncated |= batch.truncated;
-                    for found in resolve_batch(&channel, batch) {
-                        row.locations.push_back_mut(found);
-                    }
-                }
-            }
-        }
-        row.generation += 1;
-        let running = !row.done;
-        let (lists, feed) = (self.lists, self.feed);
-        if running {
-            let token = fx.push(
-                imba::effect::AnyEffect::new(crate::higent::PollLocationsEffect {
-                    seat: std::sync::Arc::clone(&channel.seat),
-                    channel: channel.channel.clone(),
-                })
-                .map(move |batches| {
-                    crate::AppCommand::Landing(
-                        window,
-                        Box::new(FeedBatch {
-                            lists,
-                            feed,
-                            batches: Ok(batches),
-                        }),
-                    )
-                }),
-            );
-            row.poll = Some(token);
-        } else {
-            row.poll = None;
-        }
-        LocationLists::put(store, self.lists, self.feed, row);
-    }
 }
 
 /// The registration hook: a search-picked document opened — wash it.
@@ -583,113 +483,27 @@ fn remove_washes(
     }
 }
 
-/// Stop a feed's stream, keeping what landed: cancel the pump,
-/// unsubscribe (the host-side cancel), resolve the row cut-off.
-pub struct StopFeed {
-    pub lists: imba::store::Id<LocationLists>,
-    pub feed: FeedId,
-}
-
-impl crate::DynamicCommand for StopFeed {
-    fn id(&self) -> &'static str {
-        "locations.stop-feed"
+/// The model half of a feed's disposal: the washes leave the
+/// documents, the pending notes sweep, the row drops. The wire
+/// teardown — the poll cancel, the unsubscribe — is the driver's
+/// (`drivers::locations::DisposeFeed`), which calls here after.
+pub(crate) fn dispose_feed(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    lists: imba::store::Id<LocationLists>,
+    feed: FeedId,
+    fx: &mut crate::app::AppFx<'_>,
+) {
+    let Some(row) = LocationLists::row(store, lists, feed) else {
+        return;
+    };
+    // The collection's wired sibling, not the window's current
+    // family — the window may have moved on since the feed opened.
+    if let Some(documents) = LocationLists::documents_of(store, lists) {
+        remove_washes(store, documents, ui, &row, fx);
     }
-
-    fn name(&self) -> String {
-        "Stop Location Stream".to_owned()
-    }
-
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
-            return;
-        };
-        if let Some(token) = row.poll.take() {
-            fx.cancel(token);
-        }
-        if let Some(channel) = row.channel.take() {
-            let _ = fx.push(
-                imba::effect::AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
-                    seat: channel.seat,
-                    channel: channel.channel,
-                })
-                .map(move |()| crate::AppCommand::Landing(window, Box::new(NothingLanded))),
-            );
-        }
-        if !row.done {
-            row.done = true;
-            row.truncated = true;
-        }
-        row.generation += 1;
-        LocationLists::put(store, self.lists, self.feed, row);
-    }
-}
-
-/// Dispose a feed: cancel its pump, unsubscribe its channel (the
-/// host-side cancel), drop the row. Pushed through `AppRequests`.
-pub struct DisposeFeed {
-    pub lists: imba::store::Id<LocationLists>,
-    pub feed: FeedId,
-}
-
-impl crate::DynamicCommand for DisposeFeed {
-    fn id(&self) -> &'static str {
-        "locations.dispose-feed"
-    }
-
-    fn name(&self) -> String {
-        "Dispose Location Feed".to_owned()
-    }
-
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
-        let Some(row) = LocationLists::row(store, self.lists, self.feed) else {
-            return;
-        };
-        // The collection's wired sibling, not the window's current
-        // family — the window may have moved on since the feed opened.
-        if let Some(documents) = LocationLists::documents_of(store, self.lists) {
-            remove_washes(store, documents, ui, &row, fx);
-        }
-        LocationLists::sweep_washes(store, self.lists, self.feed);
-        if let Some(token) = row.poll {
-            fx.cancel(token);
-        }
-        if let Some(channel) = row.channel {
-            let _ = fx.push(
-                imba::effect::AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
-                    seat: channel.seat,
-                    channel: channel.channel,
-                })
-                .map(move |()| crate::AppCommand::Landing(window, Box::new(NothingLanded))),
-            );
-        }
-        LocationLists::remove(store, self.lists, self.feed);
-    }
-}
-
-struct NothingLanded;
-
-impl crate::LandingCommand for NothingLanded {
-    fn perform(
-        self: Box<Self>,
-        _app: &mut crate::Application,
-        _store: &mut Store,
-        _window: crate::WindowId,
-        _fx: &mut crate::app::AppFx<'_>,
-    ) {
-    }
+    LocationLists::sweep_washes(store, lists, feed);
+    LocationLists::remove(store, lists, feed);
 }
 
 /// The peek's master forest: locations grouped by FILE (no directory

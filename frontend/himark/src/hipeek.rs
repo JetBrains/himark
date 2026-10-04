@@ -24,11 +24,11 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
+use crate::drivers::locations::{AttachFeedStream, DisposeFeed, LocationsWire};
 use crate::forest::ForestList;
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
-    files_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, FoundLocation, LocationKey,
-    LocationLists,
+    files_forest, open_feed, FeedId, FoundLocation, LocationKey, LocationLists,
 };
 use crate::tree_item::{tree_toggle, TreeListCommand};
 use crate::{
@@ -84,6 +84,7 @@ pub struct PeekView {
     key: Option<InlayKey>,
     width: f32,
     lists: imba::store::Id<LocationLists>,
+    wire: imba::store::Id<LocationsWire>,
     feed: FeedId,
 
     tree: ListKeyboardController<ForestList<LocationKey>>,
@@ -110,6 +111,7 @@ impl PeekView {
         host: Option<crate::DocumentId>,
         width: f32,
         lists: imba::store::Id<LocationLists>,
+        wire: imba::store::Id<LocationsWire>,
         feed: FeedId,
     ) -> Self {
         Self {
@@ -117,6 +119,7 @@ impl PeekView {
             key: None,
             width,
             lists,
+            wire,
             feed,
             tree: ListKeyboardController::new(ForestList::new(store)).with_folds(),
             targets: rpds::HashTrieMapSync::new_sync(),
@@ -394,7 +397,7 @@ impl PeekView {
             AppRequests::push(
                 store,
                 Arc::new(DisposeFeed {
-                    lists: self.lists,
+                    wire: self.wire,
                     feed: self.feed,
                 }),
             );
@@ -499,6 +502,7 @@ impl View for PeekView {
                     store,
                     Arc::new(crate::hisearch::ShowFeedInDock {
                         lists: self.lists,
+                        wire: self.wire,
                         feed: self.feed,
                     }),
                 );
@@ -771,17 +775,17 @@ impl documents::DocumentCommand for GoToReference {
         // card already fronts.
         if let Some(payload) = payload {
             let Ok(landed) = payload.downcast::<(
-                imba::store::Id<LocationLists>,
+                imba::store::Id<LocationsWire>,
                 FeedId,
                 Result<LocationsChannel, String>,
             )>() else {
                 return;
             };
-            let (lists, feed, outcome) = *landed;
+            let (wire, feed, outcome) = *landed;
             AppRequests::push(
                 store,
                 Arc::new(AttachFeedStream {
-                    lists,
+                    wire,
                     feed,
                     outcome,
                 }),
@@ -795,8 +799,8 @@ impl documents::DocumentCommand for GoToReference {
         // consult at a DocumentCommand border, the save.rs/fsroute
         // debt class: burns when generic document commands learn
         // their family (the gating keeps this one boot-global).
-        let Some(lists) = crate::higent::Hosts::family_of_documents(store, _documents)
-            .map(|family| family.lists())
+        let Some((lists, wire)) = crate::higent::Hosts::family_of_documents(store, _documents)
+            .map(|family| (family.lists(), family.locations_wire()))
         else {
             return;
         };
@@ -818,7 +822,7 @@ impl documents::DocumentCommand for GoToReference {
             _ => FALLBACK_WIDTH,
         };
         let host = Some(document_id);
-        let view = PeekView::new(store, host, width, lists, feed);
+        let view = PeekView::new(store, host, width, lists, wire, feed);
         let markup = peek_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -842,7 +846,7 @@ impl documents::DocumentCommand for GoToReference {
             })
             .map(move |outcome| EditorCommand::Dynamic {
                 id: "code.go-to-reference",
-                payload: Some(::editor::DynPayload::new((lists, feed, outcome))),
+                payload: Some(::editor::DynPayload::new((wire, feed, outcome))),
             }),
         );
     }
@@ -896,12 +900,12 @@ mod tests {
         }
     }
 
-    fn lists(store: &mut Store) -> imba::store::Id<LocationLists> {
+    fn family(store: &mut Store) -> crate::higent::SessionState {
         let session = crate::SessionId {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("peek-test"),
         };
-        crate::higent::Hosts::ensure_family(store, &session).lists()
+        crate::higent::Hosts::ensure_family(store, &session)
     }
 
     fn feed(
@@ -909,7 +913,7 @@ mod tests {
         rows: &[FoundLocation],
         done: bool,
     ) -> (imba::store::Id<LocationLists>, FeedId) {
-        let lists = lists(store);
+        let lists = family(store).lists();
         let feed = FeedId::mint();
         let mut row = crate::locations::LocationsFeedRow {
             title: "References".to_owned(),
@@ -935,7 +939,8 @@ mod tests {
             ],
             true,
         );
-        let mut view = PeekView::new(&store, None, 600.0, lists, feed);
+        let wire = family(&mut store).locations_wire();
+        let mut view = PeekView::new(&store, None, 600.0, lists, wire, feed);
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
 
@@ -972,7 +977,8 @@ mod tests {
         let mut store = Store::new();
         let ui = ::editor::test_document::test_ui();
         let (lists, feed) = feed(&mut store, &[found("a.rs", 3, "only")], true);
-        let mut view = PeekView::new(&store, None, 600.0, lists, feed);
+        let wire = family(&mut store).locations_wire();
+        let mut view = PeekView::new(&store, None, 600.0, lists, wire, feed);
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
         assert!(view.navigated, "the trivial case went straight through");

@@ -7124,7 +7124,8 @@ unrelated
 
 mod wash_tests {
     use super::*;
-    use crate::locations::{DisposeFeed, FeedId, FoundLocation, LocationLists, LocationsFeedRow};
+    use crate::drivers::locations::DisposeFeed;
+    use crate::locations::{FeedId, FoundLocation, LocationLists, LocationsFeedRow};
     use crate::{AppCommand, AppFonts, Application, OpenedDocument};
     use std::sync::Arc;
 
@@ -7142,6 +7143,14 @@ mod wash_tests {
             .expect("the window entity")
             .family()
             .lists()
+    }
+
+    fn family_wire(app: &Application) -> imba::store::Id<crate::drivers::locations::LocationsWire> {
+        let window = app.sole_window();
+        crate::Windows::window_ref(app.store(), window)
+            .expect("the window entity")
+            .family()
+            .locations_wire()
     }
 
     fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {
@@ -7220,9 +7229,10 @@ mod wash_tests {
         );
 
         // Disposal removes the wash and survives the walk.
+        let wire = family_wire(&app);
         assert!(app.perform_command(AppCommand::Dynamic(
             window,
-            Arc::new(DisposeFeed { lists, feed }),
+            Arc::new(DisposeFeed { wire, feed }),
         )));
         assert!(LocationLists::row(app.store(), lists, feed).is_none());
         assert!(

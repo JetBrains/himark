@@ -20,11 +20,11 @@ use imba::{
 };
 use skia_safe::Size;
 
+use crate::drivers::locations::{AttachFeedStream, DisposeFeed, LocationsWire, StopFeed};
 use crate::forest::{ForestList, ForestSearcher};
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
-    locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey, LocationLists,
-    LocationsFeedRow, StopFeed,
+    locations_forest, open_feed, FeedId, LocationKey, LocationLists, LocationsFeedRow,
 };
 use crate::modal::RequestSlot;
 use crate::tree_item::{tree_toggle, TreeListCommand};
@@ -83,9 +83,12 @@ impl std::fmt::Display for SearchCommand {
 pub struct SearchView {
     window: WindowId,
     session: SessionId,
-    /// The session's lists collection — stamped at open from the
-    /// window's family (docs/entities.md law 3).
+    /// The session's lists collection and its wire driver — stamped
+    /// at open from the window's family (docs/entities.md law 3):
+    /// the face reads the model, and every stream ask or teardown
+    /// goes to the driver.
     lists: imba::store::Id<LocationLists>,
+    wire: imba::store::Id<LocationsWire>,
     input: EditorView,
     search: ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>,
     focus: SearchArea,
@@ -113,6 +116,7 @@ impl Clone for SearchView {
             window: self.window,
             session: self.session.clone(),
             lists: self.lists,
+            wire: self.wire,
             input: self.input.clone(),
             search: self.search.clone(),
             focus: self.focus,
@@ -135,6 +139,7 @@ impl SearchView {
         window: WindowId,
         session: SessionId,
         lists: imba::store::Id<LocationLists>,
+        wire: imba::store::Id<LocationsWire>,
     ) -> Self {
         let row = LocationLists::search(store, lists)
             .and_then(|feed| LocationLists::row(store, lists, feed))
@@ -143,6 +148,7 @@ impl SearchView {
             window,
             session,
             lists,
+            wire,
             input: seeded_input(store, ui, &row.query),
             search: ListKeyboardController::searchable(
                 ForestList::new(store),
@@ -232,7 +238,7 @@ impl SearchView {
             AppRequests::push(
                 store,
                 Arc::new(DisposeFeed {
-                    lists: self.lists,
+                    wire: self.wire,
                     feed: previous,
                 }),
             );
@@ -491,7 +497,7 @@ impl View for SearchView {
                     AppRequests::push(
                         store,
                         Arc::new(StopFeed {
-                            lists: self.lists,
+                            wire: self.wire,
                             feed,
                         }),
                     );
@@ -503,7 +509,7 @@ impl View for SearchView {
                 AppRequests::push(
                     store,
                     Arc::new(AttachFeedStream {
-                        lists: self.lists,
+                        wire: self.wire,
                         feed,
                         outcome,
                     }),
@@ -852,14 +858,14 @@ impl crate::DynamicCommand for OpenLspFeed {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(lists) =
-            crate::Windows::window_ref(store, window).map(|entity| entity.family().lists())
+        let Some((lists, wire)) = crate::Windows::window_ref(store, window)
+            .map(|entity| (entity.family().lists(), entity.family().locations_wire()))
         else {
             return;
         };
         let feed = FeedId::mint();
         open_feed(store, lists, feed, self.title.clone(), String::new());
-        ShowFeedInDock { lists, feed }.perform(app, store, window, fx);
+        ShowFeedInDock { lists, wire, feed }.perform(app, store, window, fx);
         let _ = fx.push(
             imba::effect::AnyEffect::new(crate::LspLocationsEffect {
                 location: self.location.clone(),
@@ -870,7 +876,7 @@ impl crate::DynamicCommand for OpenLspFeed {
                 crate::AppCommand::Dynamic(
                     window,
                     Arc::new(AttachFeedStream {
-                        lists,
+                        wire,
                         feed,
                         outcome,
                     }),
@@ -885,9 +891,11 @@ impl crate::DynamicCommand for OpenLspFeed {
 /// peek's promote button, which reuses the standing feed instead of
 /// asking again.
 pub struct ShowFeedInDock {
-    /// The feed's HOME collection — carried with the feed so a
-    /// promote fronts the right rows even if the window moved on.
+    /// The feed's HOME collection and its wire — carried with the
+    /// feed so a promote fronts the right rows even if the window
+    /// moved on.
     pub lists: imba::store::Id<LocationLists>,
+    pub wire: imba::store::Id<LocationsWire>,
     pub feed: FeedId,
 }
 
@@ -916,7 +924,7 @@ impl crate::DynamicCommand for ShowFeedInDock {
                 AppRequests::push(
                     store,
                     Arc::new(DisposeFeed {
-                        lists: self.lists,
+                        wire: self.wire,
                         feed: previous,
                     }),
                 );
@@ -928,7 +936,7 @@ impl crate::DynamicCommand for ShowFeedInDock {
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = SearchView::open(store, &app.ui_ctx(), window, session, self.lists);
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session, self.lists, self.wire);
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
@@ -969,7 +977,8 @@ impl crate::DynamicCommand for ToggleSearchView {
 
         let session = entity.current_session();
         let lists = entity.family().lists();
-        let panel = SearchView::open(store, &app.ui_ctx(), window, session, lists);
+        let wire = entity.family().locations_wire();
+        let panel = SearchView::open(store, &app.ui_ctx(), window, session, lists, wire);
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
@@ -1121,6 +1130,10 @@ mod tests {
         crate::higent::Hosts::ensure_family(store, &session()).lists()
     }
 
+    fn wire(store: &mut Store) -> imba::store::Id<LocationsWire> {
+        crate::higent::Hosts::ensure_family(store, &session()).locations_wire()
+    }
+
     fn feed(store: &mut Store, rows: &[FoundLocation], done: bool) -> FeedId {
         let lists = lists(store);
         let feed = LocationLists::search(store, lists).unwrap_or_else(|| {
@@ -1139,7 +1152,8 @@ mod tests {
     fn view(store: &mut Store, ui: &UiCtx) -> SearchView {
         let window = crate::WindowId::from_raw(77);
         let lists = lists(store);
-        SearchView::open(store, ui, window, session(), lists)
+        let wire = wire(store);
+        SearchView::open(store, ui, window, session(), lists, wire)
     }
 
     #[test]

@@ -75,6 +75,8 @@ pub struct SessionState {
 
     lists: Id<crate::locations::LocationLists>,
 
+    locations_wire: Id<crate::drivers::locations::LocationsWire>,
+
     scratch_names: Id<documents::ScratchMint>,
 }
 
@@ -127,6 +129,10 @@ impl SessionState {
         self.lists
     }
 
+    pub fn locations_wire(&self) -> Id<crate::drivers::locations::LocationsWire> {
+        self.locations_wire
+    }
+
     pub fn scratch_names(&self) -> Id<documents::ScratchMint> {
         self.scratch_names
     }
@@ -145,6 +151,7 @@ impl SessionState {
             terminals: Id::mint(),
             documents: Id::mint(),
             lists: Id::mint(),
+            locations_wire: Id::mint(),
             scratch_names: Id::mint(),
         }
     }
@@ -169,6 +176,7 @@ impl SessionState {
             && empty(store, self.terminals, |it| it.is_empty())
             && empty(store, self.documents, |it| it.is_empty())
             && empty(store, self.lists, |it| it.is_empty())
+            && empty(store, self.locations_wire, |it| it.is_empty())
             && empty(store, self.scratch_names, |it| it.is_empty())
     }
 
@@ -192,9 +200,11 @@ impl SessionState {
         // then its `destroy` retracts what it owns (law 6). The others
         // follow as they convert.
         store.dispose(self.documents);
-        // The lists' live streams die with the row: the poll tokens
-        // and channel ends drop with it (the Terminals precedent).
         store.retract(self.lists);
+        // The lists' live streams die with the WIRE row: the poll
+        // tokens and channel ends drop with it (the Terminals
+        // precedent).
+        store.retract(self.locations_wire);
         store.retract(self.scratch_names);
     }
 }
@@ -479,6 +489,10 @@ impl Hosts {
         store.put_entity(
             family.lists,
             crate::locations::LocationLists::wired(family.documents),
+        );
+        store.put_entity(
+            family.locations_wire,
+            crate::drivers::locations::LocationsWire::wired(family.lists),
         );
         crate::OpenDocuments::install_scoped_hook(
             store,
