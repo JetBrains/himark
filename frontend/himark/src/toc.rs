@@ -16,7 +16,7 @@ pub struct NavigateToPlace {
     pub place: hikit::navigation::EditorPlace,
 }
 
-impl crate::commands::DynamicCommand for NavigateToPlace {
+impl crate::commands::WindowedCommand for NavigateToPlace {
     fn id(&self) -> &'static str {
         "toc.jump"
     }
@@ -25,12 +25,12 @@ impl crate::commands::DynamicCommand for NavigateToPlace {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -77,7 +77,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 pub struct ToggleToc;
 
-impl crate::commands::DynamicCommand for ToggleToc {
+impl crate::commands::WindowedCommand for ToggleToc {
     fn id(&self) -> &'static str {
         "toc.toggle"
     }
@@ -86,8 +86,8 @@ impl crate::commands::DynamicCommand for ToggleToc {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -106,7 +106,7 @@ impl crate::commands::DynamicCommand for ToggleToc {
                 .workbench()
                 .root
                 .focused_pane()
-                .drawer_view(store, &_app.ui_ctx(), window)
+                .drawer_view(store, ui, window)
         else {
             ::workbench::window::Windows::put(store, window, entity);
             return;

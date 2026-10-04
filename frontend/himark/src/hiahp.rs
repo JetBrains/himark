@@ -18,8 +18,7 @@ use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
 use crate::app::AppCommand;
-use crate::app::AppFx;
-use crate::commands::DynamicCommand;
+use crate::commands::WindowedCommand;
 use crate::workspace::OpenByLocationEffect;
 
 /// Building a document from text in hand (Text, layout, syntax) is not a
@@ -92,9 +91,9 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
                     documents::diff_views::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
-            return AppCommand::Dynamic(effect.window, Arc::new(FetchFailed { location }));
+            return AppCommand::Windowed(effect.window, Arc::new(FetchFailed { location }));
         }
-        AppCommand::Dynamic(
+        AppCommand::Windowed(
             effect.window,
             Arc::new(OpenDiffPair {
                 window: effect.window,
@@ -147,7 +146,7 @@ pub struct OpenDiffPair {
     pair: documents::diff_views::OpenedDiffPair,
 }
 
-impl DynamicCommand for OpenDiffPair {
+impl WindowedCommand for OpenDiffPair {
     fn id(&self) -> &'static str {
         "vcs.open-diff-pair"
     }
@@ -156,12 +155,12 @@ impl DynamicCommand for OpenDiffPair {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let _ = crate::diff_pane::open_opened_diff_pane(
             store,
             ui,
@@ -220,7 +219,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 )
             }
 
-            None => AppCommand::Dynamic(
+            None => AppCommand::Windowed(
                 effect.window,
                 Arc::new(FetchFailed {
                     location: effect.location,
@@ -234,7 +233,7 @@ pub struct FetchFailed {
     location: ResourceLocation,
 }
 
-impl DynamicCommand for FetchFailed {
+impl WindowedCommand for FetchFailed {
     fn id(&self) -> &'static str {
         "file.fetch-failed"
     }
@@ -243,10 +242,10 @@ impl DynamicCommand for FetchFailed {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
-        _fx: &mut AppFx<'_>,
+        _fx: &mut crate::app::AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
     }

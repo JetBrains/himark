@@ -486,7 +486,7 @@ mod app {
             }
             let window = state.add_window();
 
-            state.perform_command(himark::app::AppCommand::Dynamic(
+            state.perform_command(himark::app::AppCommand::Windowed(
                 window,
                 std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
             ));

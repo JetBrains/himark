@@ -77,7 +77,7 @@ impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocati
 
 struct AddFolder;
 
-impl himark::commands::DynamicCommand for AddFolder {
+impl himark::commands::WindowedCommand for AddFolder {
     fn id(&self) -> &'static str {
         "test.add-folder"
     }
@@ -86,9 +86,9 @@ impl himark::commands::DynamicCommand for AddFolder {
     }
     fn perform(
         &self,
-        _app: &mut Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let id = himark::test_support::seed_session_folders(store, &[folder_location()]);
@@ -154,7 +154,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "alpha".to_owned(),
         false
     ));
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -233,7 +233,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
@@ -293,7 +293,7 @@ fn outside_dismissal_releases_glanced_documents() {
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     app.draw_window(app.sole_window(), surface.canvas());
-    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Windowed(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));

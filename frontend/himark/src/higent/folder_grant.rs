@@ -20,7 +20,7 @@ pub struct AddSessionFolders {
     pub session: SessionUri,
 }
 
-impl crate::commands::DynamicCommand for AddSessionFolders {
+impl crate::commands::WindowedCommand for AddSessionFolders {
     fn id(&self) -> &'static str {
         "session.add-folder"
     }
@@ -31,8 +31,8 @@ impl crate::commands::DynamicCommand for AddSessionFolders {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -41,7 +41,7 @@ impl crate::commands::DynamicCommand for AddSessionFolders {
         fx.push(
             AnyEffect::new(crate::new_session::PickFoldersEffect { window }).map(
                 move |locations| {
-                    crate::app::AppCommand::Dynamic(
+                    crate::app::AppCommand::Windowed(
                         window,
                         Arc::new(SessionFoldersPicked {
                             server,
@@ -61,7 +61,7 @@ struct SessionFoldersPicked {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::commands::DynamicCommand for SessionFoldersPicked {
+impl crate::commands::WindowedCommand for SessionFoldersPicked {
     fn id(&self) -> &'static str {
         "session.folder-granted"
     }
@@ -72,8 +72,8 @@ impl crate::commands::DynamicCommand for SessionFoldersPicked {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -106,7 +106,7 @@ impl crate::commands::DynamicCommand for SessionFoldersPicked {
                     ),
                 })
                 .map(move |result| {
-                    crate::app::AppCommand::Dynamic(window, Arc::new(GrantAck { result }))
+                    crate::app::AppCommand::Windowed(window, Arc::new(GrantAck { result }))
                 }),
             );
         }
@@ -117,7 +117,7 @@ struct GrantAck {
     result: Result<(), String>,
 }
 
-impl crate::commands::DynamicCommand for GrantAck {
+impl crate::commands::WindowedCommand for GrantAck {
     fn id(&self) -> &'static str {
         "session.folder-grant-ack"
     }
@@ -128,8 +128,8 @@ impl crate::commands::DynamicCommand for GrantAck {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {

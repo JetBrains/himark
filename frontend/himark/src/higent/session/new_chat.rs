@@ -7,7 +7,7 @@ use ahp_session::session::agents::Agents;
 use ahp_wire::effects::CreateChatEffect;
 use ahp_wire::client::HostId;
 use crate::app::AppCommand;
-use crate::commands::DynamicCommand;
+use crate::commands::WindowedCommand;
 use ahp_wire::SessionId;
 use ::workbench::window::Windows;
 use imba::effect::AnyEffect;
@@ -19,7 +19,7 @@ fn current_session(store: &Store, window: ::workbench::window::WindowId) -> Opti
 
 pub struct NewChat;
 
-impl DynamicCommand for NewChat {
+impl WindowedCommand for NewChat {
     fn id(&self) -> &'static str {
         "agent.new-chat"
     }
@@ -30,8 +30,8 @@ impl DynamicCommand for NewChat {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -51,7 +51,7 @@ impl DynamicCommand for NewChat {
                 session: key.session.clone(),
             })
             .map(move |created| {
-                AppCommand::Dynamic(window, Arc::new(OpenCreatedChat { server, created }))
+                AppCommand::Windowed(window, Arc::new(OpenCreatedChat { server, created }))
             }),
         );
     }
@@ -62,7 +62,7 @@ struct OpenCreatedChat {
     created: Result<ahp_wire::client::ChatUri, String>,
 }
 
-impl DynamicCommand for OpenCreatedChat {
+impl WindowedCommand for OpenCreatedChat {
     fn id(&self) -> &'static str {
         "agent.open-created-chat"
     }
@@ -73,12 +73,12 @@ impl DynamicCommand for OpenCreatedChat {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let chat = match &self.created {
             Ok(chat) => chat.clone(),
             Err(error) => {

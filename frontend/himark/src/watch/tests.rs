@@ -850,7 +850,7 @@ fn the_palette_reload_follows_the_disk() {
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
     assert!(crate::app_ext::AppExt::perform_command(
         &mut app,
-        crate::app::AppCommand::Dynamic(window, Arc::new(ReloadDocument)),
+        crate::app::AppCommand::Windowed(window, Arc::new(ReloadDocument)),
     ));
     settle(&mut app);
 

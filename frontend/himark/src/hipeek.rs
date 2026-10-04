@@ -145,7 +145,7 @@ struct OpenPicked {
     target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::commands::DynamicCommand for OpenPicked {
+impl crate::commands::WindowedCommand for OpenPicked {
     fn id(&self) -> &'static str {
         "peek.open-picked"
     }
@@ -154,8 +154,8 @@ impl crate::commands::DynamicCommand for OpenPicked {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {

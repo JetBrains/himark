@@ -17,7 +17,7 @@ mod tests;
 
 pub struct ToggleCommentsView;
 
-impl crate::commands::DynamicCommand for ToggleCommentsView {
+impl crate::commands::WindowedCommand for ToggleCommentsView {
     fn id(&self) -> &'static str {
         "comments.view"
     }
@@ -26,8 +26,8 @@ impl crate::commands::DynamicCommand for ToggleCommentsView {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -51,7 +51,7 @@ impl crate::commands::DynamicCommand for ToggleCommentsView {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = CommentsView::open(store, &_app.ui_ctx(), comments);
+        let panel = CommentsView::open(store, ui, comments);
         let owner = self.id();
         fx.scope(
             move |command| crate::app::AppCommand::Content(window, command),

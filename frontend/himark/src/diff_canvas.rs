@@ -9,7 +9,6 @@ use ::canvas::diff_canvas::*;
 
 use imba::store::Store;
 
-use ::workbench::window::WindowId;
 use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
 
@@ -24,7 +23,7 @@ pub struct OpenDiffCanvas {
     pub reveal: Option<ResourceLocation>,
 }
 
-impl crate::commands::DynamicCommand for OpenDiffCanvas {
+impl crate::commands::WindowedCommand for OpenDiffCanvas {
     fn id(&self) -> &'static str {
         "diff.open-canvas"
     }
@@ -33,12 +32,12 @@ impl crate::commands::DynamicCommand for OpenDiffCanvas {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
-        window: WindowId,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
@@ -83,7 +82,7 @@ pub struct OpenCanvasFile {
     pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::commands::DynamicCommand for OpenCanvasFile {
+impl crate::commands::WindowedCommand for OpenCanvasFile {
     fn id(&self) -> &'static str {
         "diff.open-file"
     }
@@ -92,12 +91,12 @@ impl crate::commands::DynamicCommand for OpenCanvasFile {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
-        window: WindowId,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(target) = self.target.clone() else {
             // No caret to honor — the plain open, dedup + authority
             // remap included.

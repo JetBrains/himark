@@ -426,7 +426,7 @@ struct OpenScripted {
     session: SessionUri,
 }
 
-impl himark::commands::DynamicCommand for OpenScripted {
+impl himark::commands::WindowedCommand for OpenScripted {
     fn id(&self) -> &'static str {
         "test.open-scripted-session"
     }
@@ -435,9 +435,9 @@ impl himark::commands::DynamicCommand for OpenScripted {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         himark::higent::session::open::open_session(store, window, self.host, self.session.clone(), true, fx);
@@ -504,7 +504,7 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         workbench::window::WindowId::from_raw(window),
         Arc::new(OpenScripted {
             host,
@@ -569,7 +569,7 @@ fn a_scripted_stream_lands_whole() {
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         workbench::window::WindowId::from_raw(second),
         Arc::new(OpenScripted {
             host: script_host(&engine),

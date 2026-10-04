@@ -7,8 +7,7 @@ use std::sync::Arc;
 
 use documents::text_ext::line_col_at;
 use himark::app::AppFx;
-use himark::app::Application;
-use himark::commands::DynamicCommand;
+use himark::commands::WindowedCommand;
 use documents::text_ext::LineCol;
 use documents::OpenDocuments;
 use editor::document::Document;
@@ -127,7 +126,7 @@ struct ApplyNavigation {
     outcome: NavigationOutcome,
 }
 
-impl DynamicCommand for ApplyNavigation {
+impl WindowedCommand for ApplyNavigation {
     fn id(&self) -> &'static str {
         "code.apply-navigation"
     }
@@ -136,12 +135,12 @@ impl DynamicCommand for ApplyNavigation {
     }
     fn perform(
         &self,
-        app: &mut Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(targets) = &self.outcome.targets else {
             return;
         };

@@ -11,7 +11,7 @@ use ahp_wire::client::HostId;
 use ahp_wire::effects::PollSessionEffect;
 use ahp_wire::effects::SubscribeSessionEffect;
 use crate::app::AppCommand;
-use crate::commands::DynamicCommand;
+use crate::commands::WindowedCommand;
 use ahp_wire::SessionId;
 use ::workbench::window::Windows;
 use ahp_types::actions::StateAction;
@@ -46,7 +46,7 @@ pub fn open_session_with(
     let landing = session.clone();
     fx.push(
         AnyEffect::new(SubscribeSessionEffect { client: client.session.clone(), session }).map(move |result| {
-            AppCommand::Dynamic(
+            AppCommand::Windowed(
                 window,
                 Arc::new(OpenSubscribedSession {
                     server,
@@ -70,7 +70,7 @@ pub struct OpenSubscribedSession {
     pub result: Result<ahp_types::state::SessionState, String>,
 }
 
-impl DynamicCommand for OpenSubscribedSession {
+impl WindowedCommand for OpenSubscribedSession {
     fn id(&self) -> &'static str {
         "agent.open-session"
     }
@@ -81,8 +81,8 @@ impl DynamicCommand for OpenSubscribedSession {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -116,7 +116,7 @@ impl DynamicCommand for OpenSubscribedSession {
         );
         crate::app::switch_session(store, window, key.clone(), fx);
 
-        fx.follow_up(AppCommand::Dynamic(
+        fx.follow_up(AppCommand::Windowed(
             window,
             Arc::new(EnterSessionWork {
                 server: self.server,
@@ -137,7 +137,7 @@ struct EnterSessionWork {
     default_chat: Option<ChatUri>,
 }
 
-impl DynamicCommand for EnterSessionWork {
+impl WindowedCommand for EnterSessionWork {
     fn id(&self) -> &'static str {
         "agent.enter-session"
     }
@@ -148,12 +148,12 @@ impl DynamicCommand for EnterSessionWork {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let key = SessionId {
             host: self.server,
             session: self.session.clone(),
@@ -216,7 +216,7 @@ fn relaunch_session_poll(
     let landing = session.clone();
     fx.push(
         AnyEffect::new(PollSessionEffect { client: client.session.clone(), session }).map(move |actions| {
-            AppCommand::Dynamic(
+            AppCommand::Windowed(
                 window,
                 Arc::new(ApplySessionActions {
                     server,
@@ -234,7 +234,7 @@ struct ApplySessionActions {
     actions: Vec<StateAction>,
 }
 
-impl DynamicCommand for ApplySessionActions {
+impl WindowedCommand for ApplySessionActions {
     fn id(&self) -> &'static str {
         "agent.session-actions"
     }
@@ -245,8 +245,8 @@ impl DynamicCommand for ApplySessionActions {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -417,7 +417,7 @@ pub struct OpenCreatedSession {
     pub result: Result<SessionUri, String>,
 }
 
-impl DynamicCommand for OpenCreatedSession {
+impl WindowedCommand for OpenCreatedSession {
     fn id(&self) -> &'static str {
         "agent.open-created-session"
     }
@@ -428,8 +428,8 @@ impl DynamicCommand for OpenCreatedSession {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -453,7 +453,7 @@ pub(crate) struct OpenSessionRow {
     pub(crate) session: SessionUri,
 }
 
-impl DynamicCommand for OpenSessionRow {
+impl WindowedCommand for OpenSessionRow {
     fn id(&self) -> &'static str {
         "agent.open-session-row"
     }
@@ -464,8 +464,8 @@ impl DynamicCommand for OpenSessionRow {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {

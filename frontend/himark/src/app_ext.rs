@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::app::AppCommand;
 use crate::app::Application;
-use crate::commands::DynamicCommand;
+use crate::commands::WindowedCommand;
 use hikit::modal::ModalView;
 use crate::app::OpenedDocument;
 use editor::document::Document;
@@ -48,7 +48,7 @@ pub trait AppExt {
 
     fn close_modal(&mut self, window: ::workbench::window::WindowId) -> bool;
 
-    fn register_command(&mut self, command: Arc<dyn DynamicCommand>) -> bool;
+    fn register_command(&mut self, command: Arc<dyn WindowedCommand>) -> bool;
 
     fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool;
 
@@ -154,7 +154,7 @@ impl AppExt for Application {
         self.perform_command(AppCommand::CloseModal(window))
     }
 
-    fn register_command(&mut self, command: Arc<dyn DynamicCommand>) -> bool {
+    fn register_command(&mut self, command: Arc<dyn WindowedCommand>) -> bool {
         self.perform_command(AppCommand::Register(command))
     }
 

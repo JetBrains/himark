@@ -200,7 +200,7 @@ impl Enricher for FenceEmbedEnricher {
 
     fn install(
         &self,
-        store: &mut Store,
+        store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         replacement: &mut Markup,
         changed: &[Range<u32>],

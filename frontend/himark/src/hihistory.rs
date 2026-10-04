@@ -11,7 +11,7 @@ use imba::store::Store;
 
 pub struct ToggleHistoryView;
 
-impl crate::commands::DynamicCommand for ToggleHistoryView {
+impl crate::commands::WindowedCommand for ToggleHistoryView {
     fn id(&self) -> &'static str {
         "history.view"
     }
@@ -20,8 +20,8 @@ impl crate::commands::DynamicCommand for ToggleHistoryView {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -41,7 +41,7 @@ impl crate::commands::DynamicCommand for ToggleHistoryView {
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
         let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::app::shell_verb(crate::app::AppCommand::Dynamic(
+            crate::app::shell_verb(crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(crate::diff_canvas::OpenDiffCanvas {
                     changes,
@@ -59,7 +59,7 @@ impl crate::commands::DynamicCommand for ToggleHistoryView {
             changes,
             changesview::changes_view::ChangesView::open(
                 store,
-                &_app.ui_ctx(),
+                ui,
                 changes,
                 changesview::changes_view::ViewSets::History,
                 open_canvas,

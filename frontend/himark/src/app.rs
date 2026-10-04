@@ -94,14 +94,14 @@ pub type DocumentBuild = Box<
 pub enum AppCommand {
     Content(WindowId, ::workbench::window::WindowCommand),
 
-    Dynamic(WindowId, std::sync::Arc<dyn crate::commands::DynamicCommand>),
+    Windowed(WindowId, std::sync::Arc<dyn crate::commands::WindowedCommand>),
 
     /// The app-level erased vocabulary (imba::command) — windowless:
     /// addressed entity commands, dynamic commands and one-shot
     /// landings that know collections by id and never a window.
     Verb(imba::command::Verb),
 
-    Register(std::sync::Arc<dyn crate::commands::DynamicCommand>),
+    Register(std::sync::Arc<dyn crate::commands::WindowedCommand>),
     Stats(StatsCommand),
 
     /// THE one command road (docs/entities.md law 5): any collection,
@@ -155,8 +155,8 @@ pub(crate) fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
     match verb {
         Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
             Ok(command) => Some(*command),
-            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::commands::DynamicCommand>>() {
-                Ok(command) => Some(AppCommand::Dynamic(window, *command)),
+            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::commands::WindowedCommand>>() {
+                Ok(command) => Some(AppCommand::Windowed(window, *command)),
                 Err(_) => {
                     eprintln!("[app] an unknown shell verb payload was dropped");
                     None
@@ -265,7 +265,7 @@ pub fn switch_session(
     let owed = entity.switch_to(target, state);
     ::workbench::window::Windows::put(store, window, entity);
     if let Some(previous) = owed {
-        fx.follow_up(AppCommand::Dynamic(
+        fx.follow_up(AppCommand::Windowed(
             window,
             std::sync::Arc::new(EnterFreshSession { previous }),
         ));
@@ -276,7 +276,7 @@ struct EnterFreshSession {
     previous: ahp_wire::SessionId,
 }
 
-impl crate::commands::DynamicCommand for EnterFreshSession {
+impl crate::commands::WindowedCommand for EnterFreshSession {
     fn id(&self) -> &'static str {
         "session.enter-fresh"
     }
@@ -285,12 +285,12 @@ impl crate::commands::DynamicCommand for EnterFreshSession {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
-        window: WindowId,
-        fx: &mut AppFx<'_>,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
@@ -348,7 +348,7 @@ impl Application {
             }));
             registry.outline_jump = Some(std::sync::Arc::new(|window, place| {
                 hikit::modal::ModalRequest::Perform(crate::app::shell_verb(
-                    crate::app::AppCommand::Dynamic(
+                    crate::app::AppCommand::Windowed(
                         window,
                         std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
                     ),
@@ -767,7 +767,7 @@ impl Application {
                                 .or_else(|| {
                                     crate::commands::Commands::of(&store)
                                         .find(id.as_ref())
-                                        .map(|command| AppCommand::Dynamic(window, command.clone()))
+                                        .map(|command| AppCommand::Windowed(window, command.clone()))
                                 })
                         })
                     }
@@ -1159,7 +1159,7 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         }
         AppCommand::Content(_, ::workbench::window::WindowCommand::Modal(_)) => "modal",
         AppCommand::Content(_, ::workbench::window::WindowCommand::Focus(_)) => "focus",
-        AppCommand::Dynamic(..) => "dynamic",
+        AppCommand::Windowed(..) => "windowed",
         AppCommand::Verb(..) => "verb",
         AppCommand::Register(_) => "register",
         AppCommand::OpenAsync { .. } => "open async",
@@ -1464,7 +1464,7 @@ impl Application {
                         self.perform(
                             store,
                             ui,
-                            AppCommand::Dynamic(
+                            AppCommand::Windowed(
                                 window,
                                 std::sync::Arc::new(crate::hichanges::OpenDiffForPair {
                                     old: old_side,
@@ -1478,7 +1478,7 @@ impl Application {
                         self.perform(
                             store,
                             ui,
-                            AppCommand::Dynamic(
+                            AppCommand::Windowed(
                                 window,
                                 std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
                                     location,
@@ -1492,10 +1492,10 @@ impl Application {
                         self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);
                     }
                     Some(hikit::panel::PanelRequest::Shell(payload)) => {
-                        match payload.downcast_ref::<std::sync::Arc<dyn crate::commands::DynamicCommand>>() {
+                        match payload.downcast_ref::<std::sync::Arc<dyn crate::commands::WindowedCommand>>() {
                             Some(command) => {
                                 let command = command.clone();
-                                self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                                self.perform(store, ui, AppCommand::Windowed(window, command), fx);
                             }
                             None => eprintln!("[app] an unknown panel shell ask was dropped"),
                         }
@@ -1507,19 +1507,19 @@ impl Application {
                         if let Some(command) =
                             crate::commands::Commands::of(store).find(id).cloned()
                         {
-                            self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                            self.perform(store, ui, AppCommand::Windowed(window, command), fx);
                         }
                     }
                     None => {}
                 }
                 if let Some(id) = dock_command {
                     if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
-                        self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                        self.perform(store, ui, AppCommand::Windowed(window, command), fx);
                     }
                 }
 
                 for request in crate::commands::AppRequests::drain(store) {
-                    self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
+                    self.perform(store, ui, AppCommand::Windowed(window, request), fx);
                 }
                 for request in imba::command::Requests::drain(store) {
                     self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);
@@ -1553,13 +1553,13 @@ impl Application {
             AppCommand::Verb(verb) => {
                 fx.scope(AppCommand::Verb, |fx| verb.run(store, ui, fx));
             }
-            AppCommand::Dynamic(window, command) => {
-                command.perform(self, store, window, fx);
+            AppCommand::Windowed(window, command) => {
+                command.perform(store, &ui, window, fx);
                 // Deferred requests must not wait for the next CONTENT
                 // command — an idle window (nothing painted, nothing
                 // clicked) would starve them forever.
                 for request in crate::commands::AppRequests::drain(store) {
-                    self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
+                    self.perform(store, ui, AppCommand::Windowed(window, request), fx);
                 }
                 for request in imba::command::Requests::drain(store) {
                     self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(request)), fx);

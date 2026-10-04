@@ -3,12 +3,11 @@
 
 use imba::store::Store;
 
-use crate::app::AppFx;
 
 
 pub struct ReloadDocument;
 
-impl crate::commands::DynamicCommand for ReloadDocument {
+impl crate::commands::WindowedCommand for ReloadDocument {
     fn id(&self) -> &'static str {
         "file.reload"
     }
@@ -19,10 +18,10 @@ impl crate::commands::DynamicCommand for ReloadDocument {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(document) = ::workbench::window::Windows::window_ref(store, window)
             .and_then(|entity| entity.focused_document_id())

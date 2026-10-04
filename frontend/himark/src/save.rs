@@ -4,7 +4,7 @@
 use imba::{effect::AnyEffect, store::Store};
 
 use crate::app::AppFx;
-use crate::commands::DynamicCommand;
+use crate::commands::WindowedCommand;
 use documents::StoreDocumentEffect;
 use editor::location::ResourceLocation;
 
@@ -31,7 +31,7 @@ pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
 /// one `AppCommand::DocumentStored` per store.
 pub struct SaveAll;
 
-impl DynamicCommand for SaveAll {
+impl WindowedCommand for SaveAll {
     fn id(&self) -> &'static str {
         "file.save-all"
     }
@@ -40,10 +40,10 @@ impl DynamicCommand for SaveAll {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         save_all(store, _window, fx);
     }
@@ -97,7 +97,7 @@ pub(crate) fn save_all(store: &mut Store, window: ::workbench::window::WindowId,
 
 struct SyncWatches;
 
-impl DynamicCommand for SyncWatches {
+impl WindowedCommand for SyncWatches {
     fn id(&self) -> &'static str {
         "file.sync-watches"
     }
@@ -106,17 +106,17 @@ impl DynamicCommand for SyncWatches {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         if let Some(state) = ::workbench::window::Windows::session_state(store, window) {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });
             fx.scope(crate::app::AppCommand::Verb, |fx| {
-                documents::lanes::sync_stripe_bases(store, state.documents(), &app.ui_ctx(), fx)
+                documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
             });
         }
     }

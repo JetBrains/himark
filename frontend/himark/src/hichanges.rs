@@ -19,7 +19,7 @@ pub struct OpenDiffForPair {
     pub new: ResourceLocation,
 }
 
-impl crate::commands::DynamicCommand for OpenDiffForPair {
+impl crate::commands::WindowedCommand for OpenDiffForPair {
     fn id(&self) -> &'static str {
         "changes.open-diff"
     }
@@ -28,8 +28,8 @@ impl crate::commands::DynamicCommand for OpenDiffForPair {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -52,7 +52,7 @@ impl crate::commands::DynamicCommand for OpenDiffForPair {
 
 pub struct ToggleChangesView;
 
-impl crate::commands::DynamicCommand for ToggleChangesView {
+impl crate::commands::WindowedCommand for ToggleChangesView {
     fn id(&self) -> &'static str {
         "changes.view"
     }
@@ -61,8 +61,8 @@ impl crate::commands::DynamicCommand for ToggleChangesView {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -84,7 +84,7 @@ impl crate::commands::DynamicCommand for ToggleChangesView {
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
         let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::app::shell_verb(crate::app::AppCommand::Dynamic(
+            crate::app::shell_verb(crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(crate::diff_canvas::OpenDiffCanvas {
                     changes,
@@ -103,7 +103,7 @@ impl crate::commands::DynamicCommand for ToggleChangesView {
             changes,
             changesview::changes_view::ChangesView::open(
                 store,
-                &_app.ui_ctx(),
+                ui,
                 changes,
                 changesview::changes_view::ViewSets::WorkingCopies,
                 open_canvas,
@@ -136,7 +136,7 @@ pub struct RefetchChanges {
     pub folder: Option<ResourceLocation>,
 }
 
-impl crate::commands::DynamicCommand for RefetchChanges {
+impl crate::commands::WindowedCommand for RefetchChanges {
     fn id(&self) -> &'static str {
         "changes.refetch"
     }
@@ -145,8 +145,8 @@ impl crate::commands::DynamicCommand for RefetchChanges {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {

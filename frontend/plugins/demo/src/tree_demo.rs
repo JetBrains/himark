@@ -305,7 +305,7 @@ impl PanelView for TreeDemoView {
 
 pub struct OpenTreeDemo;
 
-impl himark::commands::DynamicCommand for OpenTreeDemo {
+impl himark::commands::WindowedCommand for OpenTreeDemo {
     fn id(&self) -> &'static str {
         "demo.tree"
     }
@@ -314,12 +314,12 @@ impl himark::commands::DynamicCommand for OpenTreeDemo {
     }
     fn perform(
         &self,
-        app: &mut himark::app::Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.open_panel(store, ui, Box::new(TreeDemoView::new()), fx);
         workbench::window::Windows::put(store, window, entity);

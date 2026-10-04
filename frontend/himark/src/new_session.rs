@@ -1504,7 +1504,7 @@ impl hikit::panel::PanelView for ComposerPane {
 
 struct PickSessionFolder;
 
-impl crate::commands::DynamicCommand for PickSessionFolder {
+impl crate::commands::WindowedCommand for PickSessionFolder {
     fn id(&self) -> &'static str {
         "session.pick-folder"
     }
@@ -1515,14 +1515,14 @@ impl crate::commands::DynamicCommand for PickSessionFolder {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         fx.push(
             AnyEffect::new(PickFoldersEffect { window }).map(move |locations| {
-                crate::app::AppCommand::Dynamic(window, Arc::new(FoldersPicked { locations }))
+                crate::app::AppCommand::Windowed(window, Arc::new(FoldersPicked { locations }))
             }),
         );
     }
@@ -1532,7 +1532,7 @@ struct FoldersPicked {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::commands::DynamicCommand for FoldersPicked {
+impl crate::commands::WindowedCommand for FoldersPicked {
     fn id(&self) -> &'static str {
         "session.folders-picked"
     }
@@ -1543,8 +1543,8 @@ impl crate::commands::DynamicCommand for FoldersPicked {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1559,7 +1559,7 @@ struct StartComposedSession {
     prompt: String,
 }
 
-impl crate::commands::DynamicCommand for StartComposedSession {
+impl crate::commands::WindowedCommand for StartComposedSession {
     fn id(&self) -> &'static str {
         "session.start-composed"
     }
@@ -1570,12 +1570,12 @@ impl crate::commands::DynamicCommand for StartComposedSession {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(client) = Servers::client(store, self.server) else {
             eprintln!("[new-session] start: unregistered host {:?}", self.server);
             return;
@@ -1621,7 +1621,7 @@ impl crate::commands::DynamicCommand for StartComposedSession {
                             ),
                         })
                         .map(move |result| {
-                            crate::app::AppCommand::Dynamic(
+                            crate::app::AppCommand::Windowed(
                                 window,
                                 Arc::new(PlaceholderDispatched {
                                     label: "workingDirectorySet",
@@ -1658,7 +1658,7 @@ impl crate::commands::DynamicCommand for StartComposedSession {
                             ),
                     })
                     .map(move |result| {
-                        crate::app::AppCommand::Dynamic(
+                        crate::app::AppCommand::Windowed(
                             window,
                             Arc::new(PlaceholderDispatched {
                                 label: "configChanged",
@@ -1686,7 +1686,7 @@ impl crate::commands::DynamicCommand for StartComposedSession {
                 options: self.options.clone(),
             })
             .map(move |result| {
-                crate::app::AppCommand::Dynamic(
+                crate::app::AppCommand::Windowed(
                     window,
                     Arc::new(crate::higent::session::open::OpenCreatedSession {
                         server,
@@ -1707,7 +1707,7 @@ struct ComposerAsk {
     config: serde_json::Map<String, serde_json::Value>,
 }
 
-impl crate::commands::DynamicCommand for ComposerAsk {
+impl crate::commands::WindowedCommand for ComposerAsk {
     fn id(&self) -> &'static str {
         "session.compose-ask"
     }
@@ -1718,8 +1718,8 @@ impl crate::commands::DynamicCommand for ComposerAsk {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1738,7 +1738,7 @@ impl crate::commands::DynamicCommand for ComposerAsk {
                     client: client.session.clone(),
                 })
                 .map(move |result| {
-                    crate::app::AppCommand::Dynamic(window, Arc::new(HostReady { host, result }))
+                    crate::app::AppCommand::Windowed(window, Arc::new(HostReady { host, result }))
                 }),
             );
         }
@@ -1761,7 +1761,7 @@ impl crate::commands::DynamicCommand for ComposerAsk {
                 config: Some(self.config.clone()),
             })
             .map(move |result| {
-                crate::app::AppCommand::Dynamic(
+                crate::app::AppCommand::Windowed(
                     window,
                     Arc::new(ConfigResolved {
                         host,
@@ -1792,7 +1792,7 @@ struct HostReady {
     result: Result<RootInfo, String>,
 }
 
-impl crate::commands::DynamicCommand for HostReady {
+impl crate::commands::WindowedCommand for HostReady {
     fn id(&self) -> &'static str {
         "session.compose-host-ready"
     }
@@ -1803,8 +1803,8 @@ impl crate::commands::DynamicCommand for HostReady {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1835,7 +1835,7 @@ fn list_sessions(
     };
     fx.push(
         AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(move |result| {
-            crate::app::AppCommand::Dynamic(window, Arc::new(SessionsListed { host, result }))
+            crate::app::AppCommand::Windowed(window, Arc::new(SessionsListed { host, result }))
         }),
     );
 }
@@ -1845,7 +1845,7 @@ struct SessionsListed {
     result: Result<SessionsPage, String>,
 }
 
-impl crate::commands::DynamicCommand for SessionsListed {
+impl crate::commands::WindowedCommand for SessionsListed {
     fn id(&self) -> &'static str {
         "session.compose-sessions-listed"
     }
@@ -1856,8 +1856,8 @@ impl crate::commands::DynamicCommand for SessionsListed {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1885,7 +1885,7 @@ struct ConfigResolved {
     result: Result<ahp_types::commands::ResolveSessionConfigResult, String>,
 }
 
-impl crate::commands::DynamicCommand for ConfigResolved {
+impl crate::commands::WindowedCommand for ConfigResolved {
     fn id(&self) -> &'static str {
         "session.compose-config-resolved"
     }
@@ -1896,8 +1896,8 @@ impl crate::commands::DynamicCommand for ConfigResolved {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1951,7 +1951,7 @@ fn dispose_placeholder(
     };
     fx.push(
         AnyEffect::new(ahp_wire::effects::DisposeSessionEffect { client: client.session.clone(), session }).map(move |result| {
-            crate::app::AppCommand::Dynamic(
+            crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(PlaceholderDispatched {
                     label: "dispose",
@@ -2094,7 +2094,7 @@ fn create_placeholder(
             },
         })
         .map(move |result| {
-            crate::app::AppCommand::Dynamic(
+            crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(PlaceholderCreated {
                     host,
@@ -2177,7 +2177,7 @@ struct GrantPlaceholderFolder {
     revoke: bool,
 }
 
-impl crate::commands::DynamicCommand for GrantPlaceholderFolder {
+impl crate::commands::WindowedCommand for GrantPlaceholderFolder {
     fn id(&self) -> &'static str {
         "session.placeholder-grant"
     }
@@ -2186,8 +2186,8 @@ impl crate::commands::DynamicCommand for GrantPlaceholderFolder {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -2219,7 +2219,7 @@ impl crate::commands::DynamicCommand for GrantPlaceholderFolder {
                 action,
             })
             .map(move |result| {
-                crate::app::AppCommand::Dynamic(
+                crate::app::AppCommand::Windowed(
                     window,
                     Arc::new(PlaceholderDispatched { label, result }),
                 )
@@ -2234,7 +2234,7 @@ struct PlaceholderCreated {
     result: Result<ahp_wire::client::SessionUri, String>,
 }
 
-impl crate::commands::DynamicCommand for PlaceholderCreated {
+impl crate::commands::WindowedCommand for PlaceholderCreated {
     fn id(&self) -> &'static str {
         "session.placeholder-created"
     }
@@ -2243,8 +2243,8 @@ impl crate::commands::DynamicCommand for PlaceholderCreated {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -2317,7 +2317,7 @@ struct PlaceholderDispatched {
     result: Result<(), String>,
 }
 
-impl crate::commands::DynamicCommand for PlaceholderDispatched {
+impl crate::commands::WindowedCommand for PlaceholderDispatched {
     fn id(&self) -> &'static str {
         "session.placeholder-dispatched"
     }
@@ -2326,8 +2326,8 @@ impl crate::commands::DynamicCommand for PlaceholderDispatched {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -2341,7 +2341,7 @@ pub struct OpenNewSession {
     pub host: Option<HostId>,
 }
 
-impl crate::commands::DynamicCommand for OpenNewSession {
+impl crate::commands::WindowedCommand for OpenNewSession {
     fn id(&self) -> &'static str {
         "session.new"
     }
@@ -2352,12 +2352,12 @@ impl crate::commands::DynamicCommand for OpenNewSession {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
@@ -2386,7 +2386,7 @@ impl crate::commands::DynamicCommand for OpenNewSession {
         if current.names_session() {
             let scratch = ahp_wire::SessionId::mint_scratch(store);
             crate::app::switch_session(store, window, scratch, fx);
-            fx.follow_up(crate::app::AppCommand::Dynamic(window, Arc::new(MountComposer)));
+            fx.follow_up(crate::app::AppCommand::Windowed(window, Arc::new(MountComposer)));
             return;
         }
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
@@ -2399,7 +2399,7 @@ impl crate::commands::DynamicCommand for OpenNewSession {
 
 struct MountComposer;
 
-impl crate::commands::DynamicCommand for MountComposer {
+impl crate::commands::WindowedCommand for MountComposer {
     fn id(&self) -> &'static str {
         "session.mount-composer"
     }
@@ -2410,12 +2410,12 @@ impl crate::commands::DynamicCommand for MountComposer {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };

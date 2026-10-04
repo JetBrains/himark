@@ -53,7 +53,7 @@ pub(crate) struct OpenEditedFile {
     uri: String,
 }
 
-impl crate::commands::DynamicCommand for OpenEditedFile {
+impl crate::commands::WindowedCommand for OpenEditedFile {
     fn id(&self) -> &'static str {
         "chat.open-edited-file"
     }
@@ -64,8 +64,8 @@ impl crate::commands::DynamicCommand for OpenEditedFile {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -100,7 +100,7 @@ struct ApplyChannelActions {
     actions: Vec<ahp_types::actions::StateAction>,
 }
 
-impl crate::commands::DynamicCommand for ApplyChannelActions {
+impl crate::commands::WindowedCommand for ApplyChannelActions {
     fn id(&self) -> &'static str {
         "higent.apply-channel-actions"
     }
@@ -109,8 +109,8 @@ impl crate::commands::DynamicCommand for ApplyChannelActions {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {

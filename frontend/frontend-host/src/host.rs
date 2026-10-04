@@ -10,7 +10,7 @@ use std::sync::{
 use himark::workspace::open_locations;
 use himark::app::AppCommand;
 use himark::app::AppFx;
-use himark::commands::DynamicCommand;
+use himark::commands::WindowedCommand;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
@@ -309,7 +309,7 @@ impl EffectHandler<FilePickerEffect> for FilePickerHandler {
 
 pub(crate) struct OpenFilePicker;
 
-impl DynamicCommand for OpenFilePicker {
+impl WindowedCommand for OpenFilePicker {
     fn id(&self) -> &'static str {
         "file.open"
     }
@@ -318,14 +318,14 @@ impl DynamicCommand for OpenFilePicker {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
-        _store: &mut Store,
-        window: workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        _store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let _ = fx.push(
             AnyEffect::new(FilePickerEffect { window }).map(move |locations| {
-                AppCommand::Dynamic(window, Arc::new(OpenPicked { locations }))
+                AppCommand::Windowed(window, Arc::new(OpenPicked { locations }))
             }),
         );
     }
@@ -372,7 +372,7 @@ fn open_folder_session(
                     working_directories: dirs,
                 })
                 .map(move |result| {
-                    AppCommand::Dynamic(
+                    AppCommand::Windowed(
                         window,
                         Arc::new(himark::higent::session::open::OpenCreatedSession {
                             initial_prompt: None,
@@ -388,7 +388,7 @@ fn open_folder_session(
     true
 }
 
-impl DynamicCommand for OpenPicked {
+impl WindowedCommand for OpenPicked {
     fn id(&self) -> &'static str {
         "file.open-picked"
     }
@@ -397,12 +397,12 @@ impl DynamicCommand for OpenPicked {
     }
     fn perform(
         &self,
-        app: &mut himark::app::Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let (folders, documents): (Vec<_>, Vec<_>) = self
             .locations
             .iter()
@@ -509,7 +509,7 @@ struct ShowWorkingCopy {
     target: std::ops::Range<documents::text_ext::LineCol>,
 }
 
-impl himark::commands::DynamicCommand for ShowWorkingCopy {
+impl himark::commands::WindowedCommand for ShowWorkingCopy {
     fn id(&self) -> &'static str {
         "vcs.apply-open-working-copy"
     }
@@ -518,12 +518,12 @@ impl himark::commands::DynamicCommand for ShowWorkingCopy {
     }
     fn perform(
         &self,
-        app: &mut himark::app::Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let documents = self.documents;
         match documents::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
@@ -644,7 +644,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
 
 pub(crate) struct RefreshTerminal(pub(crate) Arc<std::sync::atomic::AtomicBool>);
 
-impl DynamicCommand for RefreshTerminal {
+impl WindowedCommand for RefreshTerminal {
     fn id(&self) -> &'static str {
         "terminal.refresh"
     }
@@ -653,10 +653,10 @@ impl DynamicCommand for RefreshTerminal {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
-        _store: &mut Store,
-        _window: workbench::window::WindowId,
-        _fx: &mut AppFx<'_>,
+        _store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut himark::app::AppFx<'_>,
     ) {
         self.0.store(false, std::sync::atomic::Ordering::SeqCst);
     }
@@ -664,7 +664,7 @@ impl DynamicCommand for RefreshTerminal {
 
 pub(crate) struct OpenTerminal;
 
-impl DynamicCommand for OpenTerminal {
+impl WindowedCommand for OpenTerminal {
     fn id(&self) -> &'static str {
         "terminal.open"
     }
@@ -673,10 +673,10 @@ impl DynamicCommand for OpenTerminal {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let Some(entity) = workbench::window::Windows::window(store, window) else {
             return;
@@ -733,7 +733,7 @@ impl DynamicCommand for OpenTerminal {
                 window,
             })
             .map(move |session| {
-                AppCommand::Dynamic(window, Arc::new(ShowTerminal { session, terminals }))
+                AppCommand::Windowed(window, Arc::new(ShowTerminal { session, terminals }))
             }),
         );
     }
@@ -744,7 +744,7 @@ struct ShowTerminal {
     terminals: imba::store::Id<terminals::Terminals>,
 }
 
-impl DynamicCommand for ShowTerminal {
+impl WindowedCommand for ShowTerminal {
     fn id(&self) -> &'static str {
         "terminal.show"
     }
@@ -753,12 +753,12 @@ impl DynamicCommand for ShowTerminal {
     }
     fn perform(
         &self,
-        app: &mut himark::app::Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
-        fx: &mut AppFx<'_>,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(session) = &self.session else {
             return;
         };

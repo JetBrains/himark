@@ -132,7 +132,7 @@ pub struct ShowDocuments {
     pub locations: Vec<ResourceLocation>,
 }
 
-impl himark::commands::DynamicCommand for ShowDocuments {
+impl himark::commands::WindowedCommand for ShowDocuments {
     fn id(&self) -> &'static str {
         "script.show"
     }
@@ -143,12 +143,12 @@ impl himark::commands::DynamicCommand for ShowDocuments {
 
     fn perform(
         &self,
-        app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         himark::workspace::open_locations(store, ui, window, &self.locations, fx);
     }
 }
@@ -341,7 +341,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
 
     fn perform(
         &self,
-        store: &mut Store,
+        store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         document: &mut editor::document::Document,
         _editor: editor::editor::EditorId,

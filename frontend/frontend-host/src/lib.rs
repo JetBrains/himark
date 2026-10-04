@@ -556,7 +556,7 @@ impl HimarkEngine {
             let connector = Arc::clone(&connector);
             himark::higent::flows::AgentFlows::install_add_host(
                 &mut app.store_mut(),
-                Arc::new(move |app, store, url| {
+                Arc::new(move |store, url| {
                     let client = ahp_wire::client::Client::of(Arc::new(
                         ahp_wire::wire::WireHost::at(
                             handle.clone(),
@@ -564,7 +564,14 @@ impl HimarkEngine {
                             url.to_owned(),
                         ),
                     ));
-                    let id = app.register_client(client.clone());
+                    // Minted into the STORE IN HAND — this runs inside
+                    // a batch, where the application's store is taken
+                    // out; a mint through the app would be clobbered
+                    // by the put-back.
+                    let mut id = ahp_wire::client::HostId::LOCAL;
+                    store.update::<ahp_wire::client::Servers>(|servers| {
+                        id = servers.mint(client.clone())
+                    });
                     ahp_session::session::agents::Agents::seed(store, id, url.trim());
                     ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
                     clients.record(id, client);
@@ -579,7 +586,7 @@ impl HimarkEngine {
             let inbox = inbox.clone();
             let wake = wake.clone();
             Arc::new(move |window, flag| {
-                inbox.lock().expect("inbox").push_back(AppCommand::Dynamic(
+                inbox.lock().expect("inbox").push_back(AppCommand::Windowed(
                     window,
                     Arc::new(host::RefreshTerminal(flag)),
                 ));
@@ -659,7 +666,7 @@ impl HimarkEngine {
     pub fn add_window(&mut self) -> u64 {
         let window = self.app.add_window();
         if self.compose_new_windows {
-            self.app.perform_command(himark::app::AppCommand::Dynamic(
+            self.app.perform_command(himark::app::AppCommand::Windowed(
                 window,
                 std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
             ));

@@ -89,7 +89,7 @@ fn remove_from_session(
 
 pub struct ToggleSessionTree;
 
-impl crate::commands::DynamicCommand for ToggleSessionTree {
+impl crate::commands::WindowedCommand for ToggleSessionTree {
     fn id(&self) -> &'static str {
         "files.tree"
     }
@@ -98,17 +98,15 @@ impl crate::commands::DynamicCommand for ToggleSessionTree {
     }
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         // The focused location is a state walk over the views now —
         // nothing is laid to answer it.
         let reveal = {
-            let chain_store = app.window_store(window);
-            let ui = app.ui_ctx();
-            crate::focus::window_focus_data(&chain_store, &ui, window)
+                        crate::focus::window_focus_data(store, &ui, window)
                 .and_then(|mut data| crate::focus::focused_location(&mut data))
         };
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
@@ -129,7 +127,7 @@ impl crate::commands::DynamicCommand for ToggleSessionTree {
             fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
                 open_panel(
                     store,
-                    &app.ui_ctx(),
+                    ui,
                     Some(window),
                     workspace,
                     trees,

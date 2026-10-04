@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::app::{AppCommand, Application};
+use crate::app::AppCommand;
 
 pub fn palette_commands(
     store: &Store,
@@ -21,28 +21,34 @@ pub fn palette_commands(
         imba::PresentableCommand::new(
             command.id(),
             command.name(),
-            AppCommand::Dynamic(window, command.clone()),
+            AppCommand::Windowed(window, command.clone()),
         )
     }));
     commands
 }
 
-pub trait DynamicCommand: Send + Sync {
+/// The WINDOWED command: a palette entry or a deferred landing that
+/// acts in a window and speaks the app's command stream. The
+/// windowless kind is `imba::command::DynamicCommand` — collections
+/// and views ride that one; this trait is shell-side only and
+/// shrinks away as gestures go windowless (content-addressed opens
+/// are the recorded road).
+pub trait WindowedCommand: Send + Sync {
     fn id(&self) -> &'static str;
 
     fn name(&self) -> String;
 
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     );
 }
 
 #[derive(Clone, Default)]
-pub struct Commands(pub(crate) Vec<Arc<dyn DynamicCommand>>);
+pub struct Commands(pub(crate) Vec<Arc<dyn WindowedCommand>>);
 
 impl Commands {
     pub fn of(store: &Store) -> Commands {
@@ -51,30 +57,30 @@ impl Commands {
             .unwrap_or_default()
     }
 
-    pub(crate) fn register(store: &mut Store, command: Arc<dyn DynamicCommand>) {
+    pub(crate) fn register(store: &mut Store, command: Arc<dyn WindowedCommand>) {
         crate::registry::Registry::update(store, |registry| registry.commands.0.push(command));
     }
 
-    pub fn find(&self, id: &str) -> Option<&Arc<dyn DynamicCommand>> {
+    pub fn find(&self, id: &str) -> Option<&Arc<dyn WindowedCommand>> {
         self.0.iter().find(|command| command.id() == id)
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn DynamicCommand>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn WindowedCommand>> {
         self.0.iter()
     }
 }
 
 /// A window-coupled deferred ask carried through the kit's panel
 /// requests — the drain adds the window.
-pub fn shell_ask(command: Arc<dyn DynamicCommand>) -> hikit::panel::PanelRequest {
+pub fn shell_ask(command: Arc<dyn WindowedCommand>) -> hikit::panel::PanelRequest {
     hikit::panel::PanelRequest::Shell(Arc::new(command))
 }
 
 #[derive(Clone, Default)]
-pub struct AppRequests(Vec<Arc<dyn DynamicCommand>>);
+pub struct AppRequests(Vec<Arc<dyn WindowedCommand>>);
 
 impl AppRequests {
-    pub fn push(store: &mut Store, request: Arc<dyn DynamicCommand>) {
+    pub fn push(store: &mut Store, request: Arc<dyn WindowedCommand>) {
         store.update::<AppRequests>(|requests| requests.0.push(request));
     }
 
@@ -82,7 +88,7 @@ impl AppRequests {
         self.0.is_empty()
     }
 
-    pub(crate) fn drain(store: &mut Store) -> Vec<Arc<dyn DynamicCommand>> {
+    pub(crate) fn drain(store: &mut Store) -> Vec<Arc<dyn WindowedCommand>> {
         let Some(requests) = store.get::<AppRequests>() else {
             return Vec::new();
         };
@@ -96,7 +102,7 @@ impl AppRequests {
 
 pub(crate) struct NewScratch;
 
-impl DynamicCommand for NewScratch {
+impl WindowedCommand for NewScratch {
     fn id(&self) -> &'static str {
         "workbench.new-document"
     }
@@ -105,8 +111,8 @@ impl DynamicCommand for NewScratch {
     }
     fn perform(
         &self,
-        _app: &mut Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -126,7 +132,7 @@ impl DynamicCommand for NewScratch {
 
 pub(crate) struct SplitPane;
 
-impl DynamicCommand for SplitPane {
+impl WindowedCommand for SplitPane {
     fn id(&self) -> &'static str {
         "workbench.split-pane"
     }
@@ -135,12 +141,12 @@ impl DynamicCommand for SplitPane {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             entity.split_current(store, ui, fx);
@@ -151,7 +157,7 @@ impl DynamicCommand for SplitPane {
 
 pub(crate) struct CloseFocused;
 
-impl DynamicCommand for CloseFocused {
+impl WindowedCommand for CloseFocused {
     fn id(&self) -> &'static str {
         "workbench.close"
     }
@@ -160,12 +166,12 @@ impl DynamicCommand for CloseFocused {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.close_focused_widget(store, ui, window, fx);
@@ -176,7 +182,7 @@ impl DynamicCommand for CloseFocused {
 
 pub(crate) struct ClosePane;
 
-impl DynamicCommand for ClosePane {
+impl WindowedCommand for ClosePane {
     fn id(&self) -> &'static str {
         "workbench.close-pane"
     }
@@ -185,8 +191,8 @@ impl DynamicCommand for ClosePane {
     }
     fn perform(
         &self,
-        _app: &mut Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -198,7 +204,7 @@ impl DynamicCommand for ClosePane {
 
 pub(crate) struct NavigateBack;
 
-impl DynamicCommand for NavigateBack {
+impl WindowedCommand for NavigateBack {
     fn id(&self) -> &'static str {
         "navigation.back"
     }
@@ -207,12 +213,12 @@ impl DynamicCommand for NavigateBack {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.navigate_back(store, ui, window, fx);
@@ -223,7 +229,7 @@ impl DynamicCommand for NavigateBack {
 
 pub(crate) struct NavigateForward;
 
-impl DynamicCommand for NavigateForward {
+impl WindowedCommand for NavigateForward {
     fn id(&self) -> &'static str {
         "navigation.forward"
     }
@@ -232,12 +238,12 @@ impl DynamicCommand for NavigateForward {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
             let _ = entity.navigate_forward(store, ui, window, fx);
@@ -248,7 +254,7 @@ impl DynamicCommand for NavigateForward {
 
 pub(crate) struct ToggleTheme;
 
-impl DynamicCommand for ToggleTheme {
+impl WindowedCommand for ToggleTheme {
     fn id(&self) -> &'static str {
         "theme.toggle"
     }
@@ -257,8 +263,8 @@ impl DynamicCommand for ToggleTheme {
     }
     fn perform(
         &self,
-        _app: &mut Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -276,7 +282,7 @@ pub(crate) struct SetTheme {
     pub(crate) dark: bool,
 }
 
-impl DynamicCommand for SetTheme {
+impl WindowedCommand for SetTheme {
     fn id(&self) -> &'static str {
         if self.dark {
             "theme.dark"
@@ -293,8 +299,8 @@ impl DynamicCommand for SetTheme {
     }
     fn perform(
         &self,
-        _app: &mut Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -309,7 +315,7 @@ impl DynamicCommand for SetTheme {
 
 pub(crate) struct CompletionTrigger;
 
-impl DynamicCommand for CompletionTrigger {
+impl WindowedCommand for CompletionTrigger {
     fn id(&self) -> &'static str {
         "completion.trigger"
     }
@@ -318,8 +324,8 @@ impl DynamicCommand for CompletionTrigger {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -346,8 +352,7 @@ impl DynamicCommand for CompletionTrigger {
             let markdown =
                 document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
             if !markdown {
-                let ui = app.ui_ctx();
-                let Some(documents) = slot.documents_id() else {
+                                let Some(documents) = slot.documents_id() else {
                     return;
                 };
                 slot.completion.sync_lsp(
@@ -361,7 +366,7 @@ impl DynamicCommand for CompletionTrigger {
                     Some((id, editor)),
                     fx,
                     move |found| {
-                        crate::app::AppCommand::Dynamic(window, Arc::new(CompletionLanded(found)))
+                        crate::app::AppCommand::Windowed(window, Arc::new(CompletionLanded(found)))
                     },
                     move |command| {
                         AppCommand::at(documents, documents::DocumentsCommand::Editor(id, command))
@@ -376,7 +381,7 @@ impl DynamicCommand for CompletionTrigger {
 
 struct CompletionLanded(ahp_chat::completion::CompletionFound);
 
-impl DynamicCommand for CompletionLanded {
+impl WindowedCommand for CompletionLanded {
     fn id(&self) -> &'static str {
         "completion.landed"
     }
@@ -385,14 +390,13 @@ impl DynamicCommand for CompletionLanded {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-        let ui = app.ui_ctx();
-        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
+                let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
@@ -405,7 +409,7 @@ impl DynamicCommand for CompletionLanded {
 
 pub(crate) struct FindOpen;
 
-impl DynamicCommand for FindOpen {
+impl WindowedCommand for FindOpen {
     fn id(&self) -> &'static str {
         "find.open"
     }
@@ -414,8 +418,8 @@ impl DynamicCommand for FindOpen {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -438,7 +442,7 @@ impl DynamicCommand for FindOpen {
                     let text = document.text().view().substring(selection);
                     (!text.contains('\n')).then_some(text)
                 });
-                let ui = &app.ui_ctx();
+                let ui = ui;
                 match (&mut slot.find, seed) {
                     (Some(find), Some(seed)) => find.seed(store, ui, &seed),
                     (Some(find), None) => find.refocus(),
@@ -450,7 +454,7 @@ impl DynamicCommand for FindOpen {
                         slot.find = Some(find);
                     }
                 }
-                find_sync_slot(slot, app, store, window, fx);
+                find_sync_slot(slot, ui, store, window, fx);
             }
         }
         ::workbench::window::Windows::put(store, window, entity);
@@ -459,7 +463,7 @@ impl DynamicCommand for FindOpen {
 
 pub(crate) struct FindStep(pub bool);
 
-impl DynamicCommand for FindStep {
+impl WindowedCommand for FindStep {
     fn id(&self) -> &'static str {
         match self.0 {
             true => "find.next",
@@ -475,13 +479,12 @@ impl DynamicCommand for FindStep {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = app.ui_ctx();
-        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+                let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let target = slot.find_target();
@@ -513,7 +516,7 @@ impl DynamicCommand for FindStep {
 
 fn find_sync_slot(
     slot: &mut ::workbench::workbench_node::PaneSlot,
-    app: &Application,
+    ui: &imba::ui::UiCtx,
     store: &mut Store,
     window: ::workbench::window::WindowId,
     fx: &mut crate::app::AppFx<'_>,
@@ -526,8 +529,7 @@ fn find_sync_slot(
     let Some((document, _)) = target else {
         return;
     };
-    let ui = app.ui_ctx();
-    let fonts = ::editor::env::ui_collection(store, &ui);
+        let fonts = ::editor::env::ui_collection(store, &ui);
     let theme = ::editor::env::Themes::of(store);
     let Some(documents) = slot_documents else {
         return;
@@ -543,13 +545,13 @@ fn find_sync_slot(
     );
 
     find.launch(store, documents, target, fx, move |scan| {
-        crate::app::AppCommand::Dynamic(window, Arc::new(FindScanLanded(scan)))
+        crate::app::AppCommand::Windowed(window, Arc::new(FindScanLanded(scan)))
     });
 }
 
 struct FindScanLanded(::workbench::find::Scan);
 
-impl DynamicCommand for FindScanLanded {
+impl WindowedCommand for FindScanLanded {
     fn id(&self) -> &'static str {
         "find.scan-landed"
     }
@@ -558,16 +560,15 @@ impl DynamicCommand for FindScanLanded {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-        let ui = app.ui_ctx();
-        let fonts = ::editor::env::ui_collection(store, &ui);
+                let fonts = ::editor::env::ui_collection(store, &ui);
         let theme = ::editor::env::Themes::of(store);
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
             let target = slot.find_target();
@@ -597,7 +598,7 @@ impl DynamicCommand for FindScanLanded {
 
 pub(crate) struct ChatComposer;
 
-impl DynamicCommand for ChatComposer {
+impl WindowedCommand for ChatComposer {
     fn id(&self) -> &'static str {
         "chat.composer"
     }
@@ -606,15 +607,14 @@ impl DynamicCommand for ChatComposer {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = std::rc::Rc::clone(&app.ui);
         let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(AppCommand::Verb, |fx| {
-            entity.front_chat(store, &ui, fx);
+            entity.front_chat(store, ui, fx);
         });
         ::workbench::window::Windows::put(store, window, entity);
     }
@@ -625,7 +625,7 @@ impl DynamicCommand for ChatComposer {
 /// is gone.
 pub(crate) struct AddFolder;
 
-impl DynamicCommand for AddFolder {
+impl WindowedCommand for AddFolder {
     fn id(&self) -> &'static str {
         "session.add-folder"
     }
@@ -634,8 +634,8 @@ impl DynamicCommand for AddFolder {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -650,7 +650,7 @@ impl DynamicCommand for AddFolder {
             server: current.host,
             session: current.session,
         }
-        .perform(app, store, window, fx);
+        .perform(store, ui, window, fx);
     }
 }
 

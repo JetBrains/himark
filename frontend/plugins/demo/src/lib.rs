@@ -42,7 +42,7 @@ pub fn demo_location(name: &str) -> editor::location::ResourceLocation {
 
 pub struct OpenMonsterDemo;
 
-impl himark::commands::DynamicCommand for OpenMonsterDemo {
+impl himark::commands::WindowedCommand for OpenMonsterDemo {
     fn id(&self) -> &'static str {
         "demo.open-document"
     }
@@ -51,9 +51,9 @@ impl himark::commands::DynamicCommand for OpenMonsterDemo {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let documents = workbench::window::Windows::session_state(store, window)
@@ -72,7 +72,7 @@ impl himark::commands::DynamicCommand for OpenMonsterDemo {
 
 pub struct OpenWallOfTextDemo;
 
-impl himark::commands::DynamicCommand for OpenWallOfTextDemo {
+impl himark::commands::WindowedCommand for OpenWallOfTextDemo {
     fn id(&self) -> &'static str {
         "demo.open-wall-of-text"
     }
@@ -81,9 +81,9 @@ impl himark::commands::DynamicCommand for OpenWallOfTextDemo {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let documents = workbench::window::Windows::session_state(store, window)

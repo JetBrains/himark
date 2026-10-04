@@ -2000,12 +2000,12 @@ fn palette_commands_follow_the_modal_focus() {
 fn registered_commands_present_and_dispatch_by_id() {
     use crate::app::AppFonts;
     use crate::app::Application;
-    use crate::commands::DynamicCommand;
+    use crate::commands::WindowedCommand;
 
     #[derive(Clone)]
     struct Marker;
     struct Probe;
-    impl DynamicCommand for Probe {
+    impl WindowedCommand for Probe {
         fn id(&self) -> &'static str {
             "test.probe"
         }
@@ -2013,12 +2013,12 @@ fn registered_commands_present_and_dispatch_by_id() {
             "Probe".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut Application,
-            store: &mut Store,
-            _window: ::workbench::window::WindowId,
-            _fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) {
             store.put(Marker);
         }
     }
@@ -2113,7 +2113,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
         target: Option<ahp_wire::SessionId>,
         made: Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>,
     }
-    impl crate::commands::DynamicCommand for Switch {
+    impl crate::commands::WindowedCommand for Switch {
         fn id(&self) -> &'static str {
             "test.switch"
         }
@@ -2121,12 +2121,12 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
             "Test Switch".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut crate::app::Application,
-            store: &mut Store,
-            window: ::workbench::window::WindowId,
-            fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -2139,7 +2139,7 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
         |app: &mut crate::app::Application, target: Option<ahp_wire::SessionId>| -> ahp_wire::SessionId {
             let window = app.sole_window();
             let made = Arc::new(std::sync::Mutex::new(None));
-            app.perform_batch(vec![crate::app::AppCommand::Dynamic(
+            app.perform_batch(vec![crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(Switch {
                     target,
@@ -2259,7 +2259,7 @@ fn switching_dismisses_the_overlays_first() {
     }
 
     struct SwitchFresh(Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>);
-    impl crate::commands::DynamicCommand for SwitchFresh {
+    impl crate::commands::WindowedCommand for SwitchFresh {
         fn id(&self) -> &'static str {
             "test.switch"
         }
@@ -2267,12 +2267,12 @@ fn switching_dismisses_the_overlays_first() {
             "Test Switch".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut crate::app::Application,
-            store: &mut Store,
-            window: ::workbench::window::WindowId,
-            fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
             let target = ahp_wire::SessionId::mint_scratch(store);
             *self.0.lock().unwrap() = Some(target.clone());
             crate::app::switch_session(store, window, target, fx)
@@ -2287,7 +2287,7 @@ fn switching_dismisses_the_overlays_first() {
     assert!(app.plugin_modal().is_some());
 
     let made = Arc::new(std::sync::Mutex::new(None));
-    app.perform_batch(vec![crate::app::AppCommand::Dynamic(
+    app.perform_batch(vec![crate::app::AppCommand::Windowed(
         window,
         Arc::new(SwitchFresh(Arc::clone(&made))),
     )]);
@@ -4397,7 +4397,7 @@ mod dock_tests {
         owner: &'static str,
     }
 
-    impl crate::commands::DynamicCommand for ShowStubDock {
+    impl crate::commands::WindowedCommand for ShowStubDock {
         fn id(&self) -> &'static str {
             "test.dock-show"
         }
@@ -4407,12 +4407,12 @@ mod dock_tests {
         }
 
         fn perform(
-            &self,
-            _app: &mut Application,
-            store: &mut Store,
-            window: ::workbench::window::WindowId,
-            fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
             let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
                 return;
             };
@@ -4426,7 +4426,7 @@ mod dock_tests {
 
     fn show_dock(app: &mut Application, label: &'static str, owner: &'static str) {
         let window = app.sole_window();
-        assert!(app.perform_command(AppCommand::Dynamic(
+        assert!(app.perform_command(AppCommand::Windowed(
             window,
             Arc::new(ShowStubDock { label, owner }),
         )));
@@ -4574,7 +4574,7 @@ mod dock_tests {
         app.draw_window(window, surface.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -4582,12 +4582,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -4595,7 +4595,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
 
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
@@ -4681,7 +4681,7 @@ mod dock_tests {
         app.draw_window(window, wide.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -4689,12 +4689,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -4702,7 +4702,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
 
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
@@ -4758,7 +4758,7 @@ mod dock_tests {
 
         // Opening a document splits the space with the chat...
         struct OpenDoc;
-        impl crate::commands::DynamicCommand for OpenDoc {
+        impl crate::commands::WindowedCommand for OpenDoc {
             fn id(&self) -> &'static str {
                 "test.open-doc"
             }
@@ -4766,12 +4766,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let state = ::workbench::window::Windows::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
@@ -4781,15 +4781,14 @@ mod dock_tests {
                     "doc".to_owned(),
                     0,
                 );
-                let ui = app.ui_ctx();
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+                                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
                 fx.scope(crate::app::AppCommand::Verb, |fx| {
                     entity.show_document(store, &ui, window, id, None, true, fx)
                 });
                 ::workbench::window::Windows::put(store, window, entity);
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
         settle(&mut app, &mut wide);
         assert!(!vacant(&app), "the document fills the vacant leaf");
         assert!(slot_filled(&app), "the chat stays beside it");
@@ -4818,7 +4817,7 @@ mod dock_tests {
         app.draw_window(window, narrow.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -4826,12 +4825,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -4839,7 +4838,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
             host: ahp_wire::client::HostId::LOCAL,
@@ -4861,7 +4860,7 @@ mod dock_tests {
         settle(&mut app, &mut narrow);
 
         struct OpenDoc;
-        impl crate::commands::DynamicCommand for OpenDoc {
+        impl crate::commands::WindowedCommand for OpenDoc {
             fn id(&self) -> &'static str {
                 "test.open-doc"
             }
@@ -4869,12 +4868,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let state = ::workbench::window::Windows::session_state(store, window).expect("state");
                 let document = crate::app::markdown_scratch();
                 let id = documents::OpenDocuments::register(
@@ -4885,15 +4884,14 @@ mod dock_tests {
                     "narrow.md".to_owned(),
                     0,
                 );
-                let ui = app.ui_ctx();
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+                                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
                 fx.scope(crate::app::AppCommand::Verb, |fx| {
                     entity.show_document(store, &ui, window, id, None, true, fx)
                 });
                 ::workbench::window::Windows::put(store, window, entity);
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
         settle(&mut app, &mut narrow);
 
         let image = narrow.image_snapshot();
@@ -4917,7 +4915,7 @@ mod dock_tests {
         app.draw_window(window, wide.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -4925,12 +4923,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -4938,7 +4936,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
 
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
@@ -4980,7 +4978,7 @@ mod dock_tests {
         app.draw_window(window, narrow.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -4988,12 +4986,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -5001,7 +4999,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
             host: ahp_wire::client::HostId::LOCAL,
@@ -5033,7 +5031,7 @@ mod dock_tests {
         );
 
         struct OpenDoc;
-        impl crate::commands::DynamicCommand for OpenDoc {
+        impl crate::commands::WindowedCommand for OpenDoc {
             fn id(&self) -> &'static str {
                 "test.open-doc"
             }
@@ -5041,12 +5039,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let state = ::workbench::window::Windows::session_state(store, window).expect("state");
                 let id = documents::OpenDocuments::register(
                     store,
@@ -5056,15 +5054,14 @@ mod dock_tests {
                     "doc".to_owned(),
                     0,
                 );
-                let ui = app.ui_ctx();
-                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
+                                let mut entity = ::workbench::window::Windows::window(store, window).expect("window");
                 fx.scope(crate::app::AppCommand::Verb, |fx| {
                     entity.show_document(store, &ui, window, id, None, true, fx)
                 });
                 ::workbench::window::Windows::put(store, window, entity);
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
         settle(&mut app, &mut narrow);
         assert!(!held(&app).workbench().root.is_vacant());
         assert!(
@@ -5081,7 +5078,7 @@ mod dock_tests {
         );
 
         // Opening a panel hands the window back.
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(OpenDoc))));
         settle(&mut app, &mut narrow);
         assert!(
             !held(&app).workbench().chat_fronted(),
@@ -5114,7 +5111,7 @@ mod dock_tests {
         app.draw_window(window, wide.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -5122,12 +5119,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
@@ -5135,7 +5132,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = ahp_wire::SessionId {
             host: ahp_wire::client::HostId::LOCAL,
@@ -5221,8 +5218,8 @@ mod dock_tests {
         );
         ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         {
-            let ui = app.ui_ctx();
-            let mut store = app.store_mut();
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
             let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
             let mut batch = imba::effect::Batch::<crate::app::AppCommand>::new();
             let _ = entity.open_panel(
@@ -5258,7 +5255,7 @@ mod dock_tests {
         app.draw_window(window, surface.canvas());
 
         struct EnterSession;
-        impl crate::commands::DynamicCommand for EnterSession {
+        impl crate::commands::WindowedCommand for EnterSession {
             fn id(&self) -> &'static str {
                 "test.enter-session"
             }
@@ -5266,12 +5263,12 @@ mod dock_tests {
                 String::new()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = ahp_wire::SessionId {
                     host: ahp_wire::client::HostId::LOCAL,
                     session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
@@ -5279,7 +5276,7 @@ mod dock_tests {
                 crate::app::switch_session(store, window, target, fx)
             }
         }
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(EnterSession))));
         let uri = ahp_wire::client::ChatUri::new("ahp-chat:/live");
         let home = ahp_wire::SessionId {
             host: ahp_wire::client::HostId::LOCAL,
@@ -5297,8 +5294,8 @@ mod dock_tests {
         );
         ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         {
-            let ui = app.ui_ctx();
-            let mut store = app.store_mut();
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
             let mut entity = ::workbench::window::Windows::window(&store, window).expect("window");
             let mut batch = imba::effect::Batch::<crate::app::AppCommand>::new();
             let _ = entity.open_panel(
@@ -5324,7 +5321,7 @@ mod dock_tests {
         assert!(entity.current_session().names_session());
         assert!(chat_mounted(&app), "the chat panel stands");
 
-        assert!(app.perform_command(AppCommand::Dynamic(
+        assert!(app.perform_command(AppCommand::Windowed(
             window,
             Arc::new(crate::new_session::OpenNewSession { host: None }),
         )));
@@ -5358,7 +5355,7 @@ mod dock_tests {
             let received = received.clone();
             crate::higent::flows::AgentFlows::install_add_host(
                 &mut app.store_mut(),
-                std::sync::Arc::new(move |_app, _store, url| {
+                std::sync::Arc::new(move |_store, url| {
                     *received.lock().expect("recorder") = Some(url.to_owned());
                     None
                 }),
@@ -5735,7 +5732,7 @@ mod dock_tests {
         struct Mark {
             hits: Arc<AtomicUsize>,
         }
-        impl crate::commands::DynamicCommand for Mark {
+        impl crate::commands::WindowedCommand for Mark {
             fn id(&self) -> &'static str {
                 "test.dock-mark"
             }
@@ -5743,12 +5740,12 @@ mod dock_tests {
                 "Dock Mark".to_owned()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                _store: &mut Store,
-                _window: ::workbench::window::WindowId,
-                _fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) {
                 self.hits.fetch_add(1, Ordering::Relaxed);
             }
         }
@@ -5888,7 +5885,7 @@ mod dock_tests {
         );
 
         struct Switch(std::sync::Arc<Mutex<Option<ahp_wire::SessionId>>>);
-        impl crate::commands::DynamicCommand for Switch {
+        impl crate::commands::WindowedCommand for Switch {
             fn id(&self) -> &'static str {
                 "test.switch"
             }
@@ -5896,12 +5893,12 @@ mod dock_tests {
                 "Test Switch".to_owned()
             }
             fn perform(
-                &self,
-                _app: &mut Application,
-                store: &mut Store,
-                window: ::workbench::window::WindowId,
-                fx: &mut crate::app::AppFx<'_>,
-            ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
                 let target = match self.0.lock().unwrap().clone() {
                     Some(target) => target,
                     None => ahp_wire::SessionId::mint_scratch(store),
@@ -5912,7 +5909,7 @@ mod dock_tests {
         }
         let first = entity(&app).current_session();
         let minted = std::sync::Arc::new(Mutex::new(None));
-        assert!(app.perform_command(AppCommand::Dynamic(
+        assert!(app.perform_command(AppCommand::Windowed(
             window,
             Arc::new(Switch(std::sync::Arc::clone(&minted))),
         )));
@@ -5934,7 +5931,7 @@ mod dock_tests {
         );
 
         let back = std::sync::Arc::new(Mutex::new(Some(first)));
-        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(Switch(back)),)));
+        assert!(app.perform_command(AppCommand::Windowed(window, Arc::new(Switch(back)),)));
         let restored = entity(&app);
         assert!(restored.dock_panel().is_some(), "the dock rode its session");
         assert!(
@@ -5971,7 +5968,7 @@ mod toolbar_side_tests {
         hits: Arc<AtomicUsize>,
     }
 
-    impl crate::commands::DynamicCommand for Mark {
+    impl crate::commands::WindowedCommand for Mark {
         fn id(&self) -> &'static str {
             self.id
         }
@@ -5981,12 +5978,12 @@ mod toolbar_side_tests {
         }
 
         fn perform(
-            &self,
-            _app: &mut Application,
-            _store: &mut Store,
-            _window: ::workbench::window::WindowId,
-            _fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
+    ) {
             self.hits.fetch_add(1, Ordering::Relaxed);
         }
     }
@@ -6082,7 +6079,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         target: Option<ahp_wire::SessionId>,
         made: Arc<std::sync::Mutex<Option<ahp_wire::SessionId>>>,
     }
-    impl crate::commands::DynamicCommand for Switch {
+    impl crate::commands::WindowedCommand for Switch {
         fn id(&self) -> &'static str {
             "test.switch-chat"
         }
@@ -6090,12 +6087,12 @@ fn switching_workspaces_stashes_the_chat_panel() {
             "Test Switch".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut crate::app::Application,
-            store: &mut Store,
-            window: ::workbench::window::WindowId,
-            fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
             let target = match self.target.clone() {
                 Some(target) => target,
                 None => ahp_wire::SessionId::mint_scratch(store),
@@ -6108,7 +6105,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         |app: &mut crate::app::Application, target: Option<ahp_wire::SessionId>| -> ahp_wire::SessionId {
             let window = app.sole_window();
             let made = Arc::new(std::sync::Mutex::new(None));
-            app.perform_batch(vec![crate::app::AppCommand::Dynamic(
+            app.perform_batch(vec![crate::app::AppCommand::Windowed(
                 window,
                 Arc::new(Switch {
                     target,
@@ -6503,7 +6500,7 @@ fn the_at_completion_serves_markdown_panes() {
     );
 
     struct EnterSeeded(ahp_wire::SessionId);
-    impl crate::commands::DynamicCommand for EnterSeeded {
+    impl crate::commands::WindowedCommand for EnterSeeded {
         fn id(&self) -> &'static str {
             "test.enter-seeded"
         }
@@ -6511,16 +6508,16 @@ fn the_at_completion_serves_markdown_panes() {
             String::new()
         }
         fn perform(
-            &self,
-            _app: &mut Application,
-            store: &mut Store,
-            window: ::workbench::window::WindowId,
-            fx: &mut crate::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
+    ) {
             crate::app::switch_session(store, window, self.0.clone(), fx)
         }
     }
-    assert!(app.perform_command(AppCommand::Dynamic(
+    assert!(app.perform_command(AppCommand::Windowed(
         window,
         Arc::new(EnterSeeded(session.clone()))
     )));

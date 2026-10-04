@@ -475,7 +475,7 @@ impl AgentsPanel {
                 self.list.inner_mut().content_mut().select_only(key.clone());
 
                 self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
-                    AppCommand::Dynamic(
+                    AppCommand::Windowed(
                         self.window,
                         Arc::new(OpenSessionRow {
                             server: *server,
@@ -485,7 +485,7 @@ impl AgentsPanel {
                 )));
             }
             AgentKey::NewSession(server) => {
-                let command: Arc<dyn crate::commands::DynamicCommand> =
+                let command: Arc<dyn crate::commands::WindowedCommand> =
                     match crate::higent::flows::AgentFlows::new_session_flow(store) {
                         Some(flow) => flow(*server),
                         None => Arc::new(crate::new_session::OpenNewSession {
@@ -493,7 +493,7 @@ impl AgentsPanel {
                         }),
                     };
                 self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
-                    AppCommand::Dynamic(self.window, command),
+                    AppCommand::Windowed(self.window, command),
                 )));
             }
             AgentKey::Note(_) => {}
@@ -780,7 +780,7 @@ impl View for AgentsPanel {
                 }
 
                 self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
-                    AppCommand::Dynamic(self.window, Arc::new(AddHost { url })),
+                    AppCommand::Windowed(self.window, Arc::new(AddHost { url })),
                 )));
             }
             AgentsCommand::CancelAddHost => {
@@ -980,7 +980,7 @@ pub struct AddHost {
     pub url: String,
 }
 
-impl crate::commands::DynamicCommand for AddHost {
+impl crate::commands::WindowedCommand for AddHost {
     fn id(&self) -> &'static str {
         "agent.add-host"
     }
@@ -991,8 +991,8 @@ impl crate::commands::DynamicCommand for AddHost {
 
     fn perform(
         &self,
-        app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1000,16 +1000,16 @@ impl crate::commands::DynamicCommand for AddHost {
             eprintln!("[higent] no add-host capability installed — url dropped");
             return;
         };
-        if flow(app, store, &self.url).is_none() {
+        if flow(store, &self.url).is_none() {
             return;
         }
-        ToggleAgentsView.perform(app, store, window, fx);
+        ToggleAgentsView.perform(store, ui, window, fx);
     }
 }
 
 pub struct ToggleAgentsView;
 
-impl crate::commands::DynamicCommand for ToggleAgentsView {
+impl crate::commands::WindowedCommand for ToggleAgentsView {
     fn id(&self) -> &'static str {
         "agent.toggle-agents"
     }
@@ -1020,8 +1020,8 @@ impl crate::commands::DynamicCommand for ToggleAgentsView {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1035,7 +1035,7 @@ impl crate::commands::DynamicCommand for ToggleAgentsView {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = AgentsPanel::open(store, &_app.ui_ctx(), window);
+        let panel = AgentsPanel::open(store, ui, window);
         fx.scope(
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
@@ -1075,7 +1075,7 @@ pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
 
 pub struct ShareHost;
 
-impl crate::commands::DynamicCommand for ShareHost {
+impl crate::commands::WindowedCommand for ShareHost {
     fn id(&self) -> &'static str {
         "host.share"
     }
@@ -1086,8 +1086,8 @@ impl crate::commands::DynamicCommand for ShareHost {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
@@ -1101,7 +1101,7 @@ impl crate::commands::DynamicCommand for ShareHost {
         };
         fx.push(
             imba::effect::AnyEffect::new(ahp_wire::effects::ShareHostEffect { client: client.session.clone() })
-                .map(move |result| AppCommand::Dynamic(window, Arc::new(SharedHost { result }))),
+                .map(move |result| AppCommand::Windowed(window, Arc::new(SharedHost { result }))),
         );
     }
 }
@@ -1110,7 +1110,7 @@ struct SharedHost {
     result: Result<String, String>,
 }
 
-impl crate::commands::DynamicCommand for SharedHost {
+impl crate::commands::WindowedCommand for SharedHost {
     fn id(&self) -> &'static str {
         "host.shared"
     }
@@ -1121,8 +1121,8 @@ impl crate::commands::DynamicCommand for SharedHost {
 
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
         _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {

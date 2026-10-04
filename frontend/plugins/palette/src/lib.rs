@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::app::AppCommand;
-use himark::app::Application;
 use hikit::list_keyboard::ListKeyCommand;
 use hikit::list_keyboard::ListKeyboardController;
 use hikit::modal::ModalRequest;
@@ -359,7 +358,7 @@ pub fn build(store: &mut Store, ui: &UiCtx, window: workbench::window::WindowId)
 
 pub struct TogglePalette;
 
-impl himark::commands::DynamicCommand for TogglePalette {
+impl himark::commands::WindowedCommand for TogglePalette {
     fn id(&self) -> &'static str {
         "palette.toggle"
     }
@@ -368,9 +367,9 @@ impl himark::commands::DynamicCommand for TogglePalette {
     }
     fn perform(
         &self,
-        app: &mut Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
@@ -383,7 +382,7 @@ impl himark::commands::DynamicCommand for TogglePalette {
             workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let ui = app.ui_handle();
+        let ui = ui;
         let modal = build(store, &ui, window);
         let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(

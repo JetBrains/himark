@@ -351,7 +351,7 @@ impl Peeker {
 
     fn cleanup_temps(
         &mut self,
-        store: &mut Store,
+        store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         keep: Option<documents::DocumentId>,
         fx: &mut PeekerEffects<'_>,
@@ -966,7 +966,7 @@ pub fn build(
 
 pub struct TogglePeeker;
 
-impl himark::commands::DynamicCommand for TogglePeeker {
+impl himark::commands::WindowedCommand for TogglePeeker {
     fn id(&self) -> &'static str {
         "peeker.toggle"
     }
@@ -975,9 +975,9 @@ impl himark::commands::DynamicCommand for TogglePeeker {
     }
     fn perform(
         &self,
-        app: &mut Application,
-        store: &mut Store,
-        window: workbench::window::WindowId,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
@@ -992,7 +992,7 @@ impl himark::commands::DynamicCommand for TogglePeeker {
             workbench::window::Windows::put(store, window, entity);
             return;
         }
-        let ui = app.ui_handle();
+        let ui = ui;
         let modal = build(store, &ui, window, fx);
         let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(

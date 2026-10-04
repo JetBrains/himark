@@ -1001,7 +1001,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
 #[test]
 fn the_docked_tree_follows_the_focused_document() {
     struct OpenAt(editor::location::ResourceLocation);
-    impl himark::commands::DynamicCommand for OpenAt {
+    impl himark::commands::WindowedCommand for OpenAt {
         fn id(&self) -> &'static str {
             "test.open-at"
         }
@@ -1009,13 +1009,13 @@ fn the_docked_tree_follows_the_focused_document() {
             "Open".to_owned()
         }
         fn perform(
-            &self,
-            app: &mut himark::app::Application,
-            store: &mut imba::store::Store,
-            window: workbench::window::WindowId,
-            fx: &mut himark::app::AppFx<'_>,
-        ) {
-            let ui = &app.ui_ctx();
+        &self,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
+            let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
@@ -1030,7 +1030,7 @@ fn the_docked_tree_follows_the_focused_document() {
     settle_into_session(&mut engine);
 
     let entity_id = engine.app.sole_window();
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         entity_id,
         std::sync::Arc::new(OpenAt(fs.doc(&["project", "README.md"]))),
     )]));
@@ -1075,7 +1075,7 @@ fn the_docked_tree_follows_the_focused_document() {
         tree_selection(engine).as_deref() == Some("README.md")
     });
 
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         entity_id,
         std::sync::Arc::new(OpenAt(fs.doc(&["project", "src", "lib.rs"]))),
     )]));
@@ -3000,7 +3000,7 @@ struct StubNewSession {
     directory: String,
 }
 
-impl himark::commands::DynamicCommand for StubNewSession {
+impl himark::commands::WindowedCommand for StubNewSession {
     fn id(&self) -> &'static str {
         "test.stub-new-session"
     }
@@ -3009,9 +3009,9 @@ impl himark::commands::DynamicCommand for StubNewSession {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let Some(seat) = ahp_wire::client::Servers::client(store, self.server) else {
@@ -3025,7 +3025,7 @@ impl himark::commands::DynamicCommand for StubNewSession {
                 working_directories: vec![self.directory.clone()],
             })
             .map(move |result| {
-                himark::app::AppCommand::Dynamic(
+                himark::app::AppCommand::Windowed(
                     window,
                     std::sync::Arc::new(himark::higent::session::open::OpenCreatedSession {
                         server,
@@ -3043,7 +3043,7 @@ struct LaunchProbe {
     launch: Box<dyn Fn(workbench::window::WindowId, &mut himark::app::AppFx<'_>) + Send + Sync>,
 }
 
-impl himark::commands::DynamicCommand for LaunchProbe {
+impl himark::commands::WindowedCommand for LaunchProbe {
     fn id(&self) -> &'static str {
         "test.launch-probe"
     }
@@ -3052,9 +3052,9 @@ impl himark::commands::DynamicCommand for LaunchProbe {
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         _store: &mut imba::store::Store,
-        window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         (self.launch)(window, fx);
@@ -3066,7 +3066,7 @@ struct FillProbe<T: Send + Sync + 'static> {
     value: std::sync::Mutex<Option<T>>,
 }
 
-impl<T: Send + Sync + 'static> himark::commands::DynamicCommand for FillProbe<T> {
+impl<T: Send + Sync + 'static> himark::commands::WindowedCommand for FillProbe<T> {
     fn id(&self) -> &'static str {
         "test.fill-probe"
     }
@@ -3075,9 +3075,9 @@ impl<T: Send + Sync + 'static> himark::commands::DynamicCommand for FillProbe<T>
     }
     fn perform(
         &self,
-        _app: &mut himark::app::Application,
         _store: &mut imba::store::Store,
-        _window: workbench::window::WindowId,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
         *self.slot.lock().expect("probe slot") = self.value.lock().expect("probe value").take();
@@ -3096,7 +3096,7 @@ macro_rules! fs_probe {
                 std::sync::Arc::new(std::sync::Mutex::new(None));
             let filled = std::sync::Arc::clone(&slot);
             let id = engine.app.sole_window();
-            engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+            engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
                 id,
                 std::sync::Arc::new(LaunchProbe {
                     launch: Box::new(move |window, fx| {
@@ -3104,7 +3104,7 @@ macro_rules! fs_probe {
                         #[allow(clippy::redundant_closure_call)]
                         let effect: $effect = ($build)(&location);
                         let _ = fx.push(imba::effect::AnyEffect::new(effect).map(move |result| {
-                            himark::app::AppCommand::Dynamic(
+                            himark::app::AppCommand::Windowed(
                                 window,
                                 std::sync::Arc::new(FillProbe {
                                     slot: std::sync::Arc::clone(&filled),
@@ -3542,7 +3542,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
     let entity = engine.app.sole_window();
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         entity,
         std::sync::Arc::new(himark::higent::drawer::AddHost { url: ws.clone() }),
     )]));
@@ -4752,7 +4752,7 @@ fn the_chat_runs_through_the_himark_host() {
     );
 
     struct SendLikeComments(&'static str);
-    impl himark::commands::DynamicCommand for SendLikeComments {
+    impl himark::commands::WindowedCommand for SendLikeComments {
         fn id(&self) -> &'static str {
             "test.send-like-comments"
         }
@@ -4760,12 +4760,12 @@ fn the_chat_runs_through_the_himark_host() {
             "Send".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut himark::app::Application,
-            store: &mut imba::store::Store,
-            window: workbench::window::WindowId,
-            fx: &mut himark::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
             let workspace = workbench::window::Windows::window_ref(store, window)
                 .expect("the window entity")
                 .current_session();
@@ -4776,7 +4776,7 @@ fn the_chat_runs_through_the_himark_host() {
                 .expect("the session names its default chat");
             let seat = ahp_wire::client::Servers::client(store, key.host).expect("the seat");
             struct DropLanding;
-            impl himark::commands::DynamicCommand for DropLanding {
+            impl himark::commands::WindowedCommand for DropLanding {
                 fn id(&self) -> &'static str {
                     "test.send-landed"
                 }
@@ -4784,12 +4784,12 @@ fn the_chat_runs_through_the_himark_host() {
                     "Sent".to_owned()
                 }
                 fn perform(
-                    &self,
-                    _app: &mut himark::app::Application,
-                    _store: &mut imba::store::Store,
-                    _window: workbench::window::WindowId,
-                    _fx: &mut himark::app::AppFx<'_>,
-                ) {
+        &self,
+        _store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        _window: ::workbench::window::WindowId,
+        _fx: &mut himark::app::AppFx<'_>,
+    ) {
                 }
             }
             fx.push(
@@ -4801,12 +4801,12 @@ fn the_chat_runs_through_the_himark_host() {
                     model: None,
                 })
                 .map(move |_result| {
-                    himark::app::AppCommand::Dynamic(window, std::sync::Arc::new(DropLanding))
+                    himark::app::AppCommand::Windowed(window, std::sync::Arc::new(DropLanding))
                 }),
             );
         }
     }
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         engine.app.sole_window(),
         std::sync::Arc::new(SendLikeComments("attached review comment")),
     )]));
@@ -4829,7 +4829,7 @@ fn the_chat_runs_through_the_himark_host() {
         chat_transcript(&engine).is_some(),
         "the scratch opens beside the chat — the slot stays"
     );
-    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         engine.app.sole_window(),
         std::sync::Arc::new(SendLikeComments("sent while hidden")),
     )]));
@@ -6846,7 +6846,7 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let created = current(&engine);
 
     struct SwitchScratch;
-    impl himark::commands::DynamicCommand for SwitchScratch {
+    impl himark::commands::WindowedCommand for SwitchScratch {
         fn id(&self) -> &'static str {
             "test.switch-scratch"
         }
@@ -6854,17 +6854,17 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
             "Switch Scratch".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut himark::app::Application,
-            store: &mut imba::store::Store,
-            window: workbench::window::WindowId,
-            fx: &mut himark::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
             let target = ahp_wire::SessionId::mint_scratch(store);
             himark::app::switch_session(store, window, target, fx);
         }
     }
-    assert!(engine.app.perform_command(himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_command(himark::app::AppCommand::Windowed(
         engine.app.sole_window(),
         std::sync::Arc::new(SwitchScratch),
     )));
@@ -7982,7 +7982,7 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
         old: editor::location::ResourceLocation,
         new: editor::location::ResourceLocation,
     }
-    impl himark::commands::DynamicCommand for OpenWorkingDiff {
+    impl himark::commands::WindowedCommand for OpenWorkingDiff {
         fn id(&self) -> &'static str {
             "test.open-working-diff"
         }
@@ -7990,12 +7990,12 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
             "Open Working Diff".to_owned()
         }
         fn perform(
-            &self,
-            _app: &mut himark::app::Application,
-            store: &mut imba::store::Store,
-            window: workbench::window::WindowId,
-            fx: &mut himark::app::AppFx<'_>,
-        ) {
+        &self,
+        store: &mut imba::store::Store,
+        _ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
             let documents = workbench::window::Windows::session_state(store, window)
                 .expect("the test diff opens from a window with a session")
                 .documents();
@@ -8017,7 +8017,7 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     fs.write(&["live.md"], "alpha\nbeta\n");
 
     // The diff FIRST — its sides fetch and register.
-    let _ = engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+    let _ = engine.app.perform_batch(vec![himark::app::AppCommand::Windowed(
         workbench::window::WindowId::from_raw(window),
         std::sync::Arc::new(OpenWorkingDiff {
             old: fs.doc(&["old.md"]),
@@ -8117,7 +8117,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
     );
 
     struct Open(editor::location::ResourceLocation);
-    impl himark::commands::DynamicCommand for Open {
+    impl himark::commands::WindowedCommand for Open {
         fn id(&self) -> &'static str {
             "test.open-lib"
         }
@@ -8125,17 +8125,17 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
             "Open".to_owned()
         }
         fn perform(
-            &self,
-            app: &mut himark::app::Application,
-            store: &mut imba::store::Store,
-            window: workbench::window::WindowId,
-            fx: &mut himark::app::AppFx<'_>,
-        ) {
-            let ui = &app.ui_ctx();
+        &self,
+        store: &mut imba::store::Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
+    ) {
+            let ui = ui;
             himark::workspace::open_locations(store, ui, window, &[self.0.clone()], fx);
         }
     }
-    assert!(engine.app.perform_command(himark::app::AppCommand::Dynamic(
+    assert!(engine.app.perform_command(himark::app::AppCommand::Windowed(
         wid(window),
         Arc::new(Open(file.clone()))
     )));

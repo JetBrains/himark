@@ -1383,7 +1383,7 @@ impl editor::dynamic::DynamicEditorCommand for InsertTable {
 
     fn perform(
         &self,
-        store: &mut Store,
+        store: &mut imba::store::Store,
         ui: &imba::ui::UiCtx,
         document: &mut Document,
         editor: editor::editor::EditorId,

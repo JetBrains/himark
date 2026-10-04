@@ -6,6 +6,7 @@ use std::sync::Mutex as StdMutex;
 
 use super::*;
 use imba::effect::EffectHandler;
+use imba::store::Store;
 use imba::effect::AnyEffect;
 
 struct Probe {
@@ -89,7 +90,7 @@ impl EffectHandler<SlowProbe> for External {
 /// so the test lifts into `Register` and the text IS the name.
 struct LiftedText(String);
 
-impl crate::commands::DynamicCommand for LiftedText {
+impl crate::commands::WindowedCommand for LiftedText {
     fn id(&self) -> &'static str {
         "test.lifted-text"
     }
@@ -98,8 +99,8 @@ impl crate::commands::DynamicCommand for LiftedText {
     }
     fn perform(
         &self,
-        _app: &mut crate::app::Application,
-        _store: &mut imba::store::Store,
+        _store: &mut Store,
+        _ui: &imba::ui::UiCtx,
         _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {

@@ -8,7 +8,6 @@ use ::canvas::diff_pane::*;
 
 use imba::store::Store;
 
-use crate::app::Application;
 use documents::OpenDocuments;
 
 
@@ -61,7 +60,7 @@ pub fn open_diff_documents(
 
 pub struct OpenDiff;
 
-impl crate::commands::DynamicCommand for OpenDiff {
+impl crate::commands::WindowedCommand for OpenDiff {
     fn id(&self) -> &'static str {
         "diff.open"
     }
@@ -70,12 +69,12 @@ impl crate::commands::DynamicCommand for OpenDiff {
     }
     fn perform(
         &self,
-        app: &mut Application,
         store: &mut Store,
+        ui: &imba::ui::UiCtx,
         window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
-        let ui = &app.ui_ctx();
+        let ui = ui;
         let Some(state) = ::workbench::window::Windows::session_state(store, window) else {
             return;
         };
