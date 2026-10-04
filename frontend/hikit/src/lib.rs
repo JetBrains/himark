@@ -12,6 +12,7 @@ pub mod family_row;
 pub mod fonts;
 pub mod forest;
 pub mod list_keyboard;
+pub mod menu;
 pub mod modal;
 pub mod navigation;
 pub mod panel;

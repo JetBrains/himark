@@ -22,6 +22,7 @@ documents = { path = "../documents" }
 locations = { path = "../locations" }
 terminals = { path = "../terminals" }
 editor = { path = "../editor" }
+filetree = { path = "../filetree" }
 myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }
 operation = { path = "../operation" }
@@ -29,7 +30,7 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 
 [features]
-test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support"]
+test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support"]
 
 [dev-dependencies]
 editor = { path = "../editor", features = ["test-support"] }

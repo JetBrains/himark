@@ -1,24 +1,35 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::ResourceType;
+use std::sync::Mutex;
+
+use editor::ResourceType;
 
 use super::*;
 
+/// The session stand-in: the folder set the injected mirror answers,
+/// and the trees id the reopen tests share.
+#[derive(Clone)]
+struct Workspace {
+    trees: imba::store::Id<SessionTree>,
+    folders: Arc<Mutex<Vec<ResourceLocation>>>,
+}
+
 fn open_view(
     store: &mut Store,
-    workspace: crate::SessionId,
+    workspace: Workspace,
     reveal: Option<ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, TreeCommand>,
 ) -> SessionTreeView {
-    let trees = crate::higent::Hosts::ensure_family(store, &workspace).trees();
-    let folders = crate::higent::session_folders(store, &workspace);
+    let folders = workspace.folders.lock().unwrap().clone();
+    let mirror = workspace.folders.clone();
     SessionTreeView::open(
         store,
         ::editor::test_document::test_ui(),
-        workspace,
-        trees,
+        workspace.trees,
         &folders,
+        Arc::new(move |_store: &Store| mirror.lock().unwrap().clone()),
+        Arc::new(|_store: &Store, _target| None),
         reveal,
         fx,
     )
@@ -27,7 +38,7 @@ fn open_view(
 fn location(kind: ResourceType, path: &[&str]) -> ResourceLocation {
     ResourceLocation::new(
         kind,
-        crate::Authority::new("test"),
+        editor::Authority::new("test"),
         path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
     )
 }
@@ -40,8 +51,11 @@ fn document(path: &[&str]) -> ResourceLocation {
     location(ResourceType::document(), path)
 }
 
-fn workspace_with(store: &mut Store, folders: &[ResourceLocation]) -> crate::SessionId {
-    crate::test_support::seed_session_folders(store, folders)
+fn workspace_with(_store: &mut Store, folders: &[ResourceLocation]) -> Workspace {
+    Workspace {
+        trees: imba::store::Id::mint(),
+        folders: Arc::new(Mutex::new(folders.to_vec())),
+    }
 }
 
 #[test]
@@ -191,7 +205,11 @@ fn expansion_survives_reopen_and_new_folders_join() {
     assert_eq!(view.row_count(), 3);
     drop(view);
 
-    crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
+    workspace
+        .folders
+        .lock()
+        .unwrap()
+        .push(directory(&["other"]));
     let reopened = open_view(
         &mut store,
         workspace.clone(),
@@ -204,9 +222,7 @@ fn expansion_survives_reopen_and_new_folders_join() {
         "project stayed expanded; other joined as a root"
     );
 
-    let stashed = store.take::<SessionTree>().unwrap_or_default();
-    let second =
-        crate::test_support::seed_session_folders(&mut store, &[directory(&["elsewhere"])]);
+    let second = workspace_with(&mut store, &[directory(&["elsewhere"])]);
     let other_tree = open_view(
         &mut store,
         second,
@@ -214,7 +230,6 @@ fn expansion_survives_reopen_and_new_folders_join() {
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(other_tree.row_count(), 1, "only elsewhere; nothing leaked");
-    store.put(stashed);
     let first_again = open_view(
         &mut store,
         workspace.clone(),
@@ -271,7 +286,11 @@ fn folders_added_mid_session_join_on_paint() {
         "nothing to sync while the roots match"
     );
 
-    crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
+    workspace
+        .folders
+        .lock()
+        .unwrap()
+        .push(directory(&["other"]));
     let commands = paint(&view, &store);
     assert!(
         commands
@@ -296,20 +315,20 @@ fn folders_added_mid_session_join_on_paint() {
 }
 
 fn context_press(index: usize) -> TreeCommand {
-    TreeCommand::Rows(crate::ListKeyCommand::Inner(
+    TreeCommand::Rows(hikit::ListKeyCommand::Inner(
         imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Focus(
             index,
             Some(Box::new(imba::list::ListCommand::Child(
                 index,
-                crate::TreeItemCommand::Inner(crate::TreeLabelCommand::Context),
+                hikit::TreeItemCommand::Inner(hikit::TreeLabelCommand::Context),
             ))),
         )),
     ))
 }
 
 fn menu_activate(index: usize) -> TreeCommand {
-    TreeCommand::Menu(crate::menu::MenuCommand::Rows(Box::new(
-        crate::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
+    TreeCommand::Menu(hikit::menu::MenuCommand::Rows(Box::new(
+        hikit::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
             imba::list::ListCommand::Activate(index, imba::list::ActivateTrigger::Enter),
         )),
     )))
@@ -362,10 +381,10 @@ fn a_context_press_menus_and_rename_commits_a_move() {
         &mut batch.effects(),
     );
     assert!(view.edit.is_none(), "the commit ended the edit");
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = batch.surviving_launches();
     let moved = launches
         .iter()
-        .find_map(|effect| effect.get::<crate::MoveResourceEffect>())
+        .find_map(|effect| effect.get::<documents::MoveResourceEffect>())
         .expect("the commit launched the move");
     assert_eq!(moved.from, document(&["project", "README.md"]));
     assert_eq!(moved.to, document(&["project", "CHANGED.md"]));
@@ -410,10 +429,10 @@ fn new_file_rides_a_placeholder_row_and_creates() {
         &mut batch.effects(),
     );
     assert_eq!(view.row_count(), 1, "the placeholder left with the commit");
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = batch.surviving_launches();
     let created = launches
         .iter()
-        .find_map(|effect| effect.get::<crate::CreateDocumentEffect>())
+        .find_map(|effect| effect.get::<documents::CreateDocumentEffect>())
         .expect("the commit launched the create");
     assert_eq!(created.location, document(&["project", "new.txt"]));
 }
@@ -445,7 +464,7 @@ fn an_empty_or_slashed_name_keeps_the_editor() {
             &mut batch.effects(),
         );
         assert!(view.edit.is_some(), "{bad:?} does not commit");
-        assert!(crate::test_support::surviving_launches(batch).is_empty());
+        assert!(batch.surviving_launches().is_empty());
     }
 }
 
@@ -532,15 +551,12 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
     assert_eq!(view.row_count(), 3);
 
     // The session drops `other` (the removal echo landed in the
-    // channel mirror).
-    let mut channel = crate::higent::Agents::channel(&store, &workspace).expect("seeded");
-    channel.working_directories = channel
-        .working_directories
-        .iter()
-        .filter(|held| !held.contains("other"))
-        .cloned()
-        .collect();
-    crate::higent::Agents::set_channel(&mut store, &workspace, channel);
+    // mirror the injected closure reads).
+    workspace
+        .folders
+        .lock()
+        .unwrap()
+        .retain(|held| !held.path().contains(&"other".to_owned()));
 
     let commands = {
         let arena = imba::arena::Arena::default();
@@ -659,26 +675,9 @@ fn a_stale_listing_drops() {
 }
 
 #[test]
-fn opened_roots_join_the_workspace_once() {
-    let mut store = Store::new();
-    let root = directory(&["project"]);
-    let session = crate::test_support::seed_session_folders(
-        &mut store,
-        &[root.clone(), root.clone(), directory(&["other"])],
-    );
-    let folders = crate::higent::session_folders(&store, &session);
-    let unique: std::collections::HashSet<_> = folders
-        .iter()
-        .map(|folder| folder.path().to_vec())
-        .collect();
-    assert_eq!(unique.len(), 2);
-    assert_eq!(folders[0].path(), root.path());
-}
-
-#[test]
 fn expanded_folders_watch_and_events_relist() {
     let mut store = Store::new();
-    crate::Watching::install(&mut store);
+    documents::watch::Watching::install(&mut store);
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
     let mut view = open_view(
         &mut store,
@@ -702,11 +701,11 @@ fn expanded_folders_watch_and_events_relist() {
         },
         &mut batch.effects(),
     );
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = batch.surviving_launches();
     assert!(
         launches
             .iter()
-            .any(|effect| effect.get::<crate::SubscribeEffect>().is_some()),
+            .any(|effect| effect.get::<documents::watch::SubscribeEffect>().is_some()),
         "an expanded folder asks for its watch"
     );
 
@@ -716,7 +715,7 @@ fn expanded_folders_watch_and_events_relist() {
         &ui,
         TreeCommand::Watched {
             parent: directory(&["project"]),
-            subscription: Some(crate::Subscription(9)),
+            subscription: Some(documents::watch::Subscription(9)),
         },
         &mut imba::effect::Batch::new().effects(),
     );
@@ -726,14 +725,14 @@ fn expanded_folders_watch_and_events_relist() {
         &mut view,
         &mut store,
         &ui,
-        TreeCommand::Changed(vec![crate::Subscription(9)]),
+        TreeCommand::Changed(vec![documents::watch::Subscription(9)]),
         &mut batch.effects(),
     );
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = batch.surviving_launches();
     assert!(
         launches
             .iter()
-            .any(|effect| effect.get::<crate::ListDirectoryEffect>().is_some()),
+            .any(|effect| effect.get::<documents::ListDirectoryEffect>().is_some()),
         "a change re-lists the watched folder"
     );
 
@@ -756,11 +755,11 @@ fn expanded_folders_watch_and_events_relist() {
         ::editor::test_document::test_ui(),
         &mut batch.effects(),
     );
-    let launches = crate::test_support::surviving_launches(batch);
+    let launches = batch.surviving_launches();
     assert!(
-        launches
-            .iter()
-            .any(|effect| effect.get::<crate::UnsubscribeEffect>().is_some()),
+        launches.iter().any(|effect| effect
+            .get::<documents::watch::UnsubscribeEffect>()
+            .is_some()),
         "the fold unsubscribes"
     );
     assert!(view.tree.watches.is_empty());
@@ -817,7 +816,7 @@ fn cursor_walks_and_enter_opens() {
     };
     let fold = |view: &SessionTreeView, expand| {
         let index = view.tree.list.cursor_index().expect("a cursor row");
-        TreeCommand::Rows(crate::ListKeyCommand::Fold { index, expand })
+        TreeCommand::Rows(hikit::ListKeyCommand::Fold { index, expand })
     };
 
     let command = step(&view, 1);
@@ -943,7 +942,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         None,
         &mut imba::effect::Batch::new().effects(),
     );
-    let dark = crate::env::Themes::of(&store).ui().tree.highlight.0;
+    let dark = editor::env::Themes::of(&store).ui().tree.highlight.0;
     assert_eq!(
         view.tree
             .list
@@ -955,8 +954,8 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         "born with the current theme's wash"
     );
 
-    crate::env::Themes::set(&mut store, ::editor::theme::Theme::light());
-    let light = crate::env::Themes::of(&store).ui().tree.highlight.0;
+    editor::env::Themes::set(&mut store, ::editor::theme::Theme::light());
+    let light = editor::env::Themes::of(&store).ui().tree.highlight.0;
     assert_ne!(dark, light, "the themes disagree, or this test is vacuous");
 
     let commands = {

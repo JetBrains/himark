@@ -1354,3 +1354,101 @@ impl OpenDocuments {
 
 #[cfg(test)]
 mod tests;
+
+// The workspace file operations the shells route to their hosts
+// (fsroute): plain location-addressed asks, no window anywhere.
+
+pub struct StoreDocumentEffect {
+    pub location: editor::ResourceLocation,
+    pub text: String,
+}
+
+impl std::fmt::Display for StoreDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "store document /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for StoreDocumentEffect {
+    type Result = bool;
+}
+
+pub struct ListDirectoryEffect {
+    pub location: editor::ResourceLocation,
+}
+
+impl std::fmt::Display for ListDirectoryEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "list directory /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for ListDirectoryEffect {
+    type Result = Option<Vec<editor::ResourceLocation>>;
+}
+
+/// Creates an empty file; never overwrites — false when the
+/// location already exists.
+pub struct CreateDocumentEffect {
+    pub location: editor::ResourceLocation,
+}
+
+impl std::fmt::Display for CreateDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "create document /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for CreateDocumentEffect {
+    type Result = bool;
+}
+
+pub struct DeleteResourceEffect {
+    pub location: editor::ResourceLocation,
+    pub recursive: bool,
+}
+
+impl std::fmt::Display for DeleteResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "delete resource /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for DeleteResourceEffect {
+    type Result = bool;
+}
+
+/// A rename: fails when the destination exists.
+pub struct MoveResourceEffect {
+    pub from: editor::ResourceLocation,
+    pub to: editor::ResourceLocation,
+}
+
+impl std::fmt::Display for MoveResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "move resource /{} -> /{}",
+            self.from.path().join("/"),
+            self.to.path().join("/")
+        )
+    }
+}
+
+impl imba::effect::Effect for MoveResourceEffect {
+    type Result = bool;
+}
+
+pub struct PickSaveEffect {
+    pub suggested: String,
+}
+
+impl std::fmt::Display for PickSaveEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "pick save {}", self.suggested)
+    }
+}
+
+impl imba::effect::Effect for PickSaveEffect {
+    type Result = Option<editor::ResourceLocation>;
+}

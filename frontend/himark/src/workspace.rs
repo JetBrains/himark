@@ -7,100 +7,10 @@ use imba::store::Store;
 use crate::app::{AppCommand, AppFx};
 use crate::ResourceLocation;
 
-pub struct StoreDocumentEffect {
-    pub location: ResourceLocation,
-    pub text: String,
-}
-
-impl std::fmt::Display for StoreDocumentEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "store document /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for StoreDocumentEffect {
-    type Result = bool;
-}
-
-pub struct ListDirectoryEffect {
-    pub location: ResourceLocation,
-}
-
-impl std::fmt::Display for ListDirectoryEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "list directory /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for ListDirectoryEffect {
-    type Result = Option<Vec<ResourceLocation>>;
-}
-
-/// Creates an empty file; never overwrites — false when the
-/// location already exists.
-pub struct CreateDocumentEffect {
-    pub location: ResourceLocation,
-}
-
-impl std::fmt::Display for CreateDocumentEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "create document /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for CreateDocumentEffect {
-    type Result = bool;
-}
-
-pub struct DeleteResourceEffect {
-    pub location: ResourceLocation,
-    pub recursive: bool,
-}
-
-impl std::fmt::Display for DeleteResourceEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "delete resource /{}", self.location.path().join("/"))
-    }
-}
-
-impl Effect for DeleteResourceEffect {
-    type Result = bool;
-}
-
-/// A rename: fails when the destination exists.
-pub struct MoveResourceEffect {
-    pub from: ResourceLocation,
-    pub to: ResourceLocation,
-}
-
-impl std::fmt::Display for MoveResourceEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            out,
-            "move resource /{} -> /{}",
-            self.from.path().join("/"),
-            self.to.path().join("/")
-        )
-    }
-}
-
-impl Effect for MoveResourceEffect {
-    type Result = bool;
-}
-
-pub struct PickSaveEffect {
-    pub suggested: String,
-}
-
-impl std::fmt::Display for PickSaveEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(out, "pick save {}", self.suggested)
-    }
-}
-
-impl Effect for PickSaveEffect {
-    type Result = Option<ResourceLocation>;
-}
+pub use documents::{
+    CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect,
+    PickSaveEffect, StoreDocumentEffect,
+};
 
 pub use documents::{BuildDocumentEffect, BuiltDocument};
 
