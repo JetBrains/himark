@@ -615,15 +615,7 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct ChangesViewId(u64);
-
-impl ChangesViewId {
-    fn mint() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
+pub use crate::hichanges::ChangesViewId;
 
 /// The view registry rides the `ChangeSets` collection — the
 /// records themselves, the many-to-many set↔view join, and the
@@ -635,10 +627,11 @@ impl ChangeSets {
         view: ChangesView,
     ) -> ChangesViewId {
         let id = ChangesViewId::mint();
+        let displayed = view.displayed_sets(store);
         Self::update(store, changes, |views| {
-            views.views.insert_mut(id, view);
+            views.views.insert_mut(id, Box::new(view));
         });
-        Self::register(store, changes, id);
+        Self::register(store, changes, id, displayed);
         id
     }
 
@@ -647,7 +640,11 @@ impl ChangeSets {
         changes: imba::store::Id<ChangeSets>,
         id: ChangesViewId,
     ) -> Option<&'a ChangesView> {
-        Self::of(store, changes)?.views.get(&id)
+        Self::of(store, changes)?
+            .views
+            .get(&id)?
+            .as_any()
+            .downcast_ref::<ChangesView>()
     }
 
     fn take_view(
@@ -669,7 +666,7 @@ impl ChangeSets {
         view: ChangesView,
     ) {
         Self::update(store, changes, |views| {
-            views.views.insert_mut(id, view);
+            views.views.insert_mut(id, Box::new(view));
         });
     }
 
@@ -706,12 +703,15 @@ impl ChangeSets {
             .unwrap_or_default()
     }
 
-    /// Rebuild the join rows for one view from what it now displays.
-    fn register(store: &mut Store, changes: imba::store::Id<ChangeSets>, id: ChangesViewId) {
-        let displayed = match Self::view_ref(store, changes, id) {
-            Some(view) => view.displayed_sets(store),
-            None => return,
-        };
+    /// Rebuild the join rows for one view from what it now displays
+    /// — the view's code computes `displayed`; the join is model
+    /// bookkeeping.
+    fn register(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        id: ChangesViewId,
+        displayed: Vec<crate::hichanges::ChangeSetId>,
+    ) {
         Self::update(store, changes, |views| {
             // Drop the view's old rows…
             let stale_rows: Vec<crate::hichanges::ChangeSetId> = views

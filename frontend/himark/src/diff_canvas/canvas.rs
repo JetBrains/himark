@@ -1649,15 +1649,7 @@ impl Canvas {
 
 // ------------------------------------------------------------ canvases
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct CanvasId(u64);
-
-impl CanvasId {
-    fn mint() -> Self {
-        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
-    }
-}
+pub use crate::hichanges::CanvasId;
 
 /// Stateless FACADE over the sets' owned canvases
 /// (docs/model-view.md: `ChangeSet.canvases`): at most one canvas per
@@ -1798,7 +1790,8 @@ pub(crate) fn sync_canvases(
         move |command| crate::AppCommand::at(changes, command),
         |fx| {
             for (set, id) in Changes::canvas_ids(store, changes) {
-                let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
+                let Some(mut canvas) = Changes::take_canvas::<Canvas>(store, changes, set, id)
+                else {
                     continue;
                 };
                 let route = route_canvas(set, id);
@@ -1816,7 +1809,9 @@ fn route_canvas(
     set: ChangeSetId,
     canvas: CanvasId,
 ) -> impl Fn(CanvasCommand) -> crate::hichanges::ChangesCommand + Clone {
-    move |command| crate::hichanges::ChangesCommand::Canvas(set, canvas, Box::new(command))
+    move |command| {
+        crate::hichanges::ChangesCommand::Canvas(set, canvas, imba::DynCommand::new(command))
+    }
 }
 
 /// Perform one command against a SET-OWNED canvas — the panel-free
@@ -1828,10 +1823,14 @@ pub(crate) fn perform_canvas(
     changes: imba::store::Id<Changes>,
     set: ChangeSetId,
     id: CanvasId,
-    command: CanvasCommand,
+    command: imba::DynCommand,
     fx: &mut imba::effect::Effects<'_, crate::hichanges::ChangesCommand>,
 ) {
-    let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
+    let Some(command) = command.downcast::<CanvasCommand>() else {
+        debug_assert!(false, "a canvas slot was addressed with a foreign command");
+        return;
+    };
+    let Some(mut canvas) = Changes::take_canvas::<Canvas>(store, changes, set, id) else {
         return;
     };
     let route = route_canvas(set, id);
