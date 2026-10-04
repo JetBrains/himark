@@ -109,6 +109,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahp-docsync"
+version = "0.1.0"
+dependencies = [
+ "ahp-wire",
+ "documents",
+ "editor",
+ "himark-ahp-ext-types",
+ "imba",
+ "myersdiff",
+ "operation",
+ "rebase",
+ "rpds",
+ "serde_json",
+ "text",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ahp-locations"
 version = "0.1.0"
 dependencies = [
@@ -122,6 +141,17 @@ dependencies = [
  "rpds",
  "serde_json",
  "tracing",
+]
+
+[[package]]
+name = "ahp-lsp"
+version = "0.1.0"
+dependencies = [
+ "ahp-wire",
+ "documents",
+ "editor",
+ "imba",
+ "serde_json",
 ]
 
 [[package]]
@@ -1875,7 +1905,9 @@ dependencies = [
  "ahp",
  "ahp-changes",
  "ahp-comments",
+ "ahp-docsync",
  "ahp-locations",
+ "ahp-lsp",
  "ahp-types",
  "ahp-wire",
  "base64 0.22.1",

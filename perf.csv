@@ -12803,3 +12803,11 @@ timestamp,commit,profile,bench,metric,value_ms
 1791129695,f96f1ac9f,debug,chat-edits,frame_p95_ms,72.3693
 1791129695,f96f1ac9f,debug,chat-edits,frame_max_ms,78.5110
 1791129695,f96f1ac9f,debug,chat-edits,background_total_ms,2437.0655
+1791129926,89595d411,debug,diff-open,open_ms,22.1272
+1791129926,89595d411,debug,diff-typing,p50_ms,2.6620
+1791129927,89595d411,debug,diff-resize,frame_p50_ms,6.3491
+1791129927,89595d411,debug,diff-resize,frame_worst_ms,15.3059
+1791129939,89595d411,debug,chat-edits,frame_p50_ms,10.6830
+1791129939,89595d411,debug,chat-edits,frame_p95_ms,77.7859
+1791129939,89595d411,debug,chat-edits,frame_max_ms,225.7628
+1791129939,89595d411,debug,chat-edits,background_total_ms,3201.5895

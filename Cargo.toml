@@ -20,6 +20,8 @@ members = [
     "frontend/filetree",
     "frontend/ahp-changes",
     "frontend/ahp-comments",
+    "frontend/ahp-docsync",
+    "frontend/ahp-lsp",
     "frontend/ahp-locations",
     "frontend/ahp-wire",
     "frontend/hiahp",

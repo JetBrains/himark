@@ -8,6 +8,8 @@ license = "Apache-2.0"
 ahp = "0.9"
 ahp-changes = { path = "../ahp-changes" }
 ahp-comments = { path = "../ahp-comments" }
+ahp-docsync = { path = "../ahp-docsync" }
+ahp-lsp = { path = "../ahp-lsp" }
 ahp-locations = { path = "../ahp-locations" }
 ahp-wire = { path = "../ahp-wire" }
 ahp-types = "0.9"

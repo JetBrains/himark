@@ -1,21 +1,57 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The lsp@1 pass-through domain: the completion and hover asks a
+//! himark shell routes to whichever host serves a location's LSP.
+
+#[derive(Clone, Debug)]
+pub struct LspAnswer {
+    pub items: Vec<LspItem>,
+
+    pub incomplete: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct LspItem {
+    pub label: String,
+    pub detail: Option<String>,
+    pub filter_text: Option<String>,
+    pub sort_text: Option<String>,
+
+    pub edit: Option<(std::ops::Range<documents::LineCol>, String)>,
+    pub insert_text: Option<String>,
+}
+
+pub struct LspCompletionEffect {
+    pub location: editor::ResourceLocation,
+    pub position: documents::LineCol,
+}
+
+impl std::fmt::Display for LspCompletionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "lsp completion /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for LspCompletionEffect {
+    type Result = Option<LspAnswer>;
+}
+
 use std::sync::Arc;
 
 use documents::LineCol;
 use imba::effect::EffectHandler;
 use serde_json::json;
 
-use crate::fs::ClientDirectory;
+use ahp_wire::fs::ClientDirectory;
 
 pub struct CompletionRoute {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
-impl EffectHandler<crate::LspCompletionEffect> for CompletionRoute {
-    async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<crate::LspAnswer> {
+impl EffectHandler<LspCompletionEffect> for CompletionRoute {
+    async fn handle(&self, effect: LspCompletionEffect) -> Option<LspAnswer> {
         let (client, session) = ahp_wire::fs::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
@@ -30,7 +66,7 @@ impl EffectHandler<crate::LspCompletionEffect> for CompletionRoute {
     }
 }
 
-pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
+pub fn parse_completion(result: &serde_json::Value) -> LspAnswer {
     const PARSE_CAP: usize = 512;
     let (items, incomplete) = match result {
         serde_json::Value::Array(items) => (items.as_slice(), false),
@@ -69,7 +105,7 @@ pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
                     .and_then(range_of)?;
                 Some((range, text))
             });
-            Some(crate::LspItem {
+            Some(LspItem {
                 label,
                 detail: item.get("detail").and_then(text_of),
                 filter_text: item.get("filterText").and_then(text_of),
@@ -79,7 +115,7 @@ pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
             })
         })
         .collect();
-    crate::LspAnswer {
+    LspAnswer {
         items: parsed,
         incomplete,
     }
@@ -87,7 +123,7 @@ pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
 
 pub struct HoverRoute {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {

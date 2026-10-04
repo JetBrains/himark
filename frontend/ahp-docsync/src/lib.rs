@@ -26,7 +26,7 @@ mod rules;
 
 use std::sync::Arc;
 
-use crate::higent::DocumentsClient;
+use ahp_wire::client::DocumentsClient;
 use editor::ResourceLocation;
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::command::Verb;
@@ -226,7 +226,7 @@ pub struct StoreHandle {
 }
 
 impl StoreHandle {
-    pub async fn store(self, uri: crate::higent::client::ResourceUri) -> bool {
+    pub async fn store(self, uri: ahp_wire::client::ResourceUri) -> bool {
         let (done, landed) = oneshot::channel();
         if self.edits.send(Local::Flush(done)).is_err() {
             return false;
@@ -236,7 +236,7 @@ impl StoreHandle {
         }
         match self
             .server
-            .store_document(crate::higent::ChannelUri::new(self.channel), uri)
+            .store_document(ahp_wire::client::ChannelUri::new(self.channel), uri)
             .await
         {
             Ok(()) => true,
@@ -264,7 +264,7 @@ struct ChannelState {
 
 pub struct DocumentChannels {
     post: Arc<dyn Fn(Verb) + Send + Sync>,
-    uris: Arc<dyn crate::higent::ResourceUriMap>,
+    uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
     runtime: tokio::runtime::Handle,
 
     salt: u128,
@@ -275,7 +275,7 @@ impl DocumentChannels {
     pub fn new(
         runtime: tokio::runtime::Handle,
         post: Arc<dyn Fn(Verb) + Send + Sync>,
-        uris: Arc<dyn crate::higent::ResourceUriMap>,
+        uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
     ) -> Arc<Self> {
         let salt = {
             use std::hash::{BuildHasher, Hasher};
@@ -448,7 +448,7 @@ async fn life(
         // Stopped before the subscribe was ever sent: nothing to
         // release — an open at most mints (or re-finds) the channel.
         _ = stopped.recv() => return,
-        opened = server.open_document(crate::higent::SessionUri::new(session), Some(uri), None) => match opened {
+        opened = server.open_document(ahp_wire::client::SessionUri::new(session), Some(uri), None) => match opened {
             Ok(opened) => opened,
             Err(error) => {
                 tracing::warn!(%error, "docsync: could not reach the channel");
@@ -466,14 +466,14 @@ async fn life(
     // that made it. A leaked subscription re-subscribes later and
     // every broadcast arrives twice: the character-doubling bug.
     let snapshot = match server
-        .subscribe_document(crate::higent::ChannelUri::new(opened.document.clone()))
+        .subscribe_document(ahp_wire::client::ChannelUri::new(opened.document.clone()))
         .await
     {
         Ok(snapshot) => snapshot,
         Err(error) => {
             tracing::warn!(%error, "docsync: could not subscribe the channel");
             server
-                .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
+                .unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone()))
                 .await;
             channels.post(GiveUp {
                 channels: Arc::clone(channels),
@@ -485,7 +485,7 @@ async fn life(
     };
     if stopped.try_recv().is_ok() {
         server
-            .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
+            .unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone()))
             .await;
         return;
     }
@@ -510,7 +510,7 @@ async fn life(
         // Adoption declined (no registered document), or the document
         // closed while we were connecting: release the channel.
         server
-            .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
+            .unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone()))
             .await;
         return;
     };
@@ -533,7 +533,7 @@ async fn life(
 
     {
         let server = Arc::clone(&server);
-        let channel = crate::higent::ChannelUri::new(opened.document.clone());
+        let channel = ahp_wire::client::ChannelUri::new(opened.document.clone());
         channels.runtime.spawn(async move {
             while let Some(dispatch) = wire_rx.recv().await {
                 let Some(operation) = dispatch.action.operation() else {
@@ -571,10 +571,10 @@ async fn life(
         let heard = tokio::select! {
             biased;
             _ = stopped.recv() => {
-                server.unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone())).await;
+                server.unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone())).await;
                 return;
             }
-            heard = server.poll_document(crate::higent::ChannelUri::new(opened.document.clone())) => heard,
+            heard = server.poll_document(ahp_wire::client::ChannelUri::new(opened.document.clone())) => heard,
         };
         for action in heard {
             let applied = rebase::Applied {
@@ -585,7 +585,7 @@ async fn life(
             };
             if actions.send(applied).await.is_err() {
                 server
-                    .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
+                    .unsubscribe_document(&ahp_wire::client::ChannelUri::new(opened.document.clone()))
                     .await;
                 return;
             }
@@ -948,7 +948,7 @@ impl editor::ChangeSink for SyncSink {
 
 pub struct DocsyncHook {
     pub channels: Arc<DocumentChannels>,
-    pub directory: Arc<crate::fs::ClientDirectory>,
+    pub directory: Arc<ahp_wire::fs::ClientDirectory>,
 }
 
 impl documents::DocumentHook for DocsyncHook {

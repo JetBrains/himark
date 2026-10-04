@@ -1,0 +1,20 @@
+[package]
+name = "ahp-docsync"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+ahp-wire = { path = "../ahp-wire" }
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
+imba = { path = "../imba" }
+myersdiff = { path = "../myersdiff" }
+operation = { path = "../operation" }
+rebase = { path = "../rebase" }
+rpds = "1"
+serde_json = "1"
+text = { path = "../text" }
+tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
+tracing = "0.1"
