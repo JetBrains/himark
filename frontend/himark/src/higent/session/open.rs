@@ -153,7 +153,13 @@ impl DynamicCommand for EnterSessionWork {
         };
         let folders = crate::higent::session_folders(store, &key);
         if let Some(family) = Windows::session_family(store, window) {
-            crate::hichanges::Changes::ensure(store, window, family.changes(), folders.clone(), fx);
+            crate::drivers::changes::ensure(
+                store,
+                window,
+                family.changes_wire(),
+                folders.clone(),
+                fx,
+            );
             for folder in folders {
                 crate::hicomments::Comments::ensure(store, family.comments(), &folder, fx);
             }
@@ -344,12 +350,12 @@ pub(crate) fn apply_channel_actions(
             }
             StateAction::SessionChangesetsChanged(changed) => {
                 // The session channel's catalog names the session it
-                // serves; its family's collection takes the entries.
-                if let Some(changes) =
-                    crate::higent::Hosts::family(store, key).map(|family| family.changes())
+                // serves; its family's DRIVER takes the entries.
+                if let Some(wire) =
+                    crate::higent::Hosts::family(store, key).map(|family| family.changes_wire())
                 {
-                    crate::hichanges::adopt_session_catalog(
-                        store, window, key, changes, changed, fx,
+                    crate::drivers::changes::adopt_session_catalog(
+                        store, window, key, wire, changed, fx,
                     );
                 }
             }

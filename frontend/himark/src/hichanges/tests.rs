@@ -86,7 +86,7 @@ fn changes_id() -> imba::store::Id<Changes> {
 }
 
 fn wired() -> Changes {
-    Changes::wired(imba::store::Id::mint(), imba::store::Id::mint(), None)
+    Changes::wired(imba::store::Id::mint(), imba::store::Id::mint())
 }
 
 fn folder() -> ResourceLocation {
@@ -163,17 +163,11 @@ fn fold_wire(changes: &mut Changes, folder: &ResourceLocation, actions: &[StateA
 
 fn mirror() -> (Changes, ResourceLocation) {
     let mut changes = wired();
-    changes.uris = Some(Arc::new(FileUris));
     let id = ChangeSetId::mint();
     changes.sets.insert_mut(
         id,
         ChangeSet {
             source: ChangeSetSource::WorkingCopy { folder: folder() },
-            feed: Some(SetFeed {
-                seat: Arc::new(InertSeat),
-                session: crate::higent::SessionUri::new("hihost-fs:/local"),
-                channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
-            }),
             status: ChangesStatus::Computing,
             files: rpds::VectorSync::new_sync(),
             generation: 0,
@@ -205,83 +199,72 @@ fn the_ref_codec_round_trips() {
 
 #[test]
 fn the_catalog_names_the_folders_channel() {
-    let (mut changes, folder) = mirror();
-    let mut pending = changes.folder_set(&folder).unwrap().clone();
-    pending.feed.as_mut().unwrap().channel = None;
-    let id = *changes
-        .by_source
-        .get(&ChangeSetSource::WorkingCopy {
-            folder: folder.clone(),
-        })
-        .unwrap();
-    changes.sets.insert_mut(id, pending);
-    changes.session = Some(SessionFeed {
-        uri: crate::higent::SessionUri::new("hihost-fs:/local"),
-        seat: Arc::new(InertSeat),
-        catalog: rpds::VectorSync::new_sync(),
-    });
-    let fresh = changes.adopt_catalog(
-        &crate::higent::SessionUri::new("hihost-fs:/local"),
-        vec![
-            CatalogEntry {
-                uri: crate::higent::ChannelUri::new("hihost-changes://somewhere/else"),
-                description: Some("/somewhere/else".to_owned()),
-                kind: "uncommitted".to_owned(),
-            },
-            CatalogEntry {
-                uri: crate::higent::ChannelUri::new("hihost-changes://tmp/repo"),
-                description: Some("/tmp/repo".to_owned()),
-                kind: "uncommitted".to_owned(),
-            },
+    use crate::drivers::changes::{claim_channels, FolderWire};
+    let session = crate::higent::SessionUri::new("hihost-fs:/local");
+    let entry = |description: Option<&str>, uri: &str| CatalogEntry {
+        uri: crate::higent::ChannelUri::new(uri),
+        description: description.map(str::to_owned),
+        kind: "uncommitted".to_owned(),
+    };
+    let mut folders = rpds::HashTrieMapSync::new_sync();
+    folders.insert_mut(
+        folder(),
+        FolderWire {
+            seat: Arc::new(InertSeat),
+            session: session.clone(),
+            channel: None,
+            serial: 0,
+        },
+    );
+    let fresh = claim_channels(
+        &folders,
+        &session,
+        &[
+            entry(Some("/somewhere/else"), "hihost-changes://somewhere/else"),
+            entry(Some("/tmp/repo"), "hihost-changes://tmp/repo"),
         ],
     );
     assert_eq!(fresh.len(), 1);
-    assert_eq!(fresh[0].0, folder);
+    assert_eq!(fresh[0].0, folder());
     assert_eq!(fresh[0].2.as_str(), "hihost-changes://tmp/repo");
-    assert_eq!(
-        changes
-            .folder_set(&folder)
-            .unwrap()
-            .feed
-            .as_ref()
-            .unwrap()
-            .channel
-            .as_ref()
-            .map(|c| c.as_str()),
-        Some("hihost-changes://tmp/repo")
-    );
 
-    let again = changes.adopt_catalog(
-        &crate::higent::SessionUri::new("hihost-fs:/local"),
-        vec![CatalogEntry {
-            uri: crate::higent::ChannelUri::new("hihost-changes://tmp/repo"),
-            description: Some("/tmp/repo".to_owned()),
-            kind: "uncommitted".to_owned(),
-        }],
+    // Claimed: the channel stands, a re-announced catalog claims
+    // nothing fresh.
+    folders.insert_mut(
+        folder(),
+        FolderWire {
+            seat: Arc::new(InertSeat),
+            session: session.clone(),
+            channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
+            serial: 0,
+        },
+    );
+    let again = claim_channels(
+        &folders,
+        &session,
+        &[entry(Some("/tmp/repo"), "hihost-changes://tmp/repo")],
     );
     assert!(again.is_empty());
 }
 
 #[test]
 fn a_lone_folder_takes_a_lone_foreign_entry() {
-    let (mut changes, folder) = mirror();
-    let mut pending = changes.folder_set(&folder).unwrap().clone();
-    pending.feed.as_mut().unwrap().channel = None;
-    let id = *changes
-        .by_source
-        .get(&ChangeSetSource::WorkingCopy {
-            folder: folder.clone(),
-        })
-        .unwrap();
-    changes.sets.insert_mut(id, pending);
-    changes.session = Some(SessionFeed {
-        uri: crate::higent::SessionUri::new("hihost-fs:/local"),
-        seat: Arc::new(InertSeat),
-        catalog: rpds::VectorSync::new_sync(),
-    });
-    let fresh = changes.adopt_catalog(
-        &crate::higent::SessionUri::new("hihost-fs:/local"),
-        vec![CatalogEntry {
+    use crate::drivers::changes::{claim_channels, FolderWire};
+    let session = crate::higent::SessionUri::new("hihost-fs:/local");
+    let mut folders = rpds::HashTrieMapSync::new_sync();
+    folders.insert_mut(
+        folder(),
+        FolderWire {
+            seat: Arc::new(InertSeat),
+            session: session.clone(),
+            channel: None,
+            serial: 0,
+        },
+    );
+    let fresh = claim_channels(
+        &folders,
+        &session,
+        &[CatalogEntry {
             uri: crate::higent::ChannelUri::new("vscode-changes:/session"),
             description: None,
             kind: "uncommitted".to_owned(),
@@ -610,12 +593,31 @@ fn a_later_snapshot_supersedes_earlier_file_mutations_in_the_batch() {
 
 #[test]
 fn a_superseded_poll_folds_its_batch_but_never_rearms() {
-    use imba::store::Entity as _;
+    use crate::drivers::changes::{apply_poll, apply_snapshot, ChangesWire, FolderWire};
 
-    let (mut changes, folder) = mirror();
     let mut store = imba::store::Store::new();
     let ui = imba::UiCtx::dont_use_too_slow();
-    let launches = |batch: imba::effect::Batch<ChangesCommand>| {
+    let window = crate::WindowId::from_raw(7);
+    let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
+    let history_id: imba::store::Id<crate::hihistory::History> = imba::store::Id::mint();
+    store.put_entity(changes_id(), wired());
+    store.put_entity(
+        wire_id,
+        ChangesWire::wired(changes_id(), history_id, Some(Arc::new(FileUris))),
+    );
+    ChangesWire::seed_folder_for_tests(
+        &mut store,
+        wire_id,
+        folder(),
+        FolderWire {
+            seat: Arc::new(InertSeat),
+            session: crate::higent::SessionUri::new("hihost-fs:/local"),
+            channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
+            serial: 0,
+        },
+    );
+    crate::hichanges::Changes::ensure_working_set(&mut store, changes_id(), &folder());
+    let launches = |batch: imba::effect::Batch<crate::AppCommand>| {
         batch
             .drain()
             .into_iter()
@@ -623,74 +625,73 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
             .count()
     };
 
-    // The subscribe landing arms the ONE standing loop.
-    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
-    changes.perform(
-        changes_id(),
-        ChangesCommand::Snapshot {
-            folder: folder.clone(),
-            result: Ok(digest_state(&FileUris, &folder, &ready(vec![]))),
-        },
+    // The subscribe landing arms the ONE standing loop (serial 1).
+    let mut batch = imba::effect::Batch::new();
+    apply_snapshot(
         &mut store,
         &ui,
+        window,
+        wire_id,
+        &folder(),
+        Ok(digest_state(&FileUris, &folder(), &ready(vec![]))),
         &mut batch.effects(),
     );
     assert_eq!(launches(batch), 1, "the snapshot arms the poll");
-    let armed = changes.poll_serial(&folder).expect("a serial stands");
 
-    // A re-subscribe supersedes the loop: its landing bumps the serial.
-    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
-    changes.perform(
-        changes_id(),
-        ChangesCommand::Snapshot {
-            folder: folder.clone(),
-            result: Ok(digest_state(&FileUris, &folder, &ready(vec![]))),
-        },
+    // A re-subscribe supersedes the loop: its landing bumps the
+    // serial (to 2).
+    let mut batch = imba::effect::Batch::new();
+    apply_snapshot(
         &mut store,
         &ui,
+        window,
+        wire_id,
+        &folder(),
+        Ok(digest_state(&FileUris, &folder(), &ready(vec![]))),
         &mut batch.effects(),
     );
     assert_eq!(launches(batch), 1);
-    let current = changes.poll_serial(&folder).expect("a serial stands");
-    assert_ne!(armed, current);
 
     // The OLD loop's landing: the batch folds, the loop dies.
-    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
-    changes.perform(
-        changes_id(),
-        ChangesCommand::Polled {
-            folder: folder.clone(),
-            serial: armed,
-            actions: digest_actions(
-                &FileUris,
-                &folder,
-                &[StateAction::ChangesetFileSet(ChangesetFileSetAction {
-                    file: wire_file("late.md", None, false, (1, 0)),
-                })],
-            ),
-        },
+    let mut batch = imba::effect::Batch::new();
+    apply_poll(
         &mut store,
         &ui,
+        window,
+        wire_id,
+        &folder(),
+        1,
+        digest_actions(
+            &FileUris,
+            &folder(),
+            &[StateAction::ChangesetFileSet(ChangesetFileSetAction {
+                file: wire_file("late.md", None, false, (1, 0)),
+            })],
+        ),
         &mut batch.effects(),
     );
     assert_eq!(launches(batch), 0, "a stale landing never rearms");
     assert_eq!(
-        changes.folder_set(&folder).unwrap().files.len(),
+        crate::hichanges::Changes::of(&store, changes_id())
+            .unwrap()
+            .folder_set(&folder())
+            .unwrap()
+            .files
+            .len(),
         1,
         "its drained actions still fold"
     );
 
-    // The CURRENT loop's landing re-arms as ever.
-    let mut batch = imba::effect::Batch::<ChangesCommand>::new();
-    changes.perform(
-        changes_id(),
-        ChangesCommand::Polled {
-            folder: folder.clone(),
-            serial: current,
-            actions: Vec::new(),
-        },
+    // The CURRENT loop keeps polling.
+    let mut batch = imba::effect::Batch::new();
+    apply_poll(
         &mut store,
         &ui,
+        window,
+        wire_id,
+        &folder(),
+        2,
+        Vec::new(),
         &mut batch.effects(),
     );
     assert_eq!(launches(batch), 1, "the standing loop keeps polling");

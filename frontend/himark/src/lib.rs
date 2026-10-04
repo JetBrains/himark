@@ -10,6 +10,7 @@ pub mod completion;
 mod diffs;
 mod dock;
 mod drawer;
+pub mod drivers;
 mod effects;
 mod find;
 mod focus;

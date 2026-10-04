@@ -119,6 +119,9 @@ pub struct ChangesView {
 
     /// The collection whose sets this view unites — the store road.
     changes: imba::store::Id<ChangeSets>,
+    /// The collection's wire driver — the refresh chip's refetch
+    /// address, stamped at mint.
+    wire: imba::store::Id<crate::drivers::changes::ChangesWire>,
     /// The session, as the CATALOG's name for its folders — never a
     /// store road (the folder list is the host's, not the collection's).
     workspace: crate::SessionId,
@@ -139,6 +142,7 @@ impl Clone for ChangesView {
             list: self.list.clone(),
             items: self.items.clone(),
             changes: self.changes,
+            wire: self.wire,
             workspace: self.workspace.clone(),
             window: self.window,
             sets: self.sets,
@@ -150,11 +154,13 @@ impl Clone for ChangesView {
 }
 
 impl ChangesView {
+    #[allow(clippy::too_many_arguments)]
     pub fn open(
         store: &Store,
         ui: &UiCtx,
         window: crate::WindowId,
         changes: imba::store::Id<ChangeSets>,
+        wire: imba::store::Id<crate::drivers::changes::ChangesWire>,
         workspace: crate::SessionId,
         sets: ViewSets,
     ) -> Self {
@@ -175,6 +181,7 @@ impl ChangesView {
             ),
             items: rpds::HashTrieMapSync::new_sync(),
             changes,
+            wire,
             workspace,
             window,
             sets,
@@ -458,7 +465,7 @@ impl View for ChangesView {
                 self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
                     self.window,
                     Arc::new(crate::hichanges::RefetchChanges {
-                        changes: Some(self.changes),
+                        wire: Some(self.wire),
                         folder: Some(folder),
                     }),
                 )));

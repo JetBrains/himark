@@ -208,6 +208,7 @@ fn history_mirror() -> (imba::store::Store, ResourceLocation) {
             seat: Arc::new(InertSeat),
             session: crate::higent::SessionUri::new("hihost-fs:/local"),
             channel: Some(crate::higent::ChannelUri::new("hihost-history://tmp/repo")),
+            uris: Arc::new(FileUris),
             status: ChangesStatus::Computing,
             head: history_wire::HistoryHead::default(),
             commits: rpds::VectorSync::new_sync(),
@@ -215,11 +216,7 @@ fn history_mirror() -> (imba::store::Store, ResourceLocation) {
         },
     );
     store.put_entity(history_id(), history);
-    let changes = crate::hichanges::Changes::wired(
-        imba::store::Id::mint(),
-        history_id(),
-        Some(Arc::new(FileUris)),
-    );
+    let changes = crate::hichanges::Changes::wired(imba::store::Id::mint(), history_id());
     store.put_entity(changes_id(), changes);
     (store, folder)
 }
@@ -384,11 +381,13 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         reviewed: None,
         meta: None,
     };
+    let uris: Arc<dyn crate::higent::ResourceUriMap> = Arc::new(FileUris);
     crate::hichanges::Changes::adopt_commit_state(
         &mut store,
         changes_id(),
         &folder,
         &crate::hichanges::Revision::new("b"),
+        &uris,
         &Ok(ready(vec![file])),
     );
     let mut items = rpds::HashTrieMapSync::new_sync();

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::hichanges::{
     dir_forest, empty_side, entry_serves, CatalogEntry, ChangeEntry, ChangesStatus, DirSink,
-    DirTrie, Dispatched,
+    DirTrie,
 };
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::ChangesetState;
@@ -50,6 +50,10 @@ pub struct FolderHistory {
     seat: Arc<dyn AhpServer>,
     session: crate::higent::SessionUri,
     channel: Option<crate::higent::ChannelUri>,
+    /// The host's location↔uri translation, handed by the changes
+    /// driver at attach — rides the wire entry until this module's
+    /// own driver split (the commit doors digest with it).
+    uris: Arc<dyn crate::higent::ResourceUriMap>,
     pub status: ChangesStatus,
     pub head: history_wire::HistoryHead,
     pub commits: rpds::VectorSync<Commit>,
@@ -145,13 +149,16 @@ impl imba::store::Entity for History {
                 commit,
                 result,
             } => {
-                crate::hichanges::Changes::adopt_commit_state(
-                    store,
-                    self.changes,
-                    &folder,
-                    &commit,
-                    &result,
-                );
+                if let Some(uris) = self.folders.get(&folder).map(|entry| entry.uris.clone()) {
+                    crate::hichanges::Changes::adopt_commit_state(
+                        store,
+                        self.changes,
+                        &folder,
+                        &commit,
+                        &uris,
+                        &result,
+                    );
+                }
                 self.settle_commit_fetch(store, &folder, &commit, fx);
             }
             HistoryCommand::CommitFilesPolled {
@@ -159,13 +166,16 @@ impl imba::store::Entity for History {
                 commit,
                 actions,
             } => {
-                crate::hichanges::Changes::fold_commit_actions(
-                    store,
-                    self.changes,
-                    &folder,
-                    &commit,
-                    &actions,
-                );
+                if let Some(uris) = self.folders.get(&folder).map(|entry| entry.uris.clone()) {
+                    crate::hichanges::Changes::fold_commit_actions(
+                        store,
+                        self.changes,
+                        &folder,
+                        &commit,
+                        &uris,
+                        &actions,
+                    );
+                }
                 self.settle_commit_fetch(store, &folder, &commit, fx);
             }
         }
@@ -225,12 +235,14 @@ impl History {
         wire: &crate::SessionId,
         folder: &ResourceLocation,
         seat: &Arc<dyn AhpServer>,
+        uris: &Arc<dyn crate::higent::ResourceUriMap>,
     ) {
         if Self::folder(store, history, folder).is_some() {
             return;
         }
         let seat = seat.clone();
         let session = wire.session.clone();
+        let uris = Arc::clone(uris);
         Self::update_folder(store, history, |history| {
             history.folders.insert_mut(
                 folder.clone(),
@@ -238,6 +250,7 @@ impl History {
                     seat,
                     session,
                     channel: None,
+                    uris,
                     status: ChangesStatus::Computing,
                     head: history_wire::HistoryHead::default(),
                     commits: rpds::VectorSync::new_sync(),
@@ -351,7 +364,7 @@ impl History {
         folder: &ResourceLocation,
         commits: Vec<history_wire::Commit>,
     ) -> Vec<Commit> {
-        let Some(entry) = self.folders.get(folder).cloned() else {
+        let Some(_entry) = self.folders.get(folder).cloned() else {
             return Vec::new();
         };
         commits
@@ -362,8 +375,6 @@ impl History {
                     self.changes,
                     folder,
                     &crate::hichanges::Revision::new(wire.id.clone()),
-                    &entry.seat,
-                    &entry.session,
                 );
                 Commit { wire, change_set }
             })
@@ -646,7 +657,12 @@ impl crate::DynamicCommand for GrowHistory {
                     },
                 )),
             })
-            .map(move |result| AppCommand::Dynamic(window, Arc::new(Dispatched { result }))),
+            .map(move |result| {
+                AppCommand::Dynamic(
+                    window,
+                    Arc::new(crate::drivers::changes::Dispatched { result }),
+                )
+            }),
         );
     }
 }
@@ -691,7 +707,12 @@ impl crate::DynamicCommand for CommitHistory {
                     },
                 )),
             })
-            .map(move |result| AppCommand::Dynamic(window, Arc::new(Dispatched { result }))),
+            .map(move |result| {
+                AppCommand::Dynamic(
+                    window,
+                    Arc::new(crate::drivers::changes::Dispatched { result }),
+                )
+            }),
         );
     }
 }
@@ -1025,8 +1046,9 @@ impl crate::DynamicCommand for ToggleHistoryView {
         }
         let workspace = entity.current_session();
         let changes = entity.family().changes();
+        let wire = entity.family().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
-        crate::hichanges::Changes::ensure(store, window, changes, folders, fx);
+        crate::drivers::changes::ensure(store, window, wire, folders, fx);
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
@@ -1039,6 +1061,7 @@ impl crate::DynamicCommand for ToggleHistoryView {
                 &_app.ui_ctx(),
                 window,
                 changes,
+                wire,
                 workspace,
                 crate::changes_view::ViewSets::History,
             ),

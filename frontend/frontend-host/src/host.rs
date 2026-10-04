@@ -409,7 +409,7 @@ impl DynamicCommand for OpenPicked {
                 .unwrap_or_else(|| himark::SessionId::local_default(store));
             let family = himark::Windows::session_family(store, window);
             if let (true, Some(family)) = (workspace.names_session(), family) {
-                let (changes, comments) = (family.changes(), family.comments());
+                let (wire, comments) = (family.changes_wire(), family.comments());
                 for folder in folders {
                     let spelled = himark::ResourceLocation::new(
                         folder.kind().clone(),
@@ -419,10 +419,10 @@ impl DynamicCommand for OpenPicked {
                         )),
                         folder.path().to_vec(),
                     );
-                    himark::hichanges::Changes::ensure_folder(
+                    himark::drivers::changes::ensure_folder(
                         store,
                         window,
-                        changes,
+                        wire,
                         spelled.clone(),
                         fx,
                     );

@@ -59,6 +59,8 @@ pub struct SessionState {
 
     changes: Id<crate::hichanges::Changes>,
 
+    changes_wire: Id<crate::drivers::changes::ChangesWire>,
+
     history: Id<crate::hihistory::History>,
 
     comments: Id<crate::hicomments::Comments>,
@@ -87,6 +89,10 @@ impl SessionState {
 
     pub fn changes(&self) -> Id<crate::hichanges::Changes> {
         self.changes
+    }
+
+    pub fn changes_wire(&self) -> Id<crate::drivers::changes::ChangesWire> {
+        self.changes_wire
     }
 
     pub fn history(&self) -> Id<crate::hihistory::History> {
@@ -119,6 +125,7 @@ impl SessionState {
             trees: Id::mint(),
             recents: Id::mint(),
             changes: Id::mint(),
+            changes_wire: Id::mint(),
             history: Id::mint(),
             comments: Id::mint(),
             terminals: Id::mint(),
@@ -137,6 +144,7 @@ impl SessionState {
             store.entity(id).is_none_or(is_empty)
         }
         empty(store, self.chats, |it| it.is_empty())
+            && empty(store, self.changes_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
             && empty(store, self.recents, |it| it.is_empty())
             && empty(store, self.changes, |it| it.is_empty())
@@ -154,7 +162,8 @@ impl SessionState {
         store.dispose(self.chats);
         store.retract(self.trees);
         store.retract(self.recents);
-        store.dispose(self.changes);
+        store.retract(self.changes);
+        store.retract(self.changes_wire);
         store.dispose(self.history);
         store.dispose(self.comments);
         store.retract(self.terminals);
@@ -245,7 +254,7 @@ impl Hosts {
             .map(|host| host.families.values().cloned().collect())
             .unwrap_or_default();
         for family in families {
-            crate::hichanges::Changes::stamp_uris(store, family.changes, &map);
+            crate::drivers::changes::ChangesWire::stamp_uris(store, family.changes_wire, &map);
             crate::hicomments::Comments::stamp_uris(store, family.comments, &map);
         }
     }
@@ -396,7 +405,15 @@ impl Hosts {
         let uris = Self::uris(store, session.host);
         store.put_entity(
             family.changes,
-            crate::hichanges::ChangeSets::wired(family.documents, family.history, uris.clone()),
+            crate::hichanges::ChangeSets::wired(family.documents, family.history),
+        );
+        store.put_entity(
+            family.changes_wire,
+            crate::drivers::changes::ChangesWire::wired(
+                family.changes,
+                family.history,
+                uris.clone(),
+            ),
         );
         store.put_entity(
             family.history,
