@@ -16,7 +16,7 @@ pub use hikit::PaneRow;
 use hikit::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
-pub use ::hiahp::higent::ChatRow;
+pub use ::ahp_session::higent::ChatRow;
 
 #[derive(Clone, Default)]
 pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);

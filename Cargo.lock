@@ -182,6 +182,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahp-session"
+version = "0.1.0"
+dependencies = [
+ "ahp",
+ "ahp-changes",
+ "ahp-chat",
+ "ahp-comments",
+ "ahp-docsync",
+ "ahp-locations",
+ "ahp-lsp",
+ "ahp-types",
+ "ahp-wire",
+ "base64 0.22.1",
+ "canvas",
+ "changesview",
+ "comments",
+ "documents",
+ "editor",
+ "filetree",
+ "hikit",
+ "himark-ahp-ext-types",
+ "humantime",
+ "imba",
+ "locations",
+ "myersdiff",
+ "operation",
+ "rebase",
+ "rpds",
+ "serde",
+ "serde_json",
+ "skia-safe",
+ "terminals",
+ "text",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "ahp-types"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1926,44 +1964,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fc0fef456e4baa96da950455cd02c081ca953b141298e41db3fc7e36b1da849c"
 
 [[package]]
-name = "hiahp"
-version = "0.1.0"
-dependencies = [
- "ahp",
- "ahp-changes",
- "ahp-chat",
- "ahp-comments",
- "ahp-docsync",
- "ahp-locations",
- "ahp-lsp",
- "ahp-types",
- "ahp-wire",
- "base64 0.22.1",
- "canvas",
- "changesview",
- "comments",
- "documents",
- "editor",
- "filetree",
- "hikit",
- "himark-ahp-ext-types",
- "humantime",
- "imba",
- "locations",
- "myersdiff",
- "operation",
- "rebase",
- "rpds",
- "serde",
- "serde_json",
- "skia-safe",
- "terminals",
- "text",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "hibash"
 version = "0.1.0"
 dependencies = [
@@ -2291,6 +2291,7 @@ dependencies = [
 name = "himark"
 version = "0.1.0"
 dependencies = [
+ "ahp-session",
  "ahp-types",
  "alacritty_terminal",
  "canvas",
@@ -2299,7 +2300,6 @@ dependencies = [
  "documents",
  "editor",
  "filetree",
- "hiahp",
  "hikit",
  "himark-ahp-ext-types",
  "himarkdown",

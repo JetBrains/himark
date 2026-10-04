@@ -703,7 +703,7 @@ impl NewSessionView {
     }
 }
 
-pub(crate) use ::hiahp::higent::session_toolbar::enum_options;
+pub(crate) use ::ahp_session::higent::session_toolbar::enum_options;
 
 fn host_status(combo: &Combo) -> Option<HostStatus> {
     let value = combo.value()?;

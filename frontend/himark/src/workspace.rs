@@ -137,7 +137,7 @@ pub fn open_locations(
     }
 }
 
-pub use ::hiahp::{
+pub use ::ahp_session::{
     FindEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect,
     SessionId,
 };

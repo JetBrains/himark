@@ -5,4 +5,4 @@
 //! the shell keeps the path (and the window-threaded rims that land
 //! back here during the split).
 
-pub use ::hiahp::drivers::{changes, comments, history, locations};
+pub use ::ahp_session::drivers::{changes, comments, history, locations};

@@ -17,7 +17,7 @@ rpds = "1"
 changesview = { path = "../changesview" }
 canvas = { path = "../canvas" }
 comments = { path = "../comments" }
-hiahp = { path = "../hiahp" }
+ahp-session = { path = "../ahp-session" }
 hikit = { path = "../hikit" }
 documents = { path = "../documents" }
 locations = { path = "../locations" }
@@ -33,7 +33,7 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 
 [features]
-test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support", "toc/test-support", "hiahp/test-support"]
+test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support", "toc/test-support", "ahp-session/test-support"]
 
 [dev-dependencies]
 editor = { path = "../editor", features = ["test-support"] }
@@ -41,5 +41,5 @@ hikit = { path = "../hikit", features = ["test-support"] }
 changesview = { path = "../changesview", features = ["test-support"] }
 canvas = { path = "../canvas", features = ["test-support"] }
 toc = { path = "../toc", features = ["test-support"] }
-hiahp = { path = "../hiahp", features = ["test-support"] }
+ahp-session = { path = "../ahp-session", features = ["test-support"] }
 himarkdown = { path = "../plugins/himarkdown" }

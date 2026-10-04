@@ -9,7 +9,7 @@ use imba::store::Store;
 use crate::app::AppFx;
 use crate::Panel;
 
-pub use ::hiahp::higent::RecentLocations;
+pub use ::ahp_session::higent::RecentLocations;
 pub use hikit::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which

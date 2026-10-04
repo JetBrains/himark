@@ -4,7 +4,7 @@
 //! The adapter moved to the `hiahp` crate; the shell keeps the path
 //! alive plus the WINDOW rims the crate cannot hold.
 
-pub use ::hiahp::{
+pub use ::ahp_session::{
     docsync, drivers, find, fs, fsroute, locations, lsproute, open, registry, transport, uris,
     uuid_v4, wire,
 };
@@ -33,12 +33,12 @@ pub fn install_build_handler(
 ) {
     let workshop = Arc::clone(app.workshop());
     let caller = app.effect_caller();
-    app.register_handler::<documents::BuildDocumentEffect>(::hiahp::open::BuildDocumentHandler(
+    app.register_handler::<documents::BuildDocumentEffect>(::ahp_session::open::BuildDocumentHandler(
         Arc::clone(&workshop),
         Arc::clone(&languages),
     ));
     app.register_handler::<crate::higent::BuildFileEditEffect>(
-        ::hiahp::open::BuildFileEditHandler {
+        ::ahp_session::open::BuildFileEditHandler {
             caller,
             workshop,
             languages,
@@ -60,7 +60,7 @@ pub fn install_open_handlers(
         languages: Arc::clone(&languages),
     });
     let _ = &diff_policy;
-    let shop = ::hiahp::open::DiffOpenShop {
+    let shop = ::ahp_session::open::DiffOpenShop {
         caller,
         workshop,
         languages,
@@ -69,12 +69,12 @@ pub fn install_open_handlers(
         shop.clone(),
     ));
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
-        ::hiahp::open::OpenDiffPairHandler(shop),
+        ::ahp_session::open::OpenDiffPairHandler(shop),
     );
     app.register_windowed_navigator(DiffNavigator);
 }
 
-struct OpenDiffByLocationsHandler(::hiahp::open::DiffOpenShop);
+struct OpenDiffByLocationsHandler(::ahp_session::open::DiffOpenShop);
 
 impl EffectHandler<crate::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
     async fn handle(&self, effect: crate::OpenDiffByLocationsEffect) -> AppCommand {
@@ -192,7 +192,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
         match fetched.flatten() {
             Some(text) => {
                 let document = self.workshop.with_ctx(|store, ui| {
-                    ::hiahp::open::document_for(
+                    ::ahp_session::open::document_for(
                         &self.languages,
                         effect.location.name(),
                         &text,
@@ -250,63 +250,63 @@ impl DynamicCommand for FetchFailed {
 
 pub fn register_all(app: &mut crate::Application) {
     app.register_handler::<crate::higent::ConnectServerEffect>(
-        ::hiahp::registry::HandleConnectServer,
+        ::ahp_session::registry::HandleConnectServer,
     );
     app.register_handler::<crate::higent::ListSessionsEffect>(
-        ::hiahp::registry::HandleListSessions,
+        ::ahp_session::registry::HandleListSessions,
     );
-    app.register_handler::<crate::higent::PollServerEffect>(::hiahp::registry::HandlePollServer);
+    app.register_handler::<crate::higent::PollServerEffect>(::ahp_session::registry::HandlePollServer);
     app.register_handler::<crate::higent::CreateSessionEffect>(
-        ::hiahp::registry::HandleCreateSession,
+        ::ahp_session::registry::HandleCreateSession,
     );
     app.register_handler::<crate::higent::ResolveSessionConfigEffect>(
-        ::hiahp::registry::HandleResolveSessionConfig,
+        ::ahp_session::registry::HandleResolveSessionConfig,
     );
     app.register_handler::<crate::higent::DisposeSessionEffect>(
-        ::hiahp::registry::HandleDisposeSession,
+        ::ahp_session::registry::HandleDisposeSession,
     );
     app.register_handler::<crate::higent::SubscribeSessionEffect>(
-        ::hiahp::registry::HandleSubscribeSession,
+        ::ahp_session::registry::HandleSubscribeSession,
     );
-    app.register_handler::<crate::higent::PollSessionEffect>(::hiahp::registry::HandlePollSession);
-    app.register_handler::<crate::higent::CreateChatEffect>(::hiahp::registry::HandleCreateChat);
+    app.register_handler::<crate::higent::PollSessionEffect>(::ahp_session::registry::HandlePollSession);
+    app.register_handler::<crate::higent::CreateChatEffect>(::ahp_session::registry::HandleCreateChat);
     app.register_handler::<crate::higent::SubscribeChatEffect>(
-        ::hiahp::registry::HandleSubscribeChat,
+        ::ahp_session::registry::HandleSubscribeChat,
     );
-    app.register_handler::<crate::higent::FetchTurnsEffect>(::hiahp::registry::HandleFetchTurns);
-    app.register_handler::<crate::higent::StartTurnEffect>(::hiahp::registry::HandleStartTurn);
+    app.register_handler::<crate::higent::FetchTurnsEffect>(::ahp_session::registry::HandleFetchTurns);
+    app.register_handler::<crate::higent::StartTurnEffect>(::ahp_session::registry::HandleStartTurn);
     app.register_handler::<crate::higent::PollChatActionsEffect>(
-        ::hiahp::registry::HandlePollChatActions,
+        ::ahp_session::registry::HandlePollChatActions,
     );
-    app.register_handler::<crate::higent::CancelTurnEffect>(::hiahp::registry::HandleCancelTurn);
+    app.register_handler::<crate::higent::CancelTurnEffect>(::ahp_session::registry::HandleCancelTurn);
     app.register_handler::<crate::higent::DispatchChatActionEffect>(
-        ::hiahp::registry::HandleDispatchChatAction,
+        ::ahp_session::registry::HandleDispatchChatAction,
     );
     app.register_handler::<crate::higent::FetchFileEditEffect>(
-        ::hiahp::registry::HandleFetchFileEdit,
+        ::ahp_session::registry::HandleFetchFileEdit,
     );
     app.register_handler::<crate::higent::SubscribeChangesetEffect>(
-        ::hiahp::registry::HandleSubscribeChangeset,
+        ::ahp_session::registry::HandleSubscribeChangeset,
     );
     app.register_handler::<crate::higent::PollChangesetEffect>(
-        ::hiahp::registry::HandlePollChangeset,
+        ::ahp_session::registry::HandlePollChangeset,
     );
     app.register_handler::<crate::higent::SubscribeHistoryEffect>(
-        ::hiahp::registry::HandleSubscribeHistory,
+        ::ahp_session::registry::HandleSubscribeHistory,
     );
     app.register_handler::<crate::higent::SubscribeLocationsEffect>(
-        ::hiahp::registry::HandleSubscribeLocations,
+        ::ahp_session::registry::HandleSubscribeLocations,
     );
     app.register_handler::<crate::higent::PollLocationsEffect>(
-        ::hiahp::registry::HandlePollLocations,
+        ::ahp_session::registry::HandlePollLocations,
     );
     app.register_handler::<crate::higent::UnsubscribeLocationsEffect>(
-        ::hiahp::registry::HandleUnsubscribeLocations,
+        ::ahp_session::registry::HandleUnsubscribeLocations,
     );
     app.register_handler::<crate::higent::SubscribeAnnotationsEffect>(
-        ::hiahp::registry::HandleSubscribeAnnotations,
+        ::ahp_session::registry::HandleSubscribeAnnotations,
     );
     app.register_handler::<crate::higent::PollAnnotationsEffect>(
-        ::hiahp::registry::HandlePollAnnotations,
+        ::ahp_session::registry::HandlePollAnnotations,
     );
 }

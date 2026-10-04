@@ -4,4 +4,4 @@
 //! The completion machinery rides with the protocol crate (the chat
 //! composer embeds it); the shell keeps the path.
 
-pub use ::hiahp::completion::*;
+pub use ::ahp_session::completion::*;

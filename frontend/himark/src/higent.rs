@@ -14,7 +14,7 @@ mod session;
 #[cfg(test)]
 mod state_tests;
 
-pub use ::hiahp::higent::*;
+pub use ::ahp_session::higent::*;
 
 pub(crate) use chat_roads::install_shell_roads;
 pub use drawer::{
