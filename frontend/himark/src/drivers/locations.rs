@@ -119,7 +119,7 @@ impl crate::DynamicCommand for AttachFeedStream {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
@@ -147,14 +147,11 @@ impl crate::DynamicCommand for AttachFeedStream {
                         channel: channel.channel,
                     })
                     .map(move |outcome| {
-                        AppCommand::Landing(
-                            window,
-                            Box::new(FeedBatch {
-                                wire,
-                                feed,
-                                batches: outcome.map(|snapshot| vec![snapshot]),
-                            }),
-                        )
+                        AppCommand::Verb(imba::command::Verb::Once(Box::new(FeedBatch {
+                            wire,
+                            feed,
+                            batches: outcome.map(|snapshot| vec![snapshot]),
+                        })))
                     }),
                 );
             }
@@ -170,13 +167,12 @@ struct FeedBatch {
     batches: Result<Vec<himark_ahp_ext_types::LocationList>, String>,
 }
 
-impl crate::LandingCommand for FeedBatch {
+impl imba::command::DynamicOnceCommand for FeedBatch {
     fn perform(
         self: Box<Self>,
-        _app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
+        _ui: &imba::UiCtx,
+        fx: &mut imba::command::Fx<'_>,
     ) {
         let Some(row) = of(store, self.wire) else {
             return;
@@ -207,14 +203,11 @@ impl crate::LandingCommand for FeedBatch {
                     channel: held.channel.channel.clone(),
                 })
                 .map(move |batches| {
-                    AppCommand::Landing(
-                        window,
-                        Box::new(FeedBatch {
-                            wire,
-                            feed,
-                            batches: Ok(batches),
-                        }),
-                    )
+                    imba::command::Verb::Once(Box::new(FeedBatch {
+                        wire,
+                        feed,
+                        batches: Ok(batches),
+                    }))
                 }),
             )
         });
@@ -247,7 +240,7 @@ impl crate::DynamicCommand for StopFeed {
         &self,
         _app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
@@ -257,7 +250,7 @@ impl crate::DynamicCommand for StopFeed {
             if let Some(token) = held.poll {
                 fx.cancel(token);
             }
-            unsubscribe(window, held.channel, fx);
+            unsubscribe(held.channel, fx);
         }
         LocationLists::mark_cut(store, lists, self.feed);
     }
@@ -284,7 +277,7 @@ impl crate::DynamicCommand for DisposeFeed {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        _window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
@@ -294,35 +287,30 @@ impl crate::DynamicCommand for DisposeFeed {
             if let Some(token) = held.poll {
                 fx.cancel(token);
             }
-            unsubscribe(window, held.channel, fx);
+            unsubscribe(held.channel, fx);
         }
         crate::locations::dispose_feed(store, &app.ui_ctx(), lists, self.feed, fx);
     }
 }
 
-fn unsubscribe(
-    window: crate::WindowId,
-    channel: crate::LocationsChannel,
-    fx: &mut crate::app::AppFx<'_>,
-) {
+fn unsubscribe(channel: crate::LocationsChannel, fx: &mut crate::app::AppFx<'_>) {
     let _ = fx.push(
         AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
             seat: channel.seat,
             channel: channel.channel,
         })
-        .map(move |()| AppCommand::Landing(window, Box::new(NothingLanded))),
+        .map(move |()| AppCommand::Verb(imba::command::Verb::Once(Box::new(NothingLanded)))),
     );
 }
 
 struct NothingLanded;
 
-impl crate::LandingCommand for NothingLanded {
+impl imba::command::DynamicOnceCommand for NothingLanded {
     fn perform(
         self: Box<Self>,
-        _app: &mut crate::Application,
         _store: &mut Store,
-        _window: crate::WindowId,
-        _fx: &mut crate::app::AppFx<'_>,
+        _ui: &imba::UiCtx,
+        _fx: &mut imba::command::Fx<'_>,
     ) {
     }
 }

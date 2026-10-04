@@ -97,7 +97,10 @@ pub enum AppCommand {
 
     Dynamic(WindowId, std::sync::Arc<dyn crate::DynamicCommand>),
 
-    Landing(WindowId, Box<dyn crate::LandingCommand>),
+    /// The app-level erased vocabulary (imba::command) — windowless:
+    /// addressed entity commands, dynamic commands and one-shot
+    /// landings that know collections by id and never a window.
+    Verb(imba::command::Verb),
 
     Register(std::sync::Arc<dyn crate::DynamicCommand>),
     Stats(StatsCommand),
@@ -158,80 +161,13 @@ pub enum AppCommand {
 
 pub use documents::DocumentsCommand;
 
-/// An addressed command with its entity type erased — what `At`
-/// carries: one box around the typed `AtCommand<T>` pair below.
-/// Erasure is per COMMAND, not per collection — the enum stays one
-/// arm no matter how many collections become addressable. An `At`
-/// answers NO session scope: the store is single and global (gather
-/// ignores scope), and the batch-tail lanes run over every family,
-/// so the address owes nothing beyond the id it already is.
-pub struct Addressed(Box<dyn AddressedCommand>);
-
-/// The erased face of `AtCommand<T>` — implemented exactly once; a
-/// collection joins the road through `AppEntity`, never through this.
-/// `Display` is the reconcile trace's name for the command.
-trait AddressedCommand: Send + Sync + std::fmt::Display {
-    /// The lease-perform-unlease road (`Store::route`), then the
-    /// collection's application tail (`AppEntity::after_route`) —
-    /// the one place the erased entity type is still known.
-    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>);
-}
-
-struct AtCommand<T: AppEntity> {
-    id: imba::store::Id<T>,
-    command: T::Command,
-}
-
-impl<T: AppEntity> std::fmt::Display for AtCommand<T> {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.command.fmt(out)
-    }
-}
-
-impl std::fmt::Display for Addressed {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        self.0.fmt(out)
-    }
-}
-
-impl<T: AppEntity> AddressedCommand for AtCommand<T> {
-    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
-        let AtCommand { id, command } = *self;
-        store.route(
-            id,
-            command,
-            ui,
-            move |command| AppCommand::at(id, command),
-            fx,
-        );
-        T::after_route(store, ui, id, fx);
-    }
-}
-
-/// What a collection declares to ride the `At` road: where it sits in
-/// a session family (the scope compare) and the application-side tail
-/// its landings owe — effects the entity cannot push itself because
-/// its own fx are scoped to `Self::Command`.
-pub trait AppEntity: imba::store::Entity {
-    /// The landing's application tail, run after the lease returns —
-    /// store notes the perform left (rearms, card work) convert into
-    /// app-scoped effects here.
-    fn after_route(
-        _store: &mut Store,
-        _ui: &imba::UiCtx,
-        _id: imba::store::Id<Self>,
-        _fx: &mut AppFx<'_>,
-    ) {
-    }
-}
-
-impl AppEntity for OpenDocuments {}
+pub use imba::command::{Addressed, Verb};
 
 impl AppCommand {
     /// The one addressed-command constructor: every launch stamp and
     /// every landing re-wrap goes through here.
-    pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand {
-        AppCommand::At(Addressed(Box::new(AtCommand { id, command })))
+    pub fn at<T: imba::store::Entity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand {
+        AppCommand::At(Addressed::at(id, command))
     }
 }
 
@@ -550,7 +486,6 @@ impl Application {
         let window = match command {
             AppCommand::Content(window, _)
             | AppCommand::Dynamic(window, _)
-            | AppCommand::Landing(window, _)
             | AppCommand::Opened(window, _)
             | AppCommand::OpenAsync { window, .. }
             | AppCommand::OpenPanel(window, _)
@@ -1251,7 +1186,7 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         AppCommand::Content(_, crate::WindowCommand::Modal(_)) => "modal",
         AppCommand::Content(_, crate::WindowCommand::Focus(_)) => "focus",
         AppCommand::Dynamic(..) => "dynamic",
-        AppCommand::Landing(..) => "landing",
+        AppCommand::Verb(..) => "verb",
         AppCommand::Register(_) => "register",
         AppCommand::OpenAsync { .. } => "open async",
         AppCommand::OpenPanel(..) => "open panel",
@@ -1496,10 +1431,11 @@ impl Application {
             }
             AppCommand::At(addressed) => {
                 // The one command road (docs/entities.md law 5): lease
-                // the row, perform under its own address, put it back,
-                // then the collection's application tail
-                // (`AppEntity::after_route`).
-                addressed.0.run(store, ui, fx);
+                // the row, perform under its own address, put it back.
+                fx.scope(AppCommand::Verb, |fx| addressed.run(store, ui, fx));
+            }
+            AppCommand::Verb(verb) => {
+                fx.scope(AppCommand::Verb, |fx| verb.run(store, ui, fx));
             }
             AppCommand::Dynamic(window, command) => {
                 command.perform(self, store, window, fx);
@@ -1510,8 +1446,6 @@ impl Application {
                     self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
                 }
             }
-            AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
-
             AppCommand::Register(command) => {
                 crate::commands::Commands::register(store, command);
             }

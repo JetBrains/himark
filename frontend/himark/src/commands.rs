@@ -27,16 +27,6 @@ pub fn palette_commands(
     commands
 }
 
-pub trait LandingCommand: Send + Sync {
-    fn perform(
-        self: Box<Self>,
-        app: &mut Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    );
-}
-
 pub trait DynamicCommand: Send + Sync {
     fn id(&self) -> &'static str;
 

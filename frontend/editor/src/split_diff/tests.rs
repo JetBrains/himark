@@ -72,7 +72,7 @@ fn launches(
         .filter_map(|message| match message {
             Message::Cancel(token) => Some(*token),
             Message::Relaunch(previous, _, _) => Some(*previous),
-            Message::Launch(..) => None,
+            Message::Launch(..) | Message::FollowUp(_) => None,
         })
         .collect();
     messages

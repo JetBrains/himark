@@ -162,8 +162,6 @@ impl imba::store::Entity for Chats {
     }
 }
 
-impl crate::AppEntity for Chats {}
-
 /// Boot a chat's feed by id, pane or no pane: liveness never depends
 /// on the chat being laid out — a hidden or not-yet-shown chat still
 /// connects and streams (the window merely chooses what to paint).

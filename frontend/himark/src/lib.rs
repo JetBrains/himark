@@ -82,7 +82,7 @@ pub use crate::workspace::{
 pub use ::editor::*;
 pub use app::*;
 pub use app_ext::AppExt;
-pub use commands::{palette_commands, AppRequests, Commands, DynamicCommand, LandingCommand};
+pub use commands::{palette_commands, AppRequests, Commands, DynamicCommand};
 pub use completion::{LspAnswer, LspCompletionEffect, LspItem};
 pub use dock::{DockCommand, DOCK_MIN_WIDTH, DOCK_WIDTH};
 pub use documents::{
