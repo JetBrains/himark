@@ -8,6 +8,9 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::AppExt;
+use crate::PanelView;
+use imba::event::Modifiers;
+use imba::store::Store;
 
 #[derive(Clone, Default)]
 struct Recorder {
@@ -50,25 +53,6 @@ fn dismantle_hangs_up_exactly_once() {
         Terminals::list(&store, terminals).is_empty(),
         "the row left the family"
     );
-}
-
-#[test]
-fn keys_encode_like_xterm() {
-    let plain = Modifiers::default();
-    let ctrl = Modifiers {
-        control: true,
-        ..Default::default()
-    };
-    assert_eq!(encode_key(Key::Enter, plain, false), Some(b"\r".to_vec()));
-    assert_eq!(encode_key(Key::Up, plain, false), Some(b"\x1b[A".to_vec()));
-    assert_eq!(encode_key(Key::Up, plain, true), Some(b"\x1bOA".to_vec()));
-    assert_eq!(encode_key(Key::Char('c'), ctrl, false), Some(vec![0x03]));
-    assert_eq!(encode_key(Key::Char('d'), ctrl, false), Some(vec![0x04]));
-    assert_eq!(
-        encode_key(Key::F(5), plain, false),
-        Some(b"\x1b[15~".to_vec())
-    );
-    assert_eq!(encode_key(Key::Char('x'), plain, false), None);
 }
 
 #[test]

@@ -666,6 +666,7 @@ pub(crate) fn register_builtins(store: &mut Store) {
     // recorded chat/terminal place must be able to walk back.
     crate::Navigators::register(store, crate::higent::ChatNavigator);
     crate::Navigators::register(store, crate::terminal::TerminalNavigator);
+    crate::RowMinters::register(store, ::terminals::terminal_row_minter());
 
     Commands::register(
         store,

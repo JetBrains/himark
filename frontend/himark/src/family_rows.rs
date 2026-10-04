@@ -11,16 +11,8 @@ use std::sync::Arc;
 use imba::store::Store;
 
 pub use ::canvas::{CanvasRow, PairRow};
+pub use ::terminals::TerminalRow;
 pub use hikit::FamilyRow;
-
-/// A terminal pane's row: the collection and the terminal.
-#[derive(Clone, PartialEq)]
-pub struct TerminalRow(
-    pub imba::store::Id<crate::terminal::Terminals>,
-    pub crate::terminal::TerminalId,
-);
-
-impl hikit::Row for TerminalRow {}
 
 /// A chat pane's row: the collection and the conversation.
 #[derive(Clone, PartialEq)]
@@ -46,17 +38,6 @@ impl RowMinters {
 }
 
 pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
-    // A row carries its collection: the pane is minted off the id
-    // while the record still stands.
-    if let Some(TerminalRow(terminals, id)) = row.row::<TerminalRow>() {
-        return store
-            .entity(*terminals)
-            .filter(|rows| rows.holds(*id))
-            .map(|_| {
-                Box::new(crate::terminal::TerminalView::new(*terminals, *id))
-                    as Box<dyn crate::DynPanelView>
-            });
-    }
     // The row carries its collection: a pane is minted off the id,
     // and a dismantled chat has no home to walk back to.
     if let Some(ChatRow(chats, chat)) = row.row::<ChatRow>() {

@@ -6,5 +6,8 @@ license = "Apache-2.0"
 
 [dependencies]
 alacritty_terminal = { version = "0.26.0", default-features = false }
+editor = { path = "../editor" }
+hikit = { path = "../hikit" }
 imba = { path = "../imba" }
 rpds = "1"
+skia-safe = { version = "0.153.3", features = ["textlayout"] }

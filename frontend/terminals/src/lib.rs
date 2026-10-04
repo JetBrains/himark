@@ -20,6 +20,9 @@ use alacritty_terminal::vte::ansi::Processor;
 
 use imba::store::Store;
 
+pub mod pane;
+pub use pane::*;
+
 /// The PTY end a session writes into — the one door to the wire,
 /// implemented by whoever owns the transport.
 pub trait TerminalBackend: Send + Sync {
