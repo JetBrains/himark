@@ -5,10 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::{
-    ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
-    ListKeyboardController, ModalRequest, ModalView, TreeListCommand,
-};
+use hikit::{list_keyboard::ActivateTrigger, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
 use imba::list::ListOps;
 use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
@@ -110,7 +107,7 @@ fn folder_node(
         pick: false,
         dim: false,
         trail: Vec::new(),
-        tint: hikit::TreeTint::Label,
+        tint: hikit::tree_item::TreeTint::Label,
         action: None,
         children: dir_children(folder, trie, items),
     })
@@ -141,7 +138,7 @@ fn dir_children(
             pick: false,
             dim: true,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Label,
             action: None,
             children: nested,
         });
@@ -172,7 +169,7 @@ fn dir_children(
                 pick: true,
                 dim: record.resolved,
                 trail: Vec::new(),
-                tint: hikit::TreeTint::Label,
+                tint: hikit::tree_item::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -183,7 +180,7 @@ fn dir_children(
             pick: false,
             dim: false,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Label,
             action: None,
             children: leaves,
         });
@@ -284,7 +281,7 @@ impl CommentsView {
                 pick: false,
                 dim: true,
                 trail: Vec::new(),
-                tint: hikit::TreeTint::Label,
+                tint: hikit::tree_item::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -314,7 +311,7 @@ impl CommentsView {
                 let target = live_range(store, self.comments, &id)
                     .or(record.range.clone())
                     .unwrap_or(
-                        documents::LineCol { line: 0, col: 0 }..documents::LineCol {
+                        documents::text_ext::LineCol { line: 0, col: 0 }..documents::text_ext::LineCol {
                             line: 0,
                             col: 0,
                         },
@@ -380,7 +377,7 @@ impl View for CommentsView {
                         return self.list.inner_mut().fold_cursor(*expand, store, ui);
                     }
                     ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = hikit::tree_toggle(inner) {
+                        if let Some(index) = hikit::tree_item::tree_toggle(inner) {
                             return self.activate(index, store, ui);
                         }
                     }
@@ -573,7 +570,7 @@ fn live_range(
     store: &Store,
     comments: imba::store::Id<Comments>,
     annotation: &AnnotationId,
-) -> Option<std::ops::Range<documents::LineCol>> {
+) -> Option<std::ops::Range<documents::text_ext::LineCol>> {
     let (document, key) = Comments::card(store, comments, annotation)?;
     let documents = Comments::documents_of(store, comments)?;
     let doc = documents::OpenDocuments::document_ref(store, documents, document)?;
@@ -586,7 +583,7 @@ fn live_range(
         .find(|interval| interval.key == key)?;
     let mut view = doc.text().view();
     Some(
-        documents::line_col_at(&mut view, interval.range.start as usize)
-            ..documents::line_col_at(&mut view, interval.range.end as usize),
+        documents::text_ext::line_col_at(&mut view, interval.range.start as usize)
+            ..documents::text_ext::line_col_at(&mut view, interval.range.end as usize),
     )
 }

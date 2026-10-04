@@ -7,10 +7,10 @@ use serde_json::json;
 
 use super::*;
 use crate::changes_view::RowItem;
-use crate::drivers::history::{digest_deltas, digest_snapshot};
+use ahp_changes::history::{digest_deltas, digest_snapshot};
 use crate::hichanges::ChangesStatus;
-use crate::higent::ahp_types::actions::StateAction;
-use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
+use ahp_types::actions::StateAction;
+use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use editor::location::Authority;
 use crate::{ForestNode};
 use editor::location::ResourceLocation;
@@ -20,14 +20,14 @@ use himark_ahp_ext_types::history as history_wire;
 
 struct FileUris;
 
-impl crate::higent::ResourceUriMap for FileUris {
-    fn uri_of(&self, location: &ResourceLocation) -> crate::higent::ResourceUri {
-        crate::higent::ResourceUri::new(format!("file:///{}", location.path().join("/")))
+impl ahp_wire::client::ResourceUriMap for FileUris {
+    fn uri_of(&self, location: &ResourceLocation) -> ahp_wire::client::ResourceUri {
+        ahp_wire::client::ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }
 
     fn location_of(
         &self,
-        uri: &crate::higent::ResourceUri,
+        uri: &ahp_wire::client::ResourceUri,
         kind: ResourceType,
         authority: &Authority,
     ) -> Option<ResourceLocation> {
@@ -308,7 +308,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         changes_id(),
         &folder,
         &crate::hichanges::Revision::new("b"),
-        &Ok(crate::drivers::changes::digest_state(
+        &Ok(ahp_changes::changes::digest_state(
             &FileUris,
             &folder,
             &ready(vec![file]),
@@ -391,7 +391,7 @@ fn the_commit_tip_carries_message_author_and_branches() {
         outgoing: false,
         changeset: "cs:abc".to_owned(),
     };
-    let tip = CommitTip::of(&crate::drivers::history::digest_commit(commit));
+    let tip = CommitTip::of(&ahp_changes::history::digest_commit(commit));
     let lines: Vec<&str> = tip.lines().iter().map(|(line, _)| line.as_str()).collect();
     assert_eq!(
         lines,

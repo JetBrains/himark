@@ -606,7 +606,7 @@ fn wire_string(text: &text::text::Text) -> String {
     view.substring(0..end)
 }
 
-fn to_wire(range: &std::ops::Range<documents::LineCol>) -> TextRange {
+fn to_wire(range: &std::ops::Range<documents::text_ext::LineCol>) -> TextRange {
     TextRange {
         start: TextPosition {
             line: range.start.line as i64,
@@ -619,8 +619,8 @@ fn to_wire(range: &std::ops::Range<documents::LineCol>) -> TextRange {
     }
 }
 
-fn from_wire(range: &TextRange) -> std::ops::Range<documents::LineCol> {
-    let position = |position: &TextPosition| documents::LineCol {
+fn from_wire(range: &TextRange) -> std::ops::Range<documents::text_ext::LineCol> {
+    let position = |position: &TextPosition| documents::text_ext::LineCol {
         line: position.line.max(0) as u32,
         col: position.character.max(0) as u32,
     };

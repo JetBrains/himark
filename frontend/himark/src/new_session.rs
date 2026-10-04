@@ -7,10 +7,16 @@ use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, Cancellat
 use skia_safe::{Paint, Rect, Size};
 
 use crate::combo::{Combo, ComboCommand, ComboItem, ComboOption};
-use crate::higent::{
-    ConnectServerEffect, HostId, HostStatus, Hosts, ListSessionsEffect, ResolveSessionConfigEffect,
-    RootInfo, Servers, SessionOptions, SessionsPage,
-};
+use ahp_wire::effects::ConnectServerEffect;
+use ahp_wire::client::HostId;
+use ahp_session::session::HostStatus;
+use ahp_session::session::Hosts;
+use ahp_wire::effects::ListSessionsEffect;
+use ahp_wire::effects::ResolveSessionConfigEffect;
+use ahp_wire::client::RootInfo;
+use ahp_wire::client::Servers;
+use ahp_wire::client::SessionOptions;
+use ahp_wire::client::SessionsPage;
 use editor::editor_view::EditorCommand;
 use editor::editor_view::EditorView;
 
@@ -133,12 +139,12 @@ struct Prefill {
 impl Prefill {
     fn of_session(store: &Store, session: &crate::SessionId) -> Self {
         let mut prefill = Self::default();
-        if let Some(folder) = crate::higent::session_folders(store, session).first() {
+        if let Some(folder) = ahp_session::session::session_folders(store, session).first() {
             if let Some(uris) = Hosts::uris(store, session.host) {
                 prefill.dir = Some(uris.uri_of(folder).as_str().to_owned());
             }
         }
-        let Some(channel) = crate::higent::Agents::channel(store, session) else {
+        let Some(channel) = ahp_session::session::Agents::channel(store, session) else {
             return prefill;
         };
         if !channel.provider.is_empty() {
@@ -190,7 +196,7 @@ fn store_fingerprint(store: &Store) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
-    crate::higent::Hosts::generation(store).hash(&mut hasher);
+    ahp_session::session::Hosts::generation(store).hash(&mut hasher);
     store
         .get::<ComposerFeed>()
         .map(|feed| feed.generation)
@@ -431,7 +437,7 @@ impl NewSessionView {
 
         let preferred = self.host_hint.take().or_else(|| {
             store
-                .get::<crate::higent::LocalHost>()
+                .get::<ahp_wire::client::LocalHost>()
                 .and_then(|local| local.0)
         });
         if let Some(preferred) = preferred {
@@ -483,7 +489,7 @@ impl NewSessionView {
     fn refresh_models(&mut self, store: &Store, ui: &UiCtx) {
         let options = self
             .picked_host()
-            .and_then(|id| crate::higent::Hosts::host_ref(store, id))
+            .and_then(|id| ahp_session::session::Hosts::host_ref(store, id))
             .map(|host| {
                 let mut options = Vec::new();
                 for agent in &host.agents {
@@ -541,7 +547,7 @@ impl NewSessionView {
             .is_none()
             .then(|| self.prefill.effort.clone())
             .flatten();
-        crate::higent::sync_effort_for_model(
+        ahp_chat::session_toolbar::sync_effort_for_model(
             store,
             ui,
             &mut self.effort,
@@ -694,7 +700,7 @@ impl NewSessionView {
     }
 }
 
-pub(crate) use ::ahp_session::higent::session_toolbar::enum_options;
+pub(crate) use ::ahp_chat::session_toolbar::enum_options;
 
 fn host_status(combo: &Combo) -> Option<HostStatus> {
     let value = combo.value()?;
@@ -713,17 +719,17 @@ fn host_folders(store: &Store, host: HostId) -> Vec<editor::location::ResourceLo
         if id != host {
             continue;
         }
-        let mut sessions: Vec<crate::higent::SessionUri> = entry
+        let mut sessions: Vec<ahp_wire::client::SessionUri> = entry
             .sessions
             .iter()
-            .map(|s| crate::higent::SessionUri::new(s.resource.clone()))
+            .map(|s| ahp_wire::client::SessionUri::new(s.resource.clone()))
             .collect();
         for (session, _) in entry.states.iter() {
             sessions.push(session.clone());
         }
         for session in sessions {
             let key = crate::SessionId { host: id, session };
-            for folder in crate::higent::session_folders(store, &key) {
+            for folder in ahp_session::session::session_folders(store, &key) {
                 if seen.insert(folder.clone()) {
                     folders.push(folder);
                 }
@@ -1602,11 +1608,11 @@ impl crate::DynamicCommand for StartComposedSession {
             for directory in &self.working_directories {
                 if !applied.contains(directory) {
                     fx.push(
-                        AnyEffect::new(crate::higent::DispatchChatActionEffect {
+                        AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                             client: client.session.clone(),
                             channel: session.as_channel(),
-                            action: crate::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
-                                crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
+                            action: ahp_types::actions::StateAction::SessionWorkingDirectorySet(
+                                ahp_types::actions::SessionWorkingDirectorySetAction {
                                     directory: directory.clone(),
                                 },
                             ),
@@ -1637,12 +1643,12 @@ impl crate::DynamicCommand for StartComposedSession {
             }
             if !config.is_empty() {
                 fx.push(
-                    AnyEffect::new(crate::higent::DispatchChatActionEffect {
+                    AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                         client: client.session.clone(),
                         channel: session.as_channel(),
                         action:
-                            crate::higent::ahp_types::actions::StateAction::SessionConfigChanged(
-                                crate::higent::ahp_types::actions::SessionConfigChangedAction {
+                            ahp_types::actions::StateAction::SessionConfigChanged(
+                                ahp_types::actions::SessionConfigChangedAction {
                                     config,
                                     replace: None,
                                 },
@@ -1671,7 +1677,7 @@ impl crate::DynamicCommand for StartComposedSession {
             return;
         }
         fx.push(
-            AnyEffect::new(crate::higent::CreateSessionEffect {
+            AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
                 client: client.session.clone(),
                 working_directories: self.working_directories.clone(),
                 options: self.options.clone(),
@@ -1723,7 +1729,7 @@ impl crate::DynamicCommand for ComposerAsk {
             matches!(entry.status, HostStatus::Connected | HostStatus::Connecting)
         });
         if !settled {
-            crate::higent::Agents::set_status(store, host, HostStatus::Connecting);
+            ahp_session::session::Agents::set_status(store, host, HostStatus::Connecting);
             fx.push(
                 AnyEffect::new(ConnectServerEffect {
                     client: client.session.clone(),
@@ -1802,12 +1808,12 @@ impl crate::DynamicCommand for HostReady {
         let host = self.host;
         match &self.result {
             Ok(info) => {
-                crate::higent::Agents::set_agents(store, host, info.agents.clone());
-                crate::higent::Agents::set_status(store, host, HostStatus::Connected);
+                ahp_session::session::Agents::set_agents(store, host, info.agents.clone());
+                ahp_session::session::Agents::set_status(store, host, HostStatus::Connected);
                 list_sessions(store, window, host, None, fx);
             }
             Err(error) => {
-                crate::higent::Agents::set_status(store, host, HostStatus::Failed(error.clone()));
+                ahp_session::session::Agents::set_status(store, host, HostStatus::Failed(error.clone()));
             }
         }
         bump_feed(store);
@@ -1854,7 +1860,7 @@ impl crate::DynamicCommand for SessionsListed {
     ) {
         match &self.result {
             Ok(page) => {
-                crate::higent::Agents::add_sessions(
+                ahp_session::session::Agents::add_sessions(
                     store,
                     self.host,
                     page.sessions.clone(),
@@ -1924,7 +1930,7 @@ fn dispose_placeholder(
     store: &Store,
     window: crate::WindowId,
     host: HostId,
-    session: crate::higent::SessionUri,
+    session: ahp_wire::client::SessionUri,
     fx: &mut crate::app::AppFx<'_>,
 ) {
     let live = crate::Windows::list(store).into_iter().any(|id| {
@@ -1941,7 +1947,7 @@ fn dispose_placeholder(
         return;
     };
     fx.push(
-        AnyEffect::new(crate::higent::DisposeSessionEffect { client: client.session.clone(), session }).map(move |result| {
+        AnyEffect::new(ahp_wire::effects::DisposeSessionEffect { client: client.session.clone(), session }).map(move |result| {
             crate::app::AppCommand::Dynamic(
                 window,
                 Arc::new(PlaceholderDispatched {
@@ -1961,7 +1967,7 @@ struct Placeholder {
     host: HostId,
     provider: String,
 
-    session: Option<crate::higent::SessionUri>,
+    session: Option<ahp_wire::client::SessionUri>,
 
     applied: rpds::VectorSync<String>,
 
@@ -1973,7 +1979,7 @@ impl Placeholders {
     pub fn session_of(
         store: &Store,
         window: crate::WindowId,
-    ) -> Option<(HostId, String, crate::higent::SessionUri)> {
+    ) -> Option<(HostId, String, ahp_wire::client::SessionUri)> {
         let rows = store.get::<Placeholders>()?;
         let row = rows.0.get(&window)?;
         Some((row.host, row.provider.clone(), row.session.clone()?))
@@ -2075,7 +2081,7 @@ fn create_placeholder(
     let mut config = serde_json::Map::new();
     config.insert("unlisted".to_owned(), serde_json::json!(true));
     fx.push(
-        AnyEffect::new(crate::higent::CreateSessionEffect {
+        AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
             client: client.session.clone(),
             working_directories: Vec::new(),
             options: SessionOptions {
@@ -2101,7 +2107,7 @@ fn grant_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: crate::higent::SessionUri,
+    session: ahp_wire::client::SessionUri,
     directory: String,
 ) {
     let Some(client) = Servers::client(store, host) else {
@@ -2131,7 +2137,7 @@ fn revoke_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: crate::higent::SessionUri,
+    session: ahp_wire::client::SessionUri,
     directory: String,
 ) {
     let Some(client) = Servers::client(store, host) else {
@@ -2162,8 +2168,8 @@ fn revoke_folder(
 
 struct GrantPlaceholderFolder {
     host: HostId,
-    client: crate::higent::Client,
-    session: crate::higent::SessionUri,
+    client: ahp_wire::client::Client,
+    session: ahp_wire::client::SessionUri,
     directory: String,
     revoke: bool,
 }
@@ -2183,7 +2189,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = self.host;
-        use crate::higent::ahp_types::actions;
+        use ahp_types::actions;
         let (label, action) = if self.revoke {
             (
                 "workingDirectoryRemoved",
@@ -2204,7 +2210,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
             )
         };
         fx.push(
-            AnyEffect::new(crate::higent::DispatchChatActionEffect {
+            AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                 client: self.client.session.clone(),
                 channel: self.session.as_channel(),
                 action,
@@ -2222,7 +2228,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
 struct PlaceholderCreated {
     host: HostId,
     provider: String,
-    result: Result<crate::higent::SessionUri, String>,
+    result: Result<ahp_wire::client::SessionUri, String>,
 }
 
 impl crate::DynamicCommand for PlaceholderCreated {
@@ -2280,7 +2286,7 @@ impl crate::DynamicCommand for PlaceholderCreated {
             if entity.rekey_current(key.clone()) {
                 // The name changed, the ids did not: the window keeps
                 // its bundle and the catalog row moves under the new key.
-                crate::higent::Hosts::rekey_state(store, &previous, &key);
+                ahp_session::session::Hosts::rekey_state(store, &previous, &key);
                 crate::Windows::put(store, window, entity);
             } else {
                 crate::Windows::put(store, window, entity);

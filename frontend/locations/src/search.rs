@@ -15,11 +15,11 @@ use skia_safe::Size;
 use crate::views::locations_forest;
 use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
 use editor::{editor_view::EditorCommand, editor_view::EditorView};
-use hikit::ModalRequest;
-use hikit::RequestSlot;
-use hikit::{tree_toggle, TreeListCommand};
-use hikit::{ForestList, ForestSearcher};
-use hikit::{ListKeyCommand, ListKeyboardController};
+use hikit::modal::ModalRequest;
+use hikit::modal::RequestSlot;
+use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
+use hikit::{forest::ForestList, forest::ForestSearcher};
+use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
 use imba::list::{ActivateTrigger, ListOps};
 
 const MIN_QUERY: usize = 2;
@@ -243,7 +243,7 @@ impl SearchView {
             }) {
                 Some(document) => imba::command::Requests::push(
                     store,
-                    Arc::new(crate::WashDocument {
+                    Arc::new(crate::views::WashDocument {
                         lists: self.lists,
                         feed,
                         document,
@@ -687,7 +687,7 @@ impl<'a> imba::Widget<'a, SearchCommand> for SearchPanelWidget<'a> {
     }
 }
 
-impl hikit::ModalView for SearchView {
+impl hikit::modal::ModalView for SearchView {
     fn take_request(&mut self) -> Option<ModalRequest> {
         self.request.take()
     }
@@ -710,7 +710,7 @@ impl hikit::ModalView for SearchView {
         self
     }
 
-    fn clone_modal(&self) -> Box<dyn hikit::ModalView> {
+    fn clone_modal(&self) -> Box<dyn hikit::modal::ModalView> {
         Box::new(self.clone())
     }
 }
@@ -864,7 +864,7 @@ mod tests {
 
         let hit = LocationKey::Hit(found(&["work", "a.rs"], 3, 2, "").location, 3, 2);
         view.pick(&mut store, hit, true);
-        let request = hikit::ModalView::take_request(&mut view);
+        let request = hikit::modal::ModalView::take_request(&mut view);
         assert!(
             matches!(request, Some(ModalRequest::OpenAt { .. })),
             "a hit pick performs the located open"
@@ -873,7 +873,7 @@ mod tests {
         // A file pick answers its first occurrence.
         let file = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
         view.pick(&mut store, file, true);
-        assert!(hikit::ModalView::take_request(&mut view).is_some());
+        assert!(hikit::modal::ModalView::take_request(&mut view).is_some());
 
         // A directory key has no target: no request.
         let dir = LocationKey::Node(editor::location::ResourceLocation::new(
@@ -882,7 +882,7 @@ mod tests {
             vec!["work".to_owned()],
         ));
         view.pick(&mut store, dir, true);
-        assert!(hikit::ModalView::take_request(&mut view).is_none());
+        assert!(hikit::modal::ModalView::take_request(&mut view).is_none());
     }
 
     /// Selection IS navigation: keyboard cursor moves open the row
@@ -914,7 +914,7 @@ mod tests {
             &mut batch.effects(),
         );
         assert!(
-            hikit::ModalView::take_request(&mut view).is_some(),
+            hikit::modal::ModalView::take_request(&mut view).is_some(),
             "entering the results opens the row the cursor lands on"
         );
 
@@ -924,7 +924,7 @@ mod tests {
         let select = SearchCommand::List(view.search.select_command(step));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
-            hikit::ModalView::take_request(&mut view).is_some(),
+            hikit::modal::ModalView::take_request(&mut view).is_some(),
             "the selection move navigated"
         );
 
@@ -937,7 +937,7 @@ mod tests {
             &mut batch.effects(),
         );
         assert!(
-            hikit::ModalView::take_request(&mut view).is_none(),
+            hikit::modal::ModalView::take_request(&mut view).is_none(),
             "standing still never re-navigates"
         );
 
@@ -946,7 +946,7 @@ mod tests {
         let select = SearchCommand::List(view.search.select_command(step));
         view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
-            hikit::ModalView::take_request(&mut view).is_some(),
+            hikit::modal::ModalView::take_request(&mut view).is_some(),
             "the next row navigates too"
         );
 
@@ -956,7 +956,7 @@ mod tests {
         let pick = SearchCommand::List(view.search.activate_command(at, ActivateTrigger::Enter));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
-            hikit::ModalView::take_request(&mut view).is_some(),
+            hikit::modal::ModalView::take_request(&mut view).is_some(),
             "an explicit pick always opens"
         );
     }

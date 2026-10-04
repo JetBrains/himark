@@ -9,8 +9,10 @@
 
 use imba::store::Store;
 
+use ahp_chat::chats::Chats;
+use ahp_session::session::Hosts;
+use ahp_wire::client::{ChatUri, HostId, SessionUri};
 use crate::higent::*;
-use crate::higent::{ChatUri, Chats};
 
 fn session(uri: &str) -> crate::SessionId {
     crate::SessionId {
@@ -24,7 +26,7 @@ fn session(uri: &str) -> crate::SessionId {
 fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
     let uri = ChatUri::new(chat);
     let chats = Hosts::ensure_state(store, session).chats();
-    let panel = crate::higent::chat::ChatPanel::new(
+    let panel = ahp_chat::chat::ChatPanel::new(
         store,
         ::editor::test_document::test_ui(),
         session.host,
@@ -55,7 +57,7 @@ fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
 #[test]
 fn a_chat_is_reached_by_its_own_session() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
     let mut store = state.gather(None, Some(&home), &clients);
@@ -73,7 +75,7 @@ fn a_chat_is_reached_by_its_own_session() {
 #[test]
 fn a_chat_survives_a_scopeless_batch() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
     let mut store = state.gather(None, Some(&home), &clients);
@@ -92,7 +94,7 @@ fn a_chat_survives_a_scopeless_batch() {
 #[test]
 fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
     let elsewhere = session("s-b");
 
@@ -112,7 +114,7 @@ fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
 #[test]
 fn a_sessions_chats_are_its_own() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let a = session("s-a");
     let b = session("s-b");
 
@@ -130,7 +132,7 @@ fn a_sessions_chats_are_its_own() {
 #[test]
 fn letting_a_session_go_takes_its_chats() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
     let mut store = state.gather(None, Some(&home), &clients);
@@ -150,7 +152,7 @@ fn letting_a_session_go_takes_its_chats() {
 #[test]
 fn disposal_retracts_every_family_entity() {
     let mut state = crate::AppState::default();
-    let clients = crate::higent::Servers::default();
+    let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
     let mut store = state.gather(None, Some(&home), &clients);
@@ -158,7 +160,7 @@ fn disposal_retracts_every_family_entity() {
     let row = Hosts::ensure_state(&mut store, &home);
     store.update_entity(
         row.recents,
-        |_recents: &mut crate::higent::RecentLocations| {},
+        |_recents: &mut ahp_chat::recents::RecentLocations| {},
     );
     store.update_entity(row.trees, |_trees| {});
     store.update_entity(row.terminals, |_terminals| {});

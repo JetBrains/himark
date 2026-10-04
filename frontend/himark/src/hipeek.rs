@@ -33,7 +33,7 @@ pub struct GoToReference;
 
 /// Closes over the pane's ids (docs/entities.md law 3): the card's
 /// host is the document the command runs in, no owner is resolved.
-impl documents::DocumentCommand for GoToReference {
+impl documents::dynamic::DocumentCommand for GoToReference {
     fn id(&self) -> &'static str {
         "code.go-to-reference"
     }
@@ -61,7 +61,7 @@ impl documents::DocumentCommand for GoToReference {
         // consult at a DocumentCommand border, the save.rs/fsroute
         // debt class: burns when generic document commands learn
         // their session (the gating keeps this one boot-global).
-        let Some((lists, wire)) = crate::higent::Hosts::owner_of_documents(store, _documents)
+        let Some((lists, wire)) = ahp_session::session::Hosts::owner_of_documents(store, _documents)
             .map(|state| (state.lists(), state.locations_wire()))
         else {
             return;

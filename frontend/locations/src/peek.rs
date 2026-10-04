@@ -19,9 +19,9 @@ use skia_safe::{Paint, Rect, Size};
 use crate::views::files_forest;
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk};
 use editor::{document::Document, editor_view::EditorCommand, editor_view::EditorView, markup::InlayKey};
-use hikit::ForestList;
-use hikit::{tree_toggle, TreeListCommand};
-use hikit::{ListKeyCommand, ListKeyboardController};
+use hikit::forest::ForestList;
+use hikit::{tree_item::tree_toggle, tree_item::TreeListCommand};
+use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController};
 use imba::list::{ActivateTrigger, ListOps};
 
 const PEEK_HEIGHT: f32 = 280.0;
@@ -91,7 +91,7 @@ pub struct PeekView {
     /// The open-in-pane verb, injected at mount — the shell's window
     /// rides in the closure; the card never holds one.
     open: Arc<
-        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::LineCol>)
+        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
             + Send
             + Sync,
     >,
@@ -109,7 +109,7 @@ impl PeekView {
         feed: FeedId,
         promote: Arc<dyn Fn(&mut Store) + Send + Sync>,
         open: Arc<
-            dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::LineCol>)
+            dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::text_ext::LineCol>)
                 + Send
                 + Sync,
         >,
@@ -258,7 +258,7 @@ impl PeekView {
         let view = preview.content_mut();
         let (hit, target) = {
             let mut text = view.document.text().view();
-            let hit = documents::offset_at(&mut text, found.target().start) as u32;
+            let hit = documents::text_ext::offset_at(&mut text, found.target().start) as u32;
             (hit, (hit, hit + found.length.max(1)))
         };
         if self.preview_hit == Some(target) {
@@ -319,7 +319,7 @@ impl PeekView {
 
         let (hit, target) = {
             let mut view = document.text().view();
-            let hit = documents::offset_at(&mut view, found.target().start) as u32;
+            let hit = documents::text_ext::offset_at(&mut view, found.target().start) as u32;
             (hit, hit..hit + found.length.max(1))
         };
 

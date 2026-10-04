@@ -230,4 +230,4 @@ impl PartialEq for CanvasPlace {
     }
 }
 
-impl hikit::Place for CanvasPlace {}
+impl hikit::navigation::Place for CanvasPlace {}

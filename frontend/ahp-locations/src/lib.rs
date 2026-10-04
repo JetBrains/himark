@@ -70,7 +70,7 @@ pub enum LspLocationsKind {
 /// shape as the content search.
 pub struct LspLocationsEffect {
     pub location: editor::location::ResourceLocation,
-    pub position: documents::LineCol,
+    pub position: documents::text_ext::LineCol,
     pub kind: LspLocationsKind,
 }
 

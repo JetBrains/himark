@@ -67,7 +67,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         marks
             .ids()
             .iter()
-            .any(|id| matches!(id, editor::markup::StyleId::Header(_))),
+            .any(|id| matches!(id, editor::theme::StyleId::Header(_))),
         "the typed heading styles after the landing (ids: {:?})",
         marks.ids()
     );

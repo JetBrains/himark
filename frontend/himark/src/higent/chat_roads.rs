@@ -9,16 +9,18 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::higent::{HostId, OpenEditedRoad, SessionUri};
+use ahp_wire::client::HostId;
+use ahp_chat::chat::OpenEditedRoad;
+use ahp_wire::client::SessionUri;
 
 /// Install the SHELL roads the protocol crate asks through — the
 /// window grip for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
-    store.put(crate::higent::WindowGrip(Arc::new(|store, scope| {
+    store.put(ahp_session::session::WindowGrip(Arc::new(|store, scope| {
         crate::Windows::any_window_holds(store, scope)
     })));
-    store.put(crate::higent::ChannelActionsRoad(Arc::new(
+    store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
             crate::AppRequests::push(
                 store,
@@ -48,8 +50,8 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
 /// against the session's client authority and open the location —
 /// the same road a search hit or a changes row takes.
 pub(crate) struct OpenEditedFile {
-    server: crate::higent::HostId,
-    session: crate::higent::SessionUri,
+    server: ahp_wire::client::HostId,
+    session: ahp_wire::client::SessionUri,
     uri: String,
 }
 
@@ -69,13 +71,13 @@ impl crate::DynamicCommand for OpenEditedFile {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(uris) = crate::higent::Hosts::uris(store, self.server) else {
+        let Some(uris) = ahp_session::session::Hosts::uris(store, self.server) else {
             return;
         };
         let authority =
-            editor::location::Authority::new(crate::higent::client::authority(self.server, &self.session));
+            editor::location::Authority::new(ahp_wire::client::authority(self.server, &self.session));
         let Some(location) = uris.location_of(
-            &crate::higent::ResourceUri::new(self.uri.as_str()),
+            &ahp_wire::client::ResourceUri::new(self.uri.as_str()),
             editor::location::ResourceType::document(),
             &authority,
         ) else {

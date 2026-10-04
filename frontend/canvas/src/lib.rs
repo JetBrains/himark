@@ -19,10 +19,10 @@ pub struct PairRow(
     pub documents::diffs::DiffViewId,
 );
 
-impl hikit::Row for PairRow {}
+impl hikit::pane_row::Row for PairRow {}
 
 /// A diff canvas's row: its source names it.
 #[derive(Clone, PartialEq)]
 pub struct CanvasRow(pub changesview::hichanges::CanvasSource);
 
-impl hikit::Row for CanvasRow {}
+impl hikit::pane_row::Row for CanvasRow {}

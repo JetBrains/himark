@@ -9,6 +9,14 @@ name = "himark_api"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+ahp-wire = { path = "../ahp-wire" }
+ahp-session = { path = "../ahp-session" }
+ahp-chat = { path = "../ahp-chat" }
+ahp-docsync = { path = "../ahp-docsync" }
+ahp-lsp = { path = "../ahp-lsp" }
+ahp-locations = { path = "../ahp-locations" }
+ahp-changes = { path = "../ahp-changes" }
+ahp-comments = { path = "../ahp-comments" }
 text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }

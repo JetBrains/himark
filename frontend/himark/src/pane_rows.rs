@@ -3,7 +3,7 @@
 
 //! The session session's RE-MINTABLE rows: which panes a session can
 //! stand back up (terminals, chats, tracked pairs, canvases), erased
-//! behind `hikit::PaneRow`. The typed rows live here while their
+//! behind `hikit::pane_row::PaneRow`. The typed rows live here while their
 //! features still do; each moves out with its feature crate.
 
 use std::sync::Arc;
@@ -11,12 +11,12 @@ use std::sync::Arc;
 use imba::store::Store;
 
 pub use ::canvas::{CanvasRow, PairRow};
-pub use ::terminals::TerminalRow;
-pub use hikit::PaneRow;
-use hikit::RowMinter;
+pub use ::terminals::pane::TerminalRow;
+pub use hikit::pane_row::PaneRow;
+use hikit::panel::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
-pub use ::ahp_session::higent::ChatRow;
+pub use ::ahp_chat::chats::ChatRow;
 
 #[derive(Clone, Default)]
 pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);
@@ -37,7 +37,7 @@ pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>
             .entity(*chats)
             .filter(|rows| rows.holds(chat))
             .map(|_| {
-                Box::new(crate::higent::ChatPane::new(*chats, chat.clone()))
+                Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
                     as Box<dyn crate::DynPanelView>
             });
     }
@@ -52,7 +52,7 @@ pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>
 /// the session (a window's), never a session to look up.
 pub fn mint_unfronted(
     store: &Store,
-    state: &crate::higent::SessionState,
+    state: &ahp_session::session::SessionState,
     fronted: &[PaneRow],
 ) -> Vec<Box<dyn crate::DynPanelView>> {
     let mut rows: Vec<PaneRow> = Vec::new();
@@ -68,7 +68,7 @@ pub fn mint_unfronted(
                 .map(|pair| PaneRow::new(PairRow(state.documents(), pair))),
         );
         rows.extend(
-            crate::higent::Chats::list(store, state.chats())
+            ahp_chat::chats::Chats::list(store, state.chats())
                 .into_iter()
                 .map(|chat| PaneRow::new(ChatRow(state.chats(), chat))),
         );

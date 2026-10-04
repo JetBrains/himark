@@ -6,15 +6,14 @@
 //! drawer, the session toolbar, the open-session road and the
 //! new-chat gesture.
 
-mod chat_roads;
-mod drawer;
-mod flows;
-mod folder_grant;
-mod session;
+pub mod chat_roads;
+pub mod drawer;
+pub mod flows;
+pub mod folder_grant;
+pub mod session;
 #[cfg(test)]
 mod state_tests;
 
-pub use ::ahp_session::higent::*;
 
 pub(crate) use chat_roads::install_shell_roads;
 pub use drawer::{

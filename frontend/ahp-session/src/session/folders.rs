@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::state::Hosts;
-use crate::SessionId;
+use ahp_wire::SessionId;
 use imba::store::Store;
 
 pub fn session_folders(store: &Store, session: &SessionId) -> Vec<editor::location::ResourceLocation> {
@@ -29,10 +29,10 @@ pub fn all_session_folders(store: &Store) -> Vec<editor::location::ResourceLocat
     let mut seen = std::collections::HashSet::new();
     let mut folders = Vec::new();
     for (id, host) in Hosts::list(store) {
-        let mut sessions: Vec<crate::higent::SessionUri> = host
+        let mut sessions: Vec<ahp_wire::client::SessionUri> = host
             .sessions
             .iter()
-            .map(|s| crate::higent::SessionUri::new(s.resource.clone()))
+            .map(|s| ahp_wire::client::SessionUri::new(s.resource.clone()))
             .collect();
         for (session, _) in host.states.iter() {
             sessions.push(session.clone());
@@ -50,14 +50,14 @@ pub fn all_session_folders(store: &Store) -> Vec<editor::location::ResourceLocat
 }
 
 fn folder_location(
-    uris: &dyn crate::higent::client::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     key: &SessionId,
     uri: &str,
 ) -> Option<editor::location::ResourceLocation> {
     uris.location_of(
-        &crate::higent::client::ResourceUri::new(uri),
+        &ahp_wire::client::ResourceUri::new(uri),
         editor::location::ResourceType::directory(),
-        &editor::location::Authority::new(crate::higent::client::authority(key.host, &key.session)),
+        &editor::location::Authority::new(ahp_wire::client::authority(key.host, &key.session)),
     )
     .filter(|location| !location.path().is_empty())
 }

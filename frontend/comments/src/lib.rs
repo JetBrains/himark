@@ -10,7 +10,7 @@
 
 use std::ops::Range;
 
-use documents::{DocumentId, LineCol, OpenDocuments};
+use documents::{DocumentId, text_ext::LineCol, OpenDocuments};
 use editor::{markup::InlayKey, location::ResourceLocation};
 use imba::store::Store;
 use text::text::Text;

@@ -4,7 +4,7 @@
 use documents::sync::SyncEdit;
 use editor::{edit_log::EditIdentity, edit_log::EditLog};
 use operation::{op::Op, operation::Operation};
-use rebase::Offer;
+use rebase::driver::Offer;
 
 use super::SyncState;
 

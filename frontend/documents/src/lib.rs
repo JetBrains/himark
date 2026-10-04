@@ -6,27 +6,16 @@ use imba::store::Store;
 
 pub mod diff_views;
 pub mod diffs;
-mod dynamic;
-mod entity_view;
+pub mod dynamic;
+pub mod entity_view;
 pub mod hover;
-mod lifecycle;
+pub mod lifecycle;
 pub mod scroll_stripes;
 pub mod sync;
 pub mod text_ext;
 pub mod lanes;
 pub mod watch;
 
-pub use diffs::{
-    rearm_base_asks, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler, DiffView, DiffViewId,
-    Normalized, StripeBaseResolver, StripeBases,
-};
-pub use dynamic::{DocumentCommand, DocumentCommands};
-pub use entity_view::EditorIdView;
-pub use lifecycle::{close_editor, deliver, mount_editor};
-pub use text_ext::{line_col_at, offset_at, LineCol};
-pub use watch::{
-    FileChanged, FilesChanged, SubscribeEffect, Subscription, UnsubscribeEffect, Watching,
-};
 
 pub struct FetchDocumentEffect {
     pub location: editor::location::ResourceLocation,
@@ -184,7 +173,7 @@ pub enum DocumentsCommand {
         stored: bool,
     },
 
-    Watched(DocumentId, Option<crate::Subscription>),
+    Watched(DocumentId, Option<crate::watch::Subscription>),
 
     Refetched {
         document: DocumentId,
@@ -263,7 +252,7 @@ impl imba::store::Entity for OpenDocuments {
                 if self.contains_id(document) {
                     with_row_home!(fx.scope(
                         move |command| DocumentsCommand::Editor(document, command),
-                        |fx| crate::deliver(store, id, ui, document, command, fx),
+                        |fx| crate::lifecycle::deliver(store, id, ui, document, command, fx),
                     ));
                 }
             }
@@ -454,7 +443,7 @@ pub struct OpenDocument {
 
     pub(crate) save_token: Option<imba::effect::CancellationToken>,
 
-    pub(crate) watch: Option<crate::Subscription>,
+    pub(crate) watch: Option<crate::watch::Subscription>,
 
     pub(crate) watch_requested: bool,
 
@@ -500,7 +489,7 @@ impl OpenDocument {
         self.refetch_serial
     }
 
-    pub fn watch(&self) -> Option<crate::Subscription> {
+    pub fn watch(&self) -> Option<crate::watch::Subscription> {
         self.watch
     }
 
@@ -545,7 +534,7 @@ pub struct OpenDocuments {
 
     by_location: rpds::HashTrieMapSync<editor::location::ResourceLocation, DocumentId>,
 
-    by_watch: rpds::HashTrieMapSync<crate::Subscription, rpds::VectorSync<DocumentId>>,
+    by_watch: rpds::HashTrieMapSync<crate::watch::Subscription, rpds::VectorSync<DocumentId>>,
 
     pub(crate) diffs: crate::diffs::Diffs,
 
@@ -570,7 +559,7 @@ pub(crate) struct PendingSweeps {
     /// The diff views the dressing touched this batch — written by
     /// the sweep and the id-routed landings, taken by the canvas
     /// lane (`take_dressed`), which resizes exactly these rows.
-    pub(crate) dressed: Vec<crate::DiffViewId>,
+    pub(crate) dressed: Vec<crate::diffs::DiffViewId>,
 }
 
 impl Default for PendingSweeps {
@@ -604,7 +593,7 @@ struct DocumentHooks {
 /// anonymous components grabbed from the store by type.
 #[derive(Clone, Default)]
 pub(crate) struct Registry {
-    pub(crate) commands: crate::DocumentCommands,
+    pub(crate) commands: crate::dynamic::DocumentCommands,
     pub(crate) hooks: DocumentHooks,
     pub(crate) stripe_bases: Option<std::sync::Arc<dyn crate::diffs::StripeBaseResolver>>,
     pub(crate) watching: bool,
@@ -708,7 +697,7 @@ impl OpenDocuments {
         Registry::update(store, |registry| {
             registry.hooks.scoped.remove_mut(&scope);
         });
-        crate::DocumentCommands::retire_scope(store, scope);
+        crate::dynamic::DocumentCommands::retire_scope(store, scope);
     }
 
     fn hooks(
@@ -736,20 +725,20 @@ impl OpenDocuments {
         self.entries.contains_key(&document)
     }
 
-    pub fn rides_watch(&self, subscription: crate::Subscription) -> bool {
+    pub fn rides_watch(&self, subscription: crate::watch::Subscription) -> bool {
         self.by_watch
             .get(&subscription)
             .is_some_and(|riders| !riders.is_empty())
     }
 
-    pub fn watch_riders(&self, subscription: crate::Subscription) -> Vec<DocumentId> {
+    pub fn watch_riders(&self, subscription: crate::watch::Subscription) -> Vec<DocumentId> {
         self.by_watch
             .get(&subscription)
             .map(|riders| riders.iter().copied().collect())
             .unwrap_or_default()
     }
 
-    fn index_watch(&mut self, document: DocumentId, subscription: crate::Subscription) {
+    fn index_watch(&mut self, document: DocumentId, subscription: crate::watch::Subscription) {
         let mut riders = self
             .by_watch
             .get(&subscription)
@@ -761,7 +750,7 @@ impl OpenDocuments {
         self.by_watch.insert_mut(subscription, riders);
     }
 
-    fn unindex_watch(&mut self, document: DocumentId, subscription: crate::Subscription) {
+    fn unindex_watch(&mut self, document: DocumentId, subscription: crate::watch::Subscription) {
         let Some(riders) = self.by_watch.get(&subscription) else {
             return;
         };
@@ -1039,14 +1028,14 @@ impl OpenDocuments {
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
-        watch: Option<crate::Subscription>,
+        watch: Option<crate::watch::Subscription>,
     ) {
         store.update_entity(documents, |documents| {
             documents.set_watch_row(document, watch)
         });
     }
 
-    pub fn set_watch_row(&mut self, document: DocumentId, watch: Option<crate::Subscription>) {
+    pub fn set_watch_row(&mut self, document: DocumentId, watch: Option<crate::watch::Subscription>) {
         let Some(entity) = self.entries.get(&document) else {
             return;
         };
@@ -1297,7 +1286,7 @@ impl OpenDocuments {
             return;
         }
         if let Some(subscription) = entity.watch {
-            fx.notify(crate::UnsubscribeEffect { subscription });
+            fx.notify(crate::watch::UnsubscribeEffect { subscription });
         }
 
         {

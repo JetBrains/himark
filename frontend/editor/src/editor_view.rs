@@ -230,7 +230,7 @@ enum WidgetFonts {
 
 impl WidgetFonts {
     fn resolve(store: &Store, ui: &UiCtx) -> Self {
-        match ui.get::<crate::env::UiFonts>() {
+        match ui.get::<imba::ui::UiFonts>() {
             Some(fonts) => Self::Ready(fonts.0.clone()),
             None => Self::Lazy(crate::env::Fonts::of(store)),
         }

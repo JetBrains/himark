@@ -9,13 +9,6 @@ pub mod locations;
 pub mod search;
 pub mod text;
 
-pub use documents::{
-    DocumentApplied, DocumentClosed, DocumentState, OpenDocumentParams, OpenDocumentResult,
-    Replacement, StoreDocumentParams, StoreDocumentResult, TextOperation, TextPosition, TextRange,
-    Uid, DOCUMENT_APPLIED, DOCUMENT_CLOSED,
-};
-pub use locations::{
-    Location, LocationList, LocationsChannelResult, LspLocationsParams, SearchLocationsParams,
-    LOCATIONS_EXTEND,
-};
+pub use documents::{DocumentApplied, DocumentClosed, DocumentState, OpenDocumentParams, OpenDocumentResult, Replacement, StoreDocumentParams, StoreDocumentResult, TextOperation, TextPosition, TextRange, Uid, DOCUMENT_APPLIED, DOCUMENT_CLOSED};
+pub use locations::{Location, LocationList, LocationsChannelResult, LspLocationsParams, SearchLocationsParams, LOCATIONS_EXTEND};
 pub use search::{SearchKind, SearchParams, SearchResult, SearchTarget};

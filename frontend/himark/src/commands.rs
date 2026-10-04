@@ -633,7 +633,7 @@ impl DynamicCommand for AddFolder {
             return;
         };
         let current = entity.current_session();
-        if crate::higent::Servers::client(store, current.host).is_none() {
+        if ahp_wire::client::Servers::client(store, current.host).is_none() {
             return;
         }
         crate::higent::AddSessionFolders {
@@ -664,9 +664,9 @@ pub(crate) fn register_builtins(store: &mut Store) {
 
     // The panels himark itself owns answer navigation walks: a
     // recorded chat/terminal place must be able to walk back.
-    crate::Navigators::register(store, crate::higent::ChatNavigator);
-    crate::Navigators::register(store, crate::terminal::TerminalNavigator);
-    crate::RowMinters::register(store, ::terminals::terminal_row_minter());
+    crate::Navigators::register(store, ahp_chat::chats::ChatNavigator);
+    crate::Navigators::register(store, ::terminals::pane::TerminalNavigator);
+    crate::RowMinters::register(store, ::terminals::pane::terminal_row_minter());
 
     Commands::register(
         store,

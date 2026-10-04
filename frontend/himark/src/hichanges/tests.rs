@@ -3,16 +3,16 @@
 
 use std::sync::Arc;
 
-use crate::higent::ahp_types::actions::{
+use ahp_types::actions::{
     ChangesetClearedAction, ChangesetContentChangedAction, ChangesetFileRemovedAction,
     ChangesetFileSetAction, ChangesetStatusChangedAction, StateAction,
 };
-use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
+use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use serde_json::json;
 
 use super::*;
 use crate::changes_view::RowItem;
-use crate::drivers::changes::{digest_actions, digest_state, CatalogEntry};
+use ahp_changes::changes::{digest_actions, digest_state, CatalogEntry};
 use crate::{ForestNode};
 use editor::location::Authority;
 use editor::location::ResourceLocation;
@@ -70,14 +70,14 @@ fn ready(files: Vec<ChangesetFile>) -> ChangesetState {
 
 struct FileUris;
 
-impl crate::higent::ResourceUriMap for FileUris {
-    fn uri_of(&self, location: &ResourceLocation) -> crate::higent::ResourceUri {
-        crate::higent::ResourceUri::new(format!("file:///{}", location.path().join("/")))
+impl ahp_wire::client::ResourceUriMap for FileUris {
+    fn uri_of(&self, location: &ResourceLocation) -> ahp_wire::client::ResourceUri {
+        ahp_wire::client::ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }
 
     fn location_of(
         &self,
-        uri: &crate::higent::ResourceUri,
+        uri: &ahp_wire::client::ResourceUri,
         kind: ResourceType,
         authority: &editor::location::Authority,
     ) -> Option<ResourceLocation> {
@@ -126,10 +126,10 @@ fn the_ref_codec_round_trips() {
 
 #[test]
 fn the_catalog_names_the_folders_channel() {
-    use crate::drivers::changes::{claim_channels, FolderWire};
-    let session = crate::higent::SessionUri::new("hihost-fs:/local");
+    use ahp_changes::changes::{claim_channels, FolderWire};
+    let session = ahp_wire::client::SessionUri::new("hihost-fs:/local");
     let entry = |description: Option<&str>, uri: &str| CatalogEntry {
-        uri: crate::higent::ChannelUri::new(uri),
+        uri: ahp_wire::client::ChannelUri::new(uri),
         description: description.map(str::to_owned),
         kind: "uncommitted".to_owned(),
     };
@@ -137,7 +137,7 @@ fn the_catalog_names_the_folders_channel() {
     folders.insert_mut(
         folder(),
         FolderWire {
-            client: crate::higent::client::inert(),
+            client: ahp_wire::client::inert(),
             session: session.clone(),
             channel: None,
             serial: 0,
@@ -160,9 +160,9 @@ fn the_catalog_names_the_folders_channel() {
     folders.insert_mut(
         folder(),
         FolderWire {
-            client: crate::higent::client::inert(),
+            client: ahp_wire::client::inert(),
             session: session.clone(),
-            channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
+            channel: Some(ahp_wire::client::ChannelUri::new("hihost-changes://tmp/repo")),
             serial: 0,
         },
     );
@@ -176,13 +176,13 @@ fn the_catalog_names_the_folders_channel() {
 
 #[test]
 fn a_lone_folder_takes_a_lone_foreign_entry() {
-    use crate::drivers::changes::{claim_channels, FolderWire};
-    let session = crate::higent::SessionUri::new("hihost-fs:/local");
+    use ahp_changes::changes::{claim_channels, FolderWire};
+    let session = ahp_wire::client::SessionUri::new("hihost-fs:/local");
     let mut folders = rpds::HashTrieMapSync::new_sync();
     folders.insert_mut(
         folder(),
         FolderWire {
-            client: crate::higent::client::inert(),
+            client: ahp_wire::client::inert(),
             session: session.clone(),
             channel: None,
             serial: 0,
@@ -192,7 +192,7 @@ fn a_lone_folder_takes_a_lone_foreign_entry() {
         &folders,
         &session,
         &[CatalogEntry {
-            uri: crate::higent::ChannelUri::new("vscode-changes:/session"),
+            uri: ahp_wire::client::ChannelUri::new("vscode-changes:/session"),
             description: None,
             kind: "uncommitted".to_owned(),
         }],
@@ -520,13 +520,13 @@ fn a_later_snapshot_supersedes_earlier_file_mutations_in_the_batch() {
 
 #[test]
 fn a_superseded_poll_folds_its_batch_but_never_rearms() {
-    use crate::drivers::changes::{apply_poll, apply_snapshot, ChangesWire, FolderWire};
+    use ahp_changes::changes::{apply_poll, apply_snapshot, ChangesWire, FolderWire};
 
     let mut store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
     let _window = crate::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
-    let history_wire: imba::store::Id<crate::drivers::history::HistoryWire> =
+    let history_wire: imba::store::Id<ahp_changes::history::HistoryWire> =
         imba::store::Id::mint();
     store.put_entity(changes_id(), wired());
     store.put_entity(
@@ -538,9 +538,9 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
         wire_id,
         folder(),
         FolderWire {
-            client: crate::higent::client::inert(),
-            session: crate::higent::SessionUri::new("hihost-fs:/local"),
-            channel: Some(crate::higent::ChannelUri::new("hihost-changes://tmp/repo")),
+            client: ahp_wire::client::inert(),
+            session: ahp_wire::client::SessionUri::new("hihost-fs:/local"),
+            channel: Some(ahp_wire::client::ChannelUri::new("hihost-changes://tmp/repo")),
             serial: 0,
         },
     );

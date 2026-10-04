@@ -76,9 +76,9 @@ impl crate::DynamicCommand for ToggleChangesView {
         let workspace = entity.current_session();
         let changes = entity.state().changes();
         let wire = entity.state().changes_wire();
-        let folders = crate::higent::session_folders(store, &workspace);
+        let folders = ahp_session::session::session_folders(store, &workspace);
         fx.scope(crate::AppCommand::Verb, |fx| {
-            crate::drivers::changes::ensure(store, wire, folders, fx)
+            ahp_changes::changes::ensure(store, wire, folders, fx)
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
@@ -131,7 +131,7 @@ pub struct RefetchChanges {
     /// The wire to refetch through. `None` means "the window's
     /// session's", resolved when the command performs — a command
     /// registered into the palette holds no id at registration.
-    pub wire: Option<imba::store::Id<crate::drivers::changes::ChangesWire>>,
+    pub wire: Option<imba::store::Id<ahp_changes::changes::ChangesWire>>,
     pub folder: Option<ResourceLocation>,
 }
 
@@ -156,7 +156,7 @@ impl crate::DynamicCommand for RefetchChanges {
                 // An addressed refetch (the view's chip) names its
                 // wire's collection directly.
                 self.wire
-                    .and_then(|wire| crate::drivers::changes::changes_of(store, wire))
+                    .and_then(|wire| ahp_changes::changes::changes_of(store, wire))
             })
         else {
             return;

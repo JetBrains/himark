@@ -409,7 +409,7 @@ pub fn build_diff_view(
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
 
     let mut open =
-        |document_id: crate::DocumentId, marks: editor::markup::MarkupId| -> Option<crate::EditorIdView> {
+        |document_id: crate::DocumentId, marks: editor::markup::MarkupId| -> Option<crate::entity_view::EditorIdView> {
             let mut document = OpenDocuments::document(store, documents, document_id)?;
 
             let editor = document.add_editor(
@@ -427,7 +427,7 @@ pub fn build_diff_view(
             document.manage_repairs_in_pair(editor);
 
             OpenDocuments::put_document(store, documents, document_id, document);
-            Some(crate::EditorIdView::new(documents, document_id, editor))
+            Some(crate::entity_view::EditorIdView::new(documents, document_id, editor))
         };
     let (Some(left_view), Some(right_view)) =
         (open(left, handle.base_markup), open(right, target_markup))

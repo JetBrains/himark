@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::markup::StyleId;
+use editor::theme::StyleId;
 use std::ops::Range;
 
 fn test_theme() -> editor::theme::Theme {

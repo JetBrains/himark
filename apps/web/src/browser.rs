@@ -354,19 +354,19 @@ impl ahp::Transport for BrowserTransport {
 
 pub struct BrowserConnector;
 
-impl himark::hiahp::transport::Connector for BrowserConnector {
+impl ahp_wire::transport::Connector for BrowserConnector {
     fn dial(
         &self,
         url: String,
         _tag: String,
         dead: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    ) -> himark::hiahp::transport::Dialing {
+    ) -> ahp_wire::transport::Dialing {
         Box::pin(async move {
             let inner = BrowserTransport::connect(&url)
                 .await
                 .map_err(|error| format!("agent host unreachable at {url}: {error}"))?;
             Ok(ahp::transport::BoxedTransport::new(
-                himark::hiahp::transport::DeadLatched { inner, dead },
+                ahp_wire::transport::DeadLatched { inner, dead },
             ))
         })
     }

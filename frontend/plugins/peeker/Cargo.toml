@@ -5,6 +5,9 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+ahp-session = { path = "../../ahp-session" }
+ahp-wire = { path = "../../ahp-wire" }
+ahp-chat = { path = "../../ahp-chat" }
 himark = { path = "../../himark" }
 editor = { path = "../../editor" }
 imba = { path = "../../imba" }

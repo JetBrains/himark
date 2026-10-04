@@ -20,7 +20,7 @@ impl SaveDocument {
     }
 }
 
-impl documents::DocumentCommand for SaveDocument {
+impl documents::dynamic::DocumentCommand for SaveDocument {
     fn id(&self) -> &'static str {
         "file.save"
     }
@@ -42,7 +42,7 @@ impl documents::DocumentCommand for SaveDocument {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
-        if !documents::DocumentCommand::offers_at(self, location) {
+        if !documents::dynamic::DocumentCommand::offers_at(self, location) {
             return;
         }
         if let Some(payload) = payload {
@@ -76,7 +76,7 @@ impl documents::DocumentCommand for SaveDocument {
                 );
                 // The RECENTS next to the documents the save ran in —
                 // the sibling of the collection the command closes over.
-                if let Some(recents) = crate::higent::Hosts::owner_of_documents(store, documents)
+                if let Some(recents) = ahp_session::session::Hosts::owner_of_documents(store, documents)
                     .map(|state| state.recents())
                 {
                     crate::RecentLocations::replace(store, recents, location, &new_location);

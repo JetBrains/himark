@@ -12,17 +12,20 @@
 
 use std::sync::{Arc, Mutex};
 
-use himark::higent::ahp_types::actions::{
+use ahp_types::actions::{
     ChatDeltaAction, ChatResponsePartAction, ChatToolCallCompleteAction, ChatToolCallStartAction,
     ChatTurnCompleteAction, ChatTurnStartedAction, StateAction,
 };
-use himark::higent::ahp_types::state::{
+use ahp_types::state::{
     ChatState, ChatSummary, MarkdownResponsePart, Message, MessageKind, MessageOrigin,
     ResponsePart, SessionLifecycle, SessionState, ToolCallResult, Turn, TurnState,
 };
-use himark::higent::{ChannelUri, ChatUri, SessionUri, TurnId};
+use ahp_wire::client::ChannelUri;
+use ahp_wire::client::ChatUri;
+use ahp_wire::client::SessionUri;
+use ahp_wire::client::TurnId;
 
-use himark::higent::cell::Cell;
+use ahp_chat::cell::Cell;
 use himark::AppExt;
 
 use crate::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
@@ -35,7 +38,7 @@ struct Script {
     session: SessionUri,
     snapshot: Arc<Mutex<ChatState>>,
     batches: Arc<Mutex<std::collections::VecDeque<Vec<StateAction>>>>,
-    older: Arc<Mutex<std::collections::HashMap<String, himark::higent::TurnsPage>>>,
+    older: Arc<Mutex<std::collections::HashMap<String, ahp_wire::client::TurnsPage>>>,
     parked: Arc<Mutex<Vec<std::task::Waker>>>,
     /// Every turn the app STARTED on the host, in order: the id the
     /// client minted and the prompt it carried.
@@ -123,11 +126,11 @@ macro_rules! unreached {
     };
 }
 
-impl himark::higent::SessionClient for ScriptedSeat {
+impl ahp_wire::client::SessionClient for ScriptedSeat {
     fn subscribe_session(
         &self,
         session: SessionUri,
-    ) -> himark::higent::ClientFuture<Result<SessionState, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<SessionState, String>> {
         assert_eq!(session, self.script.session);
         let chat = self.script.chat.as_str().to_owned();
         Box::pin(std::future::ready(Ok(SessionState {
@@ -162,7 +165,7 @@ impl himark::higent::SessionClient for ScriptedSeat {
         })))
     }
 
-    fn poll_session(&self, _session: SessionUri) -> himark::higent::ClientFuture<Vec<StateAction>> {
+    fn poll_session(&self, _session: SessionUri) -> ahp_wire::client::ClientFuture<Vec<StateAction>> {
         Box::pin(std::future::pending())
     }
 
@@ -172,7 +175,7 @@ impl himark::higent::SessionClient for ScriptedSeat {
         &self,
         _channel: ChannelUri,
         action: StateAction,
-    ) -> himark::higent::ClientFuture<Result<(), String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<(), String>> {
         if let StateAction::ChatTurnStarted(started) = &action {
             self.script
                 .sent
@@ -184,20 +187,20 @@ impl himark::higent::SessionClient for ScriptedSeat {
     }
 
     unreached! {
-        connect() -> himark::higent::ClientFuture<Result<himark::higent::RootInfo, String>>;
-        list_sessions(cursor: Option<String>) -> himark::higent::ClientFuture<Result<himark::higent::SessionsPage, String>>;
-        poll_root() -> himark::higent::ClientFuture<Vec<himark::higent::ServerEvent>>;
-        create_session(dirs: Vec<String>, options: himark::higent::SessionOptions) -> himark::higent::ClientFuture<Result<SessionUri, String>>;
-        resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> himark::higent::ClientFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-        dispose_session(session: SessionUri) -> himark::higent::ClientFuture<Result<(), String>>;
+        connect() -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::RootInfo, String>>;
+        list_sessions(cursor: Option<String>) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::SessionsPage, String>>;
+        poll_root() -> ahp_wire::client::ClientFuture<Vec<ahp_wire::client::ServerEvent>>;
+        create_session(dirs: Vec<String>, options: ahp_wire::client::SessionOptions) -> ahp_wire::client::ClientFuture<Result<SessionUri, String>>;
+        resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> ahp_wire::client::ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
+        dispose_session(session: SessionUri) -> ahp_wire::client::ClientFuture<Result<(), String>>;
     }
 }
 
-impl himark::higent::ChatClient for ScriptedSeat {
+impl ahp_wire::client::ChatClient for ScriptedSeat {
     fn subscribe_chat(
         &self,
         chat: ChatUri,
-    ) -> himark::higent::ClientFuture<Result<ChatState, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<ChatState, String>> {
         assert_eq!(chat, self.script.chat);
         let script = self.script.clone();
         Box::pin(std::future::poll_fn(move |cx| {
@@ -214,7 +217,7 @@ impl himark::higent::ChatClient for ScriptedSeat {
         }))
     }
 
-    fn poll_chat(&self, chat: ChatUri) -> himark::higent::ClientFuture<Vec<StateAction>> {
+    fn poll_chat(&self, chat: ChatUri) -> ahp_wire::client::ClientFuture<Vec<StateAction>> {
         assert_eq!(chat, self.script.chat);
         let batches = Arc::clone(&self.script.batches);
         let parked = Arc::clone(&self.script.parked);
@@ -233,7 +236,7 @@ impl himark::higent::ChatClient for ScriptedSeat {
         &self,
         chat: ChatUri,
         cursor: Option<String>,
-    ) -> himark::higent::ClientFuture<Result<himark::higent::TurnsPage, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::TurnsPage, String>> {
         assert_eq!(chat, self.script.chat);
         let cursor = cursor.unwrap_or_default();
         let page = self.script.older.lock().expect("older").remove(&cursor);
@@ -246,13 +249,13 @@ impl himark::higent::ChatClient for ScriptedSeat {
         &self,
         _chat: ChatUri,
         _text: String,
-        _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
-        _model: Option<himark::higent::ahp_types::state::ModelSelection>,
-    ) -> himark::higent::ClientFuture<Result<(), String>> {
+        _attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
+        _model: Option<ahp_types::state::ModelSelection>,
+    ) -> ahp_wire::client::ClientFuture<Result<(), String>> {
         unreachable!("sending is write-ahead: the client dispatches chat/turnStarted")
     }
 
-    fn cancel_turn(&self, _chat: ChatUri, _turn: TurnId) -> himark::higent::ClientFuture<()> {
+    fn cancel_turn(&self, _chat: ChatUri, _turn: TurnId) -> ahp_wire::client::ClientFuture<()> {
         Box::pin(std::future::ready(()))
     }
 
@@ -262,20 +265,20 @@ impl himark::higent::ChatClient for ScriptedSeat {
         &self,
         before: Option<String>,
         after: Option<String>,
-    ) -> himark::higent::ClientFuture<Result<himark::higent::FileEditContents, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::FileEditContents, String>> {
         let contents = Arc::clone(&self.script.contents);
         let side = move |uri: Option<String>| -> Option<String> {
             let uri = uri?;
             contents.lock().expect("contents").get(&uri).cloned()
         };
-        Box::pin(std::future::ready(Ok(himark::higent::FileEditContents {
+        Box::pin(std::future::ready(Ok(ahp_wire::client::FileEditContents {
             before: side(before),
             after: side(after),
         })))
     }
 
     unreached! {
-        create_chat(session: SessionUri) -> himark::higent::ClientFuture<Result<ChatUri, String>>;
+        create_chat(session: SessionUri) -> ahp_wire::client::ClientFuture<Result<ChatUri, String>>;
     }
 }
 
@@ -373,7 +376,7 @@ fn long_turn_stream(turn: &str) -> Vec<Vec<StateAction>> {
             tool_call_id: "tool-1".to_owned(),
             result: ToolCallResult {
                 success: true,
-                past_tense_message: himark::higent::ahp_types::common::StringOrMarkdown::Plain(
+                past_tense_message: ahp_types::common::StringOrMarkdown::Plain(
                     "ran it".to_owned(),
                 ),
                 content: None,
@@ -430,7 +433,7 @@ fn settle_until(
 }
 
 struct OpenScripted {
-    host: himark::higent::HostId,
+    host: ahp_wire::client::HostId,
     session: SessionUri,
 }
 
@@ -455,7 +458,7 @@ impl himark::DynamicCommand for OpenScripted {
 /// The chats collection of the scripted session — the session of the
 /// window that entered it (the first one; a second window of the same
 /// session shares the collection).
-fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<himark::higent::Chats> {
+fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
     himark::Windows::window_ref(engine.app.store(), window)
         .expect("the window entity")
@@ -463,8 +466,8 @@ fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<himark::higent::Cha
         .chats()
 }
 
-fn chat_record(engine: &HimarkEngine) -> Option<himark::higent::ChatPanel> {
-    himark::higent::Chats::chat(
+fn chat_record(engine: &HimarkEngine) -> Option<ahp_chat::chat::ChatPanel> {
+    ahp_chat::chats::Chats::chat(
         engine.app.store(),
         chats_of_window(engine),
         &ChatUri::new(CHAT),
@@ -486,7 +489,7 @@ fn turn_text(rows: &[(String, Vec<(String, String)>)], turn: &str) -> String {
         .collect()
 }
 
-fn script_host(engine: &HimarkEngine) -> himark::higent::HostId {
+fn script_host(engine: &HimarkEngine) -> ahp_wire::client::HostId {
     chat_record(engine)
         .expect("the chat record")
         .session_id()
@@ -506,10 +509,10 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     });
     let host = engine.register_agent_server(
         "scripted",
-        himark::higent::Client {
+        ahp_wire::client::Client {
             session: scripted.clone(),
             chat: scripted,
-            ..himark::higent::client::inert()
+            ..ahp_wire::client::inert()
         },
     );
     assert!(engine.app.perform_batch(vec![himark::AppCommand::Dynamic(
@@ -892,7 +895,7 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     let chat = ChatUri::new(CHAT);
     let chats = chats_of_window(&engine);
     for _ in 0..3 {
-        let pane = himark::higent::ChatPane::new(chats, chat.clone());
+        let pane = ahp_chat::chats::ChatPane::new(chats, chat.clone());
         assert!(engine.app.open_panel(window_id(window), Box::new(pane)));
         paint(&mut engine, window);
     }
@@ -1047,21 +1050,21 @@ fn edit_tool_call(turn: &str, step: usize) -> Vec<StateAction> {
             tool_call_id: tool,
             result: ToolCallResult {
                 success: true,
-                past_tense_message: himark::higent::ahp_types::common::StringOrMarkdown::Plain(
+                past_tense_message: ahp_types::common::StringOrMarkdown::Plain(
                     format!("edited file{step}.rs"),
                 ),
                 content: Some(vec![
-                    himark::higent::ahp_types::state::ToolResultContent::FileEdit(
-                        himark::higent::FileEditRefs {
-                            before: Some(himark::higent::snapshot(
+                    ahp_types::state::ToolResultContent::FileEdit(
+                        ahp_chat::file_edit::FileEditRefs {
+                            before: Some(ahp_chat::file_edit::snapshot(
                                 &format!("src/file{step}.rs"),
                                 &format!("ahp-content:/before-{step}"),
                             )),
-                            after: Some(himark::higent::snapshot(
+                            after: Some(ahp_chat::file_edit::snapshot(
                                 &format!("src/file{step}.rs"),
                                 &format!("ahp-content:/after-{step}"),
                             )),
-                            counts: himark::higent::DiffCounts {
+                            counts: ahp_chat::file_edit::DiffCounts {
                                 added: Some(1),
                                 removed: Some(1),
                             },

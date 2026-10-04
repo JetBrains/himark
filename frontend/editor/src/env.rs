@@ -1,6 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use imba::ui::UiFonts;
+
 use imba::store::Store;
 
 #[derive(Clone)]
@@ -15,7 +17,6 @@ impl Fonts {
     }
 }
 
-pub use imba::ui::UiFonts;
 
 #[derive(Clone)]
 pub struct Parsers(pub std::sync::Arc<crate::reparse::SyntaxLanguages>);

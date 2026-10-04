@@ -6,7 +6,7 @@ use skia_safe::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind};
 use editor::env;
-use hikit::{TreeItemCommand, TreeItemView};
+use hikit::{tree_item::TreeItemCommand, tree_item::TreeItemView};
 
 #[derive(Clone)]
 pub struct ToolFace {

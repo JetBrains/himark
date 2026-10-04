@@ -4,18 +4,15 @@
 use std::sync::Arc;
 
 use ahp_wire::fs::{client_of, client_of_authority, served, ClientDirectory};
-use crate::higent::client as fs;
+
 use documents::watch::{SubscribeEffect, Subscription, UnsubscribeEffect};
-use documents::{
-    CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
-    MoveResourceEffect, StoreDocumentEffect,
-};
+use documents::{CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect, MoveResourceEffect, StoreDocumentEffect};
 use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 
 pub struct RouteFetch {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<FetchDocumentEffect> for RouteFetch {
@@ -23,7 +20,7 @@ impl EffectHandler<FetchDocumentEffect> for RouteFetch {
         if let Some((origin, raw)) = changesview::hichanges::raw_ref(&effect.location) {
             let (client, session) = client_of_authority(&self.directory, &origin)?;
             return client
-                .resources.resource_read(session, crate::higent::client::ResourceUri::new(raw))
+                .resources.resource_read(session, ahp_wire::client::ResourceUri::new(raw))
                 .await;
         }
         let (client, session) = client_of(&self.directory, &effect.location)?;
@@ -39,7 +36,7 @@ impl EffectHandler<FetchDocumentEffect> for RouteFetch {
 
 pub struct RouteFetchBytes {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<documents::FetchResourceBytesEffect> for RouteFetchBytes {
@@ -47,7 +44,7 @@ impl EffectHandler<documents::FetchResourceBytesEffect> for RouteFetchBytes {
         let (client, session) = client_of(&self.directory, &effect.origin)?;
 
         let uri = match absolute(&effect.reference) {
-            true => crate::higent::client::ResourceUri::new(effect.reference),
+            true => ahp_wire::client::ResourceUri::new(effect.reference),
             false => {
                 let location = relative_to(&effect.origin, &effect.reference)?;
                 self.uris.uri_of(&location)
@@ -89,8 +86,8 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
 
 pub struct RouteStore {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
-    pub channels: Arc<crate::docsync::DocumentChannels>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
+    pub channels: Arc<ahp_docsync::DocumentChannels>,
 }
 
 impl EffectHandler<StoreDocumentEffect> for RouteStore {
@@ -114,7 +111,7 @@ impl EffectHandler<StoreDocumentEffect> for RouteStore {
 
 pub struct RouteList {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<ListDirectoryEffect> for RouteList {
@@ -140,7 +137,7 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
 
 pub struct RouteCreate {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<CreateDocumentEffect> for RouteCreate {
@@ -155,7 +152,7 @@ impl EffectHandler<CreateDocumentEffect> for RouteCreate {
 
 pub struct RouteDelete {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<DeleteResourceEffect> for RouteDelete {
@@ -174,7 +171,7 @@ impl EffectHandler<DeleteResourceEffect> for RouteDelete {
 
 pub struct RouteMove {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<MoveResourceEffect> for RouteMove {
@@ -194,7 +191,7 @@ impl EffectHandler<MoveResourceEffect> for RouteMove {
 
 pub struct RouteSubscribe {
     pub directory: Arc<ClientDirectory>,
-    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<SubscribeEffect> for RouteSubscribe {
@@ -235,7 +232,7 @@ pub fn resolve_base(
     }
     // The ask names its documents collection; the bases live in the
     // change sets next to it.
-    let changes = crate::higent::Hosts::owner_of_documents(store, documents)?.changes();
+    let changes = crate::session::Hosts::owner_of_documents(store, documents)?.changes();
     let before = changesview::hichanges::Changes::base_ref(
         store,
         changes,

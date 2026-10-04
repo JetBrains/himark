@@ -4,7 +4,7 @@
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
-use himark::hiahp::transport::{Connector, DeadLatched, Dialing};
+use ahp_wire::transport::{Connector, DeadLatched, Dialing};
 
 pub struct DesktopConnector;
 

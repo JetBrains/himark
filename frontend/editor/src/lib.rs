@@ -41,8 +41,6 @@ pub(crate) mod width_tree;
 pub type FontSource =
     std::sync::Arc<dyn Fn() -> skia_safe::textlayout::FontCollection + Send + Sync>;
 
-pub use operation::operation::Operation;
-pub use text::text::Text;
 
 #[doc(hidden)]
 pub mod test_document;

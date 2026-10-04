@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::markup::StyleId;
+use editor::theme::StyleId;
 
 fn test_theme() -> editor::theme::Theme {
     editor::theme::Theme::embedded()
@@ -138,7 +138,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
         assert!(
             inline
                 .iter()
-                .any(|interval| interval.id == editor::markup::StyleId::Keyword),
+                .any(|interval| interval.id == editor::theme::StyleId::Keyword),
             "{label}: the `let` before {needle:?} keeps its color ({} marks in {at}..{line_end})",
             inline.len(),
         );

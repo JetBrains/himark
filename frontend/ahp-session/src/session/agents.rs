@@ -3,8 +3,8 @@
 
 use super::state::{Host, HostStatus, Hosts};
 use ahp_wire::client::SessionChannel;
-use crate::higent::{HostId, ServerEvent};
-use crate::SessionId;
+use ahp_wire::client::{HostId, ServerEvent};
+use ahp_wire::SessionId;
 use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{AgentInfo, SessionSummary};
 use imba::store::Store;
@@ -88,9 +88,9 @@ impl Agents {
                 });
                 // The session is the LIFETIME of its session: the row
                 // goes, and every entity it named retracts with it.
-                crate::higent::Hosts::dispose_state(
+                crate::session::Hosts::dispose_state(
                     store,
-                    &crate::SessionId {
+                    &ahp_wire::SessionId {
                         host: server,
                         session,
                     },
@@ -118,7 +118,7 @@ impl Agents {
         }
     }
 
-    pub fn note_turn(store: &mut Store, server: HostId, chat: &crate::higent::ChatUri, turn: &str) {
+    pub fn note_turn(store: &mut Store, server: HostId, chat: &ahp_wire::client::ChatUri, turn: &str) {
         let session = Hosts::host(store, server).and_then(|host| {
             host.states
                 .iter()

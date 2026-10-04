@@ -5,7 +5,7 @@ use crate::tool_group::{
     ToolCallSpec, ToolGroup, ToolRowCommand, ToolRowKey, ToolRowsCommand, ToolUpdate,
 };
 use editor::{env, editor_view::EditorCommand, editor_view::EditorView};
-use hikit::TreeItemCommand;
+use hikit::tree_item::TreeItemCommand;
 use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 

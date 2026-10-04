@@ -18,7 +18,7 @@ pub use table::{
 use editor::document::Document;
 use editor::markup::Markup;
 use editor::markup::MarkupBuilder;
-use editor::markup::StyleId;
+use editor::theme::StyleId;
 use editor::reparse::SyntaxLanguage;
 use editor::reparse::SyntaxTree;
 use editor::markup::TextDecorationInterval;
@@ -510,8 +510,8 @@ fn push_markup_for_block(
     markup.push_block_styles(block.range.clone(), block.marks.style_ids());
 
     match block.marks.header {
-        Some(1) => markup.push_alignment(block.range.clone(), editor::markup::TextAlignment::Right),
-        Some(2) => markup.push_alignment(block.range.clone(), editor::markup::TextAlignment::Center),
+        Some(1) => markup.push_alignment(block.range.clone(), editor::theme::TextAlignment::Right),
+        Some(2) => markup.push_alignment(block.range.clone(), editor::theme::TextAlignment::Center),
         _ => {}
     }
 

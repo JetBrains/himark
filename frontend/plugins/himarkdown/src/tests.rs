@@ -18,9 +18,9 @@ fn headers_align_right_center_left_by_level() {
     };
 
     let h1 = resolved("# One");
-    assert_eq!(h1.alignment, Some(editor::markup::TextAlignment::Right));
+    assert_eq!(h1.alignment, Some(editor::theme::TextAlignment::Right));
     let h2 = resolved("## Two");
-    assert_eq!(h2.alignment, Some(editor::markup::TextAlignment::Center));
+    assert_eq!(h2.alignment, Some(editor::theme::TextAlignment::Center));
     let h3 = resolved("### Three");
     assert_eq!(h3.alignment, None, "deeper levels read left");
     assert!(
@@ -775,7 +775,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
         marks
             .ids()
             .iter()
-            .any(|id| matches!(id, editor::markup::StyleId::Header(_))),
+            .any(|id| matches!(id, editor::theme::StyleId::Header(_))),
         "the heading below the table keeps its block style"
     );
     let rule = text.find("\n---\n").expect("rule") as u32 + 1;
@@ -784,7 +784,7 @@ fn adding_a_table_row_keeps_the_blocks_below_it() {
         marks
             .ids()
             .iter()
-            .any(|id| matches!(id, editor::markup::StyleId::HorizontalLine)),
+            .any(|id| matches!(id, editor::theme::StyleId::HorizontalLine)),
         "the rule below the table keeps its block style"
     );
 }

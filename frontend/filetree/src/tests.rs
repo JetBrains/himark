@@ -315,12 +315,12 @@ fn folders_added_mid_session_join_on_paint() {
 }
 
 fn context_press(index: usize) -> TreeCommand {
-    TreeCommand::Rows(hikit::ListKeyCommand::Inner(
+    TreeCommand::Rows(hikit::list_keyboard::ListKeyCommand::Inner(
         imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Focus(
             index,
             Some(Box::new(imba::list::ListCommand::Child(
                 index,
-                hikit::TreeItemCommand::Inner(hikit::TreeLabelCommand::Context),
+                hikit::tree_item::TreeItemCommand::Inner(hikit::tree_item::TreeLabelCommand::Context),
             ))),
         )),
     ))
@@ -328,7 +328,7 @@ fn context_press(index: usize) -> TreeCommand {
 
 fn menu_activate(index: usize) -> TreeCommand {
     TreeCommand::Menu(hikit::menu::MenuCommand::Rows(Box::new(
-        hikit::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
+        hikit::list_keyboard::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
             imba::list::ListCommand::Activate(index, imba::list::ActivateTrigger::Enter),
         )),
     )))
@@ -816,7 +816,7 @@ fn cursor_walks_and_enter_opens() {
     };
     let fold = |view: &SessionTreeView, expand| {
         let index = view.tree.list.cursor_index().expect("a cursor row");
-        TreeCommand::Rows(hikit::ListKeyCommand::Fold { index, expand })
+        TreeCommand::Rows(hikit::list_keyboard::ListKeyCommand::Fold { index, expand })
     };
 
     let command = step(&view, 1);

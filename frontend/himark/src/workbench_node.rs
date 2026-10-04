@@ -6,7 +6,7 @@ use editor::editor_view::EditorCommand;
 use crate::EditorIdView;
 use imba::{arena::Arena, constraints::Constraints, scroll::{ScrollCommand, ScrollView}, split::{Arrangement, Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
-pub use hikit::{DynPanelView, PanelRequest, PanelView, WidgetOrigin};
+pub use hikit::{panel::DynPanelView, panel::PanelRequest, panel::PanelView, panel::WidgetOrigin};
 
 #[derive(Clone)]
 pub(crate) struct ClosedPanel;
@@ -729,7 +729,7 @@ impl PaneSlot {
 
         let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
         if markdown {
-            let Some((session, state)) = crate::higent::Hosts::home_of_documents(store, documents)
+            let Some((session, state)) = ahp_session::session::Hosts::home_of_documents(store, documents)
             else {
                 crate::OpenDocuments::put_document(store, documents, id, document);
                 return;
@@ -742,7 +742,7 @@ impl PaneSlot {
                 &mut document,
                 editor,
                 typed_at,
-                std::sync::Arc::new(crate::higent::session_folders(store, &session)),
+                std::sync::Arc::new(ahp_session::session::session_folders(store, &session)),
                 state.recents(),
                 Some((id, editor)),
                 fx,

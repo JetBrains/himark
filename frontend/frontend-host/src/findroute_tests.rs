@@ -1,27 +1,27 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::hiahp::find::NativeFindHandler;
-use crate::hiahp::fs::ClientDirectory;
-use himark::higent::client as ahp;
+use ahp_locations::find::NativeFindHandler;
+use ahp_wire::fs::ClientDirectory;
+use ahp_wire::client as ahp;
 use editor::location::ResourceType;
 use himark::{FindEffect};
 use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 use std::sync::Arc;
 
-fn wire_backend() -> (tempfile::TempDir, himark::higent::Client) {
+fn wire_backend() -> (tempfile::TempDir, ahp_wire::client::Client) {
     let (dir, wire) = wire_backend_host();
-    (dir, himark::higent::Client::of(wire))
+    (dir, ahp_wire::client::Client::of(wire))
 }
 
 /// A real backend on a socket and a real `WireHost` dialed into it —
 /// the production wire, nothing scripted.
-pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<crate::hiahp::wire::WireHost>) {
+pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<ahp_wire::wire::WireHost>) {
     let dir = tempfile::tempdir().expect("backend home");
     let url = bind_backend(dir.path(), "false".to_owned());
-    let seat = Arc::new(crate::hiahp::wire::WireHost::at(
-        crate::hiahp::wire::test_runtime(),
+    let seat = Arc::new(ahp_wire::wire::WireHost::at(
+        ahp_wire::wire::test_runtime(),
         crate::test_connector(),
         url,
     ));
@@ -135,7 +135,7 @@ fn session_folders_ask_their_seat() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+        &ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     );
     let (server, _) = ahp::parse(&encoded).expect("round-trips");
     directory.record(server, seat.clone());
@@ -161,7 +161,7 @@ fn local_folders_ask_the_designated_backend() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+        &ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, seat.clone());
@@ -191,13 +191,13 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+        &ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, seat.clone());
     directory.set_local(server);
 
-    let handler = crate::hiahp::locations::RouteSearchLocations {
+    let handler = ahp_locations::routes::RouteSearchLocations {
         directory: Arc::clone(&directory),
     };
     let effect = himark::SearchLocationsEffect {

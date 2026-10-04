@@ -289,7 +289,7 @@ fn dispose(
         }
         unsubscribe(held.channel, fx);
     }
-    locations::dispose_feed(store, ui, lists, feed, fx);
+    locations::views::dispose_feed(store, ui, lists, feed, fx);
 }
 
 fn unsubscribe(channel: crate::LocationsChannel, fx: &mut imba::command::Fx<'_>) {

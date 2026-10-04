@@ -7,10 +7,7 @@ use imba::store::Store;
 use crate::app::{AppCommand, AppFx};
 use editor::location::ResourceLocation;
 
-pub use documents::{
-    CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect,
-    PickSaveEffect, StoreDocumentEffect,
-};
+pub use documents::{CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect, PickSaveEffect, StoreDocumentEffect};
 
 pub use documents::{BuildDocumentEffect, BuiltDocument};
 
@@ -87,7 +84,7 @@ pub fn open_locations(
     fx: &mut AppFx<'_>,
 ) {
     let folders = crate::Windows::window_ref(store, window)
-        .map(|entity| crate::higent::session_folders(store, &entity.current_session()))
+        .map(|entity| ahp_session::session::session_folders(store, &entity.current_session()))
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
         .iter()
@@ -137,7 +134,7 @@ pub fn open_locations(
     }
 }
 
-pub use ::ahp_session::{
+pub use ahp_locations::{
     FindEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect,
-    SessionId,
 };
+pub use ahp_wire::SessionId;

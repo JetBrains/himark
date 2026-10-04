@@ -433,11 +433,11 @@ impl<K> Default for ForestSearcher<K> {
     }
 }
 
-impl<K: Clone + Eq + Hash + Send + Sync + 'static> crate::Searcher for ForestSearcher<K> {
+impl<K: Clone + Eq + Hash + Send + Sync + 'static> crate::list_keyboard::Searcher for ForestSearcher<K> {
     type View = ForestList<K>;
     type Key = K;
 
-    fn capture(&self, view: &Self::View) -> crate::ItemSource<K> {
+    fn capture(&self, view: &Self::View) -> crate::list_keyboard::ItemSource<K> {
         let forest = view.forest.clone();
         Box::new(move || {
             forest

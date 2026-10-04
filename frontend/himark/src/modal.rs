@@ -3,7 +3,7 @@
 
 use crate::app::AppCommand;
 
-pub use hikit::{ModalRequest, ModalView, RequestSlot};
+pub use hikit::{modal::ModalRequest, modal::ModalView, modal::RequestSlot};
 
 pub fn modal_scope(
     window: crate::WindowId,

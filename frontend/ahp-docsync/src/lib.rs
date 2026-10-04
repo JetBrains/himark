@@ -21,7 +21,8 @@
 //! on a draining client connects strictly AFTER the old subscription
 //! is gone. One location, one subscription, ever.
 
-mod codec;
+pub mod codec;
+use codec::{resolve_wire, wire_operation};
 mod rules;
 
 use std::sync::Arc;
@@ -31,14 +32,13 @@ use editor::location::ResourceLocation;
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::command::Verb;
 use imba::store::Store;
-use rebase::{Local, Offer, RebaseLog};
+use rebase::{driver::Local, driver::Offer, RebaseLog};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use documents::sync::{SyncEdit, SyncState};
 use editor::edit_log::EditIdentity;
 
 #[doc(hidden)]
-pub use codec::{resolve_wire, wire_operation};
 
 #[derive(Clone)]
 struct Client {
@@ -522,7 +522,7 @@ async fn life(
         let channels = Arc::clone(channels);
         move || channels.mint()
     };
-    channels.runtime.spawn(rebase::run(
+    channels.runtime.spawn(rebase::driver::run(
         RebaseLog::new(state, version),
         edits,
         actions_rx,
@@ -577,7 +577,7 @@ async fn life(
             heard = server.poll_document(ahp_wire::client::ChannelUri::new(opened.document.clone())) => heard,
         };
         for action in heard {
-            let applied = rebase::Applied {
+            let applied = rebase::driver::Applied {
                 id: action.id,
                 action: SyncEdit::Theirs {
                     resolve: resolve_wire(action.operation),

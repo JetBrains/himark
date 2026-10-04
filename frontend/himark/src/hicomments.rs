@@ -51,10 +51,10 @@ impl crate::DynamicCommand for ToggleCommentsView {
         let workspace = entity.current_session();
         let comments = entity.state().comments();
         let wire = entity.state().comments_wire();
-        let folders = crate::higent::session_folders(store, &workspace);
+        let folders = ahp_session::session::session_folders(store, &workspace);
         fx.scope(crate::AppCommand::Verb, |fx| {
             for folder in folders {
-                crate::drivers::comments::ensure(store, wire, &folder, fx);
+                ahp_comments::ensure(store, wire, &folder, fx);
             }
         });
 

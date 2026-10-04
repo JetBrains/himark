@@ -19,7 +19,7 @@ pub struct Application {
 
     committed: Store,
 
-    clients: crate::higent::Servers,
+    clients: ahp_wire::client::Servers,
 
     pub(crate) ui: std::rc::Rc<UiCtx>,
 
@@ -218,7 +218,7 @@ pub struct ChromeClearance(pub f32);
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
-    state: &crate::higent::SessionState,
+    state: &ahp_session::session::SessionState,
     ui: &UiCtx,
     fx: &mut AppFx<'_>,
 ) -> WorkbenchNode {
@@ -271,7 +271,7 @@ pub fn switch_session(
 
     // Session ENTRY: the one legitimate catalog consult — the bundle
     // is wired into the window's record here and read from it after.
-    let state = crate::higent::Hosts::ensure_state(store, &target);
+    let state = ahp_session::session::Hosts::ensure_state(store, &target);
     let owed = entity.switch_to(target, state);
     crate::Windows::put(store, window, entity);
     if let Some(previous) = owed {
@@ -331,7 +331,7 @@ impl Application {
         store.put(::editor::env::Themes(theme.clone()));
 
         let ui = std::rc::Rc::new(UiCtx::dont_use_too_slow());
-        ui.set(::editor::env::UiFonts((fonts.source())()));
+        ui.set(imba::ui::UiFonts((fonts.source())()));
 
         let scrollbar = &theme.ui().scrollbar;
         ui.set(imba::scroll::ScrollbarStyle {
@@ -366,7 +366,7 @@ impl Application {
         let application = Self {
             state,
             committed,
-            clients: crate::higent::Servers::default(),
+            clients: ahp_wire::client::Servers::default(),
             ui,
             stats: Stats::new(overlay_font),
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -397,8 +397,8 @@ impl Application {
 
     pub fn register_client(
         &mut self,
-        client: crate::higent::Client,
-    ) -> crate::higent::HostId {
+        client: ahp_wire::client::Client,
+    ) -> ahp_wire::client::HostId {
         let minted = self.clients.mint(client);
         self.refresh_committed();
         minted
@@ -458,19 +458,19 @@ impl Application {
             .map(|entity| entity.viewport_size())
     }
 
-    pub fn designate_local_host(&mut self, host: crate::higent::HostId) {
+    pub fn designate_local_host(&mut self, host: ahp_wire::client::HostId) {
         self.setup(|store| {
             let previous = store
-                .get::<crate::higent::LocalHost>()
+                .get::<ahp_wire::client::LocalHost>()
                 .and_then(|local| local.0);
-            store.update::<crate::higent::LocalHost>(|local| local.0 = Some(host));
-            store.update::<crate::higent::Hosts>(|hosts| {
+            store.update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(host));
+            store.update::<ahp_session::session::Hosts>(|hosts| {
                 hosts.rekey_local_sessions(previous, host);
             });
             // Families minted under the LOCAL placeholder carried no
             // uri map; now that they live under the real host, stamp
             // its map onto them (docs/entities.md law 4).
-            crate::higent::Hosts::stamp_host_uris(store, host);
+            ahp_session::session::Hosts::stamp_host_uris(store, host);
         });
         self.state.windows.adopt_local_host_all(host);
         self.refresh_committed();
@@ -513,7 +513,7 @@ impl Application {
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let state = crate::higent::Hosts::ensure_state(&mut store, &workspace);
+        let state = ahp_session::session::Hosts::ensure_state(&mut store, &workspace);
         let editors = fresh_workbench_root(&mut store, &state, &ui, &mut discarded.effects());
         let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), state));
         self.commit(store, Some(&workspace));
@@ -558,7 +558,7 @@ impl Application {
     /// answered synchronously from store truth at ask time.
     pub fn observe_stripe_bases(
         &mut self,
-        resolve: std::sync::Arc<dyn documents::StripeBaseResolver>,
+        resolve: std::sync::Arc<dyn documents::diffs::StripeBaseResolver>,
     ) {
         self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
     }
@@ -569,15 +569,15 @@ impl Application {
 
     /// Commands that act on the COLLECTION — handed the pane's ids at
     /// dispatch (docs/entities.md law 3), never resolving an owner.
-    pub fn register_document_command(&mut self, command: Arc<dyn documents::DocumentCommand>) {
-        self.setup(|store| documents::DocumentCommands::register(store, command));
+    pub fn register_document_command(&mut self, command: Arc<dyn documents::dynamic::DocumentCommand>) {
+        self.setup(|store| documents::dynamic::DocumentCommands::register(store, command));
     }
 
     pub fn register_toolbar_button(&mut self, button: crate::ToolbarButton) {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }
 
-    pub fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::RowMinter>) {
+    pub fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::panel::RowMinter>) {
         self.setup(|store| crate::pane_rows::RowMinters::register(store, minter));
     }
 
@@ -889,7 +889,7 @@ impl Application {
             // landing's session gets its sweep THIS batch whatever the
             // batch's scope (the old tail served only the LAST scope's
             // session, so a cross-session batch starved the others).
-            for state in crate::higent::Hosts::states(&store) {
+            for state in ahp_session::session::Hosts::states(&store) {
                 let documents = state.documents();
                 crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
                 documents::scroll_stripes::sync_scroll_stripe_lanes(
@@ -933,7 +933,7 @@ impl Application {
                 // notes drain onto the wire — a clean collection
                 // costs a map read.
                 fx.scope(AppCommand::Verb, |fx| {
-                    crate::drivers::comments::sync(
+                    ahp_comments::sync(
                         &mut store,
                         state.comments_wire(),
                         &self.ui_ctx(),
@@ -945,9 +945,9 @@ impl Application {
                 // drivers drain the notes onto the wires here — no
                 // view carries a wire or a window for these.
                 fx.scope(AppCommand::Verb, |fx| {
-                    crate::drivers::history::sync(&mut store, state.history_wire(), fx);
-                    crate::drivers::changes::sync(&mut store, state.changes_wire(), fx);
-                    crate::drivers::locations::sync(
+                    ahp_changes::history::sync(&mut store, state.history_wire(), fx);
+                    ahp_changes::changes::sync(&mut store, state.changes_wire(), fx);
+                    ahp_locations::driver::sync(
                         &mut store,
                         &self.ui_ctx(),
                         state.locations_wire(),
@@ -1594,7 +1594,7 @@ impl Application {
                 // The border road: the event names only a subscription;
                 // its documents collection is found once, by content.
                 if let Some(documents) =
-                    crate::higent::Hosts::documents_of_watch(store, subscription)
+                    ahp_session::session::Hosts::documents_of_watch(store, subscription)
                 {
                     crate::watch::refetch_watched(store, documents, subscription, fx);
                 }

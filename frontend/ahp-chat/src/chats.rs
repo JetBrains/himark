@@ -138,7 +138,7 @@ impl Chats {
         server: ahp_wire::client::HostId,
         session: SessionUri,
         chat: ChatUri,
-    ) -> Box<dyn hikit::DynPanelView> {
+    ) -> Box<dyn hikit::panel::DynPanelView> {
         Self::open_with(store, ui, chats, server, session, chat, None)
     }
 
@@ -153,7 +153,7 @@ impl Chats {
         session: SessionUri,
         chat: ChatUri,
         initial_prompt: Option<String>,
-    ) -> Box<dyn hikit::DynPanelView> {
+    ) -> Box<dyn hikit::panel::DynPanelView> {
         let known = Self::chat_ref(store, chats, &chat).is_some();
         if !known {
             eprintln!("[higent] minting a chat record: {chat}");
@@ -431,13 +431,13 @@ pub struct ChatPlace {
     pub chat: ChatUri,
 }
 
-impl hikit::Place for ChatPlace {}
+impl hikit::navigation::Place for ChatPlace {}
 
 /// The walk-back road: re-mint the reference pane off the session row.
 /// A dismantled chat has no home to walk back to.
 pub struct ChatNavigator;
 
-impl hikit::Navigator for ChatNavigator {
+impl hikit::navigation::Navigator for ChatNavigator {
     type Place = ChatPlace;
 
     fn navigate(
@@ -446,7 +446,7 @@ impl hikit::Navigator for ChatNavigator {
         _ui: &UiCtx,
         place: &ChatPlace,
         _fx: &mut imba::command::Fx<'_>,
-    ) -> Option<Box<dyn hikit::DynPanelView>> {
+    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
         // The ChatRow arm of the shell's row mint, inlined: the pane
         // is minted off the id; a dismantled chat has no home.
         store
@@ -454,16 +454,16 @@ impl hikit::Navigator for ChatNavigator {
             .filter(|rows| rows.holds(&place.chat))
             .map(|_| {
                 Box::new(ChatPane::new(place.chats, place.chat.clone()))
-                    as Box<dyn hikit::DynPanelView>
+                    as Box<dyn hikit::panel::DynPanelView>
             })
     }
 }
 
-impl hikit::PanelView for ChatPane {
+impl hikit::panel::PanelView for ChatPane {
     type Place = ChatPlace;
 
-    fn pane_row(&self) -> Option<hikit::PaneRow> {
-        Some(hikit::PaneRow::new(crate::chats::ChatRow(
+    fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
+        Some(hikit::pane_row::PaneRow::new(crate::chats::ChatRow(
             self.chats,
             self.chat.clone(),
         )))
@@ -533,4 +533,4 @@ pub struct ChatRow(
     pub ahp_wire::client::ChatUri,
 );
 
-impl hikit::Row for ChatRow {}
+impl hikit::pane_row::Row for ChatRow {}

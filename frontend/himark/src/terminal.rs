@@ -5,6 +5,7 @@
 //! `terminals` crate.
 
 pub use terminals::*;
+pub use terminals::pane::*;
 
 #[cfg(test)]
 mod tests;

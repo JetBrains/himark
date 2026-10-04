@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use editor::{enrich::CaretContext, enrich::EnrichCx, enrich::EnrichInput, enrich::Enricher, markup::Markup, markup::StyleId, markup::Syntax};
+use editor::{enrich::CaretContext, enrich::EnrichCx, enrich::EnrichInput, enrich::Enricher, markup::Markup, theme::StyleId, markup::Syntax};
 use text::text::Text;
 
 use super::{BraceMatchPass, OccurrencePass};

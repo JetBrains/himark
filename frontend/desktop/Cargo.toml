@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+ahp-wire = { path = "../ahp-wire" }
 himark = { path = "../himark" }
 host-discovery = { path = "../../protocol/host-discovery" }
 ahp = "0.9"

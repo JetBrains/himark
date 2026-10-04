@@ -9,6 +9,10 @@ default = ["plugin"]
 plugin = ["dep:himark", "dep:operation", "dep:imba", "dep:myersdiff"]
 
 [dependencies]
+ahp-wire = { path = "../ahp-wire" }
+ahp-session = { path = "../ahp-session" }
+ahp-types = "0.9"
+ahp-chat = { path = "../ahp-chat" }
 rquickjs = { version = "0.14", features = ["bindgen"] }
 text = { path = "../text" }
 himark = { path = "../himark", optional = true }

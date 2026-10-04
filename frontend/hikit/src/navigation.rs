@@ -73,7 +73,7 @@ pub trait Navigator: Send + Sync + 'static {
         ui: &imba::ui::UiCtx,
         place: &Self::Place,
         fx: &mut imba::command::Fx<'_>,
-    ) -> Option<Box<dyn crate::DynPanelView>>;
+    ) -> Option<Box<dyn crate::panel::DynPanelView>>;
 }
 
 /// The editor pane's place: the located document, the caret and the

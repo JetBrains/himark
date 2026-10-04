@@ -3,11 +3,14 @@
 
 use std::sync::Arc;
 
-use crate::higent::SessionUri;
-use crate::higent::{
-    ConnectServerEffect, HostId, ListSessionsEffect, PollServerEffect, RootInfo, ServerEvent,
-    SessionsPage,
-};
+use ahp_wire::client::SessionUri;
+use ahp_wire::effects::ConnectServerEffect;
+use ahp_wire::client::HostId;
+use ahp_wire::effects::ListSessionsEffect;
+use ahp_wire::effects::PollServerEffect;
+use ahp_wire::client::RootInfo;
+use ahp_wire::client::ServerEvent;
+use ahp_wire::client::SessionsPage;
 use crate::{ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, TreeLabel, TreeListCommand, TreeRow};
 use ahp_types::state::SessionSummary;
 use imba::list::ListOps;
@@ -15,7 +18,8 @@ use imba::{arena::Arena, constraints::Constraints, container::container, effect:
 use skia_safe::{Rect, Size};
 
 use crate::higent::OpenSessionRow;
-use crate::higent::{Agents, HostStatus};
+use ahp_session::session::Agents;
+use ahp_session::session::HostStatus;
 use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
 
 const PANEL_WIDTH: f32 = crate::DRAWER_WIDTH;
@@ -356,7 +360,7 @@ impl AgentsPanel {
     }
 
     fn connect(&mut self, store: &mut Store, server: HostId, fx: &mut Effects<'_, AgentsCommand>) {
-        let Some(client) = crate::higent::Servers::client(store, server) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
             Agents::set_status(store, server, HostStatus::Failed("unregistered".to_owned()));
             return;
         };
@@ -374,7 +378,7 @@ impl AgentsPanel {
         cursor: Option<String>,
         fx: &mut Effects<'_, AgentsCommand>,
     ) {
-        let Some(client) = crate::higent::Servers::client(store, server) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
             return;
         };
         let first = cursor.is_none();
@@ -395,7 +399,7 @@ impl AgentsPanel {
         server: HostId,
         fx: &mut Effects<'_, AgentsCommand>,
     ) {
-        let Some(client) = crate::higent::Servers::client(store, server) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, server) else {
             return;
         };
         if let Some(token) = self.polls.get(&server).copied() {
@@ -1080,15 +1084,15 @@ impl crate::DynamicCommand for ShareHost {
         fx: &mut crate::AppFx<'_>,
     ) {
         let client = store
-            .get::<crate::higent::LocalHost>()
+            .get::<ahp_wire::client::LocalHost>()
             .and_then(|local| local.0)
-            .and_then(|host| crate::higent::Servers::client(store, host));
+            .and_then(|host| ahp_wire::client::Servers::client(store, host));
         let Some(client) = client else {
             eprintln!("[himark] share: no local host designated");
             return;
         };
         fx.push(
-            imba::effect::AnyEffect::new(crate::higent::ShareHostEffect { client: client.session.clone() })
+            imba::effect::AnyEffect::new(ahp_wire::effects::ShareHostEffect { client: client.session.clone() })
                 .map(move |result| AppCommand::Dynamic(window, Arc::new(SharedHost { result }))),
         );
     }

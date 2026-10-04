@@ -26,7 +26,8 @@ fn popup_selected(list: &PopupList) -> usize {
     list.content().cursor().copied().unwrap_or(0)
 }
 use ahp_locations::FindEffect;
-use documents::LineCol;
+use ahp_lsp::{LspAnswer, LspCompletionEffect, LspItem};
+use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
 
 const SHOWN: usize = 128;
@@ -68,7 +69,6 @@ pub enum CompletionFound {
     },
 }
 
-pub use ahp_lsp::{LspAnswer, LspCompletionEffect, LspItem};
 
 #[derive(Clone)]
 pub struct PickedFile {
@@ -496,7 +496,7 @@ impl Completion {
         let serial = self.serial;
         let caret = document.caret_byte(editor) as usize;
         let mut view = document.text().view();
-        let position = documents::line_col_at(&mut view, caret);
+        let position = documents::text_ext::line_col_at(&mut view, caret);
         let effect = imba::effect::AnyEffect::new(LspCompletionEffect {
             location: location.clone(),
             position,
@@ -717,8 +717,8 @@ impl Completion {
                     .as_ref()
                     .and_then(|(range, _)| {
                         let mut view = document.text().view();
-                        let start = documents::offset_at(&mut view, range.start) as u32;
-                        let end = documents::offset_at(&mut view, range.end) as u32;
+                        let start = documents::text_ext::offset_at(&mut view, range.start) as u32;
+                        let end = documents::text_ext::offset_at(&mut view, range.end) as u32;
                         (start <= anchor && end >= caret.min(end.max(caret)) && start <= end)
                             .then_some(start..end.max(caret))
                     })
@@ -839,7 +839,7 @@ impl Completion {
                 };
 
                 for location in recents.iter() {
-                    if hikit::subsequence_match(&location.name().to_lowercase(), &query) {
+                    if hikit::list_keyboard::subsequence_match(&location.name().to_lowercase(), &query) {
                         push(location);
                     }
                 }
@@ -856,7 +856,7 @@ impl Completion {
                         continue;
                     }
                     let haystack = item.filter_text.as_deref().unwrap_or(&item.label);
-                    if !hikit::subsequence_match(&haystack.to_lowercase(), &query) {
+                    if !hikit::list_keyboard::subsequence_match(&haystack.to_lowercase(), &query) {
                         continue;
                     }
                     labels.push(item.label.clone());

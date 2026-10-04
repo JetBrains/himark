@@ -173,11 +173,11 @@ struct StreamSeat {
     snapshot: himark_ahp_ext_types::LocationList,
 }
 
-impl himark::higent::LocationsClient for StreamSeat {
+impl ahp_wire::client::LocationsClient for StreamSeat {
     fn subscribe_locations(
         &self,
-        _channel: himark::higent::ChannelUri,
-    ) -> himark::higent::ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+        _channel: ahp_wire::client::ChannelUri,
+    ) -> ahp_wire::client::ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let snapshot = self.snapshot.clone();
         Box::pin(std::future::ready(Ok(snapshot)))
     }
@@ -190,10 +190,10 @@ impl himark::higent::LocationsClient for StreamSeat {
 /// these in production).
 struct SeatSubscribeLocations;
 
-impl himark::EffectHandler<himark::higent::SubscribeLocationsEffect> for SeatSubscribeLocations {
+impl himark::EffectHandler<ahp_wire::effects::SubscribeLocationsEffect> for SeatSubscribeLocations {
     async fn handle(
         &self,
-        effect: himark::higent::SubscribeLocationsEffect,
+        effect: ahp_wire::effects::SubscribeLocationsEffect,
     ) -> Result<himark_ahp_ext_types::LocationList, String> {
         effect.client.subscribe_locations(effect.channel).await
     }
@@ -201,10 +201,10 @@ impl himark::EffectHandler<himark::higent::SubscribeLocationsEffect> for SeatSub
 
 struct SeatPollLocations;
 
-impl himark::EffectHandler<himark::higent::PollLocationsEffect> for SeatPollLocations {
+impl himark::EffectHandler<ahp_wire::effects::PollLocationsEffect> for SeatPollLocations {
     async fn handle(
         &self,
-        effect: himark::higent::PollLocationsEffect,
+        effect: ahp_wire::effects::PollLocationsEffect,
     ) -> Vec<himark_ahp_ext_types::LocationList> {
         effect.client.poll_locations(effect.channel).await
     }
@@ -212,10 +212,10 @@ impl himark::EffectHandler<himark::higent::PollLocationsEffect> for SeatPollLoca
 
 struct SeatUnsubscribeLocations;
 
-impl himark::EffectHandler<himark::higent::UnsubscribeLocationsEffect>
+impl himark::EffectHandler<ahp_wire::effects::UnsubscribeLocationsEffect>
     for SeatUnsubscribeLocations
 {
-    async fn handle(&self, effect: himark::higent::UnsubscribeLocationsEffect) {
+    async fn handle(&self, effect: ahp_wire::effects::UnsubscribeLocationsEffect) {
         effect.client.unsubscribe_locations(&effect.channel);
     }
 }
@@ -233,7 +233,7 @@ impl himark::EffectHandler<himark::LspLocationsEffect> for StubLspLocations {
             client: Arc::new(StreamSeat {
                 snapshot: self.snapshot.clone(),
             }),
-            channel: himark::higent::ChannelUri::new("ahp-locations:/test"),
+            channel: ahp_wire::client::ChannelUri::new("ahp-locations:/test"),
             resolve: Arc::new(|uri| {
                 let name = uri.strip_prefix("test:/")?;
                 Some(document_location(name))
@@ -261,9 +261,9 @@ fn wire_location(
 #[test]
 fn references_stream_into_the_search_dock() {
     let (mut app, window) = app_with_located_document(&"line one two\n".repeat(30));
-    app.register_handler::<himark::higent::SubscribeLocationsEffect>(SeatSubscribeLocations);
-    app.register_handler::<himark::higent::PollLocationsEffect>(SeatPollLocations);
-    app.register_handler::<himark::higent::UnsubscribeLocationsEffect>(SeatUnsubscribeLocations);
+    app.register_handler::<ahp_wire::effects::SubscribeLocationsEffect>(SeatSubscribeLocations);
+    app.register_handler::<ahp_wire::effects::PollLocationsEffect>(SeatPollLocations);
+    app.register_handler::<ahp_wire::effects::UnsubscribeLocationsEffect>(SeatUnsubscribeLocations);
     app.register_handler::<himark::LspLocationsEffect>(StubLspLocations {
         snapshot: himark_ahp_ext_types::LocationList {
             locations: vec![

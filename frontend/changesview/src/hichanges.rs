@@ -4,7 +4,7 @@
 use std::collections::BTreeMap;
 
 use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
-use hikit::ForestNode;
+use hikit::forest::ForestNode;
 use imba::store::Store;
 
 const NOTE_KIND: &str = "changes-note";
@@ -1234,7 +1234,7 @@ pub fn folder_node(
             pick: false,
             dim: true,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Label,
             action: None,
             children: Vec::new(),
         }]
@@ -1294,7 +1294,7 @@ pub fn folder_node(
         pick: false,
         dim: false,
         trail: Vec::new(),
-        tint: hikit::TreeTint::Directory,
+        tint: hikit::tree_item::TreeTint::Directory,
         // Refetch is PER REPOSITORY — the chip rides its root row.
         action: Some("REFRESH".to_owned()),
         children,
@@ -1333,7 +1333,7 @@ pub fn dir_forest(
             pick: false,
             dim: false,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Directory,
+            tint: hikit::tree_item::TreeTint::Directory,
             action: None,
             children: nested,
         });
@@ -1356,7 +1356,7 @@ pub fn dir_forest(
             pick: true,
             dim: false,
             trail,
-            tint: hikit::TreeTint::File,
+            tint: hikit::tree_item::TreeTint::File,
             action: None,
             children: Vec::new(),
         });

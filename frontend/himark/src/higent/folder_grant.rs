@@ -11,7 +11,9 @@ use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
-use crate::higent::{HostId, Hosts, SessionUri};
+use ahp_wire::client::HostId;
+use ahp_session::session::Hosts;
+use ahp_wire::client::SessionUri;
 
 pub struct AddSessionFolders {
     pub server: HostId,
@@ -75,7 +77,7 @@ impl crate::DynamicCommand for SessionFoldersPicked {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(client) = crate::higent::Servers::client(store, self.server) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
             eprintln!(
                 "[higent] folder grant DROPPED: no client for {:?} ({})",
                 self.server,
@@ -96,7 +98,7 @@ impl crate::DynamicCommand for SessionFoldersPicked {
             let channel = self.session.as_channel();
             eprintln!("[higent] granting folder {directory} to {channel}");
             fx.push(
-                AnyEffect::new(crate::higent::DispatchChatActionEffect {
+                AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                     client: client.session.clone(),
                     channel,
                     action: StateAction::SessionWorkingDirectorySet(

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::drivers::locations::LocationsWire;
+use ahp_locations::driver::LocationsWire;
 use crate::locations::{open_feed, FeedId, LocationLists, LocationsAsk};
 
 pub use ::locations::search::{SearchArea, SearchCommand, SearchView};
@@ -158,7 +158,7 @@ impl crate::DynamicCommand for ToggleSearchView {
 
         let session = entity.current_session();
         let lists = entity.state().lists();
-        let folders = crate::higent::session_folders(store, &session);
+        let folders = ahp_session::session::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, &app.ui_ctx(), lists);
         let owner = self.id();

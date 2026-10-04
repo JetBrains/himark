@@ -1329,7 +1329,8 @@ fn a_bounded_editor_paints_only_its_fragment() {
 mod injected_syntax {
     use super::{test_fonts, test_theme};
     use crate::markup::Syntax;
-    use crate::markup::{Markup, StyleId};
+    use crate::markup::Markup;
+    use crate::theme::StyleId;
     use crate::test_document::plain_document;
     use operation::operation::Operation;
 
@@ -1642,7 +1643,7 @@ fn styled_runs_translate_across_hidden_syntax() {
     assert_eq!(display.as_str(), "some bold words");
     let decorations = vec![crate::markup::TextDecorationInterval {
         range: 7..11,
-        id: crate::markup::StyleId::Strong,
+        id: crate::theme::StyleId::Strong,
     }];
     let mapped = display.map_decorations(&decorations);
     assert_eq!(mapped.len(), 1);
@@ -1821,7 +1822,7 @@ fn popup_overlays_carry_projected_inlays() {
     };
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
+    ui.set(imba::ui::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
     // the projections from its shared viewport build.
@@ -3428,7 +3429,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     view.gutter_width = chrome_width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
+    ui.set(imba::ui::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3526,7 +3527,7 @@ fn gutter_numbers_share_the_text_baseline() {
     view.gutter_width = chrome.width;
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
+    ui.set(imba::ui::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -3952,7 +3953,7 @@ mod folding {
         let editor = view.editor;
         let store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
-        ui.set(crate::env::UiFonts(test_fonts()));
+        ui.set(imba::ui::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
         let constraints = imba::constraints::Constraints {
             min: skia_safe::Size::default(),
@@ -4868,7 +4869,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
 
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
+    ui.set(imba::ui::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),
@@ -5011,7 +5012,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
 
     let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    ui.set(crate::env::UiFonts(test_fonts()));
+    ui.set(imba::ui::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     let constraints = imba::constraints::Constraints {
         min: skia_safe::Size::default(),

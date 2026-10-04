@@ -12,10 +12,7 @@ use std::sync::Arc;
 use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key as InputKey}, store::Store, layout::LayoutExt as _, ui::UiCtx, View};
 use skia_safe::Size;
 
-use hikit::{
-    tree_toggle, EditorPlace, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
-    ListKeyboardController, ModalRequest, ModalView, TreeListCommand,
-};
+use hikit::{tree_item::tree_toggle, navigation::EditorPlace, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
 use imba::list::{ActivateTrigger, ListOps};
 
 pub(crate) const OUTLINE_CAP: usize = 2_000;
@@ -91,7 +88,7 @@ impl DirTrie {
                 pick: true,
                 dim: false,
                 trail: Vec::new(),
-                tint: hikit::TreeTint::Label,
+                tint: hikit::tree_item::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -103,7 +100,7 @@ impl DirTrie {
             pick: false,
             dim: true,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Label,
             action: None,
             children,
         }
@@ -152,7 +149,7 @@ impl TocView {
                 pick: true,
                 dim: false,
                 trail: Vec::new(),
-                tint: hikit::TreeTint::Label,
+                tint: hikit::tree_item::TreeTint::Label,
                 action: None,
                 children: Vec::new(),
             });
@@ -383,7 +380,7 @@ impl imba::effect::EffectHandler<OutlineEffect> for OutlineHandler {
             }
             let depth = enclosing.len().min(u8::MAX as usize) as u8;
             enclosing.push(range.end);
-            let line = documents::line_col_at(&mut view, range.start as usize).line + 1;
+            let line = documents::text_ext::line_col_at(&mut view, range.start as usize).line + 1;
             rows.push(OutlineRow {
                 syntax,
                 key,
@@ -666,7 +663,7 @@ impl View for OutlineView {
                             pick: true,
                             dim: false,
                             trail: vec![(row.line.to_string(), line_color)],
-                            tint: hikit::TreeTint::Label,
+                            tint: hikit::tree_item::TreeTint::Label,
                             action: None,
                             children: Vec::new(),
                         },

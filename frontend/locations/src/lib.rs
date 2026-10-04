@@ -15,7 +15,6 @@ pub mod peek;
 pub mod search;
 pub mod views;
 
-pub use views::{dispose_feed, files_forest, locations_forest, LocationsWashHook, WashDocument};
 
 use editor::location::ResourceLocation;
 use imba::store::Store;
@@ -39,12 +38,12 @@ impl FoundLocation {
     /// The navigation target: the match's span as line/col — the
     /// door clamps against live text, so staleness degrades to the
     /// nearest sane position.
-    pub fn target(&self) -> std::ops::Range<documents::LineCol> {
-        let start = documents::LineCol {
+    pub fn target(&self) -> std::ops::Range<documents::text_ext::LineCol> {
+        let start = documents::text_ext::LineCol {
             line: self.line,
             col: self.column,
         };
-        let end = documents::LineCol {
+        let end = documents::text_ext::LineCol {
             line: self.line,
             col: self.column.saturating_add(self.length),
         };
@@ -111,7 +110,7 @@ pub enum LocationsAsk {
         feed: FeedId,
         kind: LspKind,
         location: ResourceLocation,
-        position: documents::LineCol,
+        position: documents::text_ext::LineCol,
     },
 
     /// Stop a feed's stream, keeping what landed.

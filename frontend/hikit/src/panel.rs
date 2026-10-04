@@ -8,7 +8,7 @@
 use imba::store::Store;
 use imba::ui::UiCtx;
 
-use crate::{PaneRow, NavigationLocation, Place};
+use crate::{pane_row::PaneRow, navigation::NavigationLocation, navigation::Place};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetOrigin {
@@ -24,7 +24,7 @@ pub enum PanelRequest {
     /// header's click; the shell supplies the window.
     OpenAt(
         editor::location::ResourceLocation,
-        Option<std::ops::Range<documents::LineCol>>,
+        Option<std::ops::Range<documents::text_ext::LineCol>>,
     ),
 
     /// Open a standalone diff pane over a pair of locations — the
@@ -89,7 +89,7 @@ pub trait PanelView: imba::dyn_view::CloneDynView + Clone + Sized + 'static {
         false
     }
 
-    fn drawer_view(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::ModalView>> {
+    fn drawer_view(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::modal::ModalView>> {
         let _ = (store, ui);
         None
     }
@@ -112,7 +112,7 @@ pub trait DynPanelView: imba::dyn_view::CloneDynView {
         location: &NavigationLocation,
         fx: &mut imba::command::Fx<'_>,
     ) -> bool;
-    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::ModalView>>;
+    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::modal::ModalView>>;
 }
 
 impl<P: PanelView> DynPanelView for P {
@@ -157,7 +157,7 @@ impl<P: PanelView> DynPanelView for P {
             None => false,
         }
     }
-    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::ModalView>> {
+    fn drawer_view_dyn(&self, store: &Store, ui: &UiCtx) -> Option<Box<dyn crate::modal::ModalView>> {
         self.drawer_view(store, ui)
     }
 }

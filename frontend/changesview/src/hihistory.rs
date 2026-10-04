@@ -3,7 +3,7 @@
 
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::{ForestList, ForestNode, ForestSearcher, ListKeyboardController};
+use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyboardController};
 use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, ui::UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
@@ -472,7 +472,7 @@ pub fn graph_node(
             pick: false,
             dim: true,
             trail: Vec::new(),
-            tint: hikit::TreeTint::Label,
+            tint: hikit::tree_item::TreeTint::Label,
             action: None,
             children: Vec::new(),
         }
@@ -552,7 +552,7 @@ pub fn graph_node(
                         pick: true,
                         dim: false,
                         trail,
-                        tint: hikit::TreeTint::Label,
+                        tint: hikit::tree_item::TreeTint::Label,
                         action: None,
                         children,
                     });
@@ -571,7 +571,7 @@ pub fn graph_node(
                         pick: false,
                         dim: true,
                         trail: Vec::new(),
-                        tint: hikit::TreeTint::Label,
+                        tint: hikit::tree_item::TreeTint::Label,
                         action: None,
                         children: Vec::new(),
                     });
@@ -591,7 +591,7 @@ pub fn graph_node(
         pick: false,
         dim: false,
         trail: Vec::new(),
-        tint: hikit::TreeTint::Label,
+        tint: hikit::tree_item::TreeTint::Label,
         action: None,
         children,
     }

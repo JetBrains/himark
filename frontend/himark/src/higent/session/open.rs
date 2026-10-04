@@ -3,9 +3,13 @@
 
 use std::sync::Arc;
 
-use crate::higent::{Agents, SessionChannel};
-use crate::higent::{ChatUri, SessionUri};
-use crate::higent::{HostId, PollSessionEffect, SubscribeSessionEffect};
+use ahp_session::session::Agents;
+use ahp_wire::client::SessionChannel;
+use ahp_wire::client::ChatUri;
+use ahp_wire::client::SessionUri;
+use ahp_wire::client::HostId;
+use ahp_wire::effects::PollSessionEffect;
+use ahp_wire::effects::SubscribeSessionEffect;
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
 use ahp_types::actions::StateAction;
 use ahp_types::state::ChatSummary;
@@ -32,7 +36,7 @@ pub fn open_session_with(
     initial_prompt: Option<String>,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(client) = crate::higent::Servers::client(store, server) else {
+    let Some(client) = ahp_wire::client::Servers::client(store, server) else {
         eprintln!("[higent] open-session: unregistered server {server:?}");
         return;
     };
@@ -151,14 +155,14 @@ impl DynamicCommand for EnterSessionWork {
             host: self.server,
             session: self.session.clone(),
         };
-        let folders = crate::higent::session_folders(store, &key);
+        let folders = ahp_session::session::session_folders(store, &key);
         if let Some(state) = Windows::session_state(store, window) {
             fx.scope(crate::AppCommand::Verb, |fx| {
-                crate::drivers::changes::ensure(store, state.changes_wire(), folders.clone(), fx)
+                ahp_changes::changes::ensure(store, state.changes_wire(), folders.clone(), fx)
             });
             fx.scope(crate::AppCommand::Verb, |fx| {
                 for folder in folders {
-                    crate::drivers::comments::ensure(store, state.comments_wire(), &folder, fx);
+                    ahp_comments::ensure(store, state.comments_wire(), &folder, fx);
                 }
             });
         }
@@ -180,7 +184,7 @@ impl DynamicCommand for EnterSessionWork {
                 Windows::put(store, window, entity);
                 return;
             }
-            let pane = crate::higent::Chats::open_with(
+            let pane = ahp_chat::chats::Chats::open_with(
                 store,
                 ui,
                 entity.state().chats(),
@@ -203,7 +207,7 @@ fn relaunch_session_poll(
     session: SessionUri,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(client) = crate::higent::Servers::client(store, server) else {
+    let Some(client) = ahp_wire::client::Servers::client(store, server) else {
         return;
     };
     let landing = session.clone();
@@ -350,10 +354,10 @@ pub(crate) fn apply_channel_actions(
                 // The session channel's catalog names the session it
                 // serves; its session's DRIVER takes the entries.
                 if let Some(wire) =
-                    crate::higent::Hosts::state(store, key).map(|state| state.changes_wire())
+                    ahp_session::session::Hosts::state(store, key).map(|state| state.changes_wire())
                 {
                     fx.scope(crate::AppCommand::Verb, |fx| {
-                        crate::drivers::changes::adopt_session_catalog(
+                        ahp_changes::changes::adopt_session_catalog(
                             store, key, wire, changed, fx,
                         )
                     });
@@ -370,12 +374,12 @@ pub(crate) fn apply_channel_actions(
         // The channel names the session it serves; the session's
         // collection takes the folder.
         if let Some(wire) =
-            crate::higent::Hosts::state(store, key).map(|state| state.comments_wire())
+            ahp_session::session::Hosts::state(store, key).map(|state| state.comments_wire())
         {
-            let folders = crate::higent::session_folders(store, key);
+            let folders = ahp_session::session::session_folders(store, key);
             fx.scope(crate::AppCommand::Verb, |fx| {
                 for folder in folders {
-                    crate::drivers::comments::ensure(store, wire, &folder, fx);
+                    ahp_comments::ensure(store, wire, &folder, fx);
                 }
             });
         }

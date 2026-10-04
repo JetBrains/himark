@@ -378,14 +378,14 @@ mod tests {
         let ui = UiCtx::dont_use_too_slow();
         // Warm the ctx the way the app's long-lived one is warm: the
         // first typeface resolution is a boot cost, not a push cost.
-        let mut warmup: imba::list::ListSlice<crate::TreeRow, u64> = imba::list::ListSlice::new();
+        let mut warmup: imba::list::ListSlice<crate::forest::TreeRow, u64> = imba::list::ListSlice::new();
         warmup.push_keyed(
             u64::MAX,
-            crate::TreeItemView::leaf(crate::TreeLabel::new("warmup".to_owned(), true, false), 1),
+            crate::tree_item::TreeItemView::leaf(crate::tree_item::TreeLabel::new("warmup".to_owned(), true, false), 1),
             &store,
             &ui,
         );
-        let mut slice: imba::list::ListSlice<crate::TreeRow, u64> = imba::list::ListSlice::new();
+        let mut slice: imba::list::ListSlice<crate::forest::TreeRow, u64> = imba::list::ListSlice::new();
         let mut worst = 0.0f64;
         let mut first = 0.0f64;
         let started = std::time::Instant::now();
@@ -393,8 +393,8 @@ mod tests {
             let one = std::time::Instant::now();
             slice.push_keyed(
                 n,
-                crate::TreeItemView::leaf(
-                    crate::TreeLabel::new(format!("row {n}"), true, false),
+                crate::tree_item::TreeItemView::leaf(
+                    crate::tree_item::TreeLabel::new(format!("row {n}"), true, false),
                     1,
                 ),
                 &store,

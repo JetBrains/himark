@@ -22,17 +22,27 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use himark::higent::ahp_types::actions::StateAction;
-use himark::higent::client::ResourceUri;
-use himark::higent::{
-    ChannelUri, ChatClient as _, ChatUri, ClientFuture, ServerEvent, AnnotationsClient as _, ChangesClient as _, DocumentsClient as _, ResourceClient as _,
-    SessionClient as _, TerminalClient as _, LocationsClient as _, LspClient as _,
-    SessionOptions, SessionUri,
-};
+use ahp_types::actions::StateAction;
+use ahp_wire::client::ResourceUri;
+use ahp_wire::client::ChannelUri;
+use ahp_wire::client::ChatClient as _;
+use ahp_wire::client::ChatUri;
+use ahp_wire::client::ClientFuture;
+use ahp_wire::client::ServerEvent;
+use ahp_wire::client::AnnotationsClient as _;
+use ahp_wire::client::ChangesClient as _;
+use ahp_wire::client::DocumentsClient as _;
+use ahp_wire::client::ResourceClient as _;
+use ahp_wire::client::SessionClient as _;
+use ahp_wire::client::TerminalClient as _;
+use ahp_wire::client::LocationsClient as _;
+use ahp_wire::client::LspClient as _;
+use ahp_wire::client::SessionOptions;
+use ahp_wire::client::SessionUri;
 
 use crate::findroute_tests::{bind_backend, block_on};
-use crate::hiahp::transport::{Connector, DeadLatched, Dialing};
-use crate::hiahp::wire::WireHost;
+use ahp_wire::transport::{Connector, DeadLatched, Dialing};
+use ahp_wire::wire::WireHost;
 
 // ─── the probe ───────────────────────────────────────────────────────────
 
@@ -193,7 +203,7 @@ fn bench() -> Bench {
     );
     let probe = Arc::new(Probe::default());
     let a = Arc::new(WireHost::at(
-        crate::hiahp::wire::test_runtime(),
+        ahp_wire::wire::test_runtime(),
         Arc::new(ProbeConnector(Arc::clone(&probe))),
         url.clone(),
     ));
@@ -208,7 +218,7 @@ fn bench() -> Bench {
 impl Bench {
     fn other(&self) -> Arc<WireHost> {
         Arc::new(WireHost::at(
-            crate::hiahp::wire::test_runtime(),
+            ahp_wire::wire::test_runtime(),
             crate::test_connector(),
             self.url.clone(),
         ))
@@ -1037,7 +1047,7 @@ fn a_session_channel_under_a_reconnect_storm_delivers_once_in_order() {
         block_on(b.dispatch_action(
             ChannelUri::new(session.as_str()),
             StateAction::SessionWorkingDirectorySet(
-                himark::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
+                ahp_types::actions::SessionWorkingDirectorySetAction {
                     directory: folder.clone(),
                 },
             ),
@@ -1135,7 +1145,7 @@ fn a_restarted_host_does_not_lose_the_next_gap() {
         agent_host::testing::fake_cli_command(reborn.path()),
     );
     let c = Arc::new(WireHost::at(
-        crate::hiahp::wire::test_runtime(),
+        ahp_wire::wire::test_runtime(),
         crate::test_connector(),
         url.clone(),
     ));

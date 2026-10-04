@@ -27,10 +27,10 @@ pub fn open_panel(
     reveal: Option<ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, TreeCommand>,
 ) -> SessionTreeView {
-    let folders = crate::higent::session_folders(store, &workspace);
+    let folders = ahp_session::session::session_folders(store, &workspace);
     let mirror: Arc<dyn Fn(&Store) -> Vec<ResourceLocation> + Send + Sync> = {
         let workspace = workspace.clone();
-        Arc::new(move |store: &Store| crate::higent::session_folders(store, &workspace))
+        Arc::new(move |store: &Store| ahp_session::session::session_folders(store, &workspace))
     };
     let panel = SessionTreeView::open(
         store,
@@ -69,12 +69,12 @@ fn remove_from_session(
     workspace: crate::SessionId,
 ) -> Arc<dyn Fn(&Store, ResourceLocation) -> Option<AnyEffect<TreeCommand>> + Send + Sync> {
     Arc::new(move |store, target| {
-        let client = crate::higent::Servers::client(store, workspace.host)?;
-        let uris = crate::higent::Hosts::uris(store, workspace.host)?;
-        use crate::higent::ahp_types::actions as wire;
+        let client = ahp_wire::client::Servers::client(store, workspace.host)?;
+        let uris = ahp_session::session::Hosts::uris(store, workspace.host)?;
+        use ahp_types::actions as wire;
         let directory = uris.uri_of(&target).as_str().to_owned();
         Some(
-            AnyEffect::new(crate::higent::DispatchChatActionEffect {
+            AnyEffect::new(ahp_wire::effects::DispatchChatActionEffect {
                 client: client.session.clone(),
                 channel: workspace.session.as_channel(),
                 action: wire::StateAction::SessionWorkingDirectoryRemoved(
@@ -201,7 +201,7 @@ mod tests {
             &mut store,
             &[root.clone(), root.clone(), directory(&["other"])],
         );
-        let folders = crate::higent::session_folders(&store, &session);
+        let folders = ahp_session::session::session_folders(&store, &session);
         let unique: std::collections::HashSet<_> = folders
             .iter()
             .map(|folder| folder.path().to_vec())

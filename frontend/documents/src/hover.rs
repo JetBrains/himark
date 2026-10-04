@@ -11,7 +11,7 @@ use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
 use imba::ui::UiCtx;
 
-use crate::{DocumentId, LineCol};
+use crate::{DocumentId, text_ext::LineCol};
 use editor::location::ResourceLocation;
 
 #[derive(Clone, Debug)]
@@ -132,7 +132,7 @@ impl Hover {
         self.serial += 1;
         let serial = self.serial;
         let mut view = document.text().view();
-        let position = crate::line_col_at(&mut view, word.start as usize);
+        let position = crate::text_ext::line_col_at(&mut view, word.start as usize);
         let effect = imba::effect::AnyEffect::new(LspHoverEffect {
             location: arming.location,
             position,

@@ -9,8 +9,8 @@ use imba::store::Store;
 use crate::app::AppFx;
 use crate::Panel;
 
-pub use ::ahp_session::higent::RecentLocations;
-pub use hikit::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
+pub use ::ahp_chat::recents::RecentLocations;
+pub use hikit::{navigation::EditorPlace, navigation::NavigationLocation, navigation::Navigator, navigation::NoPlace, navigation::Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
 /// resolve the window's session and land panes into it. Shell-side by

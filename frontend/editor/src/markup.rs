@@ -1,6 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::theme::{StyleId, TextAlignment, TextAttributes};
+
 use std::{ops::Range, sync::Arc};
 
 use imba::{arena::Arena, constraints::Constraints, store::Store, dyn_view::DynCommand, Thunk, ui::UiCtx, View};
@@ -207,7 +209,6 @@ impl<'a> Iterator for RecursiveQuery<'a> {
     }
 }
 
-pub use crate::theme::{StyleId, TextAlignment, TextAttributes};
 
 #[derive(Clone)]
 pub(crate) enum Decoration {

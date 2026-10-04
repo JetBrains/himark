@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use hikit::menu::{MenuCommand, MenuView, PopupMenuView};
-use hikit::{ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, TreeRow};
+use hikit::{list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, forest::TreeRow};
 use imba::list::{ActivateTrigger, ListOps};
 use imba::{arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Size};
@@ -35,11 +35,11 @@ type TreeList = ScrollView<ListView<TreeRow, ResourceLocation>>;
 #[derive(Clone)]
 struct LocationSearcher;
 
-impl hikit::Searcher for LocationSearcher {
+impl hikit::list_keyboard::Searcher for LocationSearcher {
     type View = TreeList;
     type Key = ResourceLocation;
 
-    fn capture(&self, view: &Self::View) -> hikit::ItemSource<ResourceLocation> {
+    fn capture(&self, view: &Self::View) -> hikit::list_keyboard::ItemSource<ResourceLocation> {
         let keys = view.content().structure_keys();
         Box::new(move || {
             keys.ordered_keys()
@@ -87,13 +87,13 @@ impl LocationTree {
     fn row(&self, location: &ResourceLocation, depth: u16, expanded: bool) -> TreeRow {
         let directory = location.kind().is_directory();
         let name = location.name().to_owned();
-        let label = hikit::TreeLabel::new(name, !directory, false).tinted(match directory {
-            true => hikit::TreeTint::Directory,
-            false => hikit::TreeTint::File,
+        let label = hikit::tree_item::TreeLabel::new(name, !directory, false).tinted(match directory {
+            true => hikit::tree_item::TreeTint::Directory,
+            false => hikit::tree_item::TreeTint::File,
         });
         match directory {
-            true => hikit::TreeItemView::branch(label, depth, expanded).toggling_on_body(),
-            false => hikit::TreeItemView::leaf(label, depth),
+            true => hikit::tree_item::TreeItemView::branch(label, depth, expanded).toggling_on_body(),
+            false => hikit::tree_item::TreeItemView::leaf(label, depth),
         }
     }
 
@@ -360,7 +360,7 @@ impl SessionTree {
 
 #[derive(Clone)]
 pub enum TreeCommand {
-    Rows(ListKeyCommand<hikit::TreeListCommand>),
+    Rows(ListKeyCommand<hikit::tree_item::TreeListCommand>),
 
     Retheme,
 
@@ -1082,11 +1082,11 @@ impl View for SessionTreeView {
                         return;
                     }
                     ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = hikit::tree_context(inner) {
+                        if let Some(index) = hikit::tree_item::tree_context(inner) {
                             self.open_menu(index, store, ui);
                             return self.persist(store);
                         }
-                        if let Some(index) = hikit::tree_toggle(inner) {
+                        if let Some(index) = hikit::tree_item::tree_toggle(inner) {
                             self.activate(index, store, ui, fx);
                             return self.persist(store);
                         }

@@ -7,7 +7,7 @@ use super::*;
 /// production takes (the location's owner; a bare test store routes
 /// to the local default session), never a privately minted id.
 fn test_docs(store: &mut Store) -> imba::store::Id<himark::OpenDocuments> {
-    himark::higent::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
+    ahp_session::session::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
         .documents()
 }
 

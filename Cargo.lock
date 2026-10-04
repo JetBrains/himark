@@ -1074,6 +1074,7 @@ dependencies = [
 name = "demo"
 version = "0.1.0"
 dependencies = [
+ "ahp-session",
  "editor",
  "himark",
  "himarkdown",
@@ -1117,6 +1118,7 @@ name = "desktop"
 version = "0.1.0"
 dependencies = [
  "ahp",
+ "ahp-wire",
  "ahp-ws",
  "himark",
  "host-discovery",
@@ -1582,7 +1584,15 @@ version = "0.1.0"
 dependencies = [
  "agent-host",
  "ahp",
+ "ahp-changes",
+ "ahp-chat",
+ "ahp-comments",
+ "ahp-docsync",
+ "ahp-locations",
+ "ahp-lsp",
+ "ahp-session",
  "ahp-types",
+ "ahp-wire",
  "cbindgen",
  "demo",
  "desktop",
@@ -2005,6 +2015,11 @@ dependencies = [
 name = "hicode"
 version = "0.1.0"
 dependencies = [
+ "ahp-chat",
+ "ahp-locations",
+ "ahp-session",
+ "ahp-types",
+ "ahp-wire",
  "editor",
  "himark",
  "himark-ahp-ext-types",
@@ -2325,8 +2340,15 @@ dependencies = [
 name = "himark"
 version = "0.1.0"
 dependencies = [
+ "ahp-changes",
+ "ahp-chat",
+ "ahp-comments",
+ "ahp-docsync",
+ "ahp-locations",
+ "ahp-lsp",
  "ahp-session",
  "ahp-types",
+ "ahp-wire",
  "alacritty_terminal",
  "canvas",
  "changesview",
@@ -2384,6 +2406,7 @@ dependencies = [
 name = "himarkdown"
 version = "0.1.0"
 dependencies = [
+ "ahp-session",
  "editor",
  "himark",
  "hisitter",
@@ -2399,6 +2422,7 @@ dependencies = [
 name = "himermaid"
 version = "0.1.0"
 dependencies = [
+ "ahp-session",
  "editor",
  "himark",
  "himarkdown",
@@ -2551,6 +2575,10 @@ dependencies = [
 name = "hiscript"
 version = "0.1.0"
 dependencies = [
+ "ahp-chat",
+ "ahp-session",
+ "ahp-types",
+ "ahp-wire",
  "editor",
  "himark",
  "imba",
@@ -3995,6 +4023,7 @@ dependencies = [
 name = "palette"
 version = "0.1.0"
 dependencies = [
+ "ahp-session",
  "editor",
  "himark",
  "imba",
@@ -4059,6 +4088,9 @@ checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
 name = "peeker"
 version = "0.1.0"
 dependencies = [
+ "ahp-chat",
+ "ahp-session",
+ "ahp-wire",
  "editor",
  "himark",
  "himarkdown",
@@ -6732,6 +6764,13 @@ name = "web"
 version = "0.1.0"
 dependencies = [
  "ahp",
+ "ahp-chat",
+ "ahp-docsync",
+ "ahp-locations",
+ "ahp-lsp",
+ "ahp-session",
+ "ahp-types",
+ "ahp-wire",
  "demo",
  "editor",
  "hibash",

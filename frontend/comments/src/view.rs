@@ -28,7 +28,7 @@ pub struct AddComment {
     pub comments: imba::store::Id<crate::Comments>,
 }
 
-impl documents::DocumentCommand for AddComment {
+impl documents::dynamic::DocumentCommand for AddComment {
     fn id(&self) -> &'static str {
         "comments.add"
     }
@@ -66,8 +66,8 @@ impl documents::DocumentCommand for AddComment {
         // still shows the card — it just never mints a record.
         let annotation = crate::installed(store).then(|| {
             let mut view = document.text().view();
-            let range = documents::line_col_at(&mut view, selection.start as usize)
-                ..documents::line_col_at(&mut view, selection.end as usize);
+            let range = documents::text_ext::line_col_at(&mut view, selection.start as usize)
+                ..documents::text_ext::line_col_at(&mut view, selection.end as usize);
             crate::Comments::created(store, comments, location, range, String::new())
         });
 

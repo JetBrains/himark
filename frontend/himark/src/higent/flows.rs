@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::higent::HostId;
+use ahp_wire::client::HostId;
 
 pub type NewSessionFlow = Arc<dyn Fn(HostId) -> Arc<dyn crate::DynamicCommand> + Send + Sync>;
 

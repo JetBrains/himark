@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::markup::StyleId;
+use editor::theme::StyleId;
 
 trait RunReparse {
     fn run_reparse(self) -> editor::reparse::ReparseOutcome;

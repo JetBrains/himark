@@ -29,14 +29,14 @@ pub struct ScriptCapture {
 }
 
 pub struct ScriptAgent {
-    pub client: Arc<dyn himark::higent::ChatClient>,
+    pub client: Arc<dyn ahp_wire::client::ChatClient>,
 
-    pub session: himark::higent::SessionUri,
+    pub session: ahp_wire::client::SessionUri,
 }
 
 async fn drive_turn(agent: &ScriptAgent, prompt: String) -> Result<String, String> {
-    use himark::higent::ahp_types::actions::StateAction;
-    use himark::higent::ahp_types::state::ResponsePart;
+    use ahp_types::actions::StateAction;
+    use ahp_types::state::ResponsePart;
     let chat = agent
         .client
         .create_chat(agent.session.clone())
@@ -375,7 +375,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             view.substring(0..end)
         };
         let home = himark::SessionId::of_location(store, location);
-        let Some((documents, changes)) = himark::higent::Hosts::state(store, &home)
+        let Some((documents, changes)) = ahp_session::session::Hosts::state(store, &home)
             .map(|state| (state.documents(), state.changes()))
         else {
             return;
@@ -406,7 +406,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
                 if !session.names_session() {
                     return None;
                 }
-                let client = himark::higent::Servers::client(store, session.host)?;
+                let client = ahp_wire::client::Servers::client(store, session.host)?;
                 Some(ScriptAgent {
                     client: client.chat,
                     session: session.session,
@@ -449,7 +449,7 @@ fn land(
                 base_revision,
                 operation,
             } => {
-                let Some(documents) = himark::higent::Hosts::documents_of_document(store, id)
+                let Some(documents) = ahp_session::session::Hosts::documents_of_document(store, id)
                 else {
                     continue;
                 };

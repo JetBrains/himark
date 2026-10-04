@@ -2320,7 +2320,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
                 let start = at + word * 4;
                 let end = (start + 3).min(at + len.saturating_sub(1));
                 if start < end {
-                    markup.push_styled(start..end, editor::markup::StyleId::DiffAdded);
+                    markup.push_styled(start..end, editor::theme::StyleId::DiffAdded);
                 }
             }
             at += len;
@@ -2443,7 +2443,7 @@ fn folded_squash_paint_cost_is_size_independent() {
                     let start = at + word * 4;
                     let end = (start + 3).min(at + len.saturating_sub(1));
                     if start < end {
-                        markup.push_styled(start..end, editor::markup::StyleId::DiffAdded);
+                        markup.push_styled(start..end, editor::theme::StyleId::DiffAdded);
                     }
                 }
                 at += len;

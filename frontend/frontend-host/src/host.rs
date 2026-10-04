@@ -269,8 +269,8 @@ pub(crate) struct FilePickerHandler(pub(crate) Arc<HostBridge>);
 
 pub(crate) struct ShareHostHandler(pub(crate) Arc<HostBridge>);
 
-impl EffectHandler<himark::higent::ShareHostEffect> for ShareHostHandler {
-    async fn handle(&self, effect: himark::higent::ShareHostEffect) -> Result<String, String> {
+impl EffectHandler<ahp_wire::effects::ShareHostEffect> for ShareHostHandler {
+    async fn handle(&self, effect: ahp_wire::effects::ShareHostEffect) -> Result<String, String> {
         let url = effect.client.http_serve().await?;
         self.0.set_clipboard(&url);
         Ok(url)
@@ -338,17 +338,17 @@ fn open_folder_session(
     folders: &[ResourceLocation],
     fx: &mut AppFx<'_>,
 ) -> bool {
-    let Some((host, client, _)) = himark::higent::client::route_client(store, "local") else {
+    let Some((host, client, _)) = ahp_wire::client::route_client(store, "local") else {
         return false;
     };
-    let Some(uris) = himark::higent::Hosts::uris(store, host) else {
+    let Some(uris) = ahp_session::session::Hosts::uris(store, host) else {
         return false;
     };
     let dirs: Vec<String> = folders
         .iter()
         .map(|folder| uris.uri_of(folder).into_string())
         .collect();
-    let existing = himark::higent::Agents::record(store, host).and_then(|record| {
+    let existing = ahp_session::session::Agents::record(store, host).and_then(|record| {
         record
             .sessions
             .iter()
@@ -357,14 +357,14 @@ fn open_folder_session(
                     held.len() == dirs.len() && dirs.iter().all(|dir| held.contains(dir))
                 })
             })
-            .map(|summary| himark::higent::SessionUri::new(summary.resource.clone()))
+            .map(|summary| ahp_wire::client::SessionUri::new(summary.resource.clone()))
     });
     match existing {
         Some(session) => himark::higent::open_session(store, window, host, session, false, fx),
         None => {
             let _ = fx.push(
-                AnyEffect::new(himark::higent::CreateSessionEffect {
-                    options: himark::higent::SessionOptions::default(),
+                AnyEffect::new(ahp_wire::effects::CreateSessionEffect {
+                    options: ahp_wire::client::SessionOptions::default(),
                     client: client.session.clone(),
                     working_directories: dirs,
                 })
@@ -415,17 +415,17 @@ impl DynamicCommand for OpenPicked {
                 for folder in folders {
                     let spelled = editor::location::ResourceLocation::new(
                         folder.kind().clone(),
-                        editor::location::Authority::new(himark::higent::client::authority(
+                        editor::location::Authority::new(ahp_wire::client::authority(
                             workspace.host,
                             &workspace.session,
                         )),
                         folder.path().to_vec(),
                     );
                     fx.scope(AppCommand::Verb, |fx| {
-                        himark::drivers::changes::ensure_folder(store, wire, spelled.clone(), fx)
+                        ahp_changes::changes::ensure_folder(store, wire, spelled.clone(), fx)
                     });
                     fx.scope(AppCommand::Verb, |fx| {
-                        himark::drivers::comments::ensure(store, comments_wire, &spelled, fx)
+                        ahp_comments::ensure(store, comments_wire, &spelled, fx)
                     });
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
@@ -553,7 +553,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
 }
 
 pub struct NewTerminalEffect {
-    pub(crate) client: Arc<dyn himark::higent::TerminalClient>,
+    pub(crate) client: Arc<dyn ahp_wire::client::TerminalClient>,
     /// The session the terminal is spawned IN — the wire's address.
     pub(crate) home: himark::SessionId,
     pub(crate) cwd: Option<String>,
@@ -576,8 +576,8 @@ pub(crate) struct SessionTerminalHandler {
 }
 
 struct AhpBackend {
-    client: Arc<dyn himark::higent::TerminalClient>,
-    channel: himark::higent::ChannelUri,
+    client: Arc<dyn ahp_wire::client::TerminalClient>,
+    channel: ahp_wire::client::ChannelUri,
 }
 
 impl himark::terminal::TerminalBackend for AhpBackend {
@@ -596,7 +596,7 @@ impl himark::terminal::TerminalBackend for AhpBackend {
 impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
     async fn handle(&self, effect: NewTerminalEffect) -> Option<Arc<himark::terminal::Session>> {
         let channel =
-            himark::higent::ChannelUri::new(format!("ahp-terminal:/{}", crate::hiahp::uuid_v4()));
+            ahp_wire::client::ChannelUri::new(format!("ahp-terminal:/{}", ahp_wire::uuid_v4()));
         let session = himark::terminal::Session::new(Box::new(AhpBackend {
             client: Arc::clone(&effect.client),
             channel: channel.clone(),
@@ -607,12 +607,12 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
             let refresh = Arc::clone(&self.refresh);
             let window = effect.window;
             let pending = Arc::clone(&pending);
-            Arc::new(move |event: himark::higent::TerminalEvent| {
+            Arc::new(move |event: ahp_wire::client::TerminalEvent| {
                 match event {
-                    himark::higent::TerminalEvent::Data(text) => {
+                    ahp_wire::client::TerminalEvent::Data(text) => {
                         let _ = session.output(text.as_bytes());
                     }
-                    himark::higent::TerminalEvent::Exited(code) => {
+                    ahp_wire::client::TerminalEvent::Exited(code) => {
                         let _ = session.exited(code.unwrap_or(-1));
                     }
                 }
@@ -620,7 +620,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
                 if !pending.swap(true, std::sync::atomic::Ordering::SeqCst) {
                     refresh(window, Arc::clone(&pending));
                 }
-            }) as Arc<dyn Fn(himark::higent::TerminalEvent) + Send + Sync>
+            }) as Arc<dyn Fn(ahp_wire::client::TerminalEvent) + Send + Sync>
         };
         effect
             .client
@@ -678,10 +678,10 @@ impl DynamicCommand for OpenTerminal {
         };
         let workspace = entity.current_session();
         himark::Windows::put(store, window, entity);
-        let resolved = himark::higent::Agents::live_session(store, &workspace)
+        let resolved = ahp_session::session::Agents::live_session(store, &workspace)
             .and_then(|key| {
-                let client = himark::higent::Servers::client(store, key.host)?;
-                let cwd = himark::higent::Agents::record(store, key.host).and_then(|record| {
+                let client = ahp_wire::client::Servers::client(store, key.host)?;
+                let cwd = ahp_session::session::Agents::record(store, key.host).and_then(|record| {
                     record
                         .summary(&key.session)
                         .and_then(|summary| summary.working_directories.as_ref()?.first().cloned())
@@ -690,22 +690,22 @@ impl DynamicCommand for OpenTerminal {
             })
             .or_else(|| {
                 let server = store
-                    .get::<himark::higent::LocalHost>()
+                    .get::<ahp_wire::client::LocalHost>()
                     .copied()
                     .unwrap_or_default()
                     .0?;
-                let client = himark::higent::Servers::client(store, server)?;
-                let cwd = himark::higent::session_folders(store, &workspace)
+                let client = ahp_wire::client::Servers::client(store, server)?;
+                let cwd = ahp_session::session::session_folders(store, &workspace)
                     .first()
                     .map(|folder| {
-                        himark::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder)
+                        ahp_wire::client::ResourceUriMap::uri_of(&crate::uris::FileUris, folder)
                             .into_string()
                     });
                 Some((
                     client,
                     himark::SessionId {
                         host: server,
-                        session: himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                        session: ahp_wire::client::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
                     },
                     cwd,
                 ))
@@ -765,7 +765,7 @@ impl DynamicCommand for ShowTerminal {
         if !entity.open_panel(
             store,
             ui,
-            Box::new(himark::terminal::TerminalView::new(terminals, id)),
+            Box::new(himark::terminal::pane::TerminalView::new(terminals, id)),
             fx,
         ) {
             session.hangup();

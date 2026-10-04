@@ -10,7 +10,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use crate::{AnnotationId, CardWork, CommentRecord, Comments};
-use documents::{DocumentId, LineCol};
+use documents::{DocumentId, text_ext::LineCol};
 use editor::markup::InlayKey;
 use imba::command::{Fx, Verb};
 use imba::store::Store;
@@ -172,8 +172,8 @@ fn live_card_range(doc: &editor::document::Document, key: InlayKey) -> Option<Ra
     let (range, _) = markup.inlay_at_key(comments_markup(), key)?;
     let mut view = doc.text().view();
     Some(
-        documents::line_col_at(&mut view, range.start as usize)
-            ..documents::line_col_at(&mut view, range.end as usize),
+        documents::text_ext::line_col_at(&mut view, range.start as usize)
+            ..documents::text_ext::line_col_at(&mut view, range.end as usize),
     )
 }
 
@@ -199,8 +199,8 @@ fn materialize(
         Some(range) => {
             let mut view = doc.text().view();
             let start =
-                documents::offset_at(&mut view, range.start).min(byte_count as usize) as u32;
-            let end = documents::offset_at(&mut view, range.end).min(byte_count as usize) as u32;
+                documents::text_ext::offset_at(&mut view, range.start).min(byte_count as usize) as u32;
+            let end = documents::text_ext::offset_at(&mut view, range.end).min(byte_count as usize) as u32;
             start..end.max(start)
         }
         None => 0..byte_count,

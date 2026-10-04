@@ -17,7 +17,7 @@ use editor::markup::InsteadKind;
 use editor::markup::Markup;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
-use editor::markup::StyleId;
+use editor::theme::StyleId;
 use editor::reparse::SyntaxLanguages;
 use hisitter::TsTree;
 use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View};
@@ -315,7 +315,7 @@ fn install(
         // The embed's temp documents file under the location's owner
         // (synthetic embed locations fall to the local session).
         let home = himark::SessionId::of_location(store, &embed.location);
-        let documents = himark::higent::Hosts::ensure_state(store, &home).documents();
+        let documents = ahp_session::session::Hosts::ensure_state(store, &home).documents();
         let (id, prebuilt, carried_window) =
             match OpenDocuments::by_location(store, documents, &embed.location) {
                 Some(id) => (id, None, None),

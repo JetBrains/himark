@@ -186,7 +186,7 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
     assert!(editor::markup::OverlaidMarkup::new(document.markup(), &extras)
         .block_marks_in(0..source.len() as u32)
         .ids()
-        .contains(&editor::markup::StyleId::SourceCode));
+        .contains(&editor::theme::StyleId::SourceCode));
 }
 
 #[test]

@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use editor::{markup::MarkupBuilder, markup::StyleId, reparse::SyntaxLanguage, reparse::SyntaxTree};
+use editor::{markup::MarkupBuilder, theme::StyleId, reparse::SyntaxLanguage, reparse::SyntaxTree};
 
 pub mod assist;
 pub mod caret_passes;

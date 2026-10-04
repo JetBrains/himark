@@ -257,9 +257,9 @@ fn typing_lands_in_the_card_not_the_host_document() {
 fn sending_never_consumes_what_it_cannot_deliver() {
     let (mut app, window) = app_with_located_document("hello brave new world\n");
 
-    let server = app.register_client(crate::higent::client::inert());
+    let server = app.register_client(ahp_wire::client::inert());
     app.store_mut()
-        .update::<crate::higent::LocalHost>(|local| local.0 = Some(server));
+        .update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(server));
     crate::hicomments::install(&mut app.store_mut());
     invoke(&mut app, window, "test.select");
     invoke(&mut app, window, "comments.add");

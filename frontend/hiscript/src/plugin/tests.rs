@@ -26,7 +26,7 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
     let documents =
-        himark::higent::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
+        ahp_session::session::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
             .documents();
     OpenDocuments::register(
         store,
@@ -271,16 +271,16 @@ fn paths_resolve_against_the_scripts_directory() {
 use std::collections::VecDeque;
 use std::sync::{Arc as StdArc, Mutex};
 
-use himark::higent::ahp_types::actions::{
+use ahp_types::actions::{
     ChatDeltaAction, ChatResponsePartAction, ChatTurnCompleteAction, StateAction,
 };
-use himark::higent::ahp_types::state::{MarkdownResponsePart, ResponsePart};
+use ahp_types::state::{MarkdownResponsePart, ResponsePart};
 
 /// The collection the plugin resolves in production (the location's
 /// owner — a bare test store routes to the local default session);
 /// `registered` mints the session, everyone else reads it back.
 fn test_docs(store: &Store) -> imba::store::Id<himark::OpenDocuments> {
-    himark::higent::Hosts::state(store, &himark::SessionId::local_default(store))
+    ahp_session::session::Hosts::state(store, &himark::SessionId::local_default(store))
         .expect("the local state is minted by the first register")
         .documents()
 }
@@ -308,21 +308,21 @@ impl ScriptedSeat {
     }
 }
 
-impl himark::higent::ChatClient for ScriptedSeat {
+impl ahp_wire::client::ChatClient for ScriptedSeat {
     fn create_chat(
         &self,
-        session: himark::higent::SessionUri,
-    ) -> himark::higent::ClientFuture<Result<himark::higent::ChatUri, String>> {
+        session: ahp_wire::client::SessionUri,
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::ChatUri, String>> {
         assert_eq!(session.as_str(), "session:test");
-        Box::pin(std::future::ready(Ok(himark::higent::ChatUri::new(
+        Box::pin(std::future::ready(Ok(ahp_wire::client::ChatUri::new(
             "chat:script",
         ))))
     }
 
     fn subscribe_chat(
         &self,
-        _chat: himark::higent::ChatUri,
-    ) -> himark::higent::ClientFuture<Result<himark::higent::ahp_types::state::ChatState, String>>
+        _chat: ahp_wire::client::ChatUri,
+    ) -> ahp_wire::client::ClientFuture<Result<ahp_types::state::ChatState, String>>
     {
         let state = serde_json::from_value(serde_json::json!({
             "resource": "chat:script",
@@ -337,19 +337,19 @@ impl himark::higent::ChatClient for ScriptedSeat {
 
     fn start_turn(
         &self,
-        _chat: himark::higent::ChatUri,
+        _chat: ahp_wire::client::ChatUri,
         text: String,
-        _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
-        _model: Option<himark::higent::ahp_types::state::ModelSelection>,
-    ) -> himark::higent::ClientFuture<Result<(), String>> {
+        _attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
+        _model: Option<ahp_types::state::ModelSelection>,
+    ) -> ahp_wire::client::ClientFuture<Result<(), String>> {
         *self.prompt.lock().expect("prompt") = Some(text);
         Box::pin(std::future::ready(Ok(())))
     }
 
     fn poll_chat(
         &self,
-        _chat: himark::higent::ChatUri,
-    ) -> himark::higent::ClientFuture<Vec<StateAction>> {
+        _chat: ahp_wire::client::ChatUri,
+    ) -> ahp_wire::client::ClientFuture<Vec<StateAction>> {
         let batch = self
             .feed
             .lock()
@@ -360,9 +360,9 @@ impl himark::higent::ChatClient for ScriptedSeat {
     }
 
     unreached! {
-        fetch_turns(chat: himark::higent::ChatUri, cursor: Option<String>) -> himark::higent::ClientFuture<Result<himark::higent::TurnsPage, String>>;
-        cancel_turn(chat: himark::higent::ChatUri, turn: himark::higent::TurnId) -> himark::higent::ClientFuture<()>;
-        read_file_edit(before: Option<String>, after: Option<String>) -> himark::higent::ClientFuture<Result<himark::higent::FileEditContents, String>>;
+        fetch_turns(chat: ahp_wire::client::ChatUri, cursor: Option<String>) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::TurnsPage, String>>;
+        cancel_turn(chat: ahp_wire::client::ChatUri, turn: ahp_wire::client::TurnId) -> ahp_wire::client::ClientFuture<()>;
+        read_file_edit(before: Option<String>, after: Option<String>) -> ahp_wire::client::ClientFuture<Result<ahp_wire::client::FileEditContents, String>>;
     }
 }
 
@@ -415,7 +415,7 @@ fn an_agent_ask_drives_a_turn_and_lands_the_reply() {
     let mut effect = launched(&mut store, script);
     effect.capture.agent = Some(ScriptAgent {
         client: seat.clone(),
-        session: himark::higent::SessionUri::new("session:test"),
+        session: ahp_wire::client::SessionUri::new("session:test"),
     });
     effect.capture.changes = Some("M repo/x.rs (+1 -2)".to_owned());
     let landing = ran(effect);
@@ -443,7 +443,7 @@ fn a_failed_turn_fails_the_run() {
     );
     let plan = registered(&mut store, &["repo", "plan.md"], "old");
     let seat = ScriptedSeat::answering(vec![vec![StateAction::ChatError(
-        himark::higent::ahp_types::actions::ChatErrorAction {
+        ahp_types::actions::ChatErrorAction {
             turn_id: "turn:1".to_owned(),
             duration: 1,
             part: serde_json::from_value(serde_json::json!({
@@ -459,7 +459,7 @@ fn a_failed_turn_fails_the_run() {
     let mut effect = launched(&mut store, script);
     effect.capture.agent = Some(ScriptAgent {
         client: seat,
-        session: himark::higent::SessionUri::new("session:test"),
+        session: ahp_wire::client::SessionUri::new("session:test"),
     });
     let landing = ran(effect);
     assert!(

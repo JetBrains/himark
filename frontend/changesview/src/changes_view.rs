@@ -23,10 +23,7 @@ use std::sync::Arc;
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
 use editor::location::ResourceLocation;
-use hikit::{
-    ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
-    ListKeyboardController, ModalRequest, TreeListCommand,
-};
+use hikit::{list_keyboard::ActivateTrigger, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand};
 use imba::list::ListOps;
 use imba::thunk_ext::ThunkExt;
 use imba::tooltip::{TooltipCommand, TooltipView};
@@ -396,7 +393,7 @@ impl View for ChangesView {
                             .fold_cursor(expand, store, ui);
                     }
                     TooltipCommand::Host(ListKeyCommand::Inner(inner)) => {
-                        if let Some(index) = hikit::tree_action(inner) {
+                        if let Some(index) = hikit::tree_item::tree_action(inner) {
                             if let Some(folder) =
                                 self.list.view().inner().list().key_at(index).cloned()
                             {
@@ -408,7 +405,7 @@ impl View for ChangesView {
                                 );
                             }
                         }
-                        if let Some(index) = hikit::tree_toggle(inner) {
+                        if let Some(index) = hikit::tree_item::tree_toggle(inner) {
                             return self.activate(index, store, ui);
                         }
                     }
@@ -889,8 +886,8 @@ impl View for ChangesPane {
     }
 }
 
-impl hikit::ModalView for ChangesPane {
-    fn clone_modal(&self) -> Box<dyn hikit::ModalView> {
+impl hikit::modal::ModalView for ChangesPane {
+    fn clone_modal(&self) -> Box<dyn hikit::modal::ModalView> {
         Box::new(self.clone())
     }
 

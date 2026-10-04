@@ -9,11 +9,12 @@ pub use himark::terminal::TerminalBackend;
 pub use himark::AppFonts;
 pub use host::{HimarkHostCallbacks, HimarkLocation, HimarkStr};
 
-pub use himark::hiahp;
-use himark::hiahp::{docsync, find, fsroute};
+use ahp_docsync as docsync;
+use ahp_locations::find;
+use ahp_session::fsroute;
 mod host;
 mod lsproute;
-use himark::hiahp::uris;
+use ahp_wire::uris;
 
 use demo::demo_location;
 use himark::{AppCommand, AppExt, Application, BackgroundRunner};
@@ -63,7 +64,7 @@ pub struct HimarkEngine {
 
     agent_host_filesystem: AgentHostFilesystemCapabilities,
 
-    clients: Arc<himark::hiahp::fs::ClientDirectory>,
+    clients: Arc<ahp_wire::fs::ClientDirectory>,
 
     shared: Arc<Shared>,
 
@@ -72,7 +73,7 @@ pub struct HimarkEngine {
     drain_chunk: usize,
     drain_budget: std::time::Duration,
 
-    resource_uris: Arc<dyn himark::higent::ResourceUriMap>,
+    resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 
     clicks: ClickCounter,
 
@@ -120,14 +121,14 @@ impl ClickCounter {
 
 fn register_agent_server(
     app: &mut Application,
-    clients: &himark::hiahp::fs::ClientDirectory,
+    clients: &ahp_wire::fs::ClientDirectory,
     name: &str,
-    client: himark::higent::Client,
-) -> himark::higent::HostId {
+    client: ahp_wire::client::Client,
+) -> ahp_wire::client::HostId {
     let id = app.register_client(client.clone());
-    himark::higent::Agents::seed(&mut app.store_mut(), id, name);
+    ahp_session::session::Agents::seed(&mut app.store_mut(), id, name);
 
-    himark::higent::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
+    ahp_session::session::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
     clients.record(id, client);
     id
 }
@@ -457,7 +458,7 @@ impl HimarkEngine {
         himark::hiahp::register_all(&mut app);
         himark::hiahp::install_build_handler(&mut app, languages, diff_policy);
 
-        let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
+        let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> = Arc::new(uris::FileUris);
         // The comments hook and the comment gesture are no longer
         // boot-global: the session ceremony installs them per session,
         // wired with their sibling ids (docs/entities.md law 4).
@@ -508,7 +509,7 @@ impl HimarkEngine {
         };
         let runner = app.attach_host(dispatcher, scheduler);
 
-        let clients = Arc::new(himark::hiahp::fs::ClientDirectory::new({
+        let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
             let inbox = inbox.clone();
             let wake = wake.clone();
             Arc::new(move |subscription| {
@@ -521,14 +522,14 @@ impl HimarkEngine {
         }));
 
         host_discovery::logging::init("app");
-        let connector: Arc<dyn himark::hiahp::transport::Connector> =
+        let connector: Arc<dyn ahp_wire::transport::Connector> =
             Arc::new(desktop::DesktopConnector);
 
         register_agent_server(
             &mut app,
             &clients,
             "VS Code Agent Host",
-            himark::higent::Client::of(Arc::new(himark::hiahp::wire::WireHost::new(
+            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::new(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
             ))),
@@ -538,7 +539,7 @@ impl HimarkEngine {
             &mut app,
             &clients,
             "himark Agent Host",
-            himark::higent::Client::of(Arc::new(himark::hiahp::wire::WireHost::discovered(
+            ahp_wire::client::Client::of(Arc::new(ahp_wire::wire::WireHost::discovered(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
                 himark_host_resolver(),
@@ -554,16 +555,16 @@ impl HimarkEngine {
             himark::higent::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 Arc::new(move |app, store, url| {
-                    let client = himark::higent::Client::of(Arc::new(
-                        himark::hiahp::wire::WireHost::at(
+                    let client = ahp_wire::client::Client::of(Arc::new(
+                        ahp_wire::wire::WireHost::at(
                             handle.clone(),
                             Arc::clone(&connector),
                             url.to_owned(),
                         ),
                     ));
                     let id = app.register_client(client.clone());
-                    himark::higent::Agents::seed(store, id, url.trim());
-                    himark::higent::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
+                    ahp_session::session::Agents::seed(store, id, url.trim());
+                    ahp_session::session::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
                     clients.record(id, client);
                     Some(id)
                 }),
@@ -1074,19 +1075,19 @@ impl HimarkEngine {
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app.register_handler::<himark::LspCompletionEffect>(
-                himark::hiahp::lsproute::CompletionRoute {
+                ahp_lsp::CompletionRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::hover::LspHoverEffect>(
-                himark::hiahp::lsproute::HoverRoute {
+                ahp_lsp::HoverRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::LspLocationsEffect>(
-                himark::hiahp::locations::RouteLspLocations {
+                ahp_locations::routes::RouteLspLocations {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
@@ -1131,7 +1132,7 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.clients),
                 });
             self.app.register_handler::<himark::SearchLocationsEffect>(
-                himark::hiahp::locations::RouteSearchLocations {
+                ahp_locations::routes::RouteSearchLocations {
                     directory: Arc::clone(&self.clients),
                 },
             );
@@ -1171,7 +1172,7 @@ impl HimarkEngine {
         }
         if callbacks.set_clipboard.is_some() {
             self.app
-                .register_handler::<himark::higent::ShareHostEffect>(host::ShareHostHandler(
+                .register_handler::<ahp_wire::effects::ShareHostEffect>(host::ShareHostHandler(
                     Arc::clone(&bridge),
                 ));
             self.app
@@ -1447,12 +1448,12 @@ impl HimarkEngine {
     pub fn register_agent_server(
         &mut self,
         name: &str,
-        client: himark::higent::Client,
-    ) -> himark::higent::HostId {
+        client: ahp_wire::client::Client,
+    ) -> ahp_wire::client::HostId {
         register_agent_server(&mut self.app, &self.clients, name, client)
     }
 
-    pub fn set_local_backend(&mut self, server: himark::higent::HostId) {
+    pub fn set_local_backend(&mut self, server: ahp_wire::client::HostId) {
         self.clients.set_local(server);
         self.app.designate_local_host(server);
     }
@@ -1917,7 +1918,7 @@ fn document_for(
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &editor::theme::Theme,
 ) -> editor::document::Document {
-    himark::hiahp::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
+    ahp_chat::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
 }
 
 #[no_mangle]
@@ -2111,7 +2112,7 @@ unsafe fn write_optional_out<T: Copy>(value: Option<T>, out: *mut T) -> bool {
 }
 
 #[cfg(test)]
-fn test_connector() -> Arc<dyn himark::hiahp::transport::Connector> {
+fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
     Arc::new(desktop::DesktopConnector)
 }
 

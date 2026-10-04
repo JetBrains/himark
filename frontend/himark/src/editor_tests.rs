@@ -1393,7 +1393,7 @@ fn two_windows_edit_independently() {
     let focused_text = |app: &Application, window: crate::WindowId| -> Option<String> {
         let store = &app.window_store(window);
         let session = crate::Windows::window_ref(store, window)?.current_session();
-        let documents = crate::higent::Hosts::state(store, &session)?.documents();
+        let documents = ahp_session::session::Hosts::state(store, &session)?.documents();
         let document = crate::OpenDocuments::document_ref(
             store,
             documents,
@@ -2861,7 +2861,7 @@ fn close_widget_walks_the_pane_history() {
     assert_eq!(
         {
             let session = app.sole_window_session();
-            crate::higent::Hosts::state(app.store(), &session)
+            ahp_session::session::Hosts::state(app.store(), &session)
                 .map(|state| crate::RecentLocations::list(app.store(), state.recents()))
                 .unwrap_or_default()
         }[..2],
@@ -2906,7 +2906,7 @@ fn close_widget_walks_the_pane_history() {
     assert!(app.focused_document_text().is_none());
     let recents = {
         let session = app.sole_window_session();
-        crate::higent::Hosts::state(app.store(), &session)
+        ahp_session::session::Hosts::state(app.store(), &session)
             .map(|state| crate::RecentLocations::list(app.store(), state.recents()))
             .unwrap_or_default()
     };
@@ -4546,29 +4546,29 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
 
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut surface);
 
         let slot_chat = |app: &crate::Application| -> Option<String> {
@@ -4578,7 +4578,7 @@ mod dock_tests {
             match chat.panel() {
                 crate::Panel::Plugin(view) => view
                     .as_any()
-                    .downcast_ref::<crate::higent::ChatPane>()
+                    .downcast_ref::<ahp_chat::chats::ChatPane>()
                     .map(|pane| pane.chat().as_str().to_owned()),
                 crate::Panel::Editor(_) => None,
             }
@@ -4589,7 +4589,7 @@ mod dock_tests {
             let mut found = None;
             entity.workbench().root.for_each_pane(&mut |panel| {
                 if let crate::Panel::Plugin(view) = panel {
-                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                    if let Some(pane) = view.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
                         found = Some(pane.chat().as_str().to_owned());
                     }
                 }
@@ -4652,29 +4652,29 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
 
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut wide);
 
         fn held(app: &crate::Application) -> &crate::Window {
@@ -4686,7 +4686,7 @@ mod dock_tests {
             let mut found = None;
             held(app).workbench().root.for_each_pane(&mut |panel| {
                 if let crate::Panel::Plugin(view) = panel {
-                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                    if let Some(pane) = view.as_any().downcast_ref::<ahp_chat::chats::ChatPane>() {
                         found = Some(pane.chat().as_str().to_owned());
                     }
                 }
@@ -4786,28 +4786,28 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut narrow);
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut narrow);
@@ -4882,29 +4882,29 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
 
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut wide);
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut wide);
@@ -4944,28 +4944,28 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut narrow);
 
         fn held(app: &crate::Application) -> &crate::Window {
@@ -5075,28 +5075,28 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/volatile");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/volatile",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         settle(&mut app, &mut wide);
         assert!(app.perform_registered(window, "chat.composer"));
         settle(&mut app, &mut wide);
@@ -5149,21 +5149,21 @@ mod dock_tests {
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
         crate::Window::draw(window, &mut app, surface.canvas());
 
-        let uri = crate::higent::ChatUri::new("ahp-chat:/walkable");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/walkable");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/walkable"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/walkable"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/walkable",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         {
             let ui = app.ui_ctx();
             let mut store = app.store_mut();
@@ -5172,7 +5172,7 @@ mod dock_tests {
             let _ = entity.open_panel(
                 &mut store,
                 &ui,
-                Box::new(crate::higent::ChatPane::new(chats, uri.clone())),
+                Box::new(ahp_chat::chats::ChatPane::new(chats, uri.clone())),
                 &mut batch.effects(),
             );
             crate::Windows::put(&mut store, window, entity);
@@ -5187,7 +5187,7 @@ mod dock_tests {
         let mut in_tree = false;
         entity.workbench().root.for_each_pane(&mut |panel| {
             if let crate::Panel::Plugin(view) = panel {
-                in_tree |= view.as_any().is::<crate::higent::ChatPane>();
+                in_tree |= view.as_any().is::<ahp_chat::chats::ChatPane>();
             }
         });
         assert!(!in_tree, "the chat never enters the tree");
@@ -5217,28 +5217,28 @@ mod dock_tests {
                 fx: &mut crate::AppFx<'_>,
             ) {
                 let target = crate::SessionId {
-                    host: crate::higent::HostId::LOCAL,
-                    session: crate::higent::SessionUri::new("ahp-session:/live"),
+                    host: ahp_wire::client::HostId::LOCAL,
+                    session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = crate::higent::ChatUri::new("ahp-chat:/live");
+        let uri = ahp_wire::client::ChatUri::new("ahp-chat:/live");
         let home = crate::SessionId {
-            host: crate::higent::HostId::LOCAL,
-            session: crate::higent::SessionUri::new("ahp-session:/live"),
+            host: ahp_wire::client::HostId::LOCAL,
+            session: ahp_wire::client::SessionUri::new("ahp-session:/live"),
         };
-        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
-        let panel = crate::higent::ChatPanel::new(
+        let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
+        let panel = ahp_chat::chat::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
+            ahp_wire::client::HostId::LOCAL,
             "ahp-session:/live",
             chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         {
             let ui = app.ui_ctx();
             let mut store = app.store_mut();
@@ -5247,7 +5247,7 @@ mod dock_tests {
             let _ = entity.open_panel(
                 &mut store,
                 &ui,
-                Box::new(crate::higent::ChatPane::new(chats, uri)),
+                Box::new(ahp_chat::chats::ChatPane::new(chats, uri)),
                 &mut batch.effects(),
             );
             crate::Windows::put(&mut store, window, entity);
@@ -5259,7 +5259,7 @@ mod dock_tests {
                 .workbench()
                 .chat()
                 .is_some_and(|chat| match chat.panel() {
-                    crate::Panel::Plugin(view) => view.as_any().is::<crate::higent::ChatPane>(),
+                    crate::Panel::Plugin(view) => view.as_any().is::<ahp_chat::chats::ChatPane>(),
                     crate::Panel::Editor(_) => false,
                 })
         };
@@ -5382,8 +5382,8 @@ mod dock_tests {
         let window = app.sole_window();
         let mut store = app.store_mut().clone();
         let host = crate::SessionId::local_default(&store).host;
-        crate::higent::Agents::seed(&mut store, host, "Test Host");
-        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        ahp_session::session::Agents::seed(&mut store, host, "Test Host");
+        ahp_session::session::Agents::set_status(&mut store, host, ahp_session::session::HostStatus::Connected);
         let summary =
             |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
                 origin: None,
@@ -5404,7 +5404,7 @@ mod dock_tests {
             };
         const HIMARK: &str = "file:///dev/himark";
         const DOCS: &str = "file:///dev/docs";
-        crate::higent::Agents::add_sessions(
+        ahp_session::session::Agents::add_sessions(
             &mut store,
             host,
             vec![
@@ -5505,8 +5505,8 @@ mod dock_tests {
         let window = app.sole_window();
         let mut store = app.store_mut().clone();
         let host = crate::SessionId::local_default(&store).host;
-        crate::higent::Agents::seed(&mut store, host, "Test Host");
-        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        ahp_session::session::Agents::seed(&mut store, host, "Test Host");
+        ahp_session::session::Agents::set_status(&mut store, host, ahp_session::session::HostStatus::Connected);
         let summary = |title: &str| ahp_types::state::SessionSummary {
             origin: None,
             provider: "test".to_owned(),
@@ -5522,7 +5522,7 @@ mod dock_tests {
             changes: None,
             meta: None,
         };
-        crate::higent::Agents::add_sessions(
+        ahp_session::session::Agents::add_sessions(
             &mut store,
             host,
             vec![summary("alpha"), summary("beta")],
@@ -5531,9 +5531,9 @@ mod dock_tests {
         let mut entity = crate::Windows::window(&store, window).expect("window");
         let beta = crate::SessionId {
             host,
-            session: crate::higent::SessionUri::new("test-session:/beta"),
+            session: ahp_wire::client::SessionUri::new("test-session:/beta"),
         };
-        let state = crate::higent::Hosts::ensure_state(&mut store, &beta);
+        let state = ahp_session::session::Hosts::ensure_state(&mut store, &beta);
         let _ = entity.switch_to(beta, state);
         crate::Windows::put(&mut store, window, entity);
 
@@ -5570,8 +5570,8 @@ mod dock_tests {
         let window = app.sole_window();
         let mut store = app.store_mut().clone();
         let host = crate::SessionId::local_default(&store).host;
-        crate::higent::Agents::seed(&mut store, host, "Test Host");
-        crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
+        ahp_session::session::Agents::seed(&mut store, host, "Test Host");
+        ahp_session::session::Agents::set_status(&mut store, host, ahp_session::session::HostStatus::Connected);
         let summary = |title: &str| ahp_types::state::SessionSummary {
             origin: None,
             provider: "test".to_owned(),
@@ -5587,7 +5587,7 @@ mod dock_tests {
             changes: None,
             meta: None,
         };
-        crate::higent::Agents::add_sessions(
+        ahp_session::session::Agents::add_sessions(
             &mut store,
             host,
             vec![summary("alpha"), summary("beta"), summary("gamma")],
@@ -5817,7 +5817,7 @@ mod dock_tests {
         let session = crate::terminal::Session::new(Box::new(NullBackend));
         let home = app.sole_window_session();
         let terminals =
-            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+            ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
         crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden, session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
@@ -5865,7 +5865,7 @@ mod dock_tests {
         );
         let fresh = minted.lock().unwrap().clone().expect("the minted session");
         assert!(
-            crate::higent::Hosts::state(app.store(), &fresh)
+            ahp_session::session::Hosts::state(app.store(), &fresh)
                 .map(|state| crate::terminal::Terminals::list(app.store(), state.terminals()))
                 .unwrap_or_default()
                 .is_empty(),
@@ -6068,7 +6068,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let first = crate::Windows::window_ref(app.store(), window)
         .expect("window")
         .current_session();
-    let first_chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
+    let first_chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
 
     {
         let ui = app.ui_ctx();
@@ -6078,9 +6078,9 @@ fn switching_workspaces_stashes_the_chat_panel() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new(
+            Box::new(ahp_chat::chats::ChatPane::new(
                 first_chats,
-                crate::higent::ChatUri::new("ahp-chat:/a"),
+                ahp_wire::client::ChatUri::new("ahp-chat:/a"),
             )),
             &mut batch.effects(),
         );
@@ -6092,7 +6092,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
         match chat.panel() {
             crate::Panel::Plugin(view) => view
                 .as_any()
-                .downcast_ref::<crate::higent::ChatPane>()
+                .downcast_ref::<ahp_chat::chats::ChatPane>()
                 .map(|pane| pane.chat().as_str().to_owned()),
             crate::Panel::Editor(_) => None,
         }
@@ -6293,9 +6293,9 @@ fn the_at_completion_opens_finds_and_picks() {
         std::sync::Arc::new(|| {}),
     );
 
-    let uri = crate::higent::ChatUri::new("ahp-chat:/completion");
-    let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &session).chats();
-    let panel = crate::higent::ChatPanel::new(
+    let uri = ahp_wire::client::ChatUri::new("ahp-chat:/completion");
+    let chats = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &session).chats();
+    let panel = ahp_chat::chat::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
         session.host,
@@ -6303,7 +6303,7 @@ fn the_at_completion_opens_finds_and_picks() {
         chats,
         uri.clone(),
     );
-    crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    ahp_chat::chats::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
     // Retire the launch scratch: at this width the chat is visible
     // only over a vacant tree, and the composer needs the screen.
     assert!(app.perform_registered(window, "workbench.close"));
@@ -6315,7 +6315,7 @@ fn the_at_completion_opens_finds_and_picks() {
         let _ = entity.open_panel(
             &mut store,
             &ui,
-            Box::new(crate::higent::ChatPane::new(chats, uri.clone())),
+            Box::new(ahp_chat::chats::ChatPane::new(chats, uri.clone())),
             &mut batch.effects(),
         );
         crate::Windows::put(&mut store, window, entity);
@@ -6323,8 +6323,8 @@ fn the_at_completion_opens_finds_and_picks() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     crate::Window::draw(window, &mut app, surface.canvas());
 
-    let panel = |app: &Application| -> crate::higent::ChatPanel {
-        crate::higent::Chats::chat(app.store(), chats, &uri).expect("the panel")
+    let panel = |app: &Application| -> ahp_chat::chat::ChatPanel {
+        ahp_chat::chats::Chats::chat(app.store(), chats, &uri).expect("the panel")
     };
     let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {
@@ -6601,9 +6601,9 @@ fn lsp_completion_serves_code_panes() {
 
     struct StubLsp(Arc<std::sync::Mutex<Vec<crate::LineCol>>>);
     impl imba::effect::EffectHandler<crate::LspCompletionEffect> for StubLsp {
-        async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<crate::LspAnswer> {
+        async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<ahp_lsp::LspAnswer> {
             self.0.lock().expect("asks").push(effect.position);
-            Some(crate::LspAnswer {
+            Some(ahp_lsp::LspAnswer {
                 items: vec![
                     crate::LspItem {
                         label: "insert".to_owned(),
@@ -6889,7 +6889,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // A benign entity command: deliver drops it, the batch tails run.
     let home = app.sole_window_session();
-    let documents = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+    let documents = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
     let tick = move |app: &mut Application| {
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
@@ -7025,7 +7025,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let home = app.sole_window_session();
         let documents =
-            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+            ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
@@ -7096,7 +7096,7 @@ unrelated
     {
         let home = app.sole_window_session();
         let documents =
-            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
+            ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
@@ -7116,7 +7116,7 @@ unrelated
 
 mod wash_tests {
     use super::*;
-    use crate::drivers::locations::DisposeFeed;
+    use ahp_locations::driver::DisposeFeed;
     use crate::locations::{FeedId, FoundLocation, LocationLists, LocationsFeedRow};
     use crate::{AppCommand, AppFonts, Application, OpenedDocument};
     use std::sync::Arc;
@@ -7137,7 +7137,7 @@ mod wash_tests {
             .lists()
     }
 
-    fn state_wire(app: &Application) -> imba::store::Id<crate::drivers::locations::LocationsWire> {
+    fn state_wire(app: &Application) -> imba::store::Id<ahp_locations::driver::LocationsWire> {
         let window = app.sole_window();
         crate::Windows::window_ref(app.store(), window)
             .expect("the window entity")

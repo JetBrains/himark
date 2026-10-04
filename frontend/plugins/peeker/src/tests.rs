@@ -89,7 +89,7 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
     store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
     let home = himark::SessionId::local_default(&store);
-    let documents = himark::higent::Hosts::ensure_state(&mut store, &home).documents();
+    let documents = ahp_session::session::Hosts::ensure_state(&mut store, &home).documents();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
@@ -140,7 +140,7 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
     let home = himark::SessionId::local_default(&store);
-    let documents = himark::higent::Hosts::ensure_state(&mut store, &home).documents();
+    let documents = ahp_session::session::Hosts::ensure_state(&mut store, &home).documents();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,

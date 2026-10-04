@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::hiahp::fs::ClientDirectory;
+use ahp_wire::fs::ClientDirectory;
 use hicode::{CodeTarget, FindDefinitionEffect};
 use himark::{LineCol};
 use editor::location::ResourceLocation;
@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 
 pub(crate) struct DefinitionRoute {
     pub(crate) directory: Arc<ClientDirectory>,
-    pub(crate) uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub(crate) uris: Arc<dyn ahp_wire::client::ResourceUriMap>,
 }
 
 impl EffectHandler<FindDefinitionEffect> for DefinitionRoute {
@@ -30,12 +30,12 @@ impl EffectHandler<FindDefinitionEffect> for DefinitionRoute {
 
 async fn locate(
     directory: &ClientDirectory,
-    uris: &dyn himark::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     location: &ResourceLocation,
     position: LineCol,
     method: &str,
 ) -> Option<Vec<CodeTarget>> {
-    let (client, session) = crate::hiahp::fs::client_of(directory, location)?;
+    let (client, session) = ahp_wire::fs::client_of(directory, location)?;
     let uri = uris.uri_of(location).into_string();
     let params = json!({
         "textDocument": { "uri": uri },
@@ -47,7 +47,7 @@ async fn locate(
 
 fn parse_targets(
     result: &Value,
-    uris: &dyn himark::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     asked: &ResourceLocation,
 ) -> Vec<CodeTarget> {
     match result {
@@ -62,7 +62,7 @@ fn parse_targets(
 
 fn target_of(
     value: &Value,
-    uris: &dyn himark::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
     asked: &ResourceLocation,
 ) -> Option<CodeTarget> {
     let (uri, range) = match value.get("uri") {
@@ -82,7 +82,7 @@ fn target_of(
     };
     Some(CodeTarget {
         location: uris.location_of(
-            &himark::higent::client::ResourceUri::new(uri.as_str()?),
+            &ahp_wire::client::ResourceUri::new(uri.as_str()?),
             editor::location::ResourceType::document(),
             asked.authority(),
         )?,

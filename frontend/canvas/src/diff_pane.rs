@@ -6,7 +6,7 @@
 //! both reference views over store-held `DiffView` records. Moved in
 //! from the dissolved hidiff plugin (docs/model-view.md stage C).
 
-use documents::{EditorIdView, OpenDocuments};
+use documents::{entity_view::EditorIdView, OpenDocuments};
 use editor::{split_diff::DiffViewState, split_diff::SplitDiffCommand, unified_diff::UnifiedDiffCommand, unified_diff::UnifiedDiffView};
 use imba::{arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, ui::UiCtx, View, Widget};
 
@@ -440,14 +440,14 @@ pub struct DiffPlace {
     pub new: editor::location::ResourceLocation,
 }
 
-impl hikit::Place for DiffPlace {}
+impl hikit::navigation::Place for DiffPlace {}
 
-impl hikit::PanelView for DiffPanelView {
+impl hikit::panel::PanelView for DiffPanelView {
     type Place = DiffPlace;
 
-    fn pane_row(&self) -> Option<hikit::PaneRow> {
+    fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
         let pane = self.pane.content();
-        Some(hikit::PaneRow::new(crate::PairRow(
+        Some(hikit::pane_row::PaneRow::new(crate::PairRow(
             pane.documents,
             pane.id,
         )))
@@ -532,7 +532,7 @@ pub fn diff_panel(
     Some(DiffPanelView::over(documents, id))
 }
 
-pub fn pair_row_minter() -> std::sync::Arc<hikit::RowMinter> {
+pub fn pair_row_minter() -> std::sync::Arc<hikit::panel::RowMinter> {
     // The row carries its collection: the pane is minted off the ids
     // while the pair still stands. Canvases open through the
     // NAVIGATION road (CanvasNavigator) — reuse is a store lookup,
@@ -540,6 +540,6 @@ pub fn pair_row_minter() -> std::sync::Arc<hikit::RowMinter> {
     std::sync::Arc::new(|store, row| {
         let crate::PairRow(documents, id) = *row.row::<crate::PairRow>()?;
         documents::OpenDocuments::diff_view_ref(store, documents, id)
-            .map(|_| Box::new(DiffPanelView::over(documents, id)) as Box<dyn hikit::DynPanelView>)
+            .map(|_| Box::new(DiffPanelView::over(documents, id)) as Box<dyn hikit::panel::DynPanelView>)
     })
 }

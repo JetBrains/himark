@@ -6,7 +6,10 @@
 //! stream pump is `drivers::locations`, the dock/peek window glue
 //! `hisearch`/`hipeek`.
 
+pub use ::locations::views::{
+    dispose_feed, files_forest, locations_forest, LocationsWashHook, WashDocument,
+};
 pub use ::locations::{
-    dispose_feed, files_forest, locations_forest, open_feed, FeedId, FoundLocation, LocationKey,
-    LocationLists, LocationsAsk, LocationsFeedRow, LocationsWashHook, LspKind, WashDocument,
+    open_feed, FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow,
+    LspKind,
 };

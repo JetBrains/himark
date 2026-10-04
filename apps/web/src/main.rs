@@ -359,24 +359,24 @@ mod app {
                     let handle = handle_rx.recv().expect("wire handle");
                     himark::hiahp::register_all(&mut state);
 
-                    let client = himark::higent::Client::of(std::sync::Arc::new(
-                        himark::hiahp::wire::WireHost::at(
+                    let client = ahp_wire::client::Client::of(std::sync::Arc::new(
+                        ahp_wire::wire::WireHost::at(
                             handle.clone(),
                             std::sync::Arc::new(crate::browser::BrowserConnector),
                             url,
                         ),
                     ));
                     let host = state.register_client(client.clone());
-                    himark::higent::Agents::seed(&mut state.store_mut(), host, "This Host");
-                    himark::higent::Hosts::install_uris(
+                    ahp_session::session::Agents::seed(&mut state.store_mut(), host, "This Host");
+                    ahp_session::session::Hosts::install_uris(
                         &mut state.store_mut(),
                         host,
-                        std::sync::Arc::new(himark::hiahp::uris::FileUris),
+                        std::sync::Arc::new(ahp_wire::uris::FileUris),
                     );
                     state.designate_local_host(host);
 
                     use std::sync::Arc;
-                    let clients = Arc::new(himark::hiahp::fs::ClientDirectory::new({
+                    let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
                         let posted = posted.clone();
                         Arc::new(move |subscription| {
                             let _ = posted.send(himark::AppCommand::FileChanged(
@@ -386,10 +386,10 @@ mod app {
                     }));
                     clients.record(host, client);
                     clients.set_local(host);
-                    let resource_uris: Arc<dyn himark::higent::ResourceUriMap> =
-                        Arc::new(himark::hiahp::uris::FileUris);
+                    let resource_uris: Arc<dyn ahp_wire::client::ResourceUriMap> =
+                        Arc::new(ahp_wire::uris::FileUris);
 
-                    let document_channels = himark::hiahp::docsync::DocumentChannels::new(
+                    let document_channels = ahp_docsync::DocumentChannels::new(
                         handle.clone(),
                         Arc::new({
                             let posted = posted.clone();
@@ -401,7 +401,7 @@ mod app {
                     );
                     himark::OpenDocuments::install_hook(
                         &mut state.store_mut(),
-                        Arc::new(himark::hiahp::docsync::DocsyncHook {
+                        Arc::new(ahp_docsync::DocsyncHook {
                             channels: Arc::clone(&document_channels),
                             directory: Arc::clone(&clients),
                         }),
@@ -409,16 +409,16 @@ mod app {
 
                     editor::change_sink::InstalledChangeSink::install(
                         &mut state.store_mut(),
-                        Arc::new(himark::hiahp::docsync::SyncSink),
+                        Arc::new(ahp_docsync::SyncSink),
                     );
                     state.register_handler::<himark::FetchDocumentEffect>(
-                        himark::hiahp::fsroute::RouteFetch {
+                        ahp_session::fsroute::RouteFetch {
                             uris: Arc::clone(&resource_uris),
                             directory: Arc::clone(&clients),
                         },
                     );
                     state.register_handler::<himark::StoreDocumentEffect>(
-                        himark::hiahp::fsroute::RouteStore {
+                        ahp_session::fsroute::RouteStore {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                             channels: Arc::clone(&document_channels),
@@ -428,39 +428,39 @@ mod app {
                         himark::SaveDocument::existing_files(),
                     ));
                     state.register_handler::<himark::ListDirectoryEffect>(
-                        himark::hiahp::fsroute::RouteList {
+                        ahp_session::fsroute::RouteList {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
                     state.register_handler::<himark::SubscribeEffect>(
-                        himark::hiahp::fsroute::RouteSubscribe {
+                        ahp_session::fsroute::RouteSubscribe {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
                     state.register_handler::<himark::UnsubscribeEffect>(
-                        himark::hiahp::fsroute::RouteUnsubscribe {
+                        ahp_session::fsroute::RouteUnsubscribe {
                             directory: Arc::clone(&clients),
                         },
                     );
                     state.observe_file_changes();
 
                     state.register_handler::<himark::FindEffect>(
-                        himark::hiahp::find::NativeFindHandler {
+                        ahp_locations::find::NativeFindHandler {
                             directory: Arc::clone(&clients),
                         },
                     );
 
                     state.register_handler::<himark::LspCompletionEffect>(
-                        himark::hiahp::lsproute::CompletionRoute {
+                        ahp_lsp::CompletionRoute {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
 
                     state.register_handler::<himark::SearchLocationsEffect>(
-                        himark::hiahp::locations::RouteSearchLocations {
+                        ahp_locations::routes::RouteSearchLocations {
                             directory: Arc::clone(&clients),
                         },
                     );
@@ -468,13 +468,13 @@ mod app {
                     state.register_command(Arc::new(himark::hisearch::FocusSearchView));
                     state.register_toolbar_button(himark::hisearch::toolbar_button());
                     state.register_handler::<himark::LspLocationsEffect>(
-                        himark::hiahp::locations::RouteLspLocations {
+                        ahp_locations::routes::RouteLspLocations {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
 
-                    state.observe_stripe_bases(Arc::new(himark::hiahp::fsroute::resolve_base));
+                    state.observe_stripe_bases(Arc::new(ahp_session::fsroute::resolve_base));
 
                     himark::hiahp::install_open_handlers(
                         &mut state,

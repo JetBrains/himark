@@ -18,13 +18,13 @@ pub struct LspItem {
     pub filter_text: Option<String>,
     pub sort_text: Option<String>,
 
-    pub edit: Option<(std::ops::Range<documents::LineCol>, String)>,
+    pub edit: Option<(std::ops::Range<documents::text_ext::LineCol>, String)>,
     pub insert_text: Option<String>,
 }
 
 pub struct LspCompletionEffect {
     pub location: editor::location::ResourceLocation,
-    pub position: documents::LineCol,
+    pub position: documents::text_ext::LineCol,
 }
 
 impl std::fmt::Display for LspCompletionEffect {
@@ -39,7 +39,7 @@ impl imba::effect::Effect for LspCompletionEffect {
 
 use std::sync::Arc;
 
-use documents::LineCol;
+use documents::text_ext::LineCol;
 use imba::effect::EffectHandler;
 use serde_json::json;
 

@@ -22,7 +22,7 @@ use crate::{Collector, Session, TerminalId, Terminals};
 #[derive(Clone, PartialEq)]
 pub struct TerminalRow(pub imba::store::Id<Terminals>, pub TerminalId);
 
-impl hikit::Row for TerminalRow {}
+impl hikit::pane_row::Row for TerminalRow {}
 
 /// Mint the pane for a live row — the navigator's and the row
 /// minter's shared door.
@@ -30,15 +30,15 @@ fn mint_terminal(
     store: &Store,
     terminals: imba::store::Id<Terminals>,
     id: TerminalId,
-) -> Option<Box<dyn hikit::DynPanelView>> {
+) -> Option<Box<dyn hikit::panel::DynPanelView>> {
     store
         .entity(terminals)
         .filter(|rows: &&Terminals| rows.holds(id))
-        .map(|_| Box::new(TerminalView::new(terminals, id)) as Box<dyn hikit::DynPanelView>)
+        .map(|_| Box::new(TerminalView::new(terminals, id)) as Box<dyn hikit::panel::DynPanelView>)
 }
 
 /// The registered walk-back minter for terminal rows.
-pub fn terminal_row_minter() -> std::sync::Arc<hikit::RowMinter> {
+pub fn terminal_row_minter() -> std::sync::Arc<hikit::panel::RowMinter> {
     std::sync::Arc::new(|store, row| {
         let TerminalRow(terminals, id) = *row.row::<TerminalRow>()?;
         mint_terminal(store, terminals, id)
@@ -207,13 +207,13 @@ pub struct TerminalPlace {
     pub id: TerminalId,
 }
 
-impl hikit::Place for TerminalPlace {}
+impl hikit::navigation::Place for TerminalPlace {}
 
 /// The walk-back road: re-mint the pane off the pane row while the
 /// terminal session still stands.
 pub struct TerminalNavigator;
 
-impl hikit::Navigator for TerminalNavigator {
+impl hikit::navigation::Navigator for TerminalNavigator {
     type Place = TerminalPlace;
 
     fn navigate(
@@ -222,12 +222,12 @@ impl hikit::Navigator for TerminalNavigator {
         _ui: &imba::ui::UiCtx,
         place: &TerminalPlace,
         _fx: &mut imba::command::Fx<'_>,
-    ) -> Option<Box<dyn hikit::DynPanelView>> {
+    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
         mint_terminal(store, place.terminals, place.id)
     }
 }
 
-impl hikit::PanelView for TerminalView {
+impl hikit::panel::PanelView for TerminalView {
     type Place = TerminalPlace;
 
     fn navigation_location(&self, _store: &Store) -> Option<TerminalPlace> {
@@ -263,8 +263,8 @@ impl hikit::PanelView for TerminalView {
         Terminals::remove(store, self.terminals, self.id);
     }
 
-    fn pane_row(&self) -> Option<hikit::PaneRow> {
-        Some(hikit::PaneRow::new(crate::TerminalRow(
+    fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
+        Some(hikit::pane_row::PaneRow::new(TerminalRow(
             self.terminals,
             self.id,
         )))

@@ -58,9 +58,9 @@ pub(crate) enum DiffLineKind {
 struct StripeWalk<'a> {
     iter: crate::markup::RecursiveQuery<'a>,
 
-    peeked: Option<(Range<u32>, crate::markup::StyleId)>,
+    peeked: Option<(Range<u32>, crate::theme::StyleId)>,
 
-    active: Vec<(Range<u32>, crate::markup::StyleId)>,
+    active: Vec<(Range<u32>, crate::theme::StyleId)>,
 }
 
 impl<'a> StripeWalk<'a> {
@@ -77,7 +77,7 @@ impl<'a> StripeWalk<'a> {
 
     fn pull(
         iter: &mut crate::markup::RecursiveQuery<'a>,
-    ) -> Option<(Range<u32>, crate::markup::StyleId)> {
+    ) -> Option<(Range<u32>, crate::theme::StyleId)> {
         iter.find_map(|hit| match hit.value {
             crate::markup::Decoration::Styled(id) => Some((hit.range.clone(), *id)),
             _ => None,
@@ -85,7 +85,7 @@ impl<'a> StripeWalk<'a> {
     }
 
     fn classify(&mut self, range: Range<u32>) -> Option<DiffLineKind> {
-        use crate::markup::StyleId;
+        use crate::theme::StyleId;
         while let Some((peeked, _)) = &self.peeked {
             if peeked.start >= range.end {
                 break;
@@ -324,7 +324,7 @@ impl EditorViewport {
                 if lo < hi {
                     viewport.inline.push(TextDecorationInterval {
                         range: lo..hi,
-                        id: crate::markup::StyleId::Composing,
+                        id: crate::theme::StyleId::Composing,
                     });
                 }
             }

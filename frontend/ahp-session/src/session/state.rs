@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::higent::HostId;
+use ahp_wire::client::HostId;
 use ahp_wire::client::SessionChannel;
-use crate::higent::{ChatUri, SessionUri};
+use ahp_wire::client::{ChatUri, SessionUri};
 use ahp_types::state::{AgentInfo, ChatSummary, SessionSummary};
 use imba::store::{Id, Store};
 
@@ -33,7 +33,7 @@ pub struct Host {
 
     rows: rpds::HashTrieMapSync<SessionUri, SessionState>,
 
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    uris: Option<Arc<dyn ahp_wire::client::ResourceUriMap>>,
 }
 
 /// A session's session row: the IDS of the collections it owns
@@ -45,21 +45,21 @@ pub struct Host {
 /// retracts what the ids name.
 #[derive(Clone)]
 pub struct SessionState {
-    pub chats: Id<crate::higent::Chats>,
+    pub chats: Id<ahp_chat::chats::Chats>,
 
     pub trees: Id<filetree::SessionTree>,
 
-    pub recents: Id<crate::higent::RecentLocations>,
+    pub recents: Id<ahp_chat::recents::RecentLocations>,
 
     pub changes: Id<changesview::hichanges::Changes>,
 
-    pub changes_wire: Id<crate::drivers::changes::ChangesWire>,
+    pub changes_wire: Id<ahp_changes::changes::ChangesWire>,
 
     pub canvas_router: Id<canvas::canvas::CanvasRouter>,
 
-    pub history_wire: Id<crate::drivers::history::HistoryWire>,
+    pub history_wire: Id<ahp_changes::history::HistoryWire>,
 
-    pub comments_wire: Id<crate::drivers::comments::CommentsWire>,
+    pub comments_wire: Id<ahp_comments::CommentsWire>,
 
     pub history: Id<changesview::hihistory::History>,
 
@@ -71,13 +71,13 @@ pub struct SessionState {
 
     pub lists: Id<locations::LocationLists>,
 
-    pub locations_wire: Id<crate::drivers::locations::LocationsWire>,
+    pub locations_wire: Id<ahp_locations::driver::LocationsWire>,
 
     pub scratch_names: Id<documents::ScratchMint>,
 }
 
 impl SessionState {
-    pub fn chats(&self) -> Id<crate::higent::Chats> {
+    pub fn chats(&self) -> Id<ahp_chat::chats::Chats> {
         self.chats
     }
 
@@ -85,7 +85,7 @@ impl SessionState {
         self.trees
     }
 
-    pub fn recents(&self) -> Id<crate::higent::RecentLocations> {
+    pub fn recents(&self) -> Id<ahp_chat::recents::RecentLocations> {
         self.recents
     }
 
@@ -93,7 +93,7 @@ impl SessionState {
         self.changes
     }
 
-    pub fn changes_wire(&self) -> Id<crate::drivers::changes::ChangesWire> {
+    pub fn changes_wire(&self) -> Id<ahp_changes::changes::ChangesWire> {
         self.changes_wire
     }
 
@@ -101,11 +101,11 @@ impl SessionState {
         self.canvas_router
     }
 
-    pub fn history_wire(&self) -> Id<crate::drivers::history::HistoryWire> {
+    pub fn history_wire(&self) -> Id<ahp_changes::history::HistoryWire> {
         self.history_wire
     }
 
-    pub fn comments_wire(&self) -> Id<crate::drivers::comments::CommentsWire> {
+    pub fn comments_wire(&self) -> Id<ahp_comments::CommentsWire> {
         self.comments_wire
     }
 
@@ -129,7 +129,7 @@ impl SessionState {
         self.lists
     }
 
-    pub fn locations_wire(&self) -> Id<crate::drivers::locations::LocationsWire> {
+    pub fn locations_wire(&self) -> Id<ahp_locations::driver::LocationsWire> {
         self.locations_wire
     }
 
@@ -266,7 +266,7 @@ impl Hosts {
     pub fn install_uris(
         store: &mut Store,
         id: HostId,
-        map: Arc<dyn crate::higent::ResourceUriMap>,
+        map: Arc<dyn ahp_wire::client::ResourceUriMap>,
     ) {
         Self::update(store, id, |host| host.uris = Some(Arc::clone(&map)));
         // Families minted before the map arrived read their own
@@ -288,13 +288,13 @@ impl Hosts {
             .map(|host| host.rows.values().cloned().collect())
             .unwrap_or_default();
         for state in states {
-            crate::drivers::changes::ChangesWire::stamp_uris(store, state.changes_wire, &map);
-            crate::drivers::history::HistoryWire::stamp_uris(store, state.history_wire, &map);
-            crate::drivers::comments::CommentsWire::stamp_uris(store, state.comments_wire, &map);
+            ahp_changes::changes::ChangesWire::stamp_uris(store, state.changes_wire, &map);
+            ahp_changes::history::HistoryWire::stamp_uris(store, state.history_wire, &map);
+            ahp_comments::CommentsWire::stamp_uris(store, state.comments_wire, &map);
         }
     }
 
-    pub fn uris(store: &Store, id: HostId) -> Option<Arc<dyn crate::higent::ResourceUriMap>> {
+    pub fn uris(store: &Store, id: HostId) -> Option<Arc<dyn ahp_wire::client::ResourceUriMap>> {
         store.get::<Hosts>()?.entries.get(&id)?.uris.clone()
     }
 
@@ -328,7 +328,7 @@ impl Hosts {
     /// collection emptied leaves the catalog, and its rows leave the
     /// table. Nothing is projected and nothing comes back — the store
     /// is single and global, and the table IS the data.
-    pub fn scatter_session(&mut self, store: &mut Store, scope: &crate::SessionId) {
+    pub fn scatter_session(&mut self, store: &mut Store, scope: &ahp_wire::SessionId) {
         let Some(states) = self
             .entries
             .get(&scope.host)
@@ -366,9 +366,9 @@ impl Hosts {
     /// it moves the session, not the ids panes and landings already hold.
     /// So an address naming the placeholder resolves to the live local
     /// host, and vice versa: the id a caller carries never goes stale.
-    fn addressed(store: &Store, session: &crate::SessionId) -> crate::SessionId {
+    fn addressed(store: &Store, session: &ahp_wire::SessionId) -> ahp_wire::SessionId {
         let live = store
-            .get::<crate::higent::LocalHost>()
+            .get::<ahp_wire::client::LocalHost>()
             .and_then(|local| local.0);
         let Some(live) = live else {
             return session.clone();
@@ -382,13 +382,13 @@ impl Hosts {
             })
         };
         if session.host == HostId::LOCAL && !known(HostId::LOCAL) {
-            return crate::SessionId {
+            return ahp_wire::SessionId {
                 host: live,
                 session: session.session.clone(),
             };
         }
         if session.host == live && !known(live) && known(HostId::LOCAL) {
-            return crate::SessionId {
+            return ahp_wire::SessionId {
                 host: HostId::LOCAL,
                 session: session.session.clone(),
             };
@@ -411,7 +411,7 @@ impl Hosts {
             .collect()
     }
 
-    pub fn state<'a>(store: &'a Store, session: &crate::SessionId) -> Option<&'a SessionState> {
+    pub fn state<'a>(store: &'a Store, session: &ahp_wire::SessionId) -> Option<&'a SessionState> {
         let session = Self::addressed(store, session);
         store
             .get::<Hosts>()?
@@ -425,7 +425,7 @@ impl Hosts {
     /// Minting is STRUCTURAL (a new row in the catalog's map), so it
     /// bumps the generation; content writes land in the entity table
     /// and touch `Hosts` not at all.
-    pub fn ensure_state(store: &mut Store, session: &crate::SessionId) -> SessionState {
+    pub fn ensure_state(store: &mut Store, session: &ahp_wire::SessionId) -> SessionState {
         let session = &Self::addressed(store, session);
         if let Some(state) = store
             .get::<Hosts>()
@@ -451,7 +451,7 @@ impl Hosts {
         );
         store.put_entity(
             state.changes_wire,
-            crate::drivers::changes::ChangesWire::wired(
+            ahp_changes::changes::ChangesWire::wired(
                 state.changes,
                 state.history_wire,
                 uris.clone(),
@@ -459,7 +459,7 @@ impl Hosts {
         );
         store.put_entity(
             state.history_wire,
-            crate::drivers::history::HistoryWire::wired(
+            ahp_changes::history::HistoryWire::wired(
                 state.history,
                 state.changes,
                 uris.clone(),
@@ -474,9 +474,9 @@ impl Hosts {
         // ceremony is the one place that knows the catalog and the
         // sibling ids (law 4); the driver below holds only the roads.
         let documents = state.documents;
-        let roads = crate::drivers::comments::CatalogRoads {
+        let roads = ahp_comments::CatalogRoads {
             default_chat: std::sync::Arc::new(move |store, host, session| {
-                let key = crate::SessionId {
+                let key = ahp_wire::SessionId {
                     host,
                     session: session.clone(),
                 };
@@ -496,7 +496,7 @@ impl Hosts {
             latest_turn: std::sync::Arc::new(|store, host, session| {
                 Agents::latest_turn(
                     store,
-                    &crate::SessionId {
+                    &ahp_wire::SessionId {
                         host,
                         session: session.clone(),
                     },
@@ -505,7 +505,7 @@ impl Hosts {
         };
         store.put_entity(
             state.comments_wire,
-            crate::drivers::comments::CommentsWire::wired(state.comments, uris, roads),
+            ahp_comments::CommentsWire::wired(state.comments, uris, roads),
         );
         // The documents→comments borders (the document hooks, the
         // comment gesture) get INSTANCES wired with the sibling id,
@@ -518,7 +518,7 @@ impl Hosts {
                 comments: state.comments,
             }),
         );
-        documents::DocumentCommands::register_scoped(
+        documents::dynamic::DocumentCommands::register_scoped(
             store,
             state.documents,
             std::sync::Arc::new(comments::view::AddComment {
@@ -531,20 +531,20 @@ impl Hosts {
         );
         store.put_entity(
             state.locations_wire,
-            crate::drivers::locations::LocationsWire::wired(state.lists),
+            ahp_locations::driver::LocationsWire::wired(state.lists),
         );
         documents::OpenDocuments::install_scoped_hook(
             store,
             state.documents,
-            std::sync::Arc::new(locations::LocationsWashHook {
+            std::sync::Arc::new(locations::views::LocationsWashHook {
                 lists: state.lists,
             }),
         );
         store.put_entity(
             state.chats,
-            crate::higent::Chats::wired(
+            ahp_chat::chats::Chats::wired(
                 state.recents,
-                crate::higent::chats::Catalog {
+                ahp_chat::chats::Catalog {
                     uris: std::sync::Arc::new(Hosts::uris),
                     agents: std::sync::Arc::new(|store, host| {
                         Hosts::host_ref(store, host)
@@ -582,7 +582,7 @@ impl Hosts {
     /// had. Removal is structural, so the generation bumps. The ONE
     /// deletion road; `scatter_session`'s all-empty sweep is mere
     /// housekeeping over the same retract.
-    pub fn dispose_state(store: &mut Store, session: &crate::SessionId) {
+    pub fn dispose_state(store: &mut Store, session: &ahp_wire::SessionId) {
         let session = &Self::addressed(store, session);
         let Some(state) = store
             .get::<Hosts>()
@@ -609,7 +609,7 @@ impl Hosts {
     /// ids never change, only the catalog's name for them. Windows
     /// keep their bundle through the rekey; this keeps the catalog
     /// telling the same story.
-    pub fn rekey_state(store: &mut Store, from: &crate::SessionId, to: &crate::SessionId) {
+    pub fn rekey_state(store: &mut Store, from: &ahp_wire::SessionId, to: &ahp_wire::SessionId) {
         if from == to {
             return;
         }
@@ -725,13 +725,13 @@ impl Hosts {
     pub fn home_of_documents(
         store: &Store,
         documents: Id<documents::OpenDocuments>,
-    ) -> Option<(crate::SessionId, SessionState)> {
+    ) -> Option<(ahp_wire::SessionId, SessionState)> {
         let hosts = store.get::<Hosts>()?;
         for (host, row) in hosts.entries.iter() {
             for (session, states) in row.rows.iter() {
                 if states.documents == documents {
                     return Some((
-                        crate::SessionId {
+                        ahp_wire::SessionId {
                             host: *host,
                             session: session.clone(),
                         },
@@ -744,7 +744,7 @@ impl Hosts {
     }
 
     pub fn rekey_local_sessions(&mut self, previous: Option<HostId>, target: HostId) {
-        let fs = SessionUri::new(crate::LOCAL_FS_SESSION);
+        let fs = SessionUri::new(ahp_wire::LOCAL_FS_SESSION);
         let mut sources = vec![HostId::LOCAL];
         if let Some(previous) = previous {
             sources.push(previous);
@@ -781,6 +781,6 @@ impl Hosts {
 /// window HOLDS is not garbage, however empty — the sweep asks
 /// through this road instead of knowing windows.
 #[derive(Clone)]
-pub struct WindowGrip(pub std::sync::Arc<dyn Fn(&Store, &crate::SessionId) -> bool + Send + Sync>);
+pub struct WindowGrip(pub std::sync::Arc<dyn Fn(&Store, &ahp_wire::SessionId) -> bool + Send + Sync>);
 
 

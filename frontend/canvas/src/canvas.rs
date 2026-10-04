@@ -101,7 +101,7 @@ pub struct Canvas {
     note: Option<String>,
     seen: Option<u64>,
     populated: bool,
-    request: Option<hikit::PanelRequest>,
+    request: Option<hikit::panel::PanelRequest>,
 
     phases: rpds::HashTrieMapSync<ResourceLocation, RowPhase>,
 
@@ -1359,7 +1359,7 @@ impl Canvas {
                     // cmd-enter continues where the user was reading,
                     // like the standalone split-diff pane. The shell
                     // supplies the window at the drain.
-                    self.request = Some(hikit::PanelRequest::OpenAt(
+                    self.request = Some(hikit::panel::PanelRequest::OpenAt(
                         file.new.clone(),
                         self.row_caret(store, key),
                     ));
@@ -1369,7 +1369,7 @@ impl Canvas {
                 if let Some(file) = self.files.get(key) {
                     // The standalone pane for this pair — the shell
                     // supplies the window at the drain.
-                    self.request = Some(hikit::PanelRequest::OpenDiff(
+                    self.request = Some(hikit::panel::PanelRequest::OpenDiff(
                         file.old.clone(),
                         file.new.clone(),
                     ));
@@ -1390,7 +1390,7 @@ impl Canvas {
         &self,
         store: &Store,
         key: &ResourceLocation,
-    ) -> Option<std::ops::Range<documents::LineCol>> {
+    ) -> Option<std::ops::Range<documents::text_ext::LineCol>> {
         let pane = self
             .rows
             .content()
@@ -1418,7 +1418,7 @@ impl Canvas {
             documents::OpenDocuments::document_ref(store, right.documents(), right.document())?;
         let byte = document.caret_byte(editor);
         let mut text = document.text().view();
-        let at = documents::line_col_at(&mut text, byte as usize);
+        let at = documents::text_ext::line_col_at(&mut text, byte as usize);
         Some(at..at)
     }
 
@@ -1581,7 +1581,7 @@ impl Canvas {
                         let text = self.composer_text().unwrap_or_default();
                         let history = Changes::of(store, self.changes).map(|held| held.history());
                         if let (false, Some(history)) = (text.trim().is_empty(), history) {
-                            self.request = Some(hikit::PanelRequest::Perform(std::sync::Arc::new(
+                            self.request = Some(hikit::panel::PanelRequest::Perform(std::sync::Arc::new(
                                 changesview::hihistory::CommitHistory {
                                     history,
                                     folder: self.source.folder().clone(),
@@ -1908,7 +1908,7 @@ pub struct DiffCanvasView {
     /// The collection that owns this canvas's set.
     changes: imba::store::Id<Changes>,
     source: CanvasSource,
-    request: Option<hikit::PanelRequest>,
+    request: Option<hikit::panel::PanelRequest>,
 }
 
 impl DiffCanvasView {
@@ -3124,7 +3124,7 @@ use crate::diff_canvas::CanvasPlace;
 /// the lookup; nothing is ever rebuilt for a second open.
 pub struct CanvasNavigator;
 
-impl hikit::Navigator for CanvasNavigator {
+impl hikit::navigation::Navigator for CanvasNavigator {
     type Place = CanvasPlace;
 
     fn navigate(
@@ -3133,7 +3133,7 @@ impl hikit::Navigator for CanvasNavigator {
         _ui: &imba::ui::UiCtx,
         place: &CanvasPlace,
         _fx: &mut imba::command::Fx<'_>,
-    ) -> Option<Box<dyn hikit::DynPanelView>> {
+    ) -> Option<Box<dyn hikit::panel::DynPanelView>> {
         let view = DiffCanvasView::over(store, place.changes, place.source.clone());
         if let Some(key) = &place.reveal {
             Canvases::set_reveal(store, view.changes, view.id(), key.clone());
@@ -3142,11 +3142,11 @@ impl hikit::Navigator for CanvasNavigator {
     }
 }
 
-impl hikit::PanelView for DiffCanvasView {
+impl hikit::panel::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
-    fn pane_row(&self) -> Option<hikit::PaneRow> {
-        Some(hikit::PaneRow::new(crate::CanvasRow(self.source.clone())))
+    fn pane_row(&self) -> Option<hikit::pane_row::PaneRow> {
+        Some(hikit::pane_row::PaneRow::new(crate::CanvasRow(self.source.clone())))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {
@@ -3178,7 +3178,7 @@ impl hikit::PanelView for DiffCanvasView {
         self.source.title(store, self.changes)
     }
 
-    fn take_request(&mut self) -> Option<hikit::PanelRequest> {
+    fn take_request(&mut self) -> Option<hikit::panel::PanelRequest> {
         self.request.take()
     }
 

@@ -5,6 +5,13 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+ahp-wire = { path = "../../frontend/ahp-wire" }
+ahp-session = { path = "../../frontend/ahp-session" }
+ahp-chat = { path = "../../frontend/ahp-chat" }
+ahp-docsync = { path = "../../frontend/ahp-docsync" }
+ahp-locations = { path = "../../frontend/ahp-locations" }
+ahp-lsp = { path = "../../frontend/ahp-lsp" }
+ahp-types = "0.9"
 demo = { path = "../../frontend/plugins/demo" }
 palette = { path = "../../frontend/plugins/palette" }
 peeker = { path = "../../frontend/plugins/peeker" }

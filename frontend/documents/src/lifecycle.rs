@@ -11,7 +11,7 @@ pub fn mount_editor(
     ui: &imba::ui::UiCtx,
     document: &mut Document,
     width: f32,
-    target: Option<std::ops::Range<crate::LineCol>>,
+    target: Option<std::ops::Range<crate::text_ext::LineCol>>,
     fx: &mut EditorEffects<'_>,
 ) -> EditorId {
     let fonts = editor::env::Fonts::of(store)();
@@ -28,7 +28,7 @@ pub fn mount_editor(
         fx,
     );
     if let Some(target) = target {
-        let byte = crate::offset_at(&mut document.text().view(), target.start) as u32;
+        let byte = crate::text_ext::offset_at(&mut document.text().view(), target.start) as u32;
         document.reveal_at_instant(editor, byte, store, ui, &fonts, &theme, fx);
     }
 

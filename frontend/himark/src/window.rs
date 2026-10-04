@@ -358,12 +358,12 @@ impl View for Layers {
 /// feed is addressed by id, like any panel's commands.
 fn boot_chat_feed(
     store: &mut Store,
-    chats: imba::store::Id<crate::higent::Chats>,
-    chat: crate::higent::ChatUri,
+    chats: imba::store::Id<ahp_chat::chats::Chats>,
+    chat: ahp_wire::client::ChatUri,
 ) {
     imba::command::Requests::push(
         store,
-        std::sync::Arc::new(crate::higent::chats::BootChat { chats, chat }),
+        std::sync::Arc::new(ahp_chat::chats::BootChat { chats, chat }),
     );
 }
 
@@ -755,7 +755,7 @@ impl Windows {
     pub fn session_state(
         store: &Store,
         window: crate::WindowId,
-    ) -> Option<crate::higent::SessionState> {
+    ) -> Option<ahp_session::session::SessionState> {
         Some(Self::window_ref(store, window)?.state().clone())
     }
 
@@ -833,7 +833,7 @@ impl Windows {
         self.next = taken.next;
     }
 
-    pub(crate) fn adopt_local_host_all(&mut self, host: crate::higent::HostId) {
+    pub(crate) fn adopt_local_host_all(&mut self, host: ahp_wire::client::HostId) {
         let ids: Vec<WindowId> = self.entries.keys().copied().collect();
         for id in ids {
             let Some(entity) = self.entries.get(&id) else {
@@ -858,7 +858,7 @@ pub struct Window {
     /// The id bundle of `current_session`'s collections, wired at
     /// session ENTRY (creation and switch). Rekeys change the
     /// `SessionId`, never this: the ids are the stable currency.
-    state: crate::higent::SessionState,
+    state: ahp_session::session::SessionState,
 
     dock_width: f32,
 
@@ -887,7 +887,7 @@ impl Window {
     pub(crate) fn new(
         root: WorkbenchNode,
         workspace: crate::SessionId,
-        state: crate::higent::SessionState,
+        state: ahp_session::session::SessionState,
     ) -> Self {
         Self {
             content: Layers {
@@ -918,7 +918,7 @@ impl Window {
         self.current_session == *session || self.workbenches.get(session).is_some()
     }
 
-    pub fn state(&self) -> &crate::higent::SessionState {
+    pub fn state(&self) -> &ahp_session::session::SessionState {
         &self.state
     }
 
@@ -926,7 +926,7 @@ impl Window {
     pub(crate) fn switch_to(
         &mut self,
         workspace: crate::SessionId,
-        state: crate::higent::SessionState,
+        state: ahp_session::session::SessionState,
     ) -> Option<crate::SessionId> {
         if workspace == self.current_session {
             return None;
@@ -967,7 +967,7 @@ impl Window {
         self.workbenches.insert_mut(previous, stashed);
     }
 
-    pub(crate) fn adopt_local_host(&mut self, host: crate::higent::HostId) -> bool {
+    pub(crate) fn adopt_local_host(&mut self, host: ahp_wire::client::HostId) -> bool {
         let is_stale_local = |id: &crate::SessionId| {
             id.session.as_str() == host_discovery::LOCAL_FS_SESSION && id.host != host
         };
@@ -1123,7 +1123,7 @@ impl Window {
         }
         if self.workbench().chat().is_none() {
             let chats = self.state.chats();
-            let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
+            let Some(chat) = ahp_chat::chats::Chats::list(store, chats).into_iter().next() else {
                 return;
             };
             let Some(pane) = crate::pane_rows::mint(

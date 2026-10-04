@@ -940,7 +940,7 @@ pub fn build(
                 .into_iter()
                 .map(|widget| (WidgetOrigin::Row, widget)),
         );
-        let folders = himark::higent::session_folders(store, &entity.current_session());
+        let folders = ahp_session::session::session_folders(store, &entity.current_session());
 
         let documents = entity.state().documents();
         let peeker = fx.scope(himark::modal_scope(window), |fx| {

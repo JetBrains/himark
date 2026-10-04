@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+ahp-session = { path = "../../ahp-session" }
 editor = { path = "../../editor" }
 himark = { path = "../../himark" }
 imba = { path = "../../imba" }

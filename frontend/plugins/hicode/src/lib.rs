@@ -385,7 +385,7 @@ fn navigation(
 }
 
 fn workspace_folders(store: &Store) -> Vec<ResourceLocation> {
-    himark::higent::all_session_folders(store)
+    ahp_session::session::all_session_folders(store)
 }
 
 fn identifier_at(view: &mut TextView, caret: usize) -> String {

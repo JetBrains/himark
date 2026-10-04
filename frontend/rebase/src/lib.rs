@@ -3,8 +3,7 @@
 
 use std::collections::VecDeque;
 
-mod driver;
-pub use driver::{run, Applied, Local, Offer};
+pub mod driver;
 
 pub trait Action: Clone {
     type State: Clone;

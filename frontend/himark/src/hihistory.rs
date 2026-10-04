@@ -36,9 +36,9 @@ impl crate::DynamicCommand for ToggleHistoryView {
         let workspace = entity.current_session();
         let changes = entity.state().changes();
         let wire = entity.state().changes_wire();
-        let folders = crate::higent::session_folders(store, &workspace);
+        let folders = ahp_session::session::session_folders(store, &workspace);
         fx.scope(crate::AppCommand::Verb, |fx| {
-            crate::drivers::changes::ensure(store, wire, folders, fx)
+            ahp_changes::changes::ensure(store, wire, folders, fx)
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.

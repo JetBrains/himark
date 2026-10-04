@@ -4,10 +4,6 @@
 //! The adapter moved to the `hiahp` crate; the shell keeps the path
 //! alive plus the WINDOW rims the crate cannot hold.
 
-pub use ::ahp_session::{
-    docsync, drivers, find, fs, fsroute, locations, lsproute, open, registry, transport, uris,
-    uuid_v4, wire,
-};
 
 // ---------------------------------------------------------------
 // The WINDOW rims of the open roads: fetch-then-open lands an
@@ -33,12 +29,12 @@ pub fn install_build_handler(
 ) {
     let workshop = Arc::clone(app.workshop());
     let caller = app.effect_caller();
-    app.register_handler::<documents::BuildDocumentEffect>(::ahp_session::open::BuildDocumentHandler(
+    app.register_handler::<documents::BuildDocumentEffect>(::ahp_chat::open::BuildDocumentHandler(
         Arc::clone(&workshop),
         Arc::clone(&languages),
     ));
-    app.register_handler::<crate::higent::BuildFileEditEffect>(
-        ::ahp_session::open::BuildFileEditHandler {
+    app.register_handler::<ahp_chat::file_edit::BuildFileEditEffect>(
+        ::ahp_chat::open::BuildFileEditHandler {
             caller,
             workshop,
             languages,
@@ -60,7 +56,7 @@ pub fn install_open_handlers(
         languages: Arc::clone(&languages),
     });
     let _ = &diff_policy;
-    let shop = ::ahp_session::open::DiffOpenShop {
+    let shop = ::ahp_chat::open::DiffOpenShop {
         caller,
         workshop,
         languages,
@@ -69,12 +65,12 @@ pub fn install_open_handlers(
         shop.clone(),
     ));
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
-        ::ahp_session::open::OpenDiffPairHandler(shop),
+        ::ahp_chat::open::OpenDiffPairHandler(shop),
     );
     app.register_windowed_navigator(DiffNavigator);
 }
 
-struct OpenDiffByLocationsHandler(::ahp_session::open::DiffOpenShop);
+struct OpenDiffByLocationsHandler(::ahp_chat::open::DiffOpenShop);
 
 impl EffectHandler<crate::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
     async fn handle(&self, effect: crate::OpenDiffByLocationsEffect) -> AppCommand {
@@ -192,7 +188,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
         match fetched.flatten() {
             Some(text) => {
                 let document = self.workshop.with_ctx(|store, ui| {
-                    ::ahp_session::open::document_for(
+                    ::ahp_chat::open::document_for(
                         &self.languages,
                         effect.location.name(),
                         &text,
@@ -249,64 +245,64 @@ impl DynamicCommand for FetchFailed {
 }
 
 pub fn register_all(app: &mut crate::Application) {
-    app.register_handler::<crate::higent::ConnectServerEffect>(
-        ::ahp_session::registry::HandleConnectServer,
+    app.register_handler::<ahp_wire::effects::ConnectServerEffect>(
+        ::ahp_wire::registry::HandleConnectServer,
     );
-    app.register_handler::<crate::higent::ListSessionsEffect>(
-        ::ahp_session::registry::HandleListSessions,
+    app.register_handler::<ahp_wire::effects::ListSessionsEffect>(
+        ::ahp_wire::registry::HandleListSessions,
     );
-    app.register_handler::<crate::higent::PollServerEffect>(::ahp_session::registry::HandlePollServer);
-    app.register_handler::<crate::higent::CreateSessionEffect>(
-        ::ahp_session::registry::HandleCreateSession,
+    app.register_handler::<ahp_wire::effects::PollServerEffect>(::ahp_wire::registry::HandlePollServer);
+    app.register_handler::<ahp_wire::effects::CreateSessionEffect>(
+        ::ahp_wire::registry::HandleCreateSession,
     );
-    app.register_handler::<crate::higent::ResolveSessionConfigEffect>(
-        ::ahp_session::registry::HandleResolveSessionConfig,
+    app.register_handler::<ahp_wire::effects::ResolveSessionConfigEffect>(
+        ::ahp_wire::registry::HandleResolveSessionConfig,
     );
-    app.register_handler::<crate::higent::DisposeSessionEffect>(
-        ::ahp_session::registry::HandleDisposeSession,
+    app.register_handler::<ahp_wire::effects::DisposeSessionEffect>(
+        ::ahp_wire::registry::HandleDisposeSession,
     );
-    app.register_handler::<crate::higent::SubscribeSessionEffect>(
-        ::ahp_session::registry::HandleSubscribeSession,
+    app.register_handler::<ahp_wire::effects::SubscribeSessionEffect>(
+        ::ahp_wire::registry::HandleSubscribeSession,
     );
-    app.register_handler::<crate::higent::PollSessionEffect>(::ahp_session::registry::HandlePollSession);
-    app.register_handler::<crate::higent::CreateChatEffect>(::ahp_session::registry::HandleCreateChat);
-    app.register_handler::<crate::higent::SubscribeChatEffect>(
-        ::ahp_session::registry::HandleSubscribeChat,
+    app.register_handler::<ahp_wire::effects::PollSessionEffect>(::ahp_wire::registry::HandlePollSession);
+    app.register_handler::<ahp_wire::effects::CreateChatEffect>(::ahp_wire::registry::HandleCreateChat);
+    app.register_handler::<ahp_wire::effects::SubscribeChatEffect>(
+        ::ahp_wire::registry::HandleSubscribeChat,
     );
-    app.register_handler::<crate::higent::FetchTurnsEffect>(::ahp_session::registry::HandleFetchTurns);
-    app.register_handler::<crate::higent::StartTurnEffect>(::ahp_session::registry::HandleStartTurn);
-    app.register_handler::<crate::higent::PollChatActionsEffect>(
-        ::ahp_session::registry::HandlePollChatActions,
+    app.register_handler::<ahp_wire::effects::FetchTurnsEffect>(::ahp_wire::registry::HandleFetchTurns);
+    app.register_handler::<ahp_wire::effects::StartTurnEffect>(::ahp_wire::registry::HandleStartTurn);
+    app.register_handler::<ahp_wire::effects::PollChatActionsEffect>(
+        ::ahp_wire::registry::HandlePollChatActions,
     );
-    app.register_handler::<crate::higent::CancelTurnEffect>(::ahp_session::registry::HandleCancelTurn);
-    app.register_handler::<crate::higent::DispatchChatActionEffect>(
-        ::ahp_session::registry::HandleDispatchChatAction,
+    app.register_handler::<ahp_wire::effects::CancelTurnEffect>(::ahp_wire::registry::HandleCancelTurn);
+    app.register_handler::<ahp_wire::effects::DispatchChatActionEffect>(
+        ::ahp_wire::registry::HandleDispatchChatAction,
     );
-    app.register_handler::<crate::higent::FetchFileEditEffect>(
-        ::ahp_session::registry::HandleFetchFileEdit,
+    app.register_handler::<ahp_wire::effects::FetchFileEditEffect>(
+        ::ahp_wire::registry::HandleFetchFileEdit,
     );
-    app.register_handler::<crate::higent::SubscribeChangesetEffect>(
-        ::ahp_session::registry::HandleSubscribeChangeset,
+    app.register_handler::<ahp_wire::effects::SubscribeChangesetEffect>(
+        ::ahp_wire::registry::HandleSubscribeChangeset,
     );
-    app.register_handler::<crate::higent::PollChangesetEffect>(
-        ::ahp_session::registry::HandlePollChangeset,
+    app.register_handler::<ahp_wire::effects::PollChangesetEffect>(
+        ::ahp_wire::registry::HandlePollChangeset,
     );
-    app.register_handler::<crate::higent::SubscribeHistoryEffect>(
-        ::ahp_session::registry::HandleSubscribeHistory,
+    app.register_handler::<ahp_wire::effects::SubscribeHistoryEffect>(
+        ::ahp_wire::registry::HandleSubscribeHistory,
     );
-    app.register_handler::<crate::higent::SubscribeLocationsEffect>(
-        ::ahp_session::registry::HandleSubscribeLocations,
+    app.register_handler::<ahp_wire::effects::SubscribeLocationsEffect>(
+        ::ahp_wire::registry::HandleSubscribeLocations,
     );
-    app.register_handler::<crate::higent::PollLocationsEffect>(
-        ::ahp_session::registry::HandlePollLocations,
+    app.register_handler::<ahp_wire::effects::PollLocationsEffect>(
+        ::ahp_wire::registry::HandlePollLocations,
     );
-    app.register_handler::<crate::higent::UnsubscribeLocationsEffect>(
-        ::ahp_session::registry::HandleUnsubscribeLocations,
+    app.register_handler::<ahp_wire::effects::UnsubscribeLocationsEffect>(
+        ::ahp_wire::registry::HandleUnsubscribeLocations,
     );
-    app.register_handler::<crate::higent::SubscribeAnnotationsEffect>(
-        ::ahp_session::registry::HandleSubscribeAnnotations,
+    app.register_handler::<ahp_wire::effects::SubscribeAnnotationsEffect>(
+        ::ahp_wire::registry::HandleSubscribeAnnotations,
     );
-    app.register_handler::<crate::higent::PollAnnotationsEffect>(
-        ::ahp_session::registry::HandlePollAnnotations,
+    app.register_handler::<ahp_wire::effects::PollAnnotationsEffect>(
+        ::ahp_wire::registry::HandlePollAnnotations,
     );
 }

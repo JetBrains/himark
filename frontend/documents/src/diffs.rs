@@ -59,8 +59,8 @@ impl DiffViewId {
 
 #[derive(Clone)]
 pub struct DiffView {
-    pub left: crate::EditorIdView,
-    pub right: crate::EditorIdView,
+    pub left: crate::entity_view::EditorIdView,
+    pub right: crate::entity_view::EditorIdView,
     pub diff: DiffId,
     /// A pair living INSIDE a diff canvas row — it fronts with its
     /// canvas, never as its own session row (the peeker once listed

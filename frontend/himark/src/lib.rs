@@ -9,7 +9,6 @@ pub mod completion;
 mod diffs;
 mod dock;
 mod drawer;
-pub mod drivers;
 mod effects;
 mod find;
 mod focus;
@@ -43,14 +42,7 @@ pub mod toc;
 // migration scaffolding — consumers move to `hikit` paths as they
 // convert, and himark shrinks toward the protocol layer.
 pub use hikit::{combo, fonts, forest, list_keyboard, rows, tree_item, ui};
-pub use hikit::{
-    label_slice, paint_panel_chrome, panel_inset, secondary_press, selection_style,
-    subsequence_match, tree_action, tree_context, tree_toggle, ActivateTrigger, AnnounceSelect,
-    AnnounceSelectHandler, Forest, ForestList, ForestNode, ForestSearcher, ItemSource, LabelRow,
-    ListKeyCommand, ListKeyboardController, NoSearcher, Searcher, SpeedSearchEffect,
-    SpeedSearchHandler, SpeedSearchMatches, TreeItemCommand, TreeItemView, TreeLabel,
-    TreeLabelCommand, TreeListCommand, TreeRow, TreeTint,
-};
+pub use hikit::{rows::label_slice, rows::paint_panel_chrome, rows::panel_inset, tree_item::secondary_press, rows::selection_style, list_keyboard::subsequence_match, tree_item::tree_action, tree_item::tree_context, tree_item::tree_toggle, list_keyboard::ActivateTrigger, list_keyboard::AnnounceSelect, list_keyboard::AnnounceSelectHandler, forest::Forest, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ItemSource, rows::LabelRow, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, list_keyboard::NoSearcher, list_keyboard::Searcher, list_keyboard::SpeedSearchEffect, list_keyboard::SpeedSearchHandler, list_keyboard::SpeedSearchMatches, tree_item::TreeItemCommand, tree_item::TreeItemView, tree_item::TreeLabel, tree_item::TreeLabelCommand, tree_item::TreeListCommand, forest::TreeRow, tree_item::TreeTint};
 pub mod diff_canvas;
 pub mod diff_pane;
 mod pane_rows;
@@ -84,14 +76,9 @@ pub use crate::workspace::{
 pub use app::*;
 pub use app_ext::AppExt;
 pub use commands::{palette_commands, AppRequests, Commands, DynamicCommand};
-pub use completion::{LspAnswer, LspCompletionEffect, LspItem};
+pub use ahp_lsp::{LspCompletionEffect, LspItem};
 pub use dock::{DockCommand, DOCK_MIN_WIDTH, DOCK_WIDTH};
-pub use documents::{
-    close_editor, deliver, is_scratch, is_synthetic, line_col_at, mount_editor,
-    next_scratch_location, offset_at, DocumentCommand, DocumentCommands, DocumentHook, DocumentId,
-    EditorIdView, FetchDocumentEffect, FetchResourceBytesEffect, LineCol, OpenDocument,
-    OpenDocuments,
-};
+pub use documents::{lifecycle::close_editor, lifecycle::deliver, is_scratch, is_synthetic, text_ext::line_col_at, lifecycle::mount_editor, next_scratch_location, text_ext::offset_at, dynamic::DocumentCommand, dynamic::DocumentCommands, DocumentHook, DocumentId, entity_view::EditorIdView, FetchDocumentEffect, FetchResourceBytesEffect, text_ext::LineCol, OpenDocument, OpenDocuments};
 pub use drawer::DRAWER_WIDTH;
 pub use effects::*;
 pub use find::{FindBar, FindCommand};

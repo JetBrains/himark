@@ -5,7 +5,8 @@ use std::ops::Range;
 
 use text::text::Text;
 
-use crate::{document::Document, markup::{Markup, StyleId}};
+use crate::theme::StyleId;
+use crate::{document::Document, markup::Markup};
 
 pub fn test_fonts() -> crate::FontSource {
     std::sync::Arc::new(|| test_fonts_collection().clone())

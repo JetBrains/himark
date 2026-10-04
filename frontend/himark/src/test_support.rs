@@ -8,14 +8,14 @@ use crate::{workbench_geometry, Application, EditorIdView, Panel};
 
 struct TestUris;
 
-impl crate::higent::ResourceUriMap for TestUris {
-    fn uri_of(&self, location: &editor::location::ResourceLocation) -> crate::higent::ResourceUri {
-        crate::higent::ResourceUri::new(format!("file:///{}", location.path().join("/")))
+impl ahp_wire::client::ResourceUriMap for TestUris {
+    fn uri_of(&self, location: &editor::location::ResourceLocation) -> ahp_wire::client::ResourceUri {
+        ahp_wire::client::ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }
 
     fn location_of(
         &self,
-        uri: &crate::higent::ResourceUri,
+        uri: &ahp_wire::client::ResourceUri,
         kind: editor::location::ResourceType,
         _authority: &editor::location::Authority,
     ) -> Option<editor::location::ResourceLocation> {
@@ -40,23 +40,23 @@ pub fn seed_session_folders(
     folders: &[editor::location::ResourceLocation],
 ) -> crate::SessionId {
     let host = crate::SessionId::local_default(store).host;
-    crate::higent::Agents::seed(store, host, "Test Host");
-    crate::higent::Hosts::install_uris(store, host, std::sync::Arc::new(TestUris));
+    ahp_session::session::Agents::seed(store, host, "Test Host");
+    ahp_session::session::Hosts::install_uris(store, host, std::sync::Arc::new(TestUris));
     static SEEDED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let minted = SEEDED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let id = crate::SessionId {
         host,
-        session: crate::higent::SessionUri::new(format!("test-session:/{minted}")),
+        session: ahp_wire::client::SessionUri::new(format!("test-session:/{minted}")),
     };
-    let uris = crate::higent::Hosts::uris(store, host).expect("installed above");
+    let uris = ahp_session::session::Hosts::uris(store, host).expect("installed above");
     let working_directories: Vec<String> = folders
         .iter()
         .map(|folder| uris.uri_of(folder).into_string())
         .collect();
-    crate::higent::Agents::set_channel(
+    ahp_session::session::Agents::set_channel(
         store,
         &id,
-        crate::higent::SessionChannel {
+        ahp_wire::client::SessionChannel {
             provider: "test".to_owned(),
             chats: rpds::VectorSync::new_sync(),
             default_chat: None,
@@ -65,7 +65,7 @@ pub fn seed_session_folders(
         },
     );
 
-    crate::higent::Agents::add_sessions(
+    ahp_session::session::Agents::add_sessions(
         store,
         host,
         vec![ahp_types::state::SessionSummary {
@@ -93,15 +93,15 @@ pub fn add_session_folders(
     id: &crate::SessionId,
     folders: &[editor::location::ResourceLocation],
 ) {
-    let uris = crate::higent::Hosts::uris(store, id.host).expect("a seeded session");
-    let mut channel = crate::higent::Agents::channel(store, id).expect("a seeded session");
+    let uris = ahp_session::session::Hosts::uris(store, id.host).expect("a seeded session");
+    let mut channel = ahp_session::session::Agents::channel(store, id).expect("a seeded session");
     for folder in folders {
         let uri = uris.uri_of(folder).into_string();
         if !channel.working_directories.iter().any(|held| held == &uri) {
             channel.working_directories.push_back_mut(uri);
         }
     }
-    crate::higent::Agents::set_channel(store, id, channel);
+    ahp_session::session::Agents::set_channel(store, id, channel);
 }
 
 #[allow(dead_code)]
@@ -129,7 +129,7 @@ impl Application {
 
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
-    pub fn sole_family(&self) -> crate::higent::SessionState {
+    pub fn sole_family(&self) -> ahp_session::session::SessionState {
         crate::Windows::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
@@ -379,7 +379,7 @@ impl Application {
             .ids()
             .iter()
             .find_map(|id| match *id {
-                ::editor::markup::StyleId::Header(level) => Some(Some(level)),
+                ::editor::theme::StyleId::Header(level) => Some(Some(level)),
                 _ => None,
             })
             .or(Some(None))

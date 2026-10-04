@@ -45,7 +45,7 @@ pub enum ModalRequest {
     /// jump from a browsing show (the keyboard stays where it was).
     OpenAt {
         location: editor::location::ResourceLocation,
-        target: Option<std::ops::Range<documents::LineCol>>,
+        target: Option<std::ops::Range<documents::text_ext::LineCol>>,
         focus: bool,
     },
 
@@ -53,7 +53,7 @@ pub enum ModalRequest {
 
     OpenLocations(Vec<editor::location::ResourceLocation>),
 
-    SelectWidget(Box<dyn crate::DynPanelView>),
+    SelectWidget(Box<dyn crate::panel::DynPanelView>),
 }
 
 pub trait ModalView: imba::dyn_view::DynView + Send + Sync {
@@ -68,7 +68,7 @@ pub trait ModalView: imba::dyn_view::DynView + Send + Sync {
     ) {
     }
 
-    fn release_widgets(&mut self) -> Vec<(crate::WidgetOrigin, Box<dyn crate::DynPanelView>)> {
+    fn release_widgets(&mut self) -> Vec<(crate::panel::WidgetOrigin, Box<dyn crate::panel::DynPanelView>)> {
         Vec::new()
     }
 

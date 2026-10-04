@@ -3,8 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::higent::Agents;
-use crate::higent::{CreateChatEffect, HostId};
+use ahp_session::session::Agents;
+use ahp_wire::effects::CreateChatEffect;
+use ahp_wire::client::HostId;
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
 use imba::effect::AnyEffect;
 use imba::store::Store;
@@ -37,7 +38,7 @@ impl DynamicCommand for NewChat {
         let Some(key) = Agents::live_session(store, &workspace) else {
             return;
         };
-        let Some(client) = crate::higent::Servers::client(store, key.host) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, key.host) else {
             return;
         };
         let server = key.host;
@@ -55,7 +56,7 @@ impl DynamicCommand for NewChat {
 
 struct OpenCreatedChat {
     server: HostId,
-    created: Result<crate::higent::ChatUri, String>,
+    created: Result<ahp_wire::client::ChatUri, String>,
 }
 
 impl DynamicCommand for OpenCreatedChat {
@@ -85,7 +86,7 @@ impl DynamicCommand for OpenCreatedChat {
 
         let mut entity = Windows::window(store, window).expect("the window entity");
         let session = entity.current_session().session;
-        let pane = crate::higent::Chats::open(
+        let pane = ahp_chat::chats::Chats::open(
             store,
             ui,
             entity.state().chats(),

@@ -13,7 +13,7 @@ use imba::store::Store;
 
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsFeedRow};
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::ForestNode;
+use hikit::forest::ForestNode;
 
 /// The registration hook: a search-picked document opened — wash it.
 /// WIRED: minted by the session ceremony with the lists collection in
@@ -108,7 +108,7 @@ impl imba::command::DynamicCommand for WashDocument {
                 .filter(|found| found.location == location)
                 .map(|found| {
                     let target = found.target();
-                    let start = documents::offset_at(&mut view, target.start) as u32;
+                    let start = documents::text_ext::offset_at(&mut view, target.start) as u32;
                     start..(start + found.length.max(1))
                 })
                 .collect()
@@ -236,7 +236,7 @@ pub fn files_forest<'a>(
                 pick: true,
                 dim: false,
                 trail: vec![(format!("{}", hits.len()), chip)],
-                tint: hikit::TreeTint::File,
+                tint: hikit::tree_item::TreeTint::File,
                 action: None,
                 children: hits
                     .into_iter()
@@ -246,7 +246,7 @@ pub fn files_forest<'a>(
                         pick: true,
                         dim: false,
                         trail: vec![(format!("{}", found.line + 1), chip)],
-                        tint: hikit::TreeTint::Label,
+                        tint: hikit::tree_item::TreeTint::Label,
                         action: None,
                         children: Vec::new(),
                     })
@@ -331,7 +331,7 @@ pub fn locations_forest<'a>(
                 pick: false,
                 dim: true,
                 trail: Vec::new(),
-                tint: hikit::TreeTint::Directory,
+                tint: hikit::tree_item::TreeTint::Directory,
                 action: None,
                 children: self.children(trie, &location),
             }
@@ -365,7 +365,7 @@ pub fn locations_forest<'a>(
                         format!("{}:{}", found.line + 1, found.column + 1),
                         self.position_color,
                     )],
-                    tint: hikit::TreeTint::Label,
+                    tint: hikit::tree_item::TreeTint::Label,
                     action: None,
                     children: Vec::new(),
                 })
@@ -376,7 +376,7 @@ pub fn locations_forest<'a>(
                 pick: true,
                 dim: false,
                 trail: vec![(format!("{}", hits.len()), self.count_color)],
-                tint: hikit::TreeTint::File,
+                tint: hikit::tree_item::TreeTint::File,
                 action: None,
                 children: leaves,
             }
