@@ -5,8 +5,8 @@ use imba::effect::AnyEffect;
 use imba::store::Store;
 use imba::UiCtx;
 
-use crate::higent::chat::{ChatPanel, ChatPanelCommand, ChatViewId};
-use crate::higent::{ChatUri, SessionUri};
+use crate::chat::{ChatPanel, ChatPanelCommand, ChatViewId};
+use ahp_wire::client::{ChatUri, SessionUri};
 
 /// The conversations of ONE session — a collection reached by its
 /// `Id<Chats>` and nothing else (docs/entities.md). The id is wired
@@ -18,22 +18,81 @@ use crate::higent::{ChatUri, SessionUri};
 pub struct Chats {
     /// The recents the composer's `@` completion lists — wired at the
     /// session mint (docs/entities.md law 4).
-    recents: imba::store::Id<crate::higent::RecentLocations>,
+    recents: imba::store::Id<crate::recents::RecentLocations>,
+
+    /// The catalog consults the chat needs, wired at the ceremony —
+    /// the chat sits below the catalog and holds only these roads.
+    catalog: Catalog,
 
     chats: rpds::HashTrieMapSync<ChatUri, ChatPanel>,
+}
+
+/// The catalog's answers to the chat, as ceremony-wired closures:
+/// the host's uri map and agents, a session's channel digest and
+/// folders, and the latest-turn note. The one place that knows the
+/// catalog builds these (law 4).
+#[derive(Clone)]
+pub struct Catalog {
+    pub uris: std::sync::Arc<
+        dyn Fn(
+                &Store,
+                ahp_wire::client::HostId,
+            ) -> Option<std::sync::Arc<dyn ahp_wire::client::ResourceUriMap>>
+            + Send
+            + Sync,
+    >,
+    pub agents: std::sync::Arc<
+        dyn Fn(&Store, ahp_wire::client::HostId) -> Vec<ahp_types::state::AgentInfo> + Send + Sync,
+    >,
+    pub channel: std::sync::Arc<
+        dyn Fn(&Store, &ahp_wire::SessionId) -> Option<ahp_wire::client::SessionChannel>
+            + Send
+            + Sync,
+    >,
+    pub note_turn: std::sync::Arc<
+        dyn Fn(&mut Store, ahp_wire::client::HostId, &ChatUri, &str) + Send + Sync,
+    >,
+    pub folders: std::sync::Arc<
+        dyn Fn(&Store, &ahp_wire::SessionId) -> Vec<editor::ResourceLocation> + Send + Sync,
+    >,
+}
+
+impl Catalog {
+    /// A catalog that answers nothing — the unit tests' stand-in; the
+    /// ceremony always wires the real one.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn inert() -> Self {
+        Catalog {
+            uris: std::sync::Arc::new(|_, _| None),
+            agents: std::sync::Arc::new(|_, _| Vec::new()),
+            channel: std::sync::Arc::new(|_, _| None),
+            note_turn: std::sync::Arc::new(|_, _, _, _| {}),
+            folders: std::sync::Arc::new(|_, _| Vec::new()),
+        }
+    }
 }
 
 impl Chats {
     /// A collection wired to its sibling — minted by the session
     /// ceremony, and by tests that stand one up alone.
-    pub fn wired(recents: imba::store::Id<crate::higent::RecentLocations>) -> Self {
+    pub fn wired(
+        recents: imba::store::Id<crate::recents::RecentLocations>,
+        catalog: Catalog,
+    ) -> Self {
         Self {
             recents,
+            catalog,
             chats: rpds::HashTrieMapSync::new_sync(),
         }
     }
 
-    pub fn recents(&self) -> imba::store::Id<crate::higent::RecentLocations> {
+    /// The ceremony-wired catalog roads — the panels reach them
+    /// through their collection.
+    pub fn catalog(store: &Store, chats: imba::store::Id<Chats>) -> Option<Catalog> {
+        Some(store.entity(chats)?.catalog.clone())
+    }
+
+    pub fn recents(&self) -> imba::store::Id<crate::recents::RecentLocations> {
         self.recents
     }
 
@@ -57,7 +116,7 @@ impl Chats {
         self.chats.keys().cloned().collect()
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.chats.is_empty()
     }
 
@@ -76,7 +135,7 @@ impl Chats {
         store: &mut Store,
         ui: &imba::UiCtx,
         chats: imba::store::Id<Chats>,
-        server: crate::higent::HostId,
+        server: ahp_wire::client::HostId,
         session: SessionUri,
         chat: ChatUri,
     ) -> Box<dyn hikit::DynPanelView> {
@@ -90,7 +149,7 @@ impl Chats {
         store: &mut Store,
         ui: &imba::UiCtx,
         chats: imba::store::Id<Chats>,
-        server: crate::higent::HostId,
+        server: ahp_wire::client::HostId,
         session: SessionUri,
         chat: ChatUri,
         initial_prompt: Option<String>,
@@ -211,7 +270,7 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
         let Some(mut panel) = Chats::chat(store, chats, &self.chat) else {
             return;
         };
-        let Some(client) = crate::higent::Servers::client(store, panel.server()) else {
+        let Some(client) = ahp_wire::client::Servers::client(store, panel.server()) else {
             panel.mark_failed("unregistered server".to_owned());
             Chats::put(store, chats, self.chat.clone(), panel);
             return;
@@ -221,7 +280,7 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
         let chat = self.chat.clone();
         let landing = self.chat.clone();
         fx.push(
-            AnyEffect::new(crate::higent::SubscribeChatEffect { client: client.chat.clone(), chat }).map(move |result| {
+            AnyEffect::new(ahp_wire::effects::SubscribeChatEffect { client: client.chat.clone(), chat }).map(move |result| {
                 imba::command::Verb::at(
                     chats,
                     ChatsCommand::Panel(landing.clone(), ChatPanelCommand::Snapshot(result)),
@@ -404,7 +463,7 @@ impl hikit::PanelView for ChatPane {
     type Place = ChatPlace;
 
     fn pane_row(&self) -> Option<hikit::PaneRow> {
-        Some(hikit::PaneRow::new(crate::higent::ChatRow(
+        Some(hikit::PaneRow::new(crate::chats::ChatRow(
             self.chats,
             self.chat.clone(),
         )))
@@ -470,8 +529,8 @@ impl hikit::PanelView for ChatPane {
 
 #[derive(Clone, PartialEq)]
 pub struct ChatRow(
-    pub imba::store::Id<crate::higent::Chats>,
-    pub crate::higent::ChatUri,
+    pub imba::store::Id<crate::chats::Chats>,
+    pub ahp_wire::client::ChatUri,
 );
 
 impl hikit::Row for ChatRow {}

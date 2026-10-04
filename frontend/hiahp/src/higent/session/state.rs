@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use crate::higent::HostId;
+use ahp_wire::client::SessionChannel;
 use crate::higent::{ChatUri, SessionUri};
 use ahp_types::state::{AgentInfo, ChatSummary, SessionSummary};
 use imba::store::{Id, Store};
@@ -18,16 +19,7 @@ pub enum HostStatus {
     Failed(String),
 }
 
-#[derive(Clone, Default)]
-pub struct SessionChannel {
-    pub provider: String,
-    pub chats: rpds::VectorSync<ChatSummary>,
-    pub default_chat: Option<ChatUri>,
 
-    pub working_directories: rpds::VectorSync<String>,
-
-    pub config: Option<Arc<ahp_types::state::SessionConfigState>>,
-}
 
 #[derive(Clone)]
 pub struct Host {
@@ -548,7 +540,25 @@ impl Hosts {
                 lists: state.lists,
             }),
         );
-        store.put_entity(state.chats, crate::higent::Chats::wired(state.recents));
+        store.put_entity(
+            state.chats,
+            crate::higent::Chats::wired(
+                state.recents,
+                crate::higent::chats::Catalog {
+                    uris: std::sync::Arc::new(Hosts::uris),
+                    agents: std::sync::Arc::new(|store, host| {
+                        Hosts::host_ref(store, host)
+                            .map(|row| row.agents.iter().cloned().collect())
+                            .unwrap_or_default()
+                    }),
+                    channel: std::sync::Arc::new(Agents::channel),
+                    note_turn: std::sync::Arc::new(Agents::note_turn),
+                    folders: std::sync::Arc::new(|store, session| {
+                        super::folders::session_folders(store, session)
+                    }),
+                },
+            ),
+        );
         store.update::<Hosts>(|hosts| {
             let mut host = match hosts.entries.get(&session.host) {
                 Some(host) => host.clone(),

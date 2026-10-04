@@ -16,7 +16,7 @@ use imba::{
 };
 use skia_safe::{Rect, Size};
 
-use crate::higent::cell::document_text;
+use crate::cell::document_text;
 
 type ChatChrome = editor::theme::ChatChrome;
 

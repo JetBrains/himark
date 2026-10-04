@@ -50,14 +50,14 @@ pub struct BuildFileEditHandler {
     pub diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 }
 
-impl EffectHandler<crate::higent::BuildFileEditEffect> for BuildFileEditHandler {
+impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandler {
     async fn handle(
         &self,
-        effect: crate::higent::BuildFileEditEffect,
-    ) -> Result<crate::higent::BuiltFileEdit, String> {
+        effect: crate::file_edit::BuildFileEditEffect,
+    ) -> Result<crate::file_edit::BuiltFileEdit, String> {
         let contents = self
             .caller
-            .call(crate::higent::FetchFileEditEffect {
+            .call(ahp_wire::effects::FetchFileEditEffect {
                 client: effect.client,
                 before: effect.before,
                 after: effect.after,
@@ -67,7 +67,7 @@ impl EffectHandler<crate::higent::BuildFileEditEffect> for BuildFileEditHandler 
         let fonts = self.workshop.fonts();
         let theme = self.workshop.theme();
         Ok(self.workshop.with_ctx(|store, ui| {
-            crate::higent::build_file_edit(
+            crate::file_edit::build_file_edit(
                 &effect.name,
                 &contents,
                 &self.languages,

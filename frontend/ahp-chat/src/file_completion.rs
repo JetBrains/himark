@@ -1,12 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::PickedFile;
+use crate::completion::PickedFile;
 
 pub(crate) fn resource_attachments(
     text: &str,
     picked: impl IntoIterator<Item = PickedFile>,
-    uris: &dyn crate::higent::ResourceUriMap,
+    uris: &dyn ahp_wire::client::ResourceUriMap,
 ) -> Option<Vec<ahp_types::state::MessageAttachment>> {
     let mut attachments = Vec::new();
     for pick in picked {
@@ -51,13 +51,13 @@ mod tests {
     use editor::ResourceLocation;
 
     struct TestUris;
-    impl crate::higent::ResourceUriMap for TestUris {
-        fn uri_of(&self, location: &ResourceLocation) -> crate::higent::ResourceUri {
-            crate::higent::ResourceUri::new(format!("file:///{}", location.path().join("/")))
+    impl ahp_wire::client::ResourceUriMap for TestUris {
+        fn uri_of(&self, location: &ResourceLocation) -> ahp_wire::client::ResourceUri {
+            ahp_wire::client::ResourceUri::new(format!("file:///{}", location.path().join("/")))
         }
         fn location_of(
             &self,
-            _uri: &crate::higent::ResourceUri,
+            _uri: &ahp_wire::client::ResourceUri,
             _kind: editor::ResourceType,
             _authority: &editor::Authority,
         ) -> Option<ResourceLocation> {

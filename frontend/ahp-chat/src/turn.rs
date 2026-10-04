@@ -12,10 +12,10 @@ use imba::{
 };
 use skia_safe::Size;
 
-use crate::higent::cell::{Cell, CellCommand, CellKind, DiffHeader};
-use crate::higent::chat::model::PartId;
-use crate::higent::tool_group::{ToolCallSpec, ToolFace};
-use crate::higent::FileEditRefs;
+use crate::cell::{Cell, CellCommand, CellKind, DiffHeader};
+use crate::chat::model::PartId;
+use crate::tool_group::{ToolCallSpec, ToolFace};
+use crate::file_edit::FileEditRefs;
 use ahp_types::common::Uri;
 
 pub type TurnCommand = ListCommand<CellCommand>;
@@ -180,8 +180,8 @@ impl View for TurnView {
 /// first call (docs/ahp/agents.md, "Tool runs collapse": anything
 /// else between two calls closes the run) — then how the turn ended
 /// and what it spent. Pure dressing — the model holds none of it.
-pub(crate) fn dress(turn: &crate::higent::chat::model::Turn) -> DressedCells {
-    use crate::higent::chat::model::Part;
+pub(crate) fn dress(turn: &crate::chat::model::Turn) -> DressedCells {
+    use crate::chat::model::Part;
     let mut cells = DressedCells::new_sync();
     let (voice, text) = turn.prompt.clone();
     cells.push_back_mut((CellKey::Prompt, CellSpec::Text(voice, text)));
@@ -216,10 +216,10 @@ pub(crate) fn dress(turn: &crate::higent::chat::model::Turn) -> DressedCells {
 /// that lacks the cell builds all of it; one that has it takes the
 /// specs as keyed updates. None when the part is not a tool call.
 pub(crate) fn dress_tool_run(
-    turn: &crate::higent::chat::model::Turn,
+    turn: &crate::chat::model::Turn,
     part: &PartId,
 ) -> Option<(CellKey, CellSpec)> {
-    use crate::higent::chat::model::Part;
+    use crate::chat::model::Part;
     let mut run: Option<(PartId, Vec<ToolCallSpec>)> = None;
     let mut hit = false;
     for (id, held) in turn.parts() {
@@ -247,8 +247,8 @@ pub(crate) fn dress_tool_run(
 }
 
 /// ONE part's cell — what a part landing re-dresses. Never the turn.
-pub(crate) fn dress_part(part: &crate::higent::chat::model::Part) -> CellSpec {
-    use crate::higent::chat::model::Part;
+pub(crate) fn dress_part(part: &crate::chat::model::Part) -> CellSpec {
+    use crate::chat::model::Part;
     match part {
         Part::Said { voice, text } => CellSpec::Text(*voice, text.clone()),
         Part::Tool(call) => CellSpec::Tools(vec![tool_spec_of(call)]),
@@ -258,8 +258,8 @@ pub(crate) fn dress_part(part: &crate::higent::chat::model::Part) -> CellSpec {
 
 /// The cells after the parts: how the turn ended (when it did not
 /// simply complete) and what it spent. At most two.
-pub(crate) fn dress_tail(turn: &crate::higent::chat::model::Turn) -> DressedCells {
-    use crate::higent::chat::model::Life;
+pub(crate) fn dress_tail(turn: &crate::chat::model::Turn) -> DressedCells {
+    use crate::chat::model::Life;
     let mut cells = DressedCells::new_sync();
     match &turn.life {
         Life::Live | Life::Complete => {}
@@ -283,8 +283,8 @@ pub(crate) fn dress_tail(turn: &crate::higent::chat::model::Turn) -> DressedCell
 
 pub(crate) type DressedCells = rpds::VectorSync<(CellKey, CellSpec)>;
 
-fn tool_spec_of(call: &crate::higent::chat::model::ToolCall) -> ToolCallSpec {
-    use crate::higent::chat::model::ToolStatus;
+fn tool_spec_of(call: &crate::chat::model::ToolCall) -> ToolCallSpec {
+    use crate::chat::model::ToolStatus;
     let face = match &call.status {
         ToolStatus::Streaming => streaming_tool_face(&call.display),
         ToolStatus::Waiting => pending_tool_face(&call.display, &call.invocation),

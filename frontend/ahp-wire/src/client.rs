@@ -377,6 +377,21 @@ pub trait LspClient: Send + Sync + 'static {
     ) -> ClientFuture<Result<serde_json::Value, String>>;
 }
 
+/// One session's channel digest: the provider, chats, working
+/// directories and config the session feed has landed so far — pure
+/// wire data, held by the catalog, read by the chat through its
+/// ceremony-wired roads.
+#[derive(Clone, Default)]
+pub struct SessionChannel {
+    pub provider: String,
+    pub chats: rpds::VectorSync<ahp_types::state::ChatSummary>,
+    pub default_chat: Option<ChatUri>,
+
+    pub working_directories: rpds::VectorSync<String>,
+
+    pub config: Option<Arc<ahp_types::state::SessionConfigState>>,
+}
+
 /// One host's client, faceted: every protocol domain holds only its
 /// slice. The bundle is ten `Arc`s onto (usually) one implementation;
 /// cloning it is pointer bumps.

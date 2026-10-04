@@ -750,7 +750,7 @@ impl PaneSlot {
                 &mut document,
                 editor,
                 typed_at,
-                &session,
+                std::sync::Arc::new(crate::higent::session_folders(store, &session)),
                 state.recents(),
                 Some((id, editor)),
                 fx,

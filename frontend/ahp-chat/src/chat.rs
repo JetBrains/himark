@@ -14,8 +14,9 @@
 
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
-use crate::higent::{
-    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect, TurnsPage,
+use ahp_wire::client::TurnsPage;
+use ahp_wire::effects::{
+    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect,
 };
 use ahp_types::actions::{
     ChatPendingMessageRemovedAction, ChatToolCallConfirmedAction, StateAction,
@@ -41,10 +42,10 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::higent::cell::{Cell, CellCommand};
-use crate::higent::composer::{Composer, ComposerCommand, ComposerProps};
-use crate::higent::stack::{PermissionAsk, StackCommand, WidgetStack};
-use crate::higent::turn::{CellSpec, TurnCommand, TurnView};
+use crate::cell::{Cell, CellCommand};
+use crate::composer::{Composer, ComposerCommand, ComposerProps};
+use crate::stack::{PermissionAsk, StackCommand, WidgetStack};
+use crate::turn::{CellSpec, TurnCommand, TurnView};
 
 #[derive(Clone)]
 pub enum RowCommand {
@@ -55,7 +56,7 @@ pub enum RowCommand {
 
     /// A cell joins the turn where its key belongs.
     Place {
-        key: crate::higent::turn::CellKey,
+        key: crate::turn::CellKey,
         cell: Cell,
         height: f32,
     },
@@ -322,7 +323,7 @@ enum Link {
     Failed(String),
 }
 
-type Transcript = ListView<ChatRow, crate::higent::TurnId>;
+type Transcript = ListView<ChatRow, ahp_wire::client::TurnId>;
 type Rows = ScrollView<Transcript>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
@@ -346,8 +347,8 @@ pub enum ChatPanelCommand {
     /// A command for one cell, addressed by KEY: a landing that was in
     /// flight while the row changed shape still finds its cell.
     Cell {
-        turn: crate::higent::TurnId,
-        cell: crate::higent::turn::CellKey,
+        turn: ahp_wire::client::TurnId,
+        cell: crate::turn::CellKey,
         command: CellCommand,
     },
     Composer(ComposerCommand),
@@ -362,7 +363,7 @@ pub enum ChatPanelCommand {
     Sent,
     /// The host refused it: the turn we minted failed.
     SendFailed {
-        turn: crate::higent::TurnId,
+        turn: ahp_wire::client::TurnId,
         error: String,
     },
 
@@ -382,7 +383,7 @@ pub enum ChatPanelCommand {
 
     ToolbarSync,
 
-    CompletionFound(crate::CompletionFound),
+    CompletionFound(crate::completion::CompletionFound),
 }
 
 impl std::fmt::Display for ChatPanelCommand {
@@ -460,20 +461,20 @@ enum ViewOp {
     /// streamed turn must never mint them again. The op carries the
     /// SPEC, dressed once; the views only lay it.
     Cell {
-        turn: crate::higent::TurnId,
-        key: crate::higent::turn::CellKey,
+        turn: ahp_wire::client::TurnId,
+        key: crate::turn::CellKey,
         spec: CellSpec,
     },
     /// A turn ended: the cells after its parts (how it ended, what it
     /// spent) join the row. At most two.
     Tail {
-        turn: crate::higent::TurnId,
-        cells: crate::higent::turn::DressedCells,
+        turn: ahp_wire::client::TurnId,
+        cells: crate::turn::DressedCells,
     },
     /// Streamed text joined one part. The view hops from the part id to
     /// its cell and appends — no counting, no re-lay.
     Grew {
-        turn: crate::higent::TurnId,
+        turn: ahp_wire::client::TurnId,
         part: model::PartId,
         text: String,
     },
@@ -481,13 +482,13 @@ enum ViewOp {
 
 /// The conversation MODEL: session truth, owner of its views.
 pub struct ChatPanel {
-    server: crate::higent::HostId,
+    server: ahp_wire::client::HostId,
 
-    session: crate::higent::SessionUri,
+    session: ahp_wire::client::SessionUri,
     /// The collection this chat files into — wired at mint
     /// (docs/entities.md law 4).
-    chats: imba::store::Id<crate::higent::Chats>,
-    chat: crate::higent::ChatUri,
+    chats: imba::store::Id<crate::chats::Chats>,
+    chat: ahp_wire::client::ChatUri,
     state: Link,
     title: String,
 
@@ -551,9 +552,9 @@ pub struct ChatView {
 
     composer: Composer,
 
-    completion: crate::Completion,
+    completion: crate::completion::Completion,
 
-    picked: rpds::VectorSync<crate::PickedFile>,
+    picked: rpds::VectorSync<crate::completion::PickedFile>,
 
     focus: ChatArea,
 
@@ -591,7 +592,7 @@ const EAGER_TAIL: usize = 12;
 /// anchor and rides the settle pulse.
 fn sleeping_height(turn: &model::Turn, chrome: &editor::theme::ChatChrome) -> f32 {
     let line = chrome.title_size * 1.5;
-    let body: f32 = crate::higent::turn::dress(turn)
+    let body: f32 = crate::turn::dress(turn)
         .iter()
         .map(|(_, cell)| match cell {
             CellSpec::Text(_, text) => {
@@ -614,10 +615,10 @@ impl ChatPanel {
     pub fn new(
         _store: &imba::store::Store,
         _ui: &UiCtx,
-        server: crate::higent::HostId,
-        session: impl Into<crate::higent::SessionUri>,
-        chats: imba::store::Id<crate::higent::Chats>,
-        chat: impl Into<crate::higent::ChatUri>,
+        server: ahp_wire::client::HostId,
+        session: impl Into<ahp_wire::client::SessionUri>,
+        chats: imba::store::Id<crate::chats::Chats>,
+        chat: impl Into<ahp_wire::client::ChatUri>,
     ) -> Self {
         Self {
             server,
@@ -643,12 +644,12 @@ impl ChatPanel {
         self
     }
 
-    pub(crate) fn server(&self) -> crate::higent::HostId {
+    pub(crate) fn server(&self) -> ahp_wire::client::HostId {
         self.server
     }
 
-    pub fn session_id(&self) -> crate::SessionId {
-        crate::SessionId {
+    pub fn session_id(&self) -> ahp_wire::SessionId {
+        ahp_wire::SessionId {
             host: self.server,
             session: self.session.clone(),
         }
@@ -684,7 +685,7 @@ impl ChatPanel {
                 ChatRow::Loader { .. } => ("…".to_owned(), Vec::new()),
                 ChatRow::Sleeping(turn) => (
                     turn.id.as_str().to_owned(),
-                    crate::higent::turn::dress(&turn)
+                    crate::turn::dress(&turn)
                         .iter()
                         .map(|(_, cell)| match cell {
                             CellSpec::Text(kind, text) => (format!("{kind:?}"), text.clone()),
@@ -808,8 +809,8 @@ impl ChatPanel {
         self.conversation.is_running()
     }
 
-    fn client(&self, store: &Store) -> Option<crate::higent::Client> {
-        crate::higent::Servers::client(store, self.server)
+    fn client(&self, store: &Store) -> Option<ahp_wire::client::Client> {
+        ahp_wire::client::Servers::client(store, self.server)
     }
 
     // ------------------------------------------------------------------
@@ -1003,7 +1004,7 @@ impl ChatPanel {
         self.fetch_token = None;
         match result {
             Ok(page) => {
-                let before: rpds::HashTrieMapSync<crate::higent::TurnId, ()> = self
+                let before: rpds::HashTrieMapSync<ahp_wire::client::TurnId, ()> = self
                     .conversation
                     .turns()
                     .map(|turn| (turn.id.clone(), ()))
@@ -1070,7 +1071,9 @@ impl ChatPanel {
             .rev()
             .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
         {
-            crate::higent::session::Agents::note_turn(store, self.server, &self.chat, &turn.id);
+            if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
+                (roads.note_turn)(store, self.server, &self.chat, &turn.id);
+            }
         }
         self.stack
             .seed_queue(state.queued_messages.iter().flatten().cloned());
@@ -1166,7 +1169,7 @@ impl ChatPanel {
     /// holding a permission ask (it outlives the stream), else the
     /// turn the wire last told us was in flight. With none of these
     /// the button has nothing to name — and does nothing.
-    pub fn cancel_target(&self) -> Option<crate::higent::TurnId> {
+    pub fn cancel_target(&self) -> Option<ahp_wire::client::TurnId> {
         self.conversation
             .live()
             .cloned()
@@ -1237,12 +1240,9 @@ impl ChatPanel {
                 self.stack.clear_ask();
                 steer = self.steering.take().or(steer);
                 if let StateAction::ChatTurnComplete(done) = &action {
-                    crate::higent::session::Agents::note_turn(
-                        store,
-                        self.server,
-                        &self.chat,
-                        &done.turn_id,
-                    );
+                    if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
+                        (roads.note_turn)(store, self.server, &self.chat, &done.turn_id);
+                    }
                 }
                 self.mark_read(store, fx);
             }
@@ -1256,24 +1256,24 @@ impl ChatPanel {
     /// The ops a change asks the views for — dressed here ONCE, laid by
     /// every view at its own width.
     fn ops_of(&self, change: &model::Change, ops: &mut Vec<ViewOp>) {
-        let cell = |turn: &crate::higent::TurnId, part: &model::PartId| {
+        let cell = |turn: &ahp_wire::client::TurnId, part: &model::PartId| {
             let held = self.conversation.turn(turn)?;
             let moved = held.part(part)?;
             // A tool call's cell is its RUN — consecutive calls share
             // one cell, keyed by the run's first call, however late a
             // call joins or re-dresses.
             if matches!(moved, model::Part::Tool(_)) {
-                let (key, spec) = crate::higent::turn::dress_tool_run(held, part)?;
+                let (key, spec) = crate::turn::dress_tool_run(held, part)?;
                 return Some(ViewOp::Cell {
                     turn: turn.clone(),
                     key,
                     spec,
                 });
             }
-            let spec = crate::higent::turn::dress_part(moved);
+            let spec = crate::turn::dress_part(moved);
             Some(ViewOp::Cell {
                 turn: turn.clone(),
-                key: crate::higent::turn::CellKey::Part(part.clone()),
+                key: crate::turn::CellKey::Part(part.clone()),
                 spec,
             })
         };
@@ -1289,7 +1289,7 @@ impl ChatPanel {
             }
             model::Change::Retired(turn) => self.conversation.turn(turn).map(|turn| ViewOp::Tail {
                 turn: turn.id.clone(),
-                cells: crate::higent::turn::dress_tail(turn),
+                cells: crate::turn::dress_tail(turn),
             }),
             model::Change::Grew { turn, part, text } => Some(ViewOp::Grew {
                 turn: turn.clone(),
@@ -1325,7 +1325,7 @@ impl ChatPanel {
                     _ => None,
                 };
                 self.stack.set_ask(PermissionAsk::new(
-                    crate::higent::TurnId::new(ready.turn_id.clone()),
+                    ahp_wire::client::TurnId::new(ready.turn_id.clone()),
                     ready.tool_call_id.clone(),
                     ready
                         .confirmation_title
@@ -1429,7 +1429,7 @@ impl ChatPanel {
         // and changes nothing — there is no placeholder to reconcile,
         // and nothing that can leave the composer stuck.
         self.minted += 1;
-        let turn = crate::higent::TurnId::new(format!(
+        let turn = ahp_wire::client::TurnId::new(format!(
             "himark-{}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
@@ -1474,7 +1474,7 @@ impl ChatPanel {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        turn: crate::higent::TurnId,
+        turn: ahp_wire::client::TurnId,
         error: String,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -1525,7 +1525,7 @@ impl ChatPanel {
                 if self.boot_feed() {
                     imba::command::Requests::push(
                         store,
-                        std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
+                        std::sync::Arc::new(crate::chats::EnsureChatFeed {
                             chats: self.chats,
                             chat: self.chat.clone(),
                         }),
@@ -1687,7 +1687,9 @@ impl ChatPanel {
                         },
                     );
                 }
-                let attachments = view.completion_attachments(store, self.server, &text);
+                let uris = crate::chats::Chats::catalog(store, self.chats)
+                    .and_then(|roads| (roads.uris)(store, self.server));
+                let attachments = view.completion_attachments(uris, &text);
                 let model = view.toolbar.model_selection();
                 // The view goes BACK before the send: `send_text` rolls
                 // the echo row into every mounted view, and a clone
@@ -1714,9 +1716,14 @@ impl ChatPanel {
                 let Some(recents) = store.entity(self.chats).map(|chats| chats.recents()) else {
                     return;
                 };
+                let folders = std::sync::Arc::new(
+                    crate::chats::Chats::catalog(store, self.chats)
+                        .map(|roads| (roads.folders)(store, &session))
+                        .unwrap_or_default(),
+                );
                 fx.scope(
                     move |command| ChatPanelCommand::InView(id, Box::new(command)),
-                    |fx| view.composer_command(store, ui, &session, recents, command, fx),
+                    |fx| view.composer_command(store, ui, folders, recents, command, fx),
                 );
                 self.views.insert_mut(id, view);
             }
@@ -1758,8 +1765,11 @@ impl ChatPanel {
                 let Some(mut view) = self.views.get(&id).cloned() else {
                     return;
                 };
-                if let Some(channel) = super::Agents::channel(store, &self.session_id()) {
-                    view.toolbar.sync(store, ui, self.server, &channel);
+                if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
+                    if let Some(channel) = (roads.channel)(store, &self.session_id()) {
+                        let agents = (roads.agents)(store, self.server);
+                        view.toolbar.sync(store, ui, &agents, &channel);
+                    }
                 }
                 self.views.insert_mut(id, view);
             }
@@ -1769,7 +1779,7 @@ impl ChatPanel {
                     return;
                 };
                 let ask = {
-                    let mut ask = super::ToolbarAsk::None;
+                    let mut ask = crate::session_toolbar::ToolbarAsk::None;
                     fx.scope(
                         move |command| {
                             ChatPanelCommand::InView(
@@ -1783,7 +1793,7 @@ impl ChatPanel {
                 };
                 self.views.insert_mut(id, view);
                 match ask {
-                    super::ToolbarAsk::Edits(mode) => {
+                    crate::session_toolbar::ToolbarAsk::Edits(mode) => {
                         if let Some(client) = self.client(store) {
                             let mut config = serde_json::Map::new();
                             config.insert("permissionMode".to_owned(), serde_json::json!(mode));
@@ -1808,7 +1818,7 @@ impl ChatPanel {
                         }
                     }
 
-                    super::ToolbarAsk::None => {}
+                    crate::session_toolbar::ToolbarAsk::None => {}
                 }
             }
 
@@ -2134,11 +2144,13 @@ impl ChatPanel {
                     }
                 }
                 let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
-                let toolbar_stale =
-                    super::Agents::channel(store, &self.session_id()).is_some_and(|channel| {
-                        super::SessionToolbar::fingerprint(store, self.server, &channel)
-                            != view.toolbar.synced
-                    });
+                let toolbar_stale = crate::chats::Chats::catalog(store, self.chats)
+                    .and_then(|roads| {
+                        let channel = (roads.channel)(store, &self.session_id())?;
+                        let agents = (roads.agents)(store, self.server);
+                        Some(crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel))
+                    })
+                    .is_some_and(|fingerprint| fingerprint != view.toolbar.synced);
 
                 let rows_height_ = rows_height;
                 let focus = view.focus;
@@ -2163,7 +2175,7 @@ impl ChatView {
         Self {
             rows: ScrollView::new(ListView::empty()),
             composer: Composer::new(store, ui),
-            completion: crate::Completion::new(),
+            completion: crate::completion::Completion::new(),
             picked: rpds::VectorSync::new_sync(),
             focus: ChatArea::Composer,
             has_loader: false,
@@ -2192,9 +2204,9 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
-        turn: &crate::higent::TurnId,
-        key: &crate::higent::turn::CellKey,
+        client: &Option<ahp_wire::client::Client>,
+        turn: &ahp_wire::client::TurnId,
+        key: &crate::turn::CellKey,
         spec: CellSpec,
         content_width: f32,
         fx: &mut Effects<'_, ChatPanelCommand>,
@@ -2232,7 +2244,7 @@ impl ChatView {
                     return Cell::pending_diff(store, spec.header, content_width);
                 };
                 fx.push(
-                    AnyEffect::new(crate::higent::BuildFileEditEffect {
+                    AnyEffect::new(crate::file_edit::BuildFileEditEffect {
                         client: client.chat.clone(),
                         before: spec.before,
                         after: spec.after,
@@ -2253,14 +2265,14 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
+        client: &Option<ahp_wire::client::Client>,
         turn: &model::Turn,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> (TurnView, f32) {
         let content_width = TurnView::content_width(self.panel_width());
         let mut cells = ListSlice::new();
         let mut total = 0.0;
-        for (key, spec) in crate::higent::turn::dress(turn).iter().cloned() {
+        for (key, spec) in crate::turn::dress(turn).iter().cloned() {
             let (cell, height) =
                 self.build_cell(store, ui, client, &turn.id, &key, spec, content_width, fx);
             total += height;
@@ -2276,12 +2288,12 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
+        client: &Option<ahp_wire::client::Client>,
         turns: impl IntoIterator<Item = &'t model::Turn>,
         lead_loader: bool,
         eager: usize,
         fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> ListSlice<ChatRow, crate::higent::TurnId> {
+    ) -> ListSlice<ChatRow, ahp_wire::client::TurnId> {
         let chrome = env::Themes::of(store).ui().chat.clone();
         let mut slice = ListSlice::new();
         if lead_loader {
@@ -2310,7 +2322,7 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
+        client: &Option<ahp_wire::client::Client>,
         index: usize,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2344,9 +2356,9 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
-        turn: &crate::higent::TurnId,
-        key: &crate::higent::turn::CellKey,
+        client: &Option<ahp_wire::client::Client>,
+        turn: &ahp_wire::client::TurnId,
+        key: &crate::turn::CellKey,
         spec: CellSpec,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2389,8 +2401,8 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        turn: crate::higent::TurnId,
-        key: crate::higent::turn::CellKey,
+        turn: ahp_wire::client::TurnId,
+        key: crate::turn::CellKey,
         command: CellCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2424,8 +2436,8 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        session: &crate::SessionId,
-        recents: imba::store::Id<crate::higent::RecentLocations>,
+        folders: std::sync::Arc<Vec<editor::ResourceLocation>>,
+        recents: imba::store::Id<crate::recents::RecentLocations>,
         command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2455,7 +2467,7 @@ impl ChatView {
             self.composer.document_mut(),
             editor,
             at,
-            session,
+            folders,
             recents,
             None,
             fx,
@@ -2487,9 +2499,9 @@ impl ChatView {
                 },
             )));
         }
-        let popup = match inlay.downcast_ref::<crate::CompletionCommand>() {
+        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
             Some(_) => inlay
-                .downcast::<crate::CompletionCommand>()
+                .downcast::<crate::completion::CompletionCommand>()
                 .expect("probed above"),
             None => {
                 return Some(ComposerCommand::Editor(ScrollCommand::Content(
@@ -2500,7 +2512,7 @@ impl ChatView {
                 )))
             }
         };
-        use crate::CompletionCommand;
+        use crate::completion::CompletionCommand;
         let editor = self.composer.editor();
         match popup {
             CompletionCommand::Select(delta) => {
@@ -2558,12 +2570,11 @@ impl ChatView {
 
     fn completion_attachments(
         &mut self,
-        store: &Store,
-        server: crate::higent::HostId,
+        uris: Option<std::sync::Arc<dyn ahp_wire::client::ResourceUriMap>>,
         text: &str,
     ) -> Option<Vec<ahp_types::state::MessageAttachment>> {
-        let uris = super::Hosts::uris(store, server)?;
-        let picked: Vec<crate::PickedFile> = std::mem::take(&mut self.picked)
+        let uris = uris?;
+        let picked: Vec<crate::completion::PickedFile> = std::mem::take(&mut self.picked)
             .into_iter()
             .cloned()
             .collect();
@@ -2575,7 +2586,7 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        client: &Option<crate::higent::Client>,
+        client: &Option<ahp_wire::client::Client>,
         op: &ViewOp,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
@@ -2622,7 +2633,7 @@ impl ChatView {
                     store,
                     ui,
                     turn.clone(),
-                    crate::higent::turn::CellKey::Part(part.clone()),
+                    crate::turn::CellKey::Part(part.clone()),
                     CellCommand::Append(text.clone()),
                     fx,
                 );
@@ -2652,7 +2663,7 @@ fn redress(spec: &CellSpec) -> Vec<CellCommand> {
         // face refresh, a call that just joined the run splices in.
         CellSpec::Tools(specs) => specs
             .iter()
-            .map(|spec| CellCommand::Tool(crate::higent::tool_group::ToolUpdate::Add(spec.clone())))
+            .map(|spec| CellCommand::Tool(crate::tool_group::ToolUpdate::Add(spec.clone())))
             .collect(),
         // A diff cell resolves itself through its own landing.
         CellSpec::Diff(_) => Vec::new(),
@@ -2661,8 +2672,8 @@ fn redress(spec: &CellSpec) -> Vec<CellCommand> {
 
 /// What a routed cell sends back, lifted to the cell's OWN address.
 fn lift_rows_command(
-    turn: &crate::higent::TurnId,
-    key: &crate::higent::turn::CellKey,
+    turn: &ahp_wire::client::TurnId,
+    key: &crate::turn::CellKey,
     command: RowsCommand,
 ) -> ChatPanelCommand {
     if let ScrollCommand::Content(ListCommand::Child(
@@ -2725,7 +2736,7 @@ fn peeled_open_file(command: &RowsCommand) -> Option<String> {
 #[derive(Clone)]
 pub struct OpenEditedRoad(
     pub  std::sync::Arc<
-        dyn Fn(&mut Store, crate::higent::HostId, crate::higent::SessionUri, String) + Send + Sync,
+        dyn Fn(&mut Store, ahp_wire::client::HostId, ahp_wire::client::SessionUri, String) + Send + Sync,
     >,
 );
 

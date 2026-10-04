@@ -19,6 +19,7 @@ members = [
     "frontend/documents",
     "frontend/filetree",
     "frontend/ahp-changes",
+    "frontend/ahp-chat",
     "frontend/ahp-comments",
     "frontend/ahp-docsync",
     "frontend/ahp-lsp",

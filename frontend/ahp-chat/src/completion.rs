@@ -25,7 +25,7 @@ fn popup_list() -> PopupList {
 fn popup_selected(list: &PopupList) -> usize {
     list.content().cursor().copied().unwrap_or(0)
 }
-use crate::FindEffect;
+use ahp_locations::FindEffect;
 use documents::LineCol;
 use editor::ResourceLocation;
 
@@ -68,7 +68,7 @@ pub enum CompletionFound {
     },
 }
 
-pub use crate::{LspAnswer, LspCompletionEffect, LspItem};
+pub use ahp_lsp::{LspAnswer, LspCompletionEffect, LspItem};
 
 #[derive(Clone)]
 pub struct PickedFile {
@@ -307,8 +307,8 @@ impl Completion {
         document: &mut editor::Document,
         editor: ::editor::EditorId,
         typed_at: Option<u32>,
-        session: &crate::SessionId,
-        recents: imba::store::Id<crate::higent::RecentLocations>,
+        folders: Arc<Vec<ResourceLocation>>,
+        recents: imba::store::Id<crate::recents::RecentLocations>,
         installed: Option<(documents::DocumentId, ::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         wrap: W,
@@ -352,8 +352,8 @@ impl Completion {
             return;
         }
         self.source = SourceState::Path {
-            folders: Arc::new(crate::higent::session_folders(store, session)),
-            recents: Arc::new(crate::higent::RecentLocations::list(store, recents)),
+            folders,
+            recents: Arc::new(crate::recents::RecentLocations::list(store, recents)),
             found: Arc::new(Vec::new()),
             rows: Arc::new(Vec::new()),
         };

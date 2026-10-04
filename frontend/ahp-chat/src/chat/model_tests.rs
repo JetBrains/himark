@@ -19,8 +19,8 @@ use ahp_types::state::{
 };
 
 use super::model::{Change, Conversation, Life, Part, PartId, ToolStatus};
-use crate::higent::cell::CellKind;
-use crate::higent::TurnId;
+use crate::cell::CellKind;
+use ahp_wire::client::TurnId;
 
 // ----------------------------------------------------------------------
 // Wire builders.
@@ -169,10 +169,10 @@ fn tool_done_with_edits(turn: &str, tool: &str, edits: Vec<(&str, &str)>) -> Sta
         .into_iter()
         .map(|(path, uri)| {
             ahp_types::state::ToolResultContent::FileEdit(
-                crate::higent::FileEditRefs {
-                    before: Some(crate::higent::snapshot(path, uri)),
-                    after: Some(crate::higent::snapshot(path, uri)),
-                    counts: crate::higent::DiffCounts::default(),
+                crate::file_edit::FileEditRefs {
+                    before: Some(crate::file_edit::snapshot(path, uri)),
+                    after: Some(crate::file_edit::snapshot(path, uri)),
+                    counts: crate::file_edit::DiffCounts::default(),
                 }
                 .to_content(),
             )
@@ -552,10 +552,10 @@ fn a_completed_tool_part_names_its_call_and_its_edits() {
     };
     let edit = |path: &str, uri: &str| {
         ToolResultContent::FileEdit(
-            crate::higent::FileEditRefs {
-                before: Some(crate::higent::snapshot(path, uri)),
-                after: Some(crate::higent::snapshot(path, uri)),
-                counts: crate::higent::DiffCounts::default(),
+            crate::file_edit::FileEditRefs {
+                before: Some(crate::file_edit::snapshot(path, uri)),
+                after: Some(crate::file_edit::snapshot(path, uri)),
+                counts: crate::file_edit::DiffCounts::default(),
             }
             .to_content(),
         )

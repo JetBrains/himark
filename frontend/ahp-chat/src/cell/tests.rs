@@ -26,9 +26,9 @@ fn resolved(before: &str, after: &str) -> Cell {
     );
     // The pair is BUILT off the UI thread in production (the handler
     // behind `BuildFileEditEffect`); here the test plays that part.
-    let built = crate::higent::build_file_edit(
+    let built = crate::file_edit::build_file_edit(
         "sample.md",
-        &crate::higent::FileEditContents {
+        &ahp_wire::client::FileEditContents {
             before: Some(before.to_owned()),
             after: Some(after.to_owned()),
         },
@@ -263,14 +263,14 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     let mut slice = imba::list::ListSlice::new();
     for (at, (cell, height)) in cells.into_iter().enumerate() {
         slice.push_keyed_sized(
-            crate::higent::turn::CellKey::Part(crate::higent::chat::model::PartId::new(format!(
+            crate::turn::CellKey::Part(crate::chat::model::PartId::new(format!(
                 "p{at}"
             ))),
             cell,
             height,
         );
     }
-    let turn = crate::higent::TurnView::new("turn", 640.0, slice);
+    let turn = crate::turn::TurnView::new("turn", 640.0, slice);
     let mut scroll = ScrollView::new(turn);
     let width = 640.0f32;
     let view_h = 700.0f32;

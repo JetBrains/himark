@@ -6,15 +6,14 @@
 //! sessions, the chat) and the DRIVERS — every coroutine between a
 //! himark shell and its agent hosts, with no window anywhere.
 
-pub mod completion;
 pub mod drivers;
 pub mod higent;
 
-pub use completion::{
+pub use ahp_chat::completion::{
     Completion, CompletionCommand, CompletionFound, CompletionPopupView, PickedFile,
 };
+pub use ahp_chat::{completion, open};
 pub mod fsroute;
-pub mod open;
 
 pub use ahp_docsync as docsync;
 pub use ahp_lsp as lsproute;

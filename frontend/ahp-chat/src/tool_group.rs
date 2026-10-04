@@ -13,7 +13,7 @@ use imba::{
 };
 use skia_safe::Size;
 
-use crate::higent::cell::{Cell, CellCommand, CellKind};
+use crate::cell::{Cell, CellCommand, CellKind};
 use editor::env;
 use hikit::{TreeItemCommand, TreeItemView};
 

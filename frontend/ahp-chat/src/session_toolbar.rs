@@ -6,8 +6,7 @@ use std::sync::Arc;
 
 use imba::{container::Container, store::Store, thunk_ext::ThunkExt, UiCtx, View};
 
-use super::session::SessionChannel;
-use super::{HostId, Hosts};
+use ahp_wire::client::{HostId, SessionChannel};
 use hikit::combo::{Combo, ComboCommand, ComboOption};
 
 #[derive(Clone)]
@@ -64,12 +63,10 @@ impl SessionToolbar {
 }
 
 impl SessionToolbar {
-    pub fn fingerprint(store: &Store, server: HostId, session: &SessionChannel) -> u64 {
+    pub fn fingerprint(agents: &[ahp_types::state::AgentInfo], session: &SessionChannel) -> u64 {
         use std::hash::{Hash, Hasher};
         let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        if let Some(host) = Hosts::host_ref(store, server) {
-            host.agents.len().hash(&mut hasher);
-        }
+        agents.len().hash(&mut hasher);
         session.provider.hash(&mut hasher);
         if let Some(config) = &session.config {
             (Arc::as_ptr(config) as usize).hash(&mut hasher);
@@ -78,8 +75,14 @@ impl SessionToolbar {
         hasher.finish()
     }
 
-    pub fn sync(&mut self, store: &Store, ui: &UiCtx, server: HostId, session: &SessionChannel) {
-        self.synced = Self::fingerprint(store, server, session);
+    pub fn sync(
+        &mut self,
+        store: &Store,
+        ui: &UiCtx,
+        agents: &[ahp_types::state::AgentInfo],
+        session: &SessionChannel,
+    ) {
+        self.synced = Self::fingerprint(agents, session);
         let values = session
             .config
             .as_ref()
@@ -87,7 +90,7 @@ impl SessionToolbar {
             .unwrap_or_default();
 
         let provider = (!session.provider.is_empty()).then_some(session.provider.as_str());
-        let models = agent_models(store, server, provider);
+        let models = agent_models(agents, provider);
         let fresh = self.model.is_empty();
         self.model.set_options(
             store,
@@ -284,19 +287,14 @@ impl SessionToolbar {
 }
 
 pub(crate) fn agent_models(
-    store: &Store,
-    server: HostId,
+    agents: &[ahp_types::state::AgentInfo],
     provider: Option<&str>,
 ) -> Vec<ahp_types::state::SessionModelInfo> {
-    Hosts::host_ref(store, server)
-        .map(|host| {
-            host.agents
-                .iter()
-                .filter(|agent| provider.is_none_or(|provider| agent.provider == provider))
-                .flat_map(|agent| agent.models.iter().cloned())
-                .collect()
-        })
-        .unwrap_or_default()
+    agents
+        .iter()
+        .filter(|agent| provider.is_none_or(|provider| agent.provider == provider))
+        .flat_map(|agent| agent.models.iter().cloned())
+        .collect()
 }
 
 pub(crate) fn sync_effort(

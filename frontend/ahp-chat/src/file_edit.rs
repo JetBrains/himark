@@ -103,7 +103,7 @@ pub struct BuiltFileEdit {
 /// the build context is the workshop's bare store, not the app's.
 pub fn build_file_edit(
     name: &str,
-    contents: &crate::higent::FileEditContents,
+    contents: &ahp_wire::client::FileEditContents,
     parsers: &std::sync::Arc<editor::SyntaxLanguages>,
     differ: &std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
     store: &imba::store::Store,
@@ -114,7 +114,7 @@ pub fn build_file_edit(
     let before_text = editor::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
     let after_text = editor::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
-    let mut before = crate::higent::cell::side_document(
+    let mut before = crate::cell::side_document(
         before_text.clone(),
         &extension,
         parsers,
@@ -123,7 +123,7 @@ pub fn build_file_edit(
         fonts,
         theme,
     );
-    let mut after = crate::higent::cell::side_document(
+    let mut after = crate::cell::side_document(
         after_text, &extension, parsers, store, ui, fonts, theme,
     );
 
@@ -208,7 +208,7 @@ mod tests {
 /// diff cell only mounts the result. A coding turn brings hundreds of
 /// edits; none of this is frame work.
 pub struct BuildFileEditEffect {
-    pub client: std::sync::Arc<dyn crate::higent::ChatClient>,
+    pub client: std::sync::Arc<dyn ahp_wire::client::ChatClient>,
     pub before: Option<Uri>,
     pub after: Option<Uri>,
     /// The edited file's name — it names the language.

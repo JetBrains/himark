@@ -1,7 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use super::state::{Host, HostStatus, Hosts, SessionChannel};
+use super::state::{Host, HostStatus, Hosts};
+use ahp_wire::client::SessionChannel;
 use crate::higent::{HostId, ServerEvent};
 use crate::SessionId;
 use ahp_types::notifications::PartialSessionSummary;

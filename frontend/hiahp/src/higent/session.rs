@@ -3,11 +3,10 @@
 
 mod agents;
 mod folders;
-mod recents;
 mod state;
 
 pub use agents::Agents;
 pub use folders::{all_session_folders, session_folders};
-pub use recents::RecentLocations;
 pub use ahp_wire::ChannelActionsRoad;
-pub use state::{Host, HostStatus, Hosts, SessionChannel, SessionState, WindowGrip};
+pub use ahp_wire::client::SessionChannel;
+pub use state::{Host, HostStatus, Hosts, SessionState, WindowGrip};

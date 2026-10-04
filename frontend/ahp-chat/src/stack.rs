@@ -14,7 +14,7 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::higent::turn::TurnView;
+use crate::turn::TurnView;
 
 type ChatChrome = editor::theme::ChatChrome;
 
@@ -39,7 +39,7 @@ impl std::fmt::Display for StackCommand {
 
 #[derive(Clone)]
 pub(crate) struct PermissionAsk {
-    turn: crate::higent::TurnId,
+    turn: ahp_wire::client::TurnId,
     tool: String,
     title: String,
     invocation: String,
@@ -50,7 +50,7 @@ pub(crate) struct PermissionAsk {
 
 impl PermissionAsk {
     pub(crate) fn new(
-        turn: crate::higent::TurnId,
+        turn: ahp_wire::client::TurnId,
         tool: String,
         title: String,
         invocation: String,
@@ -116,7 +116,7 @@ impl WidgetStack {
         }
     }
 
-    pub(crate) fn ask_turn(&self) -> Option<crate::higent::TurnId> {
+    pub(crate) fn ask_turn(&self) -> Option<ahp_wire::client::TurnId> {
         self.ask.as_ref().map(|ask| ask.turn.clone())
     }
 

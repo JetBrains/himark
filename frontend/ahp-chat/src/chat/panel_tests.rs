@@ -30,14 +30,20 @@ fn ui() -> &'static UiCtx {
 }
 
 fn panel(store: &mut Store, chat: &str) -> ChatPanel {
-    let mut host = crate::higent::HostId::LOCAL;
-    store.update::<crate::higent::Servers>(|servers| {
-        host = servers.mint(crate::higent::client::inert());
+    let mut host = ahp_wire::client::HostId::LOCAL;
+    store.update::<ahp_wire::client::Servers>(|servers| {
+        host = servers.mint(ahp_wire::client::inert());
     });
     // The collection the panel files into — minted here, the way the
     // session ceremony does it; the panel never asks who owns it.
-    let chats = imba::store::Id::<crate::higent::Chats>::mint();
-    store.put_entity(chats, crate::higent::Chats::wired(imba::store::Id::mint()));
+    let chats = imba::store::Id::<crate::chats::Chats>::mint();
+    store.put_entity(
+        chats,
+        crate::chats::Chats::wired(
+            imba::store::Id::mint(),
+            crate::chats::Catalog::inert(),
+        ),
+    );
     let mut panel = ChatPanel::new(store, ui(), host, "s", chats, chat);
     panel.state = Link::Ready;
     panel
@@ -85,7 +91,7 @@ fn land(panel: &mut ChatPanel, store: &mut Store, state: ChatState) {
     panel.apply_snapshot(store, ui(), Ok(state), &mut batch.effects());
 }
 
-fn land_older(panel: &mut ChatPanel, store: &mut Store, page: crate::higent::TurnsPage) {
+fn land_older(panel: &mut ChatPanel, store: &mut Store, page: ahp_wire::client::TurnsPage) {
     let mut batch = imba::effect::Batch::new();
     panel.apply_older(store, ui(), Ok(page), &mut batch.effects());
 }
@@ -872,7 +878,7 @@ fn an_older_page_lands_above_what_the_mount_holds() {
     land_older(
         &mut panel,
         &mut store,
-        crate::higent::TurnsPage {
+        ahp_wire::client::TurnsPage {
             turns: vec![said_turn("t1", "one", "reply one")],
             next_cursor: None,
         },
@@ -904,7 +910,7 @@ fn an_overlapping_older_page_shows_each_turn_once() {
     land_older(
         &mut panel,
         &mut store,
-        crate::higent::TurnsPage {
+        ahp_wire::client::TurnsPage {
             turns: vec![
                 said_turn("t0", "zero", "reply zero"),
                 said_turn("t1", "one", "reply one"),
@@ -930,7 +936,7 @@ fn a_delta_after_an_older_page_still_finds_its_turn() {
     land_older(
         &mut panel,
         &mut store,
-        crate::higent::TurnsPage {
+        ahp_wire::client::TurnsPage {
             turns: vec![said_turn("t0", "zero", "reply zero")],
             next_cursor: None,
         },
@@ -1067,10 +1073,10 @@ fn a_replayed_batch_leaves_one_row_and_one_copy() {
 /// keeps the helper short.
 fn tool_done_with_edit(turn: &str, tool: &str, path: &str, uri: &str) -> StateAction {
     let content = vec![ahp_types::state::ToolResultContent::FileEdit(
-        crate::higent::FileEditRefs {
-            before: Some(crate::higent::snapshot(path, uri)),
-            after: Some(crate::higent::snapshot(path, uri)),
-            counts: crate::higent::DiffCounts::default(),
+        crate::file_edit::FileEditRefs {
+            before: Some(crate::file_edit::snapshot(path, uri)),
+            after: Some(crate::file_edit::snapshot(path, uri)),
+            counts: crate::file_edit::DiffCounts::default(),
         }
         .to_content(),
     )];
@@ -1203,9 +1209,9 @@ fn an_edit_between_calls_closes_the_run() {
     // navigates to.
     let turn = panel
         .conversation
-        .turn(&crate::higent::TurnId::new("t1"))
+        .turn(&ahp_wire::client::TurnId::new("t1"))
         .expect("the turn");
-    let header_uri = crate::higent::turn::dress(turn)
+    let header_uri = crate::turn::dress(turn)
         .iter()
         .find_map(|(_, spec)| match spec {
             CellSpec::Diff(spec) => Some(spec.header.uri.clone()),
@@ -1221,9 +1227,9 @@ fn the_diff_headers_open_reaches_the_app() {
     let opened: std::sync::Arc<std::sync::Mutex<Option<String>>> = Default::default();
     {
         let noted = opened.clone();
-        crate::higent::OpenEditedRoad::install(
+        crate::chat::OpenEditedRoad::install(
             &mut store,
-            crate::higent::OpenEditedRoad(std::sync::Arc::new(
+            crate::chat::OpenEditedRoad(std::sync::Arc::new(
                 move |_store, _server, _session, uri| {
                     *noted.lock().unwrap() = Some(uri);
                 },

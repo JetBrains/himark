@@ -94,6 +94,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "ahp-chat"
+version = "0.1.0"
+dependencies = [
+ "ahp-locations",
+ "ahp-lsp",
+ "ahp-types",
+ "ahp-wire",
+ "base64 0.22.1",
+ "canvas",
+ "documents",
+ "editor",
+ "hikit",
+ "humantime",
+ "imba",
+ "myersdiff",
+ "operation",
+ "rebase",
+ "rpds",
+ "serde",
+ "serde_json",
+ "skia-safe",
+ "terminals",
+ "text",
+ "tracing",
+]
+
+[[package]]
 name = "ahp-comments"
 version = "0.1.0"
 dependencies = [
@@ -1904,6 +1931,7 @@ version = "0.1.0"
 dependencies = [
  "ahp",
  "ahp-changes",
+ "ahp-chat",
  "ahp-comments",
  "ahp-docsync",
  "ahp-locations",

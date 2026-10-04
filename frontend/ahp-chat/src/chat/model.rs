@@ -32,8 +32,8 @@ use ahp_types::state::{
 };
 use rpds::{HashTrieMapSync, VectorSync};
 
-use crate::higent::cell::CellKind;
-use crate::higent::TurnId;
+use crate::cell::CellKind;
+use ahp_wire::client::TurnId;
 
 /// A response part's id: what `chat/delta` and `chat/reasoning`
 /// address. A tool call is addressed by its own id, which lives in
@@ -101,7 +101,7 @@ pub enum Part {
     },
     Tool(ToolCall),
     /// A file edit a tool call carried, shown as a diff.
-    Edit(crate::higent::FileEditRefs),
+    Edit(crate::file_edit::FileEditRefs),
 }
 
 /// How a turn ended — `TurnState` plus the error the wire carries.
@@ -849,7 +849,7 @@ fn read_tool(state: &ToolCallState) -> Laid {
 
 fn said_output(content: Option<&[ahp_types::state::ToolResultContent]>) -> String {
     content
-        .map(crate::higent::turn::tool_output)
+        .map(crate::turn::tool_output)
         .unwrap_or_default()
 }
 
@@ -872,7 +872,7 @@ fn edits_in(content: &[ahp_types::state::ToolResultContent]) -> Laid {
         .iter()
         .filter_map(|block| match block {
             ToolResultContent::FileEdit(edit) => {
-                let refs = crate::higent::FileEditRefs::parse(edit)?;
+                let refs = crate::file_edit::FileEditRefs::parse(edit)?;
                 let key = refs
                     .after
                     .as_ref()

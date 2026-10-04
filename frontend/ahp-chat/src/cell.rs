@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::higent::tool_group::{
+use crate::tool_group::{
     ToolCallSpec, ToolGroup, ToolRowCommand, ToolRowKey, ToolRowsCommand, ToolUpdate,
 };
 use editor::{env, EditorCommand, EditorView};
@@ -47,7 +47,7 @@ pub enum CellCommand {
 
     Rewrap(f32),
 
-    ResolveDiff(Result<crate::higent::BuiltFileEdit, String>),
+    ResolveDiff(Result<crate::file_edit::BuiltFileEdit, String>),
 
     /// The off-thread markdown build landed, for the cell whose
     /// `pending_nonce` this is.
@@ -442,7 +442,7 @@ impl Cell {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        result: Result<crate::higent::BuiltFileEdit, String>,
+        result: Result<crate::file_edit::BuiltFileEdit, String>,
         fx: &mut Effects<'_, CellCommand>,
     ) {
         let CellBody::PendingDiff { header, width } = self.body.clone() else {
@@ -460,7 +460,7 @@ impl Cell {
             }
             Ok(built) => {
                 note_mount();
-                let crate::higent::BuiltFileEdit {
+                let crate::file_edit::BuiltFileEdit {
                     before: mut before_doc,
                     after: mut after_doc,
                     diff: diff_id,
