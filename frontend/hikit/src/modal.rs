@@ -41,11 +41,13 @@ pub enum ModalRequest {
     Perform(imba::command::Verb),
 
     /// Open one location, honoring a caret target — the shell
-    /// supplies the window.
-    OpenAt(
-        editor::ResourceLocation,
-        Option<std::ops::Range<documents::LineCol>>,
-    ),
+    /// supplies the window. `focus` distinguishes the deliberate
+    /// jump from a browsing show (the keyboard stays where it was).
+    OpenAt {
+        location: editor::ResourceLocation,
+        target: Option<std::ops::Range<documents::LineCol>>,
+        focus: bool,
+    },
 
     ShowDocument(documents::DocumentId),
 

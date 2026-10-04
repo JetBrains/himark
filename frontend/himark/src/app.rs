@@ -956,6 +956,12 @@ impl Application {
                 fx.scope(AppCommand::Verb, |fx| {
                     crate::drivers::history::sync(&mut store, family.history_wire(), fx);
                     crate::drivers::changes::sync(&mut store, family.changes_wire(), fx);
+                    crate::drivers::locations::sync(
+                        &mut store,
+                        &self.ui_ctx(),
+                        family.locations_wire(),
+                        fx,
+                    );
                 });
             }
         }
@@ -1321,24 +1327,26 @@ impl Application {
                             self.perform(store, ui, command, fx);
                         }
                     }
-                    Some(ModalRequest::OpenAt(location, target)) => {
+                    Some(ModalRequest::OpenAt {
+                        location,
+                        target,
+                        focus,
+                    }) => {
                         fx.scope(
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         crate::Windows::put(store, window, entity);
-                        self.perform(
-                            store,
-                            ui,
-                            AppCommand::Dynamic(
+                        if let Some(family) = Windows::session_family(store, window) {
+                            fx.push(crate::open_by_location_effect(
                                 window,
-                                std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
-                                    location,
-                                    target,
-                                }),
-                            ),
-                            fx,
-                        );
+                                family.documents(),
+                                location,
+                                true,
+                                focus,
+                                target,
+                            ));
+                        }
                     }
                     Some(ModalRequest::ShowDocument(document)) => {
                         fx.scope(
@@ -1392,20 +1400,22 @@ impl Application {
                                 self.perform(store, ui, command, fx);
                             }
                         }
-                        ModalRequest::OpenAt(location, target) => {
+                        ModalRequest::OpenAt {
+                            location,
+                            target,
+                            focus,
+                        } => {
                             crate::Windows::put(store, window, entity);
-                            self.perform(
-                                store,
-                                ui,
-                                AppCommand::Dynamic(
+                            if let Some(family) = Windows::session_family(store, window) {
+                                fx.push(crate::open_by_location_effect(
                                     window,
-                                    std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
-                                        location,
-                                        target,
-                                    }),
-                                ),
-                                fx,
-                            );
+                                    family.documents(),
+                                    location,
+                                    true,
+                                    focus,
+                                    target,
+                                ));
+                            }
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
@@ -1450,20 +1460,22 @@ impl Application {
                                 self.perform(store, ui, command, fx);
                             }
                         }
-                        ModalRequest::OpenAt(location, target) => {
+                        ModalRequest::OpenAt {
+                            location,
+                            target,
+                            focus,
+                        } => {
                             crate::Windows::put(store, window, entity);
-                            self.perform(
-                                store,
-                                ui,
-                                AppCommand::Dynamic(
+                            if let Some(family) = Windows::session_family(store, window) {
+                                fx.push(crate::open_by_location_effect(
                                     window,
-                                    std::sync::Arc::new(crate::diff_canvas::OpenCanvasFile {
-                                        location,
-                                        target,
-                                    }),
-                                ),
-                                fx,
-                            );
+                                    family.documents(),
+                                    location,
+                                    true,
+                                    focus,
+                                    target,
+                                ));
+                            }
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);

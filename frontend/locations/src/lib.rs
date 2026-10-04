@@ -91,6 +91,36 @@ pub struct LocationsFeedRow {
     >,
 }
 
+/// What a face may ask of the lists — model vocabulary; the wire
+/// driver's lane turns an ask into traffic.
+#[derive(Clone)]
+pub enum LocationsAsk {
+    /// Stream a content search into a feed.
+    Search { feed: FeedId, query: String },
+
+    /// Stream an LSP location answer into a feed.
+    Lsp {
+        feed: FeedId,
+        kind: LspKind,
+        location: ResourceLocation,
+        position: documents::LineCol,
+    },
+
+    /// Stop a feed's stream, keeping what landed.
+    Stop(FeedId),
+
+    /// Dispose a feed: stream, washes and row.
+    Dispose(FeedId),
+}
+
+/// The location-answering ask flavors — a mirror; the wire's own
+/// enum lives with the effects.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum LspKind {
+    References,
+    Implementations,
+}
+
 /// The session's location lists — a COLLECTION (docs/entities.md
 /// law 1): the feed rows are its private schema, addressed by
 /// `(Id<LocationLists>, FeedId)`, wired to the family's documents at
@@ -112,6 +142,13 @@ pub struct LocationLists {
     /// the location; the wash hook converts it into a wash when the
     /// open lands.
     pending_washes: rpds::HashTrieMapSync<ResourceLocation, FeedId>,
+
+    /// The session folders a content search spans — stamped by the
+    /// shell as the catalog grants them.
+    folders: rpds::VectorSync<ResourceLocation>,
+
+    /// Outbound intents the faces NOTED — the wire lane drains them.
+    asks: Vec<LocationsAsk>,
 }
 
 impl LocationLists {
@@ -123,7 +160,66 @@ impl LocationLists {
             feeds: rpds::HashTrieMapSync::new_sync(),
             search: None,
             pending_washes: rpds::HashTrieMapSync::new_sync(),
+            folders: rpds::VectorSync::new_sync(),
+            asks: Vec::new(),
         }
+    }
+
+    /// The folders a content search spans.
+    pub fn folders(store: &Store, lists: imba::store::Id<LocationLists>) -> Vec<ResourceLocation> {
+        store
+            .entity::<LocationLists>(lists)
+            .map(|held| held.folders.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// The shell's stamp: adopt folders not yet held, keeping order.
+    pub fn adopt_folders(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+        folders: &[ResourceLocation],
+    ) {
+        let fresh: Vec<ResourceLocation> = {
+            let Some(held) = store.entity::<LocationLists>(lists) else {
+                return;
+            };
+            folders
+                .iter()
+                .filter(|folder| !held.folders.iter().any(|known| known == *folder))
+                .cloned()
+                .collect()
+        };
+        if fresh.is_empty() {
+            return;
+        }
+        Self::update(store, lists, |held| {
+            for folder in &fresh {
+                held.folders.push_back_mut(folder.clone());
+            }
+        });
+    }
+
+    /// Note an ask for the wire lane — the faces' door.
+    pub fn ask(store: &mut Store, lists: imba::store::Id<LocationLists>, ask: LocationsAsk) {
+        Self::update(store, lists, |held| held.asks.push(ask));
+    }
+
+    pub fn owes_asks(store: &Store, lists: imba::store::Id<LocationLists>) -> bool {
+        store
+            .entity::<LocationLists>(lists)
+            .is_some_and(|held| !held.asks.is_empty())
+    }
+
+    pub fn take_asks(
+        store: &mut Store,
+        lists: imba::store::Id<LocationLists>,
+    ) -> Vec<LocationsAsk> {
+        let Some(mut held) = store.entity::<LocationLists>(lists).cloned() else {
+            return Vec::new();
+        };
+        let asks = std::mem::take(&mut held.asks);
+        store.put_entity(lists, held);
+        asks
     }
 
     pub fn row(
@@ -225,7 +321,10 @@ impl LocationLists {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.feeds.is_empty() && self.search.is_none() && self.pending_washes.is_empty()
+        self.feeds.is_empty()
+            && self.search.is_none()
+            && self.pending_washes.is_empty()
+            && self.asks.is_empty()
     }
 
     pub fn note_wash(

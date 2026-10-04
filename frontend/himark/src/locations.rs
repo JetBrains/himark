@@ -15,7 +15,8 @@ use crate::forest::ForestNode;
 use crate::{ResourceLocation, ResourceType};
 
 pub use ::locations::{
-    open_feed, FeedId, FoundLocation, LocationKey, LocationLists, LocationsFeedRow,
+    open_feed, FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow,
+    LspKind,
 };
 
 /// The registration hook: a search-picked document opened — wash it.
@@ -39,7 +40,7 @@ impl crate::DocumentHook for LocationsWashHook {
         };
         if let Some(feed) = LocationLists::take_wash(store, self.lists, location) {
             let lists = self.lists;
-            crate::AppRequests::push(
+            imba::command::Requests::push(
                 store,
                 std::sync::Arc::new(WashDocument {
                     lists,
@@ -73,7 +74,7 @@ pub struct WashDocument {
     pub document: crate::DocumentId,
 }
 
-impl crate::DynamicCommand for WashDocument {
+impl imba::command::DynamicCommand for WashDocument {
     fn id(&self) -> &'static str {
         "locations.wash-document"
     }
@@ -82,14 +83,7 @@ impl crate::DynamicCommand for WashDocument {
         "Highlight Found Results".to_owned()
     }
 
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        _window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let ui = &app.ui_ctx();
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
@@ -139,7 +133,7 @@ impl crate::DynamicCommand for WashDocument {
         let entity = self.document;
         fx.scope(
             move |command| {
-                crate::AppCommand::at(
+                imba::command::Verb::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(entity, command),
                 )
@@ -167,7 +161,7 @@ fn remove_washes(
     documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     row: &LocationsFeedRow,
-    fx: &mut crate::app::AppFx<'_>,
+    fx: &mut imba::command::Fx<'_>,
 ) {
     let fonts = crate::env::Fonts::of(store)();
     let theme = crate::env::Themes::of(store);
@@ -180,7 +174,7 @@ fn remove_washes(
         let entity = *id;
         fx.scope(
             move |command| {
-                crate::AppCommand::at(
+                imba::command::Verb::at(
                     documents,
                     crate::app::DocumentsCommand::Editor(entity, command),
                 )
@@ -200,7 +194,7 @@ pub(crate) fn dispose_feed(
     ui: &imba::UiCtx,
     lists: imba::store::Id<LocationLists>,
     feed: FeedId,
-    fx: &mut crate::app::AppFx<'_>,
+    fx: &mut imba::command::Fx<'_>,
 ) {
     let Some(row) = LocationLists::row(store, lists, feed) else {
         return;

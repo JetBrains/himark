@@ -12,8 +12,7 @@ use std::sync::Arc;
 
 use imba::{effect::AnyEffect, store::Store};
 
-use crate::locations::{FeedId, FoundLocation, LocationLists};
-use crate::AppCommand;
+use crate::locations::{FeedId, FoundLocation, LocationLists, LocationsAsk, LspKind};
 
 /// One live stream: the channel end and the standing poll.
 #[derive(Clone)]
@@ -106,7 +105,7 @@ pub struct AttachFeedStream {
     pub outcome: Result<crate::LocationsChannel, String>,
 }
 
-impl crate::DynamicCommand for AttachFeedStream {
+impl imba::command::DynamicCommand for AttachFeedStream {
     fn id(&self) -> &'static str {
         "locations.attach-stream"
     }
@@ -115,13 +114,7 @@ impl crate::DynamicCommand for AttachFeedStream {
         "Attach Location Stream".to_owned()
     }
 
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        _window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
             return;
         };
@@ -147,11 +140,11 @@ impl crate::DynamicCommand for AttachFeedStream {
                         channel: channel.channel,
                     })
                     .map(move |outcome| {
-                        AppCommand::Verb(imba::command::Verb::Once(Box::new(FeedBatch {
+                        imba::command::Verb::Once(Box::new(FeedBatch {
                             wire,
                             feed,
                             batches: outcome.map(|snapshot| vec![snapshot]),
-                        })))
+                        }))
                     }),
                 );
             }
@@ -227,7 +220,7 @@ pub struct StopFeed {
     pub feed: FeedId,
 }
 
-impl crate::DynamicCommand for StopFeed {
+impl imba::command::DynamicCommand for StopFeed {
     fn id(&self) -> &'static str {
         "locations.stop-feed"
     }
@@ -236,24 +229,27 @@ impl crate::DynamicCommand for StopFeed {
         "Stop Location Stream".to_owned()
     }
 
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        _window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
-            return;
-        };
-        if let Some(held) = take_feed(store, self.wire, self.feed) {
-            if let Some(token) = held.poll {
-                fx.cancel(token);
-            }
-            unsubscribe(held.channel, fx);
-        }
-        LocationLists::mark_cut(store, lists, self.feed);
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+        stop_feed(store, self.wire, self.feed, fx);
     }
+}
+
+fn stop_feed(
+    store: &mut Store,
+    wire: imba::store::Id<LocationsWire>,
+    feed: FeedId,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    let Some(lists) = of(store, wire).map(|row| row.lists) else {
+        return;
+    };
+    if let Some(held) = take_feed(store, wire, feed) {
+        if let Some(token) = held.poll {
+            fx.cancel(token);
+        }
+        unsubscribe(held.channel, fx);
+    }
+    LocationLists::mark_cut(store, lists, feed);
 }
 
 /// Dispose a feed: cancel its pump, unsubscribe its channel (the
@@ -264,7 +260,7 @@ pub struct DisposeFeed {
     pub feed: FeedId,
 }
 
-impl crate::DynamicCommand for DisposeFeed {
+impl imba::command::DynamicCommand for DisposeFeed {
     fn id(&self) -> &'static str {
         "locations.dispose-feed"
     }
@@ -273,33 +269,37 @@ impl crate::DynamicCommand for DisposeFeed {
         "Dispose Location Feed".to_owned()
     }
 
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        _window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
-            return;
-        };
-        if let Some(held) = take_feed(store, self.wire, self.feed) {
-            if let Some(token) = held.poll {
-                fx.cancel(token);
-            }
-            unsubscribe(held.channel, fx);
-        }
-        crate::locations::dispose_feed(store, &app.ui_ctx(), lists, self.feed, fx);
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+        dispose(store, ui, self.wire, self.feed, fx);
     }
 }
 
-fn unsubscribe(channel: crate::LocationsChannel, fx: &mut crate::app::AppFx<'_>) {
+fn dispose(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    wire: imba::store::Id<LocationsWire>,
+    feed: FeedId,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    let Some(lists) = of(store, wire).map(|row| row.lists) else {
+        return;
+    };
+    if let Some(held) = take_feed(store, wire, feed) {
+        if let Some(token) = held.poll {
+            fx.cancel(token);
+        }
+        unsubscribe(held.channel, fx);
+    }
+    crate::locations::dispose_feed(store, ui, lists, feed, fx);
+}
+
+fn unsubscribe(channel: crate::LocationsChannel, fx: &mut imba::command::Fx<'_>) {
     let _ = fx.push(
         AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
             seat: channel.seat,
             channel: channel.channel,
         })
-        .map(move |()| AppCommand::Verb(imba::command::Verb::Once(Box::new(NothingLanded)))),
+        .map(move |()| imba::command::Verb::Once(Box::new(NothingLanded))),
     );
 }
 
@@ -312,5 +312,75 @@ impl imba::command::DynamicOnceCommand for NothingLanded {
         _ui: &imba::UiCtx,
         _fx: &mut imba::command::Fx<'_>,
     ) {
+    }
+}
+
+/// The batch-tail locations lane: drain the model's asks onto the
+/// wire — a search launches with the model's own folders; stop and
+/// dispose run the teardown the faces can no longer name.
+pub(crate) fn sync(
+    store: &mut Store,
+    ui: &imba::UiCtx,
+    wire: imba::store::Id<LocationsWire>,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    let Some(lists) = of(store, wire).map(|row| row.lists) else {
+        return;
+    };
+    if !LocationLists::owes_asks(store, lists) {
+        return;
+    }
+    for ask in LocationLists::take_asks(store, lists) {
+        match ask {
+            LocationsAsk::Search { feed, query } => {
+                let folders = LocationLists::folders(store, lists);
+                if query.trim().len() < 2 || folders.is_empty() {
+                    LocationLists::mark_cut(store, lists, feed);
+                    continue;
+                }
+                let _ = fx.push(
+                    AnyEffect::new(crate::SearchLocationsEffect {
+                        folders,
+                        query,
+                        regex: false,
+                        case_sensitive: false,
+                        limit: 2048,
+                    })
+                    .map(move |outcome| {
+                        imba::command::Verb::Dynamic(Arc::new(AttachFeedStream {
+                            wire,
+                            feed,
+                            outcome,
+                        }))
+                    }),
+                );
+            }
+            LocationsAsk::Lsp {
+                feed,
+                kind,
+                location,
+                position,
+            } => {
+                let _ = fx.push(
+                    AnyEffect::new(crate::LspLocationsEffect {
+                        location,
+                        position,
+                        kind: match kind {
+                            LspKind::References => crate::LspLocationsKind::References,
+                            LspKind::Implementations => crate::LspLocationsKind::Implementations,
+                        },
+                    })
+                    .map(move |outcome| {
+                        imba::command::Verb::Dynamic(Arc::new(AttachFeedStream {
+                            wire,
+                            feed,
+                            outcome,
+                        }))
+                    }),
+                );
+            }
+            LocationsAsk::Stop(feed) => stop_feed(store, wire, feed, fx),
+            LocationsAsk::Dispose(feed) => dispose(store, ui, wire, feed, fx),
+        }
     }
 }

@@ -12,7 +12,6 @@ use std::sync::Arc;
 use imba::{
     arena::Arena,
     constraints::Constraints,
-    effect::AnyEffect,
     event::{Event, EventResult, Key as InputKey},
     store::Store,
     thunk_ext::ThunkExt,
@@ -20,15 +19,15 @@ use imba::{
 };
 use skia_safe::Size;
 
-use crate::drivers::locations::{AttachFeedStream, DisposeFeed, LocationsWire, StopFeed};
+use crate::drivers::locations::LocationsWire;
 use crate::forest::{ForestList, ForestSearcher};
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
-    locations_forest, open_feed, FeedId, LocationKey, LocationLists, LocationsFeedRow,
+    locations_forest, open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow,
 };
 use crate::modal::RequestSlot;
 use crate::tree_item::{tree_toggle, TreeListCommand};
-use crate::{AppRequests, EditorCommand, EditorView, ModalRequest, SessionId, WindowId};
+use crate::{EditorCommand, EditorView, ModalRequest, SessionId, WindowId};
 use imba::list::{ActivateTrigger, ListOps};
 
 /// The dock owner id — the toggle command's, shared by everything
@@ -59,10 +58,6 @@ pub enum SearchCommand {
     Dismiss,
     /// The face noticed the feed moved (paint-driven).
     Refresh,
-    Asked {
-        feed: FeedId,
-        outcome: Result<crate::LocationsChannel, String>,
-    },
 }
 
 impl std::fmt::Display for SearchCommand {
@@ -75,7 +70,6 @@ impl std::fmt::Display for SearchCommand {
             SearchCommand::Cancel => out.write_str("search cancel"),
             SearchCommand::Dismiss => out.write_str("search dismiss"),
             SearchCommand::Refresh => out.write_str("search refresh"),
-            SearchCommand::Asked { .. } => out.write_str("search asked"),
         }
     }
 }
@@ -234,14 +228,9 @@ impl SearchView {
         }
         self.last_query = query.clone();
 
+        let _ = fx;
         if let Some(previous) = self.feed(store) {
-            AppRequests::push(
-                store,
-                Arc::new(DisposeFeed {
-                    wire: self.wire,
-                    feed: previous,
-                }),
-            );
+            LocationLists::ask(store, self.lists, LocationsAsk::Dispose(previous));
         }
         let feed = FeedId::mint();
         open_feed(
@@ -252,30 +241,14 @@ impl SearchView {
             query.clone(),
         );
         LocationLists::set_search(store, self.lists, feed);
-
-        let folders = crate::higent::session_folders(store, &self.session);
-        let launches = query.trim().len() >= MIN_QUERY && !folders.is_empty();
-        if !launches {
-            let mut row = LocationLists::row(store, self.lists, feed).unwrap_or_default();
-            row.done = true;
-            LocationLists::put(store, self.lists, feed, row);
-            self.rebuild(store, ui);
-            return;
-        }
+        // The ASK is a note; the wire lane launches it with the
+        // model's own folders (an unlaunchable query resolves the
+        // row cut-off there).
+        LocationLists::ask(store, self.lists, LocationsAsk::Search { feed, query });
         self.rebuild(store, ui);
-        let _ = fx.push(
-            AnyEffect::new(crate::SearchLocationsEffect {
-                folders,
-                query,
-                regex: false,
-                case_sensitive: false,
-                limit: QUERY_LIMIT,
-            })
-            .map(move |outcome| SearchCommand::Asked { feed, outcome }),
-        );
     }
 
-    fn pick(&mut self, store: &Store, key: LocationKey, focus: bool) {
+    fn pick(&mut self, store: &mut Store, key: LocationKey, focus: bool) {
         let Some(found) = self
             .targets
             .get(&key)
@@ -291,24 +264,40 @@ impl SearchView {
         };
         self.navigated = Some(key);
         let target = found.target();
-        self.request.file(ModalRequest::Perform(crate::shell_verb(
-            crate::AppCommand::Dynamic(
-                self.window,
-                Arc::new(OpenFoundLocation {
-                    location: found.location,
-                    target,
-                    feed: self.feed(store).map(|feed| (self.lists, feed)),
-                    focus,
-                }),
-            ),
-        )));
+        // The WASH rides the pick: an open document washes now; a
+        // closed one notes, and the registration hook converts when
+        // the open lands. The open itself is the shell's — the
+        // request carries location, caret and the focus intent.
+        if let Some(feed) = self.feed(store) {
+            let documents = LocationLists::documents_of(store, self.lists);
+            match documents
+                .and_then(|docs| crate::OpenDocuments::by_location(store, docs, &found.location))
+            {
+                Some(document) => imba::command::Requests::push(
+                    store,
+                    Arc::new(crate::locations::WashDocument {
+                        lists: self.lists,
+                        feed,
+                        document,
+                    }),
+                ),
+                None => {
+                    LocationLists::note_wash(store, self.lists, found.location.clone(), feed);
+                }
+            }
+        }
+        self.request.file(ModalRequest::OpenAt {
+            location: found.location,
+            target: Some(target),
+            focus,
+        });
     }
 
     /// Selection IS navigation: the keyboard cursor landing on a file
     /// or a hit opens it through the same door a click uses — the
     /// keyboard stays in the dock (nothing moves the layer focus).
     /// Directories only fold; standing still is deduped.
-    fn navigate_selection(&mut self, store: &Store) {
+    fn navigate_selection(&mut self, store: &mut Store) {
         let Some(key) = self.search.inner().list().cursor().cloned() else {
             return;
         };
@@ -319,62 +308,6 @@ impl SearchView {
             return;
         }
         self.pick(store, key, false);
-    }
-}
-
-pub(crate) struct OpenFoundLocation {
-    pub(crate) location: crate::ResourceLocation,
-    pub(crate) target: std::ops::Range<crate::LineCol>,
-    /// Set for search-view picks: the opened editor gets the feed's
-    /// find-results wash — every occurrence in the file highlighted.
-    pub(crate) feed: Option<(imba::store::Id<LocationLists>, FeedId)>,
-    /// A deliberate jump (click, Enter) moves the keyboard to the
-    /// editor; a selection move browsing results just shows it.
-    pub(crate) focus: bool,
-}
-
-impl crate::DynamicCommand for OpenFoundLocation {
-    fn id(&self) -> &'static str {
-        "search.open-location"
-    }
-
-    fn name(&self) -> String {
-        "Open Search Result".to_owned()
-    }
-
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::app::AppFx<'_>,
-    ) {
-        let documents = crate::Windows::session_family(store, window)
-            .expect("search runs in a window with a session")
-            .documents();
-        if let Some((lists, feed)) = self.feed {
-            match crate::OpenDocuments::by_location(store, documents, &self.location) {
-                Some(document) => crate::AppRequests::push(
-                    store,
-                    Arc::new(crate::locations::WashDocument {
-                        lists,
-                        feed,
-                        document,
-                    }),
-                ),
-                None => {
-                    LocationLists::note_wash(store, lists, self.location.clone(), feed);
-                }
-            }
-        }
-        let _ = fx.push(crate::open_by_location_effect(
-            window,
-            documents,
-            self.location.clone(),
-            true,
-            self.focus,
-            Some(self.target.clone()),
-        ));
     }
 }
 
@@ -495,27 +428,11 @@ impl View for SearchView {
             }
             SearchCommand::Cancel => {
                 if let Some(feed) = self.feed(store) {
-                    AppRequests::push(
-                        store,
-                        Arc::new(StopFeed {
-                            wire: self.wire,
-                            feed,
-                        }),
-                    );
+                    LocationLists::ask(store, self.lists, LocationsAsk::Stop(feed));
                 }
             }
             SearchCommand::Dismiss => self.request.file(ModalRequest::Close),
             SearchCommand::Refresh => self.rebuild(store, ui),
-            SearchCommand::Asked { feed, outcome } => {
-                AppRequests::push(
-                    store,
-                    Arc::new(AttachFeedStream {
-                        wire: self.wire,
-                        feed,
-                        outcome,
-                    }),
-                );
-            }
         }
     }
 
@@ -866,24 +783,22 @@ impl crate::DynamicCommand for OpenLspFeed {
         };
         let feed = FeedId::mint();
         open_feed(store, lists, feed, self.title.clone(), String::new());
-        ShowFeedInDock { lists, wire, feed }.perform(app, store, window, fx);
-        let _ = fx.push(
-            imba::effect::AnyEffect::new(crate::LspLocationsEffect {
+        LocationLists::ask(
+            store,
+            lists,
+            LocationsAsk::Lsp {
+                feed,
+                kind: match self.kind {
+                    crate::LspLocationsKind::References => crate::locations::LspKind::References,
+                    crate::LspLocationsKind::Implementations => {
+                        crate::locations::LspKind::Implementations
+                    }
+                },
                 location: self.location.clone(),
                 position: self.position,
-                kind: self.kind,
-            })
-            .map(move |outcome| {
-                crate::AppCommand::Dynamic(
-                    window,
-                    Arc::new(AttachFeedStream {
-                        wire,
-                        feed,
-                        outcome,
-                    }),
-                )
-            }),
+            },
         );
+        ShowFeedInDock { lists, wire, feed }.perform(app, store, window, fx);
     }
 }
 
@@ -922,13 +837,7 @@ impl crate::DynamicCommand for ShowFeedInDock {
         let session = entity.current_session();
         if let Some(previous) = LocationLists::search(store, self.lists) {
             if previous != self.feed {
-                AppRequests::push(
-                    store,
-                    Arc::new(DisposeFeed {
-                        wire: self.wire,
-                        feed: previous,
-                    }),
-                );
+                LocationLists::ask(store, self.lists, LocationsAsk::Dispose(previous));
             }
         }
         LocationLists::set_search(store, self.lists, self.feed);
@@ -979,6 +888,8 @@ impl crate::DynamicCommand for ToggleSearchView {
         let session = entity.current_session();
         let lists = entity.family().lists();
         let wire = entity.family().locations_wire();
+        let folders = crate::higent::session_folders(store, &session);
+        LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, &app.ui_ctx(), window, session, lists, wire);
         let owner = self.id();
         fx.scope(
@@ -1223,16 +1134,16 @@ mod tests {
         let mut view = view(&mut store, &ui);
 
         let hit = LocationKey::Hit(found(&["work", "a.rs"], 3, 2, "").location, 3, 2);
-        view.pick(&store, hit, true);
+        view.pick(&mut store, hit, true);
         let request = crate::ModalView::take_request(&mut view);
         assert!(
-            matches!(request, Some(ModalRequest::Perform(_))),
+            matches!(request, Some(ModalRequest::OpenAt { .. })),
             "a hit pick performs the located open"
         );
 
         // A file pick answers its first occurrence.
         let file = LocationKey::Node(found(&["work", "a.rs"], 0, 0, "").location);
-        view.pick(&store, file, true);
+        view.pick(&mut store, file, true);
         assert!(crate::ModalView::take_request(&mut view).is_some());
 
         // A directory key has no target: no request.
@@ -1241,7 +1152,7 @@ mod tests {
             crate::Authority::new("local"),
             vec!["work".to_owned()],
         ));
-        view.pick(&store, dir, true);
+        view.pick(&mut store, dir, true);
         assert!(crate::ModalView::take_request(&mut view).is_none());
     }
 

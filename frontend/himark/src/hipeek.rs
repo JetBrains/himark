@@ -24,16 +24,15 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::drivers::locations::{AttachFeedStream, DisposeFeed, LocationsWire};
+use crate::drivers::locations::LocationsWire;
 use crate::forest::ForestList;
 use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
-    files_forest, open_feed, FeedId, FoundLocation, LocationKey, LocationLists,
+    files_forest, open_feed, FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk,
 };
 use crate::tree_item::{tree_toggle, TreeListCommand};
 use crate::{
     AppRequests, Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayKey, InlayMode,
-    LocationsChannel,
 };
 use imba::list::{ActivateTrigger, ListOps};
 
@@ -103,6 +102,12 @@ pub struct PeekView {
     preview_markup: Option<crate::MarkupId>,
     preview_hit: Option<(u32, u32)>,
     fetch_token: Option<imba::effect::CancellationToken>,
+
+    /// The open-in-pane verb, injected at mount — the shell's window
+    /// rides in the closure; the card never holds one.
+    open: Arc<
+        dyn Fn(&mut Store, crate::ResourceLocation, std::ops::Range<crate::LineCol>) + Send + Sync,
+    >,
 }
 
 impl PeekView {
@@ -113,8 +118,14 @@ impl PeekView {
         lists: imba::store::Id<LocationLists>,
         wire: imba::store::Id<LocationsWire>,
         feed: FeedId,
+        open: Arc<
+            dyn Fn(&mut Store, crate::ResourceLocation, std::ops::Range<crate::LineCol>)
+                + Send
+                + Sync,
+        >,
     ) -> Self {
         Self {
+            open,
             host,
             key: None,
             width,
@@ -379,28 +390,14 @@ impl PeekView {
     }
 
     fn navigate(&mut self, store: &mut Store, found: &FoundLocation) {
-        AppRequests::push(
-            store,
-            Arc::new(crate::hisearch::OpenFoundLocation {
-                location: found.location.clone(),
-                target: found.target(),
-                feed: None,
-                focus: true,
-            }),
-        );
+        (self.open)(store, found.location.clone(), found.target());
     }
 
     /// Dismiss the card. The feed dies with it unless it was handed
     /// on (the promote path fronts it in the dock instead).
     fn close(&mut self, store: &mut Store, keep_feed: bool) {
         if !keep_feed {
-            AppRequests::push(
-                store,
-                Arc::new(DisposeFeed {
-                    wire: self.wire,
-                    feed: self.feed,
-                }),
-            );
+            LocationLists::ask(store, self.lists, LocationsAsk::Dispose(self.feed));
         }
         if let (Some(host), Some(key)) = (self.host, self.key) {
             AppRequests::push(
@@ -771,28 +768,7 @@ impl documents::DocumentCommand for GoToReference {
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, EditorCommand>,
     ) {
-        // Phase two: the channel landed — attach it to the feed the
-        // card already fronts.
-        if let Some(payload) = payload {
-            let Ok(landed) = payload.downcast::<(
-                imba::store::Id<LocationsWire>,
-                FeedId,
-                Result<LocationsChannel, String>,
-            )>() else {
-                return;
-            };
-            let (wire, feed, outcome) = *landed;
-            AppRequests::push(
-                store,
-                Arc::new(AttachFeedStream {
-                    wire,
-                    feed,
-                    outcome,
-                }),
-            );
-            return;
-        }
-
+        let _ = payload;
         // Phase one: mint the feed, mount the card NOW — the ask's
         // outcome lands into the visible card, never into silence.
         // The lists collection is the documents' sibling — a catalog
@@ -822,7 +798,23 @@ impl documents::DocumentCommand for GoToReference {
             _ => FALLBACK_WIDTH,
         };
         let host = Some(document_id);
-        let view = PeekView::new(store, host, width, lists, wire, feed);
+        // The open verb the card emits — windowless card, shell
+        // window in the closure: the targeted open is queued as a
+        // deferred window ask and the request drain lands it.
+        let open: Arc<
+            dyn Fn(&mut Store, crate::ResourceLocation, std::ops::Range<crate::LineCol>)
+                + Send
+                + Sync,
+        > = Arc::new(move |store, location, target| {
+            crate::AppRequests::push(
+                store,
+                Arc::new(OpenPicked {
+                    location,
+                    target: Some(target),
+                }),
+            );
+        });
+        let view = PeekView::new(store, host, width, lists, wire, feed, open);
         let markup = peek_markup();
         document.ensure_document_markup(markup);
         let key = document.push_inlay(
@@ -838,16 +830,16 @@ impl documents::DocumentCommand for GoToReference {
         document.swap_inlay(key, anchor, Inlay::new(InlayMode::Under, view.keyed(key)));
         document.set_focus(editor, EditorFocus::Inlay(key));
 
-        let _ = fx.push(
-            AnyEffect::new(crate::LspLocationsEffect {
+        let _ = (fx, wire);
+        LocationLists::ask(
+            store,
+            lists,
+            crate::locations::LocationsAsk::Lsp {
+                feed,
+                kind: crate::locations::LspKind::References,
                 location: location.clone(),
                 position,
-                kind: crate::LspLocationsKind::References,
-            })
-            .map(move |outcome| EditorCommand::Dynamic {
-                id: "code.go-to-reference",
-                payload: Some(::editor::DynPayload::new((wire, feed, outcome))),
-            }),
+            },
         );
     }
 }
@@ -940,7 +932,19 @@ mod tests {
             true,
         );
         let wire = family(&mut store).locations_wire();
-        let mut view = PeekView::new(&store, None, 600.0, lists, wire, feed);
+        let opened: Arc<std::sync::Mutex<Option<crate::ResourceLocation>>> = Default::default();
+        let noted = opened.clone();
+        let mut view = PeekView::new(
+            &store,
+            None,
+            600.0,
+            lists,
+            wire,
+            feed,
+            Arc::new(move |_: &mut Store, location, _| {
+                *noted.lock().unwrap() = Some(location);
+            }),
+        );
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
 
@@ -964,11 +968,17 @@ mod tests {
         let at = view.tree.cursor_index().expect("a cursor row");
         let pick = PeekCommand::Tree(view.tree.activate_command(at, ActivateTrigger::Enter));
         view.perform(&mut store, &ui, pick, &mut batch.effects());
-        let requests = store.get::<crate::AppRequests>().expect("requests");
-        assert!(!requests.is_empty(), "the pick navigated through the door");
+        assert!(
+            opened.lock().unwrap().is_some(),
+            "the pick navigated through the injected opener"
+        );
         assert!(
             LocationLists::row(&store, lists, feed).is_some(),
-            "disposal rides AppRequests, not the view"
+            "disposal is a NOTE for the lane, never the view's own teardown"
+        );
+        assert!(
+            LocationLists::owes_asks(&store, lists),
+            "the close noted the dispose ask"
         );
     }
 
@@ -978,12 +988,23 @@ mod tests {
         let ui = ::editor::test_document::test_ui();
         let (lists, feed) = feed(&mut store, &[found("a.rs", 3, "only")], true);
         let wire = family(&mut store).locations_wire();
-        let mut view = PeekView::new(&store, None, 600.0, lists, wire, feed);
+        let opened: Arc<std::sync::Mutex<Option<crate::ResourceLocation>>> = Default::default();
+        let noted = opened.clone();
+        let mut view = PeekView::new(
+            &store,
+            None,
+            600.0,
+            lists,
+            wire,
+            feed,
+            Arc::new(move |_: &mut Store, location, _| {
+                *noted.lock().unwrap() = Some(location);
+            }),
+        );
         let mut batch = imba::effect::Batch::new();
         view.rebuild(&mut store, &ui, &mut batch.effects());
         assert!(view.navigated, "the trivial case went straight through");
-        let requests = store.get::<crate::AppRequests>().expect("requests");
-        assert!(!requests.is_empty());
+        assert!(opened.lock().unwrap().is_some());
     }
 
     #[test]
@@ -1060,5 +1081,42 @@ mod tests {
                 )
             })
         }
+    }
+}
+
+/// The peek's deliberate open — a deferred window ask: the request
+/// drain supplies whichever window the gesture ran in.
+struct OpenPicked {
+    location: crate::ResourceLocation,
+    target: Option<std::ops::Range<crate::LineCol>>,
+}
+
+impl crate::DynamicCommand for OpenPicked {
+    fn id(&self) -> &'static str {
+        "peek.open-picked"
+    }
+    fn name(&self) -> String {
+        "Open Reference".to_owned()
+    }
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
+            return;
+        };
+        fx.push(crate::open_by_location_effect(
+            window,
+            documents,
+            self.location.clone(),
+            true,
+            true,
+            self.target.clone(),
+        ));
     }
 }

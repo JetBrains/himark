@@ -7206,16 +7206,23 @@ mod wash_tests {
         let (lists, feed) = seeded_feed(&mut app, "hit.md");
 
         // The already-open pick path: the wash lands through the
-        // drained request, resolved against live text.
-        assert!(app.perform_command(AppCommand::Dynamic(
-            window,
-            Arc::new(crate::hisearch::OpenFoundLocation {
-                location: located("hit.md"),
-                target: crate::LineCol { line: 1, col: 4 }..crate::LineCol { line: 1, col: 10 },
-                feed: Some((lists, feed)),
-                focus: true,
-            }),
-        )));
+        // drained request, resolved against live text — the pick
+        // pushes it view-side now.
+        let washed = crate::OpenDocuments::by_location(
+            app.store(),
+            app.sole_documents(),
+            &located("hit.md"),
+        )
+        .expect("the document is open");
+        assert!(
+            app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(
+                crate::locations::WashDocument {
+                    lists,
+                    feed,
+                    document: washed,
+                }
+            ),)))
+        );
         // Requests drain on the next content tick, as in the live app.
         assert!(app.perform_command(AppCommand::Content(
             window,

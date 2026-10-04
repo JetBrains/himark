@@ -329,7 +329,11 @@ impl CommentsView {
                             col: 0,
                         },
                     );
-                self.request = Some(ModalRequest::OpenAt(record.location, Some(target)));
+                self.request = Some(ModalRequest::OpenAt {
+                    location: record.location,
+                    target: Some(target),
+                    focus: false,
+                });
             }
             Some(RowItem::Note) | None => {}
         }
