@@ -5820,13 +5820,12 @@ mod dock_tests {
             fn resize(&self, _cols: u16, _rows: u16, _w: f32, _h: f32) {}
             fn hangup(&self) {}
         }
-        let hidden = crate::higent::ChannelUri::new("test-terminal:1");
+        let hidden = crate::terminal::TerminalId::mint();
         let session = crate::terminal::Session::new(Box::new(NullBackend));
-        session.set_channel(hidden.clone());
         let home = app.sole_window_session();
         let terminals =
             crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
-        crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden.clone(), session);
+        crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden, session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
                 .expect("the window entity")
@@ -5834,7 +5833,7 @@ mod dock_tests {
         };
         assert!(entity(&app).has_dock());
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
             "the family row is in the session"
         );
 
@@ -5880,7 +5879,7 @@ mod dock_tests {
             "a fresh session has no family rows of its own"
         );
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
             "and the first session's row stayed WITH it — never borrowed, never dropped"
         );
 
@@ -5893,7 +5892,7 @@ mod dock_tests {
             "and reads open, not closing"
         );
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
             "the family row rode along"
         );
 

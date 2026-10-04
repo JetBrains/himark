@@ -601,7 +601,6 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
             seat: Arc::clone(&effect.seat),
             channel: channel.clone(),
         }));
-        session.set_channel(channel.clone());
         let pending = Arc::new(std::sync::atomic::AtomicBool::new(false));
         let events = {
             let session = Arc::clone(&session);
@@ -758,25 +757,19 @@ impl DynamicCommand for ShowTerminal {
         let Some(session) = &self.session else {
             return;
         };
-        let Some(channel) = session.channel() else {
-            session.hangup();
-            return;
-        };
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
 
         let terminals = self.terminals;
-        himark::terminal::Terminals::put(store, terminals, channel.clone(), session.clone());
+        let id = himark::terminal::TerminalId::mint();
+        himark::terminal::Terminals::put(store, terminals, id, session.clone());
         if !entity.open_panel(
             store,
             ui,
-            Box::new(himark::terminal::TerminalView::new(
-                terminals,
-                channel.clone(),
-            )),
+            Box::new(himark::terminal::TerminalView::new(terminals, id)),
             fx,
         ) {
             session.hangup();
-            himark::terminal::Terminals::remove(store, terminals, &channel);
+            himark::terminal::Terminals::remove(store, terminals, id);
         }
         himark::Windows::put(store, window, entity);
     }

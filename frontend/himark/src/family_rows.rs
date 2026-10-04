@@ -9,7 +9,7 @@ use imba::store::Store;
 pub enum FamilyRow {
     Terminal(
         imba::store::Id<crate::terminal::Terminals>,
-        crate::higent::ChannelUri,
+        crate::terminal::TerminalId,
     ),
 
     Pair(imba::store::Id<crate::OpenDocuments>, crate::DiffViewId),
@@ -40,14 +40,12 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
     match row {
         // A row carries its collection: the pane is minted off the id
         // while the record still stands.
-        FamilyRow::Terminal(terminals, channel) => store
+        FamilyRow::Terminal(terminals, id) => store
             .entity(*terminals)
-            .filter(|rows| rows.holds(channel))
+            .filter(|rows| rows.holds(*id))
             .map(|_| {
-                Box::new(crate::terminal::TerminalView::new(
-                    *terminals,
-                    channel.clone(),
-                )) as Box<dyn crate::DynPanelView>
+                Box::new(crate::terminal::TerminalView::new(*terminals, *id))
+                    as Box<dyn crate::DynPanelView>
             }),
         // The row carries its collection: a pane is minted off the id,
         // and a dismantled chat has no home to walk back to.
@@ -80,7 +78,7 @@ pub fn mint_unfronted(
         rows.extend(
             crate::terminal::Terminals::list(store, family.terminals())
                 .into_iter()
-                .map(|channel| FamilyRow::Terminal(family.terminals(), channel)),
+                .map(|id| FamilyRow::Terminal(family.terminals(), id)),
         );
         rows.extend(
             crate::OpenDocuments::pair_ids(store, family.documents())

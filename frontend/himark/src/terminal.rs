@@ -46,8 +46,20 @@ pub struct Session {
     hung_up: AtomicBool,
 
     told: Mutex<(u16, u16)>,
+}
 
-    channel: Mutex<Option<crate::higent::ChannelUri>>,
+/// A terminal's identity in its family — minted at the landing that
+/// files the session, carried by the pane and its place. The model's
+/// OWN id: which wire channel feeds the PTY is the backend's
+/// business, never the collection's key.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct TerminalId(u64);
+
+impl TerminalId {
+    pub fn mint() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
 }
 
 const DEFAULT_COLS: u16 = 80;
@@ -67,16 +79,7 @@ impl Session {
             exited: Mutex::new(None),
             hung_up: AtomicBool::new(false),
             told: Mutex::new((DEFAULT_COLS, DEFAULT_ROWS)),
-            channel: Mutex::new(None),
         })
-    }
-
-    pub fn set_channel(&self, uri: crate::higent::ChannelUri) {
-        *self.channel.lock().expect("channel lock") = Some(uri);
-    }
-
-    pub fn channel(&self) -> Option<crate::higent::ChannelUri> {
-        self.channel.lock().expect("channel lock").clone()
     }
 
     pub fn output(&self, bytes: &[u8]) -> bool {
@@ -188,23 +191,16 @@ pub struct TerminalView {
     /// a session is.
     terminals: imba::store::Id<Terminals>,
 
-    channel: crate::higent::ChannelUri,
-
-    number: u64,
+    id: TerminalId,
 }
 
 impl TerminalView {
-    pub fn new(terminals: imba::store::Id<Terminals>, channel: crate::higent::ChannelUri) -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        Self {
-            terminals,
-            channel,
-            number: NEXT.fetch_add(1, Ordering::Relaxed),
-        }
+    pub fn new(terminals: imba::store::Id<Terminals>, id: TerminalId) -> Self {
+        Self { terminals, id }
     }
 
-    pub fn channel(&self) -> &crate::higent::ChannelUri {
-        &self.channel
+    pub fn id(&self) -> TerminalId {
+        self.id
     }
 }
 
@@ -217,7 +213,7 @@ impl View for TerminalView {
         _ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, TerminalCommand> {
         use imba::event::EventResult;
-        let Some(session) = Terminals::session_ref(store, self.terminals, &self.channel) else {
+        let Some(session) = Terminals::session_ref(store, self.terminals, self.id) else {
             return imba::focus::FocusData::default();
         };
         imba::focus::FocusData {
@@ -264,7 +260,7 @@ impl View for TerminalView {
         command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
-        let Some(session) = Terminals::session(store, self.terminals, &self.channel) else {
+        let Some(session) = Terminals::session(store, self.terminals, self.id) else {
             return;
         };
         match command {
@@ -285,7 +281,7 @@ impl View for TerminalView {
         ui: &'a UiCtx,
     ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
         imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let Some(session) = Terminals::session_ref(store, self.terminals, &self.channel) else {
+            let Some(session) = Terminals::session_ref(store, self.terminals, self.id) else {
                 let blank = imba::ThunkBox::new(
                     arena,
                     imba::leaf::leaf(constraints.max.width, constraints.max.height),
@@ -311,7 +307,7 @@ impl View for TerminalView {
                     font,
                     cell,
                     fallbacks,
-                    surface: imba::event::ScrollSurfaceId::keyed(self.number),
+                    surface: imba::event::ScrollSurfaceId::keyed(self.id.0),
                 }),
             )
         })
@@ -319,12 +315,12 @@ impl View for TerminalView {
 }
 
 /// The terminal pane's navigation identity: its collection and its
-/// channel — same shape as the chat's, and for the same reason: a
-/// place is what makes leaving the pane walkable.
+/// terminal id — same shape as the chat's, and for the same reason:
+/// a place is what makes leaving the pane walkable.
 #[derive(Clone, PartialEq)]
 pub struct TerminalPlace {
     pub terminals: imba::store::Id<Terminals>,
-    pub channel: crate::higent::ChannelUri,
+    pub id: TerminalId,
 }
 
 impl crate::Place for TerminalPlace {}
@@ -346,7 +342,7 @@ impl crate::Navigator for TerminalNavigator {
     ) -> Option<crate::Panel> {
         Some(crate::Panel::Plugin(crate::family_rows::mint(
             store,
-            &crate::FamilyRow::Terminal(place.terminals, place.channel.clone()),
+            &crate::FamilyRow::Terminal(place.terminals, place.id),
         )?))
     }
 }
@@ -357,7 +353,7 @@ impl PanelView for TerminalView {
     fn navigation_location(&self, _store: &Store) -> Option<TerminalPlace> {
         Some(TerminalPlace {
             terminals: self.terminals,
-            channel: self.channel.clone(),
+            id: self.id,
         })
     }
 
@@ -367,31 +363,28 @@ impl PanelView for TerminalView {
         place: &TerminalPlace,
         _fx: &mut crate::AppFx<'_>,
     ) -> bool {
-        place.terminals == self.terminals && place.channel == self.channel
+        place.terminals == self.terminals && place.id == self.id
     }
 
     fn title(&self, store: &Store) -> String {
-        let title = Terminals::session_ref(store, self.terminals, &self.channel)
+        let title = Terminals::session_ref(store, self.terminals, self.id)
             .map(|session| session.title.lock().expect("title lock").clone())
             .unwrap_or_default();
         match title.is_empty() {
-            true => format!("Terminal {}", self.number),
+            true => format!("Terminal {}", self.id.0),
             false => title,
         }
     }
 
     fn dismantle(&mut self, store: &mut Store) {
-        if let Some(session) = Terminals::session(store, self.terminals, &self.channel) {
+        if let Some(session) = Terminals::session(store, self.terminals, self.id) {
             session.hangup();
         }
-        Terminals::remove(store, self.terminals, &self.channel);
+        Terminals::remove(store, self.terminals, self.id);
     }
 
     fn family_row(&self) -> Option<crate::FamilyRow> {
-        Some(crate::FamilyRow::Terminal(
-            self.terminals,
-            self.channel.clone(),
-        ))
+        Some(crate::FamilyRow::Terminal(self.terminals, self.id))
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -400,7 +393,7 @@ impl PanelView for TerminalView {
 }
 
 #[derive(Clone, Default)]
-pub struct Terminals(rpds::HashTrieMapSync<crate::higent::ChannelUri, Arc<Session>>);
+pub struct Terminals(rpds::HashTrieMapSync<TerminalId, Arc<Session>>);
 
 /// A terminal belongs to the family whose id reached here — threaded
 /// from the owning session's row by whoever had the session context
@@ -409,49 +402,45 @@ impl Terminals {
     pub fn put(
         store: &mut Store,
         terminals: imba::store::Id<Self>,
-        channel: crate::higent::ChannelUri,
+        id: TerminalId,
         session: Arc<Session>,
     ) {
         store.update_entity(terminals, |terminals| {
-            terminals.0.insert_mut(channel, session);
+            terminals.0.insert_mut(id, session);
         });
     }
 
     pub fn session(
         store: &Store,
         terminals: imba::store::Id<Self>,
-        channel: &crate::higent::ChannelUri,
+        id: TerminalId,
     ) -> Option<Arc<Session>> {
-        Self::session_ref(store, terminals, channel).cloned()
+        Self::session_ref(store, terminals, id).cloned()
     }
 
     pub fn session_ref<'a>(
         store: &'a Store,
         terminals: imba::store::Id<Self>,
-        channel: &crate::higent::ChannelUri,
+        id: TerminalId,
     ) -> Option<&'a Arc<Session>> {
-        store.entity(terminals)?.0.get(channel)
+        store.entity(terminals)?.0.get(&id)
     }
 
-    pub fn remove(
-        store: &mut Store,
-        terminals: imba::store::Id<Self>,
-        channel: &crate::higent::ChannelUri,
-    ) {
+    pub fn remove(store: &mut Store, terminals: imba::store::Id<Self>, id: TerminalId) {
         store.update_entity(terminals, |terminals| {
-            terminals.0.remove_mut(channel);
+            terminals.0.remove_mut(&id);
         });
     }
 
-    pub fn list(store: &Store, terminals: imba::store::Id<Self>) -> Vec<crate::higent::ChannelUri> {
+    pub fn list(store: &Store, terminals: imba::store::Id<Self>) -> Vec<TerminalId> {
         store
             .entity(terminals)
-            .map(|terminals| terminals.0.keys().cloned().collect())
+            .map(|terminals| terminals.0.keys().copied().collect())
             .unwrap_or_default()
     }
 
-    pub(crate) fn holds(&self, channel: &crate::higent::ChannelUri) -> bool {
-        self.0.contains_key(channel)
+    pub(crate) fn holds(&self, id: TerminalId) -> bool {
+        self.0.contains_key(&id)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
