@@ -22,7 +22,7 @@ pub mod ui;
 
 pub use family_row::{FamilyRow, Row};
 pub use modal::{ModalRequest, ModalView, RequestSlot};
-pub use navigation::{NavigationLocation, Navigator, NoPlace, Place};
+pub use navigation::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
 pub use panel::{DynPanelView, PanelRequest, PanelView, RowMinter, WidgetOrigin};
 
 pub use forest::{Forest, ForestList, ForestNode, ForestSearcher, TreeRow};

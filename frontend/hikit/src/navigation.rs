@@ -75,3 +75,20 @@ pub trait Navigator: Send + Sync + 'static {
         fx: &mut imba::command::Fx<'_>,
     ) -> Option<Box<dyn crate::DynPanelView>>;
 }
+
+/// The editor pane's place: the located document, the caret and the
+/// scroll to restore. The one place every editor navigator speaks.
+#[derive(Clone, Debug)]
+pub struct EditorPlace {
+    pub location: editor::ResourceLocation,
+    pub caret: u32,
+    pub scroll_y: f32,
+}
+
+impl PartialEq for EditorPlace {
+    fn eq(&self, other: &Self) -> bool {
+        self.location == other.location && self.caret == other.caret
+    }
+}
+
+impl Place for EditorPlace {}

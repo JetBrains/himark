@@ -9,22 +9,7 @@ use imba::store::Store;
 use crate::app::AppFx;
 use crate::Panel;
 
-pub use hikit::{NavigationLocation, Navigator, NoPlace, Place};
-
-#[derive(Clone, Debug)]
-pub struct EditorPlace {
-    pub location: crate::ResourceLocation,
-    pub caret: u32,
-    pub scroll_y: f32,
-}
-
-impl PartialEq for EditorPlace {
-    fn eq(&self, other: &Self) -> bool {
-        self.location == other.location && self.caret == other.caret
-    }
-}
-
-impl Place for EditorPlace {}
+pub use hikit::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
 /// resolve the window's family and land panes into it. Shell-side by

@@ -21,6 +21,7 @@ hikit = { path = "../hikit" }
 documents = { path = "../documents" }
 locations = { path = "../locations" }
 terminals = { path = "../terminals" }
+toc = { path = "../toc" }
 editor = { path = "../editor" }
 filetree = { path = "../filetree" }
 myersdiff = { path = "../myersdiff" }
@@ -30,11 +31,12 @@ skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 
 [features]
-test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support"]
+test-support = ["editor/test-support", "hikit/test-support", "changesview/test-support", "canvas/test-support", "filetree/test-support", "toc/test-support"]
 
 [dev-dependencies]
 editor = { path = "../editor", features = ["test-support"] }
 hikit = { path = "../hikit", features = ["test-support"] }
 changesview = { path = "../changesview", features = ["test-support"] }
 canvas = { path = "../canvas", features = ["test-support"] }
+toc = { path = "../toc", features = ["test-support"] }
 himarkdown = { path = "../plugins/himarkdown" }

@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::test_document::plain_document;
+use ::editor::test_document::plain_document;
 
 fn at(source: &str, pat: &str) -> u32 {
     source.find(pat).expect("pattern") as u32

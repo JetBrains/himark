@@ -197,13 +197,19 @@ impl Panel {
                 if !document.has_outline() {
                     return None;
                 }
+                let jump = std::sync::Arc::new(move |place| {
+                    crate::ModalRequest::Perform(crate::shell_verb(crate::AppCommand::Dynamic(
+                        window,
+                        std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
+                    )))
+                });
                 Some(Box::new(crate::toc::OutlineView::new(
                     store,
                     ui,
-                    window,
                     view.documents(),
                     view.document(),
                     location,
+                    jump,
                 )) as Box<dyn crate::ModalView>)
             }
             Self::Plugin(view) => view.drawer_view_dyn(store, ui),

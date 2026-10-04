@@ -3551,17 +3551,17 @@ mod toc {
         let mut store = app.store().clone();
         {
             use imba::list::{ActivateTrigger, ListOps};
-            let step = view.search.step_index(1).expect("a stepped row");
-            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            let step = view.search().step_index(1).expect("a stepped row");
+            let select = crate::OutlineCommand::List(view.search().select_command(step));
             view.perform(
                 &mut store,
                 &ui,
                 select,
                 &mut imba::effect::Batch::new().effects(),
             );
-            let at = view.search.cursor_index().expect("a cursor row");
+            let at = view.search().cursor_index().expect("a cursor row");
             let pick = crate::OutlineCommand::List(
-                view.search.activate_command(at, ActivateTrigger::Enter),
+                view.search().activate_command(at, ActivateTrigger::Enter),
             );
             view.perform(
                 &mut store,
@@ -3626,7 +3626,6 @@ mod toc {
         let toc = crate::TocView::for_locations(
             &store,
             ::editor::test_document::test_ui(),
-            window,
             &[at("src", "b.rs"), at("docs", "a.md"), at("src", "a.rs")],
         )
         .expect("rows");
@@ -3647,9 +3646,9 @@ mod toc {
         let mut scratch = Store::new();
         {
             use imba::list::{ActivateTrigger, ListOps};
-            let at = toc.search.cursor_index().expect("a cursor row");
+            let at = toc.search().cursor_index().expect("a cursor row");
             let pick =
-                crate::TocCommand::List(toc.search.activate_command(at, ActivateTrigger::Enter));
+                crate::TocCommand::List(toc.search().activate_command(at, ActivateTrigger::Enter));
             toc.perform(
                 &mut scratch,
                 &ui,
@@ -3667,15 +3666,14 @@ mod toc {
         let mut band = crate::TocView::for_locations(
             &store,
             ::editor::test_document::test_ui(),
-            window,
             &[at("src", "x.rs")],
         )
         .expect("rows");
         {
             use imba::list::{ActivateTrigger, ListOps};
             // The band row is the only cursor stop; Up clamps onto it.
-            if let Some(step) = band.search.step_index(-1) {
-                let select = crate::TocCommand::List(band.search.select_command(step));
+            if let Some(step) = band.search().step_index(-1) {
+                let select = crate::TocCommand::List(band.search().select_command(step));
                 band.perform(
                     &mut scratch,
                     &ui,
@@ -3683,9 +3681,9 @@ mod toc {
                     &mut imba::effect::Batch::new().effects(),
                 );
             }
-            let at = band.search.cursor_index().expect("a cursor row");
+            let at = band.search().cursor_index().expect("a cursor row");
             let pick =
-                crate::TocCommand::List(band.search.activate_command(at, ActivateTrigger::Enter));
+                crate::TocCommand::List(band.search().activate_command(at, ActivateTrigger::Enter));
             band.perform(
                 &mut scratch,
                 &ui,
@@ -3713,7 +3711,6 @@ mod toc {
         let toc = crate::TocView::for_locations(
             &store,
             ::editor::test_document::test_ui(),
-            window,
             &[
                 at(&["src", "ui", "widgets", "c.rs"]),
                 at(&["src", "a.rs"]),
@@ -3737,7 +3734,6 @@ mod toc {
         let chain = crate::TocView::for_locations(
             &store,
             ::editor::test_document::test_ui(),
-            window,
             &[at(&["a", "b", "c", "x.rs"])],
         )
         .expect("rows");
@@ -3762,7 +3758,6 @@ mod toc {
         let mut toc = crate::TocView::for_locations(
             &store,
             ::editor::test_document::test_ui(),
-            window,
             &[at("src", "a.rs"), at("src", "b.rs")],
         )
         .expect("rows");
@@ -3780,12 +3775,12 @@ mod toc {
         };
 
         use imba::list::{ActivateTrigger, ListOps};
-        if let Some(step) = toc.search.step_index(-1) {
-            let select = crate::TocCommand::List(toc.search.select_command(step));
+        if let Some(step) = toc.search().step_index(-1) {
+            let select = crate::TocCommand::List(toc.search().select_command(step));
             drive(&mut toc, select);
         }
         let fold = crate::TocCommand::List(crate::ListKeyCommand::Fold {
-            index: toc.search.cursor_index().expect("a cursor row"),
+            index: toc.search().cursor_index().expect("a cursor row"),
             expand: false,
         });
         drive(&mut toc, fold);
@@ -3794,8 +3789,8 @@ mod toc {
             crate::ModalView::take_request(&mut toc).is_none(),
             "folding is not a pick"
         );
-        let pick = crate::TocCommand::List(toc.search.activate_command(
-            toc.search.cursor_index().expect("a cursor row"),
+        let pick = crate::TocCommand::List(toc.search().activate_command(
+            toc.search().cursor_index().expect("a cursor row"),
             ActivateTrigger::Enter,
         ));
         drive(&mut toc, pick);
@@ -3889,8 +3884,11 @@ mod toc {
 
         {
             use imba::list::ListOps;
-            let step = view.search.matched_step_index(1).expect("a match to step");
-            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            let step = view
+                .search()
+                .matched_step_index(1)
+                .expect("a match to step");
+            let select = crate::OutlineCommand::List(view.search().select_command(step));
             let _ = drive(&mut view, select);
         }
         assert_eq!(
@@ -4106,7 +4104,7 @@ mod toc {
         {
             use imba::list::ListOps;
             let fold = crate::OutlineCommand::List(crate::ListKeyCommand::Fold {
-                index: view.search.cursor_index().expect("a cursor row"),
+                index: view.search().cursor_index().expect("a cursor row"),
                 expand: false,
             });
             drive(&mut view, fold);

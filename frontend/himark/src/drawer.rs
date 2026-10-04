@@ -15,7 +15,7 @@ use imba::{
 
 use crate::{ModalRequest, ModalView};
 
-pub const DRAWER_WIDTH: f32 = 664.0;
+pub use hikit::rows::DRAWER_WIDTH;
 
 const SLIDE_MS: f64 = 160.0;
 

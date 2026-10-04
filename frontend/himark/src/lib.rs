@@ -37,7 +37,7 @@ pub mod terminal;
 pub mod test_driver;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_support;
-mod toc;
+pub mod toc;
 // The UI kit lives in its own crate; the re-exports below are
 // migration scaffolding — consumers move to `hikit` paths as they
 // convert, and himark shrinks toward the protocol layer.
@@ -107,8 +107,8 @@ pub use save::{SaveAll, SaveDocument};
 pub use state::AppState;
 pub use stats::Stats;
 pub use toc::{
-    OutlineCommand, OutlineEffect, OutlineHandler, OutlineRows, OutlineView, TocCommand, TocView,
-    ToggleToc,
+    NavigateToPlace, OutlineCommand, OutlineEffect, OutlineHandler, OutlineRows, OutlineView,
+    TocCommand, TocView, ToggleToc,
 };
 pub use toolbar::{
     composer_button, ToolbarButton, ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,

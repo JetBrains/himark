@@ -1,0 +1,380 @@
+// Copyright © 2026 JetBrains s.r.o.
+// SPDX-License-Identifier: Apache-2.0
+
+//! The hover card: a rest-armed LSP ask under the pointer's word,
+//! landing a markdown popup inlay on the document. Document-level
+//! machinery like the diff views — no window anywhere; the pane
+//! drives sync/tick/land through its own command scope.
+
+use imba::effect::{CancellationToken, Effects};
+use imba::store::Store;
+use imba::thunk_ext::ThunkExt;
+use imba::UiCtx;
+
+use crate::{DocumentId, LineCol};
+use editor::ResourceLocation;
+
+#[derive(Clone, Debug)]
+pub struct HoverInfo {
+    pub markdown: String,
+}
+
+pub struct LspHoverEffect {
+    pub location: ResourceLocation,
+    pub position: LineCol,
+}
+
+impl std::fmt::Display for LspHoverEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "lsp hover /{}", self.location.path().join("/"))
+    }
+}
+
+impl imba::effect::Effect for LspHoverEffect {
+    type Result = Option<HoverInfo>;
+}
+
+#[derive(Clone)]
+pub struct HoverFound {
+    serial: u64,
+    answer: Option<HoverInfo>,
+}
+
+const HOVER_REST_MS: f32 = 450.0;
+
+#[derive(Clone)]
+struct Arming {
+    location: ResourceLocation,
+    rested: f32,
+    last: Option<imba::anim::AnimationClock>,
+}
+
+#[derive(Clone, Default)]
+pub struct Hover {
+    lane: Option<CancellationToken>,
+    serial: u64,
+
+    anchor: Option<std::ops::Range<u32>>,
+
+    arming: Option<Arming>,
+
+    installed: Option<(DocumentId, ::editor::EditorId)>,
+    markup: Option<::editor::MarkupId>,
+    key: Option<::editor::InlayKey>,
+}
+
+impl Hover {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn sync<C, E>(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        document: &mut editor::Document,
+        _editor: ::editor::EditorId,
+        byte: Option<u32>,
+        location: &ResourceLocation,
+        installed: Option<(DocumentId, ::editor::EditorId)>,
+        fx: &mut Effects<'_, C>,
+        to_editor: E,
+    ) where
+        C: 'static,
+        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+    {
+        let word = byte.and_then(|byte| word_range(document, byte));
+
+        if word == self.anchor {
+            return;
+        }
+
+        self.retract(store, ui, document, fx, to_editor);
+        self.anchor = word.clone();
+        if word.is_none() || location.is_synthetic() {
+            return;
+        }
+        self.installed = installed;
+        self.arming = Some(Arming {
+            location: location.clone(),
+            rested: 0.0,
+            last: None,
+        });
+    }
+
+    pub fn armed(&self) -> bool {
+        self.arming.is_some()
+    }
+
+    pub fn tick<C, W>(
+        &mut self,
+        document: &editor::Document,
+        now: imba::anim::AnimationClock,
+        fx: &mut Effects<'_, C>,
+        wrap: W,
+    ) where
+        C: 'static,
+        W: Fn(HoverFound) -> C + Send + Sync + Clone + 'static,
+    {
+        let (Some(arming), Some(word)) = (&mut self.arming, self.anchor.clone()) else {
+            return;
+        };
+        arming.rested += arming
+            .last
+            .map(|last| now.millis_since(last) as f32)
+            .unwrap_or(0.0);
+        arming.last = Some(now);
+        if arming.rested < HOVER_REST_MS {
+            return;
+        }
+        let arming = self.arming.take().expect("matched above");
+        self.serial += 1;
+        let serial = self.serial;
+        let mut view = document.text().view();
+        let position = crate::line_col_at(&mut view, word.start as usize);
+        let effect = imba::effect::AnyEffect::new(LspHoverEffect {
+            location: arming.location,
+            position,
+        })
+        .map(move |answer| wrap(HoverFound { serial, answer }));
+        fx.relaunch_erased(&mut self.lane, effect);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn land<C, E>(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        document: &mut editor::Document,
+        editor: ::editor::EditorId,
+        found: HoverFound,
+        fx: &mut Effects<'_, C>,
+        to_editor: E,
+    ) where
+        C: 'static,
+        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+    {
+        if found.serial != self.serial {
+            return;
+        }
+        let (Some(word), Some(info)) = (self.anchor.clone(), found.answer) else {
+            return;
+        };
+        if info.markdown.trim().is_empty() {
+            return;
+        }
+
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
+        if word.end > len {
+            return;
+        }
+        let markup = document.add_markup();
+        document.show_markup(editor, markup);
+        self.markup = Some(markup);
+        let fonts = editor::env::ui_collection(store, ui);
+        let theme = editor::env::Themes::of(store);
+        let view = HoverView::build(store, &info.markdown, ui, &fonts, &theme);
+        let mut key = None;
+        fx.scope(to_editor, |fx| {
+            key = Some(document.push_inlay(
+                markup,
+                word.clone(),
+                editor::Inlay::new(
+                    editor::InlayMode::Popup(editor::PopupSpec {
+                        host: imba::overlay::WINDOW,
+                        position: imba::overlay::fit::PreferredPosition::At {
+                            x: imba::overlay::fit::RangeEnd::Begin,
+                            side: imba::overlay::fit::Side::Top,
+                            align: imba::overlay::fit::Align::Left,
+                        },
+                    }),
+                    view,
+                ),
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            ));
+        });
+        self.key = key;
+    }
+
+    pub fn open(&self) -> bool {
+        self.key.is_some()
+    }
+
+    pub fn inlay_key(&self) -> Option<::editor::InlayKey> {
+        self.key
+    }
+
+    pub fn retract<C, E>(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        document: &mut editor::Document,
+        fx: &mut Effects<'_, C>,
+        to_editor: E,
+    ) where
+        C: 'static,
+        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+    {
+        if let Some(token) = self.lane.take() {
+            fx.cancel(token);
+        }
+        let fonts = editor::env::ui_collection(store, ui);
+        let theme = editor::env::Themes::of(store);
+        let key = self.key.take();
+        let markup = self.markup.take();
+        if key.is_some() || markup.is_some() {
+            fx.scope(to_editor, |fx| {
+                if let Some(key) = key {
+                    document.remove_inlay(key, store, ui, &fonts, &theme, fx);
+                }
+
+                if let Some(markup) = markup {
+                    document.remove_markup(markup, &[], store, ui, &fonts, &theme, fx);
+                }
+            });
+        }
+        self.installed = None;
+        self.anchor = None;
+        self.arming = None;
+    }
+
+    pub fn clear(&mut self) {
+        self.lane = None;
+        self.anchor = None;
+        self.arming = None;
+        self.installed = None;
+        self.markup = None;
+        self.key = None;
+    }
+
+    pub fn installed(&self) -> Option<(DocumentId, ::editor::EditorId)> {
+        self.installed
+    }
+}
+
+fn word_range(document: &editor::Document, byte: u32) -> Option<std::ops::Range<u32>> {
+    let mut view = document.text().view();
+    let len = view.byte_count().min(u32::MAX as usize) as u32;
+    if byte > len {
+        return None;
+    }
+    let line = view.line_at(byte as usize);
+    let line_start = view.line_start_offset(line) as u32;
+    let line_text = {
+        let end = view.line_end_offset(line) as u32;
+        view.substring(line_start..end)
+    };
+    let local = (byte - line_start) as usize;
+    let bytes = line_text.as_bytes();
+    let is_ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+
+    if local >= bytes.len() || !is_ident(bytes[local]) {
+        return None;
+    }
+    let mut start = local;
+    while start > 0 && is_ident(bytes[start - 1]) {
+        start -= 1;
+    }
+    let mut end = local + 1;
+    while end < bytes.len() && is_ident(bytes[end]) {
+        end += 1;
+    }
+    Some(line_start + start as u32..line_start + end as u32)
+}
+
+const CARD_WIDTH: f32 = 560.0;
+const CARD_PAD: f32 = 10.0;
+
+#[derive(Clone)]
+pub struct HoverView {
+    view: editor::EditorView,
+}
+
+impl HoverView {
+    fn build(
+        store: &Store,
+        markdown: &str,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        theme: &editor::Theme,
+    ) -> Self {
+        let text = editor::Text::from_string_exact(markdown);
+        let document = match editor::env::Parsers::of(store) {
+            Some(parsers) => {
+                editor::Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
+            }
+            None => editor::Document::new(text, editor::Markup::new()).with_syntax(
+                editor::Syntax::new("markdown", None, editor::Markup::new()),
+                &[],
+            ),
+        };
+        Self {
+            view: editor::EditorView::complete(document, CARD_WIDTH, store, ui, fonts, theme),
+        }
+    }
+}
+
+impl imba::View for HoverView {
+    type Command = ::editor::EditorCommand;
+
+    fn perform(
+        &mut self,
+        _store: &mut Store,
+        _ui: &UiCtx,
+        _command: Self::Command,
+        _fx: &mut Effects<'_, Self::Command>,
+    ) {
+    }
+
+    fn display<'a>(
+        &'a self,
+        arena: &'a imba::arena::Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+        imba::laid(
+            move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
+                let theme = editor::env::Themes::of(store);
+                let fill = theme.ui().combo.menu_fill.0;
+                let document = &self.view.document;
+
+                let inner_width = document.max_width(self.view.editor).clamp(60.0, CARD_WIDTH);
+                let inner_height = document.content_height(self.view.editor);
+                let width = inner_width + CARD_PAD * 2.0;
+                let height = inner_height + CARD_PAD * 2.0;
+                let editor = imba::Layout::layout(
+                    self.view.display(arena, store, ui),
+                    arena,
+                    imba::constraints::Constraints {
+                        min: skia_safe::Size::new(inner_width, inner_height),
+                        max: skia_safe::Size::new(inner_width, f32::MAX),
+                    },
+                );
+                let mut card =
+                    imba::container::container(arena, skia_safe::Size::new(width, height));
+                card.place(
+                    0.0,
+                    0.0,
+                    imba::leaf::leaf::<Self::Command>(width, height).paint_instead(
+                        move |_arena, canvas, rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_anti_alias(true);
+                            paint.set_color(fill);
+                            canvas.draw_round_rect(rect, 8.0, 8.0, &paint);
+                        },
+                    ),
+                );
+                card.place(CARD_PAD, CARD_PAD, editor);
+                card
+            },
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests;

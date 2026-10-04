@@ -265,3 +265,7 @@ mod tests {
         );
     }
 }
+
+/// The drawer panel's fixed width — the TOC/outline drawer and the
+/// shell's drawer animation share it.
+pub const DRAWER_WIDTH: f32 = 664.0;
