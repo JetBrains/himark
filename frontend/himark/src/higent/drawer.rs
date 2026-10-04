@@ -121,7 +121,7 @@ impl std::fmt::Display for AgentsCommand {
 
 pub struct AgentsPanel {
     list: ListKeyboardController<TreeList, SessionSearcher>,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     booted: bool,
 
     collapsed: rpds::HashTrieSetSync<HostId>,
@@ -150,7 +150,7 @@ impl Clone for AgentsPanel {
 }
 
 impl AgentsPanel {
-    pub fn open(store: &Store, ui: &UiCtx, window: crate::window::WindowId) -> Self {
+    pub fn open(store: &Store, ui: &UiCtx, window: ::workbench::window::WindowId) -> Self {
         let panel = Self {
             list: ListKeyboardController::searchable(
                 ScrollView::new(ListView::empty().with_selection(hikit::rows::selection_style(store))),
@@ -362,7 +362,7 @@ impl AgentsPanel {
     /// The row key of the session the panel's window has open, if the
     /// window shows a session at all.
     fn open_session_key(&self, store: &Store) -> Option<AgentKey> {
-        let open = crate::window::Windows::window_ref(store, self.window)?.current_session();
+        let open = ::workbench::window::Windows::window_ref(store, self.window)?.current_session();
         open.names_session()
             .then(|| AgentKey::Session(open.host, open.session))
     }
@@ -993,7 +993,7 @@ impl crate::commands::DynamicCommand for AddHost {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
@@ -1022,13 +1022,13 @@ impl crate::commands::DynamicCommand for ToggleAgentsView {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.has_side_panel() {
             entity.roll_away_side_panel();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
         fx.scope(
@@ -1040,15 +1040,15 @@ impl crate::commands::DynamicCommand for ToggleAgentsView {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: "agent.toggle-agents",
         order: 2.0,
-        side: crate::toolbar::ToolbarSide::Left,
+        side: ::workbench::toolbar::ToolbarSide::Left,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);
@@ -1088,7 +1088,7 @@ impl crate::commands::DynamicCommand for ShareHost {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let client = store
@@ -1123,7 +1123,7 @@ impl crate::commands::DynamicCommand for SharedHost {
         &self,
         _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {

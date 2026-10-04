@@ -143,7 +143,7 @@ impl Panel {
         }
     }
 
-    pub(crate) fn title(&self, store: &Store) -> String {
+    pub fn title(&self, store: &Store) -> String {
         match self {
             Self::Editor(pane) => {
                 let documents = pane.content().documents();
@@ -173,7 +173,7 @@ impl Panel {
         }
     }
 
-    pub(crate) fn drawer_view(
+    pub fn drawer_view(
         &self,
         store: &Store,
         ui: &UiCtx,
@@ -190,12 +190,8 @@ impl Panel {
                 if !document.has_outline() {
                     return None;
                 }
-                let jump = std::sync::Arc::new(move |place| {
-                    hikit::modal::ModalRequest::Perform(crate::app::shell_verb(crate::app::AppCommand::Dynamic(
-                        window,
-                        std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
-                    )))
-                });
+                let road = crate::registry::Registry::of(store)?.outline_jump.clone()?;
+                let jump = std::sync::Arc::new(move |place| road(window, place));
                 Some(Box::new(toc::OutlineView::new(
                     store,
                     ui,
@@ -237,7 +233,7 @@ impl Panel {
         store: &mut Store,
         ui: &imba::ui::UiCtx,
         target: &hikit::navigation::NavigationLocation,
-        fx: &mut crate::app::AppFx<'_>,
+        fx: &mut imba::command::Fx<'_>,
     ) -> bool {
         match self {
             Self::Editor(pane) => {
@@ -260,7 +256,7 @@ impl Panel {
                 let (documents, target) = (view.documents(), view.document());
                 fx.scope(
                     move |command| {
-                        crate::app::AppCommand::at(
+                        imba::command::Verb::at(
                             documents,
                             documents::DocumentsCommand::Editor(target, command),
                         )
@@ -286,9 +282,7 @@ impl Panel {
                 pane.set_scroll_y(place.scroll_y);
                 true
             }
-            Self::Plugin(view) => fx.scope(crate::app::AppCommand::Verb, |fx| {
-                view.navigate_to_dyn(store, target, fx)
-            }),
+            Self::Plugin(view) => view.navigate_to_dyn(store, target, fx),
         }
     }
 
@@ -453,7 +447,7 @@ impl PanelId {
 #[derive(Clone)]
 pub struct PanelWithId {
     pub(crate) id: PanelId,
-    pub(crate) panel: Panel,
+    pub panel: Panel,
 }
 
 impl PanelWithId {
@@ -480,15 +474,15 @@ impl std::ops::DerefMut for PanelWithId {
 
 #[derive(Clone)]
 pub struct PaneSlot {
-    pub(crate) panel: PanelWithId,
+    pub panel: PanelWithId,
     pub(crate) back: rpds::VectorSync<hikit::navigation::NavigationLocation>,
     pub(crate) forward: rpds::VectorSync<hikit::navigation::NavigationLocation>,
 
     pub(crate) pending: Option<PendingWalk>,
 
-    pub(crate) find: Option<crate::find::FindBar>,
+    pub find: Option<crate::find::FindBar>,
 
-    pub(crate) completion: ahp_chat::completion::Completion,
+    pub completion: ahp_chat::completion::Completion,
 
     pub(crate) hover: documents::hover::Hover,
 }
@@ -554,7 +548,7 @@ impl PaneSlot {
         (self.back.len(), self.forward.len())
     }
 
-    pub(crate) fn find_target(&self) -> Option<(documents::DocumentId, ::editor::editor::EditorId)> {
+    pub fn find_target(&self) -> Option<(documents::DocumentId, ::editor::editor::EditorId)> {
         self.panel
             .editor()
             .map(|pane| (pane.content().document(), pane.content().editor()))
@@ -562,7 +556,7 @@ impl PaneSlot {
 
     /// The collection this leaf's editor reads through — the pane
     /// holds the id (docs/entities.md law 3).
-    pub(crate) fn documents_id(&self) -> Option<imba::store::Id<documents::OpenDocuments>> {
+    pub fn documents_id(&self) -> Option<imba::store::Id<documents::OpenDocuments>> {
         self.panel.editor().map(|pane| pane.content().documents())
     }
 
@@ -782,7 +776,7 @@ impl PaneSlot {
         documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
-    pub(crate) fn land_completion(
+    pub fn land_completion(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
@@ -1075,7 +1069,7 @@ impl WorkbenchNode {
         self.focused_slot_mut().replace_panel(panel)
     }
 
-    pub(crate) fn focused_slot(&self) -> &PaneSlot {
+    pub fn focused_slot(&self) -> &PaneSlot {
         match self {
             Self::Leaf(slot) => slot,
             Self::Split(split) => match split.focused() {
@@ -1085,7 +1079,7 @@ impl WorkbenchNode {
         }
     }
 
-    pub(crate) fn focused_slot_mut(&mut self) -> &mut PaneSlot {
+    pub fn focused_slot_mut(&mut self) -> &mut PaneSlot {
         match self {
             Self::Leaf(slot) => slot,
             Self::Split(split) => match split.focused() {
@@ -1105,7 +1099,7 @@ impl WorkbenchNode {
         }
     }
 
-    pub(crate) fn for_each_slot_mut(&mut self, visit: &mut impl FnMut(&mut PaneSlot)) {
+    pub fn for_each_slot_mut(&mut self, visit: &mut impl FnMut(&mut PaneSlot)) {
         match self {
             Self::Leaf(slot) => visit(slot),
             Self::Split(split) => {

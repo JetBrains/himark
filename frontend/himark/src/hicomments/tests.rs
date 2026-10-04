@@ -53,7 +53,7 @@ impl editor::dynamic::DynamicEditorCommand for SelectRange {
     }
 }
 
-fn app_with_located_document(source: &str) -> (Application, crate::window::WindowId) {
+fn app_with_located_document(source: &str) -> (Application, ::workbench::window::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_syntax_languages(himarkdown::markdown_languages(editor::reparse::SyntaxLanguages::new()));
     // `comments.add` arrives via the session ceremony (a scoped,
@@ -75,7 +75,7 @@ fn app_with_located_document(source: &str) -> (Application, crate::window::Windo
     (app, window)
 }
 
-fn invoke(app: &mut Application, window: crate::window::WindowId, id: &str) {
+fn invoke(app: &mut Application, window: ::workbench::window::WindowId, id: &str) {
     let command = crate::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
@@ -303,7 +303,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     );
     assert!(app.perform_command(AppCommand::Content(
         window,
-        crate::window::WindowCommand::Focus(crate::window::LayerFocus::Content),
+        ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
@@ -311,7 +311,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     comments::Comments::sent_outcome(&mut app.store_mut(), comments, &ids, Ok(()));
     assert!(app.perform_command(AppCommand::Content(
         window,
-        crate::window::WindowCommand::Focus(crate::window::LayerFocus::Content),
+        ::workbench::window::WindowCommand::Focus(::workbench::window::LayerFocus::Content),
     )));
     assert!(
         comments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),

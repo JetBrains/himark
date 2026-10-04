@@ -1086,6 +1086,7 @@ dependencies = [
  "peeker",
  "skia-safe",
  "text",
+ "workbench",
 ]
 
 [[package]]
@@ -1678,6 +1679,7 @@ dependencies = [
  "text",
  "tokio",
  "tracing",
+ "workbench",
 ]
 
 [[package]]
@@ -2038,6 +2040,7 @@ dependencies = [
  "serde_json",
  "skia-safe",
  "text",
+ "workbench",
 ]
 
 [[package]]
@@ -2385,6 +2388,7 @@ dependencies = [
  "terminals",
  "text",
  "toc",
+ "workbench",
 ]
 
 [[package]]
@@ -2603,6 +2607,7 @@ dependencies = [
  "rquickjs",
  "serde_json",
  "text",
+ "workbench",
 ]
 
 [[package]]
@@ -4047,6 +4052,7 @@ dependencies = [
  "peeker",
  "skia-safe",
  "text",
+ "workbench",
 ]
 
 [[package]]
@@ -4120,6 +4126,7 @@ dependencies = [
  "skia-safe",
  "terminals",
  "text",
+ "workbench",
 ]
 
 [[package]]
@@ -6854,6 +6861,7 @@ dependencies = [
  "skia-safe",
  "tokio",
  "tracing",
+ "workbench",
 ]
 
 [[package]]
@@ -7172,6 +7180,26 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workbench"
+version = "0.1.0"
+dependencies = [
+ "ahp-chat",
+ "ahp-session",
+ "ahp-types",
+ "ahp-wire",
+ "documents",
+ "editor",
+ "hikit",
+ "imba",
+ "regex",
+ "rpds",
+ "skia-safe",
+ "text",
+ "toc",
+ "tracing",
+]
 
 [[package]]
 name = "write16"

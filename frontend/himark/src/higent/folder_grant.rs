@@ -33,7 +33,7 @@ impl crate::commands::DynamicCommand for AddSessionFolders {
         &self,
         _app: &mut crate::app::Application,
         _store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let server = self.server;
@@ -74,7 +74,7 @@ impl crate::commands::DynamicCommand for SessionFoldersPicked {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
@@ -130,7 +130,7 @@ impl crate::commands::DynamicCommand for GrantAck {
         &self,
         _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         // The dispatch is a wire notification: this result is the

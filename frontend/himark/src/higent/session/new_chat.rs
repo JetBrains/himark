@@ -9,11 +9,11 @@ use ahp_wire::client::HostId;
 use crate::app::AppCommand;
 use crate::commands::DynamicCommand;
 use ahp_wire::SessionId;
-use crate::window::Windows;
+use ::workbench::window::Windows;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
-fn current_session(store: &Store, window: crate::window::WindowId) -> Option<SessionId> {
+fn current_session(store: &Store, window: ::workbench::window::WindowId) -> Option<SessionId> {
     Some(Windows::window_ref(store, window)?.current_session())
 }
 
@@ -32,7 +32,7 @@ impl DynamicCommand for NewChat {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(workspace) = current_session(store, window) else {
@@ -75,7 +75,7 @@ impl DynamicCommand for OpenCreatedChat {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();

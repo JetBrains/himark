@@ -50,7 +50,7 @@ impl Clone for Drawer {
 }
 
 impl Drawer {
-    pub(crate) fn new(content: Box<dyn ModalView>) -> Self {
+    pub fn new(content: Box<dyn ModalView>) -> Self {
         let mut offset = Animation::done(
             -DRAWER_WIDTH,
             Motion::Ease {

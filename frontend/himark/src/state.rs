@@ -7,7 +7,7 @@ use imba::store::Store;
 pub struct AppState {
     pub(crate) hosts: ahp_session::session::state::Hosts,
 
-    pub(crate) windows: crate::window::Windows,
+    pub(crate) windows: ::workbench::window::Windows,
 
     pub(crate) globals: Store,
 }
@@ -26,7 +26,7 @@ impl AppState {
     #[allow(unused_variables)]
     pub(crate) fn gather(
         &self,
-        window: Option<crate::window::WindowId>,
+        window: Option<::workbench::window::WindowId>,
         scope: Option<&ahp_wire::SessionId>,
         clients: &ahp_wire::client::Servers,
     ) -> Store {
@@ -46,7 +46,7 @@ impl AppState {
             hosts.scatter_session(&mut store, scope);
         }
         self.hosts = hosts;
-        if let Some(taken) = store.take::<crate::window::Windows>() {
+        if let Some(taken) = store.take::<::workbench::window::Windows>() {
             self.windows.absorb(taken);
         }
         self.globals = store;

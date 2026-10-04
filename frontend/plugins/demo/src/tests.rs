@@ -174,7 +174,7 @@ fn markdown_demo_inlays_do_not_replace_headers() {
 fn typing_markdown_into_the_startup_scratch_styles_it() {
     let (mut app, arriving) = attach_bare_host();
     let mut surface = surfaces::raster_n32_premul((800, 600)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(
         app.with_ime_client(app.sole_window(), |_| ()).is_some(),
         "the startup scratch has focus"
@@ -242,14 +242,14 @@ fn dump_rust_split_screenshot() {
     );
     app.add_document(app.sole_window(), document, "build.rs".to_owned(), true);
     let mut surface = surfaces::raster_n32_premul((1920, 1080)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     app.perform_registered(app.sole_window(), "workbench.split-pane");
     for _ in 0..10 {
         std::thread::sleep(Duration::from_millis(100));
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
     }
     let image = surface.image_snapshot();
     let data = image
@@ -268,12 +268,12 @@ fn dump_workbench_screenshots() {
     std::fs::create_dir_all(&dir).expect("shot dir");
     let (mut app, arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1920, 1080)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     drain_until_quiet(&mut app, &arriving);
 
     let mut shoot = |app: &mut Application, name: &str| {
-        himark::window::Window::draw(app.sole_window(), app, surface.canvas());
-        himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         let image = surface.image_snapshot();
         let data = image
             .encode(None, skia_safe::EncodedImageFormat::PNG, None)
@@ -291,7 +291,7 @@ fn dump_workbench_screenshots() {
     let mut settle = move |app: &mut Application,
                            arriving: &std::sync::mpsc::Receiver<AppCommand>| {
         loop {
-            himark::window::Window::draw(app.sole_window(), app, probe.canvas());
+            app.draw_window(app.sole_window(), probe.canvas());
             match arriving.recv_timeout(Duration::from_millis(1200)) {
                 Ok(command) => {
                     app.perform_batch(vec![command]);
@@ -300,7 +300,7 @@ fn dump_workbench_screenshots() {
             }
         }
         for tick in 0..40 {
-            himark::window::Window::draw(app.sole_window(), app, probe.canvas());
+            app.draw_window(app.sole_window(), probe.canvas());
             if !himark::test_driver::animate(
                 app,
                 imba::anim::AnimationClock::from_millis(tick as f64 * 32.0),
@@ -334,10 +334,10 @@ fn dump_peeker_screenshot() {
     }
     let (mut app, _arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1920, 1080)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     app.perform_registered(app.sole_window(), "peeker.toggle");
     himark::test_driver::type_text(&mut app, "s");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let image = surface.image_snapshot();
     let data = image
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)
@@ -349,7 +349,7 @@ fn dump_peeker_screenshot() {
 fn background_repair_finishes_the_whole_document_after_a_resize() {
     let (mut app, arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let drain = |app: &mut Application| drain_until_quiet(app, &arriving);
     drain(&mut app);
@@ -360,7 +360,7 @@ fn background_repair_finishes_the_whole_document_after_a_resize() {
     );
 
     let mut small = surfaces::raster_n32_premul((900, 700)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, small.canvas());
+    app.draw_window(app.sole_window(), small.canvas());
     assert!(
         !app.unconverged_panes().is_empty(),
         "right after the resize the tails are still pending"
@@ -401,10 +401,10 @@ fn the_preview_is_a_real_editor_whose_tail_repairs_in_background() {
     let _serialized = heavy();
     let (mut app, arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let bounded = peeker::preview_height(&app, app.store()).expect("the torture sample previews");
     assert!(bounded > 0.0);
 
@@ -426,12 +426,12 @@ fn the_preview_is_a_real_editor_whose_tail_repairs_in_background() {
 fn window_resize_reflows_panes_around_their_viewports() {
     let (mut app, _arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let widths_before = app.pane_widths();
 
     himark::test_driver::scroll_at(&mut app, 300.0, 400.0, 20_000.0);
     let mut small = surfaces::raster_n32_premul((900, 700)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, small.canvas());
+    app.draw_window(app.sole_window(), small.canvas());
 
     let widths_after = app.pane_widths();
     assert_ne!(widths_before, widths_after, "pane widths follow the window");
@@ -439,7 +439,7 @@ fn window_resize_reflows_panes_around_their_viewports() {
         assert!(after < before, "narrower window, narrower editors");
     }
 
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let widths_back = app.pane_widths();
     for (original, back) in widths_before.iter().zip(&widths_back) {
         assert!(
@@ -453,16 +453,16 @@ fn window_resize_reflows_panes_around_their_viewports() {
 fn split_then_peek_a_file_into_the_focused_pane() {
     let (mut app, _arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert_eq!(app.pane_count(), 1, "startup is a single pane");
 
     assert!(app.perform_registered(app.sole_window(), "workbench.split-pane"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert_eq!(app.pane_count(), 2);
 
     let before = app.focused_editor_id();
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let labels = peeker::labels(&app).expect("peeker is open");
     assert!(
         labels.iter().any(|label| label == "torture sample"),
@@ -481,7 +481,7 @@ fn split_then_peek_a_file_into_the_focused_pane() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     assert!(peeker::labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(app.pane_count(), 2, "picking replaces, never adds a pane");
@@ -505,10 +505,10 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
     let _serialized = heavy();
     let (mut app, arriving) = boot();
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     himark::test_driver::click(&mut app, 200.0, 200.0, 1280.0, 900.0);
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let mut seed = 0x9e3779b97f4a7c15u64;
     let mut rand = move || {
@@ -547,13 +547,13 @@ fn typing_and_scrolling_survive_the_reparse_pipeline() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
     }
     std::thread::sleep(std::time::Duration::from_secs(1));
     while let Ok(command) = arriving.try_recv() {
         app.perform_batch(vec![command]);
     }
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 }
 
 #[test]
@@ -615,7 +615,7 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     while app.styled_pane_count() == 0 {
         let command = arriving
@@ -624,7 +624,7 @@ fn clicking_an_inlay_animates_its_size_through_the_clock() {
         app.perform_batch(vec![command]);
     }
     drain_until_quiet(&mut app, &arriving);
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let (x, y) = app
         .first_inlay_probe_point()
@@ -669,7 +669,7 @@ fn an_idle_app_answers_the_animation_clock_with_silence() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     for ms in [0.0, 16.7, 33.4, 50.1] {
         assert!(
@@ -686,11 +686,11 @@ fn types_into_the_editor_and_reports_latency() {
     drain_until_quiet(&mut app, &arriving);
     let surface_size = profile_surface_size();
     let mut surface = surfaces::raster_n32_premul(surface_size).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     for _ in 0..20 {
         himark::test_driver::type_text(&mut app, "x");
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
@@ -700,7 +700,7 @@ fn types_into_the_editor_and_reports_latency() {
     for step in 0..300 {
         let started = Instant::now();
         himark::test_driver::type_text(&mut app, if step % 7 == 0 { " " } else { "y" });
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
@@ -728,7 +728,7 @@ fn reparse_landings_during_typing_report_latency() {
     drain_until_quiet(&mut app, &arriving);
     let surface_size = profile_surface_size();
     let mut surface = surfaces::raster_n32_premul(surface_size).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     for _ in 0..10 {
         std::thread::sleep(Duration::from_millis(500));
@@ -742,11 +742,11 @@ fn reparse_landings_during_typing_report_latency() {
         std::thread::sleep(Duration::from_millis(20));
         let started = Instant::now();
         himark::test_driver::type_text(&mut app, "y");
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         samples.push(started.elapsed());
     }
     samples.sort();
@@ -765,16 +765,16 @@ fn opening_at_window_size_converges_and_styles() {
     let (mut app, arriving) = boot();
 
     let mut surface = surfaces::raster_n32_premul((2560, 1440)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let mut surface = surfaces::raster_n32_premul((2880, 1620)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
         match arriving.recv_timeout(Duration::from_secs(10)) {
             Ok(command) => {
                 app.perform_batch(vec![command]);
-                himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+                app.draw_window(app.sole_window(), surface.canvas());
             }
             Err(_) => {
                 eprintln!("[probe] no background results for 10s");
@@ -811,14 +811,14 @@ fn scroll_steps(app: &himark::app::Application, step: f32) -> usize {
 }
 
 fn scroll_pass(app: &mut Application, surface: &mut skia_safe::Surface) -> Vec<Duration> {
-    himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let mut samples = Vec::new();
     for _ in 0..scroll_steps(app, 4096.0) {
         let _ = himark::test_driver::scroll(app, 4096.0);
 
         let started = Instant::now();
-        himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         samples.push(started.elapsed());
     }
     samples
@@ -826,7 +826,7 @@ fn scroll_pass(app: &mut Application, surface: &mut skia_safe::Surface) -> Vec<D
 
 fn scroll_to_top(app: &mut Application, surface: &mut skia_safe::Surface) {
     himark::test_driver::scroll(app, f32::MIN);
-    himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 }
 
 fn profile_passes() -> usize {
@@ -889,7 +889,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     for _ in 0..6 {
         std::thread::sleep(Duration::from_millis(250));
@@ -904,11 +904,11 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
             std::thread::sleep(Duration::from_millis(10));
             let started = Instant::now();
             himark::test_driver::type_text(app, "y");
-            himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+            app.draw_window(app.sole_window(), surface.canvas());
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+            app.draw_window(app.sole_window(), surface.canvas());
             samples.push(started.elapsed());
         }
         samples.sort();
@@ -918,7 +918,7 @@ fn typing_in_the_monster_document_stays_frame_budgeted() {
     let monster = measure(&mut app, &mut surface);
 
     assert!(app.new_scratch(app.sole_window()));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let scratch = measure(&mut app, &mut surface);
 
     let monster_ms = monster.as_secs_f64() * 1000.0;
@@ -943,7 +943,7 @@ fn scroll_frame_breakdown() {
     let (width, height) = profile_surface_size();
     let size = skia_safe::Size::new(width as f32, height as f32);
     let mut surface = surfaces::raster_n32_premul((width, height)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
 
     let mut scrolls = Vec::new();
     let mut paints = Vec::new();
@@ -951,9 +951,7 @@ fn scroll_frame_breakdown() {
         let started = Instant::now();
         let _ = himark::test_driver::scroll(&mut app, 4096.0);
         scrolls.push(started.elapsed());
-        paints.push(himark::window::Window::draw_profiled(
-            app.sole_window(),
-            &mut app,
+        paints.push(app.draw_window_profiled(app.sole_window(),
             surface.canvas(),
             size,
         ));
@@ -1087,14 +1085,14 @@ fn the_wall_of_text_opens_and_types() {
     imba::perf::record("wall", "open_ms", opened.elapsed().as_secs_f64() * 1000.0);
 
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     himark::test_driver::click(&mut app, 400.0, 300.0, 1280.0, 900.0);
 
     let mut samples = Vec::new();
     for _ in 0..24 {
         let started = Instant::now();
         himark::test_driver::type_text(&mut app, "x");
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         samples.push(started.elapsed());
     }
     samples.sort();
@@ -1164,7 +1162,7 @@ fn where_do_heights_diverge() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     drain_until_quiet(&mut app, &arriving);
     let (live, fresh, text) = app.first_pane_heights_vs_fresh();
     let zero_sized = |elements: &[(u32, f32)]| -> Vec<(u32, f32)> {
@@ -1221,13 +1219,13 @@ fn tree_demo_panel_toggles_through_clicks() {
     himark::app_ext::AppExt::register_command(&mut app, std::sync::Arc::new(crate::tree_demo::OpenTreeDemo));
     let window = app.sole_window();
     let mut surface = surfaces::raster_n32_premul((800, 600)).expect("surface");
-    himark::window::Window::draw(window, &mut app, surface.canvas());
+    app.draw_window(window, surface.canvas());
     assert!(himark::app_ext::AppExt::perform_registered(
         &mut app,
         window,
         "demo.tree"
     ));
-    himark::window::Window::draw(window, &mut app, surface.canvas());
+    app.draw_window(window, surface.canvas());
 
     let row_count = |app: &himark::app::Application| -> usize {
         let mut count = None;
@@ -1244,7 +1242,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     let chrome = theme.ui();
     let content_height = 600.0 - chrome.toolbar.height;
     let top = chrome.toolbar.height
-        + himark::workbench::workbench_geometry(800.0, content_height, &chrome.window).top;
+        + workbench::workbench::workbench_geometry(800.0, content_height, &chrome.window).top;
     let first_row = skia_safe::Point::new(30.0, top + 13.0);
 
     let started = std::time::Instant::now();
@@ -1260,7 +1258,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     );
     let toggle_ms = started.elapsed().as_secs_f64() * 1000.0;
     assert_eq!(row_count(&app), 100_010, "the first root expanded");
-    himark::window::Window::draw(window, &mut app, surface.canvas());
+    app.draw_window(window, surface.canvas());
 
     let content_height = |app: &himark::app::Application| -> f32 {
         let mut height = None;
@@ -1280,7 +1278,7 @@ fn tree_demo_panel_toggles_through_clicks() {
             },
             skia_safe::Size::new(800.0, 600.0),
         );
-        himark::window::Window::draw(window, &mut app, surface.canvas());
+        app.draw_window(window, surface.canvas());
         extents.push(content_height(&app));
     }
     let settled = 100_010.0 * 26.0;
@@ -1349,7 +1347,7 @@ fn rust_document_settles_and_stops_reconciling() {
                     app.perform_batch(vec![command]);
                 }
                 let reconciling =
-                    himark::window::Window::draw_with_size(app.sole_window(), app, surface.canvas(), size);
+                    app.draw_window_sized(app.sole_window(), surface.canvas(), size);
                 if reconciling || landed {
                     settled_streak = 0;
                 } else {
@@ -1379,7 +1377,7 @@ fn rust_document_settles_and_stops_reconciling() {
             );
             let _ = hop;
             let _ =
-                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         }
         settle(&mut app, &mut surface, "scrolled");
 
@@ -1422,7 +1420,7 @@ fn rust_document_settles_and_stops_reconciling() {
                 size,
             );
             let reconciling =
-                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                app.draw_window_sized(app.sole_window(), surface.canvas(), size);
             if reconciling || landed || animating {
                 quiet_streak = 0;
             } else {
@@ -1448,7 +1446,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     let (mut app, arriving) = boot();
     drain_until_quiet(&mut app, &arriving);
     let mut surface = surfaces::raster_n32_premul((1280, 900)).expect("raster surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     for _ in 0..6 {
         std::thread::sleep(Duration::from_millis(250));
         while let Ok(command) = arriving.try_recv() {
@@ -1462,11 +1460,11 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
             std::thread::sleep(Duration::from_millis(10));
             let started = Instant::now();
             himark::test_driver::type_text(app, "y");
-            himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+            app.draw_window(app.sole_window(), surface.canvas());
             while let Ok(command) = arriving.try_recv() {
                 app.perform_batch(vec![command]);
             }
-            himark::window::Window::draw(app.sole_window(), app, surface.canvas());
+            app.draw_window(app.sole_window(), surface.canvas());
             samples.push(started.elapsed());
         }
         samples.sort();
@@ -1482,7 +1480,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
     }
     {
         let (document_id, _) = app.focused_editor_id();
@@ -1503,7 +1501,7 @@ fn typing_after_deleting_everything_costs_what_a_scratch_costs() {
     let emptied = measure(&mut app, &mut surface);
 
     assert!(app.new_scratch(app.sole_window()));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let scratch = measure(&mut app, &mut surface);
 
     let monster_ms = monster.as_secs_f64() * 1000.0;

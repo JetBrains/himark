@@ -19,36 +19,6 @@ use hikit::panel::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
 
-#[derive(Clone, Default)]
-pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);
-
-impl RowMinters {
-    pub fn register(store: &mut Store, minter: Arc<RowMinter>) {
-        crate::registry::Registry::update(store, |registry| {
-            registry.row_minters.0.push_back_mut(minter);
-        });
-    }
-}
-
-pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn hikit::panel::DynPanelView>> {
-    // The row carries its collection: a pane is minted off the id,
-    // and a dismantled chat has no home to walk back to.
-    if let Some(ChatRow(chats, chat)) = row.row::<ChatRow>() {
-        return store
-            .entity(*chats)
-            .filter(|rows| rows.holds(chat))
-            .map(|_| {
-                Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
-                    as Box<dyn hikit::panel::DynPanelView>
-            });
-    }
-    crate::registry::Registry::of(store)?
-        .row_minters
-        .0
-        .iter()
-        .find_map(|minter| minter(store, row))
-}
-
 /// The rows of one session that no pane fronts yet — the caller hands
 /// the session (a window's), never a session to look up.
 pub fn mint_unfronted(
@@ -75,5 +45,5 @@ pub fn mint_unfronted(
         );
     }
     rows.retain(|row| !fronted.contains(row));
-    rows.iter().filter_map(|row| mint(store, row)).collect()
+    rows.iter().filter_map(|row| ::workbench::rows::mint(store, row)).collect()
 }

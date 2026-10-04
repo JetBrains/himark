@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+workbench = { path = "../../frontend/workbench" }
 ahp-wire = { path = "../../frontend/ahp-wire" }
 ahp-session = { path = "../../frontend/ahp-session" }
 ahp-chat = { path = "../../frontend/ahp-chat" }

@@ -3,11 +3,11 @@
 
 use imba::store::Store;
 
-use crate::app::pane_width;
-use crate::workbench::workbench_geometry;
+use ::workbench::workbench::pane_width;
+use ::workbench::workbench::workbench_geometry;
 use crate::app::Application;
 use documents::entity_view::EditorIdView;
-use crate::workbench_node::Panel;
+use ::workbench::workbench_node::Panel;
 
 struct TestUris;
 
@@ -116,7 +116,7 @@ fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
 }
 
 impl Application {
-    pub fn sole_window(&self) -> crate::window::WindowId {
+    pub fn sole_window(&self) -> ::workbench::window::WindowId {
         let windows = self.window_ids();
         assert!(windows.len() <= 1, "multiple windows: tests must name one");
         *windows.first().expect("a window")
@@ -125,7 +125,7 @@ impl Application {
     /// The session the sole window is working in — the owner a test
     /// names when it reaches session-addressed state.
     pub fn sole_window_session(&self) -> ahp_wire::SessionId {
-        crate::window::Windows::window_ref(self.store(), self.sole_window())
+        ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .current_session()
     }
@@ -133,7 +133,7 @@ impl Application {
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
     pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
-        crate::window::Windows::session_state(self.store(), self.sole_window())
+        ::workbench::window::Windows::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
 
@@ -142,27 +142,27 @@ impl Application {
         self.sole_family().documents()
     }
 
-    fn workbench(&self) -> &crate::workbench::Workbench {
-        crate::window::Windows::window_ref(self.store(), self.sole_window())
+    fn workbench(&self) -> &::workbench::workbench::Workbench {
+        ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .workbench()
     }
 
     pub fn viewport_size(&self) -> skia_safe::Size {
-        crate::window::Windows::window_ref(self.store(), self.sole_window())
+        ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .viewport_size()
     }
 
     pub fn plugin_modal(&self) -> Option<&dyn hikit::modal::ModalView> {
-        crate::window::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
+        ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
     }
 
     pub fn focused_document_text(&self) -> Option<String> {
         let document = documents::OpenDocuments::document_ref(
             self.store(),
             self.sole_documents(),
-            crate::window::Windows::window_ref(self.store(), self.sole_window())?.focused_document_id()?,
+            ::workbench::window::Windows::window_ref(self.store(), self.sole_window())?.focused_document_id()?,
         )?;
         let end = document.text().byte_count().min(u32::MAX as usize) as u32;
         Some(document.text().view().substring(0..end))
@@ -204,7 +204,7 @@ impl Application {
     }
 
     pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
-        let Some(document) = crate::window::Windows::window_ref(self.store(), self.sole_window())
+        let Some(document) = ::workbench::window::Windows::window_ref(self.store(), self.sole_window())
             .and_then(|window| window.focused_document_id())
             .and_then(|id| {
                 documents::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)

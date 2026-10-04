@@ -4,10 +4,7 @@
 pub mod app;
 pub mod app_ext;
 pub mod commands;
-pub mod dock;
-pub mod drawer;
 pub mod effects;
-pub mod find;
 pub mod focus;
 pub mod hiahp;
 pub mod hichanges;
@@ -19,7 +16,6 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod keymap;
 pub mod modal;
-pub mod navigation;
 pub mod new_session;
 pub mod registry;
 pub mod save;
@@ -37,13 +33,9 @@ pub mod toc;
 pub mod diff_canvas;
 pub mod diff_pane;
 pub mod pane_rows;
-pub mod toolbar;
 pub mod watch;
 #[cfg(test)]
 mod terminal_tests;
-pub mod window;
-pub mod workbench;
-pub mod workbench_node;
 pub mod workspace;
 
 

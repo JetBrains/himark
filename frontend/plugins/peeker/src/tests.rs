@@ -18,7 +18,7 @@ fn boot() -> Application {
 fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     let mut app = boot();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let located = |name: &str| {
         editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
@@ -49,7 +49,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         app.perform_registered(app.sole_window(), "peeker.toggle"),
         "the peeker opens"
     );
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     let listed = labels(&app).expect("the peeker is the modal");
     assert!(
         listed.iter().any(|label| label == "alpha"),
@@ -69,7 +69,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         app.focused_document_text().as_deref(),

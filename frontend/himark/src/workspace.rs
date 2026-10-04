@@ -18,7 +18,7 @@ use editor::location::ResourceLocation;
 
 
 pub struct OpenByLocationEffect {
-    pub window: crate::window::WindowId,
+    pub window: ::workbench::window::WindowId,
     /// The collection the open lands into — stamped at launch.
     pub documents: imba::store::Id<documents::OpenDocuments>,
     pub location: ResourceLocation,
@@ -45,7 +45,7 @@ impl Effect for OpenByLocationEffect {
 /// thread and launch this; the handler opens both sides and lands the
 /// pane-open command.
 pub struct OpenDiffByLocationsEffect {
-    pub window: crate::window::WindowId,
+    pub window: ::workbench::window::WindowId,
     /// The collection both sides register into — stamped at launch.
     pub documents: imba::store::Id<documents::OpenDocuments>,
     pub old: DiffSideInput,
@@ -64,7 +64,7 @@ impl Effect for OpenDiffByLocationsEffect {
 
 
 pub fn open_by_location_effect(
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     documents: imba::store::Id<documents::OpenDocuments>,
     location: ResourceLocation,
     primary: bool,
@@ -84,11 +84,11 @@ pub fn open_by_location_effect(
 pub fn open_locations(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     locations: &[ResourceLocation],
     fx: &mut AppFx<'_>,
 ) {
-    let folders = crate::window::Windows::window_ref(store, window)
+    let folders = ::workbench::window::Windows::window_ref(store, window)
         .map(|entity| ahp_session::session::folders::session_folders(store, &entity.current_session()))
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
@@ -112,16 +112,18 @@ pub fn open_locations(
         .collect();
     let mut primary = true;
     let Some(documents) =
-        crate::window::Windows::session_state(store, window).map(|state| state.documents())
+        ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
     for location in &locations {
         if let Some(document) = documents::OpenDocuments::by_location(store, documents, location) {
             if primary {
-                if let Some(mut window_entity) = crate::window::Windows::window(store, window) {
-                    window_entity.show_document(store, ui, window, document, None, false, fx);
-                    crate::window::Windows::put(store, window, window_entity);
+                if let Some(mut window_entity) = ::workbench::window::Windows::window(store, window) {
+                    fx.scope(AppCommand::Verb, |fx| {
+                        window_entity.show_document(store, ui, window, document, None, false, fx);
+                    });
+                    ::workbench::window::Windows::put(store, window, window_entity);
                 }
             }
             primary = false;
@@ -139,3 +141,72 @@ pub fn open_locations(
     }
 }
 
+pub(crate) struct EditorNavigator;
+
+impl ::workbench::navigation::WindowedNavigator for EditorNavigator {
+    type Place = hikit::navigation::EditorPlace;
+
+    fn navigate(
+        &self,
+        store: &mut Store,
+        ui: &imba::ui::UiCtx,
+        window: ::workbench::window::WindowId,
+        place: &hikit::navigation::EditorPlace,
+        fx: &mut imba::command::Fx<'_>,
+    ) -> Option<::workbench::workbench_node::Panel> {
+        let documents = ::workbench::window::Windows::session_state(store, window)
+            .expect("navigation runs in a window with a session")
+            .documents();
+        let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {
+            // The fetch-then-open lands an AppCommand into the window —
+            // the shell escape carries it over the Verb lane.
+            fx.push(
+                open_by_location_effect(
+                    window,
+                    documents,
+                    place.location.clone(),
+                    true,
+                    false,
+                    None,
+                )
+                .map(crate::app::shell_verb),
+            );
+            return None;
+        };
+        let mut document = documents::OpenDocuments::document(store, documents, id)?;
+        let width = ::workbench::window::Windows::window_ref(store, window)
+            .and_then(|entity| {
+                ::workbench::workbench::panel_width(store, entity.workbench().root.focused_pane())
+            })
+            .unwrap_or_else(|| ::workbench::workbench::fallback_pane_editor_width(store));
+        let editor = fx.scope(
+            move |command| {
+                imba::command::Verb::at(documents, documents::DocumentsCommand::Editor(id, command))
+            },
+            |fx| {
+                let editor = documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
+
+                if place.caret > 0 {
+                    let fonts = ::editor::env::Fonts::of(store)();
+                    let theme = ::editor::env::Themes::of(store);
+                    document.reveal_at_instant(editor, place.caret, store, ui, &fonts, &theme, fx);
+                }
+                editor
+            },
+        );
+        documents::scroll_stripes::enable_scroll_stripes(
+            store,
+            documents,
+            id,
+            &mut document,
+            editor,
+        );
+        documents::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::touch(store, documents, id);
+        let mut pane = imba::scroll::ScrollView::new(
+            documents::entity_view::EditorIdView::new(documents, id, editor).with_gutter(),
+        );
+        pane.set_scroll_y(place.scroll_y);
+        Some(::workbench::workbench_node::Panel::Editor(pane))
+    }
+}

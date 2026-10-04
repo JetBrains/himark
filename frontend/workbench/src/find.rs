@@ -81,7 +81,7 @@ impl imba::effect::EffectHandler<FindScanEffect> for FindScanHandler {
 pub struct FindBar {
     input: EditorView,
 
-    pub(crate) focused: bool,
+    pub focused: bool,
     matches: Vec<Range<u32>>,
     current: usize,
 
@@ -229,7 +229,7 @@ impl FindBar {
         }
     }
 
-    pub(crate) fn launch<R: 'static>(
+    pub fn launch<R: 'static>(
         &mut self,
         store: &Store,
         documents: imba::store::Id<documents::OpenDocuments>,
@@ -264,7 +264,7 @@ impl FindBar {
         fx.relaunch_erased(&mut self.lane, AnyEffect::new(effect).map(wrap));
     }
 
-    pub(crate) fn adopt(
+    pub fn adopt(
         &mut self,
         store: &mut Store,
         documents: imba::store::Id<documents::OpenDocuments>,

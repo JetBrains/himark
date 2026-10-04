@@ -11,7 +11,7 @@ use ::canvas::diff_canvas::*;
 
 use imba::store::Store;
 
-use crate::window::WindowId;
+use ::workbench::window::WindowId;
 use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
 
@@ -53,7 +53,7 @@ impl crate::commands::DynamicCommand for OpenDiffCanvas {
                 );
             }
         }
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         let place = CanvasPlace {
@@ -61,16 +61,18 @@ impl crate::commands::DynamicCommand for OpenDiffCanvas {
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };
-        if !entity.navigate(
-            store,
-            ui,
-            window,
-            &hikit::navigation::NavigationLocation::new(place),
-            fx,
-        ) {
+        if !fx.scope(crate::app::AppCommand::Verb, |fx| {
+            entity.navigate(
+                store,
+                ui,
+                window,
+                &hikit::navigation::NavigationLocation::new(place),
+                fx,
+            )
+        }) {
             eprintln!("[himark] no canvas navigator registered");
         }
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -108,14 +110,16 @@ impl crate::commands::DynamicCommand for OpenCanvasFile {
         // Honor the caret: the canvas row's document is registered
         // (docs/editor/diff-canvas.md §7), so this is a show at target;
         // fall back to a targeted fetch if it somehow is not.
-        let documents = crate::window::Windows::session_state(store, window)
+        let documents = ::workbench::window::Windows::session_state(store, window)
             .expect("canvas navigation runs in a window with a session")
             .documents();
         match documents::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
-                if let Some(mut entity) = crate::window::Windows::window(store, window) {
-                    entity.show_document(store, ui, window, document_id, Some(target), false, fx);
-                    crate::window::Windows::put(store, window, entity);
+                if let Some(mut entity) = ::workbench::window::Windows::window(store, window) {
+                    fx.scope(crate::app::AppCommand::Verb, |fx| {
+                        entity.show_document(store, ui, window, document_id, Some(target), false, fx);
+                    });
+                    ::workbench::window::Windows::put(store, window, entity);
                 }
             }
             None => {

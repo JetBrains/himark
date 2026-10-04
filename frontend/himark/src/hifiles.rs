@@ -22,7 +22,7 @@ use editor::location::ResourceLocation;
 pub fn open_panel(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: Option<crate::window::WindowId>,
+    window: Option<::workbench::window::WindowId>,
     workspace: ahp_wire::SessionId,
     trees: imba::store::Id<SessionTree>,
     reveal: Option<ResourceLocation>,
@@ -52,10 +52,10 @@ pub fn open_panel(
 /// The focus-follow probe: the window's focused location and the
 /// focus generation it stands at, read per paint.
 fn follow_window(
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
 ) -> Arc<dyn Fn(&Store) -> Option<(ResourceLocation, u64)> + Send + Sync> {
     Arc::new(move |store| {
-        let entity = crate::window::Windows::window_ref(store, window)?;
+        let entity = ::workbench::window::Windows::window_ref(store, window)?;
         entity
             .focused_location()
             .cloned()
@@ -100,7 +100,7 @@ impl crate::commands::DynamicCommand for ToggleSessionTree {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         // The focused location is a state walk over the views now —
@@ -111,10 +111,10 @@ impl crate::commands::DynamicCommand for ToggleSessionTree {
             crate::focus::window_focus_data(&chain_store, &ui, window)
                 .and_then(|mut data| crate::focus::focused_location(&mut data))
         };
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
 
@@ -143,15 +143,15 @@ impl crate::commands::DynamicCommand for ToggleSessionTree {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: "files.tree",
         order: 0.0,
-        side: crate::toolbar::ToolbarSide::Right,
+        side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);

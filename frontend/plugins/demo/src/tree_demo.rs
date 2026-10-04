@@ -316,12 +316,12 @@ impl himark::commands::DynamicCommand for OpenTreeDemo {
         &self,
         app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.open_panel(store, ui, Box::new(TreeDemoView::new()), fx);
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
     }
 }

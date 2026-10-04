@@ -49,7 +49,7 @@ impl imba::effect::EffectHandler<CodeNavigationEffect> for StubNavigation {
     }
 }
 
-fn app_with_located_document(source: &str) -> (Application, himark::window::WindowId) {
+fn app_with_located_document(source: &str) -> (Application, workbench::window::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
@@ -69,7 +69,7 @@ fn app_with_located_document(source: &str) -> (Application, himark::window::Wind
     (app, window)
 }
 
-fn invoke(app: &mut Application, window: himark::window::WindowId, id: &str) {
+fn invoke(app: &mut Application, window: workbench::window::WindowId, id: &str) {
     let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
@@ -296,10 +296,10 @@ fn references_stream_into_the_search_dock() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = himark::window::Window::draw(window, &mut app, surface.canvas());
+        let _ = app.draw_window(window, surface.canvas());
     }
 
-    let entity = himark::window::Windows::window_ref(app.store(), window).expect("the window");
+    let entity = workbench::window::Windows::window_ref(app.store(), window).expect("the window");
     assert_eq!(
         entity.dock_owner(),
         Some(himark::hisearch::OWNER),

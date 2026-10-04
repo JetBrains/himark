@@ -290,7 +290,7 @@ mod app {
         /// Only presses in this canvas can start a selection drag.
         drag_point: Option<skia_safe::Point>,
         /// The one browser canvas is one himark window.
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         context: DirectContext,
 
         #[cfg(target_feature = "atomics")]
@@ -571,9 +571,7 @@ mod app {
 
             let canvas = surface.canvas();
             canvas.save();
-            himark::window::Window::draw_with_size(
-                self.window,
-                &mut self.state,
+            self.state.draw_window_sized(self.window,
                 canvas,
                 Size::new(self.width.max(1) as f32, self.height.max(1) as f32),
             );

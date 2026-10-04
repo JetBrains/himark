@@ -4,12 +4,12 @@
 use himark::app::Application;
 use documents::BuildDocumentEffect;
 use documents::entity_view::EditorIdView;
-use himark::workbench_node::EditorPane;
+use workbench::workbench_node::EditorPane;
 use documents::FetchDocumentEffect;
 use ahp_locations::FindEffect;
 use hikit::modal::ModalRequest;
 use hikit::modal::ModalView;
-use himark::workbench_node::PaneCommand;
+use workbench::workbench_node::PaneCommand;
 use hikit::panel::WidgetOrigin;
 use editor::document::Document;
 use editor::location::ResourceLocation;
@@ -928,11 +928,11 @@ impl ModalView for Peeker {
 pub fn build(
     store: &mut Store,
     ui: &UiCtx,
-    window: himark::window::WindowId,
+    window: workbench::window::WindowId,
     fx: &mut himark::app::AppFx<'_>,
 ) -> Box<dyn hikit::modal::ModalView> {
     {
-        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         let viewport = entity.viewport_size();
 
         let recents = ahp_chat::recents::RecentLocations::list(store, entity.state().recents());
@@ -959,7 +959,7 @@ pub fn build(
                 )
             })
         });
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
         Box::new(peeker)
     }
 }
@@ -977,10 +977,10 @@ impl himark::commands::DynamicCommand for TogglePeeker {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let entity = himark::window::Windows::window_ref(store, window).expect("the window entity");
+        let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {
             // Toggle: any standing modal is dismissed; the peeker
             // opens only over a clear window.
@@ -989,17 +989,17 @@ impl himark::commands::DynamicCommand for TogglePeeker {
                 move |command| himark::app::AppCommand::Content(window, command),
                 |fx| entity.dismiss_modal(store, fx),
             );
-            himark::window::Windows::put(store, window, entity);
+            workbench::window::Windows::put(store, window, entity);
             return;
         }
         let ui = app.ui_handle();
         let modal = build(store, &ui, window, fx);
-        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
             move |command| himark::app::AppCommand::Content(window, command),
             |fx| entity.show_modal(store, modal, fx),
         );
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
     }
 }
 

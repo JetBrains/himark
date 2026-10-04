@@ -13,7 +13,7 @@ use ahp_wire::effects::SubscribeSessionEffect;
 use crate::app::AppCommand;
 use crate::commands::DynamicCommand;
 use ahp_wire::SessionId;
-use crate::window::Windows;
+use ::workbench::window::Windows;
 use ahp_types::actions::StateAction;
 use ahp_types::state::ChatSummary;
 use imba::effect::AnyEffect;
@@ -21,7 +21,7 @@ use imba::store::Store;
 
 pub fn open_session(
     store: &mut Store,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     server: HostId,
     session: SessionUri,
     open_chat: bool,
@@ -32,7 +32,7 @@ pub fn open_session(
 
 pub fn open_session_with(
     store: &mut Store,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     server: HostId,
     session: SessionUri,
     open_chat: bool,
@@ -83,7 +83,7 @@ impl DynamicCommand for OpenSubscribedSession {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let state = match &self.result {
@@ -150,7 +150,7 @@ impl DynamicCommand for EnterSessionWork {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -205,7 +205,7 @@ impl DynamicCommand for EnterSessionWork {
 
 fn relaunch_session_poll(
     store: &Store,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     server: HostId,
     session: SessionUri,
     fx: &mut crate::app::AppFx<'_>,
@@ -247,7 +247,7 @@ impl DynamicCommand for ApplySessionActions {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let key = SessionId {
@@ -278,7 +278,7 @@ impl DynamicCommand for ApplySessionActions {
 /// loses the rest of the batch for everyone.
 pub(crate) fn apply_channel_actions(
     store: &mut Store,
-    _window: crate::window::WindowId,
+    _window: ::workbench::window::WindowId,
     key: &SessionId,
     actions: &[StateAction],
     fx: &mut crate::app::AppFx<'_>,
@@ -430,7 +430,7 @@ impl DynamicCommand for OpenCreatedSession {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {
@@ -466,7 +466,7 @@ impl DynamicCommand for OpenSessionRow {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         open_session(store, window, self.server, self.session.clone(), true, fx);

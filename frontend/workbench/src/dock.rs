@@ -84,7 +84,7 @@ impl Clone for Dock {
 }
 
 impl Dock {
-    pub(crate) fn new(content: Box<dyn ModalView>, owner: &'static str, width: f32) -> Self {
+    pub fn new(content: Box<dyn ModalView>, owner: &'static str, width: f32) -> Self {
         let mut reveal = Animation::done(
             0.0,
             Motion::Ease {

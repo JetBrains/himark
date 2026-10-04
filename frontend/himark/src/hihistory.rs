@@ -25,13 +25,13 @@ impl crate::commands::DynamicCommand for ToggleHistoryView {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
         let workspace = entity.current_session();
@@ -80,15 +80,15 @@ impl crate::commands::DynamicCommand for ToggleHistoryView {
                 )
             },
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: "history.view",
         order: 1.1,
-        side: crate::toolbar::ToolbarSide::Right,
+        side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

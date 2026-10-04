@@ -53,7 +53,7 @@ fn setup(
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-    crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     (app, runner, arriving, writes)
 }
 
@@ -79,7 +79,7 @@ fn open_file(app: &mut Application) -> documents::DocumentId {
         },
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-    crate::window::Window::draw(app.sole_window(), app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
 
@@ -197,11 +197,11 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
             },
         ));
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-        crate::window::Window::draw(app.sole_window(), app, surface.canvas());
+        app.draw_window(app.sole_window(), surface.canvas());
         OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };
     let title = |app: &Application| {
-        crate::window::Windows::window_ref(app.store(), window)
+        ::workbench::window::Windows::window_ref(app.store(), window)
             .expect("the window")
             .workbench()
             .root

@@ -99,7 +99,7 @@ impl crate::commands::DynamicCommand for LiftedText {
         &self,
         _app: &mut crate::app::Application,
         _store: &mut imba::store::Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
     }

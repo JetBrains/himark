@@ -1,24 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The ONE closed home for the app's registries. The store is not an
-//! any-map to grab things from by type (docs/entities.md law 3):
-//! what used to be six anonymous components — commands, navigators,
-//! the keymap, row minters, toolbar buttons, the comments capability
-//! — is one struct with NAMED fields, written through each module's
-//! own register door and read through its `of`. Adding a registry
-//! means adding a field here, in plain sight.
+//! The app's closed registry: the commands and the keymap. The
+//! workbench furniture has its own (`workbench::registry`).
 
 use imba::store::Store;
 
 #[derive(Clone, Default)]
 pub(crate) struct Registry {
     pub(crate) commands: crate::commands::Commands,
-    pub(crate) navigators: crate::navigation::Navigators,
     /// `None` falls back to the embedded keymap.
     pub(crate) keymap: Option<crate::keymap::Keymap>,
-    pub(crate) row_minters: crate::pane_rows::RowMinters,
-    pub(crate) toolbar_buttons: crate::toolbar::ToolbarButtons,
 }
 
 impl Registry {

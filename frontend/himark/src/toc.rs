@@ -28,29 +28,31 @@ impl crate::commands::DynamicCommand for NavigateToPlace {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
-        let _ = entity.navigate(
-            store,
-            ui,
-            window,
-            &hikit::navigation::NavigationLocation::new(self.place.clone()),
-            fx,
-        );
-        crate::window::Windows::put(store, window, entity);
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+            let _ = entity.navigate(
+                store,
+                ui,
+                window,
+                &hikit::navigation::NavigationLocation::new(self.place.clone()),
+                fx,
+            );
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: "toc.toggle",
         order: 2.0,
-        side: crate::toolbar::ToolbarSide::Left,
+        side: ::workbench::toolbar::ToolbarSide::Left,
         glyph: std::sync::Arc::new(|canvas, rect, color| {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -87,17 +89,17 @@ impl crate::commands::DynamicCommand for ToggleToc {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         if entity.side_panel().is_some_and(|panel| {
             panel.as_any().is::<TocView>() || panel.as_any().is::<OutlineView>()
         }) {
             entity.roll_away_side_panel();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
         let Some(panel) =
@@ -107,7 +109,7 @@ impl crate::commands::DynamicCommand for ToggleToc {
                 .focused_pane()
                 .drawer_view(store, &_app.ui_ctx(), window)
         else {
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         };
         fx.scope(
@@ -118,6 +120,6 @@ impl crate::commands::DynamicCommand for ToggleToc {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, panel, fx),
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }

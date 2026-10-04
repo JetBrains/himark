@@ -127,7 +127,7 @@ impl ChatColumn {
         }
     }
 
-    pub(crate) fn panel(&self) -> &Panel {
+    pub fn panel(&self) -> &Panel {
         match &self.node {
             WorkbenchNode::Leaf(slot) => &slot.panel.panel,
             WorkbenchNode::Split(_) => unreachable!("the chat column is always a leaf"),
@@ -164,7 +164,7 @@ pub struct Workbench {
 }
 
 impl Workbench {
-    pub(crate) fn new(root: WorkbenchNode) -> Self {
+    pub fn new(root: WorkbenchNode) -> Self {
         Self {
             root,
             chat: None,
@@ -203,7 +203,7 @@ impl Workbench {
         }
     }
 
-    pub(crate) fn chat(&self) -> Option<&ChatColumn> {
+    pub fn chat(&self) -> Option<&ChatColumn> {
         self.chat.as_ref()
     }
 
@@ -211,19 +211,19 @@ impl Workbench {
         self.chat.as_mut()
     }
 
-    pub(crate) fn chat_focused(&self) -> bool {
+    pub fn chat_focused(&self) -> bool {
         self.chat_focused && self.chat.is_some()
     }
 
-    pub(crate) fn focus_chat(&mut self, focus: bool) {
+    pub fn focus_chat(&mut self, focus: bool) {
         self.chat_focused = focus && self.chat.is_some();
     }
 
-    pub(crate) fn chat_fronted(&self) -> bool {
+    pub fn chat_fronted(&self) -> bool {
         self.chat_fronted && self.chat.is_some()
     }
 
-    pub(crate) fn chat_minimized(&self) -> bool {
+    pub fn chat_minimized(&self) -> bool {
         self.chat_minimized && self.chat.is_some()
     }
 
@@ -349,8 +349,10 @@ impl View for Workbench {
                 }
             }
             WorkbenchCommand::RunCommand(id) => {
-                if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
-                    crate::commands::AppRequests::push(store, command);
+                let run = crate::registry::Registry::of(store)
+                    .and_then(|registry| registry.run_command.clone());
+                if let Some(run) = run {
+                    run(store, id);
                 }
             }
             WorkbenchCommand::MaximizeTree => {
@@ -400,6 +402,7 @@ fn tree_header_title(workbench: &Workbench, store: &Store) -> String {
 fn place_tree_buttons<'a>(
     container: &mut imba::container::Container<'a, WorkbenchCommand>,
     _arena: &'a Arena,
+    store: &Store,
     theme: &::editor::theme::Theme,
     right: f32,
     top: f32,
@@ -413,7 +416,12 @@ fn place_tree_buttons<'a>(
         container.place(x, top, chat_toggle_button(header_h, theme, command));
     }
     x -= chrome.button_size;
-    let toc = crate::toc::toolbar_button();
+    let Some(toc) = store
+        .get::<crate::registry::Registry>()
+        .and_then(|registry| registry.drawer_button.clone())
+    else {
+        return;
+    };
     let glyph = toc.glyph.clone();
     let rule = chrome.rule.0;
     let glyph_color = chrome.glyph_color.0;
@@ -586,6 +594,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                 place_tree_buttons(
                     &mut container,
                     arena,
+                    store,
                     &theme,
                     geometry.x + geometry.split_width - dock_strip,
                     geometry.top,
@@ -681,6 +690,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
                 place_tree_buttons(
                     &mut container,
                     arena,
+                    store,
                     &theme,
                     geometry.x + geometry.split_width - dock_strip,
                     geometry.top,
@@ -785,6 +795,7 @@ impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         place_tree_buttons(
             &mut container,
             arena,
+            store,
             &theme,
             root_x + root_width - dock_strip,
             geometry.top,
@@ -907,4 +918,22 @@ impl<'a> imba::Widget<'a, WorkbenchCommand> for RealizedColumns<'a> {
             _ => self.panes.handle_event(arena, event, viewport),
         }
     }
+}
+
+pub fn pane_width(store: &Store, pane: &crate::workbench_node::EditorPane) -> Option<f32> {
+    let view = pane.content();
+    Some(
+        documents::OpenDocuments::document_ref(store, view.documents(), view.document())?
+            .layout_width(view.editor()),
+    )
+}
+
+pub fn panel_width(store: &Store, panel: &Panel) -> Option<f32> {
+    pane_width(store, panel.editor()?)
+}
+
+pub fn fallback_pane_editor_width(store: &Store) -> f32 {
+    let theme = ::editor::env::Themes::of(store);
+    let ui = theme.ui();
+    (ui.window.first_pane_width - ui.editor_gutter.width).max(ui.window.min_editor_width)
 }

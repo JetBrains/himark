@@ -5,6 +5,7 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+workbench = { path = "../../workbench" }
 terminals = { path = "../../terminals" }
 locations = { path = "../../locations" }
 ahp-locations = { path = "../../ahp-locations" }

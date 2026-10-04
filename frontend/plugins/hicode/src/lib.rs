@@ -138,7 +138,7 @@ impl DynamicCommand for ApplyNavigation {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -158,13 +158,13 @@ impl DynamicCommand for ApplyNavigation {
 fn navigate(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: himark::window::WindowId,
+    window: workbench::window::WindowId,
     target: &CodeTarget,
     built: &[(ResourceLocation, Document)],
     fx: &mut AppFx<'_>,
 ) {
     let Some(documents) =
-        himark::window::Windows::session_state(store, window).map(|state| state.documents())
+        workbench::window::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -187,19 +187,21 @@ fn navigate(
             )
         }
     };
-    let Some(mut window_entity) = himark::window::Windows::window(store, window) else {
+    let Some(mut window_entity) = workbench::window::Windows::window(store, window) else {
         return;
     };
-    window_entity.show_document(
-        store,
-        ui,
-        window,
-        document_id,
-        Some(target.range.clone()),
-        false,
-        fx,
-    );
-    himark::window::Windows::put(store, window, window_entity);
+    fx.scope(himark::app::AppCommand::Verb, |fx| {
+        window_entity.show_document(
+            store,
+            ui,
+            window,
+            document_id,
+            Some(target.range.clone()),
+            false,
+            fx,
+        )
+    });
+    workbench::window::Windows::put(store, window, window_entity);
 
     fx.scope(himark::app::AppCommand::Verb, |fx| {
         documents::lanes::sync_document_watches(store, documents, fx)

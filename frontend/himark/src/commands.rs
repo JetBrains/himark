@@ -10,7 +10,7 @@ use crate::app::{AppCommand, Application};
 pub fn palette_commands(
     store: &Store,
     ui: &imba::ui::UiCtx,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
 ) -> Vec<imba::PresentableCommand<AppCommand>> {
     // A STATE WALK over the views — no tree is built for the palette.
     let mut commands: Vec<imba::PresentableCommand<AppCommand>> =
@@ -36,7 +36,7 @@ pub trait DynamicCommand: Send + Sync {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     );
 }
@@ -107,10 +107,10 @@ impl DynamicCommand for NewScratch {
         &self,
         _app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let state = crate::window::Windows::session_state(store, window)
+        let state = ::workbench::window::Windows::session_state(store, window)
             .expect("a scratch opens into a window with a session");
         let location = documents::next_scratch_location(store, state.scratch_names());
         fx.push(crate::app::open_effect(
@@ -137,13 +137,15 @@ impl DynamicCommand for SplitPane {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
-        entity.split_current(store, ui, fx);
-        crate::window::Windows::put(store, window, entity);
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        fx.scope(AppCommand::Verb, |fx| {
+            entity.split_current(store, ui, fx);
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -160,13 +162,15 @@ impl DynamicCommand for CloseFocused {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
-        let _ = entity.close_focused_widget(store, ui, window, fx);
-        crate::window::Windows::put(store, window, entity);
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        fx.scope(AppCommand::Verb, |fx| {
+            let _ = entity.close_focused_widget(store, ui, window, fx);
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -183,12 +187,12 @@ impl DynamicCommand for ClosePane {
         &self,
         _app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.close_current(store);
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -205,13 +209,15 @@ impl DynamicCommand for NavigateBack {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
-        let _ = entity.navigate_back(store, ui, window, fx);
-        crate::window::Windows::put(store, window, entity);
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        fx.scope(AppCommand::Verb, |fx| {
+            let _ = entity.navigate_back(store, ui, window, fx);
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -228,13 +234,15 @@ impl DynamicCommand for NavigateForward {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
-        let _ = entity.navigate_forward(store, ui, window, fx);
-        crate::window::Windows::put(store, window, entity);
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        fx.scope(AppCommand::Verb, |fx| {
+            let _ = entity.navigate_forward(store, ui, window, fx);
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -251,7 +259,7 @@ impl DynamicCommand for ToggleTheme {
         &self,
         _app: &mut Application,
         store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let next = match ::editor::env::Themes::of(store).name() {
@@ -287,7 +295,7 @@ impl DynamicCommand for SetTheme {
         &self,
         _app: &mut Application,
         store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         let theme = if self.dark {
@@ -312,27 +320,27 @@ impl DynamicCommand for CompletionTrigger {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let Some((id, editor)) = slot.find_target() else {
-                crate::window::Windows::put(store, window, entity);
+                ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
-            let documents = crate::window::Windows::session_state(store, window)
+            let documents = ::workbench::window::Windows::session_state(store, window)
                 .expect("completion runs in a window with a session")
                 .documents();
             let location = documents::OpenDocuments::location(store, documents, id)
                 .filter(|location| !location.is_synthetic());
             let Some(location) = location else {
-                crate::window::Windows::put(store, window, entity);
+                ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
             let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
-                crate::window::Windows::put(store, window, entity);
+                ::workbench::window::Windows::put(store, window, entity);
                 return;
             };
             let markdown =
@@ -362,7 +370,7 @@ impl DynamicCommand for CompletionTrigger {
             }
             documents::OpenDocuments::put_document(store, documents, id, document);
         }
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -379,19 +387,19 @@ impl DynamicCommand for CompletionLanded {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
         let ui = app.ui_ctx();
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         entity.workbench_mut().root.for_each_slot_mut(&mut |slot| {
             let mut discarded = imba::effect::Batch::new();
             slot.land_completion(store, &ui, self.0.clone(), &mut discarded.effects());
         });
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -408,10 +416,10 @@ impl DynamicCommand for FindOpen {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             if slot.panel.editor().is_some() {
@@ -435,7 +443,7 @@ impl DynamicCommand for FindOpen {
                     (Some(find), Some(seed)) => find.seed(store, ui, &seed),
                     (Some(find), None) => find.refocus(),
                     (None, seed) => {
-                        let mut find = crate::find::FindBar::new(store, ui);
+                        let mut find = ::workbench::find::FindBar::new(store, ui);
                         if let Some(seed) = &seed {
                             find.seed(store, ui, seed);
                         }
@@ -445,7 +453,7 @@ impl DynamicCommand for FindOpen {
                 find_sync_slot(slot, app, store, window, fx);
             }
         }
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -469,11 +477,11 @@ impl DynamicCommand for FindStep {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = app.ui_ctx();
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         {
             let slot = entity.workbench_mut().root.focused_slot_mut();
             let target = slot.find_target();
@@ -499,15 +507,15 @@ impl DynamicCommand for FindStep {
                 );
             }
         }
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
 fn find_sync_slot(
-    slot: &mut crate::workbench_node::PaneSlot,
+    slot: &mut ::workbench::workbench_node::PaneSlot,
     app: &Application,
     store: &mut Store,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     fx: &mut crate::app::AppFx<'_>,
 ) {
     let target = slot.find_target();
@@ -539,7 +547,7 @@ fn find_sync_slot(
     });
 }
 
-struct FindScanLanded(crate::find::Scan);
+struct FindScanLanded(::workbench::find::Scan);
 
 impl DynamicCommand for FindScanLanded {
     fn id(&self) -> &'static str {
@@ -552,10 +560,10 @@ impl DynamicCommand for FindScanLanded {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         let ui = app.ui_ctx();
@@ -583,7 +591,7 @@ impl DynamicCommand for FindScanLanded {
                 |fx| find.adopt(store, documents, target, &self.0, &ui, &fonts, &theme, fx),
             );
         });
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -600,13 +608,15 @@ impl DynamicCommand for ChatComposer {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = std::rc::Rc::clone(&app.ui);
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
-        entity.front_chat(store, &ui, fx);
-        crate::window::Windows::put(store, window, entity);
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
+        fx.scope(AppCommand::Verb, |fx| {
+            entity.front_chat(store, &ui, fx);
+        });
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -626,10 +636,10 @@ impl DynamicCommand for AddFolder {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(entity) = crate::window::Windows::window_ref(store, window) else {
+        let Some(entity) = ::workbench::window::Windows::window_ref(store, window) else {
             return;
         };
         let current = entity.current_session();
@@ -664,9 +674,9 @@ pub(crate) fn register_builtins(store: &mut Store) {
 
     // The panels himark itself owns answer navigation walks: a
     // recorded chat/terminal place must be able to walk back.
-    crate::navigation::Navigators::register(store, ahp_chat::chats::ChatNavigator);
-    crate::navigation::Navigators::register(store, ::terminals::pane::TerminalNavigator);
-    crate::pane_rows::RowMinters::register(store, ::terminals::pane::terminal_row_minter());
+    ::workbench::navigation::Navigators::register(store, ahp_chat::chats::ChatNavigator);
+    ::workbench::navigation::Navigators::register(store, ::terminals::pane::TerminalNavigator);
+    ::workbench::rows::RowMinters::register(store, ::terminals::pane::terminal_row_minter());
 
     Commands::register(
         store,

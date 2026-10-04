@@ -16,14 +16,14 @@ impl himark::commands::DynamicCommand for DummyCommand {
         &self,
         _app: &mut Application,
         _store: &mut imba::store::Store,
-        _window: himark::window::WindowId,
+        _window: workbench::window::WindowId,
         _fx: &mut himark::app::AppFx<'_>,
     ) {
     }
 }
 fn dummy_command() -> AppCommand {
     AppCommand::Dynamic(
-        himark::window::WindowId::from_raw(0),
+        workbench::window::WindowId::from_raw(0),
         std::sync::Arc::new(DummyCommand),
     )
 }

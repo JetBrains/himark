@@ -448,7 +448,7 @@ impl himark::commands::DynamicCommand for OpenScripted {
         &self,
         _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         himark::higent::session::open::open_session(store, window, self.host, self.session.clone(), true, fx);
@@ -460,7 +460,7 @@ impl himark::commands::DynamicCommand for OpenScripted {
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
-    himark::window::Windows::window_ref(engine.app.store(), window)
+    workbench::window::Windows::window_ref(engine.app.store(), window)
         .expect("the window entity")
         .state()
         .chats()
@@ -516,7 +516,7 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
         },
     );
     assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
-        himark::window::WindowId::from_raw(window),
+        workbench::window::WindowId::from_raw(window),
         Arc::new(OpenScripted {
             host,
             session: SessionUri::new(SESSION),
@@ -581,7 +581,7 @@ fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
     assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
-        himark::window::WindowId::from_raw(second),
+        workbench::window::WindowId::from_raw(second),
         Arc::new(OpenScripted {
             host: script_host(&engine),
             session: SessionUri::new(SESSION),
@@ -912,8 +912,8 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     );
 }
 
-fn window_id(window: u64) -> himark::window::WindowId {
-    himark::window::WindowId::from_raw(window)
+fn window_id(window: u64) -> workbench::window::WindowId {
+    workbench::window::WindowId::from_raw(window)
 }
 
 /// HUNDREDS of file edits — the shape a real coding turn takes. Every

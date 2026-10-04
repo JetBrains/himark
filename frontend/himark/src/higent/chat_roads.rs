@@ -18,7 +18,7 @@ use ahp_wire::client::SessionUri;
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
     store.put(ahp_session::session::state::WindowGrip(Arc::new(|store, scope| {
-        crate::window::Windows::any_window_holds(store, scope)
+        ::workbench::window::Windows::any_window_holds(store, scope)
     })));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
@@ -68,7 +68,7 @@ impl crate::commands::DynamicCommand for OpenEditedFile {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(uris) = ahp_session::session::state::Hosts::uris(store, self.server) else {
@@ -85,7 +85,7 @@ impl crate::commands::DynamicCommand for OpenEditedFile {
         };
         // The file opens WHERE the user is: the window's own documents.
         let Some(documents) =
-            crate::window::Windows::session_state(store, window).map(|state| state.documents())
+            ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };
@@ -113,7 +113,7 @@ impl crate::commands::DynamicCommand for ApplyChannelActions {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         crate::higent::session::open::apply_channel_actions(store, window, &self.home, &self.actions, fx);

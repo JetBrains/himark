@@ -157,11 +157,11 @@ impl crate::commands::DynamicCommand for OpenPicked {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(documents) =
-            crate::window::Windows::session_state(store, window).map(|state| state.documents())
+            ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

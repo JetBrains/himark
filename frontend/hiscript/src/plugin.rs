@@ -145,7 +145,7 @@ impl himark::commands::DynamicCommand for ShowDocuments {
         &self,
         app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -398,11 +398,11 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             })
             .collect();
 
-        let agent = himark::window::Windows::list(store)
+        let agent = workbench::window::Windows::list(store)
             .into_iter()
             .next()
             .and_then(|window| {
-                let entity = himark::window::Windows::window_ref(store, window)?;
+                let entity = workbench::window::Windows::window_ref(store, window)?;
                 let session = entity.current_session();
                 if !session.names_session() {
                     return None;

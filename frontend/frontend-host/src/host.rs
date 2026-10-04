@@ -255,7 +255,7 @@ impl HostBridge {
 }
 
 pub struct FilePickerEffect {
-    window: himark::window::WindowId,
+    window: workbench::window::WindowId,
 }
 
 impl std::fmt::Display for FilePickerEffect {
@@ -320,7 +320,7 @@ impl DynamicCommand for OpenFilePicker {
         &self,
         _app: &mut himark::app::Application,
         _store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let _ = fx.push(
@@ -337,7 +337,7 @@ struct OpenPicked {
 
 fn open_folder_session(
     store: &mut Store,
-    window: himark::window::WindowId,
+    window: workbench::window::WindowId,
     folders: &[ResourceLocation],
     fx: &mut AppFx<'_>,
 ) -> bool {
@@ -399,7 +399,7 @@ impl DynamicCommand for OpenPicked {
         &self,
         app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -409,10 +409,10 @@ impl DynamicCommand for OpenPicked {
             .cloned()
             .partition(|location| location.kind().is_directory());
         if !folders.is_empty() {
-            let workspace = himark::window::Windows::window_ref(store, window)
+            let workspace = workbench::window::Windows::window_ref(store, window)
                 .map(|entity| entity.current_session())
                 .unwrap_or_else(|| ahp_wire::SessionId::local_default(store));
-            let state = himark::window::Windows::session_state(store, window);
+            let state = workbench::window::Windows::session_state(store, window);
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 for folder in folders {
@@ -520,26 +520,28 @@ impl himark::commands::DynamicCommand for ShowWorkingCopy {
         &self,
         app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let documents = self.documents;
         match documents::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
-                let Some(mut entity) = himark::window::Windows::window(store, window) else {
+                let Some(mut entity) = workbench::window::Windows::window(store, window) else {
                     return;
                 };
-                entity.show_document(
-                    store,
-                    ui,
-                    window,
-                    document_id,
-                    Some(self.target.clone()),
-                    false,
-                    fx,
-                );
-                himark::window::Windows::put(store, window, entity);
+                fx.scope(himark::app::AppCommand::Verb, |fx| {
+                    entity.show_document(
+                        store,
+                        ui,
+                        window,
+                        document_id,
+                        Some(self.target.clone()),
+                        false,
+                        fx,
+                    )
+                });
+                workbench::window::Windows::put(store, window, entity);
             }
             None => {
                 fx.push(himark::workspace::open_by_location_effect(
@@ -560,7 +562,7 @@ pub struct NewTerminalEffect {
     /// The session the terminal is spawned IN — the wire's address.
     pub(crate) home: ahp_wire::SessionId,
     pub(crate) cwd: Option<String>,
-    pub(crate) window: himark::window::WindowId,
+    pub(crate) window: workbench::window::WindowId,
 }
 
 impl std::fmt::Display for NewTerminalEffect {
@@ -575,7 +577,7 @@ impl Effect for NewTerminalEffect {
 
 pub(crate) struct SessionTerminalHandler {
     pub(crate) refresh:
-        Arc<dyn Fn(himark::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync>,
+        Arc<dyn Fn(workbench::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync>,
 }
 
 struct AhpBackend {
@@ -653,7 +655,7 @@ impl DynamicCommand for RefreshTerminal {
         &self,
         _app: &mut himark::app::Application,
         _store: &mut Store,
-        _window: himark::window::WindowId,
+        _window: workbench::window::WindowId,
         _fx: &mut AppFx<'_>,
     ) {
         self.0.store(false, std::sync::atomic::Ordering::SeqCst);
@@ -673,14 +675,14 @@ impl DynamicCommand for OpenTerminal {
         &self,
         _app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        let Some(entity) = himark::window::Windows::window(store, window) else {
+        let Some(entity) = workbench::window::Windows::window(store, window) else {
             return;
         };
         let workspace = entity.current_session();
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
         let resolved = ahp_session::session::agents::Agents::live_session(store, &workspace)
             .and_then(|key| {
                 let client = ahp_wire::client::Servers::client(store, key.host)?;
@@ -719,7 +721,7 @@ impl DynamicCommand for OpenTerminal {
         // The terminal files into the WINDOW's session — the collection
         // the pane is minted against, carried from here to the landing.
         let Some(terminals) =
-            himark::window::Windows::session_state(store, window).map(|state| state.terminals())
+            workbench::window::Windows::session_state(store, window).map(|state| state.terminals())
         else {
             return;
         };
@@ -753,14 +755,14 @@ impl DynamicCommand for ShowTerminal {
         &self,
         app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let Some(session) = &self.session else {
             return;
         };
-        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
 
         let terminals = self.terminals;
         let id = terminals::TerminalId::mint();
@@ -774,7 +776,7 @@ impl DynamicCommand for ShowTerminal {
             session.hangup();
             terminals::Terminals::remove(store, terminals, id);
         }
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
     }
 }
 

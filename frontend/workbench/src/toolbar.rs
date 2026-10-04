@@ -45,7 +45,7 @@ impl ToolbarButtons {
             .unwrap_or_default()
     }
 
-    pub(crate) fn register(store: &mut Store, button: ToolbarButton) {
+    pub fn register(store: &mut Store, button: ToolbarButton) {
         crate::registry::Registry::update(store, |registry| {
             registry.toolbar_buttons.0.push(button);
             registry
@@ -93,7 +93,7 @@ impl std::fmt::Display for ToolbarCommand {
 pub(crate) fn global_cluster_width(store: &Store, ui: &UiCtx, show_chat: bool) -> f32 {
     let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
     let clearance = ui
-        .get::<crate::app::ChromeClearance>()
+        .get::<crate::toolbar::ChromeClearance>()
         .map(|clearance| clearance.0)
         .unwrap_or(0.0);
     let buttons = ToolbarButtons::of(store).cluster(show_chat).count() as f32;
@@ -164,7 +164,7 @@ impl Toolbar {
     ) -> impl Thunk<'a, ToolbarCommand> + 'a {
         let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
         let clearance = ui
-            .get::<crate::app::ChromeClearance>()
+            .get::<crate::toolbar::ChromeClearance>()
             .map(|clearance| clearance.0)
             .unwrap_or(0.0);
         let buttons = ToolbarButtons::of(store);
@@ -376,3 +376,8 @@ pub fn composer_button() -> crate::toolbar::ToolbarButton {
         }),
     }
 }
+
+/// The host chrome inset the toolbar clears (the macOS traffic
+/// lights) — written by the shell at boot and on fullscreen moves.
+#[derive(Clone, Copy, Default)]
+pub struct ChromeClearance(pub f32);

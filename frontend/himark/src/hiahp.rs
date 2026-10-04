@@ -107,39 +107,42 @@ impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLo
 
 pub struct DiffNavigator;
 
-impl crate::navigation::WindowedNavigator for DiffNavigator {
+impl ::workbench::navigation::WindowedNavigator for DiffNavigator {
     type Place = canvas::diff_pane::DiffPlace;
 
     fn navigate(
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         place: &canvas::diff_pane::DiffPlace,
-        fx: &mut AppFx<'_>,
-    ) -> Option<crate::workbench_node::Panel> {
+        fx: &mut imba::command::Fx<'_>,
+    ) -> Option<::workbench::workbench_node::Panel> {
         // Resolve both sides on the UI thread — an open side hands over
         // its live snapshot; the prep runs off-thread and the landing
         // opens the dressed pane. Diffing never runs here.
-        let documents = crate::window::Windows::session_state(store, window)
+        let documents = ::workbench::window::Windows::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old =
             documents::diff_views::DiffSideInput::resolve(store, documents, place.old.clone());
         let new =
             documents::diff_views::DiffSideInput::resolve(store, documents, place.new.clone());
-        fx.push(AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
-            window,
-            documents,
-            old,
-            new,
-        }));
+        fx.push(
+            AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
+                window,
+                documents,
+                old,
+                new,
+            })
+            .map(crate::app::shell_verb),
+        );
         None
     }
 }
 
 pub struct OpenDiffPair {
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
     documents: imba::store::Id<documents::OpenDocuments>,
     pair: documents::diff_views::OpenedDiffPair,
 }
@@ -155,7 +158,7 @@ impl DynamicCommand for OpenDiffPair {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -242,7 +245,7 @@ impl DynamicCommand for FetchFailed {
         &self,
         _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         _fx: &mut AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);

@@ -26,8 +26,8 @@ use skia_safe::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
-fn wid(window: u64) -> himark::window::WindowId {
-    himark::window::WindowId::from_raw(window)
+fn wid(window: u64) -> workbench::window::WindowId {
+    workbench::window::WindowId::from_raw(window)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -472,7 +472,7 @@ impl HimarkEngine {
         app.register_command(Arc::new(himark::higent::session::new_chat::NewChat));
         app.register_toolbar_button(himark::higent::drawer::toolbar_button());
 
-        app.register_toolbar_button(himark::toolbar::composer_button());
+        app.register_toolbar_button(workbench::toolbar::composer_button());
 
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
         let wake = Arc::new(WakeSlot::default());
@@ -574,7 +574,7 @@ impl HimarkEngine {
         }
 
         let refresh: Arc<
-            dyn Fn(himark::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync,
+            dyn Fn(workbench::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync,
         > = {
             let inbox = inbox.clone();
             let wake = wake.clone();
@@ -750,7 +750,7 @@ impl HimarkEngine {
         height: f32,
         _scale: f32,
     ) -> bool {
-        himark::window::Window::draw_with_size(wid(window), &mut self.app, canvas, Size::new(width, height))
+        self.app.draw_window_sized(wid(window), canvas, Size::new(width, height))
     }
 
     pub fn record_latency(&mut self, now_secs: f64) {

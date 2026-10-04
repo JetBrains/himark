@@ -88,7 +88,7 @@ impl himark::commands::DynamicCommand for AddFolder {
         &self,
         _app: &mut Application,
         store: &mut imba::store::Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
         let id = himark::test_support::seed_session_folders(store, &[folder_location()]);
@@ -147,7 +147,7 @@ fn found_documents_preview_and_adopt_on_pick() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.add_document(
         app.sole_window(),
         plain_document("alpha body"),
@@ -161,7 +161,7 @@ fn found_documents_preview_and_adopt_on_pick() {
     let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
 
@@ -189,7 +189,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         fetches.load(Ordering::SeqCst),
@@ -232,7 +232,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
         app.sole_window(),
         Arc::new(AddFolder)
@@ -240,7 +240,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
@@ -258,7 +258,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         imba::event::Key::Escape,
         Default::default()
     ));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert_eq!(
         documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs,
@@ -266,7 +266,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
 
     runner.run();
@@ -279,7 +279,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         Default::default()
     ));
     settle(&mut app, &arriving, &runner);
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some("fallback body"),
@@ -292,7 +292,7 @@ fn outside_dismissal_releases_glanced_documents() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
         app.sole_window(),
         Arc::new(AddFolder)
@@ -300,7 +300,7 @@ fn outside_dismissal_releases_glanced_documents() {
     let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    app.draw_window(app.sole_window(), surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);

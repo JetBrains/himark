@@ -9,7 +9,6 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use crate::app::AppFx;
 use crate::workbench_node::Panel;
 
 
@@ -25,7 +24,7 @@ pub trait WindowedNavigator: Send + Sync + 'static {
         ui: &imba::ui::UiCtx,
         window: crate::window::WindowId,
         place: &Self::Place,
-        fx: &mut AppFx<'_>,
+        fx: &mut imba::command::Fx<'_>,
     ) -> Option<Panel>;
 }
 
@@ -35,7 +34,7 @@ type ErasedNavigate = Arc<
             &imba::ui::UiCtx,
             crate::window::WindowId,
             &NavigationLocation,
-            &mut AppFx<'_>,
+            &mut imba::command::Fx<'_>,
         ) -> Option<Panel>
         + Send
         + Sync,
@@ -52,10 +51,7 @@ impl Navigators {
         let navigator = Arc::new(navigator);
         let erased: ErasedNavigate = Arc::new(move |store, ui, _window, location, fx| {
             let place = location.place::<N::Place>()?;
-            fx.scope(crate::app::AppCommand::Verb, |fx| {
-                navigator.navigate(store, ui, place, fx)
-            })
-            .map(Panel::Plugin)
+            navigator.navigate(store, ui, place, fx).map(Panel::Plugin)
         });
         crate::registry::Registry::update(store, |registry| {
             registry
@@ -84,7 +80,7 @@ impl Navigators {
         ui: &imba::ui::UiCtx,
         window: crate::window::WindowId,
         location: &NavigationLocation,
-        fx: &mut AppFx<'_>,
+        fx: &mut imba::command::Fx<'_>,
     ) -> Option<Panel> {
         let entry = crate::registry::Registry::of(store)?
             .navigators
@@ -92,70 +88,5 @@ impl Navigators {
             .get(&location.place_type())
             .cloned()?;
         entry(store, ui, window, location, fx)
-    }
-}
-
-pub(crate) struct EditorNavigator;
-
-impl WindowedNavigator for EditorNavigator {
-    type Place = EditorPlace;
-
-    fn navigate(
-        &self,
-        store: &mut Store,
-        ui: &imba::ui::UiCtx,
-        window: crate::window::WindowId,
-        place: &EditorPlace,
-        fx: &mut AppFx<'_>,
-    ) -> Option<Panel> {
-        let documents = crate::window::Windows::session_state(store, window)
-            .expect("navigation runs in a window with a session")
-            .documents();
-        let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {
-            fx.push(crate::workspace::open_by_location_effect(
-                window,
-                documents,
-                place.location.clone(),
-                true,
-                false,
-                None,
-            ));
-            return None;
-        };
-        let mut document = documents::OpenDocuments::document(store, documents, id)?;
-        let width = crate::window::Windows::window_ref(store, window)
-            .and_then(|entity| {
-                crate::app::panel_width(store, entity.workbench().root.focused_pane())
-            })
-            .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let editor = fx.scope(
-            move |command| {
-                crate::app::AppCommand::at(documents, documents::DocumentsCommand::Editor(id, command))
-            },
-            |fx| {
-                let editor = documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
-
-                if place.caret > 0 {
-                    let fonts = ::editor::env::Fonts::of(store)();
-                    let theme = ::editor::env::Themes::of(store);
-                    document.reveal_at_instant(editor, place.caret, store, ui, &fonts, &theme, fx);
-                }
-                editor
-            },
-        );
-        documents::scroll_stripes::enable_scroll_stripes(
-            store,
-            documents,
-            id,
-            &mut document,
-            editor,
-        );
-        documents::OpenDocuments::put_document(store, documents, id, document);
-        documents::OpenDocuments::touch(store, documents, id);
-        let mut pane = imba::scroll::ScrollView::new(
-            documents::entity_view::EditorIdView::new(documents, id, editor).with_gutter(),
-        );
-        pane.set_scroll_y(place.scroll_y);
-        Some(crate::workbench_node::Panel::Editor(pane))
     }
 }

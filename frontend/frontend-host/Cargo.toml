@@ -9,6 +9,7 @@ name = "himark_api"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+workbench = { path = "../workbench" }
 hikit = { path = "../hikit" }
 filetree = { path = "../filetree" }
 locations = { path = "../locations" }

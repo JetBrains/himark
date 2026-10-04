@@ -30,13 +30,13 @@ impl crate::commands::DynamicCommand for OpenDiffForPair {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let documents = crate::window::Windows::session_state(store, window)
+        let documents = ::workbench::window::Windows::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old = documents::diff_views::DiffSideInput::resolve(store, documents, self.old.clone());
@@ -63,13 +63,13 @@ impl crate::commands::DynamicCommand for ToggleChangesView {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
         // The pane closes over the window's session: its change sets
@@ -121,7 +121,7 @@ impl crate::commands::DynamicCommand for ToggleChangesView {
                 )
             },
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -147,11 +147,11 @@ impl crate::commands::DynamicCommand for RefetchChanges {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-        let Some(changes) = crate::window::Windows::session_state(store, window)
+        let Some(changes) = ::workbench::window::Windows::session_state(store, window)
             .map(|state| state.changes())
             .or_else(|| {
                 // An addressed refetch (the view's chip) names its
@@ -166,11 +166,11 @@ impl crate::commands::DynamicCommand for RefetchChanges {
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: "changes.view",
         order: 1.0,
-        side: crate::toolbar::ToolbarSide::Right,
+        side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

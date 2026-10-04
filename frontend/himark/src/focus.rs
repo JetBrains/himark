@@ -14,9 +14,9 @@ use crate::app::Application;
 pub(crate) fn window_focus_data<'a>(
     store: &'a imba::store::Store,
     ui: &'a imba::ui::UiCtx,
-    window: crate::window::WindowId,
+    window: ::workbench::window::WindowId,
 ) -> Option<FocusData<'a, AppCommand>> {
-    let entity = crate::window::Windows::window_ref(store, window)?;
+    let entity = ::workbench::window::Windows::window_ref(store, window)?;
     Some(
         imba::View::focus_data(entity, store, ui)
             .map(move |command| AppCommand::Content(window, command)),
@@ -26,7 +26,7 @@ pub(crate) fn window_focus_data<'a>(
 impl Application {
     pub fn with_ime_client<R>(
         &mut self,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         f: impl FnOnce(&mut dyn ImeClient) -> R,
     ) -> Option<R> {
         // Two asks, one source of truth: the SEMANTIC walk names the
@@ -78,7 +78,7 @@ impl Application {
 
     pub fn with_clipboard_client<R>(
         &mut self,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         f: impl FnOnce(&mut dyn ClipboardClient) -> R,
     ) -> Option<R> {
         let store = self.window_store(window);

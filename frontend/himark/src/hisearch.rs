@@ -49,10 +49,10 @@ impl crate::commands::DynamicCommand for OpenLspFeed {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some((lists, wire)) = crate::window::Windows::window_ref(store, window)
+        let Some((lists, wire)) = ::workbench::window::Windows::window_ref(store, window)
             .map(|entity| (entity.state().lists(), entity.state().locations_wire()))
         else {
             return;
@@ -104,10 +104,10 @@ impl crate::commands::DynamicCommand for ShowFeedInDock {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut entity) = crate::window::Windows::window(store, window) else {
+        let Some(mut entity) = ::workbench::window::Windows::window(store, window) else {
             return;
         };
         if let Some(previous) = LocationLists::search(store, self.lists) {
@@ -126,7 +126,7 @@ impl crate::commands::DynamicCommand for ShowFeedInDock {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -145,13 +145,13 @@ impl crate::commands::DynamicCommand for ToggleSearchView {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
 
@@ -170,7 +170,7 @@ impl crate::commands::DynamicCommand for ToggleSearchView {
             move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
     }
 }
 
@@ -193,10 +193,10 @@ impl crate::commands::DynamicCommand for FocusSearchView {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = ::workbench::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(OWNER) {
             entity.focus_dock();
             if let Some(panel) = entity.dock_panel_mut() {
@@ -205,8 +205,8 @@ impl crate::commands::DynamicCommand for FocusSearchView {
                     move |command| {
                         crate::app::AppCommand::Content(
                             window,
-                            crate::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
-                                crate::dock::DockCommand::Content(command),
+                            ::workbench::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
+                                ::workbench::dock::DockCommand::Content(command),
                             )),
                         )
                     },
@@ -221,19 +221,19 @@ impl crate::commands::DynamicCommand for FocusSearchView {
                     },
                 );
             }
-            crate::window::Windows::put(store, window, entity);
+            ::workbench::window::Windows::put(store, window, entity);
             return;
         }
-        crate::window::Windows::put(store, window, entity);
+        ::workbench::window::Windows::put(store, window, entity);
         ToggleSearchView.perform(app, store, window, fx);
     }
 }
 
-pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
-    crate::toolbar::ToolbarButton {
+pub fn toolbar_button() -> ::workbench::toolbar::ToolbarButton {
+    ::workbench::toolbar::ToolbarButton {
         command: OWNER,
         order: 0.5,
-        side: crate::toolbar::ToolbarSide::Right,
+        side: ::workbench::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

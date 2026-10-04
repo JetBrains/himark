@@ -62,13 +62,13 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }
     };
     settle(&mut app);
-    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
 
     assert!(
         app.perform_registered(app.sole_window(), "peeker.toggle"),
         "the peeker opens"
     );
-    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
 
     for round in 0..40u32 {
         let key = match round % 5 {
@@ -76,7 +76,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
             _ => imba::event::Key::Up,
         };
         let _ = himark::test_driver::key(&mut app, key, Default::default());
-        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         if round % 3 == 0 {
             settle(&mut app);
         }
@@ -84,14 +84,14 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
 
     for _ in 0..8 {
         settle(&mut app);
-        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
     }
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     for _ in 0..12 {
         let _ = himark::test_driver::key(&mut app, imba::event::Key::Down, Default::default());
-        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = app.draw_window_sized(app.sole_window(), surface.canvas(), size);
         settle(&mut app);
     }
 }

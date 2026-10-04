@@ -351,7 +351,7 @@ impl ModalView for PaletteView {
 /// Build the palette overlay: a plain z-stacked modal layer that
 /// OWNS its input. The command walk runs BEFORE the modal mounts, so
 /// the window's own commands are all collected.
-pub fn build(store: &mut Store, ui: &UiCtx, window: himark::window::WindowId) -> Box<dyn ModalView> {
+pub fn build(store: &mut Store, ui: &UiCtx, window: workbench::window::WindowId) -> Box<dyn ModalView> {
     let commands = himark::commands::palette_commands(store, ui, window);
     Box::new(PaletteView::new(store, ui, commands))
 }
@@ -369,27 +369,27 @@ impl himark::commands::DynamicCommand for TogglePalette {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: himark::window::WindowId,
+        window: workbench::window::WindowId,
         fx: &mut himark::app::AppFx<'_>,
     ) {
-        let entity = himark::window::Windows::window_ref(store, window).expect("the window entity");
+        let entity = workbench::window::Windows::window_ref(store, window).expect("the window entity");
         if entity.has_modal() {
             let mut entity = entity.clone();
             fx.scope(
                 move |command| himark::app::AppCommand::Content(window, command),
                 |fx| entity.dismiss_modal(store, fx),
             );
-            himark::window::Windows::put(store, window, entity);
+            workbench::window::Windows::put(store, window, entity);
             return;
         }
         let ui = app.ui_handle();
         let modal = build(store, &ui, window);
-        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
+        let mut entity = workbench::window::Windows::window(store, window).expect("the window entity");
         fx.scope(
             move |command| himark::app::AppCommand::Content(window, command),
             |fx| entity.show_modal(store, modal, fx),
         );
-        himark::window::Windows::put(store, window, entity);
+        workbench::window::Windows::put(store, window, entity);
     }
 }
 

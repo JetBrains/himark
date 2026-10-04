@@ -29,15 +29,15 @@ impl crate::commands::DynamicCommand for ReloadDocument {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        let Some(document) = crate::window::Windows::window_ref(store, window)
+        let Some(document) = ::workbench::window::Windows::window_ref(store, window)
             .and_then(|entity| entity.focused_document_id())
         else {
             return;
         };
-        let Some(state) = crate::window::Windows::session_state(store, window) else {
+        let Some(state) = ::workbench::window::Windows::session_state(store, window) else {
             return;
         };
         fx.scope(crate::app::AppCommand::Verb, |fx| {

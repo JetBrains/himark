@@ -42,16 +42,16 @@ impl DynamicCommand for SaveAll {
         &self,
         _app: &mut crate::app::Application,
         store: &mut Store,
-        _window: crate::window::WindowId,
+        _window: ::workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         save_all(store, _window, fx);
     }
 }
 
-pub(crate) fn save_all(store: &mut Store, window: crate::window::WindowId, fx: &mut AppFx<'_>) {
+pub(crate) fn save_all(store: &mut Store, window: ::workbench::window::WindowId, fx: &mut AppFx<'_>) {
     let Some(documents) =
-        crate::window::Windows::session_state(store, window).map(|state| state.documents())
+        ::workbench::window::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -108,10 +108,10 @@ impl DynamicCommand for SyncWatches {
         &self,
         app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::window::WindowId,
+        window: ::workbench::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        if let Some(state) = crate::window::Windows::session_state(store, window) {
+        if let Some(state) = ::workbench::window::Windows::session_state(store, window) {
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_document_watches(store, state.documents(), fx)
             });
