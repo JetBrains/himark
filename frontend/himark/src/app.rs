@@ -28,19 +28,15 @@ use editor::markup::Markup;
 use crate::stats::{Stats, StatsCommand};
 
 pub struct Application {
-    state: crate::state::AppState,
-
-    committed: Store,
-
-    clients: ahp_wire::client::Servers,
+    /// THE store — one, global, always live. Hosts, Windows and
+    /// Servers are residents like everything else; a batch borrows
+    /// it, nothing is projected in or filed back.
+    store: Store,
 
     pub(crate) ui: std::rc::Rc<UiCtx>,
 
     stats: Stats,
     pub(crate) ui_arena: Arena,
-    /// The scope `committed` was gathered for — what StoreMut's
-    /// write-back scatters with.
-    committed_scope: Option<ahp_wire::SessionId>,
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
@@ -371,12 +367,12 @@ impl Application {
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());
         crate::effects::register_builtins(&handlers, &workshop);
-        let state = crate::state::AppState::adopt(store);
-        let committed = state.gather_seatless(None);
+        let mut store = store;
+        store.put(ahp_session::session::state::Hosts::default());
+        store.put(::workbench::window::Windows::default());
+        store.put(ahp_wire::client::Servers::default());
         let application = Self {
-            state,
-            committed,
-            clients: ahp_wire::client::Servers::default(),
+            store,
             ui,
             stats: Stats::new(overlay_font),
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -384,7 +380,6 @@ impl Application {
             handlers,
             workshop,
             ui_arena: Arena::default(),
-            committed_scope: None,
             pending_file_events: Vec::new(),
             settle_requested: false,
             settling: false,
@@ -393,30 +388,31 @@ impl Application {
         application
     }
 
-    fn commit(&mut self, store: Store, scope: Option<&ahp_wire::SessionId>) {
-        self.state.scatter(store, scope);
-        self.refresh_committed();
+    /// The empty-session housekeeping, run after every batch — the
+    /// one thing the old gather/scatter rite still did.
+    fn sweep(&mut self) {
+        ahp_session::session::state::Hosts::sweep_empty(&mut self.store);
     }
 
-    fn refresh_committed(&mut self) {
-        let window = self.state.windows.primary();
-        let scope = window.and_then(|id| self.state.windows.session_of(id));
-        self.committed = self.state.gather(window, scope.as_ref(), &self.clients);
-        self.committed_scope = scope;
+    /// The windows catalog, read in place — a boot resident.
+    fn windows(&self) -> &::workbench::window::Windows {
+        self.store
+            .get::<::workbench::window::Windows>()
+            .expect("the windows catalog is a boot resident")
     }
 
     pub fn register_client(
         &mut self,
         client: ahp_wire::client::Client,
     ) -> ahp_wire::client::HostId {
-        let minted = self.clients.mint(client);
-        self.refresh_committed();
+        let mut minted = ahp_wire::client::HostId::LOCAL;
+        self.store
+            .update::<ahp_wire::client::Servers>(|servers| minted = servers.mint(client));
         minted
     }
 
     pub fn viewport_stale(&self, window: WindowId, size: Size) -> bool {
-        self.state
-            .windows
+        self.windows()
             .entity(window)
             .is_some_and(|entity| entity.viewport_stale(size))
     }
@@ -426,8 +422,8 @@ impl Application {
     }
 
     pub fn window_store(&self, window: WindowId) -> Store {
-        let scope = self.state.windows.session_of(window);
-        self.state.gather(Some(window), scope.as_ref(), &self.clients)
+        let _ = window;
+        self.store.clone()
     }
 
     /// The frame's store: the window store plus the FOCUSED SEAT
@@ -445,25 +441,21 @@ impl Application {
     }
 
     fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
-        let mut store = self.state.gather(None, None, &self.clients);
-        mutate(&mut store);
-        self.commit(store, None);
+        mutate(&mut self.store);
     }
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
-        let scope = self.state.windows.session_of(window);
-        let mut store = self.state.gather(Some(window), scope.as_ref(), &self.clients);
-        mutate(&mut store);
-        self.commit(store, scope.as_ref());
+        let _ = window;
+        mutate(&mut self.store);
+        self.sweep();
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {
-        self.state.windows.ids()
+        self.windows().ids()
     }
 
     pub fn window_viewport(&self, window: WindowId) -> Option<Size> {
-        self.state
-            .windows
+        self.windows()
             .entity(window)
             .map(|entity| entity.viewport_size())
     }
@@ -482,52 +474,18 @@ impl Application {
             // its map onto them (docs/entities.md law 4).
             ahp_session::session::state::Hosts::stamp_host_uris(store, host);
         });
-        self.state.windows.adopt_local_host_all(host);
-        self.refresh_committed();
+        self.store
+            .update::<::workbench::window::Windows>(|windows| windows.adopt_local_host_all(host));
     }
 
-    fn command_scope(
-        &self,
-        store: &Store,
-        command: &AppCommand,
-    ) -> (Option<WindowId>, Option<ahp_wire::SessionId>) {
-        let window = match command {
-            AppCommand::Content(window, _)
-            | AppCommand::Dynamic(window, _)
-            | AppCommand::Opened(window, _)
-            | AppCommand::OpenAsync { window, .. }
-            | AppCommand::OpenPanel(window, _)
-            | AppCommand::OpenModal(window, _)
-            | AppCommand::ViewportResized(window, _) => *window,
-            AppCommand::CloseModal(window) => *window,
-
-            // Addressed commands (`At`, the view roads, the watch
-            // border) answer NO scope: gather ignores sessions (the
-            // store is single and global) and the batch-tail lanes
-            // run over every session — the session scope's two old
-            // consumers. What remains of scope is the WINDOW half
-            // (its projection) and the session a window names (the
-            // empty-session housekeeping on scatter).
-            _ => return (None, None),
-        };
-
-        let session = Windows::window_ref(store, window)
-            .map(|entity| entity.current_session())
-            .or_else(|| self.state.windows.session_of(window));
-        (Some(window), session)
-    }
 
     pub fn add_window(&mut self) -> WindowId {
-        let workspace = ahp_wire::SessionId::local_default(&self.state.gather_seatless(None));
-        let mut store = self.state.gather(None, Some(&workspace), &self.clients);
-
+        let workspace = ahp_wire::SessionId::local_default(&self.store);
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &workspace);
-        let editors = fresh_workbench_root(&mut store, &state, &ui, &mut discarded.effects());
-        let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), state));
-        self.commit(store, Some(&workspace));
-        window
+        let state = ahp_session::session::state::Hosts::ensure_state(&mut self.store, &workspace);
+        let editors = fresh_workbench_root(&mut self.store, &state, &ui, &mut discarded.effects());
+        Windows::add(&mut self.store, Window::new(editors, workspace.clone(), state))
     }
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -664,13 +622,12 @@ impl Application {
     }
 
     fn propagate_theme_change(&mut self) {
-        let theme = ::editor::env::Themes::of(&self.committed);
+        let theme = ::editor::env::Themes::of(&self.store);
         self.refresh_chrome(&theme);
 
         self.workshop.set_theme(theme);
         let windows: Vec<(::workbench::window::WindowId, Size)> = self
-            .state
-            .windows
+            .windows()
             .ids()
             .into_iter()
             .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
@@ -693,7 +650,7 @@ impl Application {
     }
 
     pub fn store(&self) -> &Store {
-        &self.committed
+        &self.store
     }
 
     pub fn stats(&self) -> &Stats {
@@ -868,20 +825,13 @@ impl Application {
         }
         let probe = std::time::Instant::now();
         let label = command_label(&commands[0]);
-        let theme_before = ::editor::env::Themes::of(&self.committed);
+        let theme_before = ::editor::env::Themes::of(&self.store);
         let ui = self.ui.clone();
         let mut batch = AppEffects::new();
 
-        let mut scope: (Option<WindowId>, Option<ahp_wire::SessionId>) = (None, None);
-        let mut store = self.state.gather(scope.0, scope.1.as_ref(), &self.clients);
+        let mut store = std::mem::take(&mut self.store);
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         while let Some(command) = queue.pop_front() {
-            let next = self.command_scope(&store, &command);
-            if next != scope {
-                self.state.scatter(store, scope.1.as_ref());
-                scope = next;
-                store = self.state.gather(scope.0, scope.1.as_ref(), &self.clients);
-            }
             let mut fx = batch.effects();
             self.perform(&mut store, &ui, command, &mut fx);
 
@@ -978,18 +928,17 @@ impl Application {
             }
         }
         let probe_perform = probe.elapsed();
-        self.commit(store, scope.1.as_ref());
+        self.store = store;
+        self.sweep();
         if validate_enabled() {
-            for id in self.state.windows.ids() {
-                let store = self.window_store(id);
-                let Some(window) = Windows::window_ref(&store, id) else {
+            for id in self.windows().ids() {
+                let Some(window) = Windows::window_ref(&self.store, id) else {
                     continue;
                 };
-                validate_panes(&label, &store, &window.workbench().root);
+                validate_panes(&label, &self.store, &window.workbench().root);
 
-                for (session, stashed) in window.stashed_workbenches() {
-                    let store = self.state.gather(Some(id), Some(session), &self.clients);
-                    validate_panes(&label, &store, &stashed.root);
+                for (_session, stashed) in window.stashed_workbenches() {
+                    validate_panes(&label, &self.store, &stashed.root);
                 }
             }
         }
@@ -998,7 +947,7 @@ impl Application {
             self.settle_requested = true;
         }
         self.launch(batch);
-        if theme_before.name() != ::editor::env::Themes::of(&self.committed).name() {
+        if theme_before.name() != ::editor::env::Themes::of(&self.store).name() {
             self.propagate_theme_change();
         }
 
@@ -1009,8 +958,7 @@ impl Application {
         if !changed.is_empty() {
             let event = documents::watch::FilesChanged(std::sync::Arc::new(changed));
             let windows: Vec<(::workbench::window::WindowId, Size)> = self
-                .state
-                .windows
+                .windows()
                 .ids()
                 .into_iter()
                 .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
@@ -1033,8 +981,7 @@ impl Application {
             while self.settle_requested && rounds < 3 {
                 self.settle_requested = false;
                 let windows: Vec<(::workbench::window::WindowId, Size)> = self
-                    .state
-                    .windows
+                    .windows()
                     .ids()
                     .into_iter()
                     .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
@@ -1050,10 +997,9 @@ impl Application {
         // Dock tree-follow: the focused location is a STATE question
         // now — walk the views, note the change. No tree was ever
         // built for this bookkeeping.
-        for window in self.state.windows.ids() {
+        for window in self.windows().ids() {
             let following = self
-                .state
-                .windows
+                .windows()
                 .entity(window)
                 .is_some_and(|entity| entity.dock_panel().is_some());
             if !following {
@@ -1066,8 +1012,7 @@ impl Application {
                 continue;
             };
             let changed = self
-                .state
-                .windows
+                .windows()
                 .entity(window)
                 .is_some_and(|entity| entity.focused_location() != Some(&location));
             if changed {
@@ -1107,24 +1052,21 @@ pub struct StoreMut<'a> {
 impl std::ops::Deref for StoreMut<'_> {
     type Target = Store;
     fn deref(&self) -> &Store {
-        &self.app.committed
+        &self.app.store
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl std::ops::DerefMut for StoreMut<'_> {
     fn deref_mut(&mut self) -> &mut Store {
-        &mut self.app.committed
+        &mut self.app.store
     }
 }
 
 #[cfg(any(test, feature = "test-support"))]
 impl Drop for StoreMut<'_> {
     fn drop(&mut self) {
-        let store = self.app.committed.clone();
-        let scope = self.app.committed_scope.clone();
-        self.app.state.scatter(store, scope.as_ref());
-        self.app.refresh_committed();
+        self.app.sweep();
     }
 }
 

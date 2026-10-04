@@ -1,24 +1,28 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The catalog's gather/scatter semantics — exercised with the
-//! SHELL's AppState batches, so the tests live here while the
-//! catalog lives in the protocol crate.
-
-#![allow(unused_imports)]
+//! The catalog's lifetime semantics over THE one store: records are
+//! reached by their own session, disposal retracts everything a
+//! session's row names, and the batch-tail sweep collects all-empty
+//! sessions — unless a live window holds them.
 
 use imba::store::Store;
 
 use ahp_chat::chats::Chats;
-use ahp_session::session::state::Hosts;
+use ahp_session::session::state::{Hosts, WindowGrip};
 use ahp_wire::client::{ChatUri, HostId, SessionUri};
-use crate::higent::*;
 
 fn session(uri: &str) -> ahp_wire::SessionId {
     ahp_wire::SessionId {
         host: HostId::LOCAL,
         session: SessionUri::new(uri),
     }
+}
+
+fn store() -> Store {
+    let mut store = Store::new();
+    store.put(Hosts::default());
+    store
 }
 
 /// Mint a chat into ITS session's collection — the mint door is the
@@ -33,8 +37,8 @@ fn put(store: &mut Store, session: &ahp_wire::SessionId, chat: &str) -> ChatUri 
         session.session.clone(),
         chats,
         uri.clone(),
-            ahp_chat::chats::Chats::catalog(store, chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
-        );
+        Chats::catalog(store, chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+    );
     Chats::put(store, chats, uri.clone(), panel);
     uri
 }
@@ -52,21 +56,17 @@ fn list_in(store: &Store, session: &ahp_wire::SessionId) -> Vec<ChatUri> {
         .unwrap_or_default()
 }
 
-/// A chat is reached by its OWN session, so a batch gathered for
-/// ANOTHER session — the pane road, whenever the window is not on
-/// the chat's session — still finds the one record.
+/// A chat is reached by its OWN session, whatever else a batch
+/// touches — the pane road, whenever the window is not on the chat's
+/// session, still finds the one record.
 #[test]
 fn a_chat_is_reached_by_its_own_session() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
+    let mut store = store();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:1");
-    state.scatter(store, Some(&home));
+    put(&mut store, &session("s-b"), "chat:other");
 
-    // The next batch is gathered for a DIFFERENT session.
-    let store = state.gather(None, Some(&session("s-b")), &clients);
     assert!(
         chat_in(&store, &home, &uri),
         "the record is found by its own address"
@@ -74,74 +74,54 @@ fn a_chat_is_reached_by_its_own_session() {
 }
 
 #[test]
-fn a_chat_survives_a_scopeless_batch() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
-    let home = session("s-a");
-
-    let mut store = state.gather(None, Some(&home), &clients);
-    let uri = put(&mut store, &home, "chat:2");
-    state.scatter(store, Some(&home));
-
-    // A batch with NO session scope: it writes other things, and
-    // the chats must not be dragged out of their session with them.
-    let mut store = state.gather(None, None, &clients);
-    state.scatter(std::mem::replace(&mut store, Store::new()), None);
-
-    let store = state.gather(None, Some(&home), &clients);
-    assert!(chat_in(&store, &home, &uri));
-}
-
-#[test]
-fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
-    let home = session("s-a");
-    let elsewhere = session("s-b");
-
-    // The batch is gathered for s-b; the chat belongs to s-a.
-    let mut store = state.gather(None, Some(&elsewhere), &clients);
-    let uri = put(&mut store, &home, "chat:3");
-    state.scatter(store, Some(&home));
-
-    let store = state.gather(None, Some(&home), &clients);
-    assert!(
-        chat_in(&store, &home, &uri),
-        "filed by the panel's session, not the gather's"
-    );
-    assert!(!chat_in(&store, &elsewhere, &uri), "and nowhere else");
-}
-
-#[test]
 fn a_sessions_chats_are_its_own() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
+    let mut store = store();
     let a = session("s-a");
     let b = session("s-b");
 
-    let mut store = state.gather(None, Some(&a), &clients);
     let mine = put(&mut store, &a, "chat:a");
     let theirs = put(&mut store, &b, "chat:b");
-    state.scatter(store, Some(&a));
 
-    let store = state.gather(None, Some(&a), &clients);
     assert_eq!(list_in(&store, &a), vec![mine]);
     assert_eq!(list_in(&store, &b), vec![theirs]);
+}
+
+/// The batch-tail sweep collects a session whose every collection
+/// emptied — and spares one a live window holds.
+#[test]
+fn the_sweep_collects_all_empty_sessions_unless_a_window_holds_them() {
+    let mut store = store();
+    let empty = session("s-empty");
+    let held = session("s-held");
+
+    Hosts::ensure_state(&mut store, &empty);
+    Hosts::ensure_state(&mut store, &held);
+    let kept = held.clone();
+    store.put(WindowGrip(std::sync::Arc::new(move |_, scope| {
+        *scope == kept
+    })));
+
+    Hosts::sweep_empty(&mut store);
+
+    assert!(
+        Hosts::state(&store, &empty).is_none(),
+        "the all-empty session left the catalog"
+    );
+    assert!(
+        Hosts::state(&store, &held).is_some(),
+        "a held session is not garbage, however empty"
+    );
 }
 
 /// The session is the LIFETIME of its chats.
 #[test]
 fn letting_a_session_go_takes_its_chats() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
+    let mut store = store();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:1");
     Hosts::dispose_state(&mut store, &home);
-    state.scatter(store, Some(&home));
 
-    let store = state.gather(None, Some(&home), &clients);
     assert!(!chat_in(&store, &home, &uri));
     assert!(list_in(&store, &home).is_empty());
 }
@@ -151,12 +131,10 @@ fn letting_a_session_go_takes_its_chats() {
 /// nothing session-scoped can outlive its session
 /// (docs/entities.md step 2).
 #[test]
-fn disposal_retracts_every_family_entity() {
-    let mut state = crate::state::AppState::default();
-    let clients = ahp_wire::client::Servers::default();
+fn disposal_retracts_every_session_entity() {
+    let mut store = store();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &clients);
     put(&mut store, &home, "chat:1");
     let row = Hosts::ensure_state(&mut store, &home);
     store.update_entity(
@@ -165,9 +143,7 @@ fn disposal_retracts_every_family_entity() {
     );
     store.update_entity(row.trees, |_trees| {});
     store.update_entity(row.terminals, |_terminals| {});
-    state.scatter(store, Some(&home));
 
-    let mut store = state.gather(None, Some(&home), &clients);
     assert!(Hosts::state(&store, &home).is_some(), "the row is live");
     Hosts::dispose_state(&mut store, &home);
 
@@ -181,9 +157,8 @@ fn disposal_retracts_every_family_entity() {
     assert!(store.entity(row.terminals).is_none());
     assert!(store.entity(row.documents).is_none());
     assert!(store.entity(row.scratch_names).is_none());
-    state.scatter(store, Some(&home));
 
-    // And scatter resurrects nothing from the scaffolding.
-    let store = state.gather(None, Some(&home), &clients);
+    // And the sweep resurrects nothing.
+    Hosts::sweep_empty(&mut store);
     assert!(Hosts::state(&store, &home).is_none());
 }

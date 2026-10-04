@@ -823,22 +823,6 @@ impl Windows {
         self.entries.get(&id)
     }
 
-    pub fn project(&self, window: Option<WindowId>) -> Windows {
-        let mut projected = self.clone();
-        for id in self.entries.keys() {
-            if Some(*id) != window {
-                projected.entries.remove_mut(id);
-            }
-        }
-        projected
-    }
-
-    pub fn absorb(&mut self, taken: Windows) {
-        for (id, entity) in taken.entries.iter() {
-            self.entries.insert_mut(*id, entity.clone());
-        }
-        self.next = taken.next;
-    }
 
     pub fn adopt_local_host_all(&mut self, host: ahp_wire::client::HostId) {
         let ids: Vec<WindowId> = self.entries.keys().copied().collect();

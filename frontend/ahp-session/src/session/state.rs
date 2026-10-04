@@ -323,35 +323,51 @@ impl Hosts {
         });
     }
 
-    /// The all-empty housekeeping sweep: a session whose every
-    /// collection emptied leaves the catalog, and its rows leave the
-    /// table. Nothing is projected and nothing comes back — the store
-    /// is single and global, and the table IS the data.
-    pub fn scatter_session(&mut self, store: &mut Store, scope: &ahp_wire::SessionId) {
-        let Some(states) = self
+    /// The all-empty housekeeping sweep, run by the shell at batch
+    /// tails: a session whose every collection emptied leaves the
+    /// catalog, and its rows leave the table. Nothing is projected
+    /// and nothing comes back — the store is single and global, and
+    /// the table IS the data.
+    pub fn sweep_empty(store: &mut Store) {
+        let mut hosts = store.take::<Hosts>().unwrap_or_default();
+        let targets: Vec<ahp_wire::SessionId> = hosts
             .entries
-            .get(&scope.host)
-            .and_then(|host| host.rows.get(&scope.session))
-            .cloned()
-        else {
-            return;
-        };
-        // A session a live window HOLDS is not garbage, however empty:
-        // fresh sessions start with nothing open (the chat owns the
-        // workbench), and the window's grip is what keeps the bundle's
-        // ids valid until content arrives.
-        let held = store
-            .get::<WindowGrip>()
-            .is_some_and(|grip| (grip.0)(store, scope));
-        if states.is_empty(store) && !held {
-            states.retract_all(store);
-            if let Some(host) = self.entries.get(&scope.host) {
-                let mut host = host.clone();
-                host.rows.remove_mut(&scope.session);
-                self.entries.insert_mut(scope.host, host);
+            .iter()
+            .flat_map(|(host, row)| {
+                row.rows.keys().map(move |session| ahp_wire::SessionId {
+                    host: *host,
+                    session: session.clone(),
+                })
+            })
+            .collect();
+        for scope in &targets {
+            let Some(rows) = hosts
+                .entries
+                .get(&scope.host)
+                .and_then(|host| host.rows.get(&scope.session))
+                .cloned()
+            else {
+                continue;
+            };
+            // A session a live window HOLDS is not garbage, however
+            // empty: fresh sessions start with nothing open (the chat
+            // owns the workbench), and the window's grip is what keeps
+            // the row's ids valid until content arrives.
+            let held = store
+                .get::<WindowGrip>()
+                .is_some_and(|grip| (grip.0)(store, scope));
+            if rows.is_empty(store) && !held {
+                rows.retract_all(store);
+                if let Some(host) = hosts.entries.get(&scope.host) {
+                    let mut host = host.clone();
+                    host.rows.remove_mut(&scope.session);
+                    hosts.entries.insert_mut(scope.host, host);
+                }
             }
         }
+        store.put(hosts);
     }
+
 
     /// A session's conversations, reached by its own id whatever the
     /// batch was gathered for.

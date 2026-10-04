@@ -20,7 +20,6 @@ pub mod new_session;
 pub mod registry;
 pub mod save;
 pub mod startup_profile;
-pub mod state;
 pub mod stats;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_driver;
