@@ -43,7 +43,7 @@ pub struct DocumentCommands {
     global: Vec<Arc<dyn DocumentCommand>>,
 
     /// Commands WIRED to one collection's panes — installed by the
-    /// family ceremony with their sibling ids in hand (docs/entities.md
+    /// session ceremony with their sibling ids in hand (docs/entities.md
     /// law 4), retired with the collection. The scope key is this
     /// crate's own id, so the registry stays layering-clean.
     scoped: rpds::HashTrieMapSync<imba::store::Id<OpenDocuments>, Vec<Arc<dyn DocumentCommand>>>,

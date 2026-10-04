@@ -84,8 +84,8 @@ fn remove_card(
     documents::OpenDocuments::put_document(store, documents, document, doc);
 }
 
-/// The document observer, WIRED: minted by the family ceremony with
-/// the cards' collection in hand, installed SCOPED to the family's
+/// The document observer, WIRED: minted by the session ceremony with
+/// the cards' collection in hand, installed SCOPED to the session's
 /// documents — it fires only for its own collection and dies with it
 /// (docs/entities.md law 4).
 pub struct CommentsHook {
@@ -103,7 +103,7 @@ impl documents::DocumentHook for CommentsHook {
         let Some(location) = location else {
             return;
         };
-        // Scoped install: this hook fires only for its own family's
+        // Scoped install: this hook fires only for its own session's
         // documents, and the cards' collection is its own record.
         let comments = self.comments;
         if Comments::owes_cards_at(store, comments, location) {

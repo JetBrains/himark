@@ -110,7 +110,7 @@ pub fn open_locations(
         .collect();
     let mut primary = true;
     let Some(documents) =
-        crate::Windows::session_family(store, window).map(|family| family.documents())
+        crate::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };

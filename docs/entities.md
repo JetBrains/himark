@@ -3,7 +3,7 @@
 Dispatch and state are fused to windows and sessions because
 addressing is hand-rolled per command — `Entity(DocumentId, …)`,
 `DiffViewCommand { session, … }`, `CanvasViewCommand { session, … }`,
-`InSession(…)`, the document-addressed landing family — each with its
+`InSession(…)`, the document-addressed landing kind — each with its
 own perform arm, scope discipline, and reverse lookup
 (`session_of_document` / `session_of_diff` / `session_of_watch`), and
 because reads are TYPE-keyed singletons (`X::of(store)`), which is
@@ -51,11 +51,11 @@ direction is recorded at the tail, not legislated).
    application tail — the changes rearms, the comments card work).
    An addressed command answers NO session scope: gather ignores
    sessions (the store is single and global), and the batch tail runs
-   the sync lanes over EVERY family — each lane drains its own
-   pending queue, so a clean family costs map reads. The typed
+   the sync lanes over EVERY session — each lane drains its own
+   pending queue, so a clean session costs map reads. The typed
    `session_of_*_id` scans retired with nothing replacing them; what
    remains of scope is the window half (its projection) and the
-   session a window names, which feeds the empty-family housekeeping
+   session a window names, which feeds the empty-session housekeeping
    on scatter. `DiffViewCommand` / `CanvasViewCommand` stay separate
    variants for now: their performs reach their own collection
    through the store by id (e.g. `Canvas::perform` → `Changes::of`),

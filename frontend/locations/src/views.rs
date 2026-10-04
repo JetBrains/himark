@@ -16,8 +16,8 @@ use editor::{ResourceLocation, ResourceType};
 use hikit::ForestNode;
 
 /// The registration hook: a search-picked document opened — wash it.
-/// WIRED: minted by the family ceremony with the lists collection in
-/// hand, installed SCOPED to the family's documents (docs/entities.md
+/// WIRED: minted by the session ceremony with the lists collection in
+/// hand, installed SCOPED to the session's documents (docs/entities.md
 /// law 4) — fires only for its own collection, dies with it.
 pub struct LocationsWashHook {
     pub lists: imba::store::Id<LocationLists>,
@@ -87,7 +87,7 @@ impl imba::command::DynamicCommand for WashDocument {
             return;
         }
         // The collection's wired sibling, not the window's current
-        // family — the window may have moved on since the pick.
+        // session — the window may have moved on since the pick.
         let Some(documents) = LocationLists::documents_of(store, self.lists) else {
             return;
         };
@@ -198,7 +198,7 @@ pub fn dispose_feed(
         return;
     };
     // The collection's wired sibling, not the window's current
-    // family — the window may have moved on since the feed opened.
+    // session — the window may have moved on since the feed opened.
     if let Some(documents) = LocationLists::documents_of(store, lists) {
         remove_washes(store, documents, ui, &row, fx);
     }

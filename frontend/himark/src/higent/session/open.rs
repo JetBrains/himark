@@ -152,13 +152,13 @@ impl DynamicCommand for EnterSessionWork {
             session: self.session.clone(),
         };
         let folders = crate::higent::session_folders(store, &key);
-        if let Some(family) = Windows::session_family(store, window) {
+        if let Some(state) = Windows::session_state(store, window) {
             fx.scope(crate::AppCommand::Verb, |fx| {
-                crate::drivers::changes::ensure(store, family.changes_wire(), folders.clone(), fx)
+                crate::drivers::changes::ensure(store, state.changes_wire(), folders.clone(), fx)
             });
             fx.scope(crate::AppCommand::Verb, |fx| {
                 for folder in folders {
-                    crate::drivers::comments::ensure(store, family.comments_wire(), &folder, fx);
+                    crate::drivers::comments::ensure(store, state.comments_wire(), &folder, fx);
                 }
             });
         }
@@ -175,7 +175,7 @@ impl DynamicCommand for EnterSessionWork {
             let mut entity = Windows::window(store, window).expect("the window entity");
             // The window switched to this session a batch ago; if it
             // has moved on since, the entry is abandoned — the chat
-            // must not be filed into whatever family is there now.
+            // must not be filed into whatever session is there now.
             if entity.current_session() != key {
                 Windows::put(store, window, entity);
                 return;
@@ -183,7 +183,7 @@ impl DynamicCommand for EnterSessionWork {
             let pane = crate::higent::Chats::open_with(
                 store,
                 ui,
-                entity.family().chats(),
+                entity.state().chats(),
                 self.server,
                 self.session.clone(),
                 chat,
@@ -348,9 +348,9 @@ pub(crate) fn apply_channel_actions(
             }
             StateAction::SessionChangesetsChanged(changed) => {
                 // The session channel's catalog names the session it
-                // serves; its family's DRIVER takes the entries.
+                // serves; its session's DRIVER takes the entries.
                 if let Some(wire) =
-                    crate::higent::Hosts::family(store, key).map(|family| family.changes_wire())
+                    crate::higent::Hosts::state(store, key).map(|state| state.changes_wire())
                 {
                     fx.scope(crate::AppCommand::Verb, |fx| {
                         crate::drivers::changes::adopt_session_catalog(
@@ -367,10 +367,10 @@ pub(crate) fn apply_channel_actions(
     if folders_grew {
         // The attach path (`EnterSessionWork`) arms comments for
         // every folder; one added mid-session gets the same here.
-        // The channel names the session it serves; the family's
+        // The channel names the session it serves; the session's
         // collection takes the folder.
         if let Some(wire) =
-            crate::higent::Hosts::family(store, key).map(|family| family.comments_wire())
+            crate::higent::Hosts::state(store, key).map(|state| state.comments_wire())
         {
             let folders = crate::higent::session_folders(store, key);
             fx.scope(crate::AppCommand::Verb, |fx| {

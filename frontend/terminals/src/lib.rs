@@ -168,7 +168,7 @@ impl Drop for Session {
     }
 }
 
-/// A terminal's identity in its family — minted at the landing that
+/// A terminal's identity in its session — minted at the landing that
 /// files the session, carried by the pane and its place.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct TerminalId(u64);
@@ -189,7 +189,7 @@ impl TerminalId {
 #[derive(Clone, Default)]
 pub struct Terminals(rpds::HashTrieMapSync<TerminalId, Arc<Session>>);
 
-/// A terminal belongs to the family whose id reached here — threaded
+/// A terminal belongs to the session whose id reached here — threaded
 /// from the owning session's row by whoever had the session context
 /// (docs/entities.md law 3); this crate never sees a session.
 impl Terminals {

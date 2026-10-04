@@ -74,10 +74,10 @@ impl crate::DynamicCommand for OpenDiff {
         _fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(family) = crate::Windows::session_family(store, window) else {
+        let Some(state) = crate::Windows::session_state(store, window) else {
             return;
         };
-        let documents = family.documents();
+        let documents = state.documents();
         let recent = OpenDocuments::list_recent(store, documents);
         let (Some(newest), Some(older)) = (recent.first(), recent.get(1)) else {
             return;

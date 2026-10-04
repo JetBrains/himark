@@ -58,7 +58,7 @@ pub struct Application {
 
 pub struct OpenedDocument {
     /// The collection the open was launched FOR — stamped at the
-    /// gesture, so the landing files the document into the family the
+    /// gesture, so the landing files the document into the session the
     /// user acted in, not whatever the window shows by then.
     pub documents: imba::store::Id<OpenDocuments>,
 
@@ -228,16 +228,16 @@ pub struct ChromeClearance(pub f32);
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
-    family: &crate::higent::SessionState,
+    state: &crate::higent::SessionState,
     ui: &UiCtx,
     fx: &mut AppFx<'_>,
 ) -> WorkbenchNode {
     let mut scratch = markdown_scratch();
 
-    let documents = family.documents();
-    let location = crate::next_scratch_location(store, family.scratch_names());
+    let documents = state.documents();
+    let location = crate::next_scratch_location(store, state.scratch_names());
     let name = location.name().to_owned();
-    crate::RecentLocations::touch(store, family.recents(), &location);
+    crate::RecentLocations::touch(store, state.recents(), &location);
     let scratch_id =
         OpenDocuments::register(store, documents, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
@@ -281,8 +281,8 @@ pub fn switch_session(
 
     // Session ENTRY: the one legitimate catalog consult — the bundle
     // is wired into the window's record here and read from it after.
-    let family = crate::higent::Hosts::ensure_family(store, &target);
-    let owed = entity.switch_to(target, family);
+    let state = crate::higent::Hosts::ensure_state(store, &target);
+    let owed = entity.switch_to(target, state);
     crate::Windows::put(store, window, entity);
     if let Some(previous) = owed {
         fx.follow_up(AppCommand::Dynamic(
@@ -362,7 +362,7 @@ impl Application {
         crate::Navigators::register_windowed(&mut store, crate::navigation::EditorNavigator);
         crate::higent::install_shell_roads(&mut store);
         // The locations wash hook is no longer boot-global: the
-        // family ceremony installs one per session, wired with its
+        // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
 
         let workshop = Arc::new(::editor::Workshop::new(
@@ -475,12 +475,12 @@ impl Application {
                 .and_then(|local| local.0);
             store.update::<crate::higent::LocalHost>(|local| local.0 = Some(host));
             store.update::<crate::higent::Hosts>(|hosts| {
-                hosts.rekey_local_families(previous, host);
+                hosts.rekey_local_sessions(previous, host);
             });
             // Families minted under the LOCAL placeholder carried no
             // uri map; now that they live under the real host, stamp
             // its map onto them (docs/entities.md law 4).
-            crate::higent::Hosts::stamp_families_uris(store, host);
+            crate::higent::Hosts::stamp_host_uris(store, host);
         });
         self.state.windows.adopt_local_host_all(host);
         self.refresh_committed();
@@ -504,10 +504,10 @@ impl Application {
             // Addressed commands (`At`, the view roads, the watch
             // border) answer NO scope: gather ignores sessions (the
             // store is single and global) and the batch-tail lanes
-            // run over every family — the session scope's two old
+            // run over every session — the session scope's two old
             // consumers. What remains of scope is the WINDOW half
             // (its projection) and the session a window names (the
-            // empty-family housekeeping on scatter).
+            // empty-session housekeeping on scatter).
             _ => return (None, None),
         };
 
@@ -523,9 +523,9 @@ impl Application {
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let family = crate::higent::Hosts::ensure_family(&mut store, &workspace);
-        let editors = fresh_workbench_root(&mut store, &family, &ui, &mut discarded.effects());
-        let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), family));
+        let state = crate::higent::Hosts::ensure_state(&mut store, &workspace);
+        let editors = fresh_workbench_root(&mut store, &state, &ui, &mut discarded.effects());
+        let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), state));
         self.commit(store, Some(&workspace));
         window
     }
@@ -588,7 +588,7 @@ impl Application {
     }
 
     pub fn register_row_minter(&mut self, minter: std::sync::Arc<hikit::RowMinter>) {
-        self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
+        self.setup(|store| crate::pane_rows::RowMinters::register(store, minter));
     }
 
     pub fn workshop(&self) -> &Arc<::editor::Workshop> {
@@ -894,13 +894,13 @@ impl Application {
 
         {
             let mut fx = batch.effects();
-            // The lanes run over EVERY family: each drains its own
-            // pending queue, so a clean family costs map reads — and a
-            // landing's family gets its sweep THIS batch whatever the
+            // The lanes run over EVERY session: each drains its own
+            // pending queue, so a clean session costs map reads — and a
+            // landing's session gets its sweep THIS batch whatever the
             // batch's scope (the old tail served only the LAST scope's
-            // family, so a cross-session batch starved the others).
-            for family in crate::higent::Hosts::families(&store) {
-                let documents = family.documents();
+            // session, so a cross-session batch starved the others).
+            for state in crate::higent::Hosts::states(&store) {
+                let documents = state.documents();
                 crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
                 documents::scroll_stripes::sync_scroll_stripe_lanes(
                     &mut store,
@@ -920,20 +920,20 @@ impl Application {
                 // stale view in the SAME batch — no paint probe.
                 crate::changes_view::sync_changes_views(
                     &mut store,
-                    family.changes(),
+                    state.changes(),
                     &self.ui_ctx(),
                 );
                 // The canvases sync against the fresh document/diff/
                 // changeset state — the SAME batch a feed landed in, a
                 // direct lane over the sets that own them. The
-                // dressed-views queue drains here: the family's own
+                // dressed-views queue drains here: the session's own
                 // note (id-routed landings appended mid-batch), taken
                 // by the one lane that reads it.
                 let dressed = crate::OpenDocuments::take_dressed(&mut store, documents);
                 fx.scope(AppCommand::Verb, |fx| {
                     crate::diff_canvas::canvas::sync_canvases(
                         &mut store,
-                        family.canvas_router(),
+                        state.canvas_router(),
                         &self.ui_ctx(),
                         &dressed,
                         fx,
@@ -945,7 +945,7 @@ impl Application {
                 fx.scope(AppCommand::Verb, |fx| {
                     crate::drivers::comments::sync(
                         &mut store,
-                        family.comments_wire(),
+                        state.comments_wire(),
                         &self.ui_ctx(),
                         fx,
                     )
@@ -955,12 +955,12 @@ impl Application {
                 // drivers drain the notes onto the wires here — no
                 // view carries a wire or a window for these.
                 fx.scope(AppCommand::Verb, |fx| {
-                    crate::drivers::history::sync(&mut store, family.history_wire(), fx);
-                    crate::drivers::changes::sync(&mut store, family.changes_wire(), fx);
+                    crate::drivers::history::sync(&mut store, state.history_wire(), fx);
+                    crate::drivers::changes::sync(&mut store, state.changes_wire(), fx);
                     crate::drivers::locations::sync(
                         &mut store,
                         &self.ui_ctx(),
-                        family.locations_wire(),
+                        state.locations_wire(),
                         fx,
                     );
                 });
@@ -1338,10 +1338,10 @@ impl Application {
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         crate::Windows::put(store, window, entity);
-                        if let Some(family) = Windows::session_family(store, window) {
+                        if let Some(state) = Windows::session_state(store, window) {
                             fx.push(crate::open_by_location_effect(
                                 window,
-                                family.documents(),
+                                state.documents(),
                                 location,
                                 true,
                                 focus,
@@ -1357,10 +1357,10 @@ impl Application {
                         entity.show_document(store, ui, window, document, None, false, fx);
                         crate::Windows::put(store, window, entity);
 
-                        if let Some(family) = Windows::session_family(store, window) {
-                            crate::watch::sync_document_watches(store, family.documents(), fx);
+                        if let Some(state) = Windows::session_state(store, window) {
+                            crate::watch::sync_document_watches(store, state.documents(), fx);
                             fx.scope(AppCommand::Verb, |fx| {
-                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx)
+                                crate::diffs::sync_stripe_bases(store, state.documents(), ui, fx)
                             });
                         }
                     }
@@ -1407,10 +1407,10 @@ impl Application {
                             focus,
                         } => {
                             crate::Windows::put(store, window, entity);
-                            if let Some(family) = Windows::session_family(store, window) {
+                            if let Some(state) = Windows::session_state(store, window) {
                                 fx.push(crate::open_by_location_effect(
                                     window,
-                                    family.documents(),
+                                    state.documents(),
                                     location,
                                     true,
                                     focus,
@@ -1422,12 +1422,12 @@ impl Application {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
 
-                            if let Some(family) = Windows::session_family(store, window) {
-                                crate::watch::sync_document_watches(store, family.documents(), fx);
+                            if let Some(state) = Windows::session_state(store, window) {
+                                crate::watch::sync_document_watches(store, state.documents(), fx);
                                 fx.scope(AppCommand::Verb, |fx| {
                                     crate::diffs::sync_stripe_bases(
                                         store,
-                                        family.documents(),
+                                        state.documents(),
                                         ui,
                                         fx,
                                     )
@@ -1467,10 +1467,10 @@ impl Application {
                             focus,
                         } => {
                             crate::Windows::put(store, window, entity);
-                            if let Some(family) = Windows::session_family(store, window) {
+                            if let Some(state) = Windows::session_state(store, window) {
                                 fx.push(crate::open_by_location_effect(
                                     window,
-                                    family.documents(),
+                                    state.documents(),
                                     location,
                                     true,
                                     focus,
@@ -1481,12 +1481,12 @@ impl Application {
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
-                            if let Some(family) = Windows::session_family(store, window) {
-                                crate::watch::sync_document_watches(store, family.documents(), fx);
+                            if let Some(state) = Windows::session_state(store, window) {
+                                crate::watch::sync_document_watches(store, state.documents(), fx);
                                 fx.scope(AppCommand::Verb, |fx| {
                                     crate::diffs::sync_stripe_bases(
                                         store,
-                                        family.documents(),
+                                        state.documents(),
                                         ui,
                                         fx,
                                     )
@@ -1664,7 +1664,7 @@ impl Application {
             } => {
                 // The one synchronous moment of this road: bind the
                 // gesture's session here, before anything is in flight.
-                let documents = Windows::session_family(store, window)
+                let documents = Windows::session_state(store, window)
                     .expect("a document opens into a window with a session")
                     .documents();
                 fx.push(open_effect(

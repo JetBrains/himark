@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The changes WIRE driver: owns the changeset subscribe/poll
-//! chains and the session-catalog feed for one family, and applies
+//! chains and the session-catalog feed for one session, and applies
 //! every landing through the `Changes` collection's public mutation
 //! doors. The collection holds NO client, channel, session or poll
 //! state — that is all here, in the driver's own row, minted by the
-//! family ceremony beside the collection it drives.
+//! session ceremony beside the collection it drives.
 
 use std::sync::Arc;
 
@@ -41,7 +41,7 @@ struct SessionWire {
 }
 
 /// The driver's row — wire state only, keyed beside the collection
-/// in the family bundle.
+/// in the session bundle.
 #[derive(Clone)]
 pub struct ChangesWire {
     changes: imba::store::Id<ChangeSets>,
@@ -497,7 +497,7 @@ pub fn apply_snapshot(
     fx: &mut Fx<'_>,
 ) {
     let Some(changes) = of(store, wire).map(|row| row.changes) else {
-        return; // the family went while the ask flew
+        return; // the state went while the ask flew
     };
     let adopted = result.is_ok();
     Changes::adopt_snapshot(store, changes, folder, result);

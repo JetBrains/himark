@@ -75,8 +75,8 @@ impl documents::DocumentCommand for SaveDocument {
                 );
                 // The RECENTS next to the documents the save ran in —
                 // the sibling of the collection the command closes over.
-                if let Some(recents) = crate::higent::Hosts::family_of_documents(store, documents)
-                    .map(|family| family.recents())
+                if let Some(recents) = crate::higent::Hosts::owner_of_documents(store, documents)
+                    .map(|state| state.recents())
                 {
                     crate::RecentLocations::replace(store, recents, location, &new_location);
                 }
@@ -170,7 +170,7 @@ impl DynamicCommand for SaveAll {
 
 pub(crate) fn save_all(store: &mut Store, window: crate::WindowId, fx: &mut AppFx<'_>) {
     let Some(documents) =
-        crate::Windows::session_family(store, window).map(|family| family.documents())
+        crate::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -230,10 +230,10 @@ impl DynamicCommand for SyncWatches {
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        if let Some(family) = crate::Windows::session_family(store, window) {
-            crate::watch::sync_document_watches(store, family.documents(), fx);
+        if let Some(state) = crate::Windows::session_state(store, window) {
+            crate::watch::sync_document_watches(store, state.documents(), fx);
             fx.scope(crate::AppCommand::Verb, |fx| {
-                crate::diffs::sync_stripe_bases(store, family.documents(), &app.ui_ctx(), fx)
+                crate::diffs::sync_stripe_bases(store, state.documents(), &app.ui_ctx(), fx)
             });
         }
     }

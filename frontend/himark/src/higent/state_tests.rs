@@ -23,7 +23,7 @@ fn session(uri: &str) -> crate::SessionId {
 /// one catalog consult; the record carries the collection id after.
 fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
     let uri = ChatUri::new(chat);
-    let chats = Hosts::ensure_family(store, session).chats();
+    let chats = Hosts::ensure_state(store, session).chats();
     let panel = crate::higent::chat::ChatPanel::new(
         store,
         ::editor::test_document::test_ui(),
@@ -38,14 +38,14 @@ fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
 
 /// The cold read a test takes: session → collection → record.
 fn chat_in(store: &Store, session: &crate::SessionId, uri: &ChatUri) -> bool {
-    Hosts::family(store, session)
-        .and_then(|family| Chats::chat_ref(store, family.chats(), uri))
+    Hosts::state(store, session)
+        .and_then(|state| Chats::chat_ref(store, state.chats(), uri))
         .is_some()
 }
 
 fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
-    Hosts::family(store, session)
-        .map(|family| Chats::list(store, family.chats()))
+    Hosts::state(store, session)
+        .map(|state| Chats::list(store, state.chats()))
         .unwrap_or_default()
 }
 
@@ -81,7 +81,7 @@ fn a_chat_survives_a_scopeless_batch() {
     state.scatter(store, Some(&home));
 
     // A batch with NO session scope: it writes other things, and
-    // the chats must not be dragged out of their family with them.
+    // the chats must not be dragged out of their session with them.
     let mut store = state.gather(None, None, &clients);
     state.scatter(std::mem::replace(&mut store, Store::new()), None);
 
@@ -135,7 +135,7 @@ fn letting_a_session_go_takes_its_chats() {
 
     let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:1");
-    Hosts::dispose_family(&mut store, &home);
+    Hosts::dispose_state(&mut store, &home);
     state.scatter(store, Some(&home));
 
     let store = state.gather(None, Some(&home), &clients);
@@ -143,7 +143,7 @@ fn letting_a_session_go_takes_its_chats() {
     assert!(list_in(&store, &home).is_empty());
 }
 
-/// Disposal is the whole ceremony: the family row leaves `Hosts`
+/// Disposal is the whole ceremony: the session row leaves `Hosts`
 /// and EVERY entity row its ids named retracts from the table —
 /// nothing session-scoped can outlive its session
 /// (docs/entities.md step 2).
@@ -155,32 +155,32 @@ fn disposal_retracts_every_family_entity() {
 
     let mut store = state.gather(None, Some(&home), &clients);
     put(&mut store, &home, "chat:1");
-    let family = Hosts::ensure_family(&mut store, &home);
+    let row = Hosts::ensure_state(&mut store, &home);
     store.update_entity(
-        family.recents,
+        row.recents,
         |_recents: &mut crate::higent::RecentLocations| {},
     );
-    store.update_entity(family.trees, |_trees| {});
-    store.update_entity(family.terminals, |_terminals| {});
+    store.update_entity(row.trees, |_trees| {});
+    store.update_entity(row.terminals, |_terminals| {});
     state.scatter(store, Some(&home));
 
     let mut store = state.gather(None, Some(&home), &clients);
-    assert!(Hosts::family(&store, &home).is_some(), "the row is live");
-    Hosts::dispose_family(&mut store, &home);
+    assert!(Hosts::state(&store, &home).is_some(), "the row is live");
+    Hosts::dispose_state(&mut store, &home);
 
-    assert!(Hosts::family(&store, &home).is_none(), "the row is gone");
-    assert!(store.entity(family.chats).is_none());
-    assert!(store.entity(family.trees).is_none());
-    assert!(store.entity(family.recents).is_none());
-    assert!(store.entity(family.changes).is_none());
-    assert!(store.entity(family.history).is_none());
-    assert!(store.entity(family.comments).is_none());
-    assert!(store.entity(family.terminals).is_none());
-    assert!(store.entity(family.documents).is_none());
-    assert!(store.entity(family.scratch_names).is_none());
+    assert!(Hosts::state(&store, &home).is_none(), "the row is gone");
+    assert!(store.entity(row.chats).is_none());
+    assert!(store.entity(row.trees).is_none());
+    assert!(store.entity(row.recents).is_none());
+    assert!(store.entity(row.changes).is_none());
+    assert!(store.entity(row.history).is_none());
+    assert!(store.entity(row.comments).is_none());
+    assert!(store.entity(row.terminals).is_none());
+    assert!(store.entity(row.documents).is_none());
+    assert!(store.entity(row.scratch_names).is_none());
     state.scatter(store, Some(&home));
 
     // And scatter resurrects nothing from the scaffolding.
     let store = state.gather(None, Some(&home), &clients);
-    assert!(Hosts::family(&store, &home).is_none());
+    assert!(Hosts::state(&store, &home).is_none());
 }

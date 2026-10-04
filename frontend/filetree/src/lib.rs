@@ -349,7 +349,7 @@ impl SessionTree {
     }
 
     /// Addressed by its own id, threaded from the owning session's
-    /// family row — never by whatever session the batch was gathered
+    /// session row — never by whatever session the batch was gathered
     /// for.
     fn find_or_create(
         store: &mut Store,

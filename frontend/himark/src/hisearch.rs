@@ -20,7 +20,7 @@ pub use ::locations::search::{SearchArea, SearchCommand, SearchView};
 pub const OWNER: &str = "search.view";
 
 /// An LSP locations ask opening the Search dock tab at ASK time —
-/// the whole chain in ONE window command: the window's family names
+/// the whole chain in ONE window command: the window's session names
 /// the lists collection, the feed is minted and fronted here, and
 /// the ask's landing arrives with `(lists, feed)` stamped at launch
 /// (docs/entities.md law 3) — no payload re-entry through the
@@ -49,7 +49,7 @@ impl crate::DynamicCommand for OpenLspFeed {
         fx: &mut crate::AppFx<'_>,
     ) {
         let Some((lists, wire)) = crate::Windows::window_ref(store, window)
-            .map(|entity| (entity.family().lists(), entity.family().locations_wire()))
+            .map(|entity| (entity.state().lists(), entity.state().locations_wire()))
         else {
             return;
         };
@@ -157,7 +157,7 @@ impl crate::DynamicCommand for ToggleSearchView {
         );
 
         let session = entity.current_session();
-        let lists = entity.family().lists();
+        let lists = entity.state().lists();
         let folders = crate::higent::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, &app.ui_ctx(), lists);

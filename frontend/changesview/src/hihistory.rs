@@ -95,7 +95,7 @@ pub struct FolderHistory {
 #[derive(Clone)]
 pub struct History {
     /// The sibling whose sets this collection's commits are — wired at
-    /// the family mint (docs/entities.md law 4).
+    /// the session mint (docs/entities.md law 4).
     changes: imba::store::Id<crate::hichanges::ChangeSets>,
 
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
@@ -120,7 +120,7 @@ pub enum HistoryAsk {
 
 impl History {
     /// A collection wired to the sets its commits are — minted by the
-    /// family ceremony, and by tests that stand one up alone.
+    /// session ceremony, and by tests that stand one up alone.
     pub fn wired(changes: imba::store::Id<crate::hichanges::ChangeSets>) -> Self {
         Self {
             changes,

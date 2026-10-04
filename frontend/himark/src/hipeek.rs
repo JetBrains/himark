@@ -56,9 +56,9 @@ impl documents::DocumentCommand for GoToReference {
         // The lists collection is the documents' sibling — a catalog
         // consult at a DocumentCommand border, the save.rs/fsroute
         // debt class: burns when generic document commands learn
-        // their family (the gating keeps this one boot-global).
-        let Some((lists, wire)) = crate::higent::Hosts::family_of_documents(store, _documents)
-            .map(|family| (family.lists(), family.locations_wire()))
+        // their session (the gating keeps this one boot-global).
+        let Some((lists, wire)) = crate::higent::Hosts::owner_of_documents(store, _documents)
+            .map(|state| (state.lists(), state.locations_wire()))
         else {
             return;
         };
@@ -154,7 +154,7 @@ impl crate::DynamicCommand for OpenPicked {
         fx: &mut crate::AppFx<'_>,
     ) {
         let Some(documents) =
-            crate::Windows::session_family(store, window).map(|family| family.documents())
+            crate::Windows::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

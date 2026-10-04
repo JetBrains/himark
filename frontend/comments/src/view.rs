@@ -27,9 +27,9 @@ type CommentChrome = editor::theme::CommentChrome;
 
 pub const FALLBACK_WIDTH: f32 = 600.0;
 
-/// The gesture command, WIRED: the family ceremony mints one per
+/// The gesture command, WIRED: the session ceremony mints one per
 /// session with the cards' collection in hand and registers it scoped
-/// to the family's documents (docs/entities.md law 4) — the sibling
+/// to the session's documents (docs/entities.md law 4) — the sibling
 /// id is the instance's own record, never resolved back.
 pub struct AddComment {
     pub comments: imba::store::Id<crate::Comments>,

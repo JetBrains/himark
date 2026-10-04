@@ -588,7 +588,7 @@ impl Default for PendingSweeps {
 struct DocumentHooks {
     global: rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>,
 
-    /// Hooks WIRED to one collection — installed by the family
+    /// Hooks WIRED to one collection — installed by the session
     /// ceremony with their sibling ids in hand (docs/entities.md
     /// law 4), retired with the collection.
     scoped: rpds::HashTrieMapSync<

@@ -452,14 +452,14 @@ impl himark::DynamicCommand for OpenScripted {
     }
 }
 
-/// The chats collection of the scripted session — the family of the
+/// The chats collection of the scripted session — the session of the
 /// window that entered it (the first one; a second window of the same
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<himark::higent::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
     himark::Windows::window_ref(engine.app.store(), window)
         .expect("the window entity")
-        .family()
+        .state()
         .chats()
 }
 

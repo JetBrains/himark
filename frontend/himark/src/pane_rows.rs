@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The session family's RE-MINTABLE rows: which panes a family can
+//! The session session's RE-MINTABLE rows: which panes a session can
 //! stand back up (terminals, chats, tracked pairs, canvases), erased
-//! behind `hikit::FamilyRow`. The typed rows live here while their
+//! behind `hikit::PaneRow`. The typed rows live here while their
 //! features still do; each moves out with its feature crate.
 
 use std::sync::Arc;
@@ -12,7 +12,7 @@ use imba::store::Store;
 
 pub use ::canvas::{CanvasRow, PairRow};
 pub use ::terminals::TerminalRow;
-pub use hikit::FamilyRow;
+pub use hikit::PaneRow;
 use hikit::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
@@ -29,7 +29,7 @@ impl RowMinters {
     }
 }
 
-pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelView>> {
+pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>> {
     // The row carries its collection: a pane is minted off the id,
     // and a dismantled chat has no home to walk back to.
     if let Some(ChatRow(chats, chat)) = row.row::<ChatRow>() {
@@ -48,29 +48,29 @@ pub fn mint(store: &Store, row: &FamilyRow) -> Option<Box<dyn crate::DynPanelVie
         .find_map(|minter| minter(store, row))
 }
 
-/// The rows of one family that no pane fronts yet — the caller hands
-/// the family (a window's), never a session to look up.
+/// The rows of one session that no pane fronts yet — the caller hands
+/// the session (a window's), never a session to look up.
 pub fn mint_unfronted(
     store: &Store,
-    family: &crate::higent::SessionState,
-    fronted: &[FamilyRow],
+    state: &crate::higent::SessionState,
+    fronted: &[PaneRow],
 ) -> Vec<Box<dyn crate::DynPanelView>> {
-    let mut rows: Vec<FamilyRow> = Vec::new();
+    let mut rows: Vec<PaneRow> = Vec::new();
     {
         rows.extend(
-            crate::terminal::Terminals::list(store, family.terminals())
+            crate::terminal::Terminals::list(store, state.terminals())
                 .into_iter()
-                .map(|id| FamilyRow::new(TerminalRow(family.terminals(), id))),
+                .map(|id| PaneRow::new(TerminalRow(state.terminals(), id))),
         );
         rows.extend(
-            crate::OpenDocuments::pair_ids(store, family.documents())
+            crate::OpenDocuments::pair_ids(store, state.documents())
                 .into_iter()
-                .map(|pair| FamilyRow::new(PairRow(family.documents(), pair))),
+                .map(|pair| PaneRow::new(PairRow(state.documents(), pair))),
         );
         rows.extend(
-            crate::higent::Chats::list(store, family.chats())
+            crate::higent::Chats::list(store, state.chats())
                 .into_iter()
-                .map(|chat| FamilyRow::new(ChatRow(family.chats(), chat))),
+                .map(|chat| PaneRow::new(ChatRow(state.chats(), chat))),
         );
     }
     rows.retain(|row| !fronted.contains(row));

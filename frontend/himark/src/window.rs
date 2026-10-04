@@ -759,16 +759,16 @@ pub struct Windows {
 }
 
 impl Windows {
-    /// The family of the session a WINDOW is working in — read off the
+    /// The session of the session a WINDOW is working in — read off the
     /// window's OWN record (docs/entities.md law 3): the bundle is
     /// wired at session entry, so no catalog consult and no ambient
     /// scope. The ids are stable where the `SessionId` is not
     /// (placeholder and local-host rekeys move the key, never the ids).
-    pub fn session_family(
+    pub fn session_state(
         store: &Store,
         window: crate::WindowId,
     ) -> Option<crate::higent::SessionState> {
-        Some(Self::window_ref(store, window)?.family().clone())
+        Some(Self::window_ref(store, window)?.state().clone())
     }
 
     pub(crate) fn add(store: &mut imba::store::Store, entity: Window) -> WindowId {
@@ -870,7 +870,7 @@ pub struct Window {
     /// The id bundle of `current_session`'s collections, wired at
     /// session ENTRY (creation and switch). Rekeys change the
     /// `SessionId`, never this: the ids are the stable currency.
-    family: crate::higent::SessionState,
+    state: crate::higent::SessionState,
 
     dock_width: f32,
 
@@ -899,7 +899,7 @@ impl Window {
     pub(crate) fn new(
         root: WorkbenchNode,
         workspace: crate::SessionId,
-        family: crate::higent::SessionState,
+        state: crate::higent::SessionState,
     ) -> Self {
         Self {
             content: Layers {
@@ -912,7 +912,7 @@ impl Window {
             viewport_size: Size::new(1.0, 1.0),
             dock_width: crate::dock::DOCK_WIDTH,
             current_session: workspace,
-            family,
+            state,
             workbenches: rpds::HashTrieMapSync::new_sync(),
             focused_location: None,
             focus_generation: 0,
@@ -924,21 +924,21 @@ impl Window {
     }
 
     /// The window holds a session while it shows it or keeps its
-    /// stashed workbench — the grip that spares the family from the
+    /// stashed workbench — the grip that spares the session from the
     /// all-empty sweep.
     pub(crate) fn holds_session(&self, session: &crate::SessionId) -> bool {
         self.current_session == *session || self.workbenches.get(session).is_some()
     }
 
-    pub fn family(&self) -> &crate::higent::SessionState {
-        &self.family
+    pub fn state(&self) -> &crate::higent::SessionState {
+        &self.state
     }
 
     #[must_use]
     pub(crate) fn switch_to(
         &mut self,
         workspace: crate::SessionId,
-        family: crate::higent::SessionState,
+        state: crate::higent::SessionState,
     ) -> Option<crate::SessionId> {
         if workspace == self.current_session {
             return None;
@@ -947,7 +947,7 @@ impl Window {
         if matches!(self.content.focus, LayerFocus::Dock) {
             self.content.focus = LayerFocus::Content;
         }
-        self.family = family;
+        self.state = state;
         let Some(stashed) = self.workbenches.get(&workspace) else {
             return Some(std::mem::replace(&mut self.current_session, workspace));
         };
@@ -962,7 +962,7 @@ impl Window {
     }
 
     /// A rekey changes the session's NAME, not its identity: the
-    /// family bundle stays — the caller moves the catalog row with it.
+    /// session bundle stays — the caller moves the catalog row with it.
     pub(crate) fn rekey_current(&mut self, workspace: crate::SessionId) -> bool {
         if workspace == self.current_session {
             return true;
@@ -1134,13 +1134,13 @@ impl Window {
             return;
         }
         if self.workbench().chat().is_none() {
-            let chats = self.family.chats();
+            let chats = self.state.chats();
             let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
                 return;
             };
-            let Some(pane) = crate::family_rows::mint(
+            let Some(pane) = crate::pane_rows::mint(
                 store,
-                &crate::FamilyRow::new(crate::ChatRow(chats, chat.clone())),
+                &crate::PaneRow::new(crate::ChatRow(chats, chat.clone())),
             ) else {
                 return;
             };
@@ -1170,7 +1170,7 @@ impl Window {
         if self.has_modal() {
             return false;
         }
-        let row = pane.family_row();
+        let row = pane.pane_row();
         match self.workbench_mut().chat_mut() {
             Some(chat) => {
                 let displaced = chat.replace_panel(Panel::Plugin(pane));
@@ -1446,7 +1446,7 @@ impl Window {
                         index += 1;
                     });
                 }
-                crate::WidgetOrigin::Family => {}
+                crate::WidgetOrigin::Row => {}
             }
         }
     }
@@ -1470,7 +1470,7 @@ impl Window {
         // A chat pane has ONE home, whatever road carried it here:
         // the workbench's chat slot, never a tree leaf.
         if panel
-            .family_row()
+            .pane_row()
             .is_some_and(|row| row.row::<crate::ChatRow>().is_some())
         {
             return self.open_chat_panel(store, ui, panel, fx);
@@ -1535,7 +1535,7 @@ impl Window {
         let document_id = entity.document();
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let documents = self.family.documents();
+        let documents = self.state.documents();
         let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1617,7 +1617,7 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                Self::touch_recent(store, self.family.recents(), target);
+                Self::touch_recent(store, self.state.recents(), target);
                 // The focused pane absorbed the location — a landing
                 // all the same: the fronted chat hands the window back.
                 self.workbench_mut().yield_chat();
@@ -1628,7 +1628,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        Self::touch_recent(store, self.family.recents(), target);
+        Self::touch_recent(store, self.state.recents(), target);
         true
     }
 
@@ -1678,7 +1678,7 @@ impl Window {
             let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        Self::touch_recent(store, self.family.recents(), target);
+        Self::touch_recent(store, self.state.recents(), target);
         true
     }
 
@@ -1879,7 +1879,7 @@ impl Window {
         // The document lands in the tree — the window comes back from
         // the chat.
         self.workbench_mut().yield_chat();
-        let documents = self.family.documents();
+        let documents = self.state.documents();
         let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
         else {
             return;
@@ -1945,7 +1945,7 @@ impl Window {
         }
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let documents = self.family.documents();
+        let documents = self.state.documents();
         let editor_id = fx.scope(
             move |command| {
                 crate::AppCommand::at(

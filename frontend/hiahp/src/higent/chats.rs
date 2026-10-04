@@ -10,21 +10,21 @@ use crate::higent::{ChatUri, SessionUri};
 
 /// The conversations of ONE session — a collection reached by its
 /// `Id<Chats>` and nothing else (docs/entities.md). The id is wired
-/// into every record and pane at the mint, carried by the family row
+/// into every record and pane at the mint, carried by the session row
 /// and the navigation place, and stamped on every feed landing: no
 /// road consults the catalog to find a chat, so a command gathered for
 /// another session cannot file a record anywhere but home.
 #[derive(Clone)]
 pub struct Chats {
     /// The recents the composer's `@` completion lists — wired at the
-    /// family mint (docs/entities.md law 4).
+    /// session mint (docs/entities.md law 4).
     recents: imba::store::Id<crate::higent::RecentLocations>,
 
     chats: rpds::HashTrieMapSync<ChatUri, ChatPanel>,
 }
 
 impl Chats {
-    /// A collection wired to its sibling — minted by the family
+    /// A collection wired to its sibling — minted by the session
     /// ceremony, and by tests that stand one up alone.
     pub fn wired(recents: imba::store::Id<crate::higent::RecentLocations>) -> Self {
         Self {
@@ -62,7 +62,7 @@ impl Chats {
     }
 
     /// File a record back BY ID — the panel carries its collection
-    /// (wired at mint), so a write-back cannot land in the family a
+    /// (wired at mint), so a write-back cannot land in the session a
     /// command happened to be gathered for.
     pub fn put(store: &mut Store, chats: imba::store::Id<Chats>, chat: ChatUri, panel: ChatPanel) {
         let Some(mut rows) = store.entity(chats).cloned() else {
@@ -84,7 +84,7 @@ impl Chats {
     }
 
     /// Open a chat INTO its collection: the caller holds the id (the
-    /// window's family at session entry); the record is minted here if
+    /// window's session at session entry); the record is minted here if
     /// the collection does not hold it yet.
     pub fn open_with(
         store: &mut Store,
@@ -246,7 +246,7 @@ pub struct ChatPane {
 }
 
 impl ChatPane {
-    /// Storeless by design (family rows mint with `&Store`): the mount
+    /// Storeless by design (session rows mint with `&Store`): the mount
     /// is CLAIMED from the model on the pane's first command
     /// (`claim_view`), which adopts the parked one when there is one.
     pub fn new(chats: imba::store::Id<Chats>, chat: ChatUri) -> Self {
@@ -374,7 +374,7 @@ pub struct ChatPlace {
 
 impl hikit::Place for ChatPlace {}
 
-/// The walk-back road: re-mint the reference pane off the family row.
+/// The walk-back road: re-mint the reference pane off the session row.
 /// A dismantled chat has no home to walk back to.
 pub struct ChatNavigator;
 
@@ -403,8 +403,8 @@ impl hikit::Navigator for ChatNavigator {
 impl hikit::PanelView for ChatPane {
     type Place = ChatPlace;
 
-    fn family_row(&self) -> Option<hikit::FamilyRow> {
-        Some(hikit::FamilyRow::new(crate::higent::ChatRow(
+    fn pane_row(&self) -> Option<hikit::PaneRow> {
+        Some(hikit::PaneRow::new(crate::higent::ChatRow(
             self.chats,
             self.chat.clone(),
         )))

@@ -53,7 +53,7 @@ pub use hikit::{
 };
 pub mod diff_canvas;
 pub mod diff_pane;
-mod family_rows;
+mod pane_rows;
 mod toolbar;
 mod watch;
 mod window;
@@ -71,8 +71,8 @@ pub use crate::diffs::{
     sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
     DiffView, DiffViewId, StripeBaseResolver, StripeBases, OPEN_HALF_WIDTH,
 };
-pub use crate::family_rows::{
-    mint, mint_unfronted, CanvasRow, ChatRow, FamilyRow, PairRow, RowMinters, TerminalRow,
+pub use crate::pane_rows::{
+    mint, mint_unfronted, CanvasRow, ChatRow, PaneRow, PairRow, RowMinters, TerminalRow,
 };
 pub use crate::workspace::{
     open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument,

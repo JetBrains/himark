@@ -24,7 +24,7 @@ pub struct Peeker {
     input: himark::EditorView,
 
     /// The documents collection this peeker fronts — its id is wired
-    /// at open from the window.s family bundle (docs/entities.md law 3).
+    /// at open from the window.s session bundle (docs/entities.md law 3).
     documents: imba::store::Id<himark::OpenDocuments>,
 
     recents: Vec<ResourceLocation>,
@@ -936,23 +936,23 @@ pub fn build(
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
         let viewport = entity.viewport_size();
 
-        let recents = himark::RecentLocations::list(store, entity.family().recents());
+        let recents = himark::RecentLocations::list(store, entity.state().recents());
 
         let mut widgets = entity.unmount_all_widgets();
-        let fronted: Vec<himark::FamilyRow> = widgets
+        let fronted: Vec<himark::PaneRow> = widgets
             .iter()
-            .filter_map(|(_, widget)| widget.family_row())
+            .filter_map(|(_, widget)| widget.pane_row())
             .collect();
 
-        let family = entity.family().clone();
+        let state = entity.state().clone();
         widgets.extend(
-            himark::mint_unfronted(store, &family, &fronted)
+            himark::mint_unfronted(store, &state, &fronted)
                 .into_iter()
-                .map(|widget| (WidgetOrigin::Family, widget)),
+                .map(|widget| (WidgetOrigin::Row, widget)),
         );
         let folders = himark::higent::session_folders(store, &entity.current_session());
 
-        let documents = entity.family().documents();
+        let documents = entity.state().documents();
         let peeker = fx.scope(himark::modal_scope(window), |fx| {
             fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
                 Peeker::open(

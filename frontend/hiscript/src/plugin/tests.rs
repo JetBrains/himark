@@ -26,7 +26,7 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
     let documents =
-        himark::higent::Hosts::ensure_family(store, &himark::SessionId::local_default(store))
+        himark::higent::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
             .documents();
     OpenDocuments::register(
         store,
@@ -278,10 +278,10 @@ use himark::higent::ahp_types::state::{MarkdownResponsePart, ResponsePart};
 
 /// The collection the plugin resolves in production (the location's
 /// owner — a bare test store routes to the local default session);
-/// `registered` mints the family, everyone else reads it back.
+/// `registered` mints the session, everyone else reads it back.
 fn test_docs(store: &Store) -> imba::store::Id<himark::OpenDocuments> {
-    himark::higent::Hosts::family(store, &himark::SessionId::local_default(store))
-        .expect("the local family is minted by the first register")
+    himark::higent::Hosts::state(store, &himark::SessionId::local_default(store))
+        .expect("the local state is minted by the first register")
         .documents()
 }
 

@@ -1397,7 +1397,7 @@ fn two_windows_edit_independently() {
     let focused_text = |app: &Application, window: crate::WindowId| -> Option<String> {
         let store = &app.window_store(window);
         let session = crate::Windows::window_ref(store, window)?.current_session();
-        let documents = crate::higent::Hosts::family(store, &session)?.documents();
+        let documents = crate::higent::Hosts::state(store, &session)?.documents();
         let document = crate::OpenDocuments::document_ref(
             store,
             documents,
@@ -2870,8 +2870,8 @@ fn close_widget_walks_the_pane_history() {
     assert_eq!(
         {
             let session = app.sole_window_session();
-            crate::higent::Hosts::family(app.store(), &session)
-                .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+            crate::higent::Hosts::state(app.store(), &session)
+                .map(|state| crate::RecentLocations::list(app.store(), state.recents()))
                 .unwrap_or_default()
         }[..2],
         [located("b.md"), located("a.md")],
@@ -2915,8 +2915,8 @@ fn close_widget_walks_the_pane_history() {
     assert!(app.focused_document_text().is_none());
     let recents = {
         let session = app.sole_window_session();
-        crate::higent::Hosts::family(app.store(), &session)
-            .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+        crate::higent::Hosts::state(app.store(), &session)
+            .map(|state| crate::RecentLocations::list(app.store(), state.recents()))
             .unwrap_or_default()
     };
     assert!(
@@ -4568,7 +4568,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4674,7 +4674,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4736,10 +4736,10 @@ mod dock_tests {
                 window: crate::WindowId,
                 fx: &mut crate::AppFx<'_>,
             ) {
-                let family = crate::Windows::session_family(store, window).expect("family");
+                let state = crate::Windows::session_state(store, window).expect("state");
                 let id = crate::OpenDocuments::register(
                     store,
-                    family.documents(),
+                    state.documents(),
                     crate::app::markdown_scratch(),
                     None,
                     "doc".to_owned(),
@@ -4807,7 +4807,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4836,11 +4836,11 @@ mod dock_tests {
                 window: crate::WindowId,
                 fx: &mut crate::AppFx<'_>,
             ) {
-                let family = crate::Windows::session_family(store, window).expect("family");
+                let state = crate::Windows::session_state(store, window).expect("state");
                 let document = crate::app::markdown_scratch();
                 let id = crate::OpenDocuments::register(
                     store,
-                    family.documents(),
+                    state.documents(),
                     document,
                     None,
                     "narrow.md".to_owned(),
@@ -4904,7 +4904,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -4965,7 +4965,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -5004,10 +5004,10 @@ mod dock_tests {
                 window: crate::WindowId,
                 fx: &mut crate::AppFx<'_>,
             ) {
-                let family = crate::Windows::session_family(store, window).expect("family");
+                let state = crate::Windows::session_state(store, window).expect("state");
                 let id = crate::OpenDocuments::register(
                     store,
-                    family.documents(),
+                    state.documents(),
                     crate::app::markdown_scratch(),
                     None,
                     "doc".to_owned(),
@@ -5096,7 +5096,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/volatile"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -5163,7 +5163,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/walkable"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -5238,7 +5238,7 @@ mod dock_tests {
             host: crate::higent::HostId::LOCAL,
             session: crate::higent::SessionUri::new("ahp-session:/live"),
         };
-        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
@@ -5542,8 +5542,8 @@ mod dock_tests {
             host,
             session: crate::higent::SessionUri::new("test-session:/beta"),
         };
-        let family = crate::higent::Hosts::ensure_family(&mut store, &beta);
-        let _ = entity.switch_to(beta, family);
+        let state = crate::higent::Hosts::ensure_state(&mut store, &beta);
+        let _ = entity.switch_to(beta, state);
         crate::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
@@ -5826,7 +5826,7 @@ mod dock_tests {
         let session = crate::terminal::Session::new(Box::new(NullBackend));
         let home = app.sole_window_session();
         let terminals =
-            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
         crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden, session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
@@ -5836,7 +5836,7 @@ mod dock_tests {
         assert!(entity(&app).has_dock());
         assert!(
             crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
-            "the family row is in the session"
+            "the state row is in the session"
         );
 
         struct Switch(std::sync::Arc<Mutex<Option<crate::SessionId>>>);
@@ -5874,11 +5874,11 @@ mod dock_tests {
         );
         let fresh = minted.lock().unwrap().clone().expect("the minted session");
         assert!(
-            crate::higent::Hosts::family(app.store(), &fresh)
-                .map(|family| crate::terminal::Terminals::list(app.store(), family.terminals()))
+            crate::higent::Hosts::state(app.store(), &fresh)
+                .map(|state| crate::terminal::Terminals::list(app.store(), state.terminals()))
                 .unwrap_or_default()
                 .is_empty(),
-            "a fresh session has no family rows of its own"
+            "a fresh session has no state rows of its own"
         );
         assert!(
             crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
@@ -5895,7 +5895,7 @@ mod dock_tests {
         );
         assert!(
             crate::terminal::Terminals::session_ref(app.store(), terminals, hidden).is_some(),
-            "the family row rode along"
+            "the state row rode along"
         );
 
         settle(&mut app, &mut surface);
@@ -6077,7 +6077,7 @@ fn switching_workspaces_stashes_the_chat_panel() {
     let first = crate::Windows::window_ref(app.store(), window)
         .expect("window")
         .current_session();
-    let first_chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &first).chats();
+    let first_chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &first).chats();
 
     {
         let ui = app.ui_ctx();
@@ -6303,7 +6303,7 @@ fn the_at_completion_opens_finds_and_picks() {
     );
 
     let uri = crate::higent::ChatUri::new("ahp-chat:/completion");
-    let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &session).chats();
+    let chats = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &session).chats();
     let panel = crate::higent::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
@@ -6898,7 +6898,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // A benign entity command: deliver drops it, the batch tails run.
     let home = app.sole_window_session();
-    let documents = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+    let documents = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
     let tick = move |app: &mut Application| {
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
@@ -7034,7 +7034,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let home = app.sole_window_session();
         let documents =
-            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
@@ -7105,7 +7105,7 @@ unrelated
     {
         let home = app.sole_window_session();
         let documents =
-            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+            crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).documents();
         app.perform_batch(vec![crate::AppCommand::at(
             documents,
             crate::app::DocumentsCommand::BaseLocated {
@@ -7138,24 +7138,24 @@ mod wash_tests {
         )
     }
 
-    fn family_lists(app: &Application) -> imba::store::Id<LocationLists> {
+    fn state_lists(app: &Application) -> imba::store::Id<LocationLists> {
         let window = app.sole_window();
         crate::Windows::window_ref(app.store(), window)
             .expect("the window entity")
-            .family()
+            .state()
             .lists()
     }
 
-    fn family_wire(app: &Application) -> imba::store::Id<crate::drivers::locations::LocationsWire> {
+    fn state_wire(app: &Application) -> imba::store::Id<crate::drivers::locations::LocationsWire> {
         let window = app.sole_window();
         crate::Windows::window_ref(app.store(), window)
             .expect("the window entity")
-            .family()
+            .state()
             .locations_wire()
     }
 
     fn seeded_feed(app: &mut Application, name: &str) -> (imba::store::Id<LocationLists>, FeedId) {
-        let lists = family_lists(app);
+        let lists = state_lists(app);
         let feed = FeedId::mint();
         let mut row = LocationsFeedRow {
             title: "Search: needle".to_owned(),
@@ -7237,7 +7237,7 @@ mod wash_tests {
         );
 
         // Disposal removes the wash and survives the walk.
-        let wire = family_wire(&app);
+        let wire = state_wire(&app);
         let _ = window;
         assert!(
             app.perform_command(AppCommand::Verb(imba::command::Verb::Dynamic(Arc::new(

@@ -6,7 +6,7 @@
 //! stop and dispose teardowns — and folds RESOLVED batches through
 //! the `LocationLists` collection's doors. The model holds results,
 //! the dock front and the washes; clients, channels and poll tokens
-//! live here, in the family's wire row.
+//! live here, in the session's wire row.
 
 use std::sync::Arc;
 

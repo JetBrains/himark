@@ -12,7 +12,7 @@ use imba::store::Store;
 use crate::higent::{HostId, OpenEditedRoad, SessionUri};
 
 /// Install the SHELL roads the protocol crate asks through — the
-/// window grip for the family sweep, the catalog-actions apply, and
+/// window grip for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
     store.put(crate::higent::WindowGrip(Arc::new(|store, scope| {
@@ -83,7 +83,7 @@ impl crate::DynamicCommand for OpenEditedFile {
         };
         // The file opens WHERE the user is: the window's own documents.
         let Some(documents) =
-            crate::Windows::session_family(store, window).map(|family| family.documents())
+            crate::Windows::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };

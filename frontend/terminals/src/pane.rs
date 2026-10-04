@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The terminal PANE: the grid painter, the xterm keymap, the
-//! navigation place and the family row — the one face over the
+//! navigation place and the pane row — the one face over the
 //! collection in lib.rs. No window: where the pane lands is the
 //! shell's business.
 
@@ -70,7 +70,7 @@ impl std::fmt::Display for TerminalCommand {
 
 #[derive(Clone)]
 pub struct TerminalView {
-    /// The terminal family that OWNS this terminal — the id threaded
+    /// The terminal session that OWNS this terminal — the id threaded
     /// at birth (docs/entities.md law 3); the view never learns what
     /// a session is.
     terminals: imba::store::Id<Terminals>,
@@ -209,7 +209,7 @@ pub struct TerminalPlace {
 
 impl hikit::Place for TerminalPlace {}
 
-/// The walk-back road: re-mint the pane off the family row while the
+/// The walk-back road: re-mint the pane off the pane row while the
 /// terminal session still stands.
 pub struct TerminalNavigator;
 
@@ -263,8 +263,8 @@ impl hikit::PanelView for TerminalView {
         Terminals::remove(store, self.terminals, self.id);
     }
 
-    fn family_row(&self) -> Option<hikit::FamilyRow> {
-        Some(hikit::FamilyRow::new(crate::TerminalRow(
+    fn pane_row(&self) -> Option<hikit::PaneRow> {
+        Some(hikit::PaneRow::new(crate::TerminalRow(
             self.terminals,
             self.id,
         )))
@@ -303,9 +303,9 @@ impl FallbackFaces {
 }
 
 fn grid_font(ui: &UiCtx, chrome: &editor::theme::TerminalChrome) -> Font {
-    let families = chrome.font_families.clone();
+    let states = chrome.font_families.clone();
     let typeface = ui.env(|| {
-        let face = editor::env::ui_typeface(ui, &families, skia_safe::FontStyle::normal())
+        let face = editor::env::ui_typeface(ui, &states, skia_safe::FontStyle::normal())
             .expect("a monospace typeface");
         TerminalTypeface(face)
     });

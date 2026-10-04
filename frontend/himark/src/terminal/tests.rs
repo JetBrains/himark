@@ -43,7 +43,7 @@ fn dismantle_hangs_up_exactly_once() {
         host: crate::higent::HostId::LOCAL,
         session: crate::higent::SessionUri::new("test-session:1"),
     };
-    let terminals = crate::higent::Hosts::ensure_family(&mut store, &home).terminals();
+    let terminals = crate::higent::Hosts::ensure_state(&mut store, &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut store, terminals, id, session.clone());
     let mut panel = TerminalView::new(terminals, id);
@@ -52,7 +52,7 @@ fn dismantle_hangs_up_exactly_once() {
     assert_eq!(*recorder.hangups.lock().unwrap(), 1);
     assert!(
         Terminals::list(&store, terminals).is_empty(),
-        "the row left the family"
+        "the row left the state"
     );
 }
 
@@ -67,7 +67,7 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     assert!(app.new_scratch(app.sole_window()));
     let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
-    let terminals = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+    let terminals = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(
@@ -120,7 +120,7 @@ fn dump_terminal_screenshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
-    let terminals = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+    let terminals = crate::higent::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(

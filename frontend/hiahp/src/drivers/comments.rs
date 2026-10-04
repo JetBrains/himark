@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The comments WIRE driver: owns the annotations channel (the one
-//! feed a family's comments ride), the send-to-agent turn, and
+//! feed a session's comments ride), the send-to-agent turn, and
 //! every outbound announce — and applies landings through the
 //! `Comments` collection's doors in its MIRROR types. The model
 //! never dispatches: its mutations leave ANNOUNCE notes beside the
@@ -30,7 +30,7 @@ use editor::ResourceLocation;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
-/// The one channel a family's comments ride.
+/// The one channel a session's comments ride.
 #[derive(Clone)]
 struct ChannelWire {
     server: crate::higent::HostId,
@@ -458,7 +458,7 @@ pub fn send_to_agent(
     let mut chat =
         crate::higent::Agents::channel(store, &key).and_then(|channel| channel.default_chat);
     if chat.is_none() {
-        // The fallback workspace is the comments' own family — the
+        // The fallback workspace is the comments' own session — the
         // catalog names it; no window consulted.
         let bound = crate::higent::Hosts::home_of_documents(
             store,

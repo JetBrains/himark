@@ -37,12 +37,12 @@ pub struct Host {
 
     pub states: rpds::HashTrieMapSync<SessionUri, SessionChannel>,
 
-    families: rpds::HashTrieMapSync<SessionUri, SessionState>,
+    rows: rpds::HashTrieMapSync<SessionUri, SessionState>,
 
     uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 }
 
-/// A session's family row: the IDS of the collections it owns
+/// A session's session row: the IDS of the collections it owns
 /// (docs/entities.md). The values live in the store's flat entity
 /// table — which rides `globals`, so every gather carries them whole
 /// and every collection is reached by its OWN id under any scope (the
@@ -226,7 +226,7 @@ impl Host {
             agents: rpds::VectorSync::new_sync(),
             sessions: rpds::VectorSync::new_sync(),
             states: rpds::HashTrieMapSync::new_sync(),
-            families: rpds::HashTrieMapSync::new_sync(),
+            rows: rpds::HashTrieMapSync::new_sync(),
             uris: None,
         }
     }
@@ -277,26 +277,26 @@ impl Hosts {
         Self::update(store, id, |host| host.uris = Some(Arc::clone(&map)));
         // Families minted before the map arrived read their own
         // stamp — heal them now (docs/entities.md law 4).
-        Self::stamp_families_uris(store, id);
+        Self::stamp_host_uris(store, id);
     }
 
-    /// Stamp the host's uri map onto every family it holds: the mint
+    /// Stamp the host's uri map onto every session it holds: the mint
     /// stamps, and the two moves that outrun it — a map installed
     /// after a mint, the local placeholder rekeyed to the real
     /// host — heal here.
-    pub fn stamp_families_uris(store: &mut Store, id: HostId) {
+    pub fn stamp_host_uris(store: &mut Store, id: HostId) {
         let Some(map) = Self::uris(store, id) else {
             return;
         };
-        let families: Vec<SessionState> = store
+        let states: Vec<SessionState> = store
             .get::<Hosts>()
             .and_then(|hosts| hosts.entries.get(&id))
-            .map(|host| host.families.values().cloned().collect())
+            .map(|host| host.rows.values().cloned().collect())
             .unwrap_or_default();
-        for family in families {
-            crate::drivers::changes::ChangesWire::stamp_uris(store, family.changes_wire, &map);
-            crate::drivers::history::HistoryWire::stamp_uris(store, family.history_wire, &map);
-            crate::drivers::comments::CommentsWire::stamp_uris(store, family.comments_wire, &map);
+        for state in states {
+            crate::drivers::changes::ChangesWire::stamp_uris(store, state.changes_wire, &map);
+            crate::drivers::history::HistoryWire::stamp_uris(store, state.history_wire, &map);
+            crate::drivers::comments::CommentsWire::stamp_uris(store, state.comments_wire, &map);
         }
     }
 
@@ -330,31 +330,31 @@ impl Hosts {
         });
     }
 
-    /// The all-empty housekeeping sweep: a family whose every
+    /// The all-empty housekeeping sweep: a session whose every
     /// collection emptied leaves the catalog, and its rows leave the
     /// table. Nothing is projected and nothing comes back — the store
     /// is single and global, and the table IS the data.
     pub fn scatter_session(&mut self, store: &mut Store, scope: &crate::SessionId) {
-        let Some(families) = self
+        let Some(states) = self
             .entries
             .get(&scope.host)
-            .and_then(|host| host.families.get(&scope.session))
+            .and_then(|host| host.rows.get(&scope.session))
             .cloned()
         else {
             return;
         };
-        // A family a live window HOLDS is not garbage, however empty:
+        // A session a live window HOLDS is not garbage, however empty:
         // fresh sessions start with nothing open (the chat owns the
         // workbench), and the window's grip is what keeps the bundle's
         // ids valid until content arrives.
         let held = store
             .get::<WindowGrip>()
             .is_some_and(|grip| (grip.0)(store, scope));
-        if families.is_empty(store) && !held {
-            families.retract_all(store);
+        if states.is_empty(store) && !held {
+            states.retract_all(store);
             if let Some(host) = self.entries.get(&scope.host) {
                 let mut host = host.clone();
-                host.families.remove_mut(&scope.session);
+                host.rows.remove_mut(&scope.session);
                 self.entries.insert_mut(scope.host, host);
             }
         }
@@ -365,11 +365,11 @@ impl Hosts {
     /// A session's own state, addressed by its id. `Hosts` rides EVERY
     /// gather whole, so this road works under any scope — or none.
     /// That is the point: state reached this way cannot be filed into
-    /// the family a batch happened to be gathered for, and cannot be
+    /// the session a batch happened to be gathered for, and cannot be
     /// dropped by a scopeless scatter.
     /// `HostId::LOCAL` is a PLACEHOLDER until the local client registers
-    /// and `rekey_local_families` moves the family to the real id — and
-    /// it moves the family, not the ids panes and landings already hold.
+    /// and `rekey_local_sessions` moves the session to the real id — and
+    /// it moves the session, not the ids panes and landings already hold.
     /// So an address naming the placeholder resolves to the live local
     /// host, and vice versa: the id a caller carries never goes stale.
     fn addressed(store: &Store, session: &crate::SessionId) -> crate::SessionId {
@@ -384,7 +384,7 @@ impl Hosts {
                 hosts
                     .entries
                     .get(&host)
-                    .is_some_and(|row| row.families.contains_key(&session.session))
+                    .is_some_and(|row| row.rows.contains_key(&session.session))
             })
         };
         if session.host == HostId::LOCAL && !known(HostId::LOCAL) {
@@ -402,118 +402,118 @@ impl Hosts {
         session.clone()
     }
 
-    /// Every session family, host order — the batch tail's domain:
+    /// Every session session, host order — the batch tail's domain:
     /// the sync lanes run over all of them, each lane draining its own
-    /// pending queue, so a clean family costs map reads. A family is a
+    /// pending queue, so a clean session costs map reads. A session is a
     /// row of ids; the clone is pointer bumps.
-    pub fn families(store: &Store) -> Vec<SessionState> {
+    pub fn states(store: &Store) -> Vec<SessionState> {
         let Some(hosts) = store.get::<Hosts>() else {
             return Vec::new();
         };
         hosts
             .entries
             .values()
-            .flat_map(|host| host.families.values().cloned())
+            .flat_map(|host| host.rows.values().cloned())
             .collect()
     }
 
-    pub fn family<'a>(store: &'a Store, session: &crate::SessionId) -> Option<&'a SessionState> {
+    pub fn state<'a>(store: &'a Store, session: &crate::SessionId) -> Option<&'a SessionState> {
         let session = Self::addressed(store, session);
         store
             .get::<Hosts>()?
             .entries
             .get(&session.host)?
-            .families
+            .rows
             .get(&session.session)
     }
 
-    /// The session's family row, minted into `Hosts` on first touch.
+    /// The session's session row, minted into `Hosts` on first touch.
     /// Minting is STRUCTURAL (a new row in the catalog's map), so it
     /// bumps the generation; content writes land in the entity table
     /// and touch `Hosts` not at all.
-    pub fn ensure_family(store: &mut Store, session: &crate::SessionId) -> SessionState {
+    pub fn ensure_state(store: &mut Store, session: &crate::SessionId) -> SessionState {
         let session = &Self::addressed(store, session);
-        if let Some(family) = store
+        if let Some(state) = store
             .get::<Hosts>()
             .and_then(|hosts| hosts.entries.get(&session.host))
-            .and_then(|host| host.families.get(&session.session))
+            .and_then(|host| host.rows.get(&session.session))
         {
-            return family.clone();
+            return state.clone();
         }
-        let family = SessionState::mint();
-        let minted = family.clone();
+        let state = SessionState::mint();
+        let minted = state.clone();
         // The collections that hold SIBLING ids are put wired, here,
         // the one place that knows the whole wiring (law 4) — the
         // host's uri map rides in with them (a placeholder host has
         // none yet; the designate/rekey heal stamps it after).
         let uris = Self::uris(store, session.host);
         store.put_entity(
-            family.changes,
-            changesview::hichanges::ChangeSets::wired(family.documents, family.history),
+            state.changes,
+            changesview::hichanges::ChangeSets::wired(state.documents, state.history),
         );
         store.put_entity(
-            family.canvas_router,
-            canvas::canvas::CanvasRouter::wired(family.changes),
+            state.canvas_router,
+            canvas::canvas::CanvasRouter::wired(state.changes),
         );
         store.put_entity(
-            family.changes_wire,
+            state.changes_wire,
             crate::drivers::changes::ChangesWire::wired(
-                family.changes,
-                family.history_wire,
+                state.changes,
+                state.history_wire,
                 uris.clone(),
             ),
         );
         store.put_entity(
-            family.history_wire,
+            state.history_wire,
             crate::drivers::history::HistoryWire::wired(
-                family.history,
-                family.changes,
+                state.history,
+                state.changes,
                 uris.clone(),
             ),
         );
         store.put_entity(
-            family.history,
-            changesview::hihistory::History::wired(family.changes),
+            state.history,
+            changesview::hihistory::History::wired(state.changes),
         );
-        store.put_entity(family.comments, comments::Comments::wired(family.documents));
+        store.put_entity(state.comments, comments::Comments::wired(state.documents));
         store.put_entity(
-            family.comments_wire,
-            crate::drivers::comments::CommentsWire::wired(family.comments, uris),
+            state.comments_wire,
+            crate::drivers::comments::CommentsWire::wired(state.comments, uris),
         );
         // The documents→comments borders (the document hooks, the
         // comment gesture) get INSTANCES wired with the sibling id,
-        // scoped to this family's documents — retired by the
+        // scoped to this session's documents — retired by the
         // collection's `destroy`.
         documents::OpenDocuments::install_scoped_hook(
             store,
-            family.documents,
+            state.documents,
             std::sync::Arc::new(comments::cards::CommentsHook {
-                comments: family.comments,
+                comments: state.comments,
             }),
         );
         documents::DocumentCommands::register_scoped(
             store,
-            family.documents,
+            state.documents,
             std::sync::Arc::new(comments::view::AddComment {
-                comments: family.comments,
+                comments: state.comments,
             }),
         );
         store.put_entity(
-            family.lists,
-            locations::LocationLists::wired(family.documents),
+            state.lists,
+            locations::LocationLists::wired(state.documents),
         );
         store.put_entity(
-            family.locations_wire,
-            crate::drivers::locations::LocationsWire::wired(family.lists),
+            state.locations_wire,
+            crate::drivers::locations::LocationsWire::wired(state.lists),
         );
         documents::OpenDocuments::install_scoped_hook(
             store,
-            family.documents,
+            state.documents,
             std::sync::Arc::new(locations::LocationsWashHook {
-                lists: family.lists,
+                lists: state.lists,
             }),
         );
-        store.put_entity(family.chats, crate::higent::Chats::wired(family.recents));
+        store.put_entity(state.chats, crate::higent::Chats::wired(state.recents));
         store.update::<Hosts>(|hosts| {
             let mut host = match hosts.entries.get(&session.host) {
                 Some(host) => host.clone(),
@@ -522,8 +522,8 @@ impl Hosts {
                     Host::new("Local".to_owned())
                 }
             };
-            host.families
-                .insert_mut(session.session.clone(), family.clone());
+            host.rows
+                .insert_mut(session.session.clone(), state.clone());
             hosts.entries.insert_mut(session.host, host);
             hosts.generation += 1;
         });
@@ -531,18 +531,18 @@ impl Hosts {
     }
 
     /// The other half of the ceremony (docs/entities.md step 2,
-    /// law 6): the session is the LIFETIME of everything its family
+    /// law 6): the session is the LIFETIME of everything its session
     /// row names. Removing the row RETRACTS every entity it minted —
     /// terminals' PTYs hang up on the drop, the backstop they always
     /// had. Removal is structural, so the generation bumps. The ONE
     /// deletion road; `scatter_session`'s all-empty sweep is mere
     /// housekeeping over the same retract.
-    pub fn dispose_family(store: &mut Store, session: &crate::SessionId) {
+    pub fn dispose_state(store: &mut Store, session: &crate::SessionId) {
         let session = &Self::addressed(store, session);
-        let Some(family) = store
+        let Some(state) = store
             .get::<Hosts>()
             .and_then(|hosts| hosts.entries.get(&session.host))
-            .and_then(|host| host.families.get(&session.session))
+            .and_then(|host| host.rows.get(&session.session))
             .cloned()
         else {
             return;
@@ -552,27 +552,27 @@ impl Hosts {
                 return;
             };
             let mut host = host.clone();
-            host.families.remove_mut(&session.session);
+            host.rows.remove_mut(&session.session);
             hosts.entries.insert_mut(session.host, host);
             hosts.generation += 1;
         });
-        family.retract_all(store);
+        state.retract_all(store);
     }
 
     /// A session RENAMED (the composer's placeholder uri becomes the
-    /// provider's real one): the family row moves to the new key — the
+    /// provider's real one): the session row moves to the new key — the
     /// ids never change, only the catalog's name for them. Windows
     /// keep their bundle through the rekey; this keeps the catalog
     /// telling the same story.
-    pub fn rekey_family(store: &mut Store, from: &crate::SessionId, to: &crate::SessionId) {
+    pub fn rekey_state(store: &mut Store, from: &crate::SessionId, to: &crate::SessionId) {
         if from == to {
             return;
         }
-        let Some(family) = Self::family(store, from).cloned() else {
+        let Some(state) = Self::state(store, from).cloned() else {
             return;
         };
-        if Self::family(store, to).is_some() {
-            eprintln!("[higent] NOT rekeying {from:?} -> {to:?}: the target has a family");
+        if Self::state(store, to).is_some() {
+            eprintln!("[higent] NOT rekeying {from:?} -> {to:?}: the target has a state");
             return;
         }
         store.update::<Hosts>(|hosts| {
@@ -580,7 +580,7 @@ impl Hosts {
                 return;
             };
             let mut source = source.clone();
-            source.families.remove_mut(&from.session);
+            source.rows.remove_mut(&from.session);
             hosts.entries.insert_mut(from.host, source);
             let mut target = match hosts.entries.get(&to.host) {
                 Some(host) => host.clone(),
@@ -590,43 +590,43 @@ impl Hosts {
                 }
             };
             target
-                .families
-                .insert_mut(to.session.clone(), family.clone());
+                .rows
+                .insert_mut(to.session.clone(), state.clone());
             hosts.entries.insert_mut(to.host, target);
             hosts.generation += 1;
         });
         if from.host != to.host {
-            // Crossed hosts: the family's stamped uri map is the old
+            // Crossed hosts: the session's stamped uri map is the old
             // host's — re-stamp with the new one's.
-            Self::stamp_families_uris(store, to.host);
+            Self::stamp_host_uris(store, to.host);
         }
     }
 
-    // No typed per-family doors here, deliberately: Hosts answers one
-    // question — WHICH ids a session's family holds (`family`,
-    // `ensure_family`) — and the collections are then read and written
+    // No typed per-session doors here, deliberately: Hosts answers one
+    // question — WHICH ids a session's session holds (`session`,
+    // `ensure_state`) — and the collections are then read and written
     // BY ID (`store.entity` / `store.update_entity`), threaded to the
     // use sites (docs/entities.md law 3). A helper here that takes a
     // `SessionId` per read would remarry every collection to Hosts.
 
     /// Which session owns a documents collection — an ID COMPARE over
-    /// the family rows, no content resolution: an addressed command
+    /// the session rows, no content resolution: an addressed command
     /// scopes to its owner whether or not the addressed record still
     /// exists. The per-collection compares live with the collections
-    /// (`AppEntity::family_id`); this is their one iteration.
+    /// (retired with AppEntity); this is their one iteration.
 
-    /// The family whose documents collection this is — the sibling
+    /// The session whose documents collection this is — the sibling
     /// road for an edge that holds a documents id and needs the
     /// collection next to it (the stripe-base resolver).
-    pub fn family_of_documents(
+    pub fn owner_of_documents(
         store: &Store,
         documents: Id<documents::OpenDocuments>,
     ) -> Option<&SessionState> {
         let hosts = store.get::<Hosts>()?;
         hosts.entries.values().find_map(|host| {
-            host.families
+            host.rows
                 .values()
-                .find(|families| families.documents == documents)
+                .find(|states| states.documents == documents)
         })
     }
 
@@ -638,8 +638,8 @@ impl Hosts {
     ) -> Option<Id<documents::OpenDocuments>> {
         let hosts = store.get::<Hosts>()?;
         for (_, host) in hosts.entries.iter() {
-            for (_, families) in host.families.iter() {
-                let documents = families.documents;
+            for (_, states) in host.rows.iter() {
+                let documents = states.documents;
                 if store
                     .entity(documents)
                     .is_some_and(|docs| docs.contains_id(document))
@@ -655,7 +655,7 @@ impl Hosts {
     /// file events arrive from the watcher with a subscription and
     /// nothing else.
     /// Which documents collection holds a diff view — the cold
-    /// re-mint road for a family row that names only the pair.
+    /// re-mint road for a session row that names only the pair.
     /// The documents collection riding a watch subscription — the one
     /// id-less border road (file events arrive with a subscription and
     /// nothing else), found once, here.
@@ -665,16 +665,16 @@ impl Hosts {
     ) -> Option<Id<documents::OpenDocuments>> {
         let hosts = store.get::<Hosts>()?;
         hosts.entries.values().find_map(|host| {
-            host.families.values().find_map(|families| {
+            host.rows.values().find_map(|states| {
                 store
-                    .entity(families.documents)
+                    .entity(states.documents)
                     .is_some_and(|documents| documents.rides_watch(subscription))
-                    .then_some(families.documents)
+                    .then_some(states.documents)
             })
         })
     }
 
-    /// The session and family a documents collection belongs to — for
+    /// The session and session a documents collection belongs to — for
     /// a pane that holds the collection's id and needs the catalog's
     /// name for its folders beside the sibling ids.
     pub fn home_of_documents(
@@ -683,14 +683,14 @@ impl Hosts {
     ) -> Option<(crate::SessionId, SessionState)> {
         let hosts = store.get::<Hosts>()?;
         for (host, row) in hosts.entries.iter() {
-            for (session, families) in row.families.iter() {
-                if families.documents == documents {
+            for (session, states) in row.rows.iter() {
+                if states.documents == documents {
                     return Some((
                         crate::SessionId {
                             host: *host,
                             session: session.clone(),
                         },
-                        families.clone(),
+                        states.clone(),
                     ));
                 }
             }
@@ -698,7 +698,7 @@ impl Hosts {
         None
     }
 
-    pub fn rekey_local_families(&mut self, previous: Option<HostId>, target: HostId) {
+    pub fn rekey_local_sessions(&mut self, previous: Option<HostId>, target: HostId) {
         let fs = SessionUri::new(crate::LOCAL_FS_SESSION);
         let mut sources = vec![HostId::LOCAL];
         if let Some(previous) = previous {
@@ -711,11 +711,11 @@ impl Hosts {
             let Some(row) = self.entries.get(&source) else {
                 continue;
             };
-            let Some(families) = row.families.get(&fs).cloned() else {
+            let Some(states) = row.rows.get(&fs).cloned() else {
                 continue;
             };
             let mut row = row.clone();
-            row.families.remove_mut(&fs);
+            row.rows.remove_mut(&fs);
             self.entries.insert_mut(source, row);
             let mut host = match self.entries.get(&target) {
                 Some(host) => host.clone(),
@@ -724,15 +724,15 @@ impl Hosts {
                     Host::new("Local".to_owned())
                 }
             };
-            if !host.families.contains_key(&fs) {
-                host.families.insert_mut(fs.clone(), families);
+            if !host.rows.contains_key(&fs) {
+                host.rows.insert_mut(fs.clone(), states);
             }
             self.entries.insert_mut(target, host);
         }
     }
 }
 
-/// The shell's window grip, installed at boot: a family a live
+/// The shell's window grip, installed at boot: a session a live
 /// window HOLDS is not garbage, however empty — the sweep asks
 /// through this road instead of knowing windows.
 #[derive(Clone)]

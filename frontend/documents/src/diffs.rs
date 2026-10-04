@@ -63,7 +63,7 @@ pub struct DiffView {
     pub right: crate::EditorIdView,
     pub diff: DiffId,
     /// A pair living INSIDE a diff canvas row — it fronts with its
-    /// canvas, never as its own family row (the peeker once listed
+    /// canvas, never as its own session row (the peeker once listed
     /// every canvas row as a bare "Diff").
     pub embedded: bool,
     /// The pane's own right-half extras entry (word tints + fold
@@ -326,7 +326,7 @@ impl OpenDocuments {
         candidates
     }
 
-    /// The STANDALONE pairs — the family rows a peeker can front.
+    /// The STANDALONE pairs — the session rows a peeker can front.
     /// Canvas-embedded pairs stay with their canvas.
     /// Every tracked diff view — the dressing sweep's domain.
     pub fn diff_view_ids(

@@ -1612,20 +1612,20 @@ fn the_terminal_round_trip_shows_the_panel_over_a_live_session() {
     });
     assert!(!mounted, "the terminal handle dropped with the pane");
     assert_eq!(
-        himark::higent::Hosts::family(engine.app.store(), &engine_session(&engine))
-            .map(|family| himark::terminal::Terminals::list(engine.app.store(), family.terminals()))
+        himark::higent::Hosts::state(engine.app.store(), &engine_session(&engine))
+            .map(|state| himark::terminal::Terminals::list(engine.app.store(), state.terminals()))
             .unwrap_or_default()
             .len(),
         1,
-        "the PTY session survives in the family"
+        "the PTY session survives in the state"
     );
 
-    let family = himark::Windows::session_family(engine.app.store(), engine.app.sole_window())
-        .expect("the window's family");
-    let terminal = himark::mint_unfronted(engine.app.store(), &family, &[])
+    let state = himark::Windows::session_state(engine.app.store(), engine.app.sole_window())
+        .expect("the window's state");
+    let terminal = himark::mint_unfronted(engine.app.store(), &state, &[])
         .into_iter()
         .find(|widget| widget.as_any().is::<himark::terminal::TerminalView>())
-        .expect("the family lists the surviving terminal");
+        .expect("the state lists the surviving terminal");
     assert!(engine.app.open_panel(engine.app.sole_window(), terminal));
     let inked = ink(&mut engine);
     assert!(
@@ -2673,8 +2673,8 @@ fn saving_a_scratch_runs_save_as_and_re_points() {
                 })
     });
     assert!(
-        himark::higent::Hosts::family(engine.app.store(), &engine_session(&engine))
-            .map(|family| himark::RecentLocations::list(engine.app.store(), family.recents()))
+        himark::higent::Hosts::state(engine.app.store(), &engine_session(&engine))
+            .map(|state| himark::RecentLocations::list(engine.app.store(), state.recents()))
             .unwrap_or_default()
             .contains(&picked),
         "the recents follow the re-point"
@@ -4888,7 +4888,7 @@ fn the_chat_runs_through_the_himark_host() {
         let store = engine.app.store();
         let chats = himark::Windows::window_ref(store, engine.app.sole_window())
             .expect("the window entity")
-            .family()
+            .state()
             .chats();
         let listed = himark::higent::Chats::list(store, chats);
         assert_eq!(listed.len(), 1, "the displaced chat's row survives");
@@ -7992,7 +7992,7 @@ fn a_diff_opened_before_the_editor_does_not_double_reloads() {
             window: himark::WindowId,
             fx: &mut himark::AppFx<'_>,
         ) {
-            let documents = himark::Windows::session_family(store, window)
+            let documents = himark::Windows::session_state(store, window)
                 .expect("the test diff opens from a window with a session")
                 .documents();
             let old = himark::DiffSideInput::resolve(store, documents, self.old.clone());
@@ -8150,7 +8150,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
 
     let lists = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
         .expect("the window entity")
-        .family()
+        .state()
         .lists();
     settle_until(&mut engine, "the stream resolved into the feed", |engine| {
         himark::locations::LocationLists::search(engine.app.store(), lists)

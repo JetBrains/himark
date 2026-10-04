@@ -407,9 +407,9 @@ impl DynamicCommand for OpenPicked {
             let workspace = himark::Windows::window_ref(store, window)
                 .map(|entity| entity.current_session())
                 .unwrap_or_else(|| himark::SessionId::local_default(store));
-            let family = himark::Windows::session_family(store, window);
-            if let (true, Some(family)) = (workspace.names_session(), family) {
-                let (wire, comments_wire) = (family.changes_wire(), family.comments_wire());
+            let state = himark::Windows::session_state(store, window);
+            if let (true, Some(state)) = (workspace.names_session(), state) {
+                let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 for folder in folders {
                     let spelled = himark::ResourceLocation::new(
                         folder.kind().clone(),
@@ -711,10 +711,10 @@ impl DynamicCommand for OpenTerminal {
         let Some((client, home, cwd)) = resolved else {
             return;
         };
-        // The terminal files into the WINDOW's family — the collection
+        // The terminal files into the WINDOW's session — the collection
         // the pane is minted against, carried from here to the landing.
         let Some(terminals) =
-            himark::Windows::session_family(store, window).map(|family| family.terminals())
+            himark::Windows::session_state(store, window).map(|state| state.terminals())
         else {
             return;
         };

@@ -34,8 +34,8 @@ impl crate::DynamicCommand for ToggleHistoryView {
             return;
         }
         let workspace = entity.current_session();
-        let changes = entity.family().changes();
-        let wire = entity.family().changes_wire();
+        let changes = entity.state().changes();
+        let wire = entity.state().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
         fx.scope(crate::AppCommand::Verb, |fx| {
             crate::drivers::changes::ensure(store, wire, folders, fx)

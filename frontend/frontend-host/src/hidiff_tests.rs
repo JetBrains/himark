@@ -1,14 +1,14 @@
 /// The session these canvas tests work in.
 /// The change-set collection a test canvas reads from: the one in the
-/// window's family, so the rows it mounts land in the window's own
+/// window's session, so the rows it mounts land in the window's own
 /// documents collection.
 fn canvas_changes(store: &imba::store::Store) -> imba::store::Id<himark::hichanges::Changes> {
     let window = himark::Windows::list(store)
         .into_iter()
         .next()
         .expect("a window");
-    himark::Windows::session_family(store, window)
-        .expect("the window's family")
+    himark::Windows::session_state(store, window)
+        .expect("the window's state")
         .changes()
 }
 
@@ -2083,7 +2083,7 @@ fn the_unified_view_switches_between_split_and_inline() {
         let mut id = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(himark::PairRow(_, pair)) = panel
-                .family_row()
+                .pane_row()
                 .as_ref()
                 .and_then(|row| row.row::<himark::PairRow>())
             {
@@ -4227,7 +4227,7 @@ fn membership_minimal_repro() {
 }
 
 /// Canvas rows hold their pairs EMBEDDED: they never surface as
-/// family rows (the peeker once drowned in bare "Diff" entries), and
+/// session rows (the peeker once drowned in bare "Diff" entries), and
 /// a rebuild replaces the standing pair instead of leaking it.
 #[test]
 fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
@@ -4243,7 +4243,7 @@ fn canvas_pairs_stay_embedded_and_rebuilds_do_not_leak() {
     );
     assert!(
         himark::OpenDocuments::pair_ids(&app.store(), app.sole_documents()).is_empty(),
-        "an embedded pair is no family row"
+        "an embedded pair is no state row"
     );
 
     // A host touch rebuilds the row: the landing replaces the pair.

@@ -7,7 +7,7 @@ where we follow it and where we don't, and lays out the migration plan.
 ## The law
 
 1. **A MODEL is a store collection of truth**, keyed by minted ids,
-   owned by its session family where it is session state.
+   owned by its session where it is session state.
 2. **A VIEW STATE is a record living NEXT TO its model** — in the same
    store collection, keyed by its own minted id. One model, many views
    (two windows on one document), exactly like `Document.editors`.
@@ -41,8 +41,8 @@ mutates the document and every editor's state in one place.
 |---|---|---|---|
 | `OpenDocuments` documents | editors | `Document.editors` | done — the exemplar |
 | `Diffs` records (documents/diffs.rs:80) | diff views | `Diffs.diff_views: Map<DiffViewId, DiffView>` with `DiffViewState` inside — ALREADY adjacent | done structurally; the update-locality dividend is uncollected (step 1) |
-| ChangeSets — today split as `Changes` (hichanges) + `History` (hihistory), session family | tree views AND canvases | trees live on the Window dock as `Box<dyn ModalView>`; canvases live in hidiff's own session-family value | steps 2–4 |
-| `Chats` (session family) | chat view | `ChatPanel` owns `model::Conversation` + one `ChatView` per mount; `ChatPane` is a `(session, chat)` reference | LANDED (step 5, then the model rewrite) |
+| ChangeSets — today split as `Changes` (hichanges) + `History` (hihistory), session | tree views AND canvases | trees live on the Window dock as `Box<dyn ModalView>`; canvases live in hidiff's own per-session value | steps 2–4 |
+| `Chats` (per-session) | chat view | `ChatPanel` owns `model::Conversation` + one `ChatView` per mount; `ChatPane` is a `(session, chat)` reference | LANDED (step 5, then the model rewrite) |
 
 ## The plan
 
@@ -62,7 +62,7 @@ completes the push doctrine for diffs and is the smallest step.
 
 A **ChangeSet is one set of changes with its own minted `ChangeSetId`:
 one per folder's WORKING COPY, one per COMMIT** — `CanvasSource`'s
-shape made first-class. `ChangeSets` is the session-family collection
+shape made first-class. `ChangeSets` is the per-session collection
 of these records; each record carries its file entries and its OWN
 generation (today's session-wide `Changes.generation` splits per set).
 
@@ -145,7 +145,7 @@ docs/ahp/agents.md §The chat panel.
 
 Also landed with it: a chat record is reached by its OWN `SessionId`
 through `Hosts` instead of riding the gathered session component. It
-lives in its session's family (the session is the lifetime of its
+lives in its session's state row (the session is the lifetime of its
 chats) but is never gathered as a store component — two roads
 disagreeing about which session the batch was gathered for is what made
 a just-sent message show for one frame and vanish.

@@ -63,7 +63,7 @@ pub enum LocationKey {
 
 /// A location list's identity — every result set (a search query, a
 /// references ask) is one feed, minted here and addressed by id, the
-/// family-row pattern: surfaces (the Search dock tab, the go-to
+/// session-row pattern: surfaces (the Search dock tab, the go-to
 /// peek) are FACES over a feed; the feed and its stream outlive any
 /// face, so promoting a peek into the dock reuses the feed instead
 /// of asking again.
@@ -79,7 +79,7 @@ impl FeedId {
 
 /// One feed: the accumulated results and the stream's resolution
 /// flags — the live stream end itself (channel, poll token) is the
-/// DRIVER's, in the family's wire row. `generation` bumps on every
+/// DRIVER's, in the session's wire row. `generation` bumps on every
 /// fold so faces refresh on paint.
 #[derive(Clone, Default)]
 pub struct LocationsFeedRow {
@@ -131,12 +131,12 @@ pub enum LspKind {
 
 /// The session's location lists — a COLLECTION (docs/entities.md
 /// law 1): the feed rows are its private schema, addressed by
-/// `(Id<LocationLists>, FeedId)`, wired to the family's documents at
+/// `(Id<LocationLists>, FeedId)`, wired to the session's documents at
 /// the mint. The Search dock front and the pending wash notes are
 /// collection state too, not store components.
 #[derive(Clone)]
 pub struct LocationLists {
-    /// The documents the washes land in — wired at the family mint
+    /// The documents the washes land in — wired at the session mint
     /// (law 4): the wash and dispose roads read it instead of
     /// re-deriving scope from a window that may have moved on.
     documents: imba::store::Id<documents::OpenDocuments>,
@@ -161,7 +161,7 @@ pub struct LocationLists {
 
 impl LocationLists {
     /// A collection wired to the documents its washes land in —
-    /// minted by the family ceremony.
+    /// minted by the session ceremony.
     pub fn wired(documents: imba::store::Id<documents::OpenDocuments>) -> Self {
         Self {
             documents,

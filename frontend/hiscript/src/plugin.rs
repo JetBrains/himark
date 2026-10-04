@@ -374,8 +374,8 @@ impl himark::DynamicEditorCommand for RunScript {
             view.substring(0..end)
         };
         let home = himark::SessionId::of_location(store, location);
-        let Some((documents, changes)) = himark::higent::Hosts::family(store, &home)
-            .map(|family| (family.documents(), family.changes()))
+        let Some((documents, changes)) = himark::higent::Hosts::state(store, &home)
+            .map(|state| (state.documents(), state.changes()))
         else {
             return;
         };

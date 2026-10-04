@@ -701,7 +701,7 @@ impl imba::command::DynamicCommand for RemovePeek {
 
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
         // The collection's wired sibling, not the window's current
-        // family — the window may have moved on since the mount.
+        // session — the window may have moved on since the mount.
         let Some(documents) = LocationLists::documents_of(store, self.lists) else {
             return;
         };

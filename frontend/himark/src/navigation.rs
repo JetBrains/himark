@@ -13,7 +13,7 @@ pub use ::hiahp::higent::RecentLocations;
 pub use hikit::{EditorPlace, NavigationLocation, Navigator, NoPlace, Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
-/// resolve the window's family and land panes into it. Shell-side by
+/// resolve the window's session and land panes into it. Shell-side by
 /// nature; they shrink away as opening becomes content-addressed.
 pub trait WindowedNavigator: Send + Sync + 'static {
     type Place: Place;
@@ -107,7 +107,7 @@ impl WindowedNavigator for EditorNavigator {
         place: &EditorPlace,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel> {
-        let documents = crate::Windows::session_family(store, window)
+        let documents = crate::Windows::session_state(store, window)
             .expect("navigation runs in a window with a session")
             .documents();
         let Some(id) = crate::OpenDocuments::by_location(store, documents, &place.location) else {

@@ -127,11 +127,11 @@ impl Application {
             .current_session()
     }
 
-    /// The sole window's family — the ids a test threads when it
+    /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
     pub fn sole_family(&self) -> crate::higent::SessionState {
-        crate::Windows::session_family(self.store(), self.sole_window())
-            .expect("the sole window's family")
+        crate::Windows::session_state(self.store(), self.sole_window())
+            .expect("the sole window's state")
     }
 
     /// The sole window session's documents collection.

@@ -6,7 +6,7 @@ use imba::store::Store;
 #[derive(Clone, Default)]
 pub struct RecentLocations(Vec<editor::ResourceLocation>);
 
-/// Recents belong to the session you are working in; its family row
+/// Recents belong to the session you are working in; its session row
 /// hands the id to whoever has that context (docs/entities.md law 3) —
 /// this module never sees a `SessionId`.
 impl RecentLocations {

@@ -8,12 +8,12 @@
 use imba::store::Store;
 use imba::UiCtx;
 
-use crate::{FamilyRow, NavigationLocation, Place};
+use crate::{PaneRow, NavigationLocation, Place};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum WidgetOrigin {
     Pane(usize),
-    Family,
+    Row,
 }
 
 #[derive(Clone)]
@@ -64,7 +64,7 @@ pub trait PanelView: imba::CloneDynView + Clone + Sized + 'static {
         None
     }
 
-    fn family_row(&self) -> Option<FamilyRow> {
+    fn pane_row(&self) -> Option<PaneRow> {
         None
     }
 
@@ -101,7 +101,7 @@ pub trait DynPanelView: imba::CloneDynView {
     fn dismantle(&mut self, store: &mut Store);
     fn displaced(&mut self, store: &mut Store);
     fn take_request(&mut self) -> Option<PanelRequest>;
-    fn family_row(&self) -> Option<FamilyRow>;
+    fn pane_row(&self) -> Option<PaneRow>;
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32>;
     fn as_any(&self) -> &dyn std::any::Any;
     fn full_bleed(&self) -> bool;
@@ -131,8 +131,8 @@ impl<P: PanelView> DynPanelView for P {
     fn take_request(&mut self) -> Option<PanelRequest> {
         PanelView::take_request(self)
     }
-    fn family_row(&self) -> Option<FamilyRow> {
-        PanelView::family_row(self)
+    fn pane_row(&self) -> Option<PaneRow> {
+        PanelView::pane_row(self)
     }
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32> {
         PanelView::collapsed_height(self, store, nominal_height)
@@ -168,7 +168,7 @@ impl Clone for Box<dyn DynPanelView> {
     }
 }
 
-/// A registered re-minter for one family-row type — the walk-back
+/// A registered re-minter for one pane-row type — the walk-back
 /// road's table entry.
 pub type RowMinter =
-    dyn Fn(&imba::store::Store, &FamilyRow) -> Option<Box<dyn DynPanelView>> + Send + Sync;
+    dyn Fn(&imba::store::Store, &PaneRow) -> Option<Box<dyn DynPanelView>> + Send + Sync;

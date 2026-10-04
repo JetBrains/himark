@@ -459,7 +459,7 @@ impl HimarkEngine {
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
         // The comments hook and the comment gesture are no longer
-        // boot-global: the family ceremony installs them per session,
+        // boot-global: the session ceremony installs them per session,
         // wired with their sibling ids (docs/entities.md law 4).
         himark::hicomments::install(&mut app.store_mut());
         app.register_command(Arc::new(himark::hicomments::ToggleCommentsView));

@@ -68,7 +68,7 @@ impl std::fmt::Display for SearchCommand {
 
 pub struct SearchView {
     /// The session's lists collection — stamped at open from the
-    /// window's family (docs/entities.md law 3): the face reads the
+    /// window's session (docs/entities.md law 3): the face reads the
     /// model and NOTES asks; the wire lane does the rest.
     lists: imba::store::Id<LocationLists>,
     input: EditorView,
@@ -763,7 +763,7 @@ mod tests {
     }
 
     /// One wired collection per store — the tests' stand-in for the
-    /// family ceremony.
+    /// session ceremony.
     fn lists(store: &mut Store) -> imba::store::Id<LocationLists> {
         let documents = imba::store::Id::mint();
         store.put_entity(documents, documents::OpenDocuments::default());

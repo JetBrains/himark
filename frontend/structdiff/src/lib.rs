@@ -32,7 +32,7 @@ pub struct SyntaxInput<'t> {
     pub left_tree: &'t tree_sitter::Tree,
     pub right_tree: &'t tree_sitter::Tree,
     /// himark language name; only used for difftastic's slider
-    /// preference (Lisp/JSON-family languages prefer outer delimiters).
+    /// preference (Lisp/JSON-session languages prefer outer delimiters).
     pub language: Option<&'t str>,
 }
 

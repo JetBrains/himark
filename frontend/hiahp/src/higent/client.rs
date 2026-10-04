@@ -66,7 +66,7 @@ pub struct SessionOptions {
 /// The session facet: connection, catalog and session lifecycle,
 /// the session channel, and channel-action dispatch. The old
 /// all-knowing `AhpServer` trait is burned — a caller holds the
-/// facet it drives, never the entire family.
+/// facet it drives, never the entire session.
 pub trait SessionClient: Send + Sync + 'static {
     fn connect(&self) -> ClientFuture<Result<RootInfo, String>>;
     fn list_sessions(&self, cursor: Option<String>) -> ClientFuture<Result<SessionsPage, String>>;

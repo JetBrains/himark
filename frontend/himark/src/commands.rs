@@ -110,12 +110,12 @@ impl DynamicCommand for NewScratch {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let family = crate::Windows::session_family(store, window)
+        let state = crate::Windows::session_state(store, window)
             .expect("a scratch opens into a window with a session");
-        let location = crate::next_scratch_location(store, family.scratch_names());
+        let location = crate::next_scratch_location(store, state.scratch_names());
         fx.push(crate::app::open_effect(
             window,
-            family.documents(),
+            state.documents(),
             location.name().to_owned(),
             true,
             Some(location),
@@ -322,7 +322,7 @@ impl DynamicCommand for CompletionTrigger {
                 crate::Windows::put(store, window, entity);
                 return;
             };
-            let documents = crate::Windows::session_family(store, window)
+            let documents = crate::Windows::session_state(store, window)
                 .expect("completion runs in a window with a session")
                 .documents();
             let location = crate::OpenDocuments::location(store, documents, id)

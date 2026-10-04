@@ -304,7 +304,7 @@ fn install(
         // The embed's temp documents file under the location's owner
         // (synthetic embed locations fall to the local session).
         let home = himark::SessionId::of_location(store, &embed.location);
-        let documents = himark::higent::Hosts::ensure_family(store, &home).documents();
+        let documents = himark::higent::Hosts::ensure_state(store, &home).documents();
         let (id, prebuilt, carried_window) =
             match OpenDocuments::by_location(store, documents, &embed.location) {
                 Some(id) => (id, None, None),

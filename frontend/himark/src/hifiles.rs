@@ -123,7 +123,7 @@ impl crate::DynamicCommand for ToggleSessionTree {
         );
 
         let workspace = entity.current_session();
-        let trees = entity.family().trees();
+        let trees = entity.state().trees();
         let panel = fx.scope(crate::dock_scope(window), |fx| {
             fx.scope(imba::DynCommand::new::<TreeCommand>, |fx| {
                 open_panel(

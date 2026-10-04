@@ -84,10 +84,10 @@ impl AppExt for Application {
         // consumes the id and never re-asks the window.
         let documents = {
             let store = self.window_store(window);
-            let Some(family) = crate::Windows::session_family(&store, window) else {
+            let Some(state) = crate::Windows::session_state(&store, window) else {
                 return false;
             };
-            family.documents()
+            state.documents()
         };
         self.perform_command(AppCommand::Opened(
             window,

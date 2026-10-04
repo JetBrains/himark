@@ -357,12 +357,12 @@ pub type FolderChanges = ChangeSet;
 
 /// The session's change sets, keyed by minted id
 /// (docs/model-view.md): one record per working copy, one per commit.
-/// Session-family state — the AHP changeset/history channels are
+/// Session-session state — the AHP changeset/history channels are
 /// session-level (docs/ahp/vcs.md), so the collection gathers with
 /// its session.
 #[derive(Clone)]
 pub struct ChangeSets {
-    /// Siblings, wired at the family mint (docs/entities.md law 4):
+    /// Siblings, wired at the session mint (docs/entities.md law 4):
     /// the documents whose stripes this collection's bases serve, and
     /// the history whose commits mint sets here.
     documents: imba::store::Id<documents::OpenDocuments>,
@@ -442,13 +442,13 @@ impl imba::store::Entity for ChangeSets {
     }
 
     fn destroy(&mut self, _store: &mut Store) {
-        // The records are the collection's private schema; the family
+        // The records are the collection's private schema; the session
         // ceremony owns the retract.
     }
 }
 
 impl Changes {
-    /// A collection wired to its siblings — minted by the family
+    /// A collection wired to its siblings — minted by the session
     /// ceremony, and by tests that stand one up alone.
     pub fn wired(
         documents: imba::store::Id<documents::OpenDocuments>,

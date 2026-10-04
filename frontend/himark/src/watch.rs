@@ -96,10 +96,10 @@ impl crate::DynamicCommand for ReloadDocument {
         else {
             return;
         };
-        let Some(family) = crate::Windows::session_family(store, window) else {
+        let Some(state) = crate::Windows::session_state(store, window) else {
             return;
         };
-        refetch_document(store, family.documents(), document, fx);
+        refetch_document(store, state.documents(), document, fx);
     }
 }
 

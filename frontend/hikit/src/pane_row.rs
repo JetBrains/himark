@@ -1,8 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! The family-row vocabulary, ERASED: a row names one re-mintable
-//! pane of a session family (a terminal, a chat, a tracked pair, a
+//! The pane-row vocabulary, ERASED: a row names one re-mintable
+//! pane of a session session (a terminal, a chat, a tracked pair, a
 //! canvas) by ids and private keys. Each feature defines its own row
 //! type; the workbench compares rows by value and re-mints panes
 //! through the registered minters — it never learns the row's shape.
@@ -10,7 +10,7 @@
 use std::any::{Any, TypeId};
 use std::sync::Arc;
 
-/// A feature's family-row payload — plain ids and keys, compared by
+/// A feature's pane-row payload — plain ids and keys, compared by
 /// value.
 pub trait Row: Clone + PartialEq + Send + Sync + 'static {}
 
@@ -29,12 +29,12 @@ impl<R: Row> ErasedRow for R {
 }
 
 #[derive(Clone)]
-pub struct FamilyRow {
+pub struct PaneRow {
     row_type: TypeId,
     payload: Arc<dyn ErasedRow>,
 }
 
-impl FamilyRow {
+impl PaneRow {
     pub fn new<R: Row>(row: R) -> Self {
         Self {
             row_type: TypeId::of::<R>(),
@@ -47,14 +47,14 @@ impl FamilyRow {
     }
 }
 
-impl PartialEq for FamilyRow {
+impl PartialEq for PaneRow {
     fn eq(&self, other: &Self) -> bool {
         self.row_type == other.row_type && self.payload.same(other.payload.as_any())
     }
 }
 
-impl std::fmt::Debug for FamilyRow {
+impl std::fmt::Debug for PaneRow {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.write_str("family row")
+        out.write_str("state row")
     }
 }

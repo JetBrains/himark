@@ -372,7 +372,7 @@ impl DiffPanelView {
             self.pane.content().documents,
             self.pane.content().id,
         )
-        .expect("the pane's family row");
+        .expect("the pane's state row");
         (pair.left, pair.right)
     }
 
@@ -447,9 +447,9 @@ impl hikit::Place for DiffPlace {}
 impl hikit::PanelView for DiffPanelView {
     type Place = DiffPlace;
 
-    fn family_row(&self) -> Option<hikit::FamilyRow> {
+    fn pane_row(&self) -> Option<hikit::PaneRow> {
         let pane = self.pane.content();
-        Some(hikit::FamilyRow::new(crate::PairRow(
+        Some(hikit::PaneRow::new(crate::PairRow(
             pane.documents,
             pane.id,
         )))

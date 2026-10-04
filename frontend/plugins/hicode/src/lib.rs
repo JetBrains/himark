@@ -160,7 +160,7 @@ fn navigate(
     fx: &mut AppFx<'_>,
 ) {
     let Some(documents) =
-        himark::Windows::session_family(store, window).map(|family| family.documents())
+        himark::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -307,7 +307,7 @@ impl himark::DocumentCommand for GoImplementations {
 /// (docs/ui/location-list.md §7) through the session's lists
 /// collection: this border only names WHAT to ask — the window
 /// command (`hisearch::OpenLspFeed`) owns the whole chain, minting
-/// the feed against its family and stamping the landing with it
+/// the feed against its session and stamping the landing with it
 /// (docs/entities.md law 3). No payload re-entry, no second phase.
 fn stream_navigation(
     kind: himark::LspLocationsKind,

@@ -21,7 +21,7 @@ pub mod view;
 
 /// The feature gate — app configuration, owned by the feature:
 /// hosts that serve no annotations never install it. Live state, so
-/// an install after a family minted still takes effect.
+/// an install after a session minted still takes effect.
 #[derive(Clone, Default)]
 struct Gate(bool);
 
@@ -126,7 +126,7 @@ pub enum Announce {
 
 #[derive(Clone)]
 pub struct Comments {
-    /// The documents the cards live in — wired at the family mint
+    /// The documents the cards live in — wired at the session mint
     /// (docs/entities.md law 4).
     documents: imba::store::Id<OpenDocuments>,
 
@@ -180,7 +180,7 @@ impl Comments {
     }
 
     /// A collection wired to the documents its cards live in — minted
-    /// by the family ceremony.
+    /// by the session ceremony.
     pub fn wired(documents: imba::store::Id<OpenDocuments>) -> Self {
         Self {
             documents,

@@ -4,7 +4,7 @@
 //! The diff canvas feed (docs/editor/diff-canvas.md): what a canvas panel
 //! renders is what the changes/history stores ALREADY adopt — this
 //! module only shapes it. The panel itself lives in `plugins/hidiff`
-//! (the workbench face rule) and is minted through `FamilyRow`.
+//! (the workbench face rule) and is minted through `PaneRow`.
 
 use imba::store::Store;
 

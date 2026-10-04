@@ -35,7 +35,7 @@ impl crate::DynamicCommand for OpenDiffForPair {
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let documents = crate::Windows::session_family(store, window)
+        let documents = crate::Windows::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old = crate::DiffSideInput::resolve(store, documents, self.old.clone());
@@ -71,11 +71,11 @@ impl crate::DynamicCommand for ToggleChangesView {
             crate::Windows::put(store, window, entity);
             return;
         }
-        // The pane closes over the window's family: its change sets
+        // The pane closes over the window's session: its change sets
         // by id, the session only as the catalog's name for the folders.
         let workspace = entity.current_session();
-        let changes = entity.family().changes();
-        let wire = entity.family().changes_wire();
+        let changes = entity.state().changes();
+        let wire = entity.state().changes_wire();
         let folders = crate::higent::session_folders(store, &workspace);
         fx.scope(crate::AppCommand::Verb, |fx| {
             crate::drivers::changes::ensure(store, wire, folders, fx)
@@ -129,7 +129,7 @@ impl crate::DynamicCommand for ToggleChangesView {
 #[derive(Default)]
 pub struct RefetchChanges {
     /// The wire to refetch through. `None` means "the window's
-    /// family's", resolved when the command performs — a command
+    /// session's", resolved when the command performs — a command
     /// registered into the palette holds no id at registration.
     pub wire: Option<imba::store::Id<crate::drivers::changes::ChangesWire>>,
     pub folder: Option<ResourceLocation>,
@@ -150,8 +150,8 @@ impl crate::DynamicCommand for RefetchChanges {
         fx: &mut crate::AppFx<'_>,
     ) {
         let _ = fx;
-        let Some(changes) = crate::Windows::session_family(store, window)
-            .map(|family| family.changes())
+        let Some(changes) = crate::Windows::session_state(store, window)
+            .map(|state| state.changes())
             .or_else(|| {
                 // An addressed refetch (the view's chip) names its
                 // wire's collection directly.

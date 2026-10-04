@@ -3,7 +3,7 @@
 
 //! The diff FACES: the embedded split-diff pane, the diff canvas
 //! (rows, header, banner, the canvases' At router) and their
-//! navigation places and family rows. Built over the changesview
+//! navigation places and session rows. Built over the changesview
 //! collection, the documents diff machinery and the kit — no window,
 //! no session, no wire.
 

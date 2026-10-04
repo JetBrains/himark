@@ -1786,7 +1786,7 @@ impl Canvases {
 }
 
 /// The canvases' own At address — a stateless ROUTER row minted by
-/// the family ceremony beside the collection: canvas commands land
+/// the session ceremony beside the collection: canvas commands land
 /// on canvas code here, and the model (which stores canvases as
 /// SLOTS) never calls up into a face.
 #[derive(Clone)]
@@ -3145,8 +3145,8 @@ impl hikit::Navigator for CanvasNavigator {
 impl hikit::PanelView for DiffCanvasView {
     type Place = CanvasPlace;
 
-    fn family_row(&self) -> Option<hikit::FamilyRow> {
-        Some(hikit::FamilyRow::new(crate::CanvasRow(self.source.clone())))
+    fn pane_row(&self) -> Option<hikit::PaneRow> {
+        Some(hikit::PaneRow::new(crate::CanvasRow(self.source.clone())))
     }
 
     fn navigation_location(&self, _store: &Store) -> Option<CanvasPlace> {

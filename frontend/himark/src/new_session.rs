@@ -2289,7 +2289,7 @@ impl crate::DynamicCommand for PlaceholderCreated {
             if entity.rekey_current(key.clone()) {
                 // The name changed, the ids did not: the window keeps
                 // its bundle and the catalog row moves under the new key.
-                crate::higent::Hosts::rekey_family(store, &previous, &key);
+                crate::higent::Hosts::rekey_state(store, &previous, &key);
                 crate::Windows::put(store, window, entity);
             } else {
                 crate::Windows::put(store, window, entity);

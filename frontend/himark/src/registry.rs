@@ -17,7 +17,7 @@ pub(crate) struct Registry {
     pub(crate) navigators: crate::navigation::Navigators,
     /// `None` falls back to the embedded keymap.
     pub(crate) keymap: Option<crate::keymap::Keymap>,
-    pub(crate) row_minters: crate::family_rows::RowMinters,
+    pub(crate) row_minters: crate::pane_rows::RowMinters,
     pub(crate) toolbar_buttons: crate::toolbar::ToolbarButtons,
 }
 

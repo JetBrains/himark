@@ -142,7 +142,7 @@ fn hunks(operation: &operation::Operation) -> Vec<Hunk> {
 
 /// Three-way merge of the BASELINE's two descendants: what the
 /// buffer made of it (ours) and what the disk holds now (theirs).
-/// The echo family — the agent's edit arriving first as a shared op
+/// The echo session — the agent's edit arriving first as a shared op
 /// and then as its file write — makes the two sides SHARE changes; a
 /// plain operational transform cannot see the sharing and applies
 /// the same insertion twice. Here shared hunks are taken once:

@@ -88,7 +88,7 @@ impl DynamicCommand for OpenCreatedChat {
         let pane = crate::higent::Chats::open(
             store,
             ui,
-            entity.family().chats(),
+            entity.state().chats(),
             self.server,
             session,
             chat,
