@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use ahp_wire::client::HostId;
 use ahp_wire::client::SessionChannel;
-use ahp_wire::client::{ChatUri, SessionUri};
-use ahp_types::state::{AgentInfo, ChatSummary, SessionSummary};
+use ahp_wire::client::SessionUri;
+use ahp_types::state::{AgentInfo, SessionSummary};
 use imba::store::{Id, Store};
 
 use super::agents::Agents;
@@ -18,7 +18,6 @@ pub enum HostStatus {
     Connected,
     Failed(String),
 }
-
 
 
 #[derive(Clone)]

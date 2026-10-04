@@ -2656,7 +2656,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
         let mut shot = None;
         app.for_each_plugin_panel(&mut |panel| {
             if let Some(canvas) = panel.as_any().downcast_ref::<DiffCanvasView>() {
-                let app_docs = app.sole_documents();
+                let _app_docs = app.sole_documents();
                 let app_docs = app.sole_documents();
                 let store = app.store();
                 shot = canvas

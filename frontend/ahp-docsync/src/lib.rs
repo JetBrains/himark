@@ -608,7 +608,7 @@ impl imba::command::DynamicCommand for EnsureSync {
     fn name(&self) -> String {
         "Sync Document".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         if SyncClients::draining(store, &self.location) {
             SyncClients::queue_reopen(
                 store,
@@ -650,7 +650,7 @@ impl imba::command::DynamicCommand for Drained {
     fn name(&self) -> String {
         "Retire Document Channel".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         match SyncClients::retire(store, &self.location) {
             Some(ClientState::Draining {
                 reopen: Some(reopen),
@@ -830,7 +830,7 @@ impl imba::command::DynamicCommand for GiveUp {
     fn name(&self) -> String {
         "Release Document Channel".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         if SyncClients::connecting(store, &self.location).is_some() {
             SyncClients::detach(store, &self.location);
         }

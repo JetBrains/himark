@@ -6,17 +6,7 @@
 //! comment-pick navigation drain. Everything else — the collection,
 //! the cards, the dock panel — lives in the `comments` crate.
 
-use ::comments::cards::{run_card_work, CommentsHook};
 use ::comments::panel::CommentsView;
-use ::comments::view::{
-    comments_markup, AddComment, CommentCommand, CommentView, RemoveComment, SendComments,
-    FALLBACK_WIDTH,
-};
-use ::comments::{
-    AnnotationId, Announce, CardWork, CommentDelta, CommentRecord, CommentSeed, Comments,
-    EntryRecord,
-};
-use ::comments::{install, installed};
 
 use std::sync::Arc;
 

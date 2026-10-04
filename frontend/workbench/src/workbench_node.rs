@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use hikit::{panel::DynPanelView, panel::PanelRequest, panel::PanelView, panel::WidgetOrigin};
+use hikit::{panel::DynPanelView, panel::PanelView};
 
 use editor::editor_view::EditorCommand;
 

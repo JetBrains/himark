@@ -5,17 +5,14 @@
 //! behind `hikit::pane_row::PaneRow`. The typed rows live here while their
 //! features still do; each moves out with its feature crate.
 
-
-use ::canvas::{CanvasRow, PairRow};
+use ::canvas::PairRow;
 use ::terminals::pane::TerminalRow;
 use hikit::pane_row::PaneRow;
 use ::ahp_chat::chats::ChatRow;
 
-use std::sync::Arc;
 
 use imba::store::Store;
 
-use hikit::panel::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
 

@@ -2323,6 +2323,13 @@ impl Feed {
     /// feed lock, together with the `last_seen` bump, so a reconnect
     /// that `settle`s the feed sees either the whole push or none of
     /// it. Returns false when the connection is dead — the pump ends.
+    /// Test seam: a bare push, as the pumps land batches.
+    #[cfg(test)]
+    fn push(&self, action: StateAction) {
+        let mut state = self.state.lock().expect("feed state");
+        Self::land(&mut state, action);
+    }
+
     fn push_live(
         &self,
         dead: &std::sync::atomic::AtomicBool,
@@ -2363,10 +2370,6 @@ impl Feed {
         drop(self.state.lock().expect("feed state"));
     }
 
-    fn push(&self, action: StateAction) {
-        let mut state = self.state.lock().expect("feed state");
-        Self::land(&mut state, action);
-    }
 
     fn land(state: &mut FeedState, action: StateAction) {
         if let StateAction::ChatTurnsLoaded(loaded) = &action {

@@ -9,9 +9,7 @@ use std::sync::Arc;
 
 use imba::store::Store;
 
-use ahp_wire::client::HostId;
 use ahp_chat::chat::OpenEditedRoad;
-use ahp_wire::client::SessionUri;
 
 /// Install the SHELL roads the protocol crate asks through — the
 /// window grip for the session sweep, the catalog-actions apply, and

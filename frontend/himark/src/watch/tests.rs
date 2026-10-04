@@ -6,6 +6,10 @@ use std::sync::{Arc, Mutex};
 use imba::store::Store;
 
 use super::*;
+use documents::watch::{
+    RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect, Subscription, UnsubscribeEffect,
+    Watching,
+};
 use ::editor::test_document::plain_document;
 use crate::app::AppFonts;
 use crate::app::Application;

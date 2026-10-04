@@ -90,7 +90,6 @@ dependencies = [
  "rpds",
  "serde",
  "serde_json",
- "tracing",
 ]
 
 [[package]]
@@ -101,7 +100,6 @@ dependencies = [
  "ahp-lsp",
  "ahp-types",
  "ahp-wire",
- "base64 0.22.1",
  "canvas",
  "documents",
  "editor",
@@ -110,14 +108,11 @@ dependencies = [
  "imba",
  "myersdiff",
  "operation",
- "rebase",
  "rpds",
  "serde",
  "serde_json",
  "skia-safe",
- "terminals",
  "text",
- "tracing",
 ]
 
 [[package]]
@@ -130,10 +125,8 @@ dependencies = [
  "documents",
  "editor",
  "imba",
- "rpds",
  "serde_json",
  "text",
- "tracing",
 ]
 
 [[package]]
@@ -159,7 +152,6 @@ dependencies = [
 name = "ahp-locations"
 version = "0.1.0"
 dependencies = [
- "ahp-types",
  "ahp-wire",
  "documents",
  "editor",
@@ -192,10 +184,8 @@ dependencies = [
  "ahp-comments",
  "ahp-docsync",
  "ahp-locations",
- "ahp-lsp",
  "ahp-types",
  "ahp-wire",
- "base64 0.22.1",
  "canvas",
  "changesview",
  "comments",
@@ -203,21 +193,12 @@ dependencies = [
  "editor",
  "filetree",
  "hikit",
- "himark-ahp-ext-types",
- "humantime",
  "imba",
  "locations",
- "myersdiff",
- "operation",
- "rebase",
  "rpds",
- "serde",
  "serde_json",
- "skia-safe",
  "terminals",
- "text",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -7187,7 +7168,6 @@ version = "0.1.0"
 dependencies = [
  "ahp-chat",
  "ahp-session",
- "ahp-types",
  "ahp-wire",
  "documents",
  "editor",
@@ -7198,7 +7178,6 @@ dependencies = [
  "skia-safe",
  "text",
  "toc",
- "tracing",
 ]
 
 [[package]]

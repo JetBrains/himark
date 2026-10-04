@@ -4,9 +4,7 @@
 //! a canvas, open a row's file in a full pane). The canvas itself —
 //! rows, header, panel face, router — lives in the `canvas` crate.
 
-
 use changesview::hichanges::CanvasSource;
-use ::canvas::canvas;
 use ::canvas::diff_canvas::*;
 
 use imba::store::Store;
@@ -14,7 +12,6 @@ use imba::store::Store;
 use ::workbench::window::WindowId;
 use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
-
 
 
 /// Open the canvas for a source — or REUSE the one already open (the

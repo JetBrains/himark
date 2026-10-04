@@ -6,15 +6,10 @@ use std::ptr::{null, null_mut};
 
 #[allow(unused_imports)]
 use ahp_wire::client::AnnotationsClient as _;
-use ahp_wire::client::ChangesClient as _;
-use ahp_wire::client::ChatClient as _;
 use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::HistoryClient as _;
-use ahp_wire::client::LocationsClient as _;
-use ahp_wire::client::LspClient as _;
 use ahp_wire::client::ResourceClient as _;
 use ahp_wire::client::SessionClient as _;
-use ahp_wire::client::TerminalClient as _;
+use ahp_wire::client::ChatClient as _;
 
 mod fake_host {
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -3574,9 +3569,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
 
 #[test]
 fn the_seat_speaks_ahp_over_the_http_face() {
-    use ahp_wire::client::ChatClient as _;
-use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
+    
 use ahp_wire::client::SessionClient as _;
     let host = HOSTED
         .lock()
@@ -3629,10 +3622,7 @@ fn reconnect_seat(dir: &std::path::Path, socket: &std::path::Path) -> ahp_wire::
 
 #[test]
 fn the_seat_reconnects_after_a_host_restart() {
-    use ahp_wire::client::ChatClient as _;
-use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
-use ahp_wire::client::SessionClient as _;
+    use ahp_wire::client::SessionClient as _;
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3729,10 +3719,7 @@ use ahp_wire::client::SessionClient as _;
 
 #[test]
 fn the_seat_replays_the_gap_after_a_connection_drop() {
-    use ahp_wire::client::ChatClient as _;
-use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
-use ahp_wire::client::SessionClient as _;
+    use ahp_wire::client::SessionClient as _;
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3793,9 +3780,8 @@ use ahp_wire::client::SessionClient as _;
 #[test]
 fn a_document_channel_survives_reconnects() {
     use documents::sync::{SyncEdit, SyncState};
-    use ahp_wire::client::ChatClient as _;
+    
 use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
 use ahp_wire::client::SessionClient as _;
     use rebase::RebaseLog;
 
@@ -4052,9 +4038,7 @@ use ahp_wire::client::SessionClient as _;
 
 #[test]
 fn the_keepalive_detects_a_deaf_host_and_recovers() {
-    use ahp_wire::client::ChatClient as _;
-use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
+    
 use ahp_wire::client::SessionClient as _;
     let host = HOSTED
         .lock()

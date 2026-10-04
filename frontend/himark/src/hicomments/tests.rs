@@ -1,6 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use ::comments::view::{CommentCommand, CommentView, RemoveComment};
+
 use super::*;
 use editor::document::Document;
 use editor::editor_view::EditorCommand;

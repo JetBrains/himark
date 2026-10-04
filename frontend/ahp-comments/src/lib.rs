@@ -95,13 +95,6 @@ fn of(store: &Store, wire: imba::store::Id<CommentsWire>) -> Option<&CommentsWir
     store.entity(wire)
 }
 
-pub(crate) fn drives(
-    store: &Store,
-    wire: imba::store::Id<CommentsWire>,
-    comments: imba::store::Id<Comments>,
-) -> bool {
-    of(store, wire).is_some_and(|row| row.comments == comments)
-}
 
 /// Mutate in place; a gone driver takes no write.
 fn update(

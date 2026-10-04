@@ -5,7 +5,6 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
-ahp-types = "0.9"
 ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }

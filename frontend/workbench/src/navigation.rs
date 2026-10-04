@@ -1,8 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use ::ahp_chat::recents::RecentLocations;
-use hikit::{navigation::EditorPlace, navigation::NavigationLocation, navigation::Navigator, navigation::NoPlace, navigation::Place};
+use hikit::{navigation::NavigationLocation, navigation::Navigator, navigation::Place};
 
 use std::any::TypeId;
 use std::sync::Arc;

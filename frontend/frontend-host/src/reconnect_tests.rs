@@ -23,20 +23,14 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ahp_types::actions::StateAction;
-use ahp_wire::client::ResourceUri;
 use ahp_wire::client::ChannelUri;
 use ahp_wire::client::ChatClient as _;
 use ahp_wire::client::ChatUri;
 use ahp_wire::client::ClientFuture;
 use ahp_wire::client::ServerEvent;
 use ahp_wire::client::AnnotationsClient as _;
-use ahp_wire::client::ChangesClient as _;
 use ahp_wire::client::DocumentsClient as _;
-use ahp_wire::client::ResourceClient as _;
 use ahp_wire::client::SessionClient as _;
-use ahp_wire::client::TerminalClient as _;
-use ahp_wire::client::LocationsClient as _;
-use ahp_wire::client::LspClient as _;
 use ahp_wire::client::SessionOptions;
 use ahp_wire::client::SessionUri;
 

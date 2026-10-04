@@ -27,7 +27,6 @@ fn popup_selected(list: &PopupList) -> usize {
 }
 use ahp_locations::FindEffect;
 use ahp_lsp::{LspAnswer, LspCompletionEffect, LspItem};
-use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
 
 const SHOWN: usize = 128;

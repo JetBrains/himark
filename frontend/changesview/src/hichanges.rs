@@ -533,12 +533,6 @@ impl Changes {
         store.put_entity(changes, row);
     }
 
-    fn folder_set_id(&self, folder: &ResourceLocation) -> Option<ChangeSetId> {
-        let source = ChangeSetSource::WorkingCopy {
-            folder: folder.clone(),
-        };
-        self.by_source.get(&source).copied()
-    }
 
     /// Leave the stripe-base note on the row: the re-asks run behind
     /// the lease, so the work waits for `after_route`.

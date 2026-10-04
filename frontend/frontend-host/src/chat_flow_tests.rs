@@ -73,17 +73,6 @@ impl Script {
             .insert(uri.to_owned(), text);
     }
 
-    /// Park the next subscribe: the snapshot lands only on `release`.
-    fn hold_snapshot(&self) {
-        *self.held_snapshot.lock().expect("held") = true;
-    }
-
-    fn release_snapshot(&self) {
-        *self.held_snapshot.lock().expect("held") = false;
-        for waker in self.parked.lock().expect("parked").drain(..) {
-            waker.wake();
-        }
-    }
 
     fn sent(&self) -> Vec<(String, String)> {
         self.sent.lock().expect("sent").clone()

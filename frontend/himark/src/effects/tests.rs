@@ -5,6 +5,7 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Mutex as StdMutex;
 
 use super::*;
+use imba::effect::EffectHandler;
 use imba::effect::AnyEffect;
 
 struct Probe {

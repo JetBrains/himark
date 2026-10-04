@@ -1,20 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use documents::{CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect, PickSaveEffect, StoreDocumentEffect};
-use documents::{BuildDocumentEffect, BuiltDocument};
-use documents::diff_views::{DiffSide, DiffSideInput, OpenDiffPairEffect, OpenedDiffPair};
-use ahp_locations::{
-    FindEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect,
-};
-use ahp_wire::SessionId;
+use documents::diff_views::DiffSideInput;
 
 use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
 use crate::app::{AppCommand, AppFx};
 use editor::location::ResourceLocation;
-
 
 
 pub struct OpenByLocationEffect {

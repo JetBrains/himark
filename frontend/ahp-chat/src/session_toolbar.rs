@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use imba::{container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
-use ahp_wire::client::{HostId, SessionChannel};
+use ahp_wire::client::SessionChannel;
 use hikit::combo::{Combo, ComboCommand, ComboOption};
 
 #[derive(Clone)]

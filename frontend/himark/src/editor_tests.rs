@@ -3642,7 +3642,7 @@ mod toc {
     #[test]
     fn locations_group_into_a_results_forest() {
         let store = Store::new();
-        let window = ::workbench::window::WindowId::from_raw(1);
+        let _window = ::workbench::window::WindowId::from_raw(1);
         let at = |dir: &str, name: &str| {
             editor::location::ResourceLocation::new(
                 editor::location::ResourceType::document(),
@@ -3727,7 +3727,7 @@ mod toc {
     #[test]
     fn locations_nest_into_a_directory_tree() {
         let store = Store::new();
-        let window = ::workbench::window::WindowId::from_raw(1);
+        let _window = ::workbench::window::WindowId::from_raw(1);
         let at = |path: &[&str]| {
             editor::location::ResourceLocation::new(
                 editor::location::ResourceType::document(),
@@ -3774,7 +3774,7 @@ mod toc {
     #[test]
     fn result_directories_fold_and_unfold() {
         let store = Store::new();
-        let window = ::workbench::window::WindowId::from_raw(1);
+        let _window = ::workbench::window::WindowId::from_raw(1);
         let at = |dir: &str, name: &str| {
             editor::location::ResourceLocation::new(
                 editor::location::ResourceType::document(),

@@ -9,11 +9,6 @@ use himark::app::Application;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
-fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
-    static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
-        std::sync::OnceLock::new();
-    *DOCS.get_or_init(imba::store::Id::mint)
-}
 
 fn monster_pair(repetitions: usize) -> (String, String) {
     let sample = include_str!("../../plugins/demo/sample.md");

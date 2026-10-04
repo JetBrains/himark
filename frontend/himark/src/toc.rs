@@ -6,8 +6,7 @@
 //! lives with its machinery, docs/entities.md).
 
 use ::toc::{
-    OutlineCommand, OutlineEffect, OutlineHandler, OutlineKey, OutlineRows, OutlineView,
-    TocCommand, TocView,
+    OutlineView, TocView,
 };
 
 use imba::store::Store;

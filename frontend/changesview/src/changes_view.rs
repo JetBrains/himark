@@ -652,11 +652,6 @@ impl ChangeSets {
         });
     }
 
-    fn view_ids(store: &Store, changes: imba::store::Id<ChangeSets>) -> Vec<ChangesViewId> {
-        Self::of(store, changes)
-            .map(|views| views.views.keys().copied().collect())
-            .unwrap_or_default()
-    }
 
     /// Rebuild the join rows for one view from what it now displays
     /// — the view's code computes `displayed`; the join is model

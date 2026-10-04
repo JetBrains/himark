@@ -8,9 +8,8 @@ license = "Apache-2.0"
 ahp-locations = { path = "../ahp-locations" }
 ahp-lsp = { path = "../ahp-lsp" }
 ahp-types = "0.9"
-ahp-wire = { path = "../ahp-wire" }
-base64 = "0.22"
 canvas = { path = "../canvas" }
+ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
 hikit = { path = "../hikit" }
@@ -18,14 +17,11 @@ humantime = "2"
 imba = { path = "../imba" }
 myersdiff = { path = "../myersdiff" }
 operation = { path = "../operation" }
-rebase = { path = "../rebase" }
 rpds = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
-terminals = { path = "../terminals" }
 text = { path = "../text" }
-tracing = "0.1"
 
 [features]
 test-support = ["hikit/test-support"]

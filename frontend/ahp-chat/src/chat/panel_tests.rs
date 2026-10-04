@@ -6,8 +6,6 @@
 //! `model_tests`; what is tested here is that a MOUNT shows what the
 //! model holds, and that the roads a user takes move the model.
 
-use std::sync::Arc;
-
 use ahp_types::actions::{
     ChatDeltaAction, ChatErrorAction, ChatPendingMessageRemovedAction, ChatPendingMessageSetAction,
     ChatResponsePartAction, ChatToolCallCompleteAction, ChatToolCallConfirmedAction,

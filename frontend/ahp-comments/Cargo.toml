@@ -12,6 +12,4 @@ documents = { path = "../documents" }
 editor = { path = "../editor" }
 text = { path = "../text" }
 imba = { path = "../imba" }
-rpds = "1"
 serde_json = "1"
-tracing = "0.1"

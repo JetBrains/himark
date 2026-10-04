@@ -7,7 +7,6 @@ license = "Apache-2.0"
 [dependencies]
 ahp-chat = { path = "../ahp-chat" }
 ahp-session = { path = "../ahp-session" }
-ahp-types = "0.9"
 ahp-wire = { path = "../ahp-wire" }
 documents = { path = "../documents" }
 editor = { path = "../editor" }
@@ -18,7 +17,6 @@ rpds = "1"
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../text" }
 toc = { path = "../toc" }
-tracing = "0.1"
 
 [features]
 test-support = ["hikit/test-support"]

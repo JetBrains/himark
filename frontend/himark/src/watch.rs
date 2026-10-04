@@ -1,18 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use documents::watch::{
-    FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect,
-    Subscription, UnsubscribeEffect, Watching,
-};
-
 use imba::store::Store;
 
-use crate::app::AppCommand;
 use crate::app::AppFx;
 
-
-use documents::DocumentsCommand;
 
 pub struct ReloadDocument;
 

@@ -138,6 +138,7 @@ impl PaletteView {
         self.list.inner_mut().set_scroll_y(scroll_y);
     }
 
+    #[cfg(test)]
     fn selected(&self) -> usize {
         self.list.cursor_index().unwrap_or(0)
     }

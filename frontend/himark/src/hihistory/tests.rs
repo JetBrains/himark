@@ -1,11 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::Arc;
+use changesview::hihistory::{graph_node, CommitTip, FolderHistory, History};
+
 
 use serde_json::json;
 
-use super::*;
 use changesview::changes_view::RowItem;
 use ahp_changes::history::{digest_deltas, digest_snapshot};
 use changesview::hichanges::ChangesStatus;

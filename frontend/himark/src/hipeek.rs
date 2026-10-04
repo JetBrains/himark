@@ -7,8 +7,7 @@
 //! shell verbs: `open` queues `OpenPicked`, `promote` fronts the
 //! feed in the Search dock tab.
 
-
-use ::locations::peek::{PeekCommand, PeekView};
+use ::locations::peek::PeekView;
 
 use std::sync::Arc;
 

@@ -4,9 +4,6 @@
 //! toolbar button. The collection and the commit graph live in the
 //! `changesview` crate.
 
-
-use changesview::hihistory::*;
-
 use std::sync::Arc;
 
 use imba::store::Store;

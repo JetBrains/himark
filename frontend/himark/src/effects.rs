@@ -1,8 +1,6 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::effect::EffectHandler;
-
 use std::sync::Arc;
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
 use std::sync::{
