@@ -149,72 +149,7 @@ impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-/// The ONE off-thread step both diff roads share (docs/editor/diff-canvas.md
-/// §4): ensure each side is a REGISTERED document. An OPEN side passes
-/// through by id (no fetch, no build); a CLOSED side is fetched and
-/// built here and registered at the landing — the standard open road.
-/// It does NOT diff: the diff view's normalize lane computes the diff
-/// from the registered documents (docs/no-diff-on-ui-thread). The
-/// canvas has no business with Texts, parses, or operations.
-pub struct OpenDiffPairEffect {
-    pub old: DiffSideInput,
-    pub new: DiffSideInput,
-    /// The half width to lay the editors at (the canvas's content width).
-    pub width: f32,
-}
-
-impl std::fmt::Display for OpenDiffPairEffect {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        out.write_str("open diff pair")
-    }
-}
-
-impl Effect for OpenDiffPairEffect {
-    type Result = OpenedDiffPair;
-}
-
-/// One side to open, resolved on the UI thread at launch — a reference,
-/// never content.
-pub enum DiffSideInput {
-    /// Already a registered document — use it as-is.
-    Open(crate::DocumentId),
-    /// Closed — the handler fetches and builds it, the landing registers.
-    Fetch(ResourceLocation),
-}
-
-impl DiffSideInput {
-    pub fn resolve(
-        store: &imba::store::Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
-        location: ResourceLocation,
-    ) -> Self {
-        match crate::OpenDocuments::by_location(store, documents, &location) {
-            Some(document) => DiffSideInput::Open(document),
-            None => DiffSideInput::Fetch(location),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct OpenedDiffPair {
-    pub old: DiffSide,
-    pub new: DiffSide,
-    pub width: f32,
-    /// Both sides gone — the caller reports instead of mounting.
-    pub failed: bool,
-}
-
-/// What the landing does with a side: reuse the registered document, or
-/// register the freshly-built one at its location (register-at-display —
-/// the standard `BuiltDocument` payload).
-#[derive(Clone)]
-pub enum DiffSide {
-    Open(crate::DocumentId),
-    Built {
-        location: ResourceLocation,
-        document: BuiltDocument,
-    },
-}
+pub use documents::diff_views::{DiffSide, DiffSideInput, OpenDiffPairEffect, OpenedDiffPair};
 
 pub fn open_by_location_effect(
     window: crate::WindowId,

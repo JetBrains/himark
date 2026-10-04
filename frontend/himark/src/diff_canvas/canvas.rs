@@ -1785,9 +1785,8 @@ impl Canvases {
 
 /// The batch-tail canvas sweep — a DIRECT lane now (the sets own their
 /// canvases; no plugin observer, no window): reconcile every canvas in
-/// the gathered session, launching builds through the first-class
-/// sessioned command (`AppCommand::CanvasViewCommand`, the
-/// DiffViewCommand shape).
+/// the gathered session, launching builds through the collection's At
+/// address (`ChangesCommand::Canvas`, the DiffView shape).
 pub(crate) fn sync_canvases(
     store: &mut Store,
     changes: imba::store::Id<Changes>,
@@ -1795,33 +1794,34 @@ pub(crate) fn sync_canvases(
     dressed: &[crate::DiffViewId],
     fx: &mut crate::AppFx<'_>,
 ) {
-    for (set, id) in Changes::canvas_ids(store, changes) {
-        let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
-            continue;
-        };
-        let route = route_canvas(changes, set, id);
-        fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
-        Changes::put_canvas(store, changes, set, id, canvas);
-    }
+    fx.scope(
+        move |command| crate::AppCommand::at(changes, command),
+        |fx| {
+            for (set, id) in Changes::canvas_ids(store, changes) {
+                let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
+                    continue;
+                };
+                let route = route_canvas(set, id);
+                fx.scope(route, |fx| canvas.sync_in_place(store, ui, &dressed, fx));
+                Changes::put_canvas(store, changes, set, id, canvas);
+            }
+        },
+    );
 }
 
-/// Map a canvas's commands home BY IDS — the collection, the set, the
-/// canvas (no window, no landing box, no session).
+/// Map a canvas's commands home BY IDS — the set and the canvas; the
+/// collection is the At address wrapping outside (no window, no
+/// landing box, no session).
 fn route_canvas(
-    changes: imba::store::Id<Changes>,
     set: ChangeSetId,
     canvas: CanvasId,
-) -> impl Fn(CanvasCommand) -> crate::AppCommand + Clone {
-    move |command| crate::AppCommand::CanvasViewCommand {
-        changes,
-        set,
-        canvas,
-        command: Box::new(command),
-    }
+) -> impl Fn(CanvasCommand) -> crate::hichanges::ChangesCommand + Clone {
+    move |command| crate::hichanges::ChangesCommand::Canvas(set, canvas, Box::new(command))
 }
 
 /// Perform one command against a SET-OWNED canvas — the panel-free
-/// road (`perform_diff_view`'s twin).
+/// road (`perform_diff_view`'s twin), reached through the entity
+/// route.
 pub(crate) fn perform_canvas(
     store: &mut Store,
     ui: &UiCtx,
@@ -1829,12 +1829,12 @@ pub(crate) fn perform_canvas(
     set: ChangeSetId,
     id: CanvasId,
     command: CanvasCommand,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut imba::effect::Effects<'_, crate::hichanges::ChangesCommand>,
 ) {
     let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
         return;
     };
-    let route = route_canvas(changes, set, id);
+    let route = route_canvas(set, id);
     fx.scope(route, |fx| canvas.perform(store, ui, command, fx));
     Changes::put_canvas(store, changes, set, id, canvas);
 }

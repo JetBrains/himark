@@ -334,6 +334,64 @@ pub struct ChangeSets {
 /// named the collection `Changes`.
 pub type Changes = ChangeSets;
 
+/// What the collection answers to behind its `At` address
+/// (docs/entities.md law 5).
+pub enum ChangesCommand {
+    /// A command for a SET-OWNED canvas — the DiffView shape: routed
+    /// by the collection, the set and the canvas; no window, no
+    /// session.
+    Canvas(
+        ChangeSetId,
+        crate::diff_canvas::canvas::CanvasId,
+        Box<crate::diff_canvas::canvas::CanvasCommand>,
+    ),
+}
+
+impl std::fmt::Display for ChangesCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangesCommand::Canvas(_, _, command) => command.fmt(out),
+        }
+    }
+}
+
+impl imba::store::Entity for ChangeSets {
+    type Command = ChangesCommand;
+
+    fn perform(
+        &mut self,
+        id: imba::store::Id<Self>,
+        command: ChangesCommand,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+    ) {
+        match command {
+            ChangesCommand::Canvas(set, canvas, command) => {
+                // The canvas perform legitimately reopens this
+                // collection (set rows, sibling documents) — give the
+                // row back for the duration and pick up the fresh
+                // state after, the documents-entity escape. The
+                // stand-in is an EMPTY wired row, never Default: the
+                // sibling ids stay real.
+                let stand_in = Self::wired(self.documents, self.history);
+                store.unlease(id, std::mem::replace(self, stand_in));
+                crate::diff_canvas::canvas::perform_canvas(
+                    store, ui, id, set, canvas, *command, fx,
+                );
+                if let Some(fresh) = store.lease(id) {
+                    *self = fresh;
+                }
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {
+        // The records are the collection's private schema; the family
+        // ceremony owns the retract.
+    }
+}
+
 impl Changes {
     /// A collection wired to its siblings — minted by the family
     /// ceremony, and by tests that stand one up alone.

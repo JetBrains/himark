@@ -114,25 +114,6 @@ pub enum AppCommand {
 
     Opened(WindowId, OpenedDocument),
 
-    /// A command for a STORE-HELD diff view, routed by the documents
-    /// collection it lives in and its id — the dressing's own road
-    /// (docs/model-view.md step 1): marks-job landings and resyncs
-    /// reach the view with no panel involved.
-    DiffViewCommand {
-        documents: imba::store::Id<OpenDocuments>,
-        view: crate::DiffViewId,
-        command: Box<::editor::UnifiedDiffCommand>,
-    },
-
-    /// A command for a SET-OWNED canvas, routed by the collection, the
-    /// set and the canvas — the DiffViewCommand shape.
-    CanvasViewCommand {
-        changes: imba::store::Id<crate::hichanges::ChangeSets>,
-        set: crate::hichanges::ChangeSetId,
-        canvas: crate::diff_canvas::canvas::CanvasId,
-        command: Box<crate::diff_canvas::canvas::CanvasCommand>,
-    },
-
     FileChanged(crate::watch::Subscription),
 
     OpenAsync {
@@ -1199,8 +1180,6 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         AppCommand::Stats(_) => "stats",
         AppCommand::At(..) => unreachable!(),
         AppCommand::Opened(..) => "opened",
-        AppCommand::DiffViewCommand { .. } => "diff view",
-        AppCommand::CanvasViewCommand { .. } => "canvas view",
         AppCommand::FileChanged(..) => "file changed",
     })
 }
@@ -1448,23 +1427,6 @@ impl Application {
             }
             AppCommand::Register(command) => {
                 crate::commands::Commands::register(store, command);
-            }
-            AppCommand::DiffViewCommand {
-                documents,
-                view,
-                command,
-            } => {
-                crate::diffs::perform_diff_view(store, documents, ui, view, *command, fx);
-            }
-            AppCommand::CanvasViewCommand {
-                changes,
-                set,
-                canvas,
-                command,
-            } => {
-                crate::diff_canvas::canvas::perform_canvas(
-                    store, ui, changes, set, canvas, *command, fx,
-                );
             }
             AppCommand::FileChanged(subscription) => {
                 // The border road: the event names only a subscription;

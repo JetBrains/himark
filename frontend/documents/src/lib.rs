@@ -4,6 +4,7 @@
 use editor::Document;
 use imba::store::Store;
 
+pub mod diff_views;
 pub mod diffs;
 mod dynamic;
 mod entity_view;
@@ -150,6 +151,12 @@ impl OpenDocuments {
 pub enum DocumentsCommand {
     Editor(DocumentId, editor::EditorCommand),
 
+    /// A command for a STORE-HELD diff view, routed by the
+    /// collection and the view id — the dressing's own road
+    /// (docs/model-view.md step 1): marks-job landings and resyncs
+    /// reach the view with no panel involved.
+    DiffView(crate::diffs::DiffViewId, Box<editor::UnifiedDiffCommand>),
+
     BaseLocated {
         document: DocumentId,
         base: Option<editor::ResourceLocation>,
@@ -208,6 +215,7 @@ impl std::fmt::Display for DocumentsCommand {
     fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             DocumentsCommand::Editor(_, command) => command.fmt(out),
+            DocumentsCommand::DiffView(_, command) => command.fmt(out),
             DocumentsCommand::BaseLocated { .. } => out.write_str("base located"),
             DocumentsCommand::BaseFetched { .. } => out.write_str("base fetched"),
             DocumentsCommand::BaseBuilt { .. } => out.write_str("base built"),
@@ -256,6 +264,11 @@ impl imba::store::Entity for OpenDocuments {
                         |fx| crate::deliver(store, id, ui, document, command, fx),
                     ));
                 }
+            }
+            DocumentsCommand::DiffView(view, command) => {
+                with_row_home!(crate::diff_views::perform_diff_view(
+                    store, id, ui, view, *command, fx
+                ));
             }
             DocumentsCommand::BaseLocated { document, base } => {
                 with_row_home!(crate::diffs::land_base_located(
