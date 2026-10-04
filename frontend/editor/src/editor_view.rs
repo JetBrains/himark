@@ -58,6 +58,7 @@ pub enum ClickKind {
     Line,
 }
 
+#[derive(Clone)]
 pub enum EditorCommand {
     InsertText {
         text: String,
@@ -119,7 +120,7 @@ pub enum EditorCommand {
 
     Dynamic {
         id: &'static str,
-        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
+        payload: Option<crate::dynamic::DynPayload>,
     },
 
     ToggleFold {
@@ -183,6 +184,56 @@ pub enum EditorCommand {
         start: u32,
         end: u32,
     },
+}
+
+impl std::fmt::Display for EditorCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // "repair" / "reparse" / "enrich" are grepped in traces.
+            EditorCommand::ApplyRepair(_) => out.write_str("repair"),
+            EditorCommand::ApplyReparse(_) => out.write_str("reparse"),
+            EditorCommand::ApplyEnrichment(_) => out.write_str("enrich"),
+            EditorCommand::ApplyScrollStripes(_) => out.write_str("scroll stripes"),
+            EditorCommand::Inlay { command, .. } => command.fmt(out),
+            EditorCommand::Dynamic { id, .. } => out.write_str(id),
+            EditorCommand::InsertText { .. } => out.write_str("insert text"),
+            EditorCommand::Enter { .. } => out.write_str("enter"),
+            EditorCommand::Indent => out.write_str("indent"),
+            EditorCommand::Outdent => out.write_str("outdent"),
+            EditorCommand::Backspace => out.write_str("backspace"),
+            EditorCommand::DeleteForward => out.write_str("delete forward"),
+            EditorCommand::DeleteWordBack => out.write_str("delete word back"),
+            EditorCommand::DeleteWordForward => out.write_str("delete word forward"),
+            EditorCommand::DeleteSelections => out.write_str("delete selections"),
+            EditorCommand::Paste { .. } => out.write_str("paste"),
+            EditorCommand::Undo => out.write_str("undo"),
+            EditorCommand::Redo => out.write_str("redo"),
+            EditorCommand::Move { .. } => out.write_str("move"),
+            EditorCommand::SelectAll => out.write_str("select all"),
+            EditorCommand::CollapseCarets => out.write_str("collapse carets"),
+            EditorCommand::AddCaretAbove => out.write_str("add caret above"),
+            EditorCommand::AddCaretBelow => out.write_str("add caret below"),
+            EditorCommand::SelectNextOccurrence => out.write_str("select next occurrence"),
+            EditorCommand::SelectAllOccurrences => out.write_str("select all occurrences"),
+            EditorCommand::Click { .. } => out.write_str("click"),
+            EditorCommand::Drag { .. } => out.write_str("drag"),
+            EditorCommand::DragEnd => out.write_str("drag end"),
+            EditorCommand::RevealSettled => out.write_str("reveal settled"),
+            EditorCommand::RevealAt { .. } => out.write_str("reveal at"),
+            EditorCommand::ToggleFold { .. } => out.write_str("toggle fold"),
+            EditorCommand::ToggleBeforeInlay { .. } => out.write_str("toggle before inlay"),
+            EditorCommand::Viewport { .. } => out.write_str("viewport"),
+            EditorCommand::ViewportTop(_) => out.write_str("viewport top"),
+            EditorCommand::ToggleSoftwrap => out.write_str("toggle softwrap"),
+            EditorCommand::HorizontalScroll(_) => out.write_str("horizontal scroll"),
+            EditorCommand::Hover(_) => out.write_str("hover"),
+            EditorCommand::Retheme { .. } => out.write_str("retheme"),
+            EditorCommand::InsertTextReplacing { .. } => out.write_str("insert text replacing"),
+            EditorCommand::SetMarkedText { .. } => out.write_str("set marked text"),
+            EditorCommand::UnmarkText => out.write_str("unmark text"),
+            EditorCommand::SetSelectionUtf16 { .. } => out.write_str("set selection utf16"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -651,11 +702,10 @@ impl EditorView {
                     | InlayMode::Instead(crate::markup::InsteadKind::Inline) => {
                         let byte = inlay_anchor_byte(interval.inlay.mode, &interval.range);
                         let positioner = positioner.get_or_insert_with(|| {
-                            self.document.shape_line(
+                            positioner_line(
+                                &self.document,
                                 editor_id,
                                 line_range.clone(),
-                                0.0,
-                                true,
                                 store,
                                 ui,
                                 &fonts,
@@ -679,11 +729,10 @@ impl EditorView {
                     }
                     InlayMode::Instead(crate::markup::InsteadKind::FullLine) => {
                         let positioner = positioner.get_or_insert_with(|| {
-                            self.document.shape_line(
+                            positioner_line(
+                                &self.document,
                                 editor_id,
                                 line_range.clone(),
-                                0.0,
-                                true,
                                 store,
                                 ui,
                                 &fonts,
@@ -717,6 +766,91 @@ impl EditorView {
             }
         }
     }
+}
+
+/// The inlay positioner cache, an env slot on the warm `UiCtx`. The
+/// positioner is a line shaped ONLY to answer byte→x questions for
+/// anchored inlays, and those answers don't depend on the scroll
+/// offset — yet every realize walk (the scroll route, the settle
+/// pulse, the animation clock, the paint) re-shaped it from scratch,
+/// 3–4 full skia shapings per visible inlay line per frame. One
+/// shaping serves them all, and every later frame the line stays
+/// visible. Validation rides the SAME signals the repair door trusts
+/// (`repair_landable`): any text edit bumps the revision, any markup
+/// change bumps the generation, and width/theme pin the layout
+/// inputs. `EditorId`s are minted from a global counter, so the key
+/// never collides across documents.
+#[derive(Default)]
+struct PositionerCache {
+    entries: std::cell::RefCell<
+        std::collections::HashMap<(crate::editor::EditorId, u32), PositionerEntry>,
+    >,
+}
+
+struct PositionerEntry {
+    revision: u64,
+    markup_generation: u64,
+    line_end: u32,
+    width: f32,
+    theme: std::sync::Arc<str>,
+    shaped: std::rc::Rc<crate::shaped_line::ShapedLine>,
+}
+
+/// Beyond this many standing lines the cache clears outright — a
+/// scroll repopulates the visible band within a frame, and the sweep
+/// keeps closed documents' lines from accumulating.
+const POSITIONER_CACHE_CAP: usize = 512;
+
+fn positioner_line(
+    document: &Document,
+    editor_id: crate::editor::EditorId,
+    line_range: std::ops::Range<u32>,
+    store: &Store,
+    ui: &UiCtx,
+    fonts: &skia_safe::textlayout::FontCollection,
+    theme: &crate::theme::Theme,
+) -> std::rc::Rc<crate::shaped_line::ShapedLine> {
+    let cache = ui.env::<PositionerCache>(PositionerCache::default);
+    let revision = document.revision();
+    let markup_generation = document.markup_generation();
+    let width = document.editor(editor_id).layout.layout_width();
+    let key = (editor_id, line_range.start);
+    if let Some(entry) = cache.entries.borrow().get(&key) {
+        if entry.revision == revision
+            && entry.markup_generation == markup_generation
+            && entry.line_end == line_range.end
+            && entry.width == width
+            && *entry.theme == *theme.name()
+        {
+            return entry.shaped.clone();
+        }
+    }
+    let shaped = std::rc::Rc::new(document.shape_line(
+        editor_id,
+        line_range.clone(),
+        0.0,
+        true,
+        store,
+        ui,
+        fonts,
+        theme,
+    ));
+    let mut entries = cache.entries.borrow_mut();
+    if entries.len() >= POSITIONER_CACHE_CAP {
+        entries.clear();
+    }
+    entries.insert(
+        key,
+        PositionerEntry {
+            revision,
+            markup_generation,
+            line_end: line_range.end,
+            width,
+            theme: theme.name_shared(),
+            shaped: shaped.clone(),
+        },
+    );
+    shaped
 }
 
 impl View for EditorView {
@@ -861,7 +995,7 @@ impl View for EditorView {
                 &mut self.document,
                 self.editor,
                 &location,
-                payload,
+                payload.and_then(crate::dynamic::DynPayload::take),
                 fx,
             );
         }

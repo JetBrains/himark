@@ -43,11 +43,10 @@ impl UndoHistory {
             return;
         }
         self.redo = rpds::VectorSync::new_sync();
-        let pad = old_len.saturating_sub(operation.old_len());
-        let padded = match pad {
-            0 => operation.clone(),
-            pad => Operation::from_ops(operation.iter().chain(std::iter::once(Op::Retain(pad)))),
-        };
+        // The edit door admits only exact-coverage operations — a
+        // mismatch here is a bug upstream, never padded over.
+        debug_assert_eq!(operation.old_len(), old_len);
+        let padded = operation.clone();
         let coalesced = self
             .undo
             .last()
@@ -118,11 +117,8 @@ impl UndoHistory {
     }
 
     pub(crate) fn carry_across(&mut self, foreign: &Operation, old_len: u32) {
-        let pad = old_len.saturating_sub(foreign.old_len());
-        let foreign = match pad {
-            0 => foreign.clone(),
-            pad => Operation::from_ops(foreign.iter().chain(std::iter::once(Op::Retain(pad)))),
-        };
+        debug_assert_eq!(foreign.old_len(), old_len);
+        let foreign = foreign.clone();
 
         let mut carried = foreign.clone();
         let mut undo: Vec<UndoEntry> = self.undo.iter().cloned().collect();

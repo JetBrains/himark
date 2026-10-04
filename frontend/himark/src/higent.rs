@@ -3,9 +3,9 @@
 
 pub use ahp_types;
 
-mod cell;
+pub mod cell;
 mod chat;
-mod chats;
+pub(crate) mod chats;
 mod composer;
 mod drawer;
 mod effects;
@@ -21,21 +21,24 @@ mod turn;
 pub use crate::SessionId;
 pub use cell::{Cell, CellCommand, CellKind};
 pub use chat::{ChatArea, ChatPanel, ChatPanelCommand, RowCommand};
-pub use chats::{ChatPane, Chats};
+pub use chats::{ChatNavigator, ChatPane, ChatPlace, Chats, ChatsCommand};
 pub use composer::ComposerCommand;
 pub use drawer::{
     toolbar_button, AddHost, AgentsCommand, AgentsPanel, ShareHost, ToggleAgentsView,
 };
 pub use effects::*;
-pub use file_edit::{snapshot, DiffCounts, FileEditRefs, FileSnapshotRef};
-pub use seat::{
-    AhpServer, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap, RootInfo, SearchAsk,
-    SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers, SessionOptions,
-    SessionsPage, TerminalEvent, TerminalHandle, WatchHandle,
+pub use file_edit::{
+    build_file_edit, snapshot, BuiltFileEdit, DiffCounts, FileEditRefs, FileSnapshotRef,
 };
+pub use seat::{
+    AhpServer, ChannelUri, ChatUri, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap,
+    RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,
+    SessionOptions, SessionUri, SessionsPage, TerminalEvent, TerminalHandle, TurnId, WatchHandle,
+};
+pub(crate) use session::apply_channel_actions;
 pub use session::{
     all_session_folders, open_session, open_session_with, session_folders, Agents, Host,
-    HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel,
+    HostStatus, Hosts, NewChat, NewSessionFlow, OpenCreatedSession, SessionChannel, SessionState,
 };
 pub(crate) use session_toolbar::sync_effort_for_model;
 pub use session_toolbar::{

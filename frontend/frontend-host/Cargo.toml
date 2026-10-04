@@ -12,13 +12,13 @@ crate-type = ["rlib", "staticlib"]
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
 structdiff = { path = "../structdiff" }
+myersdiff = { path = "../myersdiff" }
 hiahp = { path = "../hiahp" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }
 hiscript = { path = "../hiscript" }
 palette = { path = "../plugins/palette" }
 peeker = { path = "../plugins/peeker" }
-hidiff = { path = "../plugins/hidiff" }
 host-discovery = { path = "../../protocol/host-discovery" }
 tracing = "0.1"
 himark-ahp-ext-types = { path = "../../protocol/ahp-ext-types" }
@@ -28,8 +28,8 @@ rebase = { path = "../rebase" }
 documents = { path = "../documents" }
 serde_json = "1"
 hicode = { path = "../plugins/hicode" }
-ahp = "0.7"
-ahp-types = "0.7"
+ahp = "0.9"
+ahp-types = "0.9"
 humantime = "2"
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "io-util"] }
@@ -83,10 +83,10 @@ hisolidity = { path = "../plugins/lang/hisolidity" }
 hixml = { path = "../plugins/lang/hixml" }
 himermaid = { path = "../plugins/himermaid" }
 imba = { path = "../imba" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-skia-safe = { version = "0.99.0", features = ["metal", "textlayout"] }
+skia-safe = { version = "0.153.3", features = ["metal", "ganesh", "graphite", "textlayout"] }
 
 [dev-dependencies]
 agent-host = { path = "../../backend/agent-host" }

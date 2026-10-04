@@ -187,6 +187,7 @@ pub struct EnrichWork {
     pub(crate) languages: Option<Arc<crate::reparse::SyntaxLanguages>>,
 }
 
+#[derive(Clone)]
 pub struct EnrichOutcome {
     pub(crate) token: DocumentToken,
     pub(crate) revision: u64,
@@ -218,6 +219,17 @@ pub struct EnrichEffect {
 impl EnrichEffect {
     pub fn enricher(&self) -> EnricherId {
         self.work.enricher.id()
+    }
+}
+
+impl std::fmt::Display for EnrichEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "enrich {} markup {:?}",
+            self.work.enricher.id().0,
+            self.work.markup
+        )
     }
 }
 
@@ -516,8 +528,9 @@ mod tests {
         let effect = launched(&mut document, &registry, &[0..1]);
         let command = land(effect);
 
+        let len = crate::text_cursor::byte_count(document.text());
         document.edit(
-            &operation::Operation::insert_at(0, "XXXX"),
+            &operation::Operation::insert_in(len, 0, "XXXX"),
             store,
             ui,
             &fonts(),
@@ -617,6 +630,24 @@ mod tests {
             &theme(),
             &mut imba::effect::Batch::new().effects(),
         );
+        // SHOWN means painted: the landing's sync repair serves the
+        // reported visible band and nothing else.
+        {
+            let mut store = imba::store::Store::new();
+            let ui = crate::test_document::test_ui();
+            document.perform(
+                &mut store,
+                &ui,
+                editor,
+                crate::editor_view::EditorCommand::Viewport {
+                    width: 400.0,
+                    top: 0.0,
+                    bottom: 300.0,
+                    anchor: 0,
+                },
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         let subject = document
             .text()
             .byte_string(0, document.text().byte_count())

@@ -58,6 +58,11 @@ final class HimarkEngine {
     ) -> Bool {
         himark_mouse_down(engine, window, x, y, mods, clickCount)
     }
+    @discardableResult func secondaryDown(
+        window: UInt64, x: Float, y: Float, mods: UInt32 = 0
+    ) -> Bool {
+        himark_secondary_down(engine, window, x, y, mods)
+    }
     func toolbarHeight() -> Float {
         himark_toolbar_height(engine)
     }
@@ -69,6 +74,9 @@ final class HimarkEngine {
     }
     @discardableResult func mouseMove(window: UInt64, x: Float, y: Float) -> Bool {
         himark_mouse_move(engine, window, x, y)
+    }
+    @discardableResult func mouseLeft(window: UInt64) -> Bool {
+        himark_mouse_left(engine, window)
     }
     @discardableResult func scroll(window: UInt64, x: Float, y: Float, dx: Float, dy: Float) -> Bool {
         himark_scroll(engine, window, x, y, dx, dy)

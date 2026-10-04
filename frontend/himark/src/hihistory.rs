@@ -4,8 +4,8 @@
 use std::sync::Arc;
 
 use crate::hichanges::{
-    dir_forest, empty_side, entry_of, entry_serves, folder_scope, CatalogEntry, ChangeEntry,
-    ChangesStatus, DirSink, DirTrie, Dispatched,
+    dir_forest, empty_side, entry_serves, CatalogEntry, ChangeEntry, ChangesStatus, DirSink,
+    DirTrie, Dispatched,
 };
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::ChangesetState;
@@ -14,45 +14,46 @@ use crate::higent::{
     SubscribeHistoryEffect,
 };
 use crate::{
-    AppCommand, ForestList, ForestNode, ForestSearcher, ModalRequest, ResourceLocation,
-    ResourceType, SpeedSearchCommand, SpeedSearchView, TreeListCommand,
+    AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyboardController, ResourceLocation,
+    ResourceType,
 };
 use himark_ahp_ext_types::history as history_wire;
-use imba::tooltip::{TooltipCommand, TooltipView};
 use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
     effect::{AnyEffect, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
     store::Store,
     thunk_ext::ThunkExt,
-    UiCtx, View,
+    UiCtx,
 };
-use skia_safe::Size;
 
 const NOTE_KIND: &str = "changes-note";
 
-const PANEL_PAD: f32 = 6.0;
-
+/// One commit row: the wire commit plus the id of the CHANGE SET that
+/// is its content (docs/model-view.md — `Commit { change_set }`).
+/// Minted eagerly when the row lands; content lands on the SET,
+/// lazily. Deref keeps wire-field readers direct.
 #[derive(Clone)]
-pub struct CommitFiles {
-    pub status: ChangesStatus,
-    pub files: rpds::VectorSync<ChangeEntry>,
+pub struct Commit {
+    pub wire: history_wire::Commit,
+    pub change_set: crate::hichanges::ChangeSetId,
+}
+
+impl std::ops::Deref for Commit {
+    type Target = history_wire::Commit;
+
+    fn deref(&self) -> &Self::Target {
+        &self.wire
+    }
 }
 
 #[derive(Clone)]
 pub struct FolderHistory {
     seat: Arc<dyn AhpServer>,
-    session: String,
-    channel: Option<String>,
+    session: crate::higent::SessionUri,
+    channel: Option<crate::higent::ChannelUri>,
     pub status: ChangesStatus,
     pub head: history_wire::HistoryHead,
-    pub commits: rpds::VectorSync<history_wire::Commit>,
+    pub commits: rpds::VectorSync<Commit>,
     pub more: Option<String>,
-
-    pub commit_files: rpds::HashTrieMapSync<String, CommitFiles>,
 }
 
 impl FolderHistory {
@@ -61,44 +62,176 @@ impl FolderHistory {
     }
 }
 
-#[derive(Clone, Default)]
+/// The commit-list MODEL per folder. History manages the commit
+/// change sets — minting them as rows land, populating them from
+/// commits — while the tree views over them live on the `ChangeSets`
+/// collection (crate::changes_view).
+#[derive(Clone)]
 pub struct History {
-    folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
+    /// The sibling whose sets this collection's commits are — wired at
+    /// the family mint (docs/entities.md law 4).
+    changes: imba::store::Id<crate::hichanges::ChangeSets>,
 
-    generation: u64,
+    folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
 }
 
-impl History {
-    pub fn generation(store: &Store) -> u64 {
-        store
-            .get::<History>()
-            .map(|history| history.generation)
-            .unwrap_or(0)
+/// What the collection answers to behind its `At` address
+/// (docs/entities.md law 5): its folders' feed landings and the
+/// commit-file fetches, each stamped with the collection id at launch.
+#[derive(Clone)]
+pub enum HistoryCommand {
+    Snapshot {
+        folder: ResourceLocation,
+        result: Result<history_wire::HistoryState, String>,
+    },
+    Polled {
+        folder: ResourceLocation,
+        actions: Vec<StateAction>,
+    },
+    CommitFiles {
+        folder: ResourceLocation,
+        commit: crate::hichanges::Revision,
+        result: Result<ChangesetState, String>,
+    },
+    CommitFilesPolled {
+        folder: ResourceLocation,
+        commit: crate::hichanges::Revision,
+        actions: Vec<StateAction>,
+    },
+}
+
+impl std::fmt::Display for HistoryCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            HistoryCommand::Snapshot { .. } => out.write_str("history snapshot"),
+            HistoryCommand::Polled { .. } => out.write_str("history polled"),
+            HistoryCommand::CommitFiles { .. } => out.write_str("history commit files"),
+            HistoryCommand::CommitFilesPolled { .. } => {
+                out.write_str("history commit files polled")
+            }
+        }
+    }
+}
+
+impl imba::store::Entity for History {
+    type Command = HistoryCommand;
+
+    fn perform(
+        &mut self,
+        _id: imba::store::Id<Self>,
+        command: HistoryCommand,
+        store: &mut Store,
+        _ui: &UiCtx,
+        fx: &mut Effects<'_, HistoryCommand>,
+    ) {
+        match command {
+            HistoryCommand::Snapshot { folder, result } => {
+                match &result {
+                    Ok(state) => self.land_state(store, &folder, state.clone()),
+                    Err(error) => self.adopt_error(&folder, error.clone()),
+                }
+                crate::hichanges::Changes::nudge_folder(store, self.changes, &folder);
+                if result.is_ok() {
+                    self.relaunch_poll(&folder, fx);
+                }
+            }
+            HistoryCommand::Polled { folder, actions } => {
+                self.fold_actions(store, &folder, &actions);
+                crate::hichanges::Changes::nudge_folder(store, self.changes, &folder);
+                self.relaunch_poll(&folder, fx);
+            }
+            HistoryCommand::CommitFiles {
+                folder,
+                commit,
+                result,
+            } => {
+                crate::hichanges::Changes::adopt_commit_state(
+                    store,
+                    self.changes,
+                    &folder,
+                    &commit,
+                    &result,
+                );
+                self.settle_commit_fetch(store, &folder, &commit, fx);
+            }
+            HistoryCommand::CommitFilesPolled {
+                folder,
+                commit,
+                actions,
+            } => {
+                crate::hichanges::Changes::fold_commit_actions(
+                    store,
+                    self.changes,
+                    &folder,
+                    &commit,
+                    &actions,
+                );
+                self.settle_commit_fetch(store, &folder, &commit, fx);
+            }
+        }
     }
 
-    pub fn folder(store: &Store, folder: &ResourceLocation) -> Option<FolderHistory> {
-        store.get::<History>()?.folders.get(folder).cloned()
+    fn destroy(&mut self, _store: &mut Store) {}
+}
+
+impl crate::AppEntity for History {}
+
+impl History {
+    /// A collection wired to the sets its commits are — minted by the
+    /// family ceremony, and by tests that stand one up alone.
+    pub fn wired(changes: imba::store::Id<crate::hichanges::ChangeSets>) -> Self {
+        Self {
+            changes,
+            folders: rpds::HashTrieMapSync::new_sync(),
+        }
+    }
+
+    pub fn changes(&self) -> imba::store::Id<crate::hichanges::ChangeSets> {
+        self.changes
+    }
+
+    /// A folder's history, in the collection whose id reached here.
+    pub fn folder(
+        store: &Store,
+        history: imba::store::Id<History>,
+        folder: &ResourceLocation,
+    ) -> Option<FolderHistory> {
+        store.entity(history)?.folders.get(folder).cloned()
+    }
+
+    /// Mutate the collection in place; a gone collection takes no
+    /// write (siblings are wired at the ceremony, never defaulted).
+    fn update_folder(
+        store: &mut Store,
+        history: imba::store::Id<History>,
+        mutate: impl FnOnce(&mut History),
+    ) {
+        let Some(mut row) = store.entity(history).cloned() else {
+            return;
+        };
+        mutate(&mut row);
+        store.put_entity(history, row);
     }
 
     pub(crate) fn is_empty(&self) -> bool {
         self.folders.is_empty()
     }
 
+    /// Attach a folder: the AHP session is the folder's WIRE (the
+    /// channel the feed subscribes through), carried from the route.
     pub(crate) fn ensure_folder(
         store: &mut Store,
+        history: imba::store::Id<History>,
+        wire: &crate::SessionId,
         folder: &ResourceLocation,
         seat: &Arc<dyn AhpServer>,
-        session: &str,
     ) {
-        let known = store
-            .get::<History>()
-            .is_some_and(|history| history.folders.contains_key(folder));
-        if known {
+        if Self::folder(store, history, folder).is_some() {
             return;
         }
         let seat = seat.clone();
-        let session = session.to_owned();
-        store.update::<History>(|history| {
+        let session = wire.session.clone();
+        Self::update_folder(store, history, |history| {
             history.folders.insert_mut(
                 folder.clone(),
                 FolderHistory {
@@ -109,21 +242,89 @@ impl History {
                     head: history_wire::HistoryHead::default(),
                     commits: rpds::VectorSync::new_sync(),
                     more: None,
-                    commit_files: rpds::HashTrieMapSync::new_sync(),
                 },
             );
-            history.generation += 1;
         });
+        if let Some(changes) = store.entity(history).map(|held| held.changes) {
+            crate::hichanges::Changes::nudge_folder(store, changes, folder);
+        }
+    }
+
+    /// The landing's own poll relaunch — the next batch of the
+    /// folder's history channel comes home as `Polled`.
+    fn relaunch_poll(&self, folder: &ResourceLocation, fx: &mut Effects<'_, HistoryCommand>) {
+        let Some(entry) = self.folders.get(folder) else {
+            return;
+        };
+        let Some(channel) = entry.channel.clone() else {
+            return;
+        };
+        let landing = folder.clone();
+        fx.push(
+            AnyEffect::new(PollChangesetEffect {
+                seat: entry.seat.clone(),
+                channel,
+            })
+            .map(move |actions| HistoryCommand::Polled {
+                folder: landing.clone(),
+                actions,
+            }),
+        );
+    }
+
+    /// A commit's files are being fetched: keep polling the commit's
+    /// changeset channel while its set computes, let go once it is.
+    fn settle_commit_fetch(
+        &self,
+        store: &Store,
+        folder: &ResourceLocation,
+        commit: &crate::hichanges::Revision,
+        fx: &mut Effects<'_, HistoryCommand>,
+    ) {
+        let Some(entry) = self.folders.get(folder) else {
+            return;
+        };
+        let Some(held) = crate::hichanges::Changes::commit_set(store, self.changes, folder, commit)
+        else {
+            return;
+        };
+        let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit.as_str()) else {
+            return;
+        };
+        match held.status {
+            ChangesStatus::Computing => {
+                let landing = folder.clone();
+                let commit_id = commit.to_owned();
+                fx.push(
+                    AnyEffect::new(PollChangesetEffect {
+                        seat: entry.seat.clone(),
+                        channel: crate::higent::ChannelUri::new(wire.changeset.clone()),
+                    })
+                    .map(move |actions| HistoryCommand::CommitFilesPolled {
+                        folder: landing.clone(),
+                        commit: commit_id.clone(),
+                        actions,
+                    }),
+                );
+            }
+            _ => entry
+                .seat
+                .unsubscribe_changeset(&crate::higent::ChannelUri::new(wire.changeset.clone())),
+        }
     }
 
     fn adopt_catalog(
         &mut self,
-        session: &str,
+        session: &crate::higent::SessionUri,
         entries: &[CatalogEntry],
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> {
+    ) -> Vec<(
+        ResourceLocation,
+        Arc<dyn AhpServer>,
+        crate::higent::ChannelUri,
+    )> {
         let mut fresh = Vec::new();
         for (folder, entry) in self.folders.clone().iter() {
-            if entry.session != session || entry.channel.is_some() {
+            if entry.session != *session || entry.channel.is_some() {
                 continue;
             }
             let Some(matched) = entries
@@ -139,26 +340,71 @@ impl History {
             self.folders.insert_mut(folder.clone(), entry);
             fresh.push((folder.clone(), seat, channel));
         }
-        self.generation += 1;
         fresh
     }
 
-    fn adopt(&mut self, folder: &ResourceLocation, state: history_wire::HistoryState) {
+    /// Wrap wire commits into rows, minting each commit's CHANGE SET
+    /// eagerly (light) — the row references its set from birth.
+    fn commit_rows(
+        &self,
+        store: &mut Store,
+        folder: &ResourceLocation,
+        commits: Vec<history_wire::Commit>,
+    ) -> Vec<Commit> {
+        let Some(entry) = self.folders.get(folder).cloned() else {
+            return Vec::new();
+        };
+        commits
+            .into_iter()
+            .map(|wire| {
+                let change_set = crate::hichanges::Changes::ensure_commit_set(
+                    store,
+                    self.changes,
+                    folder,
+                    &crate::hichanges::Revision::new(wire.id.clone()),
+                    &entry.seat,
+                    &entry.session,
+                );
+                Commit { wire, change_set }
+            })
+            .collect()
+    }
+
+    /// A history snapshot / reset lands: mint the rows' sets (in the
+    /// sibling collection), then adopt.
+    pub(crate) fn land_state(
+        &mut self,
+        store: &mut Store,
+        folder: &ResourceLocation,
+        state: history_wire::HistoryState,
+    ) {
+        let rows = self.commit_rows(store, folder, state.commits.clone());
+        self.adopt(folder, &state, rows);
+    }
+
+    fn adopt(
+        &mut self,
+        folder: &ResourceLocation,
+        state: &history_wire::HistoryState,
+        rows: Vec<Commit>,
+    ) {
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
         entry.status = match state.status {
             history_wire::HistoryStatus::Computing => ChangesStatus::Computing,
             history_wire::HistoryStatus::Ready => ChangesStatus::Ready,
-            history_wire::HistoryStatus::Error => {
-                ChangesStatus::Error(state.error.unwrap_or_else(|| "history error".to_owned()))
-            }
+            history_wire::HistoryStatus::Error => ChangesStatus::Error(
+                state
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "history error".to_owned()),
+            ),
         };
-        entry.head = state.head;
-        entry.commits = state.commits.into_iter().collect();
-        entry.more = state.more;
+        entry.head = state.head.clone();
+        entry.commits = rows.into_iter().collect();
+        entry.more = state.more.clone();
         self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
     }
 
     fn adopt_error(&mut self, folder: &ResourceLocation, error: String) {
@@ -169,25 +415,40 @@ impl History {
         entry.commits = rpds::VectorSync::new_sync();
         entry.more = None;
         self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
     }
 
-    pub(crate) fn session_failed(store: &mut Store, session: &str, error: &str) {
-        store.update::<History>(|history| {
+    /// The session channel failed: every folder riding that wire
+    /// reports it.
+    pub(crate) fn session_failed(
+        store: &mut Store,
+        history: imba::store::Id<History>,
+        session: &crate::higent::SessionUri,
+        error: &str,
+    ) {
+        Self::update_folder(store, history, |history| {
             let riding: Vec<ResourceLocation> = history
                 .folders
                 .iter()
-                .filter(|(_, entry)| entry.session == session)
+                .filter(|(_, entry)| entry.session == *session)
                 .map(|(folder, _)| folder.clone())
                 .collect();
             for folder in riding {
                 history.adopt_error(&folder, error.to_owned());
             }
         });
+        if let Some(changes) = store.entity(history).map(|held| held.changes) {
+            crate::hichanges::Changes::nudge_all_in(store, changes);
+        }
     }
 
-    fn fold(&mut self, folder: &ResourceLocation, actions: &[StateAction]) {
-        let mut moved = false;
+    /// Fold the channel's streamed actions — every incoming commit row
+    /// mints its change set in the sibling collection first.
+    pub(crate) fn fold_actions(
+        &mut self,
+        store: &mut Store,
+        folder: &ResourceLocation,
+        actions: &[StateAction],
+    ) {
         for action in actions {
             let StateAction::Unknown(value) = action else {
                 continue;
@@ -197,128 +458,56 @@ impl History {
                 else {
                     continue;
                 };
-                self.adopt(folder, reset.state);
-                continue;
-            }
-            let Some(mut entry) = self.folders.get(folder).cloned() else {
-                continue;
-            };
-            if value["type"] == history_wire::HISTORY_APPENDED {
+                self.land_state(store, folder, reset.state);
+            } else if value["type"] == history_wire::HISTORY_APPENDED {
                 let Ok(appended) =
                     serde_json::from_value::<history_wire::HistoryAppended>(value.clone())
                 else {
                     continue;
                 };
-                for commit in appended.commits {
+                let rows = self.commit_rows(store, folder, appended.commits);
+                let Some(mut entry) = self.folders.get(folder).cloned() else {
+                    continue;
+                };
+                for commit in rows {
                     entry.commits.push_back_mut(commit);
                 }
-                entry.more = appended.more;
+                entry.more = appended.more.clone();
+                self.folders.insert_mut(folder.clone(), entry);
             } else if value["type"] == history_wire::HISTORY_PREPENDED {
                 let Ok(prepended) =
                     serde_json::from_value::<history_wire::HistoryPrepended>(value.clone())
                 else {
                     continue;
                 };
+                let rows = self.commit_rows(store, folder, prepended.commits);
+                let Some(mut entry) = self.folders.get(folder).cloned() else {
+                    continue;
+                };
                 let mut commits = rpds::VectorSync::new_sync();
-                for commit in prepended.commits {
+                for commit in rows {
                     commits.push_back_mut(commit);
                 }
                 for commit in entry.commits.iter() {
                     commits.push_back_mut(commit.clone());
                 }
                 entry.commits = commits;
-                entry.head = prepended.head;
-            } else {
-                continue;
-            }
-            self.folders.insert_mut(folder.clone(), entry);
-            moved = true;
-        }
-        if moved {
-            self.generation += 1;
-        }
-    }
-
-    fn adopt_commit_files(
-        &mut self,
-        uris: &dyn crate::higent::ResourceUriMap,
-        folder: &ResourceLocation,
-        commit: &str,
-        result: &Result<ChangesetState, String>,
-    ) {
-        let files = match result {
-            Ok(state) => CommitFiles {
-                status: ChangesStatus::of_wire(
-                    &state.status,
-                    state.error.as_ref().map(|error| error.message.as_str()),
-                ),
-                files: state
-                    .files
-                    .iter()
-                    .filter_map(|file| entry_of(uris, folder, file))
-                    .collect(),
-            },
-            Err(error) => CommitFiles {
-                status: ChangesStatus::Error(error.clone()),
-                files: rpds::VectorSync::new_sync(),
-            },
-        };
-        self.set_commit_files(folder, commit, files);
-    }
-
-    fn fold_commit_files(
-        &mut self,
-        uris: &dyn crate::higent::ResourceUriMap,
-        folder: &ResourceLocation,
-        commit: &str,
-        actions: &[StateAction],
-    ) {
-        let Some(mut held) = self
-            .folders
-            .get(folder)
-            .and_then(|entry| entry.commit_files.get(commit))
-            .cloned()
-        else {
-            return;
-        };
-        for action in actions {
-            match action {
-                StateAction::ChangesetContentChanged(content) => {
-                    held.files = content
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(uris, folder, file))
-                        .collect();
-                }
-                StateAction::ChangesetStatusChanged(status) => {
-                    held.status = ChangesStatus::of_wire(
-                        &status.status,
-                        status.error.as_ref().map(|error| error.message.as_str()),
-                    );
-                }
-                _ => {}
+                entry.head = prepended.head.clone();
+                self.folders.insert_mut(folder.clone(), entry);
             }
         }
-        self.set_commit_files(folder, commit, held);
-    }
-
-    fn set_commit_files(&mut self, folder: &ResourceLocation, commit: &str, files: CommitFiles) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.commit_files.insert_mut(commit.to_owned(), files);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
     }
 }
 
 pub(crate) fn subscribe_fresh(
     store: &mut Store,
     window: crate::WindowId,
-    session: &str,
+    home: &crate::SessionId,
+    history: imba::store::Id<History>,
     entries: &[CatalogEntry],
     fx: &mut crate::AppFx<'_>,
 ) {
+    let _ = window;
     let histories: Vec<CatalogEntry> = entries
         .iter()
         .filter(|entry| entry.kind == history_wire::HISTORY_CHANGE_KIND)
@@ -327,219 +516,34 @@ pub(crate) fn subscribe_fresh(
     if histories.is_empty() {
         return;
     }
+    let session = home.session.clone();
     let mut fresh = Vec::new();
-    store.update::<History>(|history| {
-        fresh = history.adopt_catalog(session, &histories);
+    History::update_folder(store, history, |held| {
+        fresh = held.adopt_catalog(&session, &histories);
     });
+    if let Some(changes) = store.entity(history).map(|held| held.changes) {
+        crate::hichanges::Changes::nudge_all_in(store, changes);
+    }
     for (folder, seat, channel) in fresh {
         let landing = folder.clone();
-        let scope = folder_scope(&folder);
         fx.push(
             AnyEffect::new(SubscribeHistoryEffect { seat, channel }).map(move |result| {
-                let landed = Arc::new(SnapshotLanded {
-                    folder: landing.clone(),
-                    result,
-                });
-                match scope.clone() {
-                    Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                    None => AppCommand::Dynamic(window, landed),
-                }
+                AppCommand::at(
+                    history,
+                    HistoryCommand::Snapshot {
+                        folder: landing.clone(),
+                        result,
+                    },
+                )
             }),
         );
     }
 }
 
-struct SnapshotLanded {
-    folder: ResourceLocation,
-    result: Result<history_wire::HistoryState, String>,
-}
-
-impl crate::DynamicCommand for SnapshotLanded {
-    fn id(&self) -> &'static str {
-        "history.landed"
-    }
-    fn name(&self) -> String {
-        "History Snapshot".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        store.update::<History>(|history| match &self.result {
-            Ok(state) => history.adopt(&self.folder, state.clone()),
-            Err(error) => history.adopt_error(&self.folder, error.clone()),
-        });
-        if self.result.is_ok() {
-            relaunch_poll(store, window, &self.folder, fx);
-        }
-    }
-}
-
-struct Polled {
-    folder: ResourceLocation,
-    actions: Vec<StateAction>,
-}
-
-impl crate::DynamicCommand for Polled {
-    fn id(&self) -> &'static str {
-        "history.polled"
-    }
-    fn name(&self) -> String {
-        "History Update".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        store.update::<History>(|history| history.fold(&self.folder, &self.actions));
-        relaunch_poll(store, window, &self.folder, fx);
-    }
-}
-
-fn relaunch_poll(
-    store: &Store,
-    window: crate::WindowId,
-    folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
-) {
-    let Some(entry) = History::folder(store, folder) else {
-        return;
-    };
-    let Some(channel) = entry.channel else {
-        return;
-    };
-    let landing = folder.clone();
-    let scope = folder_scope(folder);
-    fx.push(
-        AnyEffect::new(PollChangesetEffect {
-            seat: entry.seat,
-            channel,
-        })
-        .map(move |actions| {
-            let polled = Arc::new(Polled {
-                folder: landing.clone(),
-                actions,
-            });
-            match scope.clone() {
-                Some(scope) => AppCommand::dynamic_in(scope, window, polled),
-                None => AppCommand::Dynamic(window, polled),
-            }
-        }),
-    );
-}
-
-struct CommitFilesLanded {
-    folder: ResourceLocation,
-    commit: String,
-    result: Result<ChangesetState, String>,
-}
-
-impl crate::DynamicCommand for CommitFilesLanded {
-    fn id(&self) -> &'static str {
-        "history.commit-files-landed"
-    }
-    fn name(&self) -> String {
-        "Commit Files".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let Some(uris) = crate::hichanges::Changes::uris(store) else {
-            return;
-        };
-        store.update::<History>(|history| {
-            history.adopt_commit_files(&*uris, &self.folder, &self.commit, &self.result)
-        });
-        settle_commit_fetch(store, window, &self.folder, &self.commit, fx);
-    }
-}
-
-fn settle_commit_fetch(
-    store: &Store,
-    window: crate::WindowId,
-    folder: &ResourceLocation,
-    commit: &str,
-    fx: &mut crate::AppFx<'_>,
-) {
-    let Some(entry) = History::folder(store, folder) else {
-        return;
-    };
-    let Some(held) = entry.commit_files.get(commit) else {
-        return;
-    };
-    let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit) else {
-        return;
-    };
-    match held.status {
-        ChangesStatus::Computing => {
-            let landing = folder.clone();
-            let commit_id = commit.to_owned();
-            let scope = folder_scope(folder);
-            fx.push(
-                AnyEffect::new(PollChangesetEffect {
-                    seat: entry.seat.clone(),
-                    channel: wire.changeset.clone(),
-                })
-                .map(move |actions| {
-                    let polled = Arc::new(CommitFilesPolled {
-                        folder: landing.clone(),
-                        commit: commit_id.clone(),
-                        actions,
-                    });
-                    match scope.clone() {
-                        Some(scope) => AppCommand::dynamic_in(scope, window, polled),
-                        None => AppCommand::Dynamic(window, polled),
-                    }
-                }),
-            );
-        }
-        _ => entry.seat.unsubscribe_changeset(&wire.changeset),
-    }
-}
-
-struct CommitFilesPolled {
-    folder: ResourceLocation,
-    commit: String,
-    actions: Vec<StateAction>,
-}
-
-impl crate::DynamicCommand for CommitFilesPolled {
-    fn id(&self) -> &'static str {
-        "history.commit-files-polled"
-    }
-    fn name(&self) -> String {
-        "Commit Files Update".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let Some(uris) = crate::hichanges::Changes::uris(store) else {
-            return;
-        };
-        store.update::<History>(|history| {
-            history.fold_commit_files(&*uris, &self.folder, &self.commit, &self.actions)
-        });
-        settle_commit_fetch(store, window, &self.folder, &self.commit, fx);
-    }
-}
-
 pub struct FetchCommitFiles {
+    pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
-    pub commit: String,
+    pub commit: crate::hichanges::Revision,
 }
 
 impl crate::DynamicCommand for FetchCommitFiles {
@@ -556,50 +560,57 @@ impl crate::DynamicCommand for FetchCommitFiles {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(entry) = History::folder(store, &self.folder) else {
+        let _ = window;
+        let Some(entry) = History::folder(store, self.history, &self.folder) else {
             return;
         };
-        if entry.commit_files.get(&self.commit).is_some() {
+        let Some(changes) = store.entity(self.history).map(|held| held.changes) else {
+            return;
+        };
+        if crate::hichanges::Changes::commit_generation(store, changes, &self.folder, &self.commit)
+            > 0
+        {
             return;
         }
-        let Some(commit) = entry.commits.iter().find(|held| held.id == self.commit) else {
+        let Some(commit) = entry
+            .commits
+            .iter()
+            .find(|held| held.id == self.commit.as_str())
+        else {
             return;
         };
-        let channel = commit.changeset.clone();
-        store.update::<History>(|history| {
-            history.set_commit_files(
-                &self.folder,
-                &self.commit,
-                CommitFiles {
-                    status: ChangesStatus::Computing,
-                    files: rpds::VectorSync::new_sync(),
-                },
-            );
-        });
+        let channel = crate::higent::ChannelUri::new(commit.changeset.clone());
+        // Mark the SET computing (it exists from the row's birth).
+        crate::hichanges::Changes::mark_commit_computing(
+            store,
+            changes,
+            &self.folder,
+            &self.commit,
+        );
         let landing = self.folder.clone();
         let commit_id = self.commit.clone();
-        let scope = folder_scope(&self.folder);
+        let history = self.history;
         fx.push(
             AnyEffect::new(SubscribeChangesetEffect {
                 seat: entry.seat,
                 channel,
             })
             .map(move |result| {
-                let landed = Arc::new(CommitFilesLanded {
-                    folder: landing.clone(),
-                    commit: commit_id.clone(),
-                    result,
-                });
-                match scope.clone() {
-                    Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                    None => AppCommand::Dynamic(window, landed),
-                }
+                AppCommand::at(
+                    history,
+                    HistoryCommand::CommitFiles {
+                        folder: landing.clone(),
+                        commit: commit_id.clone(),
+                        result,
+                    },
+                )
             }),
         );
     }
 }
 
 pub struct GrowHistory {
+    pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
 }
 
@@ -617,7 +628,7 @@ impl crate::DynamicCommand for GrowHistory {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(entry) = History::folder(store, &self.folder) else {
+        let Some(entry) = History::folder(store, self.history, &self.folder) else {
             return;
         };
         let (Some(channel), Some(before)) = (entry.channel, entry.more) else {
@@ -641,6 +652,7 @@ impl crate::DynamicCommand for GrowHistory {
 }
 
 pub struct CommitHistory {
+    pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
     pub message: String,
 }
@@ -662,7 +674,7 @@ impl crate::DynamicCommand for CommitHistory {
         if self.message.trim().is_empty() {
             return;
         }
-        let Some(entry) = History::folder(store, &self.folder) else {
+        let Some(entry) = History::folder(store, self.history, &self.folder) else {
             return;
         };
         let Some(channel) = entry.channel else {
@@ -684,27 +696,7 @@ impl crate::DynamicCommand for CommitHistory {
     }
 }
 
-#[derive(Clone)]
-enum RowItem {
-    Branch,
-
-    Commit {
-        folder: ResourceLocation,
-        id: String,
-    },
-
-    File {
-        folder: ResourceLocation,
-        commit: String,
-        new: ResourceLocation,
-    },
-
-    More {
-        folder: ResourceLocation,
-    },
-
-    Note,
-}
+use crate::changes_view::RowItem;
 
 struct CommitSink<'a> {
     items: &'a mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
@@ -714,7 +706,8 @@ struct CommitSink<'a> {
 
 impl DirSink for CommitSink<'_> {
     fn branch(&mut self, key: &ResourceLocation) {
-        self.items.insert_mut(key.clone(), RowItem::Branch);
+        self.items
+            .insert_mut(key.clone(), RowItem::Branch { select: true });
     }
 
     fn file_key(&self, entry: &ChangeEntry, at: &ResourceLocation) -> ResourceLocation {
@@ -730,23 +723,29 @@ impl DirSink for CommitSink<'_> {
             .unwrap_or_else(|| empty_side(&entry.working));
         self.items.insert_mut(
             key.clone(),
-            RowItem::File {
-                folder: self.folder.clone(),
-                commit: self.commit.to_owned(),
-                new,
+            RowItem::Open {
+                source: crate::diff_canvas::CanvasSource::Commit {
+                    folder: self.folder.clone(),
+                    id: crate::hichanges::Revision::new(self.commit),
+                },
+                reveal: Some(new),
+                toggle: false,
+                select: true,
             },
         );
     }
 }
 
-fn graph_node(
+pub(crate) fn graph_node(
+    store: &Store,
+    history: imba::store::Id<History>,
     folder: &ResourceLocation,
-    history: Option<&FolderHistory>,
+    held: Option<&FolderHistory>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     counts: (skia_safe::Color, skia_safe::Color),
 ) -> ForestNode<ResourceLocation> {
     let key = folder.child(ResourceType::new("history-graph"), "graph");
-    items.insert_mut(key.clone(), RowItem::Branch);
+    items.insert_mut(key.clone(), RowItem::Branch { select: true });
     let note = |text: &str,
                 under: &ResourceLocation,
                 items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>| {
@@ -763,26 +762,40 @@ fn graph_node(
             children: Vec::new(),
         }
     };
-    let children = match history {
+    let children = match held {
         None => vec![note("no history source", &key, items)],
-        Some(history) => match (&history.status, history.commits.is_empty()) {
+        Some(entry) => match (&entry.status, entry.commits.is_empty()) {
             (ChangesStatus::Error(message), _) => vec![note(message, &key, items)],
             (ChangesStatus::Computing, true) => vec![note("computing…", &key, items)],
             (ChangesStatus::Ready, true) => vec![note("no commits", &key, items)],
             _ => {
                 let mut rows = Vec::new();
-                for commit in history.commits.iter() {
+                for commit in entry.commits.iter() {
                     let commit_key = folder.child(ResourceType::new("history-commit"), &commit.id);
                     items.insert_mut(
                         commit_key.clone(),
-                        RowItem::Commit {
-                            folder: folder.clone(),
-                            id: commit.id.clone(),
+                        RowItem::Open {
+                            source: crate::diff_canvas::CanvasSource::Commit {
+                                folder: folder.clone(),
+                                id: crate::hichanges::Revision::new(commit.id.clone()),
+                            },
+                            reveal: None,
+                            toggle: true,
+                            select: true,
                         },
                     );
 
                     let trail: Vec<(String, skia_safe::Color)> = Vec::new();
-                    let children = match history.commit_files.get(&commit.id) {
+                    let held = store.entity(history).and_then(|held| {
+                        crate::hichanges::Changes::commit_set(
+                            store,
+                            held.changes,
+                            folder,
+                            &crate::hichanges::Revision::new(commit.id.clone()),
+                        )
+                    });
+                    let held = held.filter(|set| set.generation() > 0);
+                    let children = match held.as_ref() {
                         None => Vec::new(),
                         Some(files) => match (&files.status, files.files.is_empty()) {
                             (ChangesStatus::Error(message), _) => {
@@ -829,11 +842,11 @@ fn graph_node(
                         children,
                     });
                 }
-                if history.more.is_some() {
+                if entry.more.is_some() {
                     let more_key = key.child(ResourceType::new("history-more"), "more");
                     items.insert_mut(
                         more_key.clone(),
-                        RowItem::More {
+                        RowItem::Grow {
                             folder: folder.clone(),
                         },
                     );
@@ -854,7 +867,7 @@ fn graph_node(
     };
 
     let mut label = folder.name().to_owned();
-    if let Some(branch) = history.and_then(|history| history.head.branch.as_deref()) {
+    if let Some(branch) = held.and_then(|entry| entry.head.branch.as_deref()) {
         label = format!("{label} — {branch}");
     }
     ForestNode {
@@ -933,12 +946,13 @@ impl imba::View for CommitTip {
                 let chrome = theme.ui().combo.clone();
                 let colors = theme.ui().peeker.clone();
                 let font = crate::fonts::ui_text_font(ui, chrome.value_size);
+                let shaper = imba::TextShaper::of(ui);
                 let pad = 14.0f32;
                 let line_h = chrome.value_size * 1.45;
                 let width = self
                     .lines
                     .iter()
-                    .map(|(line, _)| font.measure_str(line, None).0)
+                    .map(|(line, _)| shaper.advance(&font, line))
                     .fold(120.0f32, f32::max)
                     + pad * 2.0;
                 let height = self.lines.len() as f32 * line_h + pad * 2.0;
@@ -951,12 +965,12 @@ impl imba::View for CommitTip {
                         canvas.draw_round_rect(rect, 8.0, 8.0, &paint);
                         let mut y = rect.top + pad + chrome.value_size;
                         for (line, dim) in &lines {
-                            paint.set_color(if *dim {
+                            let color = if *dim {
                                 colors.dim_text.0
                             } else {
                                 colors.text.0
-                            });
-                            canvas.draw_str(line, (rect.left + pad, y), &font, &paint);
+                            };
+                            shaper.draw(canvas, &font, line, color, 0.0, rect.left + pad, y);
                             y += line_h;
                         }
                     },
@@ -966,9 +980,10 @@ impl imba::View for CommitTip {
     }
 }
 
-fn commit_tip(
-    rows: &SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
+pub(crate) fn commit_tip(
+    rows: &ListKeyboardController<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
     store: &Store,
+    history: imba::store::Id<History>,
     point: skia_safe::Point,
 ) -> Option<(skia_safe::Rect, CommitTip)> {
     let (key, anchor) = rows.inner().hover_row(point)?;
@@ -981,442 +996,9 @@ fn commit_tip(
         key.authority().clone(),
         key.path()[..key.path().len().saturating_sub(1)].to_vec(),
     );
-    let entry = History::folder(store, &folder)?;
+    let entry = History::folder(store, history, &folder)?;
     let commit = entry.commits.iter().find(|commit| commit.id == id)?;
     Some((anchor, CommitTip::of(commit)))
-}
-
-pub enum HistoryCommand {
-    Rows(TooltipCommand<SpeedSearchCommand<TreeListCommand>>),
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
-
-    AutoGrow,
-
-    Refresh,
-
-    Dismiss,
-}
-
-pub struct HistoryView {
-    list: TooltipView<
-        SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
-        CommitTip,
-    >,
-    items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-    workspace: crate::SessionId,
-    window: crate::WindowId,
-
-    seen: u64,
-
-    grown: rpds::HashTrieMapSync<ResourceLocation, String>,
-    request: Option<ModalRequest>,
-}
-
-impl Clone for HistoryView {
-    fn clone(&self) -> Self {
-        Self {
-            list: self.list.clone(),
-            items: self.items.clone(),
-            workspace: self.workspace.clone(),
-            window: self.window,
-            seen: self.seen,
-            grown: self.grown.clone(),
-
-            request: None,
-        }
-    }
-}
-
-impl HistoryView {
-    pub fn open(
-        store: &Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        workspace: crate::SessionId,
-    ) -> Self {
-        let mut section = Self {
-            list: TooltipView::new(
-                SpeedSearchView::new(
-                    ForestList::new(store),
-                    ForestSearcher::default(),
-                    store,
-                    ui,
-                    crate::env::Fonts::of(store),
-                ),
-                commit_tip,
-            ),
-            items: rpds::HashTrieMapSync::new_sync(),
-            workspace,
-            window,
-            seen: 0,
-            grown: rpds::HashTrieMapSync::new_sync(),
-            request: None,
-        };
-        section.refresh(store, ui);
-        section
-    }
-
-    pub(crate) fn stale(&self, store: &Store) -> bool {
-        History::generation(store) != self.seen
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.list.view().inner().forest.rows_trailed()
-    }
-
-    #[doc(hidden)]
-    pub fn cursor_name(&self) -> Option<String> {
-        self.list
-            .view()
-            .inner()
-            .list()
-            .cursor()
-            .map(|key| key.name().to_owned())
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    pub(crate) fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = History::generation(store);
-        let mut items = rpds::HashTrieMapSync::new_sync();
-        let themes = crate::env::Themes::of(store);
-        let ui_theme = themes.ui();
-        let counts = (ui_theme.chat.added_color.0, ui_theme.chat.removed_color.0);
-        let _accent = ui_theme.peeker.accent.0;
-        let _dim = ui_theme.peeker.dim_text.0;
-        let nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .map(|folder| {
-                    graph_node(
-                        folder,
-                        History::folder(store, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    )
-                })
-                .collect();
-
-        for (key, item) in items.iter() {
-            if matches!(item, RowItem::Commit { .. }) && !self.items.contains_key(key) {
-                self.list
-                    .view_mut()
-                    .inner_mut()
-                    .forest
-                    .preset_collapsed(key);
-            }
-        }
-        self.items = items;
-        self.list.view_mut().inner_mut().set(&nodes, store, ui);
-    }
-
-    fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
-        let Some(key) = self.list.view().inner().list().key_at(index).cloned() else {
-            return;
-        };
-        self.activate_key(&key, store, ui);
-    }
-
-    fn activate_key(&mut self, key: &ResourceLocation, store: &Store, ui: &UiCtx) {
-        if !matches!(self.items.get(key), Some(RowItem::Note) | None) {
-            self.list
-                .view_mut()
-                .inner_mut()
-                .list_mut()
-                .select_only(key.clone());
-        }
-        match self.items.get(key).cloned() {
-            Some(RowItem::Branch) => self.list.view_mut().inner_mut().toggle(key, store, ui),
-            Some(RowItem::Commit { folder, id }) => {
-                self.list.view_mut().inner_mut().toggle(key, store, ui);
-
-                // OpenDiffCanvas also ensures the commit's file
-                // fetch — one request feeds the tree AND the canvas.
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::Commit { folder, id },
-                        reveal: None,
-                    }),
-                )));
-            }
-            Some(RowItem::More { folder }) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(GrowHistory { folder }),
-                )));
-            }
-            Some(RowItem::File {
-                folder,
-                commit,
-                new,
-            }) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::Commit { folder, id: commit },
-                        reveal: Some(new),
-                    }),
-                )));
-            }
-            Some(RowItem::Note) | None => {}
-        }
-    }
-}
-
-impl View for HistoryView {
-    type Command = HistoryCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, HistoryCommand> {
-        use imba::focus::FocusData;
-        let searching = self.list.view().searching();
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(HistoryCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(HistoryCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(HistoryCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(HistoryCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    HistoryCommand::Pick,
-                    HistoryCommand::Rows(TooltipCommand::Host(SpeedSearchCommand::Clear)),
-                ]),
-                InputKey::Enter => EventResult::Command(HistoryCommand::Pick),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.list.focus_data(store, ui).map(HistoryCommand::Rows))
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match command {
-            HistoryCommand::Rows(command) => {
-                if let TooltipCommand::Host(SpeedSearchCommand::Inner(inner)) = &command {
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        return self.activate(index, store, ui);
-                    }
-                }
-                fx.scope(HistoryCommand::Rows, |fx| {
-                    self.list.perform(store, ui, command, fx)
-                });
-            }
-            HistoryCommand::Select(delta) => self
-                .list
-                .view_mut()
-                .inner_mut()
-                .list_mut()
-                .cursor_step(delta),
-            HistoryCommand::Fold(expand) => {
-                if expand {
-                    if let Some(key) = self.list.view().inner().list().cursor().cloned() {
-                        if let Some(RowItem::Commit { folder, id }) = self.items.get(&key).cloned()
-                        {
-                            let entry = History::folder(store, &folder);
-                            let unfetched =
-                                entry.is_some_and(|entry| entry.commit_files.get(&id).is_none());
-                            if unfetched {
-                                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                                    self.window,
-                                    Arc::new(FetchCommitFiles { folder, commit: id }),
-                                )));
-                            }
-                        }
-                    }
-                }
-                self.list
-                    .view_mut()
-                    .inner_mut()
-                    .fold_cursor(expand, store, ui);
-            }
-            HistoryCommand::Pick => {
-                if let Some(key) = self.list.view().inner().list().cursor().cloned() {
-                    self.activate_key(&key, store, ui);
-                }
-            }
-            HistoryCommand::AutoGrow => {
-                for folder in crate::higent::session_folders(store, &self.workspace) {
-                    let Some(entry) = History::folder(store, &folder) else {
-                        continue;
-                    };
-                    let Some(more) = entry.more else { continue };
-                    if self.grown.get(&folder).map(String::as_str) == Some(more.as_str()) {
-                        continue;
-                    }
-                    self.grown.insert_mut(folder.clone(), more);
-                    self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(GrowHistory { folder }),
-                    )));
-
-                    break;
-                }
-            }
-            HistoryCommand::Refresh => self.refresh(store, ui),
-            HistoryCommand::Dismiss => {
-                self.request = Some(ModalRequest::Close);
-            }
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut section = container(arena, size);
-
-            let band = PANEL_PAD;
-
-            let rows = imba::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
-            )
-            .map(HistoryCommand::Rows);
-            section.place(0.0, band, rows);
-
-            let searching = self.list.view().searching();
-            let keymap = leaf::<HistoryCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(HistoryCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(HistoryCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if searching => EventResult::Commands(vec![
-                        HistoryCommand::Pick,
-                        HistoryCommand::Rows(TooltipCommand::Host(SpeedSearchCommand::Clear)),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } => EventResult::Command(HistoryCommand::Pick),
-                    _ => EventResult::Ignored,
-                },
-            );
-            section.place(0.0, 0.0, keymap);
-
-            let stale = self.stale(store);
-            let rows_height = (size.height - band).max(1.0);
-            let near_tail = {
-                let list = self.list.view().inner();
-                list.scroll_y() + rows_height
-                    >= list.list().total_height() - 2.0 * crate::ui::space::XL
-            };
-            let pageable = crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .any(|folder| {
-                    History::folder(store, folder).is_some_and(|entry| {
-                        entry.more.as_deref().is_some_and(|more| {
-                            self.grown.get(folder).map(String::as_str) != Some(more)
-                        })
-                    })
-                });
-            let grow = near_tail && pageable;
-            section.wrap(move |inner| ReconcileShell { inner, stale, grow })
-        })
-    }
-}
-
-struct ReconcileShell<Inner> {
-    inner: Inner,
-    stale: bool,
-
-    grow: bool,
-}
-
-impl<'a, Inner: imba::Widget<'a, HistoryCommand>> imba::Widget<'a, HistoryCommand>
-    for ReconcileShell<Inner>
-{
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, HistoryCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: skia_safe::Rect,
-    ) -> EventResult<HistoryCommand> {
-        let mut result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) {
-            if self.stale {
-                result = result.merge(EventResult::Command(HistoryCommand::Refresh));
-            }
-            if self.grow {
-                result = result.merge(EventResult::Command(HistoryCommand::AutoGrow));
-            }
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, HistoryCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
-impl crate::ModalView for HistoryView {
-    fn clone_modal(&self) -> Box<dyn crate::ModalView> {
-        Box::new(self.clone())
-    }
-
-    fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
 }
 
 pub struct ToggleHistoryView;
@@ -1442,16 +1024,36 @@ impl crate::DynamicCommand for ToggleHistoryView {
             return;
         }
         let workspace = entity.current_session();
-        crate::hichanges::Changes::ensure(store, window, workspace.clone(), fx);
+        let changes = entity.family().changes();
+        let folders = crate::higent::session_folders(store, &workspace);
+        crate::hichanges::Changes::ensure(store, window, changes, folders, fx);
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = HistoryView::open(store, &_app.ui_ctx(), window, workspace);
+        let view = crate::hichanges::Changes::mint_view(
+            store,
+            changes,
+            crate::changes_view::ChangesView::open(
+                store,
+                &_app.ui_ctx(),
+                window,
+                changes,
+                workspace,
+                crate::changes_view::ViewSets::History,
+            ),
+        );
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(crate::changes_view::ChangesPane::new(changes, view)),
+                    owner,
+                    fx,
+                )
+            },
         );
         crate::Windows::put(store, window, entity);
     }

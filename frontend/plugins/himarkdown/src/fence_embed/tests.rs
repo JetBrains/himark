@@ -3,6 +3,14 @@
 
 use super::*;
 
+/// The collection the embed install files into — the SAME road
+/// production takes (the location's owner; a bare test store routes
+/// to the local default session), never a privately minted id.
+fn test_docs(store: &mut Store) -> imba::store::Id<himark::OpenDocuments> {
+    himark::higent::Hosts::ensure_family(store, &himark::SessionId::local_default(store))
+        .documents()
+}
+
 fn fonts() -> skia_safe::textlayout::FontCollection {
     himark::test_document::test_fonts_collection().clone()
 }
@@ -145,6 +153,7 @@ fn embedded(entry: &Markup, len: u32) -> Option<himark::DocumentId> {
 fn an_addressed_fence_embeds_the_registered_file() {
     let source = "# Doc\n\n``` rust src/main.rs\nplaceholder\n```\n";
     let (mut store, document) = host(source);
+    let documents = test_docs(&mut store);
     let over = enrich_input(&document, source);
     let entry = run(
         &mut store,
@@ -153,19 +162,20 @@ fn an_addressed_fence_embeds_the_registered_file() {
     );
     let id = embedded(&entry, source.len() as u32).expect("an EditorIdView embed");
 
-    let location = himark::OpenDocuments::location(&store, id).expect("registered location");
+    let location =
+        himark::OpenDocuments::location(&store, documents, id).expect("registered location");
     assert_eq!(location.path(), sidecar_path().as_slice());
     assert_eq!(
-        himark::OpenDocuments::by_location(&store, &location),
+        himark::OpenDocuments::by_location(&store, documents, &location),
         Some(id),
         "the embed IS the by_location document a pane would open"
     );
-    let shown = himark::OpenDocuments::document_ref(&store, id)
+    let shown = himark::OpenDocuments::document_ref(&store, documents, id)
         .expect("the registered document")
         .text()
         .byte_string(
             0,
-            himark::OpenDocuments::document_ref(&store, id)
+            himark::OpenDocuments::document_ref(&store, documents, id)
                 .unwrap()
                 .text()
                 .byte_count(),
@@ -181,6 +191,7 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
     let ui = himark::test_document::test_ui();
     let source = "``` rust src/main.rs\nx\n```\n\n``` rust src/main.rs#L2-3\ny\n```\n";
     let (mut store, document) = host(source);
+    let documents = test_docs(&mut store);
     let over = enrich_input(&document, source);
     let content = "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\n";
     let entry = run(&mut store, &over, fetch_caller(sidecar_path(), content));
@@ -199,7 +210,7 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
     );
 
     let reference = himark::EditorView::complete(
-        himark::OpenDocuments::document_ref(&store, whole.document())
+        himark::OpenDocuments::document_ref(&store, documents, whole.document())
             .expect("target")
             .clone(),
         720.0,
@@ -215,7 +226,8 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
         whole.height()
     );
 
-    let target = himark::OpenDocuments::document_ref(&store, windowed.document()).expect("target");
+    let target = himark::OpenDocuments::document_ref(&store, documents, windowed.document())
+        .expect("target");
     let text = target.text().byte_string(0, target.text().byte_count());
     let start = text.find("fn two").expect("line 2") as u32;
     let end = (text.find("fn three").expect("line 3") + "fn three() {}".len()) as u32;
@@ -236,6 +248,7 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
 fn an_open_target_dedups_to_the_same_document() {
     let source = "``` rust src/main.rs\nx\n```\n";
     let (mut store, document) = host(source);
+    let documents = test_docs(&mut store);
 
     let target = ResourceLocation::new(
         ResourceType::document(),
@@ -251,6 +264,7 @@ fn an_open_target_dedups_to_the_same_document() {
     );
     let opened = himark::OpenDocuments::register(
         &mut store,
+        documents,
         built,
         Some(target.clone()),
         "main.rs".to_owned(),
@@ -319,6 +333,7 @@ fn no_base_embeds_nothing() {
 fn destroying_the_embed_releases_the_editor_and_target() {
     let source = "``` rust src/main.rs\nx\n```\n";
     let (mut store, document) = host(source);
+    let documents = test_docs(&mut store);
     let over = enrich_input(&document, source);
     let mut entry = run(
         &mut store,
@@ -326,11 +341,11 @@ fn destroying_the_embed_releases_the_editor_and_target() {
         fetch_caller(sidecar_path(), "fn main() {}\n"),
     );
     let id = embedded(&entry, source.len() as u32).expect("an embed");
-    assert!(himark::OpenDocuments::document_ref(&store, id).is_some());
+    assert!(himark::OpenDocuments::document_ref(&store, documents, id).is_some());
 
     entry.destroy_inlays_in(&[0..source.len() as u32], &mut store);
     assert!(
-        himark::OpenDocuments::document_ref(&store, id).is_none(),
+        himark::OpenDocuments::document_ref(&store, documents, id).is_none(),
         "the editorless target was released"
     );
 }
@@ -350,6 +365,7 @@ fn a_line_fragment_windows_the_embed() {
     let ui = himark::test_document::test_ui();
     let source = "``` rust src/main.rs#L2-3\nx\n```\n";
     let (mut store, document) = host(source);
+    let documents = test_docs(&mut store);
     let over = enrich_input(&document, source);
     let entry = run(
         &mut store,
@@ -364,7 +380,8 @@ fn a_line_fragment_windows_the_embed() {
         .into_iter()
         .find_map(|interval| interval.inlay.view_as::<EmbedView>().copied())
         .expect("the embed");
-    let target = himark::OpenDocuments::document_ref(&store, embed.document()).expect("target");
+    let target =
+        himark::OpenDocuments::document_ref(&store, documents, embed.document()).expect("target");
     let window = target.window(embed.editor());
     let text = target.text();
     let shown = text.byte_string(window.start as usize, (window.end - window.start) as usize);

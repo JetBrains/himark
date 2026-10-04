@@ -103,8 +103,9 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
         "the one landing colors the block"
     );
 
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(content_start + 3, "zz"),
+        &operation::Operation::insert_in(len, content_start + 3, "zz"),
         store,
         ui,
         &test_fonts(),

@@ -68,6 +68,10 @@ pub struct EmbedView {
 }
 
 impl EmbedView {
+    pub fn documents(&self) -> imba::store::Id<himark::OpenDocuments> {
+        self.view.documents()
+    }
+
     pub fn document(&self) -> himark::DocumentId {
         self.view.document()
     }
@@ -86,9 +90,16 @@ impl View for EmbedView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         if let Some(set) = self.fragments.take() {
-            if let Some(mut document) = OpenDocuments::document(store, self.view.document()) {
+            if let Some(mut document) =
+                OpenDocuments::document(store, self.view.documents(), self.view.document())
+            {
                 document.remove_fragment_set(set);
-                OpenDocuments::put_document(store, self.view.document(), document);
+                OpenDocuments::put_document(
+                    store,
+                    self.view.documents(),
+                    self.view.document(),
+                    document,
+                );
             }
         }
         View::destroy(&mut self.view, store, fx);
@@ -122,7 +133,8 @@ impl View for EmbedView {
 
 impl EmbedView {
     fn live_height(&self, store: &Store) -> Option<f32> {
-        let document = OpenDocuments::document_ref(store, self.view.document())?;
+        let document =
+            OpenDocuments::document_ref(store, self.view.documents(), self.view.document())?;
         document
             .has_editor(self.view.editor())
             .then(|| document.content_height(self.view.editor()))
@@ -289,8 +301,12 @@ fn install(
         .collect();
     let languages = himark::env::Parsers::of(store);
     for (key, range, embed) in pending {
+        // The embed's temp documents file under the location's owner
+        // (synthetic embed locations fall to the local session).
+        let home = himark::SessionId::of_location(store, &embed.location);
+        let documents = himark::higent::Hosts::ensure_family(store, &home).documents();
         let (id, prebuilt, carried_window) =
-            match OpenDocuments::by_location(store, &embed.location) {
+            match OpenDocuments::by_location(store, documents, &embed.location) {
                 Some(id) => (id, None, None),
                 None => {
                     let prepared = embed
@@ -303,6 +319,7 @@ fn install(
                             let revision = document.revision();
                             let id = OpenDocuments::register(
                                 store,
+                                documents,
                                 document,
                                 Some(embed.location.clone()),
                                 embed.location.name().to_owned(),
@@ -324,6 +341,7 @@ fn install(
                             let revision = document.revision();
                             let id = OpenDocuments::register(
                                 store,
+                                documents,
                                 document,
                                 Some(embed.location.clone()),
                                 embed.location.name().to_owned(),
@@ -335,7 +353,7 @@ fn install(
                 }
             };
 
-        let Some(mut document) = OpenDocuments::document(store, id) else {
+        let Some(mut document) = OpenDocuments::document(store, documents, id) else {
             continue;
         };
         let window = match (&prebuilt, carried_window) {
@@ -369,9 +387,9 @@ fn install(
             &mut batch.effects(),
         );
         let height = document.content_height(editor);
-        OpenDocuments::put_document(store, id, document);
+        OpenDocuments::put_document(store, documents, id, document);
         let view = EmbedView {
-            view: EditorIdView::new(id, editor),
+            view: EditorIdView::new(documents, id, editor),
             height,
             fragments,
         };

@@ -237,6 +237,23 @@ impl ClaudeAgent {
         self.dead.load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    /// A live turn: prompted, not cancelled, its `result` still to come. The
+    /// CLI answers prompts strictly in order, one `result` per prompt — but
+    /// a prompt written while another is live is NOT a second turn to it:
+    /// it folds into the live one, or an interrupt drops it. Either way one
+    /// `result` pops one PendingTurn while two were expected, and every
+    /// later reply lands on the previous turn's id. So the host never writes
+    /// a second live prompt (server-side it queues instead), and this door
+    /// refuses one outright.
+    pub fn busy(&self) -> bool {
+        self.state
+            .lock()
+            .expect("turn state")
+            .turns
+            .iter()
+            .any(|turn| !turn.cancelled)
+    }
+
     pub async fn prompt(&self, turn_id: String, text: String) -> Result<(), String> {
         if self.is_dead() {
             return Err("the claude process is gone".to_owned());
@@ -246,6 +263,9 @@ impl ClaudeAgent {
         // and get adopted as a wake turn.
         {
             let mut state = self.state.lock().expect("turn state");
+            if state.turns.iter().any(|turn| !turn.cancelled) {
+                return Err("a turn is already in flight on this chat".to_owned());
+            }
             state.turns.push_back(PendingTurn {
                 id: turn_id.clone(),
                 cancelled: false,
@@ -291,15 +311,27 @@ impl ClaudeAgent {
         .await
     }
 
-    pub async fn interrupt(&self) -> Result<(), String> {
+    /// Cancel THAT turn. The front is the one the CLI is running — it gets
+    /// the interrupt. A turn queued behind a cancelled front (prompted after
+    /// a Stop, before its `result` landed) is marked and interrupted the
+    /// moment it reaches the front. A turn this agent never saw is nobody's
+    /// to stop: a stale id must not kill the live turn.
+    pub async fn interrupt(&self, turn_id: &str) -> Result<(), String> {
         {
             let mut state = self.state.lock().expect("turn state");
-            if let Some(front) = state.turns.front_mut() {
-                front.cancelled = true;
+            let Some(position) = state.turns.iter().position(|turn| turn.id == turn_id) else {
+                return Ok(());
+            };
+            state.turns[position].cancelled = true;
+            if position != 0 {
+                return Ok(());
             }
-
             state.asks.clear();
         }
+        self.send_interrupt().await
+    }
+
+    async fn send_interrupt(&self) -> Result<(), String> {
         self.send(json!({
             "type": "control_request",
             "request_id": format!("himark-int-{}", std::process::id()),
@@ -387,11 +419,14 @@ impl ClaudeAgent {
             self.emit(StateAction::ChatError(
                 ahp_types::actions::ChatErrorAction {
                     turn_id,
-                    error: ahp_types::state::ErrorInfo {
-                        error_type: "agentGone".to_owned(),
-                        message: message.clone(),
-                        stack: None,
-                        meta: None,
+                    part: ahp_types::state::ErrorResponsePart {
+                        error: ahp_types::state::ErrorInfo {
+                            error_type: "agentGone".to_owned(),
+                            message: message.clone(),
+                            stack: None,
+                            meta: None,
+                        },
+                        resumable: None,
                     },
                     duration: 0,
                     meta: None,
@@ -409,7 +444,19 @@ impl ClaudeAgent {
             Some("assistant") => self.assistant_snapshot(&event["message"]),
             Some("user") => self.tool_results(&event["message"]),
             Some("control_request") => self.control_request(&event).await,
-            Some("result") => self.result(&event),
+            Some("result") => {
+                self.result(&event);
+                let front_cancelled = self
+                    .state
+                    .lock()
+                    .expect("turn state")
+                    .turns
+                    .front()
+                    .is_some_and(|turn| turn.cancelled);
+                if front_cancelled {
+                    let _ = self.send_interrupt().await;
+                }
+            }
 
             _ => {}
         }
@@ -855,11 +902,14 @@ impl ClaudeAgent {
             self.emit(StateAction::ChatError(
                 ahp_types::actions::ChatErrorAction {
                     turn_id,
-                    error: ahp_types::state::ErrorInfo {
-                        error_type: subtype.to_owned(),
-                        message: event["result"].as_str().unwrap_or("turn failed").to_owned(),
-                        stack: None,
-                        meta: None,
+                    part: ahp_types::state::ErrorResponsePart {
+                        error: ahp_types::state::ErrorInfo {
+                            error_type: subtype.to_owned(),
+                            message: event["result"].as_str().unwrap_or("turn failed").to_owned(),
+                            stack: None,
+                            meta: None,
+                        },
+                        resumable: None,
                     },
                     duration,
                     meta: None,

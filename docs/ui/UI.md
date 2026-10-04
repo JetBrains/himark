@@ -16,8 +16,8 @@ The family, from the framework out to the workbench:
   structure as data: one component for flat and nested.
 - [scroll.md](scroll.md) — scroll-to-point: how a view deep in the
   tree asks to be revealed.
-- [speedsearch.md](speedsearch.md) — type into any list or tree to
-  filter it, no dedicated input field.
+- [list-keyboard.md](list-keyboard.md) — one keyboard controller for
+  every list and tree, speed-search as its option.
 - [keymap.md](keymap.md) — shortcuts are data: chords to command ids.
 - [ime.md](ime.md) — marked text and IME, decoupled from focus.
 - [clipboard.md](clipboard.md) — copy, cut and paste without touching

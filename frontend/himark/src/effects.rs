@@ -126,8 +126,12 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers.register::<crate::diffs::DiffNormalizeEffect>(crate::diffs::DiffNormalizeHandler);
     handlers.register::<crate::toc::OutlineEffect>(crate::toc::OutlineHandler);
     handlers.register::<crate::find::FindScanEffect>(crate::find::FindScanHandler);
-    handlers
-        .register::<crate::speedsearch::SpeedSearchEffect>(crate::speedsearch::SpeedSearchHandler);
+    handlers.register::<crate::list_keyboard::SpeedSearchEffect>(
+        crate::list_keyboard::SpeedSearchHandler,
+    );
+    handlers.register::<crate::list_keyboard::AnnounceSelect>(
+        crate::list_keyboard::AnnounceSelectHandler,
+    );
     handlers.register::<crate::watch::RefetchDiffEffect>(crate::watch::RefetchDiffHandler);
     handlers.register::<crate::app::OpenEffect>(crate::app::OpenHandler(Arc::clone(workshop)));
 }
@@ -155,7 +159,8 @@ unsafe impl Send for PollSet {}
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
 struct Task {
     token: CancellationToken,
-    name: &'static str,
+    /// The effect's own Display, captured at erasure — the trace line.
+    label: String,
     future: EffectFuture<Box<dyn std::any::Any + Send + Sync>>,
     lift: Lift,
     wake: Arc<TaskWake>,
@@ -224,7 +229,7 @@ impl BackgroundRunner {
                 match task.poll() {
                     std::task::Poll::Ready(outcome) => {
                         let lift = std::mem::replace(&mut task.lift, Box::new(|_| unreachable!()));
-                        trace_effects(|| format!("landed {}", task.name));
+                        trace_effects(|| format!("landed {}", task.label));
 
                         if let Some(command) = lift(outcome) {
                             (self.dispatcher)(command);
@@ -238,6 +243,8 @@ impl BackgroundRunner {
             if let Some((token, payload)) = queue.pop_front() {
                 let type_id = payload.type_id();
                 let name = payload.name();
+                let label = payload.label().to_owned();
+                trace_effects(|| format!("launch {label}"));
                 match self.handlers.dispatch(payload) {
                     Err(_orphan_payload) => {
                         eprintln!("[himark] ORPHAN effect: {name}");
@@ -246,7 +253,7 @@ impl BackgroundRunner {
                     Ok((future, lift)) => {
                         let mut task = Task {
                             token,
-                            name,
+                            label,
                             future,
                             lift,
                             wake: Arc::new(TaskWake {
@@ -256,7 +263,7 @@ impl BackgroundRunner {
                         };
                         match task.poll() {
                             std::task::Poll::Ready(outcome) => {
-                                trace_effects(|| format!("landed {}", task.name));
+                                trace_effects(|| format!("landed {}", task.label));
                                 if let Some(command) = (task.lift)(outcome) {
                                     (self.dispatcher)(command)
                                 }

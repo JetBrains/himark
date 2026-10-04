@@ -26,14 +26,24 @@ const MARK_FRAGMENT_CAP: usize = 512;
 
 const MARK_SLACK_PX: f32 = 2_000.0;
 
+/// The diff VIEW's persistent state — one per face, stored in the
+/// registry's `DiffView` record. `SplitDiffView`/`UnifiedDiffView` are
+/// stateless per-ask facades minted from (store documents + this);
+/// everything a face remembers between asks lives here. Pair-level
+/// truth does NOT: the operation, its markup and the fold bans ride
+/// the `Diff` entry on the target document, maintained by the edit
+/// door, `apply_base_edits` and the normalize lane.
 #[derive(Clone)]
-pub struct DiffState {
+pub struct DiffViewState {
     id: crate::diff::DiffId,
 
-    /// The edge-installed policy (`env::Differ`), carried so the
-    /// repair fallbacks below can recompute without store access.
-    policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
-
+    /// The BASIS of the current dressing — the operation this face's
+    /// painted spacers, marks and alignment were computed against.
+    /// NOT the truth (that is `Diff::operation`, always exact): the
+    /// basis lags until `settle` rolls it and `adopt_normalized`
+    /// adopts, so mid-frame offset mapping agrees with what is
+    /// painted, and adoption can compute `disagreement(basis, truth)`
+    /// — the minimal region owed a re-dress.
     diff: Operation,
 
     seen_generation: u64,
@@ -50,7 +60,23 @@ pub struct DiffState {
     unified_layout: crate::unified_diff::DiffLayout,
     inline_editor: Option<crate::editor::EditorId>,
 
+    /// The diff generation the inline face was last built for. The
+    /// inline editor is a bounded build off the CURRENT dressing (folds
+    /// + before-cards); when the normalize lane lands a new generation
+    /// the split face heals in place, but the inline face — which has no
+    /// alignment partner to re-fold its off-screen extent — must be
+    /// rebuilt from the fresh markup (docs/no-diff-on-ui-thread). A
+    /// bounded rebuild stays O(viewport); an in-place full re-layout
+    /// would not.
+    inline_generation: u64,
+
     align_pending: Option<Range<u32>>,
+
+    /// Latched the first time the face is fully dressed. An edit
+    /// makes the face momentarily UNDRESSED again (marks re-land),
+    /// but a host that staged a placeholder must not bring it back —
+    /// stub -> diff happens once; re-dressings heal on screen.
+    ever_dressed: bool,
 
     #[cfg(any(test, feature = "test-support"))]
     pub ui_synced_boundaries: u64,
@@ -59,14 +85,12 @@ pub struct DiffState {
 
     pair_seq: u64,
 
-    fold_phase: fold::FoldPhase,
-
     marks_dirty: bool,
 
     marks_window: Option<Range<u32>>,
 }
 
-impl DiffState {
+impl DiffViewState {
     pub fn attach(
         id: crate::diff::DiffId,
         left: &crate::Document,
@@ -74,17 +98,18 @@ impl DiffState {
         left_marks: crate::markup::MarkupId,
         right_marks: crate::markup::MarkupId,
         seeded: Option<Range<u32>>,
-        policy: std::sync::Arc<dyn crate::diff::DiffPolicy>,
     ) -> Option<Self> {
         let mut entry = right.diff(id)?.clone();
-        let operation = match entry.apply_base_edits(left.log()) {
-            true => entry.operation().clone(),
-
-            false => policy.diff(left.text(), right.text(), None),
-        };
+        // The entry's operation is kept exact against the current pair
+        // by the edit door and the normalize lane; the pane adopts it
+        // as-is. `apply_base_edits` rolls the base side forward when it
+        // can (a real ancestor); if it cannot, the last-maintained
+        // operation still stands — the pane NEVER recomputes a diff on
+        // the UI thread (docs/no-diff-on-ui-thread).
+        entry.apply_base_edits(left.log());
+        let operation = entry.operation().clone();
         Some(Self {
             id,
-            policy,
             diff: operation,
             seen_generation: entry.generation(),
             left_revision: left.revision(),
@@ -96,17 +121,12 @@ impl DiffState {
             align_pending: Some(0..left.text().byte_count() as u32),
             unified_layout: crate::unified_diff::DiffLayout::Split,
             inline_editor: None,
+            ever_dressed: false,
+            inline_generation: entry.generation(),
             #[cfg(any(test, feature = "test-support"))]
             ui_synced_boundaries: 0,
             pair_repair_token: None,
             pair_seq: 0,
-            fold_phase: match fold::FOLDS_ENABLED {
-                true if seeded.is_some() => fold::FoldPhase::Done,
-
-                true if entry.generation() > 0 => fold::FoldPhase::Owed,
-                true => fold::FoldPhase::Waiting,
-                false => fold::FoldPhase::Done,
-            },
             marks_dirty: seeded.is_none(),
             marks_window: seeded,
         })
@@ -127,6 +147,69 @@ impl DiffState {
     ) {
         self.unified_layout = layout;
         self.inline_editor = inline_editor;
+    }
+
+    /// The pane's settled view lags the store: a document moved since
+    /// the last settle, or a normalize landed that the pane has not
+    /// adopted. The pane's PAINT probe answers a stale frame with
+    /// `Resync` — paint is the one signal every visible face receives
+    /// each frame (a pushed event dies at focus-routed and virtualized
+    /// containers, and misses faces realized after it fired). One
+    /// Resync clears it: settle rolls the revisions forward and adopts
+    /// the pending generation.
+    pub fn stale(&self, left: &crate::Document, right: &crate::Document) -> bool {
+        self.left_revision != left.revision()
+            || self.right_revision != right.revision()
+            || right
+                .diff(self.id)
+                .is_some_and(|entry| entry.generation() != self.seen_generation)
+    }
+
+    /// FULLY DRESSED: an honest (non-seed) generation adopted, its
+    /// marks landed, and — on the inline face — the inline editor
+    /// rebuilt from that honest markup (folds and cards included). A
+    /// freshly-mounted pair is a SEED and answers false until the
+    /// whole dressing chain has run; the canvas keeps a row's
+    /// placeholder face up until this flips, so loader → diff is one
+    /// swap.
+    pub(crate) fn dressed(&self) -> bool {
+        if self.seen_generation == 0 || self.marks_dirty {
+            return false;
+        }
+        match self.unified_layout {
+            crate::unified_diff::DiffLayout::Inline => self.inline_generation != 0,
+            crate::unified_diff::DiffLayout::Split => true,
+        }
+    }
+
+    /// The inline face was built for an older dressing than the pane has
+    /// now adopted — it owes a refresh off the fresh markup.
+    pub(crate) fn inline_stale(&self) -> bool {
+        self.inline_editor.is_some() && self.inline_generation != self.seen_generation
+    }
+
+    /// The inline face still wears the whole-replace SEED — it was
+    /// built before the first honest normalize landed. That first
+    /// landing is the ONE transition allowed to rebuild the editor
+    /// wholesale (nobody meaningfully holds a caret in a face frames
+    /// old); every later adoption heals in place instead.
+    pub(crate) fn inline_wears_the_seed(&self) -> bool {
+        self.inline_generation == 0
+    }
+
+    /// Record that the inline face is now built for the adopted
+    /// generation (called after a build or a rebuild).
+    pub(crate) fn note_inline_built(&mut self) {
+        self.inline_generation = self.seen_generation;
+        if self.dressed() {
+            self.ever_dressed = true;
+        }
+    }
+
+    /// Presentable now or at least once before — the placeholder
+    /// gate for hosts: it may stand only until this flips.
+    pub(crate) fn ever_dressed(&self) -> bool {
+        self.ever_dressed
     }
 
     pub(crate) fn right_marks(&self) -> crate::markup::MarkupId {
@@ -167,9 +250,10 @@ impl DiffState {
 pub struct SplitDiffView {
     pub left: EditorView,
     pub right: EditorView,
-    pub state: DiffState,
+    pub state: DiffViewState,
 }
 
+#[derive(Clone)]
 pub enum SplitDiffCommand {
     Left(EditorCommand),
     Right(EditorCommand),
@@ -188,6 +272,17 @@ pub enum SplitDiffCommand {
     Resync,
 }
 
+impl std::fmt::Display for SplitDiffCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SplitDiffCommand::Left(command) => command.fmt(out),
+            SplitDiffCommand::Right(command) => command.fmt(out),
+            SplitDiffCommand::PairRepaired { .. } => out.write_str("pair repaired"),
+            SplitDiffCommand::Resync => out.write_str("resync"),
+        }
+    }
+}
+
 pub type SplitDiffEffects<'a> = Effects<'a, SplitDiffCommand>;
 
 pub(crate) mod align;
@@ -201,7 +296,7 @@ fn trace_diff(message: impl FnOnce() -> String) {
 }
 
 impl SplitDiffView {
-    pub fn new(left: EditorView, right: EditorView, state: DiffState) -> Self {
+    pub fn new(left: EditorView, right: EditorView, state: DiffViewState) -> Self {
         Self { left, right, state }
     }
 
@@ -253,11 +348,16 @@ impl SplitDiffView {
         let (mut region, text_moved) = match self.roll_forward() {
             Some((rolled, moved)) => (rolled, moved),
             None => {
-                self.state.diff = self.state.policy.diff(
-                    self.left.document.text(),
-                    self.right.document.text(),
-                    None,
-                );
+                // roll_forward only fails in a should-never-happen
+                // revision inversion; recomputing a diff here is banned
+                // (docs/no-diff-on-ui-thread). Adopt the LIVE diff
+                // entry instead — the edit door keeps its operation
+                // exact against the current text, so it needs no
+                // computation. If the entry is gone, the standing
+                // `diff` is the best we have and stays.
+                if let Some(entry) = self.right.document.diff(self.state.id) {
+                    self.state.diff = entry.operation().clone();
+                }
                 self.state.left_revision = self.left.document.revision();
                 self.state.right_revision = self.right.document.revision();
                 self.state.marks_dirty = true;
@@ -327,10 +427,6 @@ impl SplitDiffView {
         self.state.right_revision = self.right.document.revision();
         self.state.seen_generation = generation;
         self.state.marks_dirty = true;
-
-        if self.state.fold_phase == fold::FoldPhase::Waiting {
-            self.state.fold_phase = fold::FoldPhase::Owed;
-        }
         if let Some(owed) = owed {
             self.sync_visible_owe_rest(owed);
         }
@@ -420,7 +516,12 @@ impl SplitDiffView {
                 .document
                 .feature_markup(self.state.right_marks)
                 .cloned(),
-            derive_folds: self.state.fold_phase == fold::FoldPhase::Owed,
+            fold_bans: self
+                .right
+                .document
+                .diff(self.state.id)
+                .map(|entry| entry.fold_bans().clone())
+                .unwrap_or_else(crate::diff::FoldBans::new),
             window,
         });
         RepairDiffEffect {
@@ -516,6 +617,12 @@ impl SplitDiffView {
         let theme = crate::env::Themes::of(store);
 
         if matches!(command, fold::FoldCommand::Remove) {
+            // The reveal persists as a BAN on the tracked diff, not as
+            // a missing strip: every later derivation subtracts it, so
+            // the fold stays open however often the diff re-dresses.
+            self.right
+                .document
+                .ban_fold(self.state.id, left_range.clone(), 0..0);
             let left = &mut self.left;
             Self::half_scope(fx, SplitDiffCommand::Left, |fx| {
                 left.document
@@ -594,6 +701,13 @@ impl SplitDiffView {
             }
             fold::FoldCommand::Remove => unreachable!("handled above"),
         }
+
+        // Within this fold's maximal extent, the banned set is exactly
+        // what the user has revealed — a Reveal grows it, a Hide gives
+        // range back to the derivation.
+        self.right
+            .document
+            .ban_fold(self.state.id, spec.left.clone(), start..end);
 
         if end > start {
             let lines = scan.count_lines(start, end);
@@ -785,25 +899,51 @@ fn mint_fold_strips(
     left_text: &Text,
     left_markup: &mut crate::markup::Markup,
     right_markup: &mut crate::markup::Markup,
+    bans: &crate::diff::FoldBans,
 ) {
+    if !fold::FOLDS_ENABLED {
+        return;
+    }
     let len = left_text.byte_count().min(u32::MAX as usize) as u32;
     let specs = fold::derive_folds(diff, left_text, 0..len, fold::FOLD_CONTEXT);
-    for (n, spec) in specs.iter().enumerate() {
-        let key = crate::markup::IntervalId(u32::MAX - n as u32);
-        // The left pane carries a silent spacer for aligned heights;
-        // the right pane's strip is the shared, interactive face,
-        // projected onto the pane-wide (split-wide) overlay host.
-        let spacer = crate::markup::Inlay::new(
-            crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-            fold::FoldStrip::spacer(spec.lines),
-        );
-        let strip = crate::markup::Inlay::new(
-            crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
-            fold::FoldStrip::new(spec.lines),
-        )
-        .over(crate::markup::INLAY_HOST);
-        left_markup.replace_inlay(key, spec.left.clone(), spacer);
-        right_markup.replace_inlay(key, spec.right.clone(), strip);
+    let mut scan = fold::LineScan::new(left_text);
+    let mut minted = 0u32;
+    for spec in &specs {
+        // The user's reveals are negative space: the derived fold is
+        // clipped by every ban, and each surviving piece must still be
+        // line-whole and worth a strip on its own.
+        for piece in fold::subtract_bans(&spec.left, bans) {
+            let start = match scan.line_start_at_or_after(piece.start, len) {
+                Some(byte) if byte < piece.end => byte,
+                _ => continue,
+            };
+            let end = match scan.line_end_at_or_before(piece.end, len) {
+                Some(byte) if byte > start => byte,
+                _ => continue,
+            };
+            let lines = scan.count_lines(start, end);
+            if lines < fold::FOLD_MIN_LINES {
+                continue;
+            }
+            let key = crate::markup::IntervalId(u32::MAX - minted);
+            minted += 1;
+            let offset = start - spec.left.start;
+            let right_start = spec.right.start + offset;
+            // The left pane carries a silent spacer for aligned heights;
+            // the right pane's strip is the shared, interactive face,
+            // projected onto the pane-wide (split-wide) overlay host.
+            let spacer = crate::markup::Inlay::new(
+                crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
+                fold::FoldStrip::spacer(lines),
+            );
+            let strip = crate::markup::Inlay::new(
+                crate::markup::InlayMode::Instead(crate::markup::InsteadKind::FullLine),
+                fold::FoldStrip::new(lines),
+            )
+            .over(crate::markup::INLAY_HOST);
+            left_markup.replace_inlay(key, start..end, spacer);
+            right_markup.replace_inlay(key, right_start..right_start + (end - start), strip);
+        }
     }
 }
 
@@ -820,9 +960,13 @@ pub fn prepare_marks(diff: &Operation, left_text: &Text) -> PreparedMarks {
     const BLOCK: u32 = 4 * 1024;
     let window = 0..len.div_ceil(BLOCK).saturating_mul(BLOCK);
     let (mut left, mut right) = derive_wash_markups(diff, left_text, &window);
-    if fold::FOLDS_ENABLED {
-        mint_fold_strips(diff, left_text, &mut left, &mut right);
-    }
+    mint_fold_strips(
+        diff,
+        left_text,
+        &mut left,
+        &mut right,
+        &crate::diff::FoldBans::new(),
+    );
     PreparedMarks {
         left,
         right,
@@ -962,8 +1106,8 @@ impl View for SplitDiffView {
                             });
                             self.state.marks_window = Some(marks.window);
                             self.state.marks_dirty = false;
-                            if marks.derived_folds {
-                                self.state.fold_phase = fold::FoldPhase::Done;
+                            if self.state.dressed() {
+                                self.state.ever_dressed = true;
                             }
                         }
 
@@ -1094,17 +1238,16 @@ struct MarksJob {
     left_current: Option<crate::markup::Markup>,
     right_current: Option<crate::markup::Markup>,
 
-    derive_folds: bool,
+    fold_bans: crate::diff::FoldBans,
 }
 
+#[derive(Clone)]
 pub struct MarksLanding {
     window: Range<u32>,
     left_markup: crate::markup::Markup,
     right_markup: crate::markup::Markup,
     left_changed: Vec<Range<u32>>,
     right_changed: Vec<Range<u32>>,
-
-    derived_folds: bool,
 }
 
 enum PairSide {
@@ -1176,30 +1319,24 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
         let marks = effect.marks.map(|job| {
             let (mut left_markup, mut right_markup) =
                 derive_wash_markups(&effect.diff, &job.left_text, &job.window);
-            if job.derive_folds {
-                mint_fold_strips(
-                    &effect.diff,
-                    &job.left_text,
-                    &mut left_markup,
-                    &mut right_markup,
-                );
-            } else {
-                let carry = |from: Option<&crate::markup::Markup>,
-                             into: &mut crate::markup::Markup| {
-                    let Some(from) = from else { return };
-                    for hit in from.all_inlays_in(0..u32::MAX) {
-                        into.replace_inlay(hit.key.key, hit.range.clone(), hit.inlay.clone());
-                    }
-                };
-                carry(job.left_current.as_ref(), &mut left_markup);
-                carry(job.right_current.as_ref(), &mut right_markup);
-            }
+            // Every landing re-derives the folds with the washes — the
+            // dressing follows the diff, so a strip can never keep
+            // covering a run an edit (a keystroke, an agent's reload)
+            // just changed. The user's reveals persist as BANS the
+            // derivation subtracts, not as pinned strips.
+            mint_fold_strips(
+                &effect.diff,
+                &job.left_text,
+                &mut left_markup,
+                &mut right_markup,
+                &job.fold_bans,
+            );
             trace_diff(|| {
                 use intervals::IntervalQuery;
                 format!(
-                    "marks derived window={:?} folds={} left={} right={} changed=({},{})",
+                    "marks derived window={:?} bans={} left={} right={} changed=({},{})",
                     job.window,
-                    job.derive_folds,
+                    job.fold_bans.len(),
                     left_markup
                         .query(0..u32::MAX, intervals::Order::Ascending)
                         .count(),
@@ -1216,7 +1353,6 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
                 window: job.window,
                 left_markup,
                 right_markup,
-                derived_folds: job.derive_folds,
             }
         });
         SplitDiffCommand::PairRepaired {
@@ -1226,6 +1362,12 @@ impl imba::effect::EffectHandler<RepairDiffEffect> for RepairDiffHandler {
             marks,
             seq: effect.seq,
         }
+    }
+}
+
+impl std::fmt::Display for RepairDiffEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "repair diff pair seq {}", self.seq)
     }
 }
 

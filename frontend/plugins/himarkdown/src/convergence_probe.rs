@@ -35,8 +35,9 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         &mut imba::effect::Batch::new().effects(),
     );
     let _ = editor;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(0, "# hi"),
+        &operation::Operation::insert_in(len, 0, "# hi"),
         store,
         ui,
         &fonts,
@@ -90,6 +91,25 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         &theme(),
         &mut imba::effect::Batch::new().effects(),
     );
+    // SHOWN means painted (8ab73a37): landing-time sync shaping
+    // serves the reported visible band and nothing else — a viewport
+    // covering the whole probe document keeps the incremental road
+    // shaping synchronously, which is what this probe compares.
+    {
+        let mut store = imba::store::Store::new();
+        document.perform(
+            &mut store,
+            &ui,
+            editor,
+            himark::EditorCommand::Viewport {
+                width: 700.0,
+                top: 0.0,
+                bottom: 4000.0,
+                anchor: 0,
+            },
+            &mut imba::effect::Batch::new().effects(),
+        );
+    }
     let parsers = std::sync::Arc::new(markdown_languages({
         let mut registry = himark::SyntaxLanguages::new();
         registry.register(&["rust", "rs"], std::sync::Arc::new(RustLike));

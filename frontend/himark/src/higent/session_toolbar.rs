@@ -4,17 +4,10 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use ::editor::theme::ComboChrome;
+use crate::higent::SessionUri;
 use ahp_types::actions::{SessionWorkingDirectorySetAction, StateAction};
-use ahp_types::common::Uri;
 use imba::{
-    container::Container,
-    effect::AnyEffect,
-    event::{Event, EventResult, MouseButton},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
+    container::Container, effect::AnyEffect, store::Store, thunk_ext::ThunkExt, UiCtx, View,
 };
 
 use super::session::SessionChannel;
@@ -34,27 +27,39 @@ pub struct SessionToolbar {
     pub strip_origin: Arc<AtomicU64>,
 }
 
+#[derive(Clone)]
 pub enum ToolbarCommand {
     Model(ComboCommand),
     Effort(ComboCommand),
     Edits(ComboCommand),
-    AddFolder,
+}
+
+impl std::fmt::Display for ToolbarCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolbarCommand::Model(command) => command.fmt(out),
+            ToolbarCommand::Effort(command) => command.fmt(out),
+            ToolbarCommand::Edits(command) => command.fmt(out),
+        }
+    }
 }
 
 pub enum ToolbarAsk {
     None,
 
     Edits(String),
-
-    AddFolder,
 }
 
 impl SessionToolbar {
     pub(crate) fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+        let compact = |mut combo: Combo| {
+            combo.compact = true;
+            combo
+        };
         Self {
-            model: Combo::new(store, ui, "MODEL"),
-            effort: Combo::new(store, ui, "EFFORT"),
-            edits: Combo::new(store, ui, "EDITS"),
+            model: compact(Combo::new(store, ui, "MODEL")),
+            effort: compact(Combo::new(store, ui, "EFFORT")),
+            edits: compact(Combo::new(store, ui, "EDITS")),
             synced: 0,
             cell_spans: Arc::new((0..4).map(|_| AtomicU64::new(0)).collect()),
             strip_origin: Arc::new(AtomicU64::new(0)),
@@ -183,10 +188,13 @@ impl SessionToolbar {
                     None => ToolbarAsk::None,
                 }
             }
-            ToolbarCommand::AddFolder => ToolbarAsk::AddFolder,
         }
     }
 
+    /// Lay the combo strip left to right within `budget`. The strip
+    /// degrades gracefully: a cell that would overflow the budget is
+    /// dropped along with everything after it — never clipped, and
+    /// never under whatever the caller anchors to the right (SEND).
     pub fn place<'a>(
         &'a self,
         arena: &'a imba::arena::Arena,
@@ -195,6 +203,7 @@ impl SessionToolbar {
         ui: &'a UiCtx,
         y: f32,
         height: f32,
+        budget: f32,
     ) -> f32 {
         let themes = crate::env::Themes::of(store);
         let theme = themes.ui();
@@ -212,8 +221,14 @@ impl SessionToolbar {
                 );
             }
         };
+        let mut dropped = false;
         for (index, (combo, wrap)) in combos.into_iter().enumerate() {
             let width = combo.cell_width(ui, &theme.combo);
+            if dropped || x + width > budget {
+                dropped = true;
+                span(index, x, 0.0);
+                continue;
+            }
             span(index, x, width);
             root.place(
                 x,
@@ -224,10 +239,8 @@ impl SessionToolbar {
             );
             x += width;
         }
-        let width = action_cell_width(ui, &theme.combo, ADD_FOLDER_LABEL);
-        span(3, x, width);
-        root.place(x, y, action_cell(store, ui, width, height));
-        x + width
+        span(3, x, 0.0);
+        x
     }
 }
 
@@ -275,56 +288,6 @@ impl SessionToolbar {
                 .collect(),
         }
     }
-}
-
-const ADD_FOLDER_LABEL: &str = "＋ FOLDER";
-
-fn action_cell_width(ui: &UiCtx, chrome: &ComboChrome, label: &str) -> f32 {
-    let font = crate::fonts::ui_font(ui, chrome.label_size);
-    chrome.pad + crate::combo::tracked_width(&font, label) + chrome.pad
-}
-
-fn action_cell<'a>(
-    store: &'a Store,
-    ui: &'a UiCtx,
-    width: f32,
-    height: f32,
-) -> impl Thunk<'a, super::chat::ChatPanelCommand> + 'a {
-    let themes = crate::env::Themes::of(store);
-    let theme = themes.ui();
-    let chrome = theme.combo.clone();
-    let rule = theme.toolbar.rule.0;
-    let font = crate::fonts::ui_font(ui, chrome.label_size);
-    leaf::<super::chat::ChatPanelCommand>(width, height)
-        .paint_below(move |_arena, canvas, rect| {
-            let mut paint = skia_safe::Paint::default();
-            paint.set_anti_alias(false);
-            paint.set_color(rule);
-            canvas.draw_rect(
-                skia_safe::Rect::from_xywh(rect.right - 1.0, rect.top, 1.0, rect.height()),
-                &paint,
-            );
-            paint.set_anti_alias(true);
-            paint.set_color(chrome.label_color.0);
-            let mid = rect.top + rect.height() * 0.5;
-            crate::combo::draw_tracked(
-                canvas,
-                &font,
-                &paint,
-                ADD_FOLDER_LABEL,
-                rect.left + chrome.pad,
-                mid + chrome.label_size * 0.35,
-            );
-        })
-        .event(|_arena, event, _size| match event {
-            Event::MouseDown {
-                button: MouseButton::Left,
-                ..
-            } => EventResult::Command(super::chat::ChatPanelCommand::Toolbar(
-                ToolbarCommand::AddFolder,
-            )),
-            _ => EventResult::Ignored,
-        })
 }
 
 pub(crate) fn agent_models(
@@ -394,7 +357,7 @@ pub(crate) fn sync_effort_for_model(
 
 pub struct AddSessionFolders {
     pub server: HostId,
-    pub session: Uri,
+    pub session: SessionUri,
 }
 
 impl crate::DynamicCommand for AddSessionFolders {
@@ -434,7 +397,7 @@ impl crate::DynamicCommand for AddSessionFolders {
 
 struct SessionFoldersPicked {
     server: HostId,
-    session: Uri,
+    session: SessionUri,
     locations: Vec<crate::ResourceLocation>,
 }
 
@@ -455,28 +418,44 @@ impl crate::DynamicCommand for SessionFoldersPicked {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(seat) = crate::higent::Servers::seat(store, self.server) else {
+            eprintln!(
+                "[higent] folder grant DROPPED: no seat for {:?} ({})",
+                self.server,
+                self.session.as_str()
+            );
             return;
         };
         let Some(uris) = Hosts::uris(store, self.server) else {
+            eprintln!(
+                "[higent] folder grant DROPPED: no uri map for {:?} ({})",
+                self.server,
+                self.session.as_str()
+            );
             return;
         };
         for location in &self.locations {
             let directory = uris.uri_of(location).as_str().to_owned();
+            let channel = self.session.as_channel();
+            eprintln!("[higent] granting folder {directory} to {channel}");
             fx.push(
                 AnyEffect::new(crate::higent::DispatchChatActionEffect {
                     seat: seat.clone(),
-                    channel: self.session.clone(),
+                    channel,
                     action: StateAction::SessionWorkingDirectorySet(
                         SessionWorkingDirectorySetAction { directory },
                     ),
                 })
-                .map(move |_result| crate::app::AppCommand::Dynamic(window, Arc::new(GrantAck))),
+                .map(move |result| {
+                    crate::app::AppCommand::Dynamic(window, Arc::new(GrantAck { result }))
+                }),
             );
         }
     }
 }
 
-struct GrantAck;
+struct GrantAck {
+    result: Result<(), String>,
+}
 
 impl crate::DynamicCommand for GrantAck {
     fn id(&self) -> &'static str {
@@ -494,5 +473,12 @@ impl crate::DynamicCommand for GrantAck {
         _window: crate::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
+        // The dispatch is a wire notification: this result is the
+        // only trace the grant left the client. A swallowed error
+        // here is a folder the user granted and the session never
+        // gained — loud beats lost.
+        if let Err(error) = &self.result {
+            eprintln!("[higent] folder grant dispatch FAILED: {error}");
+        }
     }
 }

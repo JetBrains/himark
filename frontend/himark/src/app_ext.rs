@@ -80,9 +80,19 @@ impl AppExt for Application {
         name: String,
         primary: bool,
     ) -> bool {
+        // Bind the window's session HERE, at the gesture — the landing
+        // consumes the id and never re-asks the window.
+        let documents = {
+            let store = self.window_store(window);
+            let Some(family) = crate::Windows::session_family(&store, window) else {
+                return false;
+            };
+            family.documents()
+        };
         self.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
+                documents,
                 name,
                 document,
                 location: None,

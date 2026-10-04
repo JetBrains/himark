@@ -7,14 +7,14 @@ use super::*;
 struct Stub;
 
 impl crate::View for Stub {
-    type Command = ();
+    type Command = std::convert::Infallible;
 
     fn perform(
         &mut self,
         _store: &mut crate::store::Store,
         _ui: &crate::UiCtx,
-        _command: (),
-        _fx: &mut crate::effect::Effects<'_, ()>,
+        _command: std::convert::Infallible,
+        _fx: &mut crate::effect::Effects<'_, std::convert::Infallible>,
     ) {
     }
 
@@ -23,11 +23,11 @@ impl crate::View for Stub {
         _arena: &'a crate::arena::Arena,
         _store: &'a crate::store::Store,
         _ui: &'a crate::UiCtx,
-    ) -> impl crate::Layout<'a, ()> + crate::LayoutValue + 'a {
+    ) -> impl crate::Layout<'a, std::convert::Infallible> + crate::LayoutValue + 'a {
         crate::laid(
             move |_arena: &'a crate::arena::Arena,
                   _constraints: crate::constraints::Constraints| {
-                crate::leaf::leaf::<()>(10.0, 30.0)
+                crate::leaf::leaf::<std::convert::Infallible>(10.0, 30.0)
             },
         )
     }
@@ -99,16 +99,25 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
     use skia_safe::{Point, Rect, Size};
 
     // A row that echoes the pointer coordinates it was handed.
+    #[derive(Clone, Copy, Debug, PartialEq)]
+    struct EchoedPoint(Point);
+
+    impl std::fmt::Display for EchoedPoint {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
+    }
+
     #[derive(Clone)]
     struct Echo;
     impl crate::View for Echo {
-        type Command = Point;
+        type Command = EchoedPoint;
         fn perform(
             &mut self,
             _store: &mut Store,
             _ui: &UiCtx,
-            _command: Point,
-            _fx: &mut crate::effect::Effects<'_, Point>,
+            _command: EchoedPoint,
+            _fx: &mut crate::effect::Effects<'_, EchoedPoint>,
         ) {
         }
         fn display<'a>(
@@ -116,15 +125,17 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
             _arena: &'a crate::arena::Arena,
             _store: &'a Store,
             _ui: &'a UiCtx,
-        ) -> impl crate::Layout<'a, Point> + crate::LayoutValue + 'a {
+        ) -> impl crate::Layout<'a, EchoedPoint> + crate::LayoutValue + 'a {
             crate::laid(
                 move |_arena: &'a crate::arena::Arena, _constraints: Constraints| {
-                    crate::leaf::leaf::<Point>(200.0, 30.0).event(
-                        |_arena, event, _size| match event {
-                            Event::MouseDrag { point, .. } => EventResult::Command(*point),
+                    crate::leaf::leaf::<EchoedPoint>(200.0, 30.0).event(|_arena, event, _size| {
+                        match event {
+                            Event::MouseDrag { point, .. } => {
+                                EventResult::Command(EchoedPoint(*point))
+                            }
                             _ => EventResult::Ignored,
-                        },
-                    )
+                        }
+                    })
                 },
             )
         }
@@ -165,7 +176,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
         EventResult::Command(ListCommand::Child(index, point)) => {
             assert_eq!(index, 2, "the focused row answers");
             assert_eq!(
-                (point.x, point.y),
+                (point.0.x, point.0.y),
                 (5.0, 5.0),
                 "the drag arrives in row coordinates"
             );

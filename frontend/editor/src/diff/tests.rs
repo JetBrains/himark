@@ -251,12 +251,13 @@ fn the_edit_door_keeps_live_diffs_valid() {
     let id = target.add_diff(operation, 0);
 
     let edits = [
-        Operation::insert_at(0, "head\n"),
-        Operation::delete_at(9, "TWO"),
+        Operation::insert_in(14, 0, "head\n"),
+        Operation::delete_in(19, 9, "TWO"),
         Operation::from_ops([
             Op::Retain(5),
             Op::Delete("one".to_owned()),
             Op::Insert("ONE!".to_owned()),
+            Op::Retain(8),
         ]),
     ];
     for edit in edits {
@@ -287,7 +288,7 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
     let id = target.add_diff(operation, base.revision());
 
     base.edit(
-        &Operation::insert_at(4, "1.5\n"),
+        &Operation::insert_in(14, 4, "1.5\n"),
         store,
         ui,
         &fonts,
@@ -295,7 +296,7 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
         fx!(),
     );
     target.edit(
-        &Operation::insert_at(0, "zero\n"),
+        &Operation::insert_in(14, 0, "zero\n"),
         store,
         ui,
         &fonts,
@@ -303,7 +304,7 @@ fn apply_base_edits_brings_the_old_side_current_idempotently() {
         fx!(),
     );
     base.edit(
-        &Operation::delete_at(0, "one\n"),
+        &Operation::delete_in(18, 0, "one\n"),
         store,
         ui,
         &fonts,

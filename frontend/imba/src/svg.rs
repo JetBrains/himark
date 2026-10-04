@@ -38,7 +38,14 @@ impl Clone for SvgView {
     }
 }
 
+#[derive(Clone)]
 pub enum SvgCommand {}
+
+impl std::fmt::Display for SvgCommand {
+    fn fmt(&self, _: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {}
+    }
+}
 
 impl SvgView {
     pub fn new(svg: impl Into<Arc<str>>, intrinsic: Size) -> Self {

@@ -51,7 +51,11 @@ fn mounted_titles(app: &Application) -> Vec<String> {
 
 /// A PTY-less terminal session: the cheap seedable family row now
 /// that result lists live in the session feed, not a family.
-fn seed_terminal_row(app: &mut Application, channel: &str, title: &str) -> String {
+fn seed_terminal_row(
+    app: &mut Application,
+    channel: &str,
+    title: &str,
+) -> himark::higent::ChannelUri {
     struct NullBackend;
     impl himark::terminal::TerminalBackend for NullBackend {
         fn write(&self, _bytes: &[u8]) {}
@@ -59,10 +63,13 @@ fn seed_terminal_row(app: &mut Application, channel: &str, title: &str) -> Strin
         fn hangup(&self) {}
     }
     let session = himark::terminal::Session::new(Box::new(NullBackend));
-    session.set_channel(channel.to_owned());
+    let channel = himark::higent::ChannelUri::new(channel);
+    session.set_channel(channel.clone());
     let _ = session.output(format!("\x1b]0;{title}\x07").as_bytes());
-    himark::terminal::Terminals::put(&mut app.store_mut(), channel.to_owned(), session);
-    channel.to_owned()
+    let home = app.sole_window_session();
+    let terminals = himark::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+    himark::terminal::Terminals::put(&mut app.store_mut(), terminals, channel.clone(), session);
+    channel
 }
 
 #[test]
@@ -72,14 +79,25 @@ fn displaced_handles_drop_and_their_rows_survive() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let alpha = seed_terminal_row(&mut app, "test-terminal:alpha", "alpha results");
+    let home = app.sole_window_session();
+    let terminals = himark::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
     assert!(app.open_panel(
         app.sole_window(),
-        Box::new(himark::terminal::TerminalView::new(alpha.clone()))
+        Box::new(himark::terminal::TerminalView::new(
+            terminals,
+            alpha.clone()
+        ))
     ));
     assert!(app.open_panel(app.sole_window(), Box::new(StubWidget("beta widget"))));
     assert_eq!(mounted_titles(&app), vec!["beta widget"]);
     assert!(
-        himark::terminal::Terminals::session_ref(app.store(), &alpha).is_some(),
+        himark::higent::Hosts::family(app.store(), &app.sole_window_session())
+            .and_then(|family| himark::terminal::Terminals::session_ref(
+                app.store(),
+                family.terminals(),
+                &alpha
+            ))
+            .is_some(),
         "the displaced handle dropped; the family row survived"
     );
 }
@@ -115,7 +133,13 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(mounted_titles(&app), vec!["beta widget"], "pane restored");
     assert!(
-        himark::terminal::Terminals::session_ref(app.store(), &alpha).is_some(),
+        himark::higent::Hosts::family(app.store(), &app.sole_window_session())
+            .and_then(|family| himark::terminal::Terminals::session_ref(
+                app.store(),
+                family.terminals(),
+                &alpha
+            ))
+            .is_some(),
         "the row survived the dismissal"
     );
 

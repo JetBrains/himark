@@ -317,6 +317,7 @@ fn cell_intrinsics(text: &str, fonts: &FontCollection, theme: &himark::Theme) ->
     }
 }
 
+#[derive(Clone)]
 pub enum TableCommand {
     Cell {
         row: usize,
@@ -334,6 +335,20 @@ pub enum TableCommand {
     },
 
     Relaid(Box<TableEditor>),
+}
+
+impl std::fmt::Display for TableCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TableCommand::Cell { command, .. } => command.fmt(out),
+            TableCommand::InsertRow(_) => out.write_str("table insert row"),
+            TableCommand::RemoveRow(_) => out.write_str("table remove row"),
+            TableCommand::InsertColumn(_) => out.write_str("table insert column"),
+            TableCommand::RemoveColumn(_) => out.write_str("table remove column"),
+            TableCommand::Relayout { .. } => out.write_str("table relayout"),
+            TableCommand::Relaid(_) => out.write_str("table relaid"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -1118,6 +1133,12 @@ impl TableEditor {
 pub struct TableRelayoutEffect {
     table: TableEditor,
     width: f32,
+}
+
+impl std::fmt::Display for TableRelayoutEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "relayout table at width {}", self.width)
+    }
 }
 
 impl imba::effect::Effect for TableRelayoutEffect {

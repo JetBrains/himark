@@ -70,7 +70,16 @@ virtualization; nothing is left un-laid-out.
 ### Commands
 
 ```rust
-pub enum ListCommand<C> { Child(usize, C) }
+pub enum ListCommand<C> {
+    Child(usize, C),          // route to element i, effects mapped up by index
+    Focus(usize, Option<Box<ListCommand<C>>>),  // keyboard ROUTING index (not selection)
+    Select(usize),            // THE selection edit+signal (list-keyboard.md §2)
+    Activate(usize, ActivateTrigger),  // activation, per-trigger (list-keyboard.md §2)
+    ViewportTop(f32, f32),    // scroll traversal report: top + band height
+    SetHeight(usize, f32),    // measurement landing, door-anchored
+    Animate(AnimationClock),  // splice animations
+    Revealed,                 // reveal round-trip completed
+}
 ```
 
 `perform` routes `Child(i, c)` to element `i` and maps its effects up by the

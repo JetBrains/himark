@@ -193,9 +193,15 @@ fn result_commands(result: EventResult<Command>) -> Vec<Command> {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum ContentCommand {
     Click(Point),
+}
+
+impl std::fmt::Display for ContentCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 struct FixedContent {
@@ -672,8 +678,15 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
         count: Rc<Cell<u32>>,
     }
 
+    #[derive(Clone, Debug)]
     enum CounterCommand {
         Add(u32),
+    }
+
+    impl std::fmt::Display for CounterCommand {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
     }
 
     impl View for Counter {
@@ -944,10 +957,16 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum RowCommand {
     Click(Point),
     Text(&'static str),
+}
+
+impl std::fmt::Display for RowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 #[derive(Clone)]
@@ -1455,7 +1474,8 @@ fn split_and_dyn_views_carry_commands() {
     assert_eq!(commands[0].id, "row.poke");
     assert!(commands[0]
         .command
-        .downcast_ref::<ListCommand<RowCommand>>()
+        .clone()
+        .downcast::<ListCommand<RowCommand>>()
         .is_some_and(|command| matches!(
             command,
             ListCommand::Child(1, RowCommand::Text("poked"))
@@ -2210,7 +2230,7 @@ mod viewport_preservation {
         list.perform(
             store,
             &ui,
-            ListCommand::ViewportTop(top),
+            ListCommand::ViewportTop(top, 300.0),
             &mut batch.effects(),
         );
     }
@@ -2330,7 +2350,7 @@ mod viewport_preservation {
         };
         assert!(commands.iter().any(|command| matches!(
             command,
-            ScrollCommand::Content(ListCommand::ViewportTop(top)) if *top == 45.0
+            ScrollCommand::Content(ListCommand::ViewportTop(top, _)) if *top == 45.0
         )));
         for command in commands {
             scroll.perform(&mut store, &ui, command, &mut batch.effects());

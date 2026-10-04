@@ -15,6 +15,7 @@ mod host;
 mod lsproute;
 use hiahp::uris;
 
+use demo::demo_location;
 use himark::{AppCommand, AppExt, Application, BackgroundRunner};
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, MouseButton};
@@ -65,8 +66,6 @@ pub struct HimarkEngine {
     seats: Arc<hiahp::fs::SeatDirectory>,
 
     shared: Arc<Shared>,
-
-    change_refs: himark::hichanges::ChangeRefs,
 
     _document_channels: Arc<docsync::DocumentChannels>,
 
@@ -131,14 +130,6 @@ fn register_agent_server(
     himark::higent::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
     seats.record(id, seat);
     id
-}
-
-fn demo_location(name: &str) -> himark::ResourceLocation {
-    himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("demo"),
-        vec![name.to_owned()],
-    )
 }
 
 #[derive(Clone)]
@@ -403,34 +394,32 @@ impl HimarkEngine {
     pub fn with_fonts(fonts: AppFonts) -> Self {
         let mut app = Application::new(fonts);
         app.register_syntax_languages(syntax_languages());
-        app.register_diff_policy(Arc::new(structdiff::Structural::new(Arc::new(
-            syntax_languages(),
-        ))));
+        // ONE policy: what the diff view computes with is what the
+        // chat's cells are built with.
+        let languages = Arc::new(syntax_languages());
+        let diff_policy: Arc<dyn himark::diff::DiffPolicy> =
+            Arc::new(structdiff::Structural::new(Arc::clone(&languages)));
+        app.register_diff_policy(Arc::clone(&diff_policy));
         app.register_enrichers(enrichment_passes());
         app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
 
-        app.register_overlay_surface(peeker::overlay_surface());
-        app.register_overlay_surface(palette::overlay_surface());
-
-        app.register_command(Arc::new(himark::hifiles::ToggleSessionSwitcher));
-        app.register_command(Arc::new(hidiff::OpenDiff));
-        app.register_row_minter(hidiff::row_minter());
-        app.register_sync_observer(hidiff::canvas_sync_observer());
-        app.register_session_family(hidiff::canvases_session_family());
-        app.register_navigator(hidiff::CanvasNavigator);
+        app.register_command(Arc::new(himark::OpenDiff));
+        app.register_row_minter(himark::pair_row_minter());
+        app.register_navigator(himark::CanvasNavigator);
         app.register_command(Arc::new(demo::OpenTreeDemo));
+        app.register_command(Arc::new(demo::OpenMonsterDemo));
+        app.register_command(Arc::new(demo::OpenWallOfTextDemo));
 
-        app.register_editor_command(Arc::new(himark::hicomments::AddComment));
+        app.register_document_command(Arc::new(himark::hicomments::AddComment));
 
         himarkdown::register_handlers(&mut app);
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
         hiahp::registry::register_all(&mut app);
+        hiahp::open::install_build_handler(&mut app, languages, diff_policy);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
-        let change_refs = himark::hichanges::ChangeRefs::default();
-        himark::hichanges::Changes::install(&mut app.store_mut(), change_refs.clone());
         himark::hicomments::Comments::install(&mut app.store_mut());
         himark::OpenDocuments::install_hook(
             &mut app.store_mut(),
@@ -445,9 +434,6 @@ impl HimarkEngine {
 
         app.register_toolbar_button(himark::composer_button());
 
-        if let Ok(value) = std::env::var("HIMARK_FLOATING_CHAT") {
-            himark::FloatingChat::set(&mut app.store_mut(), value != "0");
-        }
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
         let wake = Arc::new(WakeSlot::default());
         let effect_wake = Arc::new(WakeSlot::default());
@@ -579,6 +565,18 @@ impl HimarkEngine {
             directory: Arc::clone(&seats),
             uris: Arc::clone(&resource_uris),
         });
+        app.register_handler::<himark::CreateDocumentEffect>(fsroute::RouteCreate {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
+        app.register_handler::<himark::DeleteResourceEffect>(fsroute::RouteDelete {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
+        app.register_handler::<himark::MoveResourceEffect>(fsroute::RouteMove {
+            directory: Arc::clone(&seats),
+            uris: Arc::clone(&resource_uris),
+        });
         app.register_handler::<himark::SubscribeEffect>(fsroute::RouteSubscribe {
             directory: Arc::clone(&seats),
             uris: Arc::clone(&resource_uris),
@@ -599,7 +597,6 @@ impl HimarkEngine {
             host: None,
             agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
             seats,
-            change_refs,
             _document_channels: document_channels,
             resource_uris,
             shared: Arc::new(Shared {
@@ -623,9 +620,13 @@ impl HimarkEngine {
         window.raw()
     }
 
+    // The committed store is gathered for the PRIMARY window only, so a
+    // sibling window's entity is projected out of it — sizes must come
+    // from the live window state or every non-primary window hit-tests
+    // against a 1x1 layout.
     fn window_size(&self, window: u64) -> Size {
-        himark::Windows::window_ref(self.app.store(), wid(window))
-            .map(|entity| entity.viewport_size())
+        self.app
+            .window_viewport(wid(window))
             .unwrap_or_else(|| Size::new(1.0, 1.0))
     }
 
@@ -829,6 +830,24 @@ impl HimarkEngine {
         )
     }
 
+    /// The secondary (context) press. Shells that can tell buttons
+    /// apart route their right-button downs here; the others reach
+    /// the same rows via control-click.
+    pub fn secondary_down(&mut self, window: u64, x: f32, y: f32, mods: u32) -> bool {
+        let size = self.window_size(window);
+        self.app.dispatch_timed(
+            wid(window),
+            Event::MouseDown {
+                point: Point::new(x, y),
+                button: MouseButton::Right,
+                mods: map_mods(mods),
+                count: 1,
+            },
+            size,
+            0.0,
+        )
+    }
+
     pub fn toolbar_height(&self) -> f32 {
         ::himark::env::Themes::of(self.app.store())
             .ui()
@@ -868,6 +887,15 @@ impl HimarkEngine {
             },
             size,
         )
+    }
+
+    /// The cursor left the window: a HitTest beyond any component's
+    /// reach (missing, far off-screen), so hover state — tooltips,
+    /// hover popups — lets go instead of sticking to the last point
+    /// the window ever heard about.
+    pub fn mouse_left(&mut self, window: u64) -> bool {
+        let size = self.window_size(window);
+        self.app.dispatch(wid(window), Event::window_left(), size)
     }
 
     pub fn scroll(&mut self, window: u64, x: f32, y: f32, delta_x: f32, delta_y: f32) -> bool {
@@ -983,10 +1011,7 @@ impl HimarkEngine {
                 Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
             );
             self.app
-                .register_handler::<himark::FetchBaseEffect>(fsroute::RouteBase {
-                    refs: self.change_refs.clone(),
-                });
-            self.app.observe_stripe_bases();
+                .observe_stripe_bases(Arc::new(fsroute::resolve_base));
             self.app
                 .register_command(Arc::new(himark::hichanges::ToggleChangesView));
 
@@ -1033,19 +1058,19 @@ impl HimarkEngine {
                 },
             );
             self.app
-                .register_editor_command(Arc::new(hicode::GoDefinition));
+                .register_document_command(Arc::new(hicode::GoDefinition));
             self.app
-                .register_editor_command(Arc::new(hicode::GoReferences));
+                .register_document_command(Arc::new(hicode::GoReferences));
             self.app
-                .register_editor_command(Arc::new(hicode::GoImplementations));
+                .register_document_command(Arc::new(hicode::GoImplementations));
             self.app
-                .register_editor_command(Arc::new(himark::hipeek::GoToReference));
+                .register_document_command(Arc::new(himark::hipeek::GoToReference));
             self.app
-                .register_editor_command(Arc::new(host::OpenWorkingCopy));
+                .register_document_command(Arc::new(host::OpenWorkingCopy));
         }
         if capabilities.store_document && !installed.store_document {
             self.app
-                .register_editor_command(Arc::new(himark::SaveDocument::with_save_as()));
+                .register_document_command(Arc::new(himark::SaveDocument::with_save_as()));
             self.app.register_command(Arc::new(himark::SaveAll));
 
             self.app
@@ -1143,18 +1168,6 @@ impl HimarkEngine {
         self.host
             .as_ref()
             .is_some_and(|host| host.requests.fulfill(request, Box::new(text)))
-    }
-
-    pub fn host_subscribed(&mut self, request: u64, subscription: u64) -> bool {
-        self.host.as_ref().is_some_and(|host| {
-            host.requests.fulfill(
-                request,
-                Box::new(match subscription {
-                    0 => None::<u64>,
-                    live => Some(live),
-                }),
-            )
-        })
     }
 
     pub fn file_changed(&mut self, subscription: u64) -> bool {
@@ -1411,8 +1424,7 @@ impl HimarkWorker {
     }
 }
 
-#[no_mangle]
-pub extern "C" fn himark_agent_host_autostart() -> bool {
+pub fn agent_host_autostart() -> bool {
     host_discovery::autostart().is_some()
 }
 
@@ -1625,6 +1637,13 @@ pub unsafe extern "C" fn himark_mouse_up(
 }
 
 #[no_mangle]
+pub unsafe extern "C" fn himark_mouse_left(engine: *mut HimarkEngine, window: u64) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.mouse_left(window))
+}
+
+#[no_mangle]
 pub unsafe extern "C" fn himark_mouse_down(
     engine: *mut HimarkEngine,
     window: u64,
@@ -1636,6 +1655,19 @@ pub unsafe extern "C" fn himark_mouse_down(
     engine.as_mut().map_or(false, |engine| {
         engine.mouse_down(window, x, y, mods, click_count)
     })
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn himark_secondary_down(
+    engine: *mut HimarkEngine,
+    window: u64,
+    x: f32,
+    y: f32,
+    mods: u32,
+) -> bool {
+    engine
+        .as_mut()
+        .map_or(false, |engine| engine.secondary_down(window, x, y, mods))
 }
 
 #[no_mangle]
@@ -1771,26 +1803,6 @@ pub unsafe extern "C" fn himark_host_fetched(
         },
     };
     engine.host_fetched(request, text)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_host_subscribed(
-    engine: *mut HimarkEngine,
-    request: u64,
-    subscription: u64,
-) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    engine.host_subscribed(request, subscription)
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn himark_file_changed(engine: *mut HimarkEngine, subscription: u64) -> bool {
-    let Some(engine) = engine.as_mut() else {
-        return false;
-    };
-    engine.file_changed(subscription)
 }
 
 #[no_mangle]
@@ -2060,6 +2072,16 @@ fn test_connector() -> Arc<dyn hiahp::transport::Connector> {
 }
 
 #[cfg(test)]
+mod chat_flow_tests;
+#[cfg(test)]
 mod findroute_tests;
 #[cfg(test)]
+mod reconnect_tests;
+#[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod hidiff_tests;
+
+#[cfg(test)]
+mod hidiff_monster_probe;

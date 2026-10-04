@@ -12,19 +12,10 @@ pub struct AppState {
     pub(crate) globals: Store,
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct Gathered(pub crate::SessionId);
-
-impl Gathered {
-    pub fn scope(store: &Store) -> Option<&crate::SessionId> {
-        store.get::<Gathered>().map(|gathered| &gathered.0)
-    }
-}
-
 impl AppState {
     pub(crate) fn adopt(store: Store) -> Self {
         let mut state = AppState::default();
-        state.scatter(store);
+        state.scatter(store, None);
         state
     }
 
@@ -32,6 +23,7 @@ impl AppState {
         self.gather(None, scope, &crate::higent::Servers::default())
     }
 
+    #[allow(unused_variables)]
     pub(crate) fn gather(
         &self,
         window: Option<crate::WindowId>,
@@ -44,21 +36,14 @@ impl AppState {
         store.put(self.windows.project(window));
 
         store.put(seats.clone());
-        if let Some(scope) = scope {
-            self.hosts.gather_session(&mut store, scope);
-            store.put(Gathered(scope.clone()));
-        }
         store
     }
 
-    pub(crate) fn scatter(&mut self, mut store: Store) {
+    pub(crate) fn scatter(&mut self, mut store: Store, scope: Option<&crate::SessionId>) {
         let _ = store.take::<crate::higent::Servers>();
-        let scope = store.take::<Gathered>().map(|gathered| gathered.0);
         let mut hosts = store.take::<crate::higent::Hosts>().unwrap_or_default();
-        match scope {
-            Some(scope) => hosts.scatter_session(&mut store, &scope),
-
-            None => crate::higent::Hosts::assert_no_family_orphans(&mut store),
+        if let Some(scope) = scope {
+            hosts.scatter_session(&mut store, scope);
         }
         self.hosts = hosts;
         if let Some(taken) = store.take::<crate::Windows>() {

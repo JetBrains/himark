@@ -7,17 +7,41 @@ use std::str;
 use editor::{
     inlay_anchors_line,
     test_document::{fenced_code_document, list_document, plain_document},
-    Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayCommand, InlayMode,
+    Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayMode,
 };
 
 use crate::AppExt;
 use crate::EditorIdView;
+
+fn test_docs() -> imba::store::Id<crate::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<crate::OpenDocuments>> =
+        std::sync::OnceLock::new();
+    *DOCS.get_or_init(imba::store::Id::mint)
+}
 
 struct TestPane {
     store: Store,
     view: EditorIdView,
 
     inlay_markup: editor::MarkupId,
+}
+
+/// TEST SUPPORT: the landing's first-match jump rides the
+/// `AnnounceSelect` round trip (docs/ui/list-keyboard.md §5) — drain
+/// it out of a batch and hand back the command it would dispatch.
+pub(crate) fn drain_announced<C: 'static>(batch: imba::effect::Batch<C>) -> Option<C> {
+    use imba::effect::Message;
+    let mut announced = None;
+    for message in batch.drain() {
+        let (Message::Launch(_, effect) | Message::Relaunch(_, _, effect)) = message else {
+            continue;
+        };
+        let (value, lift) = effect.into_payload().split();
+        if value.downcast::<crate::AnnounceSelect>().is_ok() {
+            announced = lift(Box::new(()));
+        }
+    }
+    announced
 }
 
 impl TestPane {
@@ -37,11 +61,17 @@ impl TestPane {
         );
         let inlay_markup = document.add_markup();
         document.show_markup(editor, inlay_markup);
-        let document_id =
-            crate::OpenDocuments::register(&mut store, document, None, "test".to_owned(), 0);
+        let document_id = crate::OpenDocuments::register(
+            &mut store,
+            test_docs(),
+            document,
+            None,
+            "test".to_owned(),
+            0,
+        );
 
         Self {
-            view: EditorIdView::new(document_id, editor),
+            view: EditorIdView::new(test_docs(), document_id, editor),
             store,
             inlay_markup,
         }
@@ -55,7 +85,8 @@ impl TestPane {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document())
+                .expect("document");
         let mut batch = imba::effect::Batch::new();
         let _ = document.resize(
             entity.editor(),
@@ -67,7 +98,12 @@ impl TestPane {
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(
+            &mut self.store,
+            entity.documents(),
+            entity.document(),
+            document,
+        );
         batch
     }
 
@@ -111,16 +147,23 @@ impl TestPane {
     fn set_caret(&mut self, byte: u32) {
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document())
+                .expect("document");
         document.set_caret(entity.editor(), byte);
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(
+            &mut self.store,
+            entity.documents(),
+            entity.document(),
+            document,
+        );
     }
 
     fn replace_inlay(&mut self, key: editor::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
-            crate::OpenDocuments::document(&self.store, entity.document()).expect("document");
+            crate::OpenDocuments::document(&self.store, entity.documents(), entity.document())
+                .expect("document");
         let mut batch = imba::effect::Batch::new();
         document.replace_inlay(
             key,
@@ -132,7 +175,12 @@ impl TestPane {
             &::editor::theme::Theme::embedded(),
             &mut batch.effects(),
         );
-        crate::OpenDocuments::put_document(&mut self.store, entity.document(), document);
+        crate::OpenDocuments::put_document(
+            &mut self.store,
+            entity.documents(),
+            entity.document(),
+            document,
+        );
         self.finish(batch);
     }
 }
@@ -165,7 +213,7 @@ fn view_refresh_matches_committed_store() {
         text: "well, ".to_owned(),
     });
 
-    let gathered = EditorIdView::new(pane.view.document(), pane.view.editor())
+    let gathered = EditorIdView::new(test_docs(), pane.view.document(), pane.view.editor())
         .gathered(&pane.store)
         .expect("committed editor");
     assert_eq!(text_string(&pane), "well, hello");
@@ -204,10 +252,16 @@ fn editors_sharing_a_document_see_each_others_edits() {
         &mut imba::effect::Batch::new().effects(),
     );
     document.set_caret(right_editor, "shared".len() as u32);
-    let document_id =
-        crate::OpenDocuments::register(&mut store, document, None, "test".to_owned(), 0);
+    let document_id = crate::OpenDocuments::register(
+        &mut store,
+        test_docs(),
+        document,
+        None,
+        "test".to_owned(),
+        0,
+    );
 
-    let mut left_view = EditorIdView::new(document_id, left_editor);
+    let mut left_view = EditorIdView::new(test_docs(), document_id, left_editor);
     {
         let mut batch = imba::effect::Batch::new();
         left_view.perform(
@@ -220,7 +274,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
         );
     };
 
-    let right_view = EditorIdView::new(document_id, right_editor)
+    let right_view = EditorIdView::new(test_docs(), document_id, right_editor)
         .gathered(&store)
         .expect("right editor");
     let mut text = right_view.document.text().view();
@@ -307,7 +361,7 @@ fn inlay_command_updates_interval_view_and_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(pane.gathered().content_height() >= inlay_height + 10.0);
@@ -331,7 +385,7 @@ fn inline_inlay_height_change_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(9),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -362,7 +416,7 @@ fn under_inlay_height_change_repairs_end_anchor_line() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(13),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -389,7 +443,7 @@ fn inline_inlay_width_change_rewraps_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(11),
-        command: Box::new(TestInlayCommand::GrowWide) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::GrowWide),
     });
 
     assert!(
@@ -474,6 +528,7 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     let mut document_b = plain_document("# tiny\n");
     let document_b_id = crate::OpenDocuments::register(
         &mut pane.store,
+        test_docs(),
         document_b.clone(),
         None,
         "b".to_owned(),
@@ -481,7 +536,12 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
     );
     let mut fresh = imba::effect::Batch::new();
 
-    crate::close_editor(&mut pane.store, pane.view.document(), pane.view.editor());
+    crate::close_editor(
+        &mut pane.store,
+        pane.view.documents(),
+        pane.view.document(),
+        pane.view.editor(),
+    );
     let new_editor = crate::mount_editor(
         &pane.store,
         ::editor::test_document::test_ui(),
@@ -490,8 +550,8 @@ fn repairs_for_a_repointed_entity_discard_themselves() {
         None,
         &mut fresh.effects(),
     );
-    pane.view = EditorIdView::new(document_b_id, new_editor);
-    crate::OpenDocuments::put_document(&mut pane.store, document_b_id, document_b);
+    pane.view = EditorIdView::new(test_docs(), document_b_id, new_editor);
+    crate::OpenDocuments::put_document(&mut pane.store, test_docs(), document_b_id, document_b);
     assert!(
         crate::test_support::surviving_launches(fresh).is_empty(),
         "the tiny document opens fully repaired"
@@ -624,7 +684,7 @@ fn focus_moves_between_text_and_inlays() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: Box::new(TestInlayCommand::Grow) as InlayCommand,
+        command: imba::DynCommand::new(TestInlayCommand::Grow),
     });
     assert_eq!(
         pane.gathered().focus(),
@@ -632,7 +692,7 @@ fn focus_moves_between_text_and_inlays() {
     );
     let stored = pane.view;
     assert_eq!(
-        crate::OpenDocuments::document_ref(&pane.store, stored.document())
+        crate::OpenDocuments::document_ref(&pane.store, stored.documents(), stored.document())
             .expect("document")
             .focus(stored.editor()),
         EditorFocus::Inlay(pane.inlay_key(7))
@@ -742,9 +802,16 @@ struct TestInlay {
     height: f32,
 }
 
+#[derive(Clone, Debug)]
 enum TestInlayCommand {
     Grow,
     GrowWide,
+}
+
+impl std::fmt::Display for TestInlayCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 impl View for TestInlay {
@@ -803,7 +870,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 
     pane.perform(EditorCommand::Inlay {
         key,
-        command: Box::new(ProbeCommand::Poke) as InlayCommand,
+        command: imba::DynCommand::new(ProbeCommand::Poke),
     });
     let focus = |pane: &TestPane| {
         let entity = pane.view;
@@ -864,8 +931,15 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 #[derive(Clone)]
 struct FocusProbe;
 
+#[derive(Clone, Debug)]
 enum ProbeCommand {
     Poke,
+}
+
+impl std::fmt::Display for ProbeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 impl View for FocusProbe {
@@ -979,8 +1053,14 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
     let source = "word ".repeat(4_000);
     let mut document = plain_document(&source);
     let mut store = Store::new();
-    let document_id =
-        crate::OpenDocuments::register(&mut store, document.clone(), None, "test".to_owned(), 0);
+    let document_id = crate::OpenDocuments::register(
+        &mut store,
+        test_docs(),
+        document.clone(),
+        None,
+        "test".to_owned(),
+        0,
+    );
     let mut open_batch = imba::effect::Batch::new();
     let editor_id = crate::mount_editor(
         &store,
@@ -990,7 +1070,7 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         None,
         &mut open_batch.effects(),
     );
-    crate::OpenDocuments::put_document(&mut store, document_id, document.clone());
+    crate::OpenDocuments::put_document(&mut store, test_docs(), document_id, document.clone());
     let effects = crate::test_support::surviving_launches(open_batch);
 
     let reference = EditorView::complete(
@@ -1001,14 +1081,14 @@ fn opening_a_document_lays_out_the_viewport_and_repairs_the_rest() {
         ::editor::test_document::test_fonts_collection(),
         &::editor::theme::Theme::embedded(),
     );
-    let opened = EditorIdView::new(document_id, editor_id)
+    let opened = EditorIdView::new(test_docs(), document_id, editor_id)
         .gathered(&store)
         .expect("entity");
     assert!(opened.content_height() < reference.content_height());
     assert_eq!(opened.find_misaligned_boundary(), None);
     assert_eq!(effects.len(), 1, "the tail repairs in background");
 
-    let mut node = EditorIdView::new(document_id, editor_id);
+    let mut node = EditorIdView::new(test_docs(), document_id, editor_id);
     let mut chain = Vec::new();
     for effect in effects {
         let command = crate::test_support::handle_effect(
@@ -1316,8 +1396,11 @@ fn two_windows_edit_independently() {
 
     let focused_text = |app: &Application, window: crate::WindowId| -> Option<String> {
         let store = &app.window_store(window);
+        let session = crate::Windows::window_ref(store, window)?.current_session();
+        let documents = crate::higent::Hosts::family(store, &session)?.documents();
         let document = crate::OpenDocuments::document_ref(
             store,
+            documents,
             crate::Windows::window_ref(store, window)?.focused_document_id()?,
         )?;
         let end = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -1456,7 +1539,8 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         batch
     };
     let document =
-        crate::OpenDocuments::document(&pane.store, entity.document()).expect("document");
+        crate::OpenDocuments::document(&pane.store, entity.documents(), entity.document())
+            .expect("document");
     assert!(!effects.is_empty(), "the tail defers as repair effects");
     assert!(
         document
@@ -1550,7 +1634,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
     };
     assert!(!stale_round.is_empty(), "the tail defers as repair effects");
     let pending = |pane: &TestPane| {
-        crate::OpenDocuments::document_ref(&pane.store, entity.document())
+        crate::OpenDocuments::document_ref(&pane.store, entity.documents(), entity.document())
             .unwrap()
             .document_layout(entity.editor())
             .unwrap()
@@ -1598,7 +1682,8 @@ fn a_stale_theme_repair_landing_discards_itself() {
         });
     }
     let converged =
-        crate::OpenDocuments::document(&pane.store, entity.document()).expect("document");
+        crate::OpenDocuments::document(&pane.store, entity.documents(), entity.document())
+            .expect("document");
     let layout = converged.document_layout(entity.editor()).unwrap();
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
@@ -1657,6 +1742,7 @@ fn open_documents_list_recently_opened_first() {
     let mut store = Store::new();
     let alpha = OpenDocuments::register(
         &mut store,
+        test_docs(),
         plain_document("alpha"),
         None,
         "alpha".to_owned(),
@@ -1664,6 +1750,7 @@ fn open_documents_list_recently_opened_first() {
     );
     let _beta = OpenDocuments::register(
         &mut store,
+        test_docs(),
         plain_document("beta"),
         None,
         "beta".to_owned(),
@@ -1671,17 +1758,17 @@ fn open_documents_list_recently_opened_first() {
     );
 
     let recent_names = |store: &Store| -> Vec<String> {
-        OpenDocuments::list_recent(store)
+        OpenDocuments::list_recent(store, test_docs())
             .into_iter()
             .map(|(_, info)| info.name())
             .collect()
     };
     assert_eq!(recent_names(&store), ["beta", "alpha"]);
 
-    OpenDocuments::touch(&mut store, alpha);
+    OpenDocuments::touch(&mut store, test_docs(), alpha);
     assert_eq!(recent_names(&store), ["alpha", "beta"]);
 
-    let open_order: Vec<String> = OpenDocuments::list(&store)
+    let open_order: Vec<String> = OpenDocuments::list(&store, test_docs())
         .into_iter()
         .map(|(_, info)| info.name())
         .collect();
@@ -1698,9 +1785,16 @@ fn palette_commands_follow_the_modal_focus() {
 
         request: std::sync::Arc<std::sync::Mutex<Option<ModalRequest>>>,
     }
+    #[derive(Clone, Debug)]
     enum TestModalCommand {
         Close,
         Show,
+    }
+
+    impl std::fmt::Display for TestModalCommand {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
     }
     impl imba::View for TestModal {
         type Command = TestModalCommand;
@@ -1820,7 +1914,10 @@ fn palette_commands_follow_the_modal_focus() {
             "navigation.forward",
             "toc.toggle",
             "theme.toggle",
+            "theme.dark",
+            "theme.light",
             "chat.composer",
+            "session.add-folder",
             "session.new",
         ],
         "text focus offers the editor's caret commands, then the workbench actions"
@@ -1832,7 +1929,7 @@ fn palette_commands_follow_the_modal_focus() {
         "beta".to_owned(),
         false
     ));
-    let beta = OpenDocuments::list(app.store())
+    let beta = OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, info)| info.name() == "beta")
         .expect("beta is open")
@@ -1870,7 +1967,7 @@ fn palette_commands_follow_the_modal_focus() {
     ));
     app.perform_batch(vec![AppCommand::Content(
         app.sole_window(),
-        crate::WindowCommand::Modal(Box::new(TestModalCommand::Show) as imba::DynCommand),
+        crate::WindowCommand::Modal(imba::DynCommand::new(TestModalCommand::Show)),
     )]);
     assert!(app.plugin_modal().is_none(), "the show dismissed the modal");
     assert_eq!(
@@ -1976,7 +2073,10 @@ fn registered_commands_present_and_dispatch_by_id() {
             "navigation.forward",
             "toc.toggle",
             "theme.toggle",
+            "theme.dark",
+            "theme.light",
             "chat.composer",
+            "session.add-folder",
             "session.new",
             "test.probe",
         ],
@@ -2063,11 +2163,13 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     assert_eq!(app.pane_count(), 1, "a fresh workbench for B");
     assert_eq!(
         app.document_count(),
-        1,
-        "B's world holds its own scratch alone (documents are per session)"
+        0,
+        "B starts with nothing open — a fresh session's workbench is vacant"
     );
-    let b_text = app.focused_document_text().expect("B text");
-    assert!(!b_text.contains("hello A"), "B does not show A's document");
+    assert!(
+        app.focused_document_text().is_none(),
+        "B does not show A's document"
+    );
 
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(app.pane_count(), 2, "A's split survived the stash");
@@ -2078,8 +2180,8 @@ fn switching_workspaces_stashes_and_restores_the_workbench() {
     let _ = switch(&mut app, Some(second.clone()));
     assert_eq!(
         app.document_count(),
-        1,
-        "toggling creates exactly one scratch per session, ever"
+        0,
+        "toggling back mints nothing — B stays as it was left"
     );
     let _ = switch(&mut app, Some(first.clone()));
     assert_eq!(
@@ -2106,12 +2208,12 @@ fn switching_dismisses_the_overlays_first() {
     #[derive(Clone)]
     struct NullModal;
     impl imba::View for NullModal {
-        type Command = ();
+        type Command = std::convert::Infallible;
         fn perform(
             &mut self,
             _store: &mut Store,
             _ui: &imba::UiCtx,
-            _command: (),
+            _command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
         }
@@ -2120,11 +2222,14 @@ fn switching_dismisses_the_overlays_first() {
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
             _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, ()> + imba::LayoutValue + 'a {
+        ) -> impl imba::Layout<'a, std::convert::Infallible> + imba::LayoutValue + 'a {
             imba::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
-                    imba::leaf::leaf::<()>(constraints.max.width, constraints.max.height)
+                    imba::leaf::leaf::<std::convert::Infallible>(
+                        constraints.max.width,
+                        constraints.max.height,
+                    )
                 },
             )
         }
@@ -2323,6 +2428,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "big.md".to_owned(),
             document: plain_document(&source),
             location: None,
@@ -2352,6 +2458,7 @@ fn opening_with_a_target_lands_the_caret_revealed() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "plain.md".to_owned(),
             document: plain_document("hello"),
             location: None,
@@ -2439,8 +2546,9 @@ fn navigation_back_and_forward_walk_pane_history() {
         )
     }
     fn editor_count(app: &Application, location: &crate::ResourceLocation) -> usize {
-        let id = crate::OpenDocuments::by_location(app.store(), location).expect("registered");
-        crate::OpenDocuments::document_ref(app.store(), id)
+        let id = crate::OpenDocuments::by_location(app.store(), app.sole_documents(), location)
+            .expect("registered");
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), id)
             .expect("document")
             .editor_ids()
             .count()
@@ -2458,6 +2566,7 @@ fn navigation_back_and_forward_walk_pane_history() {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document,
                 location: Some(located(name)),
@@ -2507,7 +2616,7 @@ fn navigation_back_and_forward_walk_pane_history() {
 
     let caret = |app: &Application| -> u32 {
         let (document, editor) = app.focused_editor_id();
-        crate::OpenDocuments::document_ref(app.store(), document)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .expect("document")
             .caret_byte(editor)
     };
@@ -2515,6 +2624,7 @@ fn navigation_back_and_forward_walk_pane_history() {
     assert!(app.perform_command(crate::AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "b.md".to_owned(),
             document: plain_document("beta\n"),
             location: Some(located("b.md")),
@@ -2743,6 +2853,7 @@ fn close_widget_walks_the_pane_history() {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),
@@ -2757,7 +2868,12 @@ fn close_widget_walks_the_pane_history() {
     assert!(crate::test_driver::type_text(&mut app, "x"));
     open(&mut app, "b.md", "beta\n");
     assert_eq!(
-        crate::RecentLocations::list(app.store())[..2],
+        {
+            let session = app.sole_window_session();
+            crate::higent::Hosts::family(app.store(), &session)
+                .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+                .unwrap_or_default()
+        }[..2],
         [located("b.md"), located("a.md")],
         "every visited place on the recents list, newest first (the startup scratch behind)"
     );
@@ -2769,7 +2885,8 @@ fn close_widget_walks_the_pane_history() {
         "the last place in the pane's history took over"
     );
     assert!(
-        crate::OpenDocuments::by_location(app.store(), &located("b.md")).is_none(),
+        crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("b.md"))
+            .is_none(),
         "the closed clean document left the registry"
     );
 
@@ -2778,17 +2895,17 @@ fn close_widget_walks_the_pane_history() {
         app.focused_document_text().is_none(),
         "history spent — the blank stays (a pristine scratch is not a place)"
     );
-    let a = crate::OpenDocuments::by_location(app.store(), &located("a.md"))
+    let a = crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located("a.md"))
         .expect("dirty: unsaved edits are never released");
     assert_eq!(
-        crate::OpenDocuments::document_ref(app.store(), a)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), a)
             .expect("document")
             .editor_ids()
             .count(),
         0
     );
     assert!(
-        crate::OpenDocuments::list(app.store())
+        crate::OpenDocuments::list(app.store(), app.sole_documents())
             .iter()
             .any(|(_, entity)| entity.location().is_some_and(crate::is_scratch)),
         "the startup scratch survives the walk-past — listed, not lost"
@@ -2796,7 +2913,12 @@ fn close_widget_walks_the_pane_history() {
 
     assert!(app.perform_registered(window, "workbench.close"));
     assert!(app.focused_document_text().is_none());
-    let recents = crate::RecentLocations::list(app.store());
+    let recents = {
+        let session = app.sole_window_session();
+        crate::higent::Hosts::family(app.store(), &session)
+            .map(|family| crate::RecentLocations::list(app.store(), family.recents()))
+            .unwrap_or_default()
+    };
     assert!(
         recents.contains(&located("a.md")) && recents.contains(&located("b.md")),
         "closing forgets documents, never places: {recents:?}"
@@ -2939,7 +3061,8 @@ fn find_bar_highlights_and_walks_occurrences() {
             .find_target()
             .expect("an editor pane")
     };
-    let document = crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+        .expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -2959,7 +3082,8 @@ fn find_bar_highlights_and_walks_occurrences() {
     assert!(app.perform_registered(window, "find.next"));
     let selection = |app: &Application| {
         let document =
-            crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+            crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+                .expect("the document");
         let caret = document.carets(editor).primary();
         caret.selection()
     };
@@ -2977,7 +3101,8 @@ fn find_bar_highlights_and_walks_occurrences() {
     with_slot(&app, &|slot| {
         assert!(slot.find.is_none(), "Escape closed the bar");
     });
-    let document = crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+        .expect("the document");
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
@@ -2995,12 +3120,14 @@ fn find_bar_highlights_and_walks_occurrences() {
 
     {
         let mut document =
-            crate::OpenDocuments::document(app.store(), document_id).expect("the document");
+            crate::OpenDocuments::document(app.store(), app.sole_documents(), document_id)
+                .expect("the document");
         document.set_carets(
             editor,
             ::editor::MultiCaret::one(::editor::Caret::selecting(6, 10)),
         );
-        crate::OpenDocuments::put_document(&mut app.store_mut(), document_id, document);
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
     }
     assert!(app.perform_registered(window, "find.open"));
 
@@ -3048,6 +3175,7 @@ mod navigation_history {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
                 location: Some(located(name)),
@@ -3075,13 +3203,14 @@ mod navigation_history {
 
     fn caret(app: &Application) -> u32 {
         let (document, editor) = app.focused_editor_id();
-        crate::OpenDocuments::document_ref(app.store(), document)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document)
             .expect("document")
             .caret_byte(editor)
     }
 
     fn registered(app: &Application, name: &str) -> bool {
-        crate::OpenDocuments::by_location(app.store(), &located(name)).is_some()
+        crate::OpenDocuments::by_location(app.store(), app.sole_documents(), &located(name))
+            .is_some()
     }
 
     #[test]
@@ -3129,7 +3258,9 @@ mod navigation_history {
         assert_eq!(focused_text(&app), "xalpha\n");
         assert_eq!(depths(&app), (0, 2));
 
-        assert!(!app.perform_registered(window, "navigation.back") || true);
+        // At the bottom of the stack: the command may refuse, but the
+        // place must not move.
+        let _ = app.perform_registered(window, "navigation.back");
         assert_eq!(focused_text(&app), "xalpha\n");
         assert_eq!(depths(&app), (0, 2));
 
@@ -3220,7 +3351,9 @@ mod navigation_history {
             (1, 0),
             "the branch recorded a.md and forgot redo"
         );
-        assert!(!app.perform_registered(window, "navigation.forward") || true);
+        // Past the top of the stack: the command may refuse, but the
+        // place must not move.
+        let _ = app.perform_registered(window, "navigation.forward");
         assert_eq!(focused_text(&app), "gamma\n", "no forward to walk");
     }
 
@@ -3366,6 +3499,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3415,27 +3549,37 @@ mod toc {
             crate::test_driver::animate(&mut app, imba::anim::AnimationClock::from_millis(1_000.0));
         assert!(crate::test_driver::type_text(&mut app, "x"));
         let mut store = app.store().clone();
-        view.perform(
-            &mut store,
-            &ui,
-            crate::OutlineCommand::Select(1),
-            &mut imba::effect::Batch::new().effects(),
-        );
-        view.perform(
-            &mut store,
-            &ui,
-            crate::OutlineCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            let step = view.search.step_index(1).expect("a stepped row");
+            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            view.perform(
+                &mut store,
+                &ui,
+                select,
+                &mut imba::effect::Batch::new().effects(),
+            );
+            let at = view.search.cursor_index().expect("a cursor row");
+            let pick = crate::OutlineCommand::List(
+                view.search.activate_command(at, ActivateTrigger::Enter),
+            );
+            view.perform(
+                &mut store,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         let Some(crate::ModalRequest::Perform(command)) = crate::ModalView::take_request(&mut view)
         else {
             panic!("the pick performs the jump");
         };
         assert!(app.perform_command(command));
         let (document_id, editor_id) = app.focused_editor_id();
-        let caret = crate::OpenDocuments::document_ref(app.store(), document_id)
-            .expect("document")
-            .caret_byte(editor_id);
+        let caret =
+            crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), document_id)
+                .expect("document")
+                .caret_byte(editor_id);
         assert_eq!(
             caret,
             source.find("## Two").unwrap() as u32 + 1,
@@ -3454,7 +3598,9 @@ mod toc {
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
         let window = app.sole_window();
-        assert!(app.perform_registered(window, "toc.toggle") || true);
+        // The toggle may refuse on a structureless pane — what matters
+        // is that no panel opens.
+        let _ = app.perform_registered(window, "toc.toggle");
         assert!(
             crate::Windows::window_ref(app.store(), window)
                 .expect("window")
@@ -3497,12 +3643,18 @@ mod toc {
         let mut toc = toc;
         let ui = ::editor::test_document::test_ui();
         let mut scratch = Store::new();
-        toc.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            let at = toc.search.cursor_index().expect("a cursor row");
+            let pick =
+                crate::TocCommand::List(toc.search.activate_command(at, ActivateTrigger::Enter));
+            toc.perform(
+                &mut scratch,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         let Some(crate::ModalRequest::OpenLocations(locations)) =
             crate::ModalView::take_request(&mut toc)
         else {
@@ -3517,18 +3669,28 @@ mod toc {
             &[at("src", "x.rs")],
         )
         .expect("rows");
-        band.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Select(-1),
-            &mut imba::effect::Batch::new().effects(),
-        );
-        band.perform(
-            &mut scratch,
-            &ui,
-            crate::TocCommand::Pick,
-            &mut imba::effect::Batch::new().effects(),
-        );
+        {
+            use imba::list::{ActivateTrigger, ListOps};
+            // The band row is the only cursor stop; Up clamps onto it.
+            if let Some(step) = band.search.step_index(-1) {
+                let select = crate::TocCommand::List(band.search.select_command(step));
+                band.perform(
+                    &mut scratch,
+                    &ui,
+                    select,
+                    &mut imba::effect::Batch::new().effects(),
+                );
+            }
+            let at = band.search.cursor_index().expect("a cursor row");
+            let pick =
+                crate::TocCommand::List(band.search.activate_command(at, ActivateTrigger::Enter));
+            band.perform(
+                &mut scratch,
+                &ui,
+                pick,
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         assert!(
             crate::ModalView::take_request(&mut band).is_none(),
             "band rows never pick"
@@ -3615,14 +3777,26 @@ mod toc {
             );
         };
 
-        drive(&mut toc, crate::TocCommand::Select(-1));
-        drive(&mut toc, crate::TocCommand::Fold(false));
+        use imba::list::{ActivateTrigger, ListOps};
+        if let Some(step) = toc.search.step_index(-1) {
+            let select = crate::TocCommand::List(toc.search.select_command(step));
+            drive(&mut toc, select);
+        }
+        let fold = crate::TocCommand::List(crate::ListKeyCommand::Fold {
+            index: toc.search.cursor_index().expect("a cursor row"),
+            expand: false,
+        });
+        drive(&mut toc, fold);
         assert_eq!(toc.visible_rows(), 1, "the fold hides the subtree");
         assert!(
             crate::ModalView::take_request(&mut toc).is_none(),
             "folding is not a pick"
         );
-        drive(&mut toc, crate::TocCommand::Pick);
+        let pick = crate::TocCommand::List(toc.search.activate_command(
+            toc.search.cursor_index().expect("a cursor row"),
+            ActivateTrigger::Enter,
+        ));
+        drive(&mut toc, pick);
         assert_eq!(toc.visible_rows(), 3, "Enter on a directory unfolds");
     }
 
@@ -3639,6 +3813,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3676,7 +3851,7 @@ mod toc {
 
         let typing = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Input(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "two".to_owned(),
                 },
@@ -3695,10 +3870,14 @@ mod toc {
             }
         }
         let matches = matches.expect("typing launched the filter");
-        let _ = drive(
+        let landing = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Landed(matches)),
+            crate::OutlineCommand::List(crate::ListKeyCommand::Landed(matches)),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            let _ = drive(&mut view, select);
+        }
         assert_eq!(view.match_count(), 1, "only 'Two' matches");
         assert_eq!(
             view.cursor_title().as_deref(),
@@ -3706,10 +3885,12 @@ mod toc {
             "the cursor jumped"
         );
 
-        let _ = drive(
-            &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Step(1)),
-        );
+        {
+            use imba::list::ListOps;
+            let step = view.search.matched_step_index(1).expect("a match to step");
+            let select = crate::OutlineCommand::List(view.search.select_command(step));
+            let _ = drive(&mut view, select);
+        }
         assert_eq!(
             view.cursor_title().as_deref(),
             Some("Two"),
@@ -3717,7 +3898,7 @@ mod toc {
         );
         let _ = drive(
             &mut view,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Clear),
+            crate::OutlineCommand::List(crate::ListKeyCommand::Clear),
         );
         assert_eq!(view.match_count(), 0, "cleared");
     }
@@ -3738,6 +3919,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3777,7 +3959,7 @@ mod toc {
         view.perform(
             &mut store,
             &ui,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Input(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "o".to_owned(),
                 },
@@ -3796,14 +3978,24 @@ mod toc {
                 })));
             }
         }
+        let mut landing = imba::effect::Batch::new();
         view.perform(
             &mut store,
             &ui,
-            crate::OutlineCommand::List(crate::SpeedSearchCommand::Landed(
+            crate::OutlineCommand::List(crate::ListKeyCommand::Landed(
                 matches.expect("filter launched"),
             )),
-            &mut imba::effect::Batch::new().effects(),
+            &mut landing.effects(),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            view.perform(
+                &mut store,
+                &ui,
+                select,
+                &mut imba::effect::Batch::new().effects(),
+            );
+        }
         assert_eq!(view.match_count(), 2, "One and Two match 'o'");
         assert_eq!(view.cursor_title().as_deref(), Some("One"));
 
@@ -3827,13 +4019,21 @@ mod toc {
             drop(widget);
             result
         };
-        let stepped = matches!(
-            result,
-            EventResult::Command(crate::OutlineCommand::List(
-                crate::SpeedSearchCommand::Step(1)
-            ))
+        let stepped = match &result {
+            EventResult::Command(crate::OutlineCommand::List(command)) => {
+                use imba::list::ListOps;
+                type Search = crate::ListKeyboardController<
+                    crate::ForestList<crate::toc::OutlineKey>,
+                    crate::ForestSearcher<crate::toc::OutlineKey>,
+                >;
+                Search::selected_index(command).is_some()
+            }
+            _ => false,
+        };
+        assert!(
+            stepped,
+            "Down while searching must answer the matched-step Select"
         );
-        assert!(stepped, "Down while searching must become Step(1)");
 
         if let EventResult::Command(command) = result {
             view.perform(
@@ -3861,6 +4061,7 @@ mod toc {
         assert!(app.perform_command(crate::AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "toc.md".to_owned(),
                 document,
                 location: Some(located("toc.md")),
@@ -3900,7 +4101,14 @@ mod toc {
         drive(&mut view, crate::OutlineCommand::Landed(landed.clone()));
         assert_eq!(view.visible_rows(), 2, "One with Two nested");
 
-        drive(&mut view, crate::OutlineCommand::Fold(false));
+        {
+            use imba::list::ListOps;
+            let fold = crate::OutlineCommand::List(crate::ListKeyCommand::Fold {
+                index: view.search.cursor_index().expect("a cursor row"),
+                expand: false,
+            });
+            drive(&mut view, fold);
+        }
         assert_eq!(view.visible_rows(), 1, "folded");
 
         let mut relanded = landed;
@@ -4052,9 +4260,16 @@ mod dock_tests {
         )
     }
 
+    #[derive(Clone, Debug)]
     enum StubCommand {
         Close,
         Ask,
+    }
+
+    impl std::fmt::Display for StubCommand {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(out, "{self:?}")
+        }
     }
 
     #[derive(Clone)]
@@ -4299,7 +4514,7 @@ mod dock_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
         test_driver::drag(&mut app, 380.0, 130.0);
         test_driver::mouse_up(&mut app, 380.0, 130.0);
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .next()
             .expect("the scratch document");
@@ -4312,202 +4527,12 @@ mod dock_tests {
         );
     }
 
+    /// `chat.composer` (\u{2318}I): the chat is always open from the
+    /// workbench's point of view — the command fills the dedicated
+    /// slot on first use, re-focuses it after, and the chat NEVER
+    /// lands in the split tree or closes.
     #[test]
-    fn an_editor_drag_still_selects_while_the_floating_chat_is_up() {
-        let mut app = Application::new(AppFonts::embedded());
-        let _ = app.add_window();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-        assert!(test_driver::type_text(
-            &mut app,
-            "alpha beta gamma delta epsilon zeta"
-        ));
-
-        let uri = "ahp-chat:/x".to_owned();
-        let panel = crate::higent::ChatPanel::new(
-            app.store(),
-            &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
-            "ahp-session:/x",
-            uri.clone(),
-        );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        {
-            let window = app.sole_window();
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri)));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
-        }
-        settle(&mut app, &mut surface);
-
-        assert!(test_driver::click(&mut app, 160.0, 120.0, 800.0, 600.0));
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-        test_driver::drag(&mut app, 380.0, 130.0);
-        test_driver::mouse_up(&mut app, 380.0, 130.0);
-        let (_, held) = crate::OpenDocuments::list(app.store())
-            .into_iter()
-            .next()
-            .expect("the scratch document");
-        let document = held.document();
-        let editor = document.editor_ids().next().expect("its editor");
-        let selection = document.carets(editor).primary().selection();
-        assert!(
-            !selection.is_empty(),
-            "the drag selected nothing — the floating chat swallowed it"
-        );
-    }
-
-    #[test]
-    fn escape_collapses_the_drawer_but_keeps_the_chat_focused() {
-        let mut app = Application::new(AppFonts::embedded());
-        let _ = app.add_window();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-
-        let uri = "ahp-chat:/esc".to_owned();
-        let panel = crate::higent::ChatPanel::new(
-            app.store(),
-            &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
-            "ahp-session:/esc",
-            uri.clone(),
-        );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        {
-            let window = app.sole_window();
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
-        }
-        settle(&mut app, &mut surface);
-
-        let rect = crate::Windows::window_ref(app.store(), app.sole_window())
-            .expect("window")
-            .bottom_rect(app.store(), skia_safe::Size::new(800.0, 600.0))
-            .expect("the sheet stands");
-        assert!(test_driver::click(
-            &mut app,
-            rect.center_x(),
-            rect.bottom - 12.0,
-            800.0,
-            600.0
-        ));
-        settle(&mut app, &mut surface);
-
-        let oracle = |app: &crate::Application| {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let blurred = crate::higent::Chats::chat_ref(app.store(), &uri.clone().into())
-                .expect("the chat panel")
-                .blurred();
-            (entity.layer_focus(), entity.bottom_expanded(), blurred)
-        };
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(
-            focus,
-            crate::LayerFocus::Bottom,
-            "the click focused the sheet"
-        );
-        assert_eq!(expanded, Some(false));
-        assert!(!blurred, "a focused sheet's prompt is grown");
-
-        assert!(test_driver::key(
-            &mut app,
-            imba::event::Key::Escape,
-            Default::default()
-        ));
-        settle(&mut app, &mut surface);
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(focus, crate::LayerFocus::Bottom);
-        assert_eq!(expanded, Some(true), "Escape rolled the drawer out");
-        assert!(!blurred);
-
-        assert!(test_driver::key(
-            &mut app,
-            imba::event::Key::Escape,
-            Default::default()
-        ));
-        settle(&mut app, &mut surface);
-        let (focus, expanded, blurred) = oracle(&app);
-        assert_eq!(expanded, Some(false), "Escape rolled the drawer away");
-        assert_eq!(
-            focus,
-            crate::LayerFocus::Bottom,
-            "the keys stay with the chat — Escape must not dump focus"
-        );
-        assert!(!blurred, "the prompt keeps its size on Escape");
-
-        assert!(test_driver::click(&mut app, 400.0, 100.0, 800.0, 600.0));
-        settle(&mut app, &mut surface);
-        let (focus, _, blurred) = oracle(&app);
-        assert_eq!(focus, crate::LayerFocus::Content);
-        assert!(blurred, "keys leaving the sheet shrink the prompt");
-    }
-
-    #[test]
-    fn the_composer_sheet_hides_on_blur_and_returns_by_command() {
-        let mut app = Application::new(AppFonts::embedded());
-        let _ = app.add_window();
-        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
-        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-
-        let uri = "ahp-chat:/volatile".to_owned();
-        let panel = crate::higent::ChatPanel::new(
-            app.store(),
-            &app.ui_ctx(),
-            crate::higent::HostId::LOCAL,
-            "ahp-session:/volatile",
-            uri.clone(),
-        );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
-        let window = app.sole_window();
-        {
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
-        }
-        settle(&mut app, &mut surface);
-
-        let oracle = |app: &crate::Application| {
-            let entity =
-                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
-            let on_screen = entity
-                .bottom_rect(app.store(), skia_safe::Size::new(800.0, 600.0))
-                .is_some();
-            (
-                entity.layer_focus(),
-                on_screen,
-                entity.bottom_pane().is_some(),
-            )
-        };
-
-        assert_eq!(oracle(&app), (crate::LayerFocus::Bottom, true, true));
-
-        assert!(test_driver::click(&mut app, 400.0, 100.0, 800.0, 600.0));
-        settle(&mut app, &mut surface);
-        assert_eq!(
-            oracle(&app),
-            (crate::LayerFocus::Content, false, true),
-            "blur hides the sheet completely; the chat pane survives"
-        );
-
-        assert!(app.perform_registered(window, "chat.composer"));
-        settle(&mut app, &mut surface);
-        assert_eq!(oracle(&app), (crate::LayerFocus::Bottom, true, true));
-        assert!(
-            !crate::higent::Chats::chat_ref(app.store(), &uri.clone().into())
-                .expect("the chat panel")
-                .blurred(),
-            "the shown sheet's prompt is grown"
-        );
-
-        assert!(app.perform_registered(window, "chat.composer"));
-        settle(&mut app, &mut surface);
-        assert_eq!(oracle(&app), (crate::LayerFocus::Content, false, true));
-    }
-
-    #[test]
-    fn new_session_leaves_the_previous_session_and_its_sheet() {
+    fn the_composer_command_fronts_the_chat_panel() {
         let mut app = Application::new(AppFonts::embedded());
         let _ = app.add_window();
         let window = app.sole_window();
@@ -4531,30 +4556,725 @@ mod dock_tests {
             ) {
                 let target = crate::SessionId {
                     host: crate::higent::HostId::LOCAL,
-                    session: "ahp-session:/live".to_owned(),
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
                 };
                 crate::switch_session(store, window, target, fx)
             }
         }
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
-        let uri = "ahp-chat:/live".to_owned();
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut surface);
+
+        let slot_chat = |app: &crate::Application| -> Option<String> {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let chat = entity.workbench().chat()?;
+            match chat.panel() {
+                crate::Panel::Plugin(view) => view
+                    .as_any()
+                    .downcast_ref::<crate::higent::ChatPane>()
+                    .map(|pane| pane.chat().as_str().to_owned()),
+                crate::Panel::Editor(_) => None,
+            }
+        };
+        let tree_chat = |app: &crate::Application| -> Option<String> {
+            let entity =
+                crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+            let mut found = None;
+            entity.workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                        found = Some(pane.chat().as_str().to_owned());
+                    }
+                }
+            });
+            found
+        };
+        assert_eq!(slot_chat(&app), None, "nothing filled the chat slot yet");
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            slot_chat(&app).as_deref(),
+            Some("ahp-chat:/volatile"),
+            "the command fills the workbench's chat slot"
+        );
+        assert_eq!(tree_chat(&app), None, "the chat never enters the tree");
+
+        // Idempotent: the standing slot is fronted, not duplicated.
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut surface);
+        assert_eq!(slot_chat(&app).as_deref(), Some("ahp-chat:/volatile"));
+
+        // The chat never closes: \u{2318}W on the focused chat is refused.
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            slot_chat(&app).as_deref(),
+            Some("ahp-chat:/volatile"),
+            "the chat slot refuses to close"
+        );
+    }
+
+    /// Presentation is the layout's call alone: a vacant tree hands
+    /// the whole workbench to the chat, a document splits the space
+    /// when the window fits both, a narrow window shows the document
+    /// alone (the chat slot stays, hidden), and closing the last
+    /// panel hands it all back.
+    #[test]
+    fn the_chat_docks_left_when_the_window_is_wide() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        // House units are 2x pixels: 3200 here is a 1600pt window.
+        let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+        let slot_filled =
+            |app: &crate::Application| -> bool { held(app).workbench().chat().is_some() };
+        let tree_chat = |app: &crate::Application| -> Option<String> {
+            let mut found = None;
+            held(app).workbench().root.for_each_pane(&mut |panel| {
+                if let crate::Panel::Plugin(view) = panel {
+                    if let Some(pane) = view.as_any().downcast_ref::<crate::higent::ChatPane>() {
+                        found = Some(pane.chat().as_str().to_owned());
+                    }
+                }
+            });
+            found
+        };
+        let vacant = |app: &crate::Application| -> bool { held(app).workbench().root.is_vacant() };
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+        assert!(slot_filled(&app), "\u{2318}I fills the chat slot");
+        assert_eq!(tree_chat(&app), None, "the chat never enters the tree");
+        assert!(vacant(&app), "a fresh session has nothing open");
+
+        // Narrowing changes NOTHING about the state — visibility is
+        // the layout's business, the slot stays put.
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        settle(&mut app, &mut narrow);
+        assert!(slot_filled(&app), "the slot survives a narrow window");
+        assert_eq!(tree_chat(&app), None);
+
+        settle(&mut app, &mut wide);
+        assert!(slot_filled(&app));
+
+        // Opening a document splits the space with the chat...
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    crate::app::markdown_scratch(),
+                    None,
+                    "doc".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut wide);
+        assert!(!vacant(&app), "the document fills the vacant leaf");
+        assert!(slot_filled(&app), "the chat stays beside it");
+
+        // ...and closing the last panel hands it all back.
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut wide);
+        assert!(vacant(&app), "closing the last panel empties the tree");
+        assert!(slot_filled(&app), "the chat owns the workbench again");
+    }
+
+    /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_narrow_screenshot -- --ignored`
+    /// — the squeezed case: a document open in a window too narrow
+    /// for both; the panel must win the whole workbench.
+    #[test]
+    #[ignore]
+    fn dump_chat_narrow_screenshot() {
+        let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+            return;
+        };
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        // The user's real squeezed window: 1392pt at 2x = 2784 device px.
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((2784, 1700)).expect("surface");
+        crate::Window::draw(window, &mut app, narrow.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut narrow);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let document = crate::app::markdown_scratch();
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    document,
+                    None,
+                    "narrow.md".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+
+        let image = narrow.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png");
+        std::fs::write(format!("{dir}/chat-narrow.png"), data.as_bytes()).expect("write");
+    }
+
+    /// `HIMARK_SHOT=<dir> cargo test -p himark dump_chat_column_screenshot -- --ignored`
+    #[test]
+    #[ignore]
+    fn dump_chat_column_screenshot() {
+        let Ok(dir) = std::env::var("HIMARK_SHOT") else {
+            return;
+        };
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut wide = skia_safe::surfaces::raster_n32_premul((1920, 1080)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+
+        let image = wide.image_snapshot();
+        let data = image
+            .encode(None, skia_safe::EncodedImageFormat::PNG, None)
+            .expect("png");
+        std::fs::write(format!("{dir}/chat-column.png"), data.as_bytes()).expect("write");
+    }
+
+    /// The single-panel presentation: Cmd-I fronts the hidden chat
+    /// over the panel, opening a panel hands the window back, and
+    /// Cmd-W closes the panel — a hidden chat's stale focus must
+    /// never block it. Closing the last panel returns the chat.
+    #[test]
+    fn single_panel_cmd_i_fronts_and_cmd_w_closes() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut narrow = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(window, &mut app, narrow.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut narrow);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+        assert!(held(&app).workbench().chat().is_some());
+        assert!(
+            !held(&app).workbench().chat_fronted(),
+            "a vacant tree shows the chat without fronting"
+        );
+
+        struct OpenDoc;
+        impl crate::DynamicCommand for OpenDoc {
+            fn id(&self) -> &'static str {
+                "test.open-doc"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let family = crate::Windows::session_family(store, window).expect("family");
+                let id = crate::OpenDocuments::register(
+                    store,
+                    family.documents(),
+                    crate::app::markdown_scratch(),
+                    None,
+                    "doc".to_owned(),
+                    0,
+                );
+                let ui = app.ui_ctx();
+                let mut entity = crate::Windows::window(store, window).expect("window");
+                entity.show_document(store, &ui, window, id, None, true, fx);
+                crate::Windows::put(store, window, entity);
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+        assert!(!held(&app).workbench().root.is_vacant());
+        assert!(
+            !held(&app).workbench().chat_focused(),
+            "the panel took the window and the keyboard"
+        );
+
+        // Cmd-I over the single panel FRONTS the chat.
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut narrow);
+        assert!(
+            held(&app).workbench().chat_fronted(),
+            "\u{2318}I shows the hidden chat"
+        );
+
+        // Opening a panel hands the window back.
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(OpenDoc))));
+        settle(&mut app, &mut narrow);
+        assert!(
+            !held(&app).workbench().chat_fronted(),
+            "a landing panel wins the window back"
+        );
+
+        // A STALE chat focus while the chat is hidden must not block
+        // closing the panel.
+        {
+            let mut entity = crate::Windows::window(app.store(), window).expect("window");
+            entity.workbench_mut().focus_chat(true);
+            crate::Windows::put(&mut app.store_mut(), window, entity);
+        }
+        assert!(app.perform_registered(window, "workbench.close"));
+        settle(&mut app, &mut narrow);
+        assert!(
+            held(&app).workbench().root.is_vacant(),
+            "\u{2318}W closed the panel despite the hidden chat's focus"
+        );
+    }
+
+    /// The tree header's MAXIMIZE hides the chat; \u{2318}I and the
+    /// minimize button bring it back.
+    #[test]
+    fn maximize_hides_the_chat_and_restore_brings_it_back() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut wide = skia_safe::surfaces::raster_n32_premul((3200, 1000)).expect("surface");
+        crate::Window::draw(window, &mut app, wide.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/volatile");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/volatile"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/volatile",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        settle(&mut app, &mut wide);
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+
+        fn held(app: &crate::Application) -> &crate::Window {
+            crate::Windows::window_ref(app.store(), app.sole_window()).expect("window")
+        }
+
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::MaximizeTree),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(
+            held(&app).workbench().chat_minimized(),
+            "maximize hides the chat"
+        );
+
+        assert!(app.perform_registered(window, "chat.composer"));
+        settle(&mut app, &mut wide);
+        assert!(
+            !held(&app).workbench().chat_minimized(),
+            "\u{2318}I brings the chat back"
+        );
+
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::MaximizeTree),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(held(&app).workbench().chat_minimized());
+        assert!(app.perform_command(AppCommand::Content(
+            window,
+            crate::WindowCommand::Base(crate::WorkbenchCommand::RestoreChat),
+        )));
+        settle(&mut app, &mut wide);
+        assert!(
+            !held(&app).workbench().chat_minimized(),
+            "the minimize button brings the chat back"
+        );
+    }
+
+    /// EVERY open road converges on the chat slot: a chat pane sent
+    /// down the generic `open_panel` lands there, never in the tree.
+    #[test]
+    fn any_open_road_lands_the_chat_in_the_slot() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(window, &mut app, surface.canvas());
+
+        let uri = crate::higent::ChatUri::new("ahp-chat:/walkable");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/walkable"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
+        let panel = crate::higent::ChatPanel::new(
+            app.store(),
+            &app.ui_ctx(),
+            crate::higent::HostId::LOCAL,
+            "ahp-session:/walkable",
+            chats,
+            uri.clone(),
+        );
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+        {
+            let ui = app.ui_ctx();
+            let mut store = app.store_mut();
+            let mut entity = crate::Windows::window(&store, window).expect("window");
+            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+            let _ = entity.open_panel(
+                &mut store,
+                &ui,
+                Box::new(crate::higent::ChatPane::new(chats, uri.clone())),
+                &mut batch.effects(),
+            );
+            crate::Windows::put(&mut store, window, entity);
+        }
+        settle(&mut app, &mut surface);
+
+        let entity = crate::Windows::window_ref(app.store(), window).expect("window");
+        assert!(
+            entity.workbench().chat().is_some(),
+            "the generic road landed the chat in the slot"
+        );
+        let mut in_tree = false;
+        entity.workbench().root.for_each_pane(&mut |panel| {
+            if let crate::Panel::Plugin(view) = panel {
+                in_tree |= view.as_any().is::<crate::higent::ChatPane>();
+            }
+        });
+        assert!(!in_tree, "the chat never enters the tree");
+    }
+
+    #[test]
+    fn new_session_leaves_the_previous_session_and_its_chat() {
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let window = app.sole_window();
+        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(window, &mut app, surface.canvas());
+
+        struct EnterSession;
+        impl crate::DynamicCommand for EnterSession {
+            fn id(&self) -> &'static str {
+                "test.enter-session"
+            }
+            fn name(&self) -> String {
+                String::new()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                store: &mut Store,
+                window: crate::WindowId,
+                fx: &mut crate::AppFx<'_>,
+            ) {
+                let target = crate::SessionId {
+                    host: crate::higent::HostId::LOCAL,
+                    session: crate::higent::SessionUri::new("ahp-session:/live"),
+                };
+                crate::switch_session(store, window, target, fx)
+            }
+        }
+        assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(EnterSession))));
+        let uri = crate::higent::ChatUri::new("ahp-chat:/live");
+        let home = crate::SessionId {
+            host: crate::higent::HostId::LOCAL,
+            session: crate::higent::SessionUri::new("ahp-session:/live"),
+        };
+        let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).chats();
         let panel = crate::higent::ChatPanel::new(
             app.store(),
             &app.ui_ctx(),
             crate::higent::HostId::LOCAL,
             "ahp-session:/live",
+            chats,
             uri.clone(),
         );
-        crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
+        crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
         {
-            let mut entity = crate::Windows::window(app.store(), window).expect("window");
-            entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri)));
-            crate::Windows::put(&mut app.store_mut(), window, entity);
+            let ui = app.ui_ctx();
+            let mut store = app.store_mut();
+            let mut entity = crate::Windows::window(&store, window).expect("window");
+            let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+            let _ = entity.open_panel(
+                &mut store,
+                &ui,
+                Box::new(crate::higent::ChatPane::new(chats, uri)),
+                &mut batch.effects(),
+            );
+            crate::Windows::put(&mut store, window, entity);
         }
         settle(&mut app, &mut surface);
+        let chat_mounted = |app: &crate::Application| -> bool {
+            crate::Windows::window_ref(app.store(), app.sole_window())
+                .expect("window")
+                .workbench()
+                .chat()
+                .is_some_and(|chat| match chat.panel() {
+                    crate::Panel::Plugin(view) => view.as_any().is::<crate::higent::ChatPane>(),
+                    crate::Panel::Editor(_) => false,
+                })
+        };
         let entity = crate::Windows::window_ref(app.store(), window).expect("window");
         assert!(entity.current_session().names_session());
-        assert!(entity.bottom_pane().is_some(), "the chat sheet stands");
+        assert!(chat_mounted(&app), "the chat panel stands");
 
         assert!(app.perform_command(AppCommand::Dynamic(
             window,
@@ -4568,8 +5288,8 @@ mod dock_tests {
             entity.current_session()
         );
         assert!(
-            entity.bottom_pane().is_none(),
-            "the previous session's chat sheet is still mounted"
+            !chat_mounted(&app),
+            "the previous session's chat panel is still mounted"
         );
         let title = crate::Windows::window_ref(app.store(), window)
             .expect("window")
@@ -4673,6 +5393,7 @@ mod dock_tests {
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
         let summary =
             |title: &str, folders: &[&str], modified: &str| ahp_types::state::SessionSummary {
+                origin: None,
                 provider: "test".to_owned(),
                 title: title.to_owned(),
                 // Idle and read — labels stay bare of activity marks.
@@ -4793,13 +5514,9 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::AgentsCommand::Select(-100),
-            &mut batch.effects(),
-        );
-        panel.perform(
-            &mut store,
-            &ui,
-            crate::higent::AgentsCommand::Select(docs as isize),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Inner(
+                crate::TreeListCommand::Content(imba::list::ListCommand::Select(docs)),
+            )),
             &mut batch.effects(),
         );
         assert_eq!(
@@ -4810,7 +5527,10 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::AgentsCommand::Fold(false),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Fold {
+                index: docs,
+                expand: false,
+            }),
             &mut batch.effects(),
         );
         assert!(
@@ -4823,7 +5543,10 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::AgentsCommand::Fold(true),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Fold {
+                index: docs,
+                expand: true,
+            }),
             &mut batch.effects(),
         );
         assert!(
@@ -4845,6 +5568,7 @@ mod dock_tests {
         crate::higent::Agents::seed(&mut store, host, "Test Host");
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
         let summary = |title: &str| ahp_types::state::SessionSummary {
+            origin: None,
             provider: "test".to_owned(),
             title: title.to_owned(),
             status: 33,
@@ -4865,10 +5589,12 @@ mod dock_tests {
             true,
         );
         let mut entity = crate::Windows::window(&store, window).expect("window");
-        let _ = entity.switch_to(crate::SessionId {
+        let beta = crate::SessionId {
             host,
-            session: "test-session:/beta".to_owned(),
-        });
+            session: crate::higent::SessionUri::new("test-session:/beta"),
+        };
+        let family = crate::higent::Hosts::ensure_family(&mut store, &beta);
+        let _ = entity.switch_to(beta, family);
         crate::Windows::put(&mut store, window, entity);
 
         let ui = ::editor::test_document::test_ui();
@@ -4907,6 +5633,7 @@ mod dock_tests {
         crate::higent::Agents::seed(&mut store, host, "Test Host");
         crate::higent::Agents::set_status(&mut store, host, crate::higent::HostStatus::Connected);
         let summary = |title: &str| ahp_types::state::SessionSummary {
+            origin: None,
             provider: "test".to_owned(),
             title: title.to_owned(),
             status: 33,
@@ -4941,7 +5668,7 @@ mod dock_tests {
 
         let typing = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Input(
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Input(
                 crate::EditorCommand::InsertText {
                     text: "bet".to_owned(),
                 },
@@ -4960,10 +5687,14 @@ mod dock_tests {
             }
         }
         let matches = matches.expect("typing launched the filter");
-        let _ = drive(
+        let landing = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Landed(matches)),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Landed(matches)),
         );
+        // The first-match jump rides the announce round trip.
+        if let Some(select) = crate::editor_tests::drain_announced(landing) {
+            let _ = drive(&mut panel, select);
+        }
         assert_eq!(panel.match_count(), 1, "only beta matches");
         let rows = panel.rows();
         let beta = rows
@@ -4976,15 +5707,13 @@ mod dock_tests {
             "the cursor jumped to the match: {rows:?}"
         );
 
-        let _ = drive(
-            &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Step(1)),
-        );
+        let step = panel.matched_step_rows(1).expect("a match to step");
+        let _ = drive(&mut panel, step);
         assert_eq!(panel.selected_row(), Some(beta), "wrapped in place");
 
         let _ = drive(
             &mut panel,
-            crate::higent::AgentsCommand::Rows(crate::SpeedSearchCommand::Clear),
+            crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Clear),
         );
         assert_eq!(panel.match_count(), 0, "cleared");
     }
@@ -5001,6 +5730,68 @@ mod dock_tests {
         assert!(test_driver::key(&mut app, Key::Enter, Default::default()));
         assert!(entity(&app).has_dock(), "the pick kept the panel");
         assert_eq!(entity(&app).dock_owner(), Some("test.files"));
+    }
+
+    #[test]
+    fn dock_header_buttons_dispatch_their_commands() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        struct Mark {
+            hits: Arc<AtomicUsize>,
+        }
+        impl crate::DynamicCommand for Mark {
+            fn id(&self) -> &'static str {
+                "test.dock-mark"
+            }
+            fn name(&self) -> String {
+                "Dock Mark".to_owned()
+            }
+            fn perform(
+                &self,
+                _app: &mut Application,
+                _store: &mut Store,
+                _window: crate::WindowId,
+                _fx: &mut crate::AppFx<'_>,
+            ) {
+                self.hits.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        let mut app = Application::new(AppFonts::embedded());
+        let _ = app.add_window();
+        let hits = Arc::new(AtomicUsize::new(0));
+        {
+            let mut store = app.store_mut();
+            crate::commands::Commands::register(
+                &mut store,
+                Arc::new(Mark {
+                    hits: Arc::clone(&hits),
+                }),
+            );
+        }
+        app.register_toolbar_button(crate::ToolbarButton {
+            command: "test.dock-mark",
+            order: 10.0,
+            side: crate::ToolbarSide::Right,
+            glyph: Arc::new(|_canvas, _rect, _color| {}),
+        });
+        let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
+        crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+        show_dock(&mut app, "files", "test.files");
+        settle(&mut app, &mut surface);
+
+        let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
+        let dock_width = entity(&app).dock_target_width();
+        let edge = 800.0 - dock_width;
+        let x = edge + dock_width - chrome.button_inset - chrome.button_size * 0.5;
+        assert!(
+            test_driver::click(&mut app, x, chrome.height * 0.5, 800.0, 600.0),
+            "the dock header button answers the click"
+        );
+        settle(&mut app, &mut surface);
+        assert_eq!(
+            hits.load(Ordering::Relaxed),
+            1,
+            "the dock header button ran its command"
+        );
     }
 
     #[test]
@@ -5082,10 +5873,13 @@ mod dock_tests {
             fn resize(&self, _cols: u16, _rows: u16, _w: f32, _h: f32) {}
             fn hangup(&self) {}
         }
-        let hidden = "test-terminal:1".to_owned();
+        let hidden = crate::higent::ChannelUri::new("test-terminal:1");
         let session = crate::terminal::Session::new(Box::new(NullBackend));
         session.set_channel(hidden.clone());
-        crate::terminal::Terminals::put(&mut app.store_mut(), hidden.clone(), session);
+        let home = app.sole_window_session();
+        let terminals =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).terminals();
+        crate::terminal::Terminals::put(&mut app.store_mut(), terminals, hidden.clone(), session);
         let entity = |app: &Application| {
             crate::Windows::window_ref(app.store(), app.sole_window())
                 .expect("the window entity")
@@ -5093,7 +5887,7 @@ mod dock_tests {
         };
         assert!(entity(&app).has_dock());
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
             "the family row is in the session"
         );
 
@@ -5130,9 +5924,17 @@ mod dock_tests {
             entity(&app).dock_panel().is_none(),
             "a fresh session has no dock"
         );
+        let fresh = minted.lock().unwrap().clone().expect("the minted session");
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_none(),
-            "and no foreign family rows"
+            crate::higent::Hosts::family(app.store(), &fresh)
+                .map(|family| crate::terminal::Terminals::list(app.store(), family.terminals()))
+                .unwrap_or_default()
+                .is_empty(),
+            "a fresh session has no family rows of its own"
+        );
+        assert!(
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
+            "and the first session's row stayed WITH it — never borrowed, never dropped"
         );
 
         let back = std::sync::Arc::new(Mutex::new(Some(first)));
@@ -5144,7 +5946,7 @@ mod dock_tests {
             "and reads open, not closing"
         );
         assert!(
-            crate::terminal::Terminals::session_ref(app.store(), &hidden).is_some(),
+            crate::terminal::Terminals::session_ref(app.store(), terminals, &hidden).is_some(),
             "the family row rode along"
         );
 
@@ -5230,7 +6032,20 @@ mod toolbar_side_tests {
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
 
         let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
-        let x = 800.0 - chrome.button_inset - chrome.button_size * 0.5;
+        // LEFT buttons live in the global cluster, top-left.
+        let cluster_index = crate::toolbar::ToolbarButtons::of(app.store())
+            .iter()
+            .filter(|button| {
+                matches!(
+                    button.side,
+                    crate::ToolbarSide::Left | crate::ToolbarSide::Well
+                )
+            })
+            .position(|button| button.command == "test.left-mark")
+            .expect("the left button is in the cluster");
+        let x = chrome.button_inset
+            + cluster_index as f32 * chrome.button_size
+            + chrome.button_size * 0.5;
         assert!(test_driver::click(
             &mut app,
             x,
@@ -5239,16 +6054,30 @@ mod toolbar_side_tests {
             600.0
         ));
         assert_eq!(
+            left_hits.load(Ordering::Relaxed),
+            1,
+            "the cluster button fired"
+        );
+        // RIGHT buttons ride the DOCK CLUSTER top-right — the mirror
+        // of the global cluster, present even with the dock closed.
+        let right_x = 800.0 - chrome.button_inset - chrome.button_size * 0.5;
+        assert!(test_driver::click(
+            &mut app,
+            right_x,
+            chrome.height * 0.5,
+            800.0,
+            600.0
+        ));
+        assert_eq!(
             right_hits.load(Ordering::Relaxed),
             1,
-            "the right button fired"
+            "the dock cluster fires with the dock closed"
         );
-        assert_eq!(left_hits.load(Ordering::Relaxed), 0, "the left one did not");
     }
 }
 
 #[test]
-fn switching_workspaces_stashes_the_bottom_sheet() {
+fn switching_workspaces_stashes_the_chat_panel() {
     use crate::AppFonts;
     use std::sync::Arc;
 
@@ -5258,7 +6087,7 @@ fn switching_workspaces_stashes_the_bottom_sheet() {
     }
     impl crate::DynamicCommand for Switch {
         fn id(&self) -> &'static str {
-            "test.switch-sheet"
+            "test.switch-chat"
         }
         fn name(&self) -> String {
             "Test Switch".to_owned()
@@ -5300,34 +6129,46 @@ fn switching_workspaces_stashes_the_bottom_sheet() {
     let first = crate::Windows::window_ref(app.store(), window)
         .expect("window")
         .current_session();
+    let first_chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &first).chats();
 
     {
-        let mut entity = crate::Windows::window(app.store(), window).expect("window");
-        entity.open_bottom(Box::new(crate::higent::ChatPane::new(
-            "ahp-chat:/a".to_owned(),
-        )));
-        crate::Windows::put(&mut app.store_mut(), window, entity);
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+        let _ = entity.open_panel(
+            &mut store,
+            &ui,
+            Box::new(crate::higent::ChatPane::new(
+                first_chats,
+                crate::higent::ChatUri::new("ahp-chat:/a"),
+            )),
+            &mut batch.effects(),
+        );
+        crate::Windows::put(&mut store, window, entity);
     }
-    let sheet_chat = |app: &crate::Application| -> Option<String> {
-        crate::Windows::window_ref(app.store(), app.sole_window())
-            .and_then(|entity| entity.bottom_pane())
-            .and_then(|pane| pane.as_any().downcast_ref::<crate::higent::ChatPane>())
-            .map(|pane| pane.chat().clone())
-    };
-    assert_eq!(sheet_chat(&app).as_deref(), Some("ahp-chat:/a"));
+    fn mounted_chat(app: &crate::Application) -> Option<String> {
+        let entity = crate::Windows::window_ref(app.store(), app.sole_window()).expect("window");
+        let chat = entity.workbench().chat()?;
+        match chat.panel() {
+            crate::Panel::Plugin(view) => view
+                .as_any()
+                .downcast_ref::<crate::higent::ChatPane>()
+                .map(|pane| pane.chat().as_str().to_owned()),
+            crate::Panel::Editor(_) => None,
+        }
+    }
+    assert_eq!(mounted_chat(&app).as_deref(), Some("ahp-chat:/a"));
 
     let second = switch(&mut app, None);
-    assert_eq!(sheet_chat(&app), None, "B never shows A's chat");
-    assert_eq!(
-        crate::Windows::window_ref(app.store(), window)
-            .expect("window")
-            .layer_focus(),
-        crate::LayerFocus::Content,
-        "the sheet's keys do not cross sessions"
-    );
+    assert_eq!(mounted_chat(&app), None, "B never shows A's chat");
 
     let _ = switch(&mut app, Some(first));
-    assert_eq!(sheet_chat(&app).as_deref(), Some("ahp-chat:/a"));
+    assert_eq!(
+        mounted_chat(&app).as_deref(),
+        Some("ahp-chat:/a"),
+        "A's chat panel rides its stashed workbench home"
+    );
     let _ = second;
 }
 
@@ -5338,13 +6179,13 @@ fn a_pane_documents_popup_paints_in_the_window() {
     #[derive(Clone)]
     struct MagentaPopup;
     impl imba::View for MagentaPopup {
-        type Command = ();
+        type Command = std::convert::Infallible;
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
             _ui: &imba::UiCtx,
-            _command: (),
-            _fx: &mut imba::effect::Effects<'_, ()>,
+            _command: Self::Command,
+            _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
         }
         fn display<'a>(
@@ -5357,11 +6198,13 @@ fn a_pane_documents_popup_paints_in_the_window() {
                 move |_arena: &'a imba::arena::Arena,
                       _constraints: imba::constraints::Constraints| {
                     use imba::thunk_ext::ThunkExt;
-                    imba::leaf::leaf::<()>(90.0, 40.0).paint_instead(|_arena, canvas, rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_color(skia_safe::Color::from_rgb(0xff, 0x00, 0xff));
-                        canvas.draw_rect(rect, &paint);
-                    })
+                    imba::leaf::leaf::<std::convert::Infallible>(90.0, 40.0).paint_instead(
+                        |_arena, canvas, rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_color(skia_safe::Color::from_rgb(0xff, 0x00, 0xff));
+                            canvas.draw_rect(rect, &paint);
+                        },
+                    )
                 },
             )
         }
@@ -5376,6 +6219,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "popup.md".to_owned(),
             document: plain_document(&source),
             location: None,
@@ -5386,7 +6230,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
     )));
     crate::Window::draw(window, &mut app, surface.canvas());
 
-    let (id, held) = crate::OpenDocuments::list(app.store())
+    let (id, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, held)| held.name() == "popup.md")
         .expect("the opened document");
@@ -5415,7 +6259,10 @@ fn a_pane_documents_popup_paints_in_the_window() {
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
-    crate::OpenDocuments::put_document(&mut app.store_mut(), id, document);
+    {
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, id, document);
+    }
 
     let magenta = |surface: &mut skia_safe::Surface| -> usize {
         let image = surface.image_snapshot();
@@ -5439,7 +6286,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
         "the popup painted through the pane boundary: {painted} px"
     );
 
-    let (id, held) = crate::OpenDocuments::list(app.store())
+    let (id, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, held)| held.name() == "popup.md")
         .expect("still open");
@@ -5454,7 +6301,10 @@ fn a_pane_documents_popup_paints_in_the_window() {
         &crate::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
-    crate::OpenDocuments::put_document(&mut app.store_mut(), id, document);
+    {
+        let documents = app.sole_documents();
+        crate::OpenDocuments::put_document(&mut app.store_mut(), documents, id, document);
+    }
     surface.canvas().clear(skia_safe::Color::from_rgb(9, 9, 9));
     crate::Window::draw(window, &mut app, surface.canvas());
     assert_eq!(magenta(&mut surface), 0, "the popup left with its marker");
@@ -5504,25 +6354,38 @@ fn the_at_completion_opens_finds_and_picks() {
         std::sync::Arc::new(|| {}),
     );
 
-    let uri = "ahp-chat:/completion".to_owned();
+    let uri = crate::higent::ChatUri::new("ahp-chat:/completion");
+    let chats = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &session).chats();
     let panel = crate::higent::ChatPanel::new(
         app.store(),
         &app.ui_ctx(),
         session.host,
         session.session.clone(),
+        chats,
         uri.clone(),
     );
-    crate::higent::Chats::put(&mut app.store_mut(), uri.clone().into(), panel);
+    crate::higent::Chats::put(&mut app.store_mut(), chats, uri.clone(), panel);
+    // Retire the launch scratch: at this width the chat is visible
+    // only over a vacant tree, and the composer needs the screen.
+    assert!(app.perform_registered(window, "workbench.close"));
     {
-        let mut entity = crate::Windows::window(app.store(), window).expect("window");
-        entity.open_bottom(Box::new(crate::higent::ChatPane::new(uri.clone())));
-        crate::Windows::put(&mut app.store_mut(), window, entity);
+        let ui = app.ui_ctx();
+        let mut store = app.store_mut();
+        let mut entity = crate::Windows::window(&store, window).expect("window");
+        let mut batch = imba::effect::Batch::<crate::AppCommand>::new();
+        let _ = entity.open_panel(
+            &mut store,
+            &ui,
+            Box::new(crate::higent::ChatPane::new(chats, uri.clone())),
+            &mut batch.effects(),
+        );
+        crate::Windows::put(&mut store, window, entity);
     }
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     crate::Window::draw(window, &mut app, surface.canvas());
 
     let panel = |app: &Application| -> crate::higent::ChatPanel {
-        crate::higent::Chats::chat(app.store(), &uri).expect("the panel")
+        crate::higent::Chats::chat(app.store(), chats, &uri).expect("the panel")
     };
     let pump = |app: &mut Application, surface: &mut skia_safe::Surface| {
         for tick in 0..30 {
@@ -5668,6 +6531,7 @@ fn the_at_completion_serves_markdown_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: markdown,
             location: Some(crate::ResourceLocation::new(
@@ -5701,7 +6565,7 @@ fn the_at_completion_serves_markdown_panes() {
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "notes.md")
             .expect("the pane document");
@@ -5764,6 +6628,7 @@ fn the_at_completion_serves_markdown_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("fn main() {}\n"),
             location: Some(crate::ResourceLocation::new(
@@ -5842,6 +6707,7 @@ fn lsp_completion_serves_code_panes() {
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("value "),
             location: Some(crate::ResourceLocation::new(
@@ -5875,7 +6741,7 @@ fn lsp_completion_serves_code_panes() {
             .unwrap_or_default()
     };
     let pane_text = |app: &Application| -> String {
-        let (_, held) = crate::OpenDocuments::list(app.store())
+        let (_, held) = crate::OpenDocuments::list(app.store(), app.sole_documents())
             .into_iter()
             .find(|(_, held)| held.name() == "main.rs")
             .expect("the pane document");
@@ -6067,26 +6933,32 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         true
     ));
     let (target, editor) = app.focused_editor_id();
+    let documents = app.sole_documents();
     let base = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document("one\nTWO\nthree\n"),
         None,
         "base.md".to_owned(),
         0,
     );
-    let diff = crate::OpenDocuments::track_diff(&mut app.store_mut(), base, target, true, None)
-        .expect("tracked");
+    let documents = app.sole_documents();
+    let diff =
+        crate::OpenDocuments::track_diff(&mut app.store_mut(), documents, base, target, true)
+            .expect("tracked");
     let _ = window;
 
     // A benign entity command: deliver drops it, the batch tails run.
-    let tick = |app: &mut Application| {
-        app.perform_batch(vec![crate::AppCommand::Entity(
-            target,
-            EditorCommand::ApplyRepair(Vec::new()),
+    let home = app.sole_window_session();
+    let documents = crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+    let tick = move |app: &mut Application| {
+        app.perform_batch(vec![crate::AppCommand::at(
+            documents,
+            crate::app::DocumentsCommand::Editor(target, EditorCommand::ApplyRepair(Vec::new())),
         )]);
     };
     let stripes = |app: &Application| -> Vec<u32> {
-        crate::OpenDocuments::document_ref(app.store(), target)
+        crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
             .and_then(|document| document.scroll_stripes(editor))
             .map(|landed| landed.segments.iter().map(|segment| segment.byte).collect())
             .unwrap_or_default()
@@ -6101,17 +6973,19 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
+        let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, target).expect("open");
+        let mut document = crate::OpenDocuments::document(&store, documents, target).expect("open");
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_at(0, "zero\n"),
+            &::editor::Operation::insert_in(len, 0, "zero\n"),
             &store,
             ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, target, document);
+        crate::OpenDocuments::put_document(&mut store, documents, target, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6127,15 +7001,17 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
-        let target_text = crate::OpenDocuments::document_ref(app.store(), target)
-            .map(|document| {
-                let mut view = document.text().view();
-                let count = view.byte_count();
-                view.byte_string(0, count)
-            })
-            .expect("open");
+        let target_text =
+            crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
+                .map(|document| {
+                    let mut view = document.text().view();
+                    let count = view.byte_count();
+                    view.byte_string(0, count)
+                })
+                .expect("open");
+        let documents = app.sole_documents();
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, base).expect("open");
+        let mut document = crate::OpenDocuments::document(&store, documents, base).expect("open");
         let catch_up = myersdiff::diff(
             document.text(),
             &::editor::Text::from_string_exact(&target_text),
@@ -6148,7 +7024,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, base, document);
+        crate::OpenDocuments::put_document(&mut store, documents, base, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6165,16 +7041,17 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let fonts = ::editor::env::Fonts::of(app.store())();
         let theme = ::editor::env::Themes::of(app.store());
         let mut store = app.store_mut();
-        let mut document = crate::OpenDocuments::document(&store, base).expect("open");
+        let mut document = crate::OpenDocuments::document(&store, documents, base).expect("open");
+        let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_at(0, "gone\n"),
+            &::editor::Operation::insert_in(len, 0, "gone\n"),
             &store,
             ui,
             &fonts,
             &theme,
             &mut imba::effect::Batch::new().effects(),
         );
-        crate::OpenDocuments::put_document(&mut store, base, document);
+        crate::OpenDocuments::put_document(&mut store, documents, base, document);
     }
     tick(&mut app);
     settle(&mut app);
@@ -6185,7 +7062,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
 
     // ...then land the new HEAD: a base equal to the target's text,
     // under its own location.
-    let target_text = crate::OpenDocuments::document_ref(app.store(), target)
+    let target_text = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
         .map(|document| {
             let mut view = document.text().view();
             let count = view.byte_count();
@@ -6197,17 +7074,27 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         ::editor::Authority::new("local"),
         vec!["head-v2.md".to_owned()],
     );
+    let documents = app.sole_documents();
     let _head_id = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(&target_text),
         Some(head.clone()),
         "head-v2.md".to_owned(),
         0,
     );
-    app.perform_batch(vec![crate::AppCommand::BaseLocated {
-        document: target,
-        base: Some(head),
-    }]);
+    {
+        let home = app.sole_window_session();
+        let documents =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+        app.perform_batch(vec![crate::AppCommand::at(
+            documents,
+            crate::app::DocumentsCommand::BaseLocated {
+                document: target,
+                base: Some(head),
+            },
+        )]);
+    }
     settle(&mut app);
     assert_eq!(
         stripes(&app),
@@ -6228,8 +7115,10 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
     // (stripes=false). Its hunks must NOT leak onto the pane's track:
     // when the pane's own stripes diff clears, the track clears too,
     // panel or no panel.
+    let documents = app.sole_documents();
     let snapshot = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(
             "something
 entirely
@@ -6241,10 +7130,10 @@ unrelated
         0,
     );
     let panel_diff =
-        crate::OpenDocuments::track_diff(&mut app.store_mut(), snapshot, target, false, None)
+        crate::OpenDocuments::track_diff(&mut app.store_mut(), documents, snapshot, target, false)
             .expect("the panel road tracks");
     // The pane's own diff empties: HEAD catches up again.
-    let target_text = crate::OpenDocuments::document_ref(app.store(), target)
+    let target_text = crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), target)
         .map(|document| {
             let mut view = document.text().view();
             let count = view.byte_count();
@@ -6256,17 +7145,27 @@ unrelated
         ::editor::Authority::new("local"),
         vec!["head-v3.md".to_owned()],
     );
+    let documents = app.sole_documents();
     let _ = crate::OpenDocuments::register(
         &mut app.store_mut(),
+        documents,
         plain_document(&target_text),
         Some(head3.clone()),
         "head-v3.md".to_owned(),
         0,
     );
-    app.perform_batch(vec![crate::AppCommand::BaseLocated {
-        document: target,
-        base: Some(head3),
-    }]);
+    {
+        let home = app.sole_window_session();
+        let documents =
+            crate::higent::Hosts::ensure_family(&mut app.store_mut(), &home).documents();
+        app.perform_batch(vec![crate::AppCommand::at(
+            documents,
+            crate::app::DocumentsCommand::BaseLocated {
+                document: target,
+                base: Some(head3),
+            },
+        )]);
+    }
     settle(&mut app);
     assert_eq!(
         stripes(&app),
@@ -6329,6 +7228,7 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "hit.md".to_owned(),
                 document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
                 location: Some(located("hit.md")),
@@ -6369,7 +7269,8 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Dynamic(window, Arc::new(DisposeFeed { feed }),)));
         assert!(LocationsFeeds::row(app.store(), feed).is_none());
         assert!(
-            crate::OpenDocuments::document_ref(app.store(), *document).is_some(),
+            crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), *document)
+                .is_some(),
             "the document stays; only the wash left"
         );
     }
@@ -6386,6 +7287,7 @@ mod wash_tests {
         assert!(app.perform_command(AppCommand::Opened(
             window,
             OpenedDocument {
+                documents: app.sole_documents(),
                 name: "late.md".to_owned(),
                 document: ::editor::test_document::plain_document("needle one\nfour needle\n"),
                 location: Some(located("late.md")),

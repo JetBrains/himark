@@ -119,7 +119,9 @@ rules, and matching semantics are the Search extension's
 (docs/ahp/ahp-search.md §2.2–§2.4): folders default to the session's
 working directories and MUST be `file:` URIs under a root; ignore
 rules respected, symlinks skipped, binaries skipped, the Rust regex
-dialect; stored content only — no document-channel overlay.
+dialect; stored content, with the same overlay allowance as the
+Search extension (§2.3 there): a server MAY observe synchronized
+document content, and the reference server's indexed engine does.
 
 ```typescript
 interface SearchLocationsParams {

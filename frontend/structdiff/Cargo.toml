@@ -17,3 +17,4 @@ line-numbers = "0.3.0"
 
 [dev-dependencies]
 mdparser = { path = "../mdparser" }
+hirust = { path = "../plugins/lang/hirust" }

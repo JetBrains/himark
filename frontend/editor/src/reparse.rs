@@ -288,6 +288,7 @@ impl ReparseWork {
     }
 }
 
+#[derive(Clone)]
 pub struct ReparseOutcome {
     token: crate::document::DocumentToken,
     revision: u64,
@@ -334,6 +335,12 @@ pub struct ReparseEffect {
 impl ReparseEffect {
     pub fn new(work: ReparseWork) -> Self {
         Self { work }
+    }
+}
+
+impl std::fmt::Display for ReparseEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "reparse revision {}", self.work.revision)
     }
 }
 

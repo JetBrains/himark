@@ -136,8 +136,9 @@ fn typing_in_the_fence_rerenders_the_diagram() {
     let (_, _, _, before) = diagram_inlay(&document).expect("initial diagram");
 
     let at = source.find("\n```").expect("closing fence") as u32;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(at, "\n    Middle --> Finish"),
+        &operation::Operation::insert_in(len, at, "\n    Middle --> Finish"),
         store,
         ui,
         &fonts(),
@@ -208,11 +209,13 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
     assert!(!is_diagram, "unparseable source is the error strip");
 
     let at = source.find("not a diagram").expect("start") as u32;
+    let tail = document.text().byte_count() as u32 - at - "not a diagram at all".len() as u32;
     document.edit(
         &operation::Operation::from_ops([
             operation::Op::Retain(at),
             operation::Op::Delete("not a diagram at all".into()),
             operation::Op::Insert("flowchart TD\n    A --> B".into()),
+            operation::Op::Retain(tail),
         ]),
         store,
         ui,

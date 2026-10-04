@@ -418,7 +418,12 @@ static bool parse_fenced_code_block(Scanner *s, const char delimiter,
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
             advance(s, lexer);
         }
-        if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
+        // PATCHED (himark): a closing delimiter on the last line of a
+        // file without a trailing newline still closes the block —
+        // EOF is a line ending (the grammar's `_atx_heading*` and
+        // fence-close rules accept `$._eof` for the same reason).
+        if (lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
+            lexer->eof(lexer)) {
             s->fenced_code_block_delimiter_length = 0;
             lexer->result_symbol = delimiter == '`'
                                        ? FENCED_CODE_BLOCK_END_BACKTICK
@@ -616,7 +621,10 @@ static bool parse_setext_underline(Scanner *s, TSLexer *lexer,
         while (lexer->lookahead == ' ' || lexer->lookahead == '\t') {
             advance(s, lexer);
         }
-        if (lexer->lookahead == '\n' || lexer->lookahead == '\r') {
+        // PATCHED (himark): EOF is a line ending, as in
+        // parse_fenced_code_block.
+        if (lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
+            lexer->eof(lexer)) {
             lexer->result_symbol = SETEXT_H1_UNDERLINE;
             mark_end(s, lexer);
             return true;
@@ -826,7 +834,10 @@ static bool parse_minus(Scanner *s, TSLexer *lexer, const bool *valid_symbols) {
                 break;
             }
         }
-        bool line_end = lexer->lookahead == '\n' || lexer->lookahead == '\r';
+        // PATCHED (himark): EOF is a line ending, as in
+        // parse_fenced_code_block.
+        bool line_end = lexer->lookahead == '\n' || lexer->lookahead == '\r' ||
+                        lexer->eof(lexer);
         bool dont_interrupt = false;
         if (minus_count == 1 && line_end) {
             extra_indentation = 1;

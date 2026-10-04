@@ -26,6 +26,12 @@ pub struct FindDefinitionEffect {
     pub position: LineCol,
 }
 
+impl std::fmt::Display for FindDefinitionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "find definition /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for FindDefinitionEffect {
     type Result = Option<Vec<CodeTarget>>;
 }
@@ -44,6 +50,12 @@ pub struct NavigationOutcome {
     pub title: String,
     pub targets: Option<Vec<CodeTarget>>,
     pub built: Vec<(ResourceLocation, Document)>,
+}
+
+impl std::fmt::Display for CodeNavigationEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "navigate code /{}", self.location.path().join("/"))
+    }
 }
 
 impl Effect for CodeNavigationEffect {
@@ -147,7 +159,12 @@ fn navigate(
     built: &[(ResourceLocation, Document)],
     fx: &mut AppFx<'_>,
 ) {
-    let document_id = match OpenDocuments::by_location(store, &target.location) {
+    let Some(documents) =
+        himark::Windows::session_family(store, window).map(|family| family.documents())
+    else {
+        return;
+    };
+    let document_id = match OpenDocuments::by_location(store, documents, &target.location) {
         Some(document) => document,
         None => {
             let Some((_, document)) = built
@@ -158,6 +175,7 @@ fn navigate(
             };
             OpenDocuments::register(
                 store,
+                documents,
                 document.clone(),
                 Some(target.location.clone()),
                 target.location.name().to_owned(),
@@ -179,12 +197,15 @@ fn navigate(
     );
     himark::Windows::put(store, window, window_entity);
 
-    himark::sync_document_watches(store, fx);
+    himark::sync_document_watches(store, documents, fx);
+    himark::sync_stripe_bases(store, documents, ui, fx);
 }
 
 pub struct GoDefinition;
 
-impl himark::DynamicEditorCommand for GoDefinition {
+/// The navigation commands close over the pane's ids (docs/entities.md
+/// law 3): the open set they hand the ask is the collection they run in.
+impl himark::DocumentCommand for GoDefinition {
     fn id(&self) -> &'static str {
         "code.definition"
     }
@@ -195,19 +216,30 @@ impl himark::DynamicEditorCommand for GoDefinition {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
     ) {
-        navigation(self.id(), store, document, editor, location, payload, fx);
+        navigation(
+            self.id(),
+            store,
+            documents,
+            document,
+            editor,
+            location,
+            payload,
+            fx,
+        );
     }
 }
 
 pub struct GoReferences;
 
-impl himark::DynamicEditorCommand for GoReferences {
+impl himark::DocumentCommand for GoReferences {
     fn id(&self) -> &'static str {
         "code.references"
     }
@@ -218,6 +250,8 @@ impl himark::DynamicEditorCommand for GoReferences {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        _documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -239,7 +273,7 @@ impl himark::DynamicEditorCommand for GoReferences {
 
 pub struct GoImplementations;
 
-impl himark::DynamicEditorCommand for GoImplementations {
+impl himark::DocumentCommand for GoImplementations {
     fn id(&self) -> &'static str {
         "code.implementations"
     }
@@ -250,6 +284,8 @@ impl himark::DynamicEditorCommand for GoImplementations {
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        _documents: imba::store::Id<OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut Document,
         editor: himark::EditorId,
         location: &ResourceLocation,
@@ -316,7 +352,7 @@ fn stream_navigation(
             })
             .map(move |outcome| himark::EditorCommand::Dynamic {
                 id,
-                payload: Some(Box::new(StreamOutcome { feed, outcome })),
+                payload: Some(himark::DynPayload::new(StreamOutcome { feed, outcome })),
             }),
         );
         return;
@@ -337,6 +373,7 @@ fn stream_navigation(
 fn navigation(
     id: &'static str,
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     document: &mut Document,
     editor: himark::EditorId,
     location: &ResourceLocation,
@@ -352,7 +389,7 @@ fn navigation(
             false => format!("Definitions of `{ident}`"),
             true => "Definitions".to_owned(),
         };
-        let open = OpenDocuments::list(store)
+        let open = OpenDocuments::list(store, documents)
             .into_iter()
             .filter_map(|(_, entity)| entity.location().cloned())
             .collect();
@@ -366,7 +403,7 @@ fn navigation(
             })
             .map(move |outcome| himark::EditorCommand::Dynamic {
                 id,
-                payload: Some(Box::new(outcome)),
+                payload: Some(himark::DynPayload::new(outcome)),
             }),
         );
         return;

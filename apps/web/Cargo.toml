@@ -8,7 +8,6 @@ license = "Apache-2.0"
 demo = { path = "../../frontend/plugins/demo" }
 palette = { path = "../../frontend/plugins/palette" }
 peeker = { path = "../../frontend/plugins/peeker" }
-hidiff = { path = "../../frontend/plugins/hidiff" }
 myersdiff = { path = "../../frontend/myersdiff" }
 hirust = { path = "../../frontend/plugins/lang/hirust" }
 hipython = { path = "../../frontend/plugins/lang/hipython" }
@@ -61,7 +60,7 @@ hixml = { path = "../../frontend/plugins/lang/hixml" }
 himarkdown = { path = "../../frontend/plugins/himarkdown" }
 imba = { path = "../../frontend/imba" }
 hiahp = { path = "../../frontend/hiahp" }
-ahp = "0.7"
+ahp = "0.9"
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 tracing = "0.1"
 serde_json = "1"
@@ -69,4 +68,4 @@ host-discovery = { path = "../../protocol/host-discovery" }
 himark = { path = "../../frontend/himark" }
 
 [target.'cfg(target_os = "emscripten")'.dependencies]
-skia-safe = { version = "0.99.0", features = ["freetype-woff2", "gl", "textlayout"] }
+skia-safe = { version = "0.153.3", features = ["freetype-woff2", "gl", "textlayout"] }

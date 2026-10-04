@@ -35,7 +35,7 @@ fn setup(
 ) {
     let mut app = Application::new(crate::AppFonts::embedded());
     app.add_window();
-    app.register_editor_command(Arc::new(SaveDocument::existing_files()));
+    app.register_document_command(Arc::new(SaveDocument::existing_files()));
     let writes = Writes::default();
     app.register_handler::<StoreDocumentEffect>(StoreHandler {
         writes: writes.clone(),
@@ -65,6 +65,7 @@ fn open_file(app: &mut Application) -> crate::DocumentId {
     app.perform_command(crate::AppCommand::Opened(
         app.sole_window(),
         crate::OpenedDocument {
+            documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: plain_document("original"),
             location: Some(location()),
@@ -75,7 +76,7 @@ fn open_file(app: &mut Application) -> crate::DocumentId {
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
     crate::Window::draw(app.sole_window(), app, surface.canvas());
-    OpenDocuments::by_location(app.store(), &location()).unwrap()
+    OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
 
 fn land(app: &mut Application, arriving: &mpsc::Receiver<crate::AppCommand>) {
@@ -99,7 +100,7 @@ fn existing_file_save_works_without_a_picker_and_preserves_later_edits() {
         let (mut app, runner, arriving, writes) = setup(true);
         let id = open_file(&mut app);
         assert!(test_driver::type_text(&mut app, "saved "));
-        let revision = OpenDocuments::document_ref(app.store(), id)
+        let revision = OpenDocuments::document_ref(app.store(), app.sole_documents(), id)
             .unwrap()
             .revision();
         assert!(test_driver::key(&mut app, Key::Char('s'), mods));
@@ -111,7 +112,7 @@ fn existing_file_save_works_without_a_picker_and_preserves_later_edits() {
 
         assert!(test_driver::type_text(&mut app, "later "));
         land(&mut app, &arriving);
-        let entity = OpenDocuments::entity(app.store(), id).unwrap();
+        let entity = OpenDocuments::entity(app.store(), app.sole_documents(), id).unwrap();
         assert_eq!(entity.saved_revision(), revision);
         assert_ne!(entity.saved_revision(), entity.document().revision());
         assert!(app.perform_registered(app.sole_window(), "file.save"));
@@ -121,7 +122,7 @@ fn existing_file_save_works_without_a_picker_and_preserves_later_edits() {
             writes.lock().unwrap().last().unwrap().1,
             "saved later original"
         );
-        let entity = OpenDocuments::entity(app.store(), id).unwrap();
+        let entity = OpenDocuments::entity(app.store(), app.sole_documents(), id).unwrap();
         assert_eq!(entity.saved_revision(), entity.document().revision());
     }
 }
@@ -130,7 +131,7 @@ fn existing_file_save_works_without_a_picker_and_preserves_later_edits() {
 fn failed_save_keeps_the_document_modified() {
     let (mut app, runner, arriving, writes) = setup(false);
     let id = open_file(&mut app);
-    let saved = OpenDocuments::entity(app.store(), id)
+    let saved = OpenDocuments::entity(app.store(), app.sole_documents(), id)
         .unwrap()
         .saved_revision();
     assert!(test_driver::type_text(&mut app, "edited "));
@@ -138,7 +139,7 @@ fn failed_save_keeps_the_document_modified() {
     runner.run();
     land(&mut app, &arriving);
     assert_eq!(writes.lock().unwrap().len(), 1);
-    let entity = OpenDocuments::entity(app.store(), id).unwrap();
+    let entity = OpenDocuments::entity(app.store(), app.sole_documents(), id).unwrap();
     assert_eq!(entity.saved_revision(), saved);
     assert_ne!(entity.saved_revision(), entity.document().revision());
 }
@@ -182,6 +183,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         app.perform_command(crate::AppCommand::Opened(
             app.sole_window(),
             crate::OpenedDocument {
+                documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document("original"),
                 location: Some(named(name)),
@@ -192,7 +194,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         ));
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
         crate::Window::draw(app.sole_window(), app, surface.canvas());
-        OpenDocuments::by_location(app.store(), &named(name)).unwrap()
+        OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };
     let title = |app: &Application| {
         crate::Windows::window_ref(app.store(), window)
@@ -234,7 +236,7 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
         "every modified file stored; the scratch stayed home"
     );
     for id in [first, second] {
-        let entity = OpenDocuments::entity(app.store(), id).unwrap();
+        let entity = OpenDocuments::entity(app.store(), app.sole_documents(), id).unwrap();
         assert!(!entity.modified(), "the landing marked the save");
     }
     assert_eq!(title(&app), "other.md", "the mark leaves with the save");

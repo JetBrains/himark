@@ -32,12 +32,24 @@ pub struct SubscribeEffect {
     pub location: ResourceLocation,
 }
 
+impl std::fmt::Display for SubscribeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe watch /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for SubscribeEffect {
     type Result = Option<Subscription>;
 }
 
 pub struct UnsubscribeEffect {
     pub subscription: Subscription,
+}
+
+impl std::fmt::Display for UnsubscribeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "unsubscribe watch {:?}", self.subscription)
+    }
 }
 
 impl Effect for UnsubscribeEffect {
@@ -64,6 +76,7 @@ pub struct RefetchDiffEffect {
     pub policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
 }
 
+#[derive(Clone)]
 pub struct RefetchRebase {
     pub operation: operation::Operation,
 
@@ -80,6 +93,12 @@ pub struct RefetchRebase {
     /// text — computed on the worker, where the strings already
     /// exist; the landing must not compare texts on the UI thread.
     pub synced: bool,
+}
+
+impl std::fmt::Display for RefetchDiffEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("diff refetched text")
+    }
 }
 
 impl Effect for RefetchDiffEffect {
@@ -261,13 +280,14 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
 
 pub fn sync_document_watches<R: 'static>(
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     fx: &mut Effects<'_, R>,
     wrap: impl Fn(crate::DocumentId, Option<Subscription>) -> R + Send + Clone + 'static,
 ) {
     if !Watching::installed(store) {
         return;
     }
-    for (document, entity) in OpenDocuments::list(store) {
+    for (document, entity) in OpenDocuments::list(store, documents) {
         if entity.watch.is_some() || entity.watch_requested || entity.host_synced {
             continue;
         }
@@ -278,7 +298,7 @@ pub fn sync_document_watches<R: 'static>(
         if crate::is_synthetic(&location) {
             continue;
         }
-        OpenDocuments::set_watch_requested(store, document);
+        OpenDocuments::set_watch_requested(store, documents, document);
         if probe() {
             eprintln!("[watch] sweep: subscribing /{}", location.path().join("/"));
         }
@@ -291,12 +311,13 @@ pub fn sync_document_watches<R: 'static>(
 
 pub fn refetch_watched<R: 'static>(
     store: &mut Store,
+    documents: imba::store::Id<OpenDocuments>,
     subscription: Subscription,
     fx: &mut Effects<'_, R>,
     wrap: impl Fn(crate::DocumentId, u64, Option<String>) -> R + Send + Clone + 'static,
 ) {
     let riders = store
-        .get::<OpenDocuments>()
+        .entity(documents)
         .map(|documents| documents.watch_riders(subscription))
         .unwrap_or_default();
     if probe() {
@@ -307,7 +328,7 @@ pub fn refetch_watched<R: 'static>(
         );
     }
     for document in riders {
-        let Some(entity) = OpenDocuments::entity(store, document) else {
+        let Some(entity) = OpenDocuments::entity(store, documents, document) else {
             continue;
         };
         if entity.host_synced {
@@ -317,7 +338,7 @@ pub fn refetch_watched<R: 'static>(
             continue;
         };
 
-        let serial = OpenDocuments::stamp_refetch(store, document);
+        let serial = OpenDocuments::stamp_refetch(store, documents, document);
         let _ = fx.push(AnyEffect::new(FetchDocumentEffect { location }).map({
             let wrap = wrap.clone();
             move |text| wrap(document, serial, text)
@@ -325,88 +346,96 @@ pub fn refetch_watched<R: 'static>(
     }
 }
 
-/// Re-run the diff for a fetch whose landing raced a fresher
-/// revision: same serial (it is still the newest disk text — a newer
-/// fetch supersedes it by serial), fresh baseline/current/revision.
-pub fn rediff<R: 'static>(
-    store: &mut Store,
-    document_id: crate::DocumentId,
-    serial: u64,
-    fetched: String,
-    fx: &mut Effects<'_, R>,
-    wrap: impl Fn(crate::DocumentId, u64, u64, RefetchRebase) -> R + Send + 'static,
-) {
-    let Some(entity) = OpenDocuments::entity(store, document_id) else {
-        return;
-    };
-    if entity.refetch_serial != serial {
-        return;
-    }
-    let Some(document) = OpenDocuments::document_ref(store, document_id) else {
-        return;
-    };
-    if probe() {
-        eprintln!(
-            "[watch] landing raced revision {} — re-diffing",
-            document.revision()
-        );
-    }
-    let base_revision = document.revision();
-    let _ = fx.push(
-        AnyEffect::new(RefetchDiffEffect {
-            baseline: entity.baseline.clone(),
-            current: document.text().clone(),
-            fetched,
-            policy: editor::env::Differ::of(store),
-        })
-        .map(move |rebase| wrap(document_id, base_revision, serial, rebase)),
-    );
-}
-
-pub fn apply_refetched<R: 'static>(
-    store: &mut Store,
-    document_id: crate::DocumentId,
-    serial: u64,
-    text: Option<String>,
-    fx: &mut Effects<'_, R>,
-    wrap: impl Fn(crate::DocumentId, u64, u64, RefetchRebase) -> R + Send + 'static,
-) {
-    let Some(text) = text else {
-        if probe() {
-            eprintln!("[watch] refetch landed: gone/unreadable — keeping ours");
+impl OpenDocuments {
+    /// Re-run the diff for a fetch whose landing raced a fresher
+    /// revision: same serial (it is still the newest disk text — a newer
+    /// fetch supersedes it by serial), fresh baseline/current/revision.
+    pub fn rediff_row(
+        &self,
+        store: &Store,
+        document_id: crate::DocumentId,
+        serial: u64,
+        fetched: String,
+        fx: &mut Effects<'_, crate::DocumentsCommand>,
+    ) {
+        let Some(entity) = self.entries.get(&document_id) else {
+            return;
+        };
+        if entity.refetch_serial != serial {
+            return;
         }
-        return;
-    };
-    let Some(entity) = OpenDocuments::entity(store, document_id) else {
-        return;
-    };
-    if entity.refetch_serial != serial {
+        let document = &entity.document;
         if probe() {
             eprintln!(
-                "[watch] refetch landed: superseded (serial {serial} vs {}) — dropped",
-                entity.refetch_serial
+                "[watch] landing raced revision {} — re-diffing",
+                document.revision()
             );
         }
-        return;
-    }
-    let Some(document) = OpenDocuments::document_ref(store, document_id) else {
-        return;
-    };
-    if probe() && document.revision() != entity.saved_revision {
-        eprintln!(
-            "[watch] refetch landed: dirty (revision {} vs saved {}) — merging over the baseline",
-            document.revision(),
-            entity.saved_revision
+        let base_revision = document.revision();
+        let _ = fx.push(
+            AnyEffect::new(RefetchDiffEffect {
+                baseline: entity.baseline.clone(),
+                current: document.text().clone(),
+                fetched,
+                policy: editor::env::Differ::of(store),
+            })
+            .map(move |rebase| crate::DocumentsCommand::RefetchDiffed {
+                document: document_id,
+                base_revision,
+                serial,
+                rebase,
+            }),
         );
     }
-    let base_revision = document.revision();
-    let _ = fx.push(
-        AnyEffect::new(RefetchDiffEffect {
-            baseline: entity.baseline.clone(),
-            current: document.text().clone(),
-            fetched: text,
-            policy: editor::env::Differ::of(store),
-        })
-        .map(move |rebase| wrap(document_id, base_revision, serial, rebase)),
-    );
+
+    pub fn apply_refetched_row(
+        &self,
+        store: &Store,
+        document_id: crate::DocumentId,
+        serial: u64,
+        text: Option<String>,
+        fx: &mut Effects<'_, crate::DocumentsCommand>,
+    ) {
+        let Some(text) = text else {
+            if probe() {
+                eprintln!("[watch] refetch landed: gone/unreadable — keeping ours");
+            }
+            return;
+        };
+        let Some(entity) = self.entries.get(&document_id) else {
+            return;
+        };
+        if entity.refetch_serial != serial {
+            if probe() {
+                eprintln!(
+                    "[watch] refetch landed: superseded (serial {serial} vs {}) — dropped",
+                    entity.refetch_serial
+                );
+            }
+            return;
+        }
+        let document = &entity.document;
+        if probe() && document.revision() != entity.saved_revision {
+            eprintln!(
+                "[watch] refetch landed: dirty (revision {} vs saved {}) — merging over the baseline",
+                document.revision(),
+                entity.saved_revision
+            );
+        }
+        let base_revision = document.revision();
+        let _ = fx.push(
+            AnyEffect::new(RefetchDiffEffect {
+                baseline: entity.baseline.clone(),
+                current: document.text().clone(),
+                fetched: text,
+                policy: editor::env::Differ::of(store),
+            })
+            .map(move |rebase| crate::DocumentsCommand::RefetchDiffed {
+                document: document_id,
+                base_revision,
+                serial,
+                rebase,
+            }),
+        );
+    }
 }

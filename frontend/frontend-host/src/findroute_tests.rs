@@ -10,17 +10,38 @@ use imba::effect::EffectHandler;
 use std::sync::Arc;
 
 fn wire_backend() -> (tempfile::TempDir, Arc<dyn himark::higent::AhpServer>) {
+    let (dir, wire) = wire_backend_host();
+    (dir, wire)
+}
+
+/// A real backend on a socket and a real `WireHost` dialed into it —
+/// the production wire, nothing scripted.
+pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<crate::hiahp::wire::WireHost>) {
     let dir = tempfile::tempdir().expect("backend home");
-    let socket = dir.path().join("backend.sock");
+    let url = bind_backend(dir.path(), "false".to_owned());
+    let seat = Arc::new(crate::hiahp::wire::WireHost::at(
+        crate::hiahp::wire::test_runtime(),
+        crate::test_connector(),
+        url,
+    ));
+    (dir, seat)
+}
+
+/// A real `agent_host::Host` on its own runtime and thread, bound on a
+/// unix socket under `dir`; answers the url to dial.
+pub(crate) fn bind_backend(dir: &std::path::Path, claude_binary: String) -> String {
+    let socket = dir.join("backend.sock");
     let serving = socket.clone();
     let config = agent_host::HostConfig {
         agents: Vec::new(),
-        data_dir: dir.path().join("data"),
-        claude_binary: "false".to_owned(),
+        data_dir: dir.join("data"),
+        claude_binary,
         codex_binary: "false".to_owned(),
-        claude_home: dir.path().join("dot-claude"),
-        codex_home: dir.path().join("dot-codex"),
+        claude_home: dir.join("dot-claude"),
+        codex_home: dir.join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.join("fsp"),
         language_servers: Vec::new(),
     };
     std::thread::spawn(move || {
@@ -38,15 +59,12 @@ fn wire_backend() -> (tempfile::TempDir, Arc<dyn himark::higent::AhpServer>) {
         waited += 1;
         assert!(waited < 500, "the backend never bound its socket");
     }
-    let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
-        crate::hiahp::wire::test_runtime(),
-        crate::test_connector(),
-        format!("unix:{}", socket.display()),
-    ));
-    (dir, seat)
+    format!("unix:{}", socket.display())
 }
 
-fn block_on<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send>>) -> T {
+pub(crate) fn block_on<T>(
+    mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + Send>>,
+) -> T {
     use std::task::{Context, Poll, Wake, Waker};
     struct Unpark(std::thread::Thread);
     impl Wake for Unpark {
@@ -116,7 +134,7 @@ fn session_folders_ask_their_seat() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     );
     let (server, _) = ahp::parse(&encoded).expect("round-trips");
     directory.record(server, Arc::clone(&seat));
@@ -142,7 +160,7 @@ fn local_folders_ask_the_designated_backend() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, Arc::clone(&seat));
@@ -172,7 +190,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, Arc::clone(&seat));

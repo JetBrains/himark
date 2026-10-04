@@ -9,6 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private(set) var engine: HimarkEngine!
 
     private var windows: [NSWindow] = []
+    private var appearanceObservation: NSKeyValueObservation?
 
     private let executor = DispatchQueue(label: "dev.himark.executor", qos: .userInteractive)
 
@@ -32,8 +33,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         HostBridge.install(engine: engine) { [weak self] in self?.repaintAll() }
 
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+            DispatchQueue.main.async { self?.applySystemTheme() }
+        }
+
         let engine = engine!
         executor.async { engine.runPending() }
+    }
+
+    // The engine boots with its embedded (dark) theme; the system appearance
+    // is pushed in as a command so the existing theme-change propagation runs.
+    fileprivate func applySystemTheme() {
+        guard let view = windows.compactMap({ $0.contentView as? HimarkView }).first
+        else { return }
+        let dark = NSApp.effectiveAppearance
+            .bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        if engine.perform(window: view.windowId, command: dark ? "theme.dark" : "theme.light") {
+            repaintAll()
+        }
     }
 
     private func drain() {
@@ -69,6 +86,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.makeKeyAndOrderFront(nil)
         layoutTrafficLights(window)
         windows.append(window)
+        applySystemTheme()
         return window
     }
 
@@ -194,8 +212,8 @@ func buildMenu() -> NSMenu {
                      action: #selector(HimarkView.toggleWorkspaceTree(_:)), keyEquivalent: "T")
     viewMenu.addItem(withTitle: "Changes",
                      action: #selector(HimarkView.toggleChangesView(_:)), keyEquivalent: "r")
-    viewMenu.addItem(withTitle: "Switch Workspace",
-                     action: #selector(HimarkView.toggleWorkspaceSwitcher(_:)), keyEquivalent: "U")
+    viewMenu.addItem(withTitle: "Switch Session",
+                     action: #selector(HimarkView.toggleAgentsSwitcher(_:)), keyEquivalent: "U")
     viewMenu.addItem(withTitle: "Command Palette",
                      action: #selector(HimarkView.togglePalette(_:)), keyEquivalent: "P")
     viewMenu.addItem(withTitle: "Split Pane",

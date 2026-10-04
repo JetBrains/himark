@@ -45,12 +45,13 @@ impl crate::DynamicEditorCommand for SelectRange {
 fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_syntax_languages(himarkdown::markdown_languages(crate::SyntaxLanguages::new()));
-    app.register_editor_command(std::sync::Arc::new(AddComment));
+    app.register_document_command(std::sync::Arc::new(AddComment));
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
     assert!(app.perform_command(AppCommand::Opened(
         window,
         OpenedDocument {
+            documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: plain_document(source),
             location: Some(document_location("notes.md")),
@@ -72,7 +73,7 @@ fn invoke(app: &mut Application, window: crate::WindowId, id: &str) {
 }
 
 fn commented_document(app: &Application) -> (crate::DocumentId, Vec<(InlayKey, Range<u32>)>) {
-    for (id, entity) in crate::OpenDocuments::list(app.store()) {
+    for (id, entity) in crate::OpenDocuments::list(app.store(), app.sole_documents()) {
         let document = entity.document();
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
 
@@ -110,7 +111,7 @@ fn without_a_selection_add_comment_is_a_no_op() {
     let (mut app, window) = app_with_located_document("alpha beta gamma\n");
     invoke(&mut app, window, "comments.add");
 
-    for (_, entity) in crate::OpenDocuments::list(app.store()) {
+    for (_, entity) in crate::OpenDocuments::list(app.store(), app.sole_documents()) {
         let document = entity.document();
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
         assert!(
@@ -132,8 +133,8 @@ fn the_fresh_card_takes_the_focus() {
     invoke(&mut app, window, "comments.add");
 
     let (document, inlays) = commented_document(&app);
-    let document =
-        crate::OpenDocuments::document(app.store(), document).expect("the commented document");
+    let document = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the commented document");
     let focused = document
         .editor_ids()
         .any(|editor| document.focus(editor) == EditorFocus::Inlay(inlays[0].0));
@@ -150,13 +151,15 @@ fn remove_comment_clears_the_card_and_returns_focus() {
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
         std::sync::Arc::new(RemoveComment {
+            comments: app.sole_family().comments(),
             document,
             key: inlays[0].0,
             annotation: None,
         }),
     )));
 
-    let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     assert!(
         doc.markup()
@@ -179,7 +182,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
     invoke(&mut app, window, "comments.add");
     let (document, inlays) = commented_document(&app);
     let host_before = {
-        let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+            .expect("the document");
         let mut view = doc.text().view();
         let end = view.byte_count().min(u32::MAX as usize) as u32;
         view.substring(0..end)
@@ -187,7 +191,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
 
     let mut store = app.store().clone();
     let ui = UiCtx::dont_use_too_slow();
-    let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+    let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+        .expect("the document");
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let comments = doc
         .feature_markup(crate::hicomments::comments_markup())
@@ -228,7 +233,8 @@ fn typing_lands_in_the_card_not_the_host_document() {
         "the card's markdown parsed through the ordinary background lane"
     );
     let host_after = {
-        let doc = crate::OpenDocuments::document(app.store(), document).expect("the document");
+        let doc = crate::OpenDocuments::document(app.store(), app.sole_documents(), document)
+            .expect("the document");
         let mut text = doc.text().view();
         let end = text.byte_count().min(u32::MAX as usize) as u32;
         text.substring(0..end)
@@ -252,47 +258,47 @@ impl crate::higent::AhpServer for InertSeat {
         connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
         list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
         poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
-        create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<String, String>>;
+        create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<crate::higent::SessionUri, String>>;
         resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-        dispose_session(session: String) -> crate::higent::SeatFuture<Result<(), String>>;
-        subscribe_session(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
-        poll_session(session: String) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
-        create_chat(session: String) -> crate::higent::SeatFuture<Result<String, String>>;
-        subscribe_chat(chat: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
-        fetch_turns(chat: String, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
-        start_turn(chat: String, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
-        poll_chat(chat: String) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
-        cancel_turn(chat: String, turn: String) -> crate::higent::SeatFuture<()>;
-        dispatch_action(chat: String, action: crate::higent::ahp_types::actions::StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
+        dispose_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<(), String>>;
+        subscribe_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
+        poll_session(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
+        create_chat(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ChatUri, String>>;
+        subscribe_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
+        fetch_turns(chat: crate::higent::ChatUri, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
+        start_turn(chat: crate::higent::ChatUri, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
+        poll_chat(chat: crate::higent::ChatUri) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
+        cancel_turn(chat: crate::higent::ChatUri, turn: crate::higent::TurnId) -> crate::higent::SeatFuture<()>;
+        dispatch_action(chat: crate::higent::ChannelUri, action: crate::higent::ahp_types::actions::StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
         read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
-        resource_read(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
-        resource_write(session: String, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
-        resource_list(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-        resource_watch(session: String, uri: crate::higent::ResourceUri, events: std::sync::Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
+        resource_read(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
+        resource_write(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
+        resource_list(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
+        resource_watch(session: crate::higent::SessionUri, uri: crate::higent::ResourceUri, events: std::sync::Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
         resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
-        search(session: String, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
-        terminal_input(channel: &String, data: String) -> ();
-        terminal_resize(channel: &String, cols: u16, rows: u16) -> ();
-        terminal_dispose(channel: &String) -> ();
-        subscribe_changeset(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
-        poll_changeset(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
-        unsubscribe_changeset(channel: &String) -> ();
-        subscribe_annotations(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
-        poll_annotations(session: String) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
-        dispatch_annotations(session: &String, action: crate::higent::ahp_types::actions::StateAction) -> ();
-        unsubscribe_annotations(session: &String) -> ();
-        open_document(session: String, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
-        subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
-        poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
-        dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
-        unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
-        lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
+        search(session: crate::higent::SessionUri, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
+        terminal_input(channel: &crate::higent::ChannelUri, data: String) -> ();
+        terminal_resize(channel: &crate::higent::ChannelUri, cols: u16, rows: u16) -> ();
+        terminal_dispose(channel: &crate::higent::ChannelUri) -> ();
+        subscribe_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
+        poll_changeset(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
+        unsubscribe_changeset(channel: &crate::higent::ChannelUri) -> ();
+        subscribe_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
+        poll_annotations(session: crate::higent::SessionUri) -> crate::higent::SeatFuture<Vec<crate::higent::ahp_types::actions::StateAction>>;
+        dispatch_annotations(session: &crate::higent::SessionUri, action: crate::higent::ahp_types::actions::StateAction) -> ();
+        unsubscribe_annotations(session: &crate::higent::SessionUri) -> ();
+        open_document(session: crate::higent::SessionUri, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
+        subscribe_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
+        poll_document(channel: crate::higent::ChannelUri) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
+        dispatch_document(channel: &crate::higent::ChannelUri, action: crate::higent::seat::DocumentApplied) -> ();
+        unsubscribe_document(channel: &crate::higent::ChannelUri) -> crate::higent::SeatFuture<()>;
+        lsp(session: crate::higent::SessionUri, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
     }
 
     fn terminal_open(
         &self,
-        _session: String,
-        _channel: String,
+        _session: crate::higent::SessionUri,
+        _channel: crate::higent::ChannelUri,
         _cwd: Option<String>,
         _cols: u16,
         _rows: u16,
@@ -315,7 +321,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1);
     let ids: Vec<crate::hicomments::AnnotationId> =
-        crate::hicomments::Comments::records(app.store())
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments())
             .into_iter()
             .map(|(id, _)| id)
             .collect();
@@ -323,38 +329,41 @@ fn sending_never_consumes_what_it_cannot_deliver() {
 
     assert!(app.perform_command(AppCommand::Dynamic(
         window,
-        std::sync::Arc::new(crate::hicomments::SendComments { ids: ids.clone() }),
+        std::sync::Arc::new(crate::hicomments::SendComments {
+            comments: app.sole_family().comments(),
+            ids: ids.clone(),
+        }),
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "the card stands");
     assert_eq!(
-        crate::hicomments::Comments::records(app.store()).len(),
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).len(),
         1,
         "the record stands"
     );
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(crate::hicomments::sync::Sent {
+    assert!(app.perform_command(AppCommand::at(
+        app.sole_family().comments(),
+        crate::hicomments::CommentsCommand::Sent {
             ids: ids.clone(),
             result: Err("wire died".to_owned()),
-        }),
+        },
     )));
     let (_, inlays) = commented_document(&app);
     assert_eq!(inlays.len(), 1, "a failed send keeps the card");
 
-    assert!(app.perform_command(AppCommand::Dynamic(
-        window,
-        std::sync::Arc::new(crate::hicomments::sync::Sent {
+    assert!(app.perform_command(AppCommand::at(
+        app.sole_family().comments(),
+        crate::hicomments::CommentsCommand::Sent {
             ids,
             result: Ok(()),
-        }),
+        },
     )));
     assert!(
-        crate::hicomments::Comments::records(app.store()).is_empty(),
+        crate::hicomments::Comments::records(app.store(), app.sole_family().comments()).is_empty(),
         "the sent comment's record is consumed"
     );
-    let survives = crate::OpenDocuments::list(app.store())
+    let survives = crate::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .any(|(_, entity)| {
             entity

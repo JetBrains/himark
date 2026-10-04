@@ -12,6 +12,12 @@ pub struct StoreDocumentEffect {
     pub text: String,
 }
 
+impl std::fmt::Display for StoreDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "store document /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for StoreDocumentEffect {
     type Result = bool;
 }
@@ -20,33 +26,88 @@ pub struct ListDirectoryEffect {
     pub location: ResourceLocation,
 }
 
+impl std::fmt::Display for ListDirectoryEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "list directory /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for ListDirectoryEffect {
     type Result = Option<Vec<ResourceLocation>>;
+}
+
+/// Creates an empty file; never overwrites — false when the
+/// location already exists.
+pub struct CreateDocumentEffect {
+    pub location: ResourceLocation,
+}
+
+impl std::fmt::Display for CreateDocumentEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "create document /{}", self.location.path().join("/"))
+    }
+}
+
+impl Effect for CreateDocumentEffect {
+    type Result = bool;
+}
+
+pub struct DeleteResourceEffect {
+    pub location: ResourceLocation,
+    pub recursive: bool,
+}
+
+impl std::fmt::Display for DeleteResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "delete resource /{}", self.location.path().join("/"))
+    }
+}
+
+impl Effect for DeleteResourceEffect {
+    type Result = bool;
+}
+
+/// A rename: fails when the destination exists.
+pub struct MoveResourceEffect {
+    pub from: ResourceLocation,
+    pub to: ResourceLocation,
+}
+
+impl std::fmt::Display for MoveResourceEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "move resource /{} -> /{}",
+            self.from.path().join("/"),
+            self.to.path().join("/")
+        )
+    }
+}
+
+impl Effect for MoveResourceEffect {
+    type Result = bool;
 }
 
 pub struct PickSaveEffect {
     pub suggested: String,
 }
 
+impl std::fmt::Display for PickSaveEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "pick save {}", self.suggested)
+    }
+}
+
 impl Effect for PickSaveEffect {
     type Result = Option<ResourceLocation>;
 }
 
-pub struct BuildDocumentEffect {
-    pub location: ResourceLocation,
-    pub text: String,
-}
-
-impl Effect for BuildDocumentEffect {
-    type Result = BuiltDocument;
-}
-
-pub struct BuiltDocument {
-    pub document: crate::Document,
-}
+pub use documents::{BuildDocumentEffect, BuiltDocument};
 
 pub struct OpenByLocationEffect {
     pub window: crate::WindowId,
+    /// The collection the open lands into — stamped at launch.
+    pub documents: imba::store::Id<crate::OpenDocuments>,
     pub location: ResourceLocation,
     pub primary: bool,
 
@@ -56,49 +117,108 @@ pub struct OpenByLocationEffect {
     pub focus: bool,
 }
 
+impl std::fmt::Display for OpenByLocationEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "open by location /{}", self.location.path().join("/"))
+    }
+}
+
 impl Effect for OpenByLocationEffect {
     type Result = AppCommand;
 }
 
+/// The pane road's boundary type (himark → hiahp): the changes view's
+/// "Open Diff" and the diff navigator resolve the two sides on the UI
+/// thread and launch this; the handler opens both sides and lands the
+/// pane-open command.
 pub struct OpenDiffByLocationsEffect {
     pub window: crate::WindowId,
-    pub old: ResourceLocation,
-    pub new: ResourceLocation,
+    /// The collection both sides register into — stamped at launch.
+    pub documents: imba::store::Id<crate::OpenDocuments>,
+    pub old: DiffSideInput,
+    pub new: DiffSideInput,
+}
+
+impl std::fmt::Display for OpenDiffByLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("open diff by locations")
+    }
 }
 
 impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-/// One diff-canvas item's whole off-thread half (docs/editor/diff-canvas.md
-/// §4): fetch both sides, build language-aware documents, diff,
-/// prepare the marks. The landing only mounts.
-pub struct BuildFileDiffEffect {
-    pub old: ResourceLocation,
-    pub new: ResourceLocation,
-
-    /// The canvas's content width at arm time — the landing lays the
-    /// editors at it and re-arms if the panel resized meanwhile.
+/// The ONE off-thread step both diff roads share (docs/editor/diff-canvas.md
+/// §4): ensure each side is a REGISTERED document. An OPEN side passes
+/// through by id (no fetch, no build); a CLOSED side is fetched and
+/// built here and registered at the landing — the standard open road.
+/// It does NOT diff: the diff view's normalize lane computes the diff
+/// from the registered documents (docs/no-diff-on-ui-thread). The
+/// canvas has no business with Texts, parses, or operations.
+pub struct OpenDiffPairEffect {
+    pub old: DiffSideInput,
+    pub new: DiffSideInput,
+    /// The half width to lay the editors at (the canvas's content width).
     pub width: f32,
 }
 
-pub struct BuiltFileDiff {
-    pub old: crate::Document,
-    pub new: crate::Document,
-    pub operation: crate::Operation,
-    pub marks: crate::PreparedMarks,
-    pub width: f32,
-
-    /// Both sides unreachable — the row reports instead of mounting.
-    pub failed: Option<String>,
+impl std::fmt::Display for OpenDiffPairEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("open diff pair")
+    }
 }
 
-impl Effect for BuildFileDiffEffect {
-    type Result = BuiltFileDiff;
+impl Effect for OpenDiffPairEffect {
+    type Result = OpenedDiffPair;
+}
+
+/// One side to open, resolved on the UI thread at launch — a reference,
+/// never content.
+pub enum DiffSideInput {
+    /// Already a registered document — use it as-is.
+    Open(crate::DocumentId),
+    /// Closed — the handler fetches and builds it, the landing registers.
+    Fetch(ResourceLocation),
+}
+
+impl DiffSideInput {
+    pub fn resolve(
+        store: &imba::store::Store,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        location: ResourceLocation,
+    ) -> Self {
+        match crate::OpenDocuments::by_location(store, documents, &location) {
+            Some(document) => DiffSideInput::Open(document),
+            None => DiffSideInput::Fetch(location),
+        }
+    }
+}
+
+#[derive(Clone)]
+pub struct OpenedDiffPair {
+    pub old: DiffSide,
+    pub new: DiffSide,
+    pub width: f32,
+    /// Both sides gone — the caller reports instead of mounting.
+    pub failed: bool,
+}
+
+/// What the landing does with a side: reuse the registered document, or
+/// register the freshly-built one at its location (register-at-display —
+/// the standard `BuiltDocument` payload).
+#[derive(Clone)]
+pub enum DiffSide {
+    Open(crate::DocumentId),
+    Built {
+        location: ResourceLocation,
+        document: BuiltDocument,
+    },
 }
 
 pub fn open_by_location_effect(
     window: crate::WindowId,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
     primary: bool,
     focus: bool,
@@ -106,6 +226,7 @@ pub fn open_by_location_effect(
 ) -> crate::AppEffect {
     AnyEffect::new(OpenByLocationEffect {
         window,
+        documents,
         location,
         primary,
         target,
@@ -143,8 +264,13 @@ pub fn open_locations(
         })
         .collect();
     let mut primary = true;
+    let Some(documents) =
+        crate::Windows::session_family(store, window).map(|family| family.documents())
+    else {
+        return;
+    };
     for location in &locations {
-        if let Some(document) = crate::OpenDocuments::by_location(store, location) {
+        if let Some(document) = crate::OpenDocuments::by_location(store, documents, location) {
             if primary {
                 if let Some(mut window_entity) = crate::Windows::window(store, window) {
                     window_entity.show_document(store, ui, window, document, None, false, fx);
@@ -156,6 +282,7 @@ pub fn open_locations(
         }
         fx.push(open_by_location_effect(
             window,
+            documents,
             location.clone(),
             primary,
             false,
@@ -169,10 +296,23 @@ pub fn open_locations(
 pub struct SessionId {
     pub host: crate::higent::HostId,
 
-    pub session: String,
+    pub session: crate::higent::SessionUri,
 }
 
 impl SessionId {
+    /// Which session OWNS a location: the one whose seat routes its
+    /// authority, else the local workspace — the address-derived
+    /// owner, never an ambient scope. A plain file's state belongs to
+    /// the local session, not to nothing.
+    pub fn of_location(store: &Store, location: &crate::ResourceLocation) -> SessionId {
+        if let Some((host, session)) =
+            crate::higent::seat::route(store, location.authority().as_str())
+        {
+            return SessionId { host, session };
+        }
+        Self::local_default(store)
+    }
+
     pub fn local_default(store: &Store) -> SessionId {
         let host = store
             .get::<crate::higent::LocalHost>()
@@ -180,7 +320,7 @@ impl SessionId {
             .unwrap_or(crate::higent::HostId::LOCAL);
         SessionId {
             host,
-            session: host_discovery::LOCAL_FS_SESSION.to_owned(),
+            session: crate::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
         }
     }
 
@@ -192,13 +332,13 @@ impl SessionId {
         });
         SessionId {
             host: Self::local_default(store).host,
-            session: format!("scratch-space:{minted}"),
+            session: crate::higent::SessionUri::new(format!("scratch-space:{minted}")),
         }
     }
 
     pub fn names_session(&self) -> bool {
-        self.session != host_discovery::LOCAL_FS_SESSION
-            && !self.session.starts_with("scratch-space:")
+        self.session.as_str() != host_discovery::LOCAL_FS_SESSION
+            && !self.session.as_str().starts_with("scratch-space:")
     }
 }
 
@@ -213,6 +353,12 @@ pub struct FindEffect {
     pub term: String,
 }
 
+impl std::fmt::Display for FindEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "find paths {}", self.term)
+    }
+}
+
 impl Effect for FindEffect {
     type Result = Vec<ResourceLocation>;
 }
@@ -224,7 +370,7 @@ impl Effect for FindEffect {
 #[derive(Clone)]
 pub struct LocationsChannel {
     pub seat: std::sync::Arc<dyn crate::higent::AhpServer>,
-    pub channel: String,
+    pub channel: crate::higent::ChannelUri,
     pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync>,
 }
 
@@ -237,6 +383,12 @@ pub struct SearchLocationsEffect {
     pub regex: bool,
     pub case_sensitive: bool,
     pub limit: usize,
+}
+
+impl std::fmt::Display for SearchLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "search locations {}", self.query)
+    }
 }
 
 impl Effect for SearchLocationsEffect {
@@ -255,6 +407,17 @@ pub struct LspLocationsEffect {
     pub location: ResourceLocation,
     pub position: crate::LineCol,
     pub kind: LspLocationsKind,
+}
+
+impl std::fmt::Display for LspLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            out,
+            "lsp locations {:?} /{}",
+            self.kind,
+            self.location.path().join("/")
+        )
+    }
 }
 
 impl Effect for LspLocationsEffect {

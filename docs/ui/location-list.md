@@ -280,7 +280,7 @@ Keyboard is the unified list's, configured once: `with_selection`,
 cursor on arrows, Enter activates, reveal keeps it on screen;
 left/right collapse/expand branches; **full speed-search** from day
 one — `ForestSearcher` over the same rows, exactly as the TOC and
-hichanges wire it (docs/ui/speedsearch.md): typing filters/highlights
+hichanges wire it (docs/ui/list-keyboard.md): typing filters/highlights
 across directories, files, and occurrence contexts alike.
 **Activating a leaf performs ordinary location-based navigation**:
 `open_by_location_effect(window, location, primary, Some(range))`

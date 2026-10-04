@@ -6,6 +6,7 @@ mod changes;
 pub mod claude;
 pub mod codex;
 mod documents;
+mod fsp;
 mod history;
 pub(crate) mod http;
 pub mod lock;
@@ -45,7 +46,7 @@ pub(crate) fn uuid_v4() -> String {
     nibbles
 }
 
-pub const PROTOCOL_VERSION: &str = "0.7.0";
+pub const PROTOCOL_VERSION: &str = ahp_types::version::PROTOCOL_VERSION;
 
 pub const SERVER_NAME: &str = "himark-agent-host";
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");

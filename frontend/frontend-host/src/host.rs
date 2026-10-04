@@ -253,6 +253,12 @@ pub struct FilePickerEffect {
     window: himark::WindowId,
 }
 
+impl std::fmt::Display for FilePickerEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("pick files")
+    }
+}
+
 impl Effect for FilePickerEffect {
     type Result = Vec<ResourceLocation>;
 }
@@ -349,7 +355,7 @@ fn open_folder_session(
                     held.len() == dirs.len() && dirs.iter().all(|dir| held.contains(dir))
                 })
             })
-            .map(|summary| summary.resource.clone())
+            .map(|summary| himark::higent::SessionUri::new(summary.resource.clone()))
     });
     match existing {
         Some(session) => himark::higent::open_session(store, window, host, session, false, fx),
@@ -401,7 +407,9 @@ impl DynamicCommand for OpenPicked {
             let workspace = himark::Windows::window_ref(store, window)
                 .map(|entity| entity.current_session())
                 .unwrap_or_else(|| himark::SessionId::local_default(store));
-            if workspace.names_session() {
+            let family = himark::Windows::session_family(store, window);
+            if let (true, Some(family)) = (workspace.names_session(), family) {
+                let (changes, comments) = (family.changes(), family.comments());
                 for folder in folders {
                     let spelled = himark::ResourceLocation::new(
                         folder.kind().clone(),
@@ -411,8 +419,14 @@ impl DynamicCommand for OpenPicked {
                         )),
                         folder.path().to_vec(),
                     );
-                    himark::hichanges::Changes::ensure_folder(store, window, spelled.clone(), fx);
-                    himark::hicomments::Comments::ensure(store, window, &spelled, fx);
+                    himark::hichanges::Changes::ensure_folder(
+                        store,
+                        window,
+                        changes,
+                        spelled.clone(),
+                        fx,
+                    );
+                    himark::hicomments::Comments::ensure(store, comments, &spelled, fx);
                 }
             } else if !open_folder_session(store, window, &folders, fx) {
                 eprintln!("[host] folder pick dropped: no local agent host to session it");
@@ -445,7 +459,7 @@ impl EffectHandler<himark::PickSaveEffect> for PickSaveHandler {
 
 pub(crate) struct OpenWorkingCopy;
 
-impl himark::DynamicEditorCommand for OpenWorkingCopy {
+impl himark::DocumentCommand for OpenWorkingCopy {
     fn id(&self) -> &'static str {
         "workbench.open-in-full"
     }
@@ -456,10 +470,13 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
     fn offers_at(&self, location: &ResourceLocation) -> bool {
         himark::hichanges::scoped(location)
     }
+    #[allow(clippy::too_many_arguments)]
     fn perform(
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
+        documents: imba::store::Id<himark::OpenDocuments>,
+        _document_id: himark::DocumentId,
         document: &mut himark::Document,
         editor: himark::EditorId,
         location: &himark::ResourceLocation,
@@ -473,6 +490,7 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
         himark::AppRequests::push(
             store,
             Arc::new(ShowWorkingCopy {
+                documents,
                 location: working,
                 target: at..at,
             }),
@@ -481,6 +499,9 @@ impl himark::DynamicEditorCommand for OpenWorkingCopy {
 }
 
 struct ShowWorkingCopy {
+    /// The collection the working copy opens into — closed over at the
+    /// gesture, in the pane that fired it.
+    documents: imba::store::Id<himark::OpenDocuments>,
     location: himark::ResourceLocation,
     target: std::ops::Range<himark::LineCol>,
 }
@@ -500,7 +521,8 @@ impl himark::DynamicCommand for ShowWorkingCopy {
         fx: &mut himark::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        match himark::OpenDocuments::by_location(store, &self.location) {
+        let documents = self.documents;
+        match himark::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
                 let Some(mut entity) = himark::Windows::window(store, window) else {
                     return;
@@ -519,6 +541,7 @@ impl himark::DynamicCommand for ShowWorkingCopy {
             None => {
                 fx.push(himark::open_by_location_effect(
                     window,
+                    documents,
                     self.location.clone(),
                     true,
                     false,
@@ -531,9 +554,16 @@ impl himark::DynamicCommand for ShowWorkingCopy {
 
 pub struct NewTerminalEffect {
     pub(crate) seat: Arc<dyn himark::higent::AhpServer>,
-    pub(crate) session: String,
+    /// The session the terminal is spawned IN — the wire's address.
+    pub(crate) home: himark::SessionId,
     pub(crate) cwd: Option<String>,
     pub(crate) window: himark::WindowId,
+}
+
+impl std::fmt::Display for NewTerminalEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "new terminal {}", self.home.session.as_str())
+    }
 }
 
 impl Effect for NewTerminalEffect {
@@ -547,7 +577,7 @@ pub(crate) struct SessionTerminalHandler {
 
 struct AhpBackend {
     seat: Arc<dyn himark::higent::AhpServer>,
-    channel: String,
+    channel: himark::higent::ChannelUri,
 }
 
 impl himark::terminal::TerminalBackend for AhpBackend {
@@ -565,7 +595,8 @@ impl himark::terminal::TerminalBackend for AhpBackend {
 
 impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
     async fn handle(&self, effect: NewTerminalEffect) -> Option<Arc<himark::terminal::Session>> {
-        let channel = format!("ahp-terminal:/{}", crate::hiahp::uuid_v4());
+        let channel =
+            himark::higent::ChannelUri::new(format!("ahp-terminal:/{}", crate::hiahp::uuid_v4()));
         let session = himark::terminal::Session::new(Box::new(AhpBackend {
             seat: Arc::clone(&effect.seat),
             channel: channel.clone(),
@@ -595,7 +626,7 @@ impl EffectHandler<NewTerminalEffect> for SessionTerminalHandler {
         effect
             .seat
             .terminal_open(
-                effect.session.clone(),
+                effect.home.session.clone(),
                 channel,
                 effect.cwd.clone(),
                 80,
@@ -656,7 +687,7 @@ impl DynamicCommand for OpenTerminal {
                         .summary(&key.session)
                         .and_then(|summary| summary.working_directories.as_ref()?.first().cloned())
                 });
-                Some((seat, key.session.clone(), cwd))
+                Some((seat, key.clone(), cwd))
             })
             .or_else(|| {
                 let server = store
@@ -671,25 +702,42 @@ impl DynamicCommand for OpenTerminal {
                         himark::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder)
                             .into_string()
                     });
-                Some((seat, host_discovery::LOCAL_FS_SESSION.to_owned(), cwd))
+                Some((
+                    seat,
+                    himark::SessionId {
+                        host: server,
+                        session: himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
+                    },
+                    cwd,
+                ))
             });
-        let Some((seat, session, cwd)) = resolved else {
+        let Some((seat, home, cwd)) = resolved else {
+            return;
+        };
+        // The terminal files into the WINDOW's family — the collection
+        // the pane is minted against, carried from here to the landing.
+        let Some(terminals) =
+            himark::Windows::session_family(store, window).map(|family| family.terminals())
+        else {
             return;
         };
         let _ = fx.push(
             AnyEffect::new(NewTerminalEffect {
                 seat,
-                session,
+                home,
                 cwd,
                 window,
             })
-            .map(move |session| AppCommand::Dynamic(window, Arc::new(ShowTerminal { session }))),
+            .map(move |session| {
+                AppCommand::Dynamic(window, Arc::new(ShowTerminal { session, terminals }))
+            }),
         );
     }
 }
 
 struct ShowTerminal {
     session: Option<Arc<himark::terminal::Session>>,
+    terminals: imba::store::Id<himark::terminal::Terminals>,
 }
 
 impl DynamicCommand for ShowTerminal {
@@ -716,15 +764,19 @@ impl DynamicCommand for ShowTerminal {
         };
         let mut entity = himark::Windows::window(store, window).expect("the window entity");
 
-        himark::terminal::Terminals::put(store, channel.clone(), session.clone());
+        let terminals = self.terminals;
+        himark::terminal::Terminals::put(store, terminals, channel.clone(), session.clone());
         if !entity.open_panel(
             store,
             ui,
-            Box::new(himark::terminal::TerminalView::new(channel.clone())),
+            Box::new(himark::terminal::TerminalView::new(
+                terminals,
+                channel.clone(),
+            )),
             fx,
         ) {
             session.hangup();
-            himark::terminal::Terminals::remove(store, &channel);
+            himark::terminal::Terminals::remove(store, terminals, &channel);
         }
         himark::Windows::put(store, window, entity);
     }

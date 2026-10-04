@@ -7,7 +7,11 @@ use std::{
     pin::Pin,
 };
 
-pub trait Effect: Send + Sync + 'static {
+/// An effect is PRINTABLE: `Display` is its trace line — the payload
+/// detail (the channel polled, the location fetched, the revisions
+/// normalized), formatted once at erasure. The type name survives
+/// separately for the orphan-dispatch error.
+pub trait Effect: std::fmt::Display + Send + Sync + 'static {
     type Result;
 }
 
@@ -34,6 +38,10 @@ pub struct AnyEffect<R> {
 
     name: &'static str,
 
+    /// The effect's own `Display`, formatted at erasure — what the
+    /// traces print; `name` stays the type for the orphan error.
+    label: String,
+
     payload: Box<dyn Any + Send + Sync>,
 
     lift: Box<dyn FnOnce(Box<dyn Any + Send + Sync>) -> Option<R> + Send>,
@@ -44,6 +52,7 @@ impl<R: 'static> AnyEffect<R> {
         Self {
             type_id: TypeId::of::<E>(),
             name: std::any::type_name::<E>(),
+            label: effect.to_string(),
             payload: Box::new(effect),
             lift: Box::new(|outcome| {
                 Some(
@@ -59,6 +68,7 @@ impl<R: 'static> AnyEffect<R> {
         Self {
             type_id: TypeId::of::<E>(),
             name: std::any::type_name::<E>(),
+            label: effect.to_string(),
             payload: Box::new(effect),
             lift: Box::new(|_| None),
         }
@@ -77,6 +87,7 @@ impl<R: 'static> AnyEffect<R> {
         AnyEffect {
             type_id: self.type_id,
             name: self.name,
+            label: self.label,
             payload: self.payload,
             lift: Box::new(move |outcome| lift(outcome).map(wrap)),
         }
@@ -86,10 +97,15 @@ impl<R: 'static> AnyEffect<R> {
         self.name
     }
 
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
     pub fn into_payload(self) -> EffectPayload<R> {
         EffectPayload {
             type_id: self.type_id,
             name: self.name,
+            label: self.label,
             payload: self.payload,
             lift: self.lift,
         }
@@ -99,6 +115,7 @@ impl<R: 'static> AnyEffect<R> {
 pub struct EffectPayload<R> {
     type_id: TypeId,
     name: &'static str,
+    label: String,
     payload: Box<dyn Any + Send + Sync>,
     lift: Box<dyn FnOnce(Box<dyn Any + Send + Sync>) -> Option<R> + Send>,
 }
@@ -110,6 +127,10 @@ impl<R> EffectPayload<R> {
 
     pub fn name(&self) -> &'static str {
         self.name
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
     }
 
     pub fn split(
@@ -321,6 +342,12 @@ impl<C: 'static, K: Fn(&AnyEffect<C>) -> bool> Sink<C> for Filtered<'_, C, K> {
 /// (via `Effects::settle`) from any perform that changed content
 /// heights above someone's viewport.
 pub struct Settle;
+
+impl std::fmt::Display for Settle {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("settle")
+    }
+}
 
 impl Effect for Settle {
     type Result = ();

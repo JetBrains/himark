@@ -321,9 +321,30 @@ impl CodexAgent {
         .await
     }
 
-    pub async fn interrupt(&self) -> Result<(), String> {
+    /// A live turn: started or held, not cancelled.
+    pub fn busy(&self) -> bool {
+        self.state
+            .lock()
+            .expect("turn state")
+            .turns
+            .iter()
+            .any(|turn| !turn.cancelled)
+    }
+
+    /// Cancel THAT turn. The front is running at the app-server and gets
+    /// `turn/interrupt`; a held one (its prompt never sent) simply leaves the
+    /// queue; an id this agent never saw does nothing — a stale id must not
+    /// kill the live turn.
+    pub async fn interrupt(&self, turn_id: &str) -> Result<(), String> {
         let codex_id = {
             let mut state = self.state.lock().expect("turn state");
+            let Some(position) = state.turns.iter().position(|turn| turn.id == turn_id) else {
+                return Ok(());
+            };
+            if position != 0 {
+                state.turns.remove(position);
+                return Ok(());
+            }
             let Some(front) = state.turns.front_mut() else {
                 return Ok(());
             };
@@ -967,11 +988,14 @@ impl CodexAgent {
         self.emit(StateAction::ChatError(
             ahp_types::actions::ChatErrorAction {
                 turn_id,
-                error: ahp_types::state::ErrorInfo {
-                    error_type: kind.to_owned(),
-                    message: message.to_owned(),
-                    stack: None,
-                    meta: None,
+                part: ahp_types::state::ErrorResponsePart {
+                    error: ahp_types::state::ErrorInfo {
+                        error_type: kind.to_owned(),
+                        message: message.to_owned(),
+                        stack: None,
+                        meta: None,
+                    },
+                    resumable: None,
                 },
                 duration,
                 meta: None,

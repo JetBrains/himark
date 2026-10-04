@@ -18,6 +18,18 @@ const HOVER_DELAY_MS: f32 = 450.0;
 
 const TIP_GAP: f32 = 8.0;
 
+impl<C: std::fmt::Display> std::fmt::Display for TooltipCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TooltipCommand::Host(command) => command.fmt(out),
+            TooltipCommand::Moved(_) => out.write_str("tooltip moved"),
+            TooltipCommand::Left => out.write_str("tooltip left"),
+            TooltipCommand::Tick(_) => out.write_str("tooltip tick"),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub enum TooltipCommand<C> {
     Host(C),
 
@@ -85,6 +97,65 @@ where
 
     pub fn showing(&self) -> bool {
         matches!(self.hover, Hover::Shown { .. })
+    }
+}
+
+impl<V, T> crate::list::ListOps for TooltipView<V, T>
+where
+    V: crate::list::ListOps,
+    V::Command: 'static,
+    T: View<Command = Infallible>,
+{
+    type Key = V::Key;
+
+    fn set_matches(&mut self, keys: &[Self::Key]) {
+        self.view.set_matches(keys);
+    }
+    fn clear_matches(&mut self) {
+        self.view.clear_matches();
+    }
+    fn match_count(&self) -> usize {
+        self.view.match_count()
+    }
+    fn cursor_index(&self) -> Option<usize> {
+        self.view.cursor_index()
+    }
+    fn step_index(&self, delta: isize) -> Option<usize> {
+        self.view.step_index(delta)
+    }
+    fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        self.view.matched_step_index(delta)
+    }
+    fn edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
+        self.view.edge_index(edge)
+    }
+    fn matched_edge_index(&self, edge: crate::list::Edge) -> Option<usize> {
+        self.view.matched_edge_index(edge)
+    }
+    fn page_index(&self, direction: isize) -> Option<usize> {
+        self.view.page_index(direction)
+    }
+    fn select_command(&self, index: usize) -> Self::Command {
+        TooltipCommand::Host(self.view.select_command(index))
+    }
+    fn activate_command(
+        &self,
+        index: usize,
+        trigger: crate::list::ActivateTrigger,
+    ) -> Self::Command {
+        TooltipCommand::Host(self.view.activate_command(index, trigger))
+    }
+    fn selected_index(command: &Self::Command) -> Option<usize> {
+        match command {
+            TooltipCommand::Host(inner) => V::selected_index(inner),
+            _ => None,
+        }
+    }
+    fn activated(command: &Self::Command) -> Option<(usize, crate::list::ActivateTrigger)> {
+        match command {
+            TooltipCommand::Host(inner) => V::activated(inner),
+            _ => None,
+        }
     }
 }
 
@@ -456,6 +527,38 @@ mod tests {
             },
         );
         assert!(!view.showing(), "leaving hides");
+        assert_eq!(overlay_count(&view), 0);
+    }
+
+    #[test]
+    fn a_mouse_leaving_the_window_hides_the_tip() {
+        let mut view = TooltipView::new(Body, rows);
+        drive(
+            &mut view,
+            Event::HitTest {
+                point: Point::new(50.0, 10.0),
+                miss: false,
+            },
+        );
+        drive(
+            &mut view,
+            Event::AnimationClock {
+                now: AnimationClock::from_millis(0.0),
+            },
+        );
+        drive(
+            &mut view,
+            Event::AnimationClock {
+                now: AnimationClock::from_millis(500.0),
+            },
+        );
+        assert!(view.showing(), "the rest showed the tip");
+
+        // The shells' cursor-left road: a HitTest beyond any
+        // component's reach. Without it the tip sticks — no
+        // MouseMove ever arrives from outside the window.
+        drive(&mut view, Event::window_left());
+        assert!(!view.showing(), "the off-window miss hid the tip");
         assert_eq!(overlay_count(&view), 0);
     }
 

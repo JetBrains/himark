@@ -7,27 +7,11 @@ use std::sync::Arc;
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
-use crate::{
-    AppCommand, Authority, ForestList, ForestNode, ForestSearcher, ModalRequest, ModalView,
-    ResourceLocation, ResourceType, SpeedSearchCommand, SpeedSearchView, TreeListCommand,
-};
+use crate::{AppCommand, Authority, ForestNode, ResourceLocation, ResourceType};
 use himark_ahp_ext_types::history as history_wire;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::{AnyEffect, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
-use skia_safe::{Rect, Size};
+use imba::{effect::AnyEffect, store::Store, UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
-
-const PANEL_PAD: f32 = 6.0;
 
 const REF_PREFIX: &str = "ahpref\u{1f}";
 
@@ -120,10 +104,14 @@ pub(crate) fn entry_of(
     folder: &ResourceLocation,
     file: &ChangesetFile,
 ) -> Option<ChangeEntry> {
+    use serde::Deserialize as _;
+    // Deserialized BY REFERENCE: the wire `Value` trees are arbitrary
+    // and large, and this reads two strings out of them — never pay a
+    // deep clone for that (docs/perf-issue.md §2).
     let side = |value: &Option<serde_json::Value>| -> Option<WireSide> {
         value
             .as_ref()
-            .and_then(|value| serde_json::from_value(value.clone()).ok())
+            .and_then(|value| WireSide::deserialize(value).ok())
     };
     let before = side(&file.edit.before);
     let after = side(&file.edit.after);
@@ -152,7 +140,7 @@ pub(crate) fn entry_of(
         .edit
         .diff
         .as_ref()
-        .and_then(|value| serde_json::from_value(value.clone()).ok())
+        .and_then(|value| WireCounts::deserialize(value).ok())
         .unwrap_or_default();
     Some(ChangeEntry {
         id: file.id.clone(),
@@ -195,29 +183,6 @@ fn stamp_entries<'a>(
     }
 }
 
-#[derive(Clone, Default)]
-pub struct ChangeRefs(Arc<std::sync::Mutex<std::collections::HashMap<String, ResourceLocation>>>);
-
-impl ChangeRefs {
-    pub fn lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
-        self.0.lock().unwrap().get(abs_path).cloned()
-    }
-
-    fn replace_folder<I: Iterator<Item = (String, ResourceLocation)>>(
-        &self,
-        folder_prefix: &str,
-        fresh: I,
-    ) {
-        let mut map = self.0.lock().unwrap();
-        map.retain(|abs, _| {
-            !(abs.strip_prefix(folder_prefix)).is_some_and(|rest| rest.starts_with('/'))
-        });
-        for (abs, before) in fresh {
-            map.insert(abs, before);
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ChangesStatus {
     Computing,
@@ -225,16 +190,229 @@ pub enum ChangesStatus {
     Error(String),
 }
 
+/// A changeset snapshot digested OFF the UI thread: the wire `Value`
+/// trees are parsed and the uris resolved inside the effect's landing
+/// map (the background runner's thread), so the UI-thread adopt only
+/// stamps and swaps finished entries (docs/perf-issue.md §2).
 #[derive(Clone)]
-pub struct FolderChanges {
-    seat: Arc<dyn AhpServer>,
+pub struct DigestedChangeset {
+    pub(crate) status: ChangesStatus,
+    pub(crate) entries: Vec<ChangeEntry>,
+}
 
-    session: String,
+/// A polled wire action digested OFF the UI thread — `entry_of` has
+/// already run; the UI-thread fold only splices finished entries.
+#[derive(Clone)]
+pub enum ChangeAction {
+    Content(Vec<ChangeEntry>),
+    Status(ChangesStatus),
+    /// `entry` is `None` when the wire file resolves outside the
+    /// folder — the standing entry under `id` still leaves.
+    FileSet {
+        id: String,
+        entry: Option<ChangeEntry>,
+    },
+    FileRemoved(String),
+    Cleared,
+}
 
-    channel: Option<String>,
+fn digest_state(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    state: &ChangesetState,
+) -> DigestedChangeset {
+    DigestedChangeset {
+        status: ChangesStatus::of_wire(
+            &state.status,
+            state.error.as_ref().map(|error| error.message.as_str()),
+        ),
+        entries: state
+            .files
+            .iter()
+            .filter_map(|file| entry_of(uris, folder, file))
+            .collect(),
+    }
+}
+
+fn digest_actions(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    actions: &[StateAction],
+) -> Vec<ChangeAction> {
+    // A full snapshot wholesale replaces the file list, so every file
+    // mutation BEFORE the batch's last one is superseded — skip its
+    // conversion entirely; only status changes survive in order
+    // (docs/perf-issue.md §4 measure 3).
+    let last_content = actions
+        .iter()
+        .rposition(|action| matches!(action, StateAction::ChangesetContentChanged(_)));
+    let mut digested = Vec::new();
+    for (at, action) in actions.iter().enumerate() {
+        let superseded = last_content.is_some_and(|last| at < last);
+        match action {
+            StateAction::ChangesetContentChanged(content) if !superseded => {
+                digested.push(ChangeAction::Content(
+                    content
+                        .files
+                        .iter()
+                        .filter_map(|file| entry_of(uris, folder, file))
+                        .collect(),
+                ));
+            }
+            StateAction::ChangesetStatusChanged(status) => {
+                digested.push(ChangeAction::Status(ChangesStatus::of_wire(
+                    &status.status,
+                    status.error.as_ref().map(|error| error.message.as_str()),
+                )));
+            }
+            StateAction::ChangesetFileSet(set) if !superseded => {
+                digested.push(ChangeAction::FileSet {
+                    id: set.file.id.clone(),
+                    entry: entry_of(uris, folder, &set.file),
+                });
+            }
+            StateAction::ChangesetFileRemoved(removed) if !superseded => {
+                digested.push(ChangeAction::FileRemoved(removed.file_id.clone()));
+            }
+            StateAction::ChangesetCleared(_) if !superseded => {
+                digested.push(ChangeAction::Cleared);
+            }
+            _ => {}
+        }
+    }
+    digested
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ChangeSetId(u64);
+
+impl ChangeSetId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// A commit's identity in its repository — the revision/sha string
+/// off the wire, wrapped so it cannot be confused with the paths,
+/// uris and messages it travels beside.
+#[derive(Clone, PartialEq, Eq, Hash, Debug, Default)]
+pub struct Revision(String);
+
+impl Revision {
+    pub fn new(raw: impl Into<String>) -> Self {
+        Self(raw.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    pub fn into_string(self) -> String {
+        self.0
+    }
+}
+
+impl std::fmt::Display for Revision {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str(&self.0)
+    }
+}
+
+impl From<String> for Revision {
+    fn from(raw: String) -> Self {
+        Self(raw)
+    }
+}
+
+impl From<&str> for Revision {
+    fn from(raw: &str) -> Self {
+        Self(raw.to_owned())
+    }
+}
+
+/// What a change set IS: one folder's working copy, or one commit —
+/// `CanvasSource`'s shape, made the model's first-class identity.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub enum ChangeSetSource {
+    WorkingCopy {
+        folder: ResourceLocation,
+    },
+    /// Minted eagerly (and light) when a history window lands; the
+    /// file entries land lazily on first ask. (Stage B of the
+    /// migration constructs these.)
+    #[allow(dead_code)]
+    Commit {
+        folder: ResourceLocation,
+        revision: Revision,
+    },
+}
+
+/// ONE set of changes (docs/model-view.md): the model payload — files,
+/// status, the feed channel — plus everything the set OWNS: its own
+/// generation, its base refs, and (per the hierarchy) its views.
+/// A set's WIRE side: the seat serving it, the owning AHP session and
+/// the claimed changeset channel. Optional on the set — a canvas may
+/// open a set the feeds have not routed yet (a DETACHED set);
+/// `ensure_folder` attaches the feed when the route exists.
+#[derive(Clone)]
+pub(crate) struct SetFeed {
+    pub(crate) seat: Arc<dyn AhpServer>,
+    pub(crate) session: crate::higent::SessionUri,
+    pub(crate) channel: Option<crate::higent::ChannelUri>,
+}
+
+#[derive(Clone)]
+pub struct ChangeSet {
+    pub(crate) source: ChangeSetSource,
+
+    pub(crate) feed: Option<SetFeed>,
+
     pub status: ChangesStatus,
     pub files: rpds::VectorSync<ChangeEntry>,
+
+    /// The SET's generation — bumped by every mutation of this set,
+    /// compared by this set's views (tree sections, canvases) and by
+    /// its entries' `updated` stamps. Never session-wide again.
+    generation: u64,
+
+    /// Working file (absolute path) → its BASE ref, denormalized from
+    /// THIS set's entries (replaced whole per landing). Read at effect
+    /// launch on the UI thread. (This replaced a shared
+    /// Arc<Mutex<HashMap>>; never bring that back.)
+    bases: rpds::HashTrieMapSync<String, ResourceLocation>,
+
+    /// The set OWNS its canvases (docs/model-view.md hierarchy) —
+    /// canvas mutations never touch the set's `generation`.
+    pub(crate) canvases: rpds::HashTrieMapSync<
+        crate::diff_canvas::canvas::CanvasId,
+        crate::diff_canvas::canvas::Canvas,
+    >,
 }
+
+impl ChangeSet {
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    /// Re-derive THIS set's base refs from its entries, whole — the
+    /// set owns its slice, no cross-set scrubbing.
+    fn note_bases(&mut self) {
+        let mut bases = rpds::HashTrieMapSync::new_sync();
+        for change in self.files.iter() {
+            let Some(before) = change.before.clone() else {
+                continue;
+            };
+            bases.insert_mut(format!("/{}", change.working.path().join("/")), before);
+        }
+        self.bases = bases;
+    }
+}
+
+/// Transitional alias — the tests and older call sites named the
+/// per-folder record `FolderChanges`; it IS the working-copy
+/// `ChangeSet` now.
+pub type FolderChanges = ChangeSet;
 
 impl ChangesStatus {
     pub(crate) fn of_wire(status: &ChangesetStatus, error: Option<&str>) -> ChangesStatus {
@@ -244,13 +422,16 @@ impl ChangesStatus {
             ChangesetStatus::Error => {
                 ChangesStatus::Error(error.unwrap_or("changeset error").to_owned())
             }
+            // A status from a newer protocol: not an error, not
+            // provably ready — keep the chip spinning.
+            ChangesetStatus::Unknown(_) => ChangesStatus::Computing,
         }
     }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct CatalogEntry {
-    pub(crate) uri: String,
+    pub(crate) uri: crate::higent::ChannelUri,
     pub(crate) description: Option<String>,
 
     pub(crate) kind: String,
@@ -258,7 +439,7 @@ pub(crate) struct CatalogEntry {
 
 #[derive(Clone)]
 struct SessionFeed {
-    uri: String,
+    uri: crate::higent::SessionUri,
     seat: Arc<dyn AhpServer>,
     catalog: rpds::VectorSync<CatalogEntry>,
 }
@@ -272,7 +453,7 @@ fn digest_catalog(changesets: &[crate::higent::ahp_types::state::Changeset]) -> 
                 && !entry.uri_template.contains('{')
         })
         .map(|entry| CatalogEntry {
-            uri: entry.uri_template.clone(),
+            uri: crate::higent::ChannelUri::new(entry.uri_template.clone()),
             description: entry.description.clone(),
             kind: entry.change_kind.clone(),
         })
@@ -281,116 +462,762 @@ fn digest_catalog(changesets: &[crate::higent::ahp_types::state::Changeset]) -> 
 
 pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> bool {
     let abs = format!("/{}", folder.path().join("/"));
-    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.ends_with(&abs)
+    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.as_str().ends_with(&abs)
 }
 
-#[derive(Clone, Default)]
-pub struct Changes {
-    folders: rpds::HashTrieMapSync<ResourceLocation, FolderChanges>,
+/// The session's change sets, keyed by minted id
+/// (docs/model-view.md): one record per working copy, one per commit.
+/// Session-family state — the AHP changeset/history channels are
+/// session-level (docs/ahp/vcs.md), so the collection gathers with
+/// its session.
+#[derive(Clone)]
+pub struct ChangeSets {
+    /// Siblings, wired at the family mint (docs/entities.md law 4):
+    /// the documents whose stripes this collection's bases serve, and
+    /// the history whose commits mint sets here.
+    documents: imba::store::Id<crate::OpenDocuments>,
+    history: imba::store::Id<crate::hihistory::History>,
+
+    sets: rpds::HashTrieMapSync<ChangeSetId, ChangeSet>,
+
+    /// Source → set: the reuse lookup for BOTH flavors.
+    pub(crate) by_source: rpds::HashTrieMapSync<ChangeSetSource, ChangeSetId>,
+
+    /// Set → the serial of ITS one standing poll loop. A relaunch
+    /// bumps it; a `Polled` landing re-arms only when it carries the
+    /// current serial, so a re-subscribe (refetch, catalog re-route)
+    /// supersedes the old loop instead of multiplying it.
+    polls: rpds::HashTrieMapSync<ChangeSetId, u64>,
 
     session: Option<SessionFeed>,
 
-    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    pub(crate) uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
 
-    generation: u64,
+    /// The unified tree VIEWS over this collection's sets — one per
+    /// mounted dock, changes- or history-flavored only by the data
+    /// they derive rows from (crate::changes_view). The collection
+    /// is the views' point of gravity: a uniting view spans many
+    /// sets, so the views cannot live inside one.
+    pub(crate) views:
+        rpds::HashTrieMapSync<crate::changes_view::ChangesViewId, crate::changes_view::ChangesView>,
+
+    /// THE UPDATE RULE's index — the many-to-many `ChangeSetId ↔
+    /// ChangesViewId` join: a set mutation marks exactly its viewers
+    /// stale; the batch-tail lane rolls them.
+    pub(crate) viewers: rpds::HashTrieMapSync<
+        ChangeSetId,
+        rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
+    >,
+
+    pub(crate) stale: rpds::HashTrieSetSync<crate::changes_view::ChangesViewId>,
 }
 
+/// Transitional alias — the store slot and the wide call-site surface
+/// named the collection `Changes`.
+pub type Changes = ChangeSets;
+
+/// What the collection answers to behind its `At` address
+/// (docs/entities.md law 5): the feed landings of its working-copy
+/// sets. Each is stamped with the collection id at launch and comes
+/// home by it — no scope is re-derived.
+#[derive(Clone)]
+pub enum ChangesCommand {
+    /// A changeset subscribe answered for one folder's set — digested
+    /// on the effect worker, never on this thread.
+    Snapshot {
+        folder: ResourceLocation,
+        result: Result<DigestedChangeset, String>,
+    },
+    /// A changeset poll drained for one folder's set — digested on the
+    /// effect worker. `serial` names the poll loop that drained it:
+    /// only the CURRENT loop's landing re-arms (docs/perf-issue.md §4
+    /// measure 5).
+    Polled {
+        folder: ResourceLocation,
+        serial: u64,
+        actions: Vec<ChangeAction>,
+    },
+}
+
+impl std::fmt::Display for ChangesCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangesCommand::Snapshot { .. } => out.write_str("changes snapshot"),
+            ChangesCommand::Polled { .. } => out.write_str("changes polled"),
+        }
+    }
+}
+
+/// A note the collection leaves for the application road after a
+/// landing (the `DressedViews` shape): the stripe bases under a folder
+/// must re-ask. The entity has no application effects of its own; the
+/// `AtChanges` arm consumes this with the ones it has.
 #[derive(Clone, Default)]
-pub struct ChangesInstall {
-    refs: ChangeRefs,
+pub struct BaseRearms(pub Vec<(imba::store::Id<crate::OpenDocuments>, ResourceLocation)>);
+
+impl imba::store::Entity for ChangeSets {
+    type Command = ChangesCommand;
+
+    fn perform(
+        &mut self,
+        _id: imba::store::Id<Self>,
+        command: ChangesCommand,
+        store: &mut Store,
+        _ui: &UiCtx,
+        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+    ) {
+        match command {
+            ChangesCommand::Snapshot { folder, result } => {
+                let adopted = result.is_ok();
+                match result {
+                    Ok(digested) => self.adopt(&folder, digested),
+                    Err(error) => self.adopt_error(&folder, error),
+                }
+                self.nudge_folder_in_place(&folder);
+                self.note_rearm(store, &folder);
+                if adopted {
+                    self.relaunch_poll(&folder, fx);
+                }
+            }
+            ChangesCommand::Polled {
+                folder,
+                serial,
+                actions,
+            } => {
+                self.fold(&folder, actions);
+                self.nudge_folder_in_place(&folder);
+                self.note_rearm(store, &folder);
+                // Only the CURRENT loop re-arms: a superseding
+                // subscribe bumped the serial and owns the next poll.
+                // A stale landing still folds its batch — a drained
+                // action is never dropped — but it does not multiply
+                // loops (each loop re-polls full snapshots, so extra
+                // loops snowball; docs/perf-issue.md §2).
+                if self.poll_serial(&folder) == Some(serial) {
+                    self.relaunch_poll(&folder, fx);
+                }
+            }
+        }
+    }
+
+    fn destroy(&mut self, _store: &mut Store) {
+        // Sets, canvases and views are the collection's PRIVATE
+        // schema — nothing to retract; feeds die with the drop.
+    }
+}
+
+impl crate::AppEntity for ChangeSets {
+    /// The landing's note: the stripe bases under the folders it
+    /// touched re-ask — application effects the entity itself does
+    /// not hold.
+    fn after_route(
+        store: &mut Store,
+        ui: &UiCtx,
+        _id: imba::store::Id<Self>,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        for (documents, folder) in store
+            .take::<BaseRearms>()
+            .map(|rearms| rearms.0)
+            .unwrap_or_default()
+        {
+            let authority = folder.authority().clone();
+            let prefix = format!("/{}/", folder.path().join("/"));
+            crate::rearm_base_asks(store, documents, &|location| {
+                location.authority() == &authority
+                    && format!("/{}", location.path().join("/")).starts_with(&prefix)
+            });
+            crate::sync_stripe_bases(store, documents, ui, fx);
+        }
+    }
 }
 
 impl Changes {
-    pub fn install(store: &mut Store, refs: ChangeRefs) {
-        store.put(ChangesInstall { refs });
+    /// A collection wired to its siblings — minted by the family
+    /// ceremony, and by tests that stand one up alone.
+    pub fn wired(
+        documents: imba::store::Id<crate::OpenDocuments>,
+        history: imba::store::Id<crate::hihistory::History>,
+    ) -> Self {
+        Self {
+            documents,
+            history,
+            sets: rpds::HashTrieMapSync::new_sync(),
+            by_source: rpds::HashTrieMapSync::new_sync(),
+            polls: rpds::HashTrieMapSync::new_sync(),
+            session: None,
+            uris: None,
+            views: rpds::HashTrieMapSync::new_sync(),
+            viewers: rpds::HashTrieMapSync::new_sync(),
+            stale: rpds::HashTrieSetSync::new_sync(),
+        }
     }
 
-    pub fn installed(store: &Store) -> bool {
-        store.get::<ChangesInstall>().is_some()
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.documents
     }
 
-    fn feed_for(&self, session: &str) -> Option<&SessionFeed> {
-        self.session.as_ref().filter(|feed| feed.uri == session)
+    pub fn history(&self) -> imba::store::Id<crate::hihistory::History> {
+        self.history
+    }
+
+    /// The collection by its id — `None` is gone (docs/entities.md).
+    pub(crate) fn of(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<&ChangeSets> {
+        store.entity(changes)
+    }
+
+    /// Mutate the collection in place. A gone collection takes no
+    /// write — there is no row to mint from: siblings are wired at
+    /// the ceremony, never defaulted.
+    pub(crate) fn update(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        mutate: impl FnOnce(&mut ChangeSets),
+    ) {
+        let Some(mut row) = store.entity(changes).cloned() else {
+            return;
+        };
+        mutate(&mut row);
+        store.put_entity(changes, row);
+    }
+
+    fn folder_set_id(&self, folder: &ResourceLocation) -> Option<ChangeSetId> {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.by_source.get(&source).copied()
+    }
+
+    fn poll_serial(&self, folder: &ResourceLocation) -> Option<u64> {
+        self.polls.get(&self.folder_set_id(folder)?).copied()
+    }
+
+    /// The landing's own poll relaunch — the next batch of the set's
+    /// channel comes home as `Polled`, stamped by the router. The
+    /// batch is DIGESTED in the landing map, on the effect worker:
+    /// the UI thread never parses wire `Value` trees
+    /// (docs/perf-issue.md §2). Bumps the set's poll serial — the
+    /// loop this launch starts is the one standing loop.
+    fn relaunch_poll(
+        &mut self,
+        folder: &ResourceLocation,
+        fx: &mut imba::effect::Effects<'_, ChangesCommand>,
+    ) {
+        let Some(uris) = self.uris.clone() else {
+            return;
+        };
+        let Some(id) = self.folder_set_id(folder) else {
+            return;
+        };
+        let Some(feed) = self.sets.get(&id).and_then(|set| set.feed.clone()) else {
+            return;
+        };
+        let Some(channel) = feed.channel else {
+            return;
+        };
+        let serial = self.polls.get(&id).copied().unwrap_or(0) + 1;
+        self.polls.insert_mut(id, serial);
+        let landing = folder.clone();
+        fx.push(
+            AnyEffect::new(PollChangesetEffect {
+                seat: feed.seat,
+                channel,
+            })
+            .map(move |actions| ChangesCommand::Polled {
+                serial,
+                actions: digest_actions(&*uris, &landing, &actions),
+                folder: landing,
+            }),
+        );
+    }
+
+    /// Leave the stripe-base note for the application road.
+    fn note_rearm(&self, store: &mut Store, folder: &ResourceLocation) {
+        let documents = self.documents;
+        let folder = folder.clone();
+        store.update::<BaseRearms>(|rearms| rearms.0.push((documents, folder)));
+    }
+
+    fn feed_for(&self, session: &crate::higent::SessionUri) -> Option<&SessionFeed> {
+        self.session.as_ref().filter(|feed| feed.uri == *session)
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.folders.is_empty() && self.session.is_none()
+        self.sets.is_empty() && self.session.is_none()
     }
 
-    pub fn generation(store: &Store) -> u64 {
-        store
-            .get::<Changes>()
-            .map(|changes| changes.generation)
+    fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.sets.get(self.by_source.get(&source)?)
+    }
+
+    /// Every working-copy set with its folder, iteration order
+    /// unspecified.
+    fn working_copies(&self) -> impl Iterator<Item = (&ResourceLocation, &ChangeSet)> {
+        self.by_source.iter().filter_map(|(source, id)| {
+            let ChangeSetSource::WorkingCopy { folder } = source else {
+                return None;
+            };
+            Some((folder, self.sets.get(id)?))
+        })
+    }
+
+    /// Mutate one folder's set through clone-modify-insert, bumping
+    /// BOTH generations: the set's own (its views' cue) and the
+    /// collection tick (the union tree's cue).
+    fn update_folder_set(
+        &mut self,
+        folder: &ResourceLocation,
+        mutate: impl FnOnce(&mut ChangeSet),
+    ) -> bool {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        self.update_set_by_source(&source, mutate)
+    }
+
+    fn update_set_by_source(
+        &mut self,
+        source: &ChangeSetSource,
+        mutate: impl FnOnce(&mut ChangeSet),
+    ) -> bool {
+        let Some(id) = self.by_source.get(source).copied() else {
+            return false;
+        };
+        let Some(mut set) = self.sets.get(&id).cloned() else {
+            return false;
+        };
+        mutate(&mut set);
+        set.generation += 1;
+        self.sets.insert_mut(id, set);
+        true
+    }
+
+    /// Mint — or find — the COMMIT-flavored set (eager and light: the
+    /// history row references it from birth; its files land lazily on
+    /// first ask). Never bumps the commit set's generation.
+    pub(crate) fn ensure_commit_set(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+        seat: &Arc<dyn AhpServer>,
+        session: &crate::higent::SessionUri,
+    ) -> ChangeSetId {
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        if let Some(id) =
+            Self::of(store, changes).and_then(|changes| changes.by_source.get(&source).copied())
+        {
+            return id;
+        }
+        let id = ChangeSetId::mint();
+        let seat = seat.clone();
+        let session = session.to_owned();
+        Self::update(store, changes, |changes| {
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: source.clone(),
+                    feed: Some(SetFeed {
+                        seat,
+                        session,
+                        channel: None,
+                    }),
+                    status: ChangesStatus::Computing,
+                    files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
+                },
+            );
+            changes.by_source.insert_mut(source, id);
+        });
+        id
+    }
+
+    pub fn commit_set(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+    ) -> Option<ChangeSet> {
+        let changes = Self::of(store, changes)?;
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        changes.sets.get(changes.by_source.get(&source)?).cloned()
+    }
+
+    /// The per-SET staleness cue for a commit canvas.
+    pub fn commit_generation(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+    ) -> u64 {
+        Self::commit_set(store, changes, folder, revision)
+            .map(|set| set.generation)
             .unwrap_or(0)
     }
 
-    pub fn folder(store: &Store, folder: &ResourceLocation) -> Option<FolderChanges> {
-        store.get::<Changes>()?.folders.get(folder).cloned()
+    /// Mint — or find — the set for a source, WITHOUT a feed when the
+    /// feeds have not routed it yet (a canvas may open first; the
+    /// feed attaches at `ensure_folder`). Never bumps generations.
+    pub(crate) fn ensure_set_for_source(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        source: &ChangeSetSource,
+    ) -> ChangeSetId {
+        if let Some(id) =
+            Self::of(store, changes).and_then(|changes| changes.by_source.get(source).copied())
+        {
+            return id;
+        }
+        let id = ChangeSetId::mint();
+        let source = source.clone();
+        Self::update(store, changes, |changes| {
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: source.clone(),
+                    feed: None,
+                    status: ChangesStatus::Computing,
+                    files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
+                },
+            );
+            changes.by_source.insert_mut(source, id);
+        });
+        id
     }
 
-    pub(crate) fn uris(store: &Store) -> Option<Arc<dyn crate::higent::ResourceUriMap>> {
-        store.get::<Changes>()?.uris.clone()
+    pub(crate) fn id_for_source(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        source: &ChangeSetSource,
+    ) -> Option<ChangeSetId> {
+        Self::of(store, changes)?.by_source.get(source).copied()
     }
 
+    /// The SET owns its canvases; these reach one by (set, canvas) —
+    /// canvas mutations never touch the set's generation.
+    pub(crate) fn canvas_ref<'a>(
+        store: &'a Store,
+        changes: imba::store::Id<ChangeSets>,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+    ) -> Option<&'a crate::diff_canvas::canvas::Canvas> {
+        Self::of(store, changes)?
+            .sets
+            .get(&set)?
+            .canvases
+            .get(&canvas)
+    }
+
+    pub(crate) fn take_canvas(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+    ) -> Option<crate::diff_canvas::canvas::Canvas> {
+        let held = Self::canvas_ref(store, changes, set, canvas)?.clone();
+        Self::update(store, changes, |changes| {
+            let Some(mut owner) = changes.sets.get(&set).cloned() else {
+                return;
+            };
+            owner.canvases.remove_mut(&canvas);
+            changes.sets.insert_mut(set, owner);
+        });
+        Some(held)
+    }
+
+    pub(crate) fn put_canvas(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        set: ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+        held: crate::diff_canvas::canvas::Canvas,
+    ) {
+        Self::update(store, changes, |changes| {
+            let Some(mut owner) = changes.sets.get(&set).cloned() else {
+                return;
+            };
+            owner.canvases.insert_mut(canvas, held);
+            changes.sets.insert_mut(set, owner);
+        });
+    }
+
+    /// Every canvas in the gathered session, with its owning set —
+    /// the batch-tail sweep's domain.
+    pub(crate) fn canvas_ids(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+    ) -> Vec<(ChangeSetId, crate::diff_canvas::canvas::CanvasId)> {
+        Self::of(store, changes)
+            .map(|changes| {
+                changes
+                    .sets
+                    .iter()
+                    .flat_map(|(set, held)| held.canvases.keys().map(|canvas| (*set, *canvas)))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// The fetch road armed: the set is COMPUTING until its snapshot
+    /// lands.
+    pub(crate) fn mark_commit_computing(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+    ) {
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        Self::update(store, changes, |changes| {
+            changes.update_set_by_source(&source, |set| {
+                set.status = ChangesStatus::Computing;
+                set.files = rpds::VectorSync::new_sync();
+            });
+        });
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
+        }
+    }
+
+    /// A commit set's content snapshot landed (the changeset channel
+    /// for `?commit=<sha>`): status + files onto the SET.
+    pub(crate) fn adopt_commit_state(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+        result: &Result<ChangesetState, String>,
+    ) {
+        let Some(uris) = Self::of(store, changes).and_then(|changes| changes.uris.clone()) else {
+            return;
+        };
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        Self::update(store, changes, |changes| {
+            changes.update_set_by_source(&source, |set| match result {
+                Ok(state) => {
+                    set.status = ChangesStatus::of_wire(
+                        &state.status,
+                        state.error.as_ref().map(|error| error.message.as_str()),
+                    );
+                    set.files = state
+                        .files
+                        .iter()
+                        .filter_map(|file| entry_of(&*uris, folder, file))
+                        .collect();
+                }
+                Err(error) => {
+                    set.status = ChangesStatus::Error(error.clone());
+                    set.files = rpds::VectorSync::new_sync();
+                }
+            });
+        });
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
+        }
+    }
+
+    /// Streamed updates for a commit set's changeset channel.
+    pub(crate) fn fold_commit_actions(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+        revision: &Revision,
+        actions: &[StateAction],
+    ) {
+        let Some(uris) = Self::of(store, changes).and_then(|changes| changes.uris.clone()) else {
+            return;
+        };
+        let source = ChangeSetSource::Commit {
+            folder: folder.clone(),
+            revision: revision.to_owned(),
+        };
+        Self::update(store, changes, |changes| {
+            changes.update_set_by_source(&source, |set| {
+                for action in actions {
+                    match action {
+                        StateAction::ChangesetContentChanged(content) => {
+                            set.files = content
+                                .files
+                                .iter()
+                                .filter_map(|file| entry_of(&*uris, folder, file))
+                                .collect();
+                        }
+                        StateAction::ChangesetStatusChanged(status) => {
+                            set.status = ChangesStatus::of_wire(
+                                &status.status,
+                                status.error.as_ref().map(|error| error.message.as_str()),
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        });
+        if let Some(id) = Self::id_for_source(store, changes, &source) {
+            Self::nudge_set(store, changes, id);
+        }
+    }
+
+    pub fn set_ref<'a>(
+        store: &'a Store,
+        changes: imba::store::Id<ChangeSets>,
+        id: ChangeSetId,
+    ) -> Option<&'a ChangeSet> {
+        Self::of(store, changes)?.sets.get(&id)
+    }
+
+    pub fn id_for_folder(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+    ) -> Option<ChangeSetId> {
+        let source = ChangeSetSource::WorkingCopy {
+            folder: folder.clone(),
+        };
+        Self::of(store, changes)?.by_source.get(&source).copied()
+    }
+
+    /// The per-SET staleness cue for a working copy — 0 while absent
+    /// (the canvas keeps probing until the set exists).
+    pub fn folder_generation(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+    ) -> u64 {
+        Self::of(store, changes)
+            .and_then(|changes| changes.folder_set(folder))
+            .map(|set| set.generation)
+            .unwrap_or(0)
+    }
+
+    pub fn folder(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        folder: &ResourceLocation,
+    ) -> Option<ChangeSet> {
+        Self::of(store, changes)?.folder_set(folder).cloned()
+    }
+
+    /// Attach every folder of a session to ITS collection — the id in
+    /// hand is the family's, the folders are the catalog's.
     pub fn ensure(
         store: &mut Store,
         window: crate::WindowId,
-        workspace: crate::SessionId,
+        changes: imba::store::Id<ChangeSets>,
+        folders: Vec<ResourceLocation>,
         fx: &mut crate::AppFx<'_>,
     ) {
-        for folder in crate::higent::session_folders(store, &workspace) {
-            Self::ensure_folder(store, window, folder, fx);
+        for folder in folders {
+            Self::ensure_folder(store, window, changes, folder, fx);
         }
     }
 
     pub fn ensure_folder(
         store: &mut Store,
         window: crate::WindowId,
+        changes: imba::store::Id<ChangeSets>,
         folder: ResourceLocation,
         fx: &mut crate::AppFx<'_>,
     ) {
-        if !Self::installed(store) {
-            return;
-        }
-        let known = store
-            .get::<Changes>()
-            .is_some_and(|changes| changes.folders.contains_key(&folder));
-        if known {
-            return;
-        }
+        // The folder's own authority names the WIRE that serves it:
+        // the seat and the AHP session the feeds subscribe through.
         let Some((host, seat, session)) =
             crate::higent::seat::route_seat(store, folder.authority().as_str())
         else {
             return;
         };
-        let Some(uris) = crate::higent::Hosts::uris(store, host) else {
-            return;
-        };
-        store.update::<Changes>(|changes| changes.uris = Some(uris.clone()));
         let scope = crate::SessionId {
             host,
             session: session.clone(),
         };
-        store.update::<Changes>(|changes| {
-            changes.folders.insert_mut(
-                folder.clone(),
-                FolderChanges {
-                    seat: seat.clone(),
-                    session: session.clone(),
-                    channel: None,
+        let known = Self::of(store, changes).is_some_and(|changes| {
+            changes
+                .folder_set(&folder)
+                .is_some_and(|set| set.feed.is_some())
+        });
+        if known {
+            return;
+        }
+        let detached = Self::of(store, changes).is_some_and(|changes| {
+            changes
+                .by_source
+                .contains_key(&ChangeSetSource::WorkingCopy {
+                    folder: folder.clone(),
+                })
+        });
+        let Some(uris) = crate::higent::Hosts::uris(store, host) else {
+            return;
+        };
+        Self::update(store, changes, |changes| changes.uris = Some(uris.clone()));
+        Self::update(store, changes, |changes| {
+            if detached {
+                // The canvas opened this set before the feeds routed:
+                // attach the feed, keep the set (and its canvases).
+                changes.update_folder_set(&folder, |set| {
+                    set.feed = Some(SetFeed {
+                        seat: seat.clone(),
+                        session: session.clone(),
+                        channel: None,
+                    });
+                });
+                return;
+            }
+            let id = ChangeSetId::mint();
+            changes.sets.insert_mut(
+                id,
+                ChangeSet {
+                    source: ChangeSetSource::WorkingCopy {
+                        folder: folder.clone(),
+                    },
+                    feed: Some(SetFeed {
+                        seat: seat.clone(),
+                        session: session.clone(),
+                        channel: None,
+                    }),
                     status: ChangesStatus::Computing,
                     files: rpds::VectorSync::new_sync(),
+                    generation: 0,
+                    bases: rpds::HashTrieMapSync::new_sync(),
+                    canvases: rpds::HashTrieMapSync::new_sync(),
                 },
             );
-            changes.generation += 1;
+            changes.by_source.insert_mut(
+                ChangeSetSource::WorkingCopy {
+                    folder: folder.clone(),
+                },
+                id,
+            );
         });
-        crate::hihistory::History::ensure_folder(store, &folder, &seat, &session);
+        let history = Self::of(store, changes).map(|held| held.history);
+        if let Some(history) = history {
+            crate::hihistory::History::ensure_folder(store, history, &scope, &folder, &seat);
+        }
+        Changes::nudge_folder(store, changes, &folder);
 
         let directory = uris.uri_of(&folder).into_string();
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
                 seat: seat.clone(),
-                channel: session.clone(),
+                channel: session.as_channel(),
                 action: StateAction::SessionWorkingDirectorySet(
                     crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
                         directory,
@@ -399,18 +1226,17 @@ impl Changes {
             })
             .map(move |result| AppCommand::Dynamic(window, Arc::new(Dispatched { result }))),
         );
-        let feed_known = store
-            .get::<Changes>()
-            .is_some_and(|changes| changes.feed_for(&session).is_some());
+        let feed_known =
+            Self::of(store, changes).is_some_and(|changes| changes.feed_for(&session).is_some());
         if !feed_known {
-            store.update::<Changes>(|changes| {
+            Self::update(store, changes, |changes| {
                 changes.session = Some(SessionFeed {
                     uri: session.clone(),
                     seat: seat.clone(),
                     catalog: rpds::VectorSync::new_sync(),
                 });
             });
-            let landing = session.clone();
+            let landing = scope.clone();
             fx.push(
                 AnyEffect::new(crate::higent::SubscribeSessionEffect { seat, session }).map(
                     move |result| {
@@ -418,7 +1244,8 @@ impl Changes {
                             scope.clone(),
                             window,
                             Arc::new(SessionLanded {
-                                session: landing.clone(),
+                                home: landing.clone(),
+                                changes,
                                 result,
                             }),
                         )
@@ -428,10 +1255,10 @@ impl Changes {
         }
     }
 
-    pub fn script_summary(store: &Store) -> Option<String> {
-        let changes = store.get::<Changes>()?;
+    pub fn script_summary(store: &Store, changes: imba::store::Id<ChangeSets>) -> Option<String> {
+        let changes = Self::of(store, changes)?;
         let mut lines = Vec::new();
-        for (folder, entry) in changes.folders.iter() {
+        for (folder, entry) in changes.working_copies() {
             for file in entry.files.iter() {
                 let status = match file.before.is_some() {
                     true => "M",
@@ -453,59 +1280,58 @@ impl Changes {
 
     pub fn refetch(
         store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
         only: Option<&ResourceLocation>,
     ) {
-        let Some(changes) = store.get::<Changes>() else {
+        let Some(held) = Self::of(store, changes) else {
             return;
         };
-        let riding: Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> = changes
-            .folders
-            .iter()
+        let riding: Vec<(
+            ResourceLocation,
+            Arc<dyn AhpServer>,
+            crate::higent::ChannelUri,
+        )> = held
+            .working_copies()
             .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
             .filter_map(|(folder, entry)| {
-                entry
-                    .channel
-                    .clone()
-                    .map(|channel| (folder.clone(), entry.seat.clone(), channel))
+                let feed = entry.feed.as_ref()?;
+                let channel = feed.channel.clone()?;
+                Some((folder.clone(), feed.seat.clone(), channel))
             })
             .collect();
         if riding.is_empty() {
             return;
         }
-        store.update::<Changes>(|changes| {
+        Self::update(store, changes, |held| {
             for (folder, _, _) in &riding {
-                if let Some(mut entry) = changes.folders.get(folder).cloned() {
-                    entry.status = ChangesStatus::Computing;
-                    changes.folders.insert_mut(folder.clone(), entry);
-                }
+                held.update_folder_set(folder, |set| {
+                    set.status = ChangesStatus::Computing;
+                });
             }
-            changes.generation += 1;
         });
+        for (folder, _, _) in &riding {
+            Changes::nudge_folder(store, changes, folder);
+        }
+        let _ = window;
+        let Some(uris) = Self::of(store, changes).and_then(|held| held.uris.clone()) else {
+            return;
+        };
         for (folder, seat, channel) in riding {
-            let landing = folder.clone();
-            let scope = folder_scope(&folder);
-            fx.push(
-                AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-                    let landed = Arc::new(SnapshotLanded {
-                        folder: landing.clone(),
-                        result,
-                    });
-                    match scope.clone() {
-                        Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                        None => AppCommand::Dynamic(window, landed),
-                    }
-                }),
-            );
+            fx.push(subscribe_set(changes, folder, seat, channel, uris.clone()));
         }
     }
 
     fn adopt_catalog(
         &mut self,
-        session: &str,
+        session: &crate::higent::SessionUri,
         entries: Vec<CatalogEntry>,
-    ) -> Vec<(ResourceLocation, Arc<dyn AhpServer>, String)> {
+    ) -> Vec<(
+        ResourceLocation,
+        Arc<dyn AhpServer>,
+        crate::higent::ChannelUri,
+    )> {
         let Some(mut feed) = self.feed_for(session).cloned() else {
             return Vec::new();
         };
@@ -518,165 +1344,170 @@ impl Changes {
             .collect();
         let mut fresh = Vec::new();
         let lone_folder = self
-            .folders
-            .iter()
-            .filter(|(_, entry)| entry.session == session)
+            .working_copies()
+            .filter(|(_, entry)| {
+                entry
+                    .feed
+                    .as_ref()
+                    .is_some_and(|feed| feed.session == *session)
+            })
             .count()
             == 1;
-        for (folder, entry) in self.folders.clone().iter() {
-            if entry.session != session || entry.channel.is_some() {
+        let riding: Vec<(ResourceLocation, ChangeSet)> = self
+            .working_copies()
+            .map(|(folder, entry)| (folder.clone(), entry.clone()))
+            .collect();
+        for (folder, entry) in riding {
+            let Some(feed) = entry.feed.clone() else {
+                continue;
+            };
+            if feed.session != *session || feed.channel.is_some() {
                 continue;
             }
             let matched = changesets
                 .iter()
-                .find(|candidate| entry_serves(folder, candidate))
+                .find(|candidate| entry_serves(&folder, candidate))
                 .or_else(|| (lone_folder && changesets.len() == 1).then(|| &changesets[0]));
             let Some(matched) = matched else {
                 continue;
             };
-            let mut entry = entry.clone();
-            entry.channel = Some(matched.uri.clone());
-            let seat = entry.seat.clone();
+            let seat = feed.seat.clone();
             let channel = matched.uri.clone();
-            self.folders.insert_mut(folder.clone(), entry);
-            fresh.push((folder.clone(), seat, channel));
+            let claimed = matched.uri.clone();
+            self.update_folder_set(&folder, |set| {
+                if let Some(feed) = &mut set.feed {
+                    feed.channel = Some(claimed);
+                }
+            });
+            fresh.push((folder, seat, channel));
         }
-        self.generation += 1;
         fresh
     }
 
-    fn adopt(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, state: &ChangesetState) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.status = ChangesStatus::of_wire(
-            &state.status,
-            state.error.as_ref().map(|error| error.message.as_str()),
-        );
-        let Some(uris) = self.uris.clone() else {
-            return;
-        };
-        let mut fresh: Vec<ChangeEntry> = state
-            .files
-            .iter()
-            .filter_map(|file| entry_of(&*uris, folder, file))
-            .collect();
-        stamp_entries(entry.files.iter(), fresh.iter_mut(), self.generation + 1);
-        entry.files = fresh.into_iter().collect();
-        Self::write_refs(refs, folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
+    /// Adopt a snapshot the effect worker already digested: stamp the
+    /// finished entries against the standing ones and swap — the only
+    /// UI-thread work left is value compares (docs/perf-issue.md §2).
+    fn adopt(&mut self, folder: &ResourceLocation, digested: DigestedChangeset) {
+        self.update_folder_set(folder, |set| {
+            set.status = digested.status;
+            let mut fresh = digested.entries;
+            stamp_entries(set.files.iter(), fresh.iter_mut(), set.generation + 1);
+            set.files = fresh.into_iter().collect();
+            set.note_bases();
+        });
     }
 
-    fn session_failed(&mut self, refs: &ChangeRefs, session: &str, error: &str) {
+    fn session_failed(&mut self, session: &crate::higent::SessionUri, error: &str) {
         let riding: Vec<ResourceLocation> = self
-            .folders
-            .iter()
-            .filter(|(_, entry)| entry.session == session)
+            .working_copies()
+            .filter(|(_, entry)| {
+                entry
+                    .feed
+                    .as_ref()
+                    .is_some_and(|feed| feed.session == *session)
+            })
             .map(|(folder, _)| folder.clone())
             .collect();
         for folder in riding {
-            self.adopt_error(refs, &folder, error.to_owned());
+            self.adopt_error(&folder, error.to_owned());
         }
     }
 
-    fn adopt_error(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, error: String) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        entry.status = ChangesStatus::Error(error);
-        entry.files = rpds::VectorSync::new_sync();
-        Self::write_refs(refs, folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
+    fn adopt_error(&mut self, folder: &ResourceLocation, error: String) {
+        self.update_folder_set(folder, |set| {
+            set.status = ChangesStatus::Error(error);
+            set.files = rpds::VectorSync::new_sync();
+            set.note_bases();
+        });
     }
 
-    fn fold(&mut self, refs: &ChangeRefs, folder: &ResourceLocation, actions: &[StateAction]) {
-        let Some(mut entry) = self.folders.get(folder).cloned() else {
-            return;
-        };
-        let Some(uris) = self.uris.clone() else {
-            return;
-        };
-
-        let stamp = self.generation + 1;
-        let previous: Vec<ChangeEntry> = entry.files.iter().cloned().collect();
-        let mut files: Vec<Option<ChangeEntry>> = entry.files.iter().cloned().map(Some).collect();
-        let mut by_id: std::collections::HashMap<String, usize> = files
-            .iter()
-            .enumerate()
-            .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
-            .collect();
-        for action in actions {
-            match action {
-                StateAction::ChangesetContentChanged(content) => {
-                    let mut fresh: Vec<ChangeEntry> = content
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(&*uris, folder, file))
-                        .collect();
-                    stamp_entries(previous.iter(), fresh.iter_mut(), stamp);
-                    files = fresh.into_iter().map(Some).collect();
-                    by_id = files
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
-                        .collect();
-                }
-                StateAction::ChangesetStatusChanged(status) => {
-                    entry.status = ChangesStatus::of_wire(
-                        &status.status,
-                        status.error.as_ref().map(|error| error.message.as_str()),
-                    );
-                }
-                StateAction::ChangesetFileSet(set) => {
-                    if let Some(at) = by_id.remove(&set.file.id) {
-                        files[at] = None;
+    /// Fold a polled batch the effect worker already digested — the
+    /// wire parsing happened there, and the superseded file mutations
+    /// (everything a later full snapshot overwrites) never arrive
+    /// (docs/perf-issue.md §2, §4 measure 3).
+    fn fold(&mut self, folder: &ResourceLocation, actions: Vec<ChangeAction>) {
+        self.update_folder_set(folder, |set| {
+            let entry = set;
+            let stamp = entry.generation + 1;
+            let mut files: Vec<Option<ChangeEntry>> =
+                entry.files.iter().cloned().map(Some).collect();
+            let mut by_id: std::collections::HashMap<String, usize> = files
+                .iter()
+                .enumerate()
+                .filter_map(|(at, slot)| slot.as_ref().map(|file| (file.id.clone(), at)))
+                .collect();
+            for action in actions {
+                match action {
+                    ChangeAction::Content(mut fresh) => {
+                        // At most one per batch (the digest dropped the
+                        // superseded ones), so the standing `files` ARE
+                        // the previous list to stamp against.
+                        stamp_entries(
+                            files.iter().filter_map(|slot| slot.as_ref()),
+                            fresh.iter_mut(),
+                            stamp,
+                        );
+                        files = fresh.into_iter().map(Some).collect();
+                        by_id = files
+                            .iter()
+                            .enumerate()
+                            .filter_map(|(at, slot)| {
+                                slot.as_ref().map(|file| (file.id.clone(), at))
+                            })
+                            .collect();
                     }
-                    if let Some(mut fresh) = entry_of(&*uris, folder, &set.file) {
-                        // The host resends a file exactly when it
-                        // changed — stamp unconditionally; value
-                        // equality cannot see a same-stats edit.
-                        fresh.updated = stamp;
-                        by_id.insert(fresh.id.clone(), files.len());
-                        files.push(Some(fresh));
+                    ChangeAction::Status(status) => {
+                        entry.status = status;
+                    }
+                    ChangeAction::FileSet { id, entry: fresh } => {
+                        if let Some(at) = by_id.remove(&id) {
+                            files[at] = None;
+                        }
+                        if let Some(mut fresh) = fresh {
+                            // The host resends a file exactly when it
+                            // changed — stamp unconditionally; value
+                            // equality cannot see a same-stats edit.
+                            fresh.updated = stamp;
+                            by_id.insert(fresh.id.clone(), files.len());
+                            files.push(Some(fresh));
+                        }
+                    }
+                    ChangeAction::FileRemoved(id) => {
+                        if let Some(at) = by_id.remove(&id) {
+                            files[at] = None;
+                        }
+                    }
+                    ChangeAction::Cleared => {
+                        files.clear();
+                        by_id.clear();
                     }
                 }
-                StateAction::ChangesetFileRemoved(removed) => {
-                    if let Some(at) = by_id.remove(&removed.file_id) {
-                        files[at] = None;
-                    }
-                }
-                StateAction::ChangesetCleared(_) => {
-                    files.clear();
-                    by_id.clear();
-                }
-                _ => {}
             }
-        }
-        entry.files = files.into_iter().flatten().collect();
-        Self::write_refs(refs, folder, &entry);
-        self.folders.insert_mut(folder.clone(), entry);
-        self.generation += 1;
+            entry.files = files.into_iter().flatten().collect();
+            entry.note_bases();
+        });
     }
 
-    fn write_refs(refs: &ChangeRefs, folder: &ResourceLocation, entry: &FolderChanges) {
-        let prefix = format!("/{}", folder.path().join("/"));
-        refs.replace_folder(
-            &prefix,
-            entry.files.iter().filter_map(|change| {
-                let before = change.before.clone()?;
-                Some((format!("/{}", change.working.path().join("/")), before))
-            }),
-        );
+    #[cfg(test)]
+    pub(crate) fn base_lookup(&self, abs_path: &str) -> Option<ResourceLocation> {
+        self.sets
+            .values()
+            .find_map(|set| set.bases.get(abs_path).cloned())
     }
-}
 
-fn installed_refs(store: &Store) -> ChangeRefs {
-    store
-        .get::<ChangesInstall>()
-        .map(|install| install.refs.clone())
-        .unwrap_or_default()
+    /// The base ref for a working file, by absolute path — read at
+    /// effect launch (UI thread, store in hand). Each working-copy
+    /// set owns its slice; the sets are few.
+    pub fn base_ref(
+        store: &Store,
+        changes: imba::store::Id<ChangeSets>,
+        abs_path: &str,
+    ) -> Option<ResourceLocation> {
+        Self::of(store, changes)?
+            .sets
+            .values()
+            .find_map(|set| set.bases.get(abs_path).cloned())
+    }
 }
 
 pub(crate) struct Dispatched {
@@ -703,8 +1534,11 @@ impl crate::DynamicCommand for Dispatched {
     }
 }
 
+/// The session channel's own landing — the WIRE is the session's, so
+/// its address rides along; the collection it feeds is the id.
 struct SessionLanded {
-    session: String,
+    home: crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     result: Result<crate::higent::ahp_types::state::SessionState, String>,
 }
 
@@ -725,23 +1559,27 @@ impl crate::DynamicCommand for SessionLanded {
         match &self.result {
             Ok(state) => {
                 let entries = digest_catalog(state.changesets.as_deref().unwrap_or_default());
-                subscribe_fresh(store, window, &self.session, entries, fx);
-                relaunch_session_poll(store, window, &self.session, fx);
+                subscribe_fresh(store, window, &self.home, self.changes, entries, fx);
+                relaunch_session_poll(store, window, &self.home, self.changes, fx);
             }
             Err(error) => {
                 eprintln!("[hichanges] session subscribe failed: {error}");
-                let refs = installed_refs(store);
-                store.update::<Changes>(|changes| {
-                    changes.session_failed(&refs, &self.session, error);
+                let session = self.home.session.clone();
+                Changes::update(store, self.changes, |changes| {
+                    changes.session_failed(&session, error);
+                    changes.nudge_all();
                 });
-                crate::hihistory::History::session_failed(store, &self.session, error);
+                if let Some(history) = Changes::of(store, self.changes).map(|held| held.history) {
+                    crate::hihistory::History::session_failed(store, history, &session, error);
+                }
             }
         }
     }
 }
 
 struct SessionPolled {
-    session: String,
+    home: crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     actions: Vec<StateAction>,
 }
 
@@ -759,180 +1597,105 @@ impl crate::DynamicCommand for SessionPolled {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        for action in &self.actions {
-            if let StateAction::SessionChangesetsChanged(changed) = action {
-                let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
-                subscribe_fresh(store, window, &self.session, entries, fx);
-            }
-        }
-        relaunch_session_poll(store, window, &self.session, fx);
+        // This poller and higent's drain the SAME wire feed; the
+        // winner takes the whole batch, so hand every action kind
+        // to the shared application, not just the changeset ones.
+        crate::higent::apply_channel_actions(store, window, &self.home, &self.actions, fx);
+        relaunch_session_poll(store, window, &self.home, self.changes, fx);
     }
+}
+
+/// The session-channel catalog action, routed here from whichever
+/// poller drained it.
+pub(crate) fn adopt_session_catalog(
+    store: &mut Store,
+    window: crate::WindowId,
+    home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
+    changed: &crate::higent::ahp_types::actions::SessionChangesetsChangedAction,
+    fx: &mut crate::AppFx<'_>,
+) {
+    let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
+    subscribe_fresh(store, window, home, changes, entries, fx);
+}
+
+/// One folder's changeset subscribe, launched at the collection's
+/// address: the snapshot comes home as `ChangesCommand::Snapshot`,
+/// DIGESTED in the landing map on the effect worker — the UI thread
+/// receives finished entries (docs/perf-issue.md §2).
+fn subscribe_set(
+    changes: imba::store::Id<ChangeSets>,
+    folder: ResourceLocation,
+    seat: Arc<dyn AhpServer>,
+    channel: crate::higent::ChannelUri,
+    uris: Arc<dyn crate::higent::ResourceUriMap>,
+) -> crate::AppEffect {
+    AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
+        AppCommand::at(
+            changes,
+            ChangesCommand::Snapshot {
+                result: result.map(|state| digest_state(&*uris, &folder, &state)),
+                folder,
+            },
+        )
+    })
 }
 
 fn subscribe_fresh(
     store: &mut Store,
     window: crate::WindowId,
-    session: &str,
+    home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     entries: Vec<CatalogEntry>,
     fx: &mut crate::AppFx<'_>,
 ) {
+    let session = home.session.clone();
     let mut fresh = Vec::new();
-    store.update::<Changes>(|changes| {
-        fresh = changes.adopt_catalog(session, entries.clone());
+    Changes::update(store, changes, |held| {
+        fresh = held.adopt_catalog(&session, entries.clone());
+        held.nudge_all();
     });
 
-    crate::hihistory::subscribe_fresh(store, window, session, &entries, fx);
-    for (folder, seat, channel) in fresh {
-        let landing = folder.clone();
-        let scope = folder_scope(&folder);
-        fx.push(
-            AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-                let landed = Arc::new(SnapshotLanded {
-                    folder: landing.clone(),
-                    result,
-                });
-                match scope.clone() {
-                    Some(scope) => AppCommand::dynamic_in(scope, window, landed),
-                    None => AppCommand::Dynamic(window, landed),
-                }
-            }),
-        );
+    if let Some(history) = Changes::of(store, changes).map(|held| held.history) {
+        crate::hihistory::subscribe_fresh(store, window, home, history, &entries, fx);
     }
-}
-
-pub(crate) fn folder_scope(folder: &ResourceLocation) -> Option<crate::SessionId> {
-    let (host, session) = crate::higent::seat::parse(folder.authority().as_str())?;
-    Some(crate::SessionId { host, session })
+    let Some(uris) = Changes::of(store, changes).and_then(|held| held.uris.clone()) else {
+        return;
+    };
+    for (folder, seat, channel) in fresh {
+        fx.push(subscribe_set(changes, folder, seat, channel, uris.clone()));
+    }
 }
 
 fn relaunch_session_poll(
     store: &Store,
     window: crate::WindowId,
-    session: &str,
+    home: &crate::SessionId,
+    changes: imba::store::Id<ChangeSets>,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(feed) = store
-        .get::<Changes>()
-        .and_then(|changes| changes.feed_for(session).cloned())
+    let Some(feed) =
+        Changes::of(store, changes).and_then(|held| held.feed_for(&home.session).cloned())
     else {
         return;
     };
-    let landing = session.to_owned();
-
-    let scope = crate::Gathered::scope(store).cloned();
+    let landing = home.clone();
+    let scope = home.clone();
     fx.push(
         AnyEffect::new(crate::higent::PollSessionEffect {
             seat: feed.seat,
-            session: session.to_owned(),
+            session: home.session.clone(),
         })
         .map(move |actions| {
-            let polled = Arc::new(SessionPolled {
-                session: landing.clone(),
-                actions,
-            });
-            match scope.clone() {
-                Some(scope) => AppCommand::dynamic_in(scope, window, polled),
-                None => AppCommand::Dynamic(window, polled),
-            }
-        }),
-    );
-}
-
-struct SnapshotLanded {
-    folder: ResourceLocation,
-    result: Result<ChangesetState, String>,
-}
-
-impl crate::DynamicCommand for SnapshotLanded {
-    fn id(&self) -> &'static str {
-        "changes.snapshot-landed"
-    }
-    fn name(&self) -> String {
-        "Changes Snapshot".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let refs = installed_refs(store);
-        store.update::<Changes>(|changes| match &self.result {
-            Ok(state) => changes.adopt(&refs, &self.folder, state),
-            Err(error) => changes.adopt_error(&refs, &self.folder, error.clone()),
-        });
-        rearm_stripes(store, &self.folder, fx);
-        if self.result.is_ok() {
-            relaunch_poll(store, window, &self.folder, fx);
-        }
-    }
-}
-
-struct Polled {
-    folder: ResourceLocation,
-    actions: Vec<StateAction>,
-}
-
-impl crate::DynamicCommand for Polled {
-    fn id(&self) -> &'static str {
-        "changes.polled"
-    }
-    fn name(&self) -> String {
-        "Changes Update".to_owned()
-    }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let refs = installed_refs(store);
-        store.update::<Changes>(|changes| changes.fold(&refs, &self.folder, &self.actions));
-        rearm_stripes(store, &self.folder, fx);
-        relaunch_poll(store, window, &self.folder, fx);
-    }
-}
-
-fn rearm_stripes(store: &mut Store, folder: &ResourceLocation, fx: &mut crate::AppFx<'_>) {
-    let authority = folder.authority().clone();
-    let prefix = format!("/{}/", folder.path().join("/"));
-    crate::rearm_base_asks(store, &|location| {
-        location.authority() == &authority
-            && format!("/{}", location.path().join("/")).starts_with(&prefix)
-    });
-    crate::sync_stripe_bases(store, fx);
-}
-
-fn relaunch_poll(
-    store: &Store,
-    window: crate::WindowId,
-    folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
-) {
-    let Some(entry) = Changes::folder(store, folder) else {
-        return;
-    };
-    let Some(channel) = entry.channel else {
-        return;
-    };
-    let landing = folder.clone();
-    let scope = folder_scope(folder);
-    fx.push(
-        AnyEffect::new(PollChangesetEffect {
-            seat: entry.seat,
-            channel,
-        })
-        .map(move |actions| {
-            let polled = Arc::new(Polled {
-                folder: landing.clone(),
-                actions,
-            });
-            match scope.clone() {
-                Some(scope) => AppCommand::dynamic_in(scope, window, polled),
-                None => AppCommand::Dynamic(window, polled),
-            }
+            AppCommand::dynamic_in(
+                scope.clone(),
+                window,
+                Arc::new(SessionPolled {
+                    home: landing.clone(),
+                    changes,
+                    actions,
+                }),
+            )
         }),
     );
 }
@@ -952,26 +1715,28 @@ impl crate::DynamicCommand for OpenDiffForPair {
     fn perform(
         &self,
         _app: &mut crate::Application,
-        _store: &mut Store,
+        store: &mut Store,
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
+        // Resolve both sides on the UI thread — an open side hands over
+        // its live registry snapshot, so the diff is against the live
+        // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
+        let documents = crate::Windows::session_family(store, window)
+            .expect("a diff opens from a window with a session")
+            .documents();
+        let old = crate::DiffSideInput::resolve(store, documents, self.old.clone());
+        let new = crate::DiffSideInput::resolve(store, documents, self.new.clone());
         let _ = fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
             window,
-            old: self.old.clone(),
-            new: self.new.clone(),
+            documents,
+            old,
+            new,
         }));
     }
 }
 
-#[derive(Clone)]
-enum RowItem {
-    Branch,
-
-    File { new: ResourceLocation },
-
-    Note,
-}
+use crate::changes_view::RowItem;
 
 #[derive(Default)]
 pub(crate) struct DirTrie {
@@ -989,13 +1754,25 @@ impl DirTrie {
     }
 }
 
-fn folder_node(
+pub(crate) fn folder_node(
     folder: &ResourceLocation,
     changes: Option<&FolderChanges>,
     items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
     counts: (skia_safe::Color, skia_safe::Color),
 ) -> ForestNode<ResourceLocation> {
-    items.insert_mut(folder.clone(), RowItem::Branch);
+    // The workspace folder ROOT opens the diff canvas
+    // (docs/editor/diff-canvas.md §6); the chevron expands either way.
+    items.insert_mut(
+        folder.clone(),
+        RowItem::Open {
+            source: crate::diff_canvas::CanvasSource::WorkingCopy {
+                folder: folder.clone(),
+            },
+            reveal: None,
+            toggle: false,
+            select: false,
+        },
+    );
     let note = |text: &str, items: &mut rpds::HashTrieMapSync<ResourceLocation, RowItem>| {
         let key = folder.child(ResourceType::new(NOTE_KIND), text);
         items.insert_mut(key.clone(), RowItem::Note);
@@ -1023,10 +1800,12 @@ fn folder_node(
                 }
                 struct Sink<'a> {
                     items: &'a mut rpds::HashTrieMapSync<ResourceLocation, RowItem>,
+                    folder: &'a ResourceLocation,
                 }
                 impl DirSink for Sink<'_> {
                     fn branch(&mut self, key: &ResourceLocation) {
-                        self.items.insert_mut(key.clone(), RowItem::Branch);
+                        self.items
+                            .insert_mut(key.clone(), RowItem::Branch { select: false });
                     }
 
                     fn file_key(
@@ -1037,15 +1816,23 @@ fn folder_node(
                         entry.working.clone()
                     }
                     fn file(&mut self, entry: &ChangeEntry, key: &ResourceLocation) {
+                        // A file row REVEALS itself in the folder's
+                        // canvas — the canvas row keys are these
+                        // same locations.
                         self.items.insert_mut(
                             key.clone(),
-                            RowItem::File {
-                                new: entry.working.clone(),
+                            RowItem::Open {
+                                source: crate::diff_canvas::CanvasSource::WorkingCopy {
+                                    folder: self.folder.clone(),
+                                },
+                                reveal: Some(entry.working.clone()),
+                                toggle: false,
+                                select: true,
                             },
                         );
                     }
                 }
-                dir_forest(folder, trie, counts, &mut Sink { items })
+                dir_forest(folder, trie, counts, &mut Sink { items, folder })
             }
         },
     };
@@ -1125,356 +1912,6 @@ pub(crate) fn dir_forest(
     children
 }
 
-pub enum ChangesCommand {
-    Rows(SpeedSearchCommand<TreeListCommand>),
-
-    Refetch(ResourceLocation),
-
-    Select(isize),
-
-    Fold(bool),
-
-    Pick,
-
-    Refresh,
-
-    Dismiss,
-}
-
-pub struct ChangesView {
-    list: SpeedSearchView<ForestList<ResourceLocation>, ForestSearcher<ResourceLocation>>,
-    items: rpds::HashTrieMapSync<ResourceLocation, RowItem>,
-
-    workspace: crate::SessionId,
-
-    window: crate::WindowId,
-
-    seen: u64,
-    request: Option<ModalRequest>,
-}
-
-impl Clone for ChangesView {
-    fn clone(&self) -> Self {
-        Self {
-            list: self.list.clone(),
-            items: self.items.clone(),
-            workspace: self.workspace.clone(),
-            window: self.window,
-            seen: self.seen,
-
-            request: None,
-        }
-    }
-}
-
-impl ChangesView {
-    pub fn open(
-        store: &Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        workspace: crate::SessionId,
-    ) -> Self {
-        let mut panel = Self {
-            list: SpeedSearchView::new(
-                ForestList::new(store),
-                ForestSearcher::default(),
-                store,
-                ui,
-                crate::env::Fonts::of(store),
-            ),
-            items: rpds::HashTrieMapSync::new_sync(),
-            workspace,
-            window,
-            seen: 0,
-            request: None,
-        };
-        panel.refresh(store, ui);
-        panel
-    }
-
-    pub fn row_count(&self) -> usize {
-        self.list.inner().list().len()
-    }
-
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn rows(&self) -> Vec<(u8, String, bool)> {
-        self.list.inner().forest.rows_trailed()
-    }
-
-    fn refresh(&mut self, store: &Store, ui: &UiCtx) {
-        self.seen = Changes::generation(store);
-        let mut items = rpds::HashTrieMapSync::new_sync();
-        let chat = crate::env::Themes::of(store).ui().chat.clone();
-        let counts = (chat.added_color.0, chat.removed_color.0);
-        let nodes: Vec<ForestNode<ResourceLocation>> =
-            crate::higent::session_folders(store, &self.workspace)
-                .iter()
-                .map(|folder| {
-                    folder_node(
-                        folder,
-                        Changes::folder(store, folder).as_ref(),
-                        &mut items,
-                        counts,
-                    )
-                })
-                .collect();
-        self.items = items;
-        self.list.inner_mut().set(&nodes, store, ui);
-    }
-
-    pub fn activate(&mut self, index: usize, store: &Store, ui: &UiCtx) {
-        let Some(key) = self.list.inner().list().key_at(index).cloned() else {
-            return;
-        };
-        self.activate_key(&key, store, ui);
-    }
-
-    fn activate_key(&mut self, key: &ResourceLocation, store: &Store, ui: &UiCtx) {
-        match self.items.get(key).cloned() {
-            Some(RowItem::Branch) => {
-                // The workspace folder ROOT opens the diff canvas
-                // (docs/editor/diff-canvas.md §6); inner directories keep
-                // toggling. The chevron expands either way.
-                if crate::higent::session_folders(store, &self.workspace).contains(key) {
-                    self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                            source: crate::diff_canvas::CanvasSource::WorkingCopy {
-                                folder: key.clone(),
-                            },
-                            reveal: None,
-                        }),
-                    )));
-                    return;
-                }
-                self.list.inner_mut().toggle(key, store, ui)
-            }
-            Some(RowItem::File { new }) => {
-                self.list.inner_mut().list_mut().select_only(key.clone());
-
-                // A file row REVEALS itself in the folder's canvas —
-                // the canvas row keys are these same locations.
-                let folder = crate::higent::session_folders(store, &self.workspace)
-                    .into_iter()
-                    .find(|folder| {
-                        folder.authority() == new.authority()
-                            && new.path().starts_with(folder.path())
-                    });
-                let Some(folder) = folder else {
-                    return;
-                };
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(crate::diff_canvas::OpenDiffCanvas {
-                        source: crate::diff_canvas::CanvasSource::WorkingCopy { folder },
-                        reveal: Some(new),
-                    }),
-                )));
-            }
-            Some(RowItem::Note) | None => {}
-        }
-    }
-}
-
-impl View for ChangesView {
-    type Command = ChangesCommand;
-
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w UiCtx,
-    ) -> imba::focus::FocusData<'w, ChangesCommand> {
-        use imba::focus::FocusData;
-        let searching = self.list.searching();
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, _mods| match key {
-                InputKey::Escape if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                InputKey::Up if !searching => EventResult::Command(ChangesCommand::Select(-1)),
-                InputKey::Down if !searching => EventResult::Command(ChangesCommand::Select(1)),
-                InputKey::Left if !searching => EventResult::Command(ChangesCommand::Fold(false)),
-                InputKey::Right if !searching => EventResult::Command(ChangesCommand::Fold(true)),
-                InputKey::Enter if searching => EventResult::Commands(vec![
-                    ChangesCommand::Pick,
-                    ChangesCommand::Rows(SpeedSearchCommand::Clear),
-                ]),
-                InputKey::Enter => EventResult::Command(ChangesCommand::Pick),
-                _ => EventResult::Ignored,
-            })),
-            ..FocusData::default()
-        };
-        own.merge_under(self.list.focus_data(store, ui).map(ChangesCommand::Rows))
-    }
-
-    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
-        fx.scope(ChangesCommand::Rows, |fx| self.list.clear(store, ui, fx));
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match command {
-            ChangesCommand::Rows(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some(index) = crate::tree_action(inner) {
-                        if let Some(folder) = self.list.inner().list().key_at(index).cloned() {
-                            return self.perform(store, ui, ChangesCommand::Refetch(folder), fx);
-                        }
-                    }
-                    if let Some((index, _)) = crate::tree_interaction(inner) {
-                        return self.activate(index, store, ui);
-                    }
-                }
-                fx.scope(ChangesCommand::Rows, |fx| {
-                    self.list.perform(store, ui, command, fx)
-                });
-            }
-
-            ChangesCommand::Select(delta) => self.list.inner_mut().list_mut().cursor_step(delta),
-            ChangesCommand::Fold(expand) => self.list.inner_mut().fold_cursor(expand, store, ui),
-            ChangesCommand::Pick => {
-                if let Some(key) = self.list.inner().list().cursor().cloned() {
-                    self.activate_key(&key, store, ui);
-                }
-            }
-            ChangesCommand::Refresh => self.refresh(store, ui),
-            ChangesCommand::Refetch(folder) => {
-                self.request = Some(ModalRequest::Perform(AppCommand::Dynamic(
-                    self.window,
-                    Arc::new(RefetchChanges {
-                        folder: Some(folder),
-                    }),
-                )));
-            }
-            ChangesCommand::Dismiss => {
-                self.request = Some(ModalRequest::Close);
-            }
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let mut overlay = container(arena, size);
-
-            // The commit composer lives in the diff canvas's first
-            // row and REFRESH rides each repository's root row — the
-            // dock is just the tree.
-            let band = PANEL_PAD;
-            let rows = imba::Layout::layout(
-                self.list.display(arena, store, ui),
-                arena,
-                Constraints::tight(Size::new(size.width, size.height - band)),
-            )
-            .map(ChangesCommand::Rows);
-            overlay.place(0.0, band, rows);
-
-            let searching = self.list.searching();
-            let keymap = leaf::<ChangesCommand>(size.width, size.height).event(
-                move |_arena, event, _size| match event {
-                    Event::KeyDown {
-                        key: InputKey::Escape,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Dismiss),
-                    Event::KeyDown {
-                        key: InputKey::Up, ..
-                    } if !searching => EventResult::Command(ChangesCommand::Select(-1)),
-                    Event::KeyDown {
-                        key: InputKey::Down,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Select(1)),
-                    Event::KeyDown {
-                        key: InputKey::Left,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Fold(false)),
-                    Event::KeyDown {
-                        key: InputKey::Right,
-                        ..
-                    } if !searching => EventResult::Command(ChangesCommand::Fold(true)),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } if searching => EventResult::Commands(vec![
-                        ChangesCommand::Pick,
-                        ChangesCommand::Rows(SpeedSearchCommand::Clear),
-                    ]),
-                    Event::KeyDown {
-                        key: InputKey::Enter,
-                        ..
-                    } => EventResult::Command(ChangesCommand::Pick),
-                    _ => EventResult::Ignored,
-                },
-            );
-            overlay.place(0.0, 0.0, keymap);
-
-            let stale = Changes::generation(store) != self.seen;
-            overlay.wrap(move |inner| ReconcileShell { inner, stale })
-        })
-    }
-}
-
-struct ReconcileShell<Inner> {
-    inner: Inner,
-    stale: bool,
-}
-
-impl<'a, Inner: Widget<'a, ChangesCommand>> Widget<'a, ChangesCommand> for ReconcileShell<Inner> {
-    fn size(&self) -> Size {
-        self.inner.size()
-    }
-
-    fn overlays(&mut self) -> Vec<imba::overlay::Overlay<'a, ChangesCommand>> {
-        self.inner.overlays()
-    }
-
-    fn handle_event(
-        &self,
-        arena: &Arena,
-        event: &Event<'_>,
-        viewport: Rect,
-    ) -> EventResult<ChangesCommand> {
-        let result = self.inner.handle_event(arena, event, viewport);
-        if matches!(event, Event::Paint { .. }) && self.stale {
-            return result.merge(EventResult::Command(ChangesCommand::Refresh));
-        }
-        result
-    }
-
-    fn layout_data<'w>(
-        &'w mut self,
-        target: imba::focus::SeatKey,
-    ) -> imba::focus::LayoutData<'w, ChangesCommand>
-    where
-        'a: 'w,
-    {
-        self.inner.layout_data(target)
-    }
-}
-
-impl ModalView for ChangesView {
-    fn clone_modal(&self) -> Box<dyn ModalView> {
-        Box::new(self.clone())
-    }
-
-    fn take_request(&mut self) -> Option<ModalRequest> {
-        self.request.take()
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
-
 pub struct ToggleChangesView;
 
 impl crate::DynamicCommand for ToggleChangesView {
@@ -1497,18 +1934,40 @@ impl crate::DynamicCommand for ToggleChangesView {
             crate::Windows::put(store, window, entity);
             return;
         }
+        // The pane closes over the window's family: its change sets
+        // by id, the session only as the catalog's name for the folders.
         let workspace = entity.current_session();
-        Changes::ensure(store, window, workspace.clone(), fx);
+        let changes = entity.family().changes();
+        let folders = crate::higent::session_folders(store, &workspace);
+        Changes::ensure(store, window, changes, folders, fx);
 
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let panel = ChangesView::open(store, &_app.ui_ctx(), window, workspace);
+        let view = Changes::mint_view(
+            store,
+            changes,
+            crate::changes_view::ChangesView::open(
+                store,
+                &_app.ui_ctx(),
+                window,
+                changes,
+                workspace,
+                crate::changes_view::ViewSets::WorkingCopies,
+            ),
+        );
         let owner = self.id();
         fx.scope(
             move |command| crate::AppCommand::Content(window, command),
-            |fx| entity.show_dock(store, Box::new(panel), owner, fx),
+            |fx| {
+                entity.show_dock(
+                    store,
+                    Box::new(crate::changes_view::ChangesPane::new(changes, view)),
+                    owner,
+                    fx,
+                )
+            },
         );
         crate::Windows::put(store, window, entity);
     }
@@ -1518,6 +1977,10 @@ impl crate::DynamicCommand for ToggleChangesView {
 /// riding folder's otherwise (the palette / test road).
 #[derive(Default)]
 pub struct RefetchChanges {
+    /// The collection to refetch. `None` means "the window's family's",
+    /// resolved when the command performs — a command registered into
+    /// the palette holds no id at registration.
+    pub changes: Option<imba::store::Id<ChangeSets>>,
     pub folder: Option<ResourceLocation>,
 }
 
@@ -1535,7 +1998,12 @@ impl crate::DynamicCommand for RefetchChanges {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        Changes::refetch(store, window, fx, self.folder.as_ref());
+        let Some(changes) = self.changes.or_else(|| {
+            crate::Windows::session_family(store, window).map(|family| family.changes())
+        }) else {
+            return;
+        };
+        Changes::refetch(store, changes, window, fx, self.folder.as_ref());
     }
 }
 

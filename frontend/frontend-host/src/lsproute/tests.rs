@@ -17,6 +17,8 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
         claude_home: dir.path().join("dot-claude"),
         codex_home: dir.path().join("dot-codex"),
         shell: "/bin/sh".to_owned(),
+        fsp_binary: None,
+        fsp_data_dir: dir.path().join("fsp"),
         language_servers: vec![agent_host::LanguageServer {
             extensions: vec!["rs".to_owned()],
             command: agent_host::testing::fake_ls_command(dir.path()),
@@ -48,7 +50,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
     ));
 
     block_on(seat.dispatch_action(
-        host_discovery::LOCAL_FS_SESSION.to_owned(),
+        himark::higent::ChannelUri::new(host_discovery::LOCAL_FS_SESSION),
         himark::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
             himark::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
                 directory: format!("file://{}", root.display()),
@@ -63,7 +65,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
             let (server, _) = himark::higent::seat::parse("ahp:1:x").expect("id");
             server
         },
-        &host_discovery::LOCAL_FS_SESSION.to_owned(),
+        &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
     directory.record(server, seat);

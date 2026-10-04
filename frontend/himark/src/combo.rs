@@ -14,8 +14,9 @@ use imba::{
 };
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
-use crate::speedsearch::{ItemSource, Searcher, SpeedSearchCommand, SpeedSearchView};
+use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
 use ::editor::theme::ComboChrome;
+use imba::list::{ActivateTrigger, ListOps};
 
 const MENU_MAX_ROWS: usize = 9;
 
@@ -33,7 +34,7 @@ pub trait ComboItem: View + Clone + Send + Sync + 'static {
     }
 }
 
-fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
+pub(crate) fn measured<T: ComboItem>(item: &T, store: &Store, ui: &UiCtx) -> Size
 where
     T::Command: Send + 'static,
 {
@@ -155,30 +156,43 @@ where
 {
     pub label: &'static str,
 
+    /// A compact cell drops the legend label once a value is picked —
+    /// the label only serves as the placeholder.
+    pub compact: bool,
+
     pub picked: usize,
     pub open: bool,
-    menu: SpeedSearchView<OptionList<T>, OptionSearcher<T>>,
+    menu: ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
 }
 
+#[derive(Clone)]
 pub enum ComboCommand<C = std::convert::Infallible> {
     Open,
     Close,
 
-    Select(isize),
     Pick(usize),
 
-    PickCursor,
+    Menu(Box<ListKeyCommand<ScrollCommand<ListCommand<C>>>>),
+}
 
-    Menu(Box<SpeedSearchCommand<ScrollCommand<ListCommand<C>>>>),
+impl<C: std::fmt::Display> std::fmt::Display for ComboCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ComboCommand::Menu(command) => command.fmt(out),
+            ComboCommand::Open => out.write_str("combo open"),
+            ComboCommand::Close => out.write_str("combo close"),
+            ComboCommand::Pick(_) => out.write_str("combo pick"),
+        }
+    }
 }
 
 impl<C> ComboCommand<C> {
     pub fn picks(&self) -> bool {
         match self {
-            ComboCommand::Pick(_) | ComboCommand::PickCursor => true,
+            ComboCommand::Pick(_) => true,
             ComboCommand::Menu(command) => matches!(
                 command.as_ref(),
-                SpeedSearchCommand::Inner(ScrollCommand::Content(ListCommand::Focus(_, _)))
+                ListKeyCommand::Inner(ScrollCommand::Content(ListCommand::Activate(..)))
             ),
             _ => false,
         }
@@ -192,9 +206,10 @@ where
     pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, label: &'static str) -> Self {
         Self {
             label,
+            compact: false,
             picked: 0,
             open: false,
-            menu: SpeedSearchView::new(
+            menu: ListKeyboardController::searchable(
                 ScrollView::new(
                     ListView::empty().with_selection(imba::list::SelectionStyle::default()),
                 ),
@@ -269,20 +284,24 @@ where
         self.list().is_empty()
     }
 
-    fn cursor_index(&self) -> Option<usize> {
-        let key = self.list().cursor()?.clone();
-        Some(self.list().row_range(&key)?.start)
-    }
-
     pub fn cell_width(&self, ui: &UiCtx, chrome: &ComboChrome) -> f32 {
         let label_font = crate::fonts::ui_font(ui, chrome.label_size);
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
-        let label = tracked_width(&label_font, self.label);
         let value = self
             .value()
-            .map(|option| measured_plain(&value_font, &option.cell_label()))
-            .unwrap_or(0.0);
-        chrome.pad + label + chrome.gap + value + chrome.gap + chrome.chevron + chrome.pad
+            .map(|option| imba::text_advance(ui, &value_font, &option.cell_label()));
+        let label = match self.compact && value.is_some() {
+            true => None,
+            false => Some(tracked_width(ui, &label_font, self.label)),
+        };
+        let mut width = chrome.pad;
+        if let Some(label) = label {
+            width += label + chrome.gap;
+        }
+        if let Some(value) = value {
+            width += value;
+        }
+        width + chrome.gap + chrome.chevron + chrome.pad
     }
 
     pub fn cell<'a>(
@@ -300,8 +319,11 @@ where
         let width = self.cell_width(ui, &chrome);
         let label_font = crate::fonts::ui_font(ui, chrome.label_size);
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
-        let label = self.label;
         let value = self.value().map(|option| option.cell_label());
+        let label = match self.compact && value.is_some() {
+            true => None,
+            false => Some(self.label),
+        };
         let open = self.open;
 
         let cell = leaf::<ComboCommand<T::Command>>(width, height)
@@ -310,6 +332,7 @@ where
                 let label_font = label_font.clone();
                 let value_font = value_font.clone();
                 let value = value.clone();
+                let shaper = imba::TextShaper::of(ui);
                 move |_arena, canvas, rect| {
                     let mut paint = Paint::default();
                     paint.set_anti_alias(false);
@@ -322,25 +345,28 @@ where
 
                     let mut x = rect.left + chrome.pad;
                     let mid = rect.top + rect.height() * 0.5;
-                    paint.set_color(chrome.label_color.0);
-                    x = draw_tracked(
-                        canvas,
-                        &label_font,
-                        &paint,
-                        label,
-                        x,
-                        mid + chrome.label_size * 0.35,
-                    );
-                    x += chrome.gap;
-                    if let Some(value) = &value {
-                        paint.set_color(chrome.value_color.0);
-                        canvas.draw_str(
-                            value.as_str(),
-                            (x, mid + chrome.value_size * 0.35),
-                            &value_font,
-                            &paint,
+                    if let Some(label) = label {
+                        x = draw_tracked(
+                            &shaper,
+                            canvas,
+                            &label_font,
+                            chrome.label_color.0,
+                            label,
+                            x,
+                            mid + chrome.label_size * 0.35,
                         );
-                        x += value_font.measure_str(value.as_str(), None).0;
+                        x += chrome.gap;
+                    }
+                    if let Some(value) = &value {
+                        x += shaper.draw(
+                            canvas,
+                            &value_font,
+                            value,
+                            chrome.value_color.0,
+                            0.0,
+                            x,
+                            mid + chrome.value_size * 0.35,
+                        );
                     }
                     x += chrome.gap;
                     let mut chevron = Paint::default();
@@ -405,16 +431,11 @@ where
         ui: &'w imba::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::focus::FocusData;
+        // The key table is the controller's; the surface keeps only
+        // its own close.
         let searching = self.menu.searching();
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match key {
-                Key::Up if !searching => EventResult::Command(ComboCommand::Select(-1)),
-                Key::Down if !searching => EventResult::Command(ComboCommand::Select(1)),
-                Key::Enter if searching => EventResult::Commands(vec![
-                    ComboCommand::PickCursor,
-                    ComboCommand::Menu(Box::new(SpeedSearchCommand::Clear)),
-                ]),
-                Key::Enter => EventResult::Command(ComboCommand::PickCursor),
                 Key::Escape if !searching => EventResult::Command(ComboCommand::Close),
                 _ => EventResult::Ignored,
             })),
@@ -448,15 +469,13 @@ where
                     |fx| self.menu.clear(store, ui, fx),
                 );
                 if let Some(key) = self.list().key_at(self.picked).cloned() {
+                    // select_only arms the reveal — the opened menu
+                    // scrolls the standing pick into view.
                     self.list_mut().select_only(key);
-                    self.list_mut().cursor_step(0);
                 }
             }
             ComboCommand::Close => {
                 self.open = false;
-            }
-            ComboCommand::Select(delta) => {
-                self.list_mut().cursor_step(delta);
             }
             ComboCommand::Pick(index) => {
                 let selectable = index < self.len()
@@ -470,20 +489,19 @@ where
                     self.picked = index;
                 }
             }
-            ComboCommand::PickCursor => {
-                self.open = false;
-                if let Some(index) = self.cursor_index() {
-                    self.picked = index;
-                }
-            }
             ComboCommand::Menu(command) => {
-                if let SpeedSearchCommand::Inner(ScrollCommand::Content(ListCommand::Focus(
-                    index,
-                    _,
-                ))) = command.as_ref()
-                {
-                    let index = *index;
+                type Menu<T> = ListKeyboardController<OptionList<T>, OptionSearcher<T>>;
+                if let Some((index, trigger)) = Menu::<T>::activated(command.as_ref()) {
+                    let searching = self.menu.searching();
                     self.perform(store, ui, ComboCommand::Pick(index), fx);
+                    if let (ActivateTrigger::Enter, true) = (trigger, searching) {
+                        return self.perform(
+                            store,
+                            ui,
+                            ComboCommand::Menu(Box::new(ListKeyCommand::Clear)),
+                            fx,
+                        );
+                    }
                     return;
                 }
                 fx.scope(
@@ -508,77 +526,31 @@ where
     }
 }
 
-fn measured_tracked(font: &Font, text: &str) -> (f32, std::rc::Rc<[f32]>) {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    thread_local! {
-        static MEMO: RefCell<HashMap<u32, HashMap<String, (f32, std::rc::Rc<[f32]>)>>> =
-            RefCell::new(HashMap::new());
-    }
-    MEMO.with(|memo| {
-        let mut memo = memo.borrow_mut();
-        let by_text = memo.entry(font.size().to_bits()).or_default();
-        if let Some(hit) = by_text.get(text) {
-            return hit.clone();
-        }
-        let mut advances = Vec::new();
-        let mut total = 0.0f32;
-        for (at, ch) in text.char_indices() {
-            let advance = font.measure_str(&text[at..at + ch.len_utf8()], None).0 + 1.5;
-            advances.push(advance);
-            total += advance;
-        }
-        let entry = (total, std::rc::Rc::from(advances));
-        by_text.insert(text.to_owned(), entry.clone());
-        entry
-    })
-}
+/// The per-glyph tracking of chrome caps labels — `Text::tracking`
+/// takes the same value where labels ride the layout path.
+pub(crate) const LABEL_TRACKING: f32 = 1.5;
 
-pub(crate) fn tracked_width(font: &Font, text: &str) -> f32 {
-    measured_tracked(font, text).0
-}
-
-fn measured_plain(font: &Font, text: &str) -> f32 {
-    use std::cell::RefCell;
-    use std::collections::HashMap;
-    thread_local! {
-        static MEMO: RefCell<HashMap<u32, HashMap<String, f32>>> =
-            RefCell::new(HashMap::new());
-    }
-    MEMO.with(|memo| {
-        let mut memo = memo.borrow_mut();
-        let by_text = memo.entry(font.size().to_bits()).or_default();
-        if let Some(hit) = by_text.get(text) {
-            return *hit;
-        }
-        let width = font.measure_str(text, None).0;
-        by_text.insert(text.to_owned(), width);
-        width
-    })
+pub(crate) fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
+    imba::TextShaper::of(ui).tracked_advance(font, text, LABEL_TRACKING)
 }
 
 pub(crate) fn draw_tracked(
+    shaper: &imba::TextShaper,
     canvas: &skia_safe::Canvas,
     font: &Font,
-    paint: &Paint,
+    color: skia_safe::Color,
     text: &str,
     x: f32,
     baseline: f32,
 ) -> f32 {
-    let (_, advances) = measured_tracked(font, text);
-    let mut x = x;
-    for ((at, ch), advance) in text.char_indices().zip(advances.iter()) {
-        canvas.draw_str(&text[at..at + ch.len_utf8()], (x, baseline), font, paint);
-        x += advance;
-    }
-    x
+    x + shaper.draw(canvas, font, text, color, LABEL_TRACKING, x, baseline)
 }
 
 struct MenuSeed<'a, T: ComboItem>
 where
     T::Command: Send + 'static,
 {
-    menu: &'a SpeedSearchView<OptionList<T>, OptionSearcher<T>>,
+    menu: &'a ListKeyboardController<OptionList<T>, OptionSearcher<T>>,
     store: &'a Store,
     ui: &'a UiCtx,
     chrome: ComboChrome,
@@ -654,27 +626,14 @@ where
         .map(|command| ComboCommand::Menu(Box::new(command)));
         menu.place(1.0, 1.0, rows);
 
+        // The key table lives in the controller's own overlay; the
+        // menu keeps only its close.
         let searching = self.searching;
         menu.place(
             0.0,
             0.0,
             leaf::<ComboCommand<T::Command>>(width, height).event(move |_arena, event, _size| {
                 match event {
-                    Event::KeyDown { key: Key::Up, .. } if !searching => {
-                        EventResult::Command(ComboCommand::Select(-1))
-                    }
-                    Event::KeyDown { key: Key::Down, .. } if !searching => {
-                        EventResult::Command(ComboCommand::Select(1))
-                    }
-                    Event::KeyDown {
-                        key: Key::Enter, ..
-                    } if searching => EventResult::Commands(vec![
-                        ComboCommand::PickCursor,
-                        ComboCommand::Menu(Box::new(SpeedSearchCommand::Clear)),
-                    ]),
-                    Event::KeyDown {
-                        key: Key::Enter, ..
-                    } => EventResult::Command(ComboCommand::PickCursor),
                     Event::KeyDown {
                         key: Key::Escape, ..
                     } if !searching => EventResult::Command(ComboCommand::Close),
@@ -744,8 +703,16 @@ mod tests {
 
         drive(&mut combo, &mut store, &ui, ComboCommand::Open);
         assert!(combo.open);
-        drive(&mut combo, &mut store, &ui, ComboCommand::Select(2));
-        drive(&mut combo, &mut store, &ui, ComboCommand::PickCursor);
+        // Two steps down and Enter, through the same commands the
+        // controller's key table emits.
+        let step = combo.menu.step_index(2).expect("a stepped row");
+        let select = ComboCommand::Menu(Box::new(combo.menu.select_command(step)));
+        drive(&mut combo, &mut store, &ui, select);
+        let at = combo.menu.cursor_index().expect("a cursor row");
+        let pick = ComboCommand::Menu(Box::new(
+            combo.menu.activate_command(at, ActivateTrigger::Enter),
+        ));
+        drive(&mut combo, &mut store, &ui, pick);
         assert!(!combo.open);
         assert_eq!(combo.value().expect("picked").id, "id-9");
     }

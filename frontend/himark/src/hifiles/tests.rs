@@ -5,6 +5,25 @@ use crate::ResourceType;
 
 use super::*;
 
+fn open_view(
+    store: &mut Store,
+    workspace: crate::SessionId,
+    reveal: Option<ResourceLocation>,
+    fx: &mut imba::effect::Effects<'_, TreeCommand>,
+) -> SessionTreeView {
+    let trees = crate::higent::Hosts::ensure_family(store, &workspace).trees();
+    let folders = crate::higent::session_folders(store, &workspace);
+    SessionTreeView::open(
+        store,
+        ::editor::test_document::test_ui(),
+        workspace,
+        trees,
+        &folders,
+        reveal,
+        fx,
+    )
+}
+
 fn location(kind: ResourceType, path: &[&str]) -> ResourceLocation {
     ResourceLocation::new(
         kind,
@@ -29,9 +48,8 @@ fn workspace_with(store: &mut Store, folders: &[ResourceLocation]) -> crate::Ses
 fn listings_grow_and_fold_the_tree() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -108,9 +126,8 @@ fn listings_grow_and_fold_the_tree() {
 fn a_document_click_requests_the_open() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -147,9 +164,8 @@ fn expansion_survives_reopen_and_new_folders_join() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -176,9 +192,8 @@ fn expansion_survives_reopen_and_new_folders_join() {
     drop(view);
 
     crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
-    let reopened = SessionTreeView::open(
+    let reopened = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -192,18 +207,16 @@ fn expansion_survives_reopen_and_new_folders_join() {
     let stashed = store.take::<SessionTree>().unwrap_or_default();
     let second =
         crate::test_support::seed_session_folders(&mut store, &[directory(&["elsewhere"])]);
-    let other_tree = SessionTreeView::open(
+    let other_tree = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         second,
         None,
         &mut imba::effect::Batch::new().effects(),
     );
     assert_eq!(other_tree.row_count(), 1, "only elsewhere; nothing leaked");
     store.put(stashed);
-    let first_again = SessionTreeView::open(
+    let first_again = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -216,13 +229,368 @@ fn expansion_survives_reopen_and_new_folders_join() {
 }
 
 #[test]
+fn folders_added_mid_session_join_on_paint() {
+    let mut store = Store::new();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert_eq!(view.row_count(), 1);
+
+    let paint = |view: &SessionTreeView, store: &Store| -> Vec<TreeCommand> {
+        let arena = imba::arena::Arena::default();
+        let ui = ::editor::test_document::test_ui();
+        let size = skia_safe::Size::new(400.0, 600.0);
+        let widget = imba::Layout::layout(
+            imba::View::display(view, &arena, store, &ui),
+            &arena,
+            imba::constraints::Constraints::tight(size),
+        );
+        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
+        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        match imba::Widget::handle_event(
+            &widget,
+            &arena,
+            &imba::event::Event::Paint {
+                canvas: surface.canvas(),
+                focused: true,
+            },
+            skia_safe::Rect::from_wh(400.0, 600.0),
+        ) {
+            imba::event::EventResult::Command(command) => vec![command],
+            imba::event::EventResult::Commands(commands) => commands,
+            _ => Vec::new(),
+        }
+    };
+
+    assert!(
+        paint(&view, &store).is_empty(),
+        "nothing to sync while the roots match"
+    );
+
+    crate::test_support::add_session_folders(&mut store, &workspace, &[directory(&["other"])]);
+    let commands = paint(&view, &store);
+    assert!(
+        commands
+            .iter()
+            .any(|command| matches!(command, TreeCommand::SyncRoots { .. })),
+        "the paint gate minted the sync"
+    );
+    for command in commands {
+        view.perform(
+            &mut store,
+            ::editor::test_document::test_ui(),
+            command,
+            &mut imba::effect::Batch::new().effects(),
+        );
+    }
+    assert_eq!(view.row_count(), 2, "the added folder joined as a root");
+
+    assert!(
+        paint(&view, &store).is_empty(),
+        "the gate closed once the root stands"
+    );
+}
+
+fn context_press(index: usize) -> TreeCommand {
+    TreeCommand::Rows(crate::ListKeyCommand::Inner(
+        imba::scroll::ScrollCommand::Content(imba::list::ListCommand::Focus(
+            index,
+            Some(Box::new(imba::list::ListCommand::Child(
+                index,
+                crate::TreeItemCommand::Inner(crate::TreeLabelCommand::Context),
+            ))),
+        )),
+    ))
+}
+
+fn menu_activate(index: usize) -> TreeCommand {
+    TreeCommand::Menu(crate::menu::MenuCommand::Rows(Box::new(
+        crate::ListKeyCommand::Inner(imba::scroll::ScrollCommand::Content(
+            imba::list::ListCommand::Activate(index, imba::list::ActivateTrigger::Enter),
+        )),
+    )))
+}
+
+#[test]
+fn a_context_press_menus_and_rename_commits_a_move() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    view.tree.splice_listing(
+        directory(&["project"]),
+        Some(vec![document(&["project", "README.md"])]),
+        &store,
+        ::editor::test_document::test_ui(),
+    );
+
+    view.perform(
+        &mut store,
+        &ui,
+        context_press(1),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    let menu = view.menu.as_ref().expect("the press opened the menu");
+    assert_eq!(menu.target, document(&["project", "README.md"]));
+
+    // A file's items: Rename first, then Delete.
+    view.perform(
+        &mut store,
+        &ui,
+        menu_activate(0),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert!(view.menu.is_none(), "the pick closed the menu");
+    assert!(view.edit.is_some(), "the pick started the rename");
+
+    view.edit.as_mut().expect("editing").input =
+        seeded_input(&store, ::editor::test_document::test_ui(), "CHANGED.md");
+    let mut batch = imba::effect::Batch::new();
+    view.perform(
+        &mut store,
+        &ui,
+        TreeCommand::CommitEdit,
+        &mut batch.effects(),
+    );
+    assert!(view.edit.is_none(), "the commit ended the edit");
+    let launches = crate::test_support::surviving_launches(batch);
+    let moved = launches
+        .iter()
+        .find_map(|effect| effect.get::<crate::MoveResourceEffect>())
+        .expect("the commit launched the move");
+    assert_eq!(moved.from, document(&["project", "README.md"]));
+    assert_eq!(moved.to, document(&["project", "CHANGED.md"]));
+}
+
+#[test]
+fn new_file_rides_a_placeholder_row_and_creates() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+
+    view.perform(
+        &mut store,
+        &ui,
+        context_press(0),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert!(view.menu.is_some());
+    // A root directory's items: New File first, then Remove.
+    view.perform(
+        &mut store,
+        &ui,
+        menu_activate(0),
+        &mut imba::effect::Batch::new().effects(),
+    );
+    assert!(view.edit.is_some(), "the pick started the create");
+    assert_eq!(view.row_count(), 2, "the placeholder row joined");
+
+    view.edit.as_mut().expect("editing").input =
+        seeded_input(&store, ::editor::test_document::test_ui(), "new.txt");
+    let mut batch = imba::effect::Batch::new();
+    view.perform(
+        &mut store,
+        &ui,
+        TreeCommand::CommitEdit,
+        &mut batch.effects(),
+    );
+    assert_eq!(view.row_count(), 1, "the placeholder left with the commit");
+    let launches = crate::test_support::surviving_launches(batch);
+    let created = launches
+        .iter()
+        .find_map(|effect| effect.get::<crate::CreateDocumentEffect>())
+        .expect("the commit launched the create");
+    assert_eq!(created.location, document(&["project", "new.txt"]));
+}
+
+#[test]
+fn an_empty_or_slashed_name_keeps_the_editor() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    view.start_create(
+        directory(&["project"]),
+        &store,
+        ::editor::test_document::test_ui(),
+    );
+    for bad in ["", "  ", "a/b", ".."] {
+        view.edit.as_mut().expect("editing").input =
+            seeded_input(&store, ::editor::test_document::test_ui(), bad);
+        let mut batch = imba::effect::Batch::new();
+        view.perform(
+            &mut store,
+            &ui,
+            TreeCommand::CommitEdit,
+            &mut batch.effects(),
+        );
+        assert!(view.edit.is_some(), "{bad:?} does not commit");
+        assert!(crate::test_support::surviving_launches(batch).is_empty());
+    }
+}
+
+#[test]
+fn an_unfocused_paint_cancels_the_edit() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(&mut store, &[directory(&["project"])]);
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    view.start_create(
+        directory(&["project"]),
+        &store,
+        ::editor::test_document::test_ui(),
+    );
+    assert_eq!(view.row_count(), 2);
+
+    let commands = {
+        let arena = imba::arena::Arena::default();
+        let test_ui = ::editor::test_document::test_ui();
+        let widget = imba::Layout::layout(
+            imba::View::display(&view, &arena, &store, test_ui),
+            &arena,
+            imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
+        );
+        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
+        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        match imba::Widget::handle_event(
+            &widget,
+            &arena,
+            &imba::event::Event::Paint {
+                canvas: surface.canvas(),
+                focused: false,
+            },
+            skia_safe::Rect::from_wh(400.0, 600.0),
+        ) {
+            imba::event::EventResult::Command(command) => vec![command],
+            imba::event::EventResult::Commands(commands) => commands,
+            _ => Vec::new(),
+        }
+    };
+    assert!(
+        commands
+            .iter()
+            .any(|command| matches!(command, TreeCommand::CancelEdit)),
+        "losing focus cancels"
+    );
+    for command in commands {
+        view.perform(
+            &mut store,
+            &ui,
+            command,
+            &mut imba::effect::Batch::new().effects(),
+        );
+    }
+    assert!(view.edit.is_none());
+    assert_eq!(view.row_count(), 1, "the placeholder left with the cancel");
+}
+
+#[test]
+fn a_departed_folder_leaves_the_tree_on_paint() {
+    let mut store = Store::new();
+    let ui = UiCtx::dont_use_too_slow();
+    let workspace = workspace_with(
+        &mut store,
+        &[directory(&["project"]), directory(&["other"])],
+    );
+    let mut view = open_view(
+        &mut store,
+        workspace.clone(),
+        None,
+        &mut imba::effect::Batch::new().effects(),
+    );
+    view.tree.splice_listing(
+        directory(&["other"]),
+        Some(vec![document(&["other", "a.md"])]),
+        &store,
+        ::editor::test_document::test_ui(),
+    );
+    assert_eq!(view.row_count(), 3);
+
+    // The session drops `other` (the removal echo landed in the
+    // channel mirror).
+    let mut channel = crate::higent::Agents::channel(&store, &workspace).expect("seeded");
+    channel.working_directories = channel
+        .working_directories
+        .iter()
+        .filter(|held| !held.contains("other"))
+        .cloned()
+        .collect();
+    crate::higent::Agents::set_channel(&mut store, &workspace, channel);
+
+    let commands = {
+        let arena = imba::arena::Arena::default();
+        let test_ui = ::editor::test_document::test_ui();
+        let widget = imba::Layout::layout(
+            imba::View::display(&view, &arena, &store, test_ui),
+            &arena,
+            imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
+        );
+        let widget = imba::Thunk::realize(widget, &arena, skia_safe::Rect::from_wh(400.0, 600.0));
+        let mut surface = skia_safe::surfaces::raster_n32_premul((400, 600)).expect("a surface");
+        match imba::Widget::handle_event(
+            &widget,
+            &arena,
+            &imba::event::Event::Paint {
+                canvas: surface.canvas(),
+                focused: true,
+            },
+            skia_safe::Rect::from_wh(400.0, 600.0),
+        ) {
+            imba::event::EventResult::Command(command) => vec![command],
+            imba::event::EventResult::Commands(commands) => commands,
+            _ => Vec::new(),
+        }
+    };
+    assert!(
+        commands.iter().any(
+            |command| matches!(command, TreeCommand::SyncRoots { stale, .. } if !stale.is_empty())
+        ),
+        "the gate flagged the departed root"
+    );
+    for command in commands {
+        view.perform(
+            &mut store,
+            &ui,
+            command,
+            &mut imba::effect::Batch::new().effects(),
+        );
+    }
+    assert_eq!(view.row_count(), 1, "the root and its subtree left");
+    assert!(view.tree.is_visible(&directory(&["project"])));
+}
+
+#[test]
 fn dismissal_files_the_close() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -243,9 +611,8 @@ fn dismissal_files_the_close() {
 fn a_stale_listing_drops() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -313,9 +680,8 @@ fn expanded_folders_watch_and_events_relist() {
     let mut store = Store::new();
     crate::Watching::install(&mut store);
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -405,9 +771,8 @@ fn cursor_walks_and_enter_opens() {
     let mut store = Store::new();
     let ui = UiCtx::dont_use_too_slow();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace.clone(),
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -427,6 +792,9 @@ fn cursor_walks_and_enter_opens() {
         &store,
         ::editor::test_document::test_ui(),
     );
+    // The commands the controller's key table emits, verbatim
+    // (docs/ui/list-keyboard.md §3).
+    use imba::list::{ActivateTrigger, ListOps};
     let mut drive = |view: &mut SessionTreeView, command| {
         view.perform(
             &mut store,
@@ -435,19 +803,40 @@ fn cursor_walks_and_enter_opens() {
             &mut imba::effect::Batch::new().effects(),
         );
     };
+    let step = |view: &SessionTreeView, delta| {
+        let index = view.tree.list.step_index(delta).expect("a stepped row");
+        TreeCommand::Rows(view.tree.list.select_command(index))
+    };
+    let enter = |view: &SessionTreeView| {
+        let index = view.tree.list.cursor_index().expect("a cursor row");
+        TreeCommand::Rows(
+            view.tree
+                .list
+                .activate_command(index, ActivateTrigger::Enter),
+        )
+    };
+    let fold = |view: &SessionTreeView, expand| {
+        let index = view.tree.list.cursor_index().expect("a cursor row");
+        TreeCommand::Rows(crate::ListKeyCommand::Fold { index, expand })
+    };
 
-    drive(&mut view, TreeCommand::Select(1));
-    drive(&mut view, TreeCommand::Select(1));
+    let command = step(&view, 1);
+    drive(&mut view, command);
+    let command = step(&view, 1);
+    drive(&mut view, command);
     assert_eq!(view.selected_name().as_deref(), Some("README.md"));
-    drive(&mut view, TreeCommand::Pick);
+    let command = enter(&view);
+    drive(&mut view, command);
     let Some(ModalRequest::OpenLocations(locations)) = view.take_request() else {
         panic!("Enter opens the selected document");
     };
     assert_eq!(locations, vec![document(&["project", "README.md"])]);
 
-    drive(&mut view, TreeCommand::Fold(false));
+    let command = fold(&view, false);
+    drive(&mut view, command);
     assert_eq!(view.selected_name().as_deref(), Some("project"));
-    drive(&mut view, TreeCommand::Fold(false));
+    let command = fold(&view, false);
+    drive(&mut view, command);
     assert_eq!(view.row_count(), 1, "the fold took the subtree");
 }
 
@@ -455,9 +844,8 @@ fn cursor_walks_and_enter_opens() {
 fn a_relist_keeps_expanded_subtrees() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),
@@ -549,9 +937,8 @@ fn a_relist_keeps_expanded_subtrees() {
 fn a_theme_switch_re_resolves_the_selection_style() {
     let mut store = Store::new();
     let workspace = workspace_with(&mut store, &[directory(&["project"])]);
-    let mut view = SessionTreeView::open(
+    let mut view = open_view(
         &mut store,
-        ::editor::test_document::test_ui(),
         workspace,
         None,
         &mut imba::effect::Batch::new().effects(),

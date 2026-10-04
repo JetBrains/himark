@@ -7,13 +7,13 @@ use super::*;
 struct NullInlay;
 
 impl View for NullInlay {
-    type Command = ();
+    type Command = std::convert::Infallible;
 
     fn perform(
         &mut self,
         _store: &mut Store,
         _ui: &UiCtx,
-        _command: (),
+        _command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
     }

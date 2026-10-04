@@ -18,8 +18,8 @@ use skia_safe::{Canvas, Rect, Size};
 use text::Text;
 
 use crate::{
-    deliver, mount_editor, Document, DocumentId, EditorCommand, EditorIdView, Markup, ModalRequest,
-    ModalView, OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode,
+    mount_editor, Document, EditorIdView, Markup, ModalRequest, ModalView, OpenDocuments, Panel,
+    Window, WindowId, Windows, Workbench, WorkbenchNode,
 };
 
 use crate::stats::{Stats, StatsCommand};
@@ -35,6 +35,9 @@ pub struct Application {
 
     stats: Stats,
     pub(crate) ui_arena: Arena,
+    /// The scope `committed` was gathered for — what StoreMut's
+    /// write-back scatters with.
+    committed_scope: Option<crate::SessionId>,
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
@@ -45,8 +48,6 @@ pub struct Application {
 
     pending_file_events: Vec<crate::watch::Subscription>,
 
-    pending_diff_events: Vec<::editor::diff::DiffId>,
-
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
     /// viewport corrections land in the SAME frame
@@ -56,6 +57,11 @@ pub struct Application {
 }
 
 pub struct OpenedDocument {
+    /// The collection the open was launched FOR — stamped at the
+    /// gesture, so the landing files the document into the family the
+    /// user acted in, not whatever the window shows by then.
+    pub documents: imba::store::Id<OpenDocuments>,
+
     pub name: String,
     pub document: Document,
 
@@ -98,61 +104,35 @@ pub enum AppCommand {
     Register(std::sync::Arc<dyn crate::DynamicCommand>),
     Stats(StatsCommand),
 
-    Entity(DocumentId, EditorCommand),
+    /// THE one command road (docs/entities.md law 5): any collection,
+    /// addressed by its id, stamped at launch, carried through the
+    /// whole landing chain — nothing re-derives a scope that was never
+    /// lost. Built by `AppCommand::at`; the erasure is what keeps the
+    /// enum from growing an arm per collection.
+    At(Addressed),
 
     Opened(WindowId, OpenedDocument),
 
-    BaseLocated {
-        document: DocumentId,
-        base: Option<crate::ResourceLocation>,
+    /// A command for a STORE-HELD diff view, routed by the documents
+    /// collection it lives in and its id — the dressing's own road
+    /// (docs/model-view.md step 1): marks-job landings and resyncs
+    /// reach the view with no panel involved.
+    DiffViewCommand {
+        documents: imba::store::Id<OpenDocuments>,
+        view: crate::DiffViewId,
+        command: Box<::editor::UnifiedDiffCommand>,
     },
 
-    BaseFetched {
-        document: DocumentId,
-        base: crate::ResourceLocation,
-        text: Option<String>,
-    },
-
-    BaseBuilt {
-        document: DocumentId,
-        base: crate::ResourceLocation,
-        built: Document,
-    },
-
-    DiffNormalized {
-        diff: ::editor::diff::DiffId,
-        operation: operation::Operation,
-        markup: ::editor::Markup,
-        changed: Vec<std::ops::Range<u32>>,
-        base_revision: u64,
-        target_revision: u64,
-    },
-
-    /// A Save All store came home for one document.
-    DocumentStored {
-        document: DocumentId,
-        revision: u64,
-        snapshot: ::editor::Text,
-        stored: bool,
+    /// A command for a SET-OWNED canvas, routed by the collection, the
+    /// set and the canvas — the DiffViewCommand shape.
+    CanvasViewCommand {
+        changes: imba::store::Id<crate::hichanges::ChangeSets>,
+        set: crate::hichanges::ChangeSetId,
+        canvas: crate::diff_canvas::canvas::CanvasId,
+        command: Box<crate::diff_canvas::canvas::CanvasCommand>,
     },
 
     FileChanged(crate::watch::Subscription),
-
-    Watched(DocumentId, Option<crate::watch::Subscription>),
-
-    Refetched {
-        document: DocumentId,
-
-        serial: u64,
-        text: Option<String>,
-    },
-
-    RefetchDiffed {
-        document: DocumentId,
-        base_revision: u64,
-        serial: u64,
-        rebase: crate::watch::RefetchRebase,
-    },
 
     OpenAsync {
         window: WindowId,
@@ -178,7 +158,84 @@ pub enum AppCommand {
     RegisterEnrichers(::editor::Enrichers),
 }
 
+pub use documents::DocumentsCommand;
+
+/// An addressed command with its entity type erased — what `At`
+/// carries: one box around the typed `AtCommand<T>` pair below.
+/// Erasure is per COMMAND, not per collection — the enum stays one
+/// arm no matter how many collections become addressable. An `At`
+/// answers NO session scope: the store is single and global (gather
+/// ignores scope), and the batch-tail lanes run over every family,
+/// so the address owes nothing beyond the id it already is.
+pub struct Addressed(Box<dyn AddressedCommand>);
+
+/// The erased face of `AtCommand<T>` — implemented exactly once; a
+/// collection joins the road through `AppEntity`, never through this.
+/// `Display` is the reconcile trace's name for the command.
+trait AddressedCommand: Send + Sync + std::fmt::Display {
+    /// The lease-perform-unlease road (`Store::route`), then the
+    /// collection's application tail (`AppEntity::after_route`) —
+    /// the one place the erased entity type is still known.
+    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>);
+}
+
+struct AtCommand<T: AppEntity> {
+    id: imba::store::Id<T>,
+    command: T::Command,
+}
+
+impl<T: AppEntity> std::fmt::Display for AtCommand<T> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.command.fmt(out)
+    }
+}
+
+impl std::fmt::Display for Addressed {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(out)
+    }
+}
+
+impl<T: AppEntity> AddressedCommand for AtCommand<T> {
+    fn run(self: Box<Self>, store: &mut Store, ui: &imba::UiCtx, fx: &mut AppFx<'_>) {
+        let AtCommand { id, command } = *self;
+        store.route(
+            id,
+            command,
+            ui,
+            move |command| AppCommand::at(id, command),
+            fx,
+        );
+        T::after_route(store, ui, id, fx);
+    }
+}
+
+/// What a collection declares to ride the `At` road: where it sits in
+/// a session family (the scope compare) and the application-side tail
+/// its landings owe — effects the entity cannot push itself because
+/// its own fx are scoped to `Self::Command`.
+pub trait AppEntity: imba::store::Entity {
+    /// The landing's application tail, run after the lease returns —
+    /// store notes the perform left (rearms, card work) convert into
+    /// app-scoped effects here.
+    fn after_route(
+        _store: &mut Store,
+        _ui: &imba::UiCtx,
+        _id: imba::store::Id<Self>,
+        _fx: &mut AppFx<'_>,
+    ) {
+    }
+}
+
+impl AppEntity for OpenDocuments {}
+
 impl AppCommand {
+    /// The one addressed-command constructor: every launch stamp and
+    /// every landing re-wrap goes through here.
+    pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand {
+        AppCommand::At(Addressed(Box::new(AtCommand { id, command })))
+    }
+
     pub fn dynamic_in(
         session: crate::SessionId,
         window: WindowId,
@@ -194,7 +251,10 @@ pub type AppFx<'a> = Effects<'a, AppCommand>;
 
 pub(crate) fn pane_width(store: &Store, pane: &crate::EditorPane) -> Option<f32> {
     let view = pane.content();
-    Some(OpenDocuments::document_ref(store, view.document())?.layout_width(view.editor()))
+    Some(
+        OpenDocuments::document_ref(store, view.documents(), view.document())?
+            .layout_width(view.editor()),
+    )
 }
 
 pub(crate) fn panel_width(store: &Store, panel: &Panel) -> Option<f32> {
@@ -211,14 +271,6 @@ impl Application {
     pub fn ui_ctx(&self) -> std::rc::Rc<UiCtx> {
         self.ui.clone()
     }
-}
-
-pub fn entity_scope<T>(
-    document: DocumentId,
-    fx: &mut AppFx<'_>,
-    f: impl FnOnce(&mut Effects<'_, EditorCommand>) -> T,
-) -> T {
-    fx.scope(move |command| AppCommand::Entity(document, command), f)
 }
 
 impl AppFonts {
@@ -243,23 +295,33 @@ pub struct ChromeClearance(pub f32);
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
+    family: &crate::higent::SessionState,
     ui: &UiCtx,
     fx: &mut AppFx<'_>,
 ) -> WorkbenchNode {
     let mut scratch = markdown_scratch();
 
-    let location = crate::next_scratch_location(store);
+    let documents = family.documents();
+    let location = crate::next_scratch_location(store, family.scratch_names());
     let name = location.name().to_owned();
-    crate::RecentLocations::touch(store, &location);
-    let scratch_id = OpenDocuments::register(store, scratch.clone(), Some(location), name, 0);
+    crate::RecentLocations::touch(store, family.recents(), &location);
+    let scratch_id =
+        OpenDocuments::register(store, documents, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
-    let editor_id = entity_scope(scratch_id, fx, |fx| {
-        mount_editor(store, ui, &mut scratch, width, None, fx)
-    });
-    documents::scroll_stripes::enable_scroll_stripes(store, scratch_id, &mut scratch, editor_id);
-    OpenDocuments::put_document(store, scratch_id, scratch);
+    let editor_id = fx.scope(
+        move |command| AppCommand::at(documents, DocumentsCommand::Editor(scratch_id, command)),
+        |fx| mount_editor(store, ui, &mut scratch, width, None, fx),
+    );
+    documents::scroll_stripes::enable_scroll_stripes(
+        store,
+        documents,
+        scratch_id,
+        &mut scratch,
+        editor_id,
+    );
+    OpenDocuments::put_document(store, documents, scratch_id, scratch);
     WorkbenchNode::editor_leaf(ScrollView::new(
-        EditorIdView::new(scratch_id, editor_id).with_gutter(),
+        EditorIdView::new(documents, scratch_id, editor_id).with_gutter(),
     ))
 }
 
@@ -284,7 +346,10 @@ pub fn switch_session(
         |fx| entity.dismiss_side_panel(store, fx),
     );
 
-    let owed = entity.switch_to(target);
+    // Session ENTRY: the one legitimate catalog consult — the bundle
+    // is wired into the window's record here and read from it after.
+    let family = crate::higent::Hosts::ensure_family(store, &target);
+    let owed = entity.switch_to(target, family);
     crate::Windows::put(store, window, entity);
     if let Some(previous) = owed {
         crate::commands::BatchRequests::push(
@@ -317,8 +382,14 @@ impl crate::DynamicCommand for EnterFreshSession {
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
-        let root = fresh_workbench_root(store, ui, fx);
-        entity.install_fresh(self.previous.clone(), Workbench::new(root));
+        let _ = (ui, fx);
+        // A fresh session starts with nothing open: the chat (once it
+        // arrives) owns the whole workbench until a panel opens beside
+        // it. Scratches are minted on demand (`workbench.new-document`).
+        entity.install_fresh(
+            self.previous.clone(),
+            Workbench::new(WorkbenchNode::vacant()),
+        );
         crate::Windows::put(store, window, entity);
     }
 }
@@ -381,8 +452,8 @@ impl Application {
             handlers,
             workshop,
             ui_arena: Arena::default(),
+            committed_scope: None,
             pending_file_events: Vec::new(),
-            pending_diff_events: Vec::new(),
             settle_requested: false,
             settling: false,
         };
@@ -390,8 +461,8 @@ impl Application {
         application
     }
 
-    fn commit(&mut self, store: Store) {
-        self.state.scatter(store);
+    fn commit(&mut self, store: Store, scope: Option<&crate::SessionId>) {
+        self.state.scatter(store, scope);
         self.refresh_committed();
     }
 
@@ -399,6 +470,7 @@ impl Application {
         let window = self.state.windows.primary();
         let scope = window.and_then(|id| self.state.windows.session_of(id));
         self.committed = self.state.gather(window, scope.as_ref(), &self.seats);
+        self.committed_scope = scope;
     }
 
     pub fn register_seat(
@@ -443,14 +515,14 @@ impl Application {
     fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
         let mut store = self.state.gather(None, None, &self.seats);
         mutate(&mut store);
-        self.commit(store);
+        self.commit(store, None);
     }
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
         let scope = self.state.windows.session_of(window);
         let mut store = self.state.gather(Some(window), scope.as_ref(), &self.seats);
         mutate(&mut store);
-        self.commit(store);
+        self.commit(store, scope.as_ref());
     }
 
     pub fn window_ids(&self) -> Vec<WindowId> {
@@ -498,49 +570,13 @@ impl Application {
             | AppCommand::ViewportResized(window, _) => *window,
             AppCommand::CloseModal(window) => *window,
 
-            AppCommand::Entity(document, _)
-            | AppCommand::BaseLocated { document, .. }
-            | AppCommand::BaseFetched { document, .. }
-            | AppCommand::BaseBuilt { document, .. }
-            | AppCommand::DocumentStored { document, .. }
-            | AppCommand::Watched(document, _)
-            | AppCommand::Refetched { document, .. }
-            | AppCommand::RefetchDiffed { document, .. } => {
-                let document = *document;
-                if store
-                    .get::<OpenDocuments>()
-                    .is_some_and(|documents| documents.contains_id(document))
-                {
-                    return (None, crate::Gathered::scope(store).cloned());
-                }
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_document(store, document),
-                );
-            }
-            AppCommand::FileChanged(subscription) => {
-                let subscription = *subscription;
-                if store
-                    .get::<OpenDocuments>()
-                    .is_some_and(|documents| documents.rides_watch(subscription))
-                {
-                    return (None, crate::Gathered::scope(store).cloned());
-                }
-                return (
-                    None,
-                    crate::higent::Hosts::session_of_watch(store, subscription),
-                );
-            }
-            AppCommand::DiffNormalized { diff, .. } => {
-                let diff = *diff;
-                if store
-                    .get::<OpenDocuments>()
-                    .is_some_and(|documents| documents.tracks_diff(diff))
-                {
-                    return (None, crate::Gathered::scope(store).cloned());
-                }
-                return (None, crate::higent::Hosts::session_of_diff(store, diff));
-            }
+            // Addressed commands (`At`, the view roads, the watch
+            // border) answer NO scope: gather ignores sessions (the
+            // store is single and global) and the batch-tail lanes
+            // run over every family — the session scope's two old
+            // consumers. What remains of scope is the WINDOW half
+            // (its projection) and the session a window names (the
+            // empty-family housekeeping on scatter).
             _ => return (None, None),
         };
 
@@ -556,9 +592,10 @@ impl Application {
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let editors = fresh_workbench_root(&mut store, &ui, &mut discarded.effects());
-        let window = Windows::add(&mut store, Window::new(editors, workspace));
-        self.commit(store);
+        let family = crate::higent::Hosts::ensure_family(&mut store, &workspace);
+        let editors = fresh_workbench_root(&mut store, &family, &ui, &mut discarded.effects());
+        let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), family));
+        self.commit(store, Some(&workspace));
         window
     }
 
@@ -589,32 +626,31 @@ impl Application {
         self.setup(crate::watch::Watching::install);
     }
 
-    pub fn observe_stripe_bases(&mut self) {
-        self.setup(crate::diffs::StripeBases::install);
+    /// Install the edge's BASE RESOLVER: working location → base ref,
+    /// answered synchronously from store truth at ask time.
+    pub fn observe_stripe_bases(
+        &mut self,
+        resolve: std::sync::Arc<dyn documents::StripeBaseResolver>,
+    ) {
+        self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
     }
 
     pub fn register_editor_command(&mut self, command: Arc<dyn crate::DynamicEditorCommand>) {
         self.setup(|store| ::editor::EditorCommands::register(store, command));
     }
 
+    /// Commands that act on the COLLECTION — handed the pane's ids at
+    /// dispatch (docs/entities.md law 3), never resolving an owner.
+    pub fn register_document_command(&mut self, command: Arc<dyn documents::DocumentCommand>) {
+        self.setup(|store| documents::DocumentCommands::register(store, command));
+    }
+
     pub fn register_toolbar_button(&mut self, button: crate::ToolbarButton) {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }
 
-    pub fn register_overlay_surface(&mut self, surface: crate::OverlaySurface) {
-        self.setup(|store| crate::toolbar::OverlaySurfaces::register(store, surface));
-    }
-
     pub fn register_row_minter(&mut self, minter: std::sync::Arc<crate::RowMinter>) {
         self.setup(|store| crate::family_rows::RowMinters::register(store, minter));
-    }
-
-    pub fn register_sync_observer(&mut self, observer: std::sync::Arc<crate::SyncObserver>) {
-        self.setup(|store| crate::family_rows::SyncObservers::register(store, observer));
-    }
-
-    pub fn register_session_family(&mut self, member: std::sync::Arc<crate::SessionFamilyMember>) {
-        self.setup(|store| crate::family_rows::SessionFamilies::register(store, member));
     }
 
     pub fn workshop(&self) -> &Arc<::editor::Workshop> {
@@ -904,7 +940,7 @@ impl Application {
         while let Some(command) = queue.pop_front() {
             let next = self.command_scope(&store, &command);
             if next != scope {
-                self.state.scatter(store);
+                self.state.scatter(store, scope.1.as_ref());
                 scope = next;
                 store = self.state.gather(scope.0, scope.1.as_ref(), &self.seats);
             }
@@ -921,30 +957,63 @@ impl Application {
 
         {
             let mut fx = batch.effects();
-            crate::diffs::sync_diff_lanes(&mut store, &mut fx);
-            documents::scroll_stripes::sync_scroll_stripe_lanes(
-                &mut store,
-                &mut fx,
-                |document, command| AppCommand::Entity(document, command),
-            );
+            // The lanes run over EVERY family: each drains its own
+            // pending queue, so a clean family costs map reads — and a
+            // landing's family gets its sweep THIS batch whatever the
+            // batch's scope (the old tail served only the LAST scope's
+            // family, so a cross-session batch starved the others).
+            for family in crate::higent::Hosts::families(&store) {
+                let documents = family.documents();
+                crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
+                documents::scroll_stripes::sync_scroll_stripe_lanes(
+                    &mut store,
+                    documents,
+                    &mut fx,
+                    move |document, command| {
+                        AppCommand::at(documents, DocumentsCommand::Editor(document, command))
+                    },
+                );
+                // The DRESSING sweep: any view whose basis lags its
+                // pair resyncs NOW, id-routed — a normalize landing
+                // and its re-dress share a batch, and no face waits
+                // for paint.
+                crate::diffs::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), &mut fx);
+                // The dock tree views ride the push road too: a
+                // changes / history feed landing refreshes a mounted
+                // stale view in the SAME batch — no paint probe.
+                crate::changes_view::sync_changes_views(
+                    &mut store,
+                    family.changes(),
+                    &self.ui_ctx(),
+                );
+                // The canvases sync against the fresh document/diff/
+                // changeset state — the SAME batch a feed landed in, a
+                // direct lane over the sets that own them.
+                crate::diff_canvas::canvas::sync_canvases(
+                    &mut store,
+                    family.changes(),
+                    &self.ui_ctx(),
+                    &mut fx,
+                );
+            }
+            // The dressed-views note is consumed above (the canvas
+            // resized its touched rows); clear it AFTER consumption —
+            // id-routed landings append to it mid-batch.
+            store.put(crate::diffs::DressedViews::default());
         }
-        // Plugin store-state observers (e.g. hidiff's Canvases) sync
-        // against the fresh document/diff/changeset state — so a
-        // collection stays current without a panel painting it.
-        crate::family_rows::SyncObservers::run(&mut store, &self.ui_ctx());
         let probe_perform = probe.elapsed();
-        self.commit(store);
+        self.commit(store, scope.1.as_ref());
         if validate_enabled() {
             for id in self.state.windows.ids() {
                 let store = self.window_store(id);
                 let Some(window) = Windows::window_ref(&store, id) else {
                     continue;
                 };
-                validate_panes(label, &store, &window.workbench().root);
+                validate_panes(&label, &store, &window.workbench().root);
 
                 for (session, stashed) in window.stashed_workbenches() {
                     let store = self.state.gather(Some(id), Some(session), &self.seats);
-                    validate_panes(label, &store, &stashed.root);
+                    validate_panes(&label, &store, &stashed.root);
                 }
             }
         }
@@ -963,20 +1032,6 @@ impl Application {
                 .collect();
         if !changed.is_empty() {
             let event = crate::watch::FilesChanged(std::sync::Arc::new(changed));
-            let windows: Vec<(crate::WindowId, Size)> = self
-                .state
-                .windows
-                .ids()
-                .into_iter()
-                .filter_map(|id| self.window_viewport(id).map(|size| (id, size)))
-                .collect();
-            for (window, size) in windows {
-                self.dispatch(window, Event::UserEvent(&event), size);
-            }
-        }
-
-        for diff in std::mem::take(&mut self.pending_diff_events) {
-            let event = crate::DiffChanged { diff };
             let windows: Vec<(crate::WindowId, Size)> = self
                 .state
                 .windows
@@ -1091,18 +1146,26 @@ impl std::ops::DerefMut for StoreMut<'_> {
 impl Drop for StoreMut<'_> {
     fn drop(&mut self) {
         let store = self.app.committed.clone();
-        self.app.state.scatter(store);
+        let scope = self.app.committed_scope.clone();
+        self.app.state.scatter(store, scope.as_ref());
         self.app.refresh_committed();
     }
 }
 
 pub(crate) struct OpenEffect {
     window: WindowId,
+    documents: imba::store::Id<OpenDocuments>,
     name: String,
     primary: bool,
     location: Option<crate::ResourceLocation>,
 
     build: DocumentBuild,
+}
+
+impl std::fmt::Display for OpenEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "open document {}", self.name)
+    }
 }
 
 impl Effect for OpenEffect {
@@ -1121,6 +1184,7 @@ impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
         AppCommand::Opened(
             effect.window,
             OpenedDocument {
+                documents: effect.documents,
                 name: effect.name,
                 document,
                 location: effect.location,
@@ -1134,6 +1198,7 @@ impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
 
 pub fn open_effect(
     window: WindowId,
+    documents: imba::store::Id<OpenDocuments>,
     name: String,
     primary: bool,
     location: Option<crate::ResourceLocation>,
@@ -1141,6 +1206,7 @@ pub fn open_effect(
 ) -> imba::effect::AnyEffect<AppCommand> {
     imba::effect::AnyEffect::new(OpenEffect {
         window,
+        documents,
         name,
         primary,
         location,
@@ -1148,8 +1214,14 @@ pub fn open_effect(
     })
 }
 
-fn command_label(command: &AppCommand) -> &'static str {
-    match command {
+fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
+    // The addressed commands print themselves (`Display` through the
+    // erased `Addressed`) — the type is erased by the time the trace
+    // reads one.
+    if let AppCommand::At(addressed) = command {
+        return addressed.to_string().into();
+    }
+    std::borrow::Cow::Borrowed(match command {
         AppCommand::Content(_, crate::WindowCommand::Base(_)) => "pane",
         AppCommand::Content(_, crate::WindowCommand::Toolbar(_)) => "toolbar",
         AppCommand::Content(_, crate::WindowCommand::Side(command)) => {
@@ -1167,13 +1239,6 @@ fn command_label(command: &AppCommand) -> &'static str {
                 _ => "dock",
             }
         }
-        AppCommand::Content(_, crate::WindowCommand::Bottom(command)) => {
-            match command.downcast_ref::<crate::sheet::SheetCommand>() {
-                Some(crate::sheet::SheetCommand::Tick(_)) => "sheet slide-tick",
-                Some(crate::sheet::SheetCommand::Content(_)) => "sheet content",
-                _ => "sheet",
-            }
-        }
         AppCommand::Content(_, crate::WindowCommand::Modal(_)) => "modal",
         AppCommand::Content(_, crate::WindowCommand::Focus(_)) => "focus",
         AppCommand::Dynamic(..) => "dynamic",
@@ -1189,21 +1254,12 @@ fn command_label(command: &AppCommand) -> &'static str {
         AppCommand::RegisterDiffPolicy(_) => "register diff policy",
         AppCommand::RegisterEnrichers(_) => "register enrichers",
         AppCommand::Stats(_) => "stats",
-        AppCommand::Entity(_, EditorCommand::ApplyRepair(_)) => "repair",
-        AppCommand::Entity(_, EditorCommand::ApplyReparse(_)) => "reparse",
-        AppCommand::Entity(_, EditorCommand::ApplyEnrichment(_)) => "enrich",
-        AppCommand::Entity(..) => "entity",
+        AppCommand::At(..) => unreachable!(),
         AppCommand::Opened(..) => "opened",
-        AppCommand::BaseLocated { .. } => "base located",
-        AppCommand::BaseFetched { .. } => "base fetched",
-        AppCommand::BaseBuilt { .. } => "base built",
-        AppCommand::DiffNormalized { .. } => "diff normalized",
-        AppCommand::DocumentStored { .. } => "document stored",
+        AppCommand::DiffViewCommand { .. } => "diff view",
+        AppCommand::CanvasViewCommand { .. } => "canvas view",
         AppCommand::FileChanged(..) => "file changed",
-        AppCommand::Watched(..) => "watched",
-        AppCommand::Refetched { .. } => "refetched",
-        AppCommand::RefetchDiffed { .. } => "refetch-diffed",
-    }
+    })
 }
 
 fn trace_reconcile(source: &str, commands: &[AppCommand]) {
@@ -1211,7 +1267,7 @@ fn trace_reconcile(source: &str, commands: &[AppCommand]) {
     if !*ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_RECONCILE").is_some()) {
         return;
     }
-    let labels: Vec<&str> = commands.iter().map(command_label).collect();
+    let labels: Vec<_> = commands.iter().map(command_label).collect();
     eprintln!("[reconcile] {source} reported: {}", labels.join(", "));
 }
 
@@ -1277,6 +1333,7 @@ impl Application {
                 let dock_request = entity.take_dock_request();
 
                 let toolbar_request = entity.take_toolbar_request();
+                let dock_command = entity.take_dock_command();
 
                 let request = entity.take_modal_request();
                 match request {
@@ -1303,8 +1360,10 @@ impl Application {
                         entity.show_document(store, ui, window, document, None, false, fx);
                         crate::Windows::put(store, window, entity);
 
-                        crate::watch::sync_document_watches(store, fx);
-                        crate::diffs::sync_stripe_bases(store, fx);
+                        if let Some(family) = Windows::session_family(store, window) {
+                            crate::watch::sync_document_watches(store, family.documents(), fx);
+                            crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                        }
                     }
                     Some(ModalRequest::OpenLocations(locations)) => {
                         fx.scope(
@@ -1319,7 +1378,7 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        entity.mount_focused(widget);
+                        entity.mount_focused(store, widget);
                         crate::Windows::put(store, window, entity);
                     }
                     None => {
@@ -1345,15 +1404,17 @@ impl Application {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
 
-                            crate::watch::sync_document_watches(store, fx);
-                            crate::diffs::sync_stripe_bases(store, fx);
+                            if let Some(family) = Windows::session_family(store, window) {
+                                crate::watch::sync_document_watches(store, family.documents(), fx);
+                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                            }
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
                             crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
-                            entity.mount_focused(widget);
+                            entity.mount_focused(store, widget);
                             crate::Windows::put(store, window, entity);
                         }
                     }
@@ -1376,15 +1437,17 @@ impl Application {
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::Windows::put(store, window, entity);
-                            crate::watch::sync_document_watches(store, fx);
-                            crate::diffs::sync_stripe_bases(store, fx);
+                            if let Some(family) = Windows::session_family(store, window) {
+                                crate::watch::sync_document_watches(store, family.documents(), fx);
+                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                            }
                         }
                         ModalRequest::OpenLocations(locations) => {
                             crate::Windows::put(store, window, entity);
                             crate::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
-                            entity.mount_focused(widget);
+                            entity.mount_focused(store, widget);
                             crate::Windows::put(store, window, entity);
                         }
                     }
@@ -1406,10 +1469,12 @@ impl Application {
                             self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
                         }
                     }
-                    Some(crate::ToolbarRequest::Query(raw)) => {
-                        crate::toolbar::toolbar_query(store, ui, window, &raw, fx);
-                    }
                     None => {}
+                }
+                if let Some(id) = dock_command {
+                    if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
+                        self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
+                    }
                 }
 
                 for request in crate::commands::AppRequests::drain(store) {
@@ -1421,171 +1486,73 @@ impl Application {
                     self.stats.perform(store, ui, command, fx)
                 });
             }
-            AppCommand::Entity(document, command) => {
-                if OpenDocuments::contains(store, document) {
-                    entity_scope(document, fx, |fx| deliver(store, ui, document, command, fx));
+            AppCommand::At(addressed) => {
+                // The one command road (docs/entities.md law 5): lease
+                // the row, perform under its own address, put it back,
+                // then the collection's application tail
+                // (`AppEntity::after_route`).
+                addressed.0.run(store, ui, fx);
+            }
+            AppCommand::Dynamic(window, command) => {
+                command.perform(self, store, window, fx);
+                // Deferred requests must not wait for the next CONTENT
+                // command — an idle window (nothing painted, nothing
+                // clicked) would starve them forever.
+                for request in crate::commands::AppRequests::drain(store) {
+                    self.perform(store, ui, AppCommand::Dynamic(window, request), fx);
                 }
             }
-            AppCommand::Dynamic(window, command) => command.perform(self, store, window, fx),
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
 
             AppCommand::InSession(_, command) => self.perform(store, ui, *command, fx),
             AppCommand::Register(command) => {
                 crate::commands::Commands::register(store, command);
             }
-            AppCommand::BaseLocated { document, base } => {
-                crate::diffs::land_base_located(store, ui, document, base, fx);
-            }
-            AppCommand::BaseFetched {
-                document,
-                base,
-                text,
+            AppCommand::DiffViewCommand {
+                documents,
+                view,
+                command,
             } => {
-                let Some(text) = text else {
-                    return;
-                };
-                if !OpenDocuments::contains(store, document) {
-                    return;
-                }
-                let _ = fx.push(
-                    imba::effect::AnyEffect::new(crate::BuildDocumentEffect {
-                        location: base.clone(),
-                        text,
-                    })
-                    .map(move |built| AppCommand::BaseBuilt {
-                        document,
-                        base,
-                        built: built.document,
-                    }),
+                crate::diffs::perform_diff_view(store, documents, ui, view, *command, fx);
+            }
+            AppCommand::CanvasViewCommand {
+                changes,
+                set,
+                canvas,
+                command,
+            } => {
+                crate::diff_canvas::canvas::perform_canvas(
+                    store, ui, changes, set, canvas, *command, fx,
                 );
             }
-            AppCommand::BaseBuilt {
-                document,
-                base,
-                built,
-            } => {
-                crate::diffs::land_base_built(store, ui, document, base, built, fx);
-            }
-            AppCommand::DiffNormalized {
-                diff,
-                operation,
-                markup,
-                changed,
-                base_revision,
-                target_revision,
-            } => {
-                if crate::diffs::land_normalized(
-                    store,
-                    diff,
-                    operation,
-                    base_revision,
-                    target_revision,
-                ) {
-                    if let Some(handle) = crate::OpenDocuments::diff_handle(store, diff) {
-                        entity_scope(handle.target, fx, |fx| {
-                            documents::diffs::land_diff_markup(
-                                store,
-                                ui,
-                                diff,
-                                markup,
-                                changed,
-                                target_revision,
-                                fx,
-                            )
-                        });
-                    }
-                    self.pending_diff_events.push(diff);
-                }
-            }
-            AppCommand::DocumentStored {
-                document,
-                revision,
-                snapshot,
-                stored,
-            } => match stored {
-                true => crate::OpenDocuments::mark_saved(store, document, revision, snapshot),
-                false => eprintln!("[himark] store failed for an open document"),
-            },
             AppCommand::FileChanged(subscription) => {
-                crate::watch::refetch_watched(store, subscription, fx);
+                // The border road: the event names only a subscription;
+                // its documents collection is found once, by content.
+                if let Some(documents) =
+                    crate::higent::Hosts::documents_of_watch(store, subscription)
+                {
+                    crate::watch::refetch_watched(store, documents, subscription, fx);
+                }
 
                 self.pending_file_events.push(subscription);
             }
-            AppCommand::Watched(document, subscription) => {
-                // The channel may have gone live while the subscribe
-                // was in flight: mode one holds — the host watches
-                // the file, this subscription is surplus.
-                if crate::OpenDocuments::host_synced(store, document) {
-                    if let Some(subscription) = subscription {
-                        let _ = fx.push(imba::effect::AnyEffect::notification(
-                            crate::watch::UnsubscribeEffect { subscription },
-                        ));
-                    }
-                    return;
-                }
-                crate::OpenDocuments::set_watch(store, document, subscription);
-            }
-            AppCommand::Refetched {
-                document,
-                serial,
-                text,
-            } => {
-                crate::watch::apply_refetched(store, document, serial, text, fx);
-            }
-            AppCommand::RefetchDiffed {
-                document,
-                base_revision,
-                serial,
-                rebase,
-            } => {
-                let documents::watch::RefetchRebase {
-                    operation,
-                    fetched,
-                    fetched_source,
-                    synced,
-                    ..
-                } = rebase;
-                let retry = entity_scope(document, fx, |fx| {
-                    crate::OpenDocuments::absorb_refetched(
-                        store,
-                        ui,
-                        document,
-                        base_revision,
-                        serial,
-                        &operation,
-                        fetched,
-                        synced,
-                        fx,
-                    )
-                });
-                if retry {
-                    documents::watch::rediff(
-                        store,
-                        document,
-                        serial,
-                        fetched_source,
-                        fx,
-                        |document, base_revision, serial, rebase| AppCommand::RefetchDiffed {
-                            document,
-                            base_revision,
-                            serial,
-                            rebase,
-                        },
-                    );
-                }
-            }
             AppCommand::Opened(window, opened) => {
+                // The landing files into the collection stamped at
+                // launch — never the window's CURRENT session, which
+                // may have switched while the open was in flight.
+                let documents = opened.documents;
                 let document = opened.document;
                 let saved_revision = document.revision();
 
                 let document_id = match opened
                     .location
                     .as_ref()
-                    .and_then(|location| OpenDocuments::by_location(store, location))
+                    .and_then(|location| OpenDocuments::by_location(store, documents, location))
                 {
                     Some(existing) => existing,
                     None => OpenDocuments::register(
                         store,
+                        documents,
                         document.clone(),
                         opened.location,
                         opened.name,
@@ -1593,8 +1560,8 @@ impl Application {
                     ),
                 };
 
-                crate::watch::sync_document_watches(store, fx);
-                crate::diffs::sync_stripe_bases(store, fx);
+                crate::watch::sync_document_watches(store, documents, fx);
+                crate::diffs::sync_stripe_bases(store, documents, ui, fx);
 
                 if opened.primary {
                     if let Some(mut entity) = crate::Windows::window(store, window) {
@@ -1618,7 +1585,14 @@ impl Application {
                 location,
                 build,
             } => {
-                fx.push(open_effect(window, name, primary, location, build));
+                // The one synchronous moment of this road: bind the
+                // gesture's session here, before anything is in flight.
+                let documents = Windows::session_family(store, window)
+                    .expect("a document opens into a window with a session")
+                    .documents();
+                fx.push(open_effect(
+                    window, documents, name, primary, location, build,
+                ));
             }
             AppCommand::OpenPanel(window, panel) => {
                 let mut entity = crate::Windows::window(store, window).expect("the window entity");

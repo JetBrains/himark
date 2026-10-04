@@ -113,8 +113,6 @@ typedef struct {
     float height;
 } HimarkRect;
 
-bool himark_agent_host_autostart(void);
-
 HimarkEngine *himark_create(void);
 
 uint64_t himark_add_window(HimarkEngine *engine);
@@ -160,12 +158,16 @@ bool himark_mouse_move(HimarkEngine *engine, uint64_t window, float x, float y);
 
 bool himark_mouse_up(HimarkEngine *engine, uint64_t window, float x, float y);
 
+bool himark_mouse_left(HimarkEngine *engine, uint64_t window);
+
 bool himark_mouse_down(HimarkEngine *engine,
                        uint64_t window,
                        float x,
                        float y,
                        uint32_t mods,
                        uint32_t click_count);
+
+bool himark_secondary_down(HimarkEngine *engine, uint64_t window, float x, float y, uint32_t mods);
 
 bool himark_scroll(HimarkEngine *engine,
                    uint64_t window,
@@ -203,10 +205,6 @@ bool himark_host_fetched(HimarkEngine *engine,
                          uint64_t request,
                          const char *text,
                          uintptr_t text_len);
-
-bool himark_host_subscribed(HimarkEngine *engine, uint64_t request, uint64_t subscription);
-
-bool himark_file_changed(HimarkEngine *engine, uint64_t subscription);
 
 bool himark_host_stored(HimarkEngine *engine, uint64_t request, bool stored);
 

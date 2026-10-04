@@ -50,18 +50,30 @@ fn typing_filters_selection_moves_and_a_pick_hands_the_command_back() {
         "everything matches the empty query"
     );
 
-    let mut batch: imba::effect::Batch<imba::DynCommand> = imba::effect::Batch::new();
-    ModalView::set_query(&mut palette, &mut store, &ui, "row", &mut batch.effects());
-    assert_eq!(palette.labels(), vec!["Table: Insert Row Below"]);
-    assert!(palette.take_request().is_none(), "typing asks nothing");
-
+    // The palette OWNS its input now: typing goes through it.
+    let mut batch: imba::effect::Batch<PaletteCommand> = imba::effect::Batch::new();
     palette.perform(
         &mut store,
         &ui,
-        PaletteCommand::Select(5),
+        PaletteCommand::Input(himark::EditorCommand::InsertText {
+            text: "row".to_owned(),
+        }),
+        &mut batch.effects(),
+    );
+    assert_eq!(palette.labels(), vec!["Table: Insert Row Below"]);
+    assert!(palette.take_request().is_none(), "typing asks nothing");
+
+    // A five-row step over one row clamps: the same Select the key
+    // table would emit lands on the only row.
+    let step = palette.list.step_index(5).expect("a stepped row");
+    let select = PaletteCommand::Rows(palette.list.select_command(step));
+    palette.perform(
+        &mut store,
+        &ui,
+        select,
         &mut imba::effect::Batch::new().effects(),
     );
-    assert_eq!(palette.selected, 0);
+    assert_eq!(palette.selected(), 0);
 
     palette.perform(
         &mut store,

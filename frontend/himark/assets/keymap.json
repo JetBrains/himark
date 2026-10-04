@@ -24,7 +24,7 @@
     "cmd-i": "chat.composer",
     "cmd-r": "changes.view",
     "cmd-shift-c": "comments.view",
-    "cmd-shift-u": "session.switch",
+    "cmd-shift-u": "agent.toggle-agents",
     "cmd-[": "navigation.back",
     "cmd-]": "navigation.forward",
     "left": "editor.move-left",

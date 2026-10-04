@@ -37,7 +37,7 @@ pub struct ListView<V: Clone, K: Clone + Eq + Hash = ()> {
     /// for free, and rows that leave take their selection with them.
     selection: Option<SelectionState<K>>,
     /// Speed-search matches: the third interval reader of the same
-    /// index space (docs/ui/speedsearch.md).
+    /// index space (docs/ui/list-keyboard.md).
     matches: Intervals<K, ()>,
     // …focused row (event routing), splice animations, generation.
 }
@@ -154,14 +154,28 @@ hosts and layout-only lists pay nothing.
   rows leave deletes the covered entries — and the component applies
   THE policy: the selection RE-POINTS to the folded node. One rule,
   nowhere hand-rolled.
-- **Cursor**: the single "focused" selection entry the arrows move
-  (`cursor_step(±1)` over visible rows), Enter activates, the reveal
-  protocol keeps it on screen (`reveal_row` is the keyed reveal,
-  independent of selection) — one implementation, shared by flat and
-  tree consumers.
+- **Cursor**: the single "focused" selection entry the arrows move,
+  Enter activates, the reveal protocol keeps it on screen
+  (`reveal_row` is the keyed reveal, independent of selection) — one
+  implementation, shared by flat and tree consumers. The keys
+  themselves live in ONE place, the list keyboard controller
+  (docs/ui/list-keyboard.md).
 - **Ops**: `select_only(key)`, `toggle_selected(key)`,
   `selected() -> keys`, `is_selected(&key)`, `clear_selection()` — all
   O(log n).
+- **The selection command** (docs/ui/list-keyboard.md §2): every
+  selection edit arrives as
+  `ListCommand::Select(index)` — absolute, resolved at the edge by
+  the initiator (key table, mouse arm, speed-search landing) — and
+  the `Select` arm (`key_at → select_only`) is the one mutation door.
+  Selection never moves silently: a surface reacts to it (preview,
+  navigate) by matching `Select` in the command stream it already
+  routes, one idiom for keyboard, click and search alike. On
+  selection-configured lists a row-body click answers `Select(index)`
+  then `Activate(index, Click)` (affordance clicks stay `Child`) —
+  clicking selects by the component, not per consumer, and activation
+  arrives trigger-parameterized so each surface decides what Enter vs
+  Click means for it.
 
 `ListView.focused` (event routing — the list's `focus_data` hands the
 keyboard to the focused row by state) is NOT selection and stays
@@ -173,13 +187,14 @@ alike; surfaces differ only in row metrics. Matched rows (speed-search)
 tint with the same fill at reduced alpha; the cursor keeps the full
 selection paint.
 
-## 6. Speed-search
+## 6. Keyboard and speed-search
 
-What speed-search needs, the unified list provides uniformly: rows
-enumerable with their keys, the cursor movable to an arbitrary KEY
-(`select_only` + reveal), matches as one more interval set over the
-same index space. No tree/flat split anywhere in it — the full design
-is [speedsearch.md](speedsearch.md).
+What the keyboard layer needs, the unified list provides uniformly:
+rows enumerable with their keys, the cursor movable to an arbitrary
+KEY (`select_only` + reveal), matches as one more interval set over
+the same index space. No tree/flat split anywhere in it — the key
+table and the search option are one controller,
+[list-keyboard.md](list-keyboard.md).
 
 ## 7. What this replaces
 

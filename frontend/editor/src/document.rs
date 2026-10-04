@@ -115,8 +115,15 @@ impl DocumentToken {
     }
 }
 
+#[cfg(any(test, feature = "test-support"))]
+thread_local! {
+    static BORN: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
 impl Document {
     pub fn new(text: Text, markup: Markup) -> Self {
+        #[cfg(any(test, feature = "test-support"))]
+        BORN.with(|born| born.set(born.get() + 1));
         let mut markups = rpds::HashTrieMapSync::new_sync();
         if !markup.is_empty() {
             let mut markup = markup;
@@ -186,6 +193,14 @@ impl Document {
             markup.push_styled_covering(0..byte_count, crate::theme::StyleId::SourceCode);
         }
         Self::new(text, markup).with_syntax(root, &sites)
+    }
+
+    /// How many documents THIS THREAD has minted. A document is a text,
+    /// a parse and a layout; the tests that guard the UI thread read it
+    /// across a frame and expect it not to move.
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn born_on_this_thread() -> u64 {
+        BORN.with(std::cell::Cell::get)
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -430,6 +445,14 @@ impl Document {
         provenance: Provenance,
     ) {
         let old_len = self.text.view().byte_count().min(u32::MAX as usize) as u32;
+        // The door (`edit_with`) is the reject point; this is the
+        // belt at the mutation itself — `Text::edit` clamps, so a
+        // mismatch surviving to here is corruption in debug terms.
+        debug_assert_eq!(
+            operation.old_len(),
+            old_len,
+            "an edit must cover the text exactly",
+        );
         self.text = self.text.edit(operation);
 
         if let Some(syntax) = &self.syntax {
@@ -462,20 +485,24 @@ impl Document {
         }
 
         if !self.diffs.is_empty() {
-            let pad = old_len.saturating_sub(operation.old_len());
-            let padded = match pad {
-                0 => None,
-                pad => Some(Operation::from_ops(
-                    operation.iter().chain(std::iter::once(Op::Retain(pad))),
-                )),
-            };
-            let padded = padded.as_ref().unwrap_or(operation);
+            // The door (`edit_with`) admits only operations that cover
+            // the text exactly — no padding here, ever. A diff that
+            // still disagrees was installed poisoned; it must not take
+            // the EDIT down with it — skip, leave it for the normalize
+            // lane to rebuild.
             let ids: Vec<crate::diff::DiffId> = self.diffs.keys().copied().collect();
             for id in ids {
                 if let Some(diff) = self.diffs.get(&id) {
+                    if diff.operation.new_len() != operation.old_len() {
+                        debug_assert!(false, "a live diff must cover the text its edit rewrites");
+                        continue;
+                    }
                     let mut diff = diff.clone();
 
-                    diff.operation = diff.operation.splice_compose(padded);
+                    // The operation rebases through this target-side
+                    // edit; the fold bans do NOT — they live in BASE
+                    // coordinates and only `apply_base_edits` moves them.
+                    diff.operation = diff.operation.splice_compose(operation);
                     self.diffs.insert_mut(id, diff);
                 }
             }
@@ -1707,7 +1734,7 @@ impl Document {
         let end = range.end.min(byte_count).max(start);
         let deleted = self.text.view().byte_string(start as usize, end as usize);
 
-        let mut ops = Vec::with_capacity(3);
+        let mut ops = Vec::with_capacity(4);
         if start > 0 {
             ops.push(Op::Retain(start));
         }
@@ -1716,6 +1743,9 @@ impl Document {
         }
         if !text.is_empty() {
             ops.push(Op::Insert(text.to_owned()));
+        }
+        if byte_count > end {
+            ops.push(Op::Retain(byte_count - end));
         }
         let text_len = text.len().min(u32::MAX as usize) as u32;
         let caret_after = match &selected {
@@ -1876,6 +1906,31 @@ impl Document {
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
+        // THE applicability contract: an operation covers this text
+        // EXACTLY or it does not apply. `Text::edit` clamps, so a
+        // mismatched operation would not crash here — it would
+        // silently corrupt the text and desync every reader (markup,
+        // diffs, sync). Producers own their trailing retain; there is
+        // no padding at this door. An EMPTY operation is the explicit
+        // no-op and applies nowhere.
+        if operation.is_empty() {
+            return;
+        }
+        let byte_count = crate::text_cursor::byte_count(&self.text);
+        if operation.old_len() != byte_count {
+            debug_assert!(
+                false,
+                "an inapplicable edit reached the door: operation over {} bytes, text is {}",
+                operation.old_len(),
+                byte_count,
+            );
+            eprintln!(
+                "[editor] DROPPED an inapplicable edit: operation over {} bytes, text is {}",
+                operation.old_len(),
+                byte_count,
+            );
+            return;
+        }
         self.edit_substance(operation, identity, provenance);
         let byte_count = crate::text_cursor::byte_count(&self.text);
         let collection = fonts.clone();
@@ -2561,7 +2616,7 @@ impl Document {
                         crate::before_inlay::BeforeCommand::Tick(_) => "Before(Tick)".into(),
                     }
                 } else {
-                    format!("{:?}", command.type_id())
+                    command.to_string()
                 };
                 eprintln!("[focus-trace] host {editor:?} -> Inlay({key:?}) via {label}",);
             }
@@ -2573,9 +2628,30 @@ impl Document {
         );
 
         if let Some(operation) = edit {
-            self.edit(&operation, store, ui, &fonts, theme, fx);
-            if take_focus {
-                self.set_focus(editor, EditorFocus::Inlay(key));
+            // An inlay's write-through speaks document-absolute
+            // offsets but cannot see the document's length — its tail
+            // retain completes HERE, in the same synchronous hop, over
+            // the exact text it edited. An operation past the end is a
+            // bug, never clamped.
+            let byte_count = crate::text_cursor::byte_count(&self.text);
+            if operation.old_len() > byte_count {
+                debug_assert!(false, "an inlay edit ran past its document");
+                eprintln!(
+                    "[editor] DROPPED an inlay edit past its document: operation over {} bytes, text is {}",
+                    operation.old_len(),
+                    byte_count,
+                );
+            } else {
+                let completed = Operation::from_ops(
+                    operation.iter().chain(
+                        (operation.old_len() < byte_count)
+                            .then(|| Op::Retain(byte_count - operation.old_len())),
+                    ),
+                );
+                self.edit(&completed, store, ui, &fonts, theme, fx);
+                if take_focus {
+                    self.set_focus(editor, EditorFocus::Inlay(key));
+                }
             }
         }
         if let Some((range, mode)) = performed {
@@ -2679,18 +2755,27 @@ impl Document {
                 continue;
             };
 
-            let anchor = editor
-                .viewport
-                .as_ref()
-                .map(|viewport| editor.layout.byte_at_y(viewport.start))
-                .unwrap_or(0);
-            let Some(pending) = editor
-                .layout
-                .repair_pending_at_or_after(anchor)
-                .or_else(|| editor.layout.repair_pending())
-            else {
+            // UI-thread shaping is bound to the VISIBLE band. An
+            // editor that never painted has no viewport and nothing a
+            // user can see go stale — its damage rides the background
+            // lanes (`pending_repairs` for plain editors, the pair
+            // lane for pair-managed halves). Damage outside the band
+            // defers the same way: a landing that dresses a whole
+            // document must not shape the whole document under the
+            // frame. (It used to: the no-viewport fallback shaped
+            // 4000px from byte 0 per editor — a diff landing on a
+            // canvas dropped frames exactly there.)
+            let Some(viewport) = editor.viewport.clone() else {
                 continue;
             };
+            let anchor = editor.layout.byte_at_y(viewport.start);
+            let band_end = editor.layout.byte_at_y(viewport.end);
+            let Some(pending) = editor.layout.repair_pending_at_or_after(anchor) else {
+                continue;
+            };
+            if pending > band_end {
+                continue;
+            }
             let extras = Self::view_extras(&self.markups, editor);
             let width = editor.layout.layout_width();
             {
@@ -2803,9 +2888,23 @@ impl Document {
                 base_revision,
                 markup,
                 generation: 0,
+                fold_bans: crate::diff::FoldBans::new(),
             },
         );
         id
+    }
+
+    /// Record a user fold reveal on the tracked diff: within `extent`
+    /// (base coordinates) the banned set becomes `extent \ keep`, and
+    /// every later fold derivation subtracts it. Pair-level state —
+    /// it rides the `Diff` entry, not any view.
+    pub fn ban_fold(&mut self, id: crate::diff::DiffId, extent: Range<u32>, keep: Range<u32>) {
+        let Some(diff) = self.diffs.get(&id) else {
+            return;
+        };
+        let mut diff = diff.clone();
+        diff.ban_fold(extent, keep);
+        self.diffs.insert_mut(id, diff);
     }
 
     /// Lands a normalize run's freshly derived diff markup

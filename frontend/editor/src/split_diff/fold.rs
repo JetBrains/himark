@@ -8,15 +8,6 @@ use text::Text;
 
 pub(crate) const FOLDS_ENABLED: bool = true;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum FoldPhase {
-    Waiting,
-
-    Owed,
-
-    Done,
-}
-
 pub(crate) const FOLD_CONTEXT: u32 = 3;
 
 pub(crate) const FOLD_MIN_LINES: u32 = 3;
@@ -29,6 +20,33 @@ pub struct FoldSpec {
     pub right: Range<u32>,
 
     pub lines: u32,
+}
+
+/// `of \ bans`, in order — the pieces of a derived fold the user has
+/// not revealed (`Diff::fold_bans`, base coordinates).
+pub(crate) fn subtract_bans(of: &Range<u32>, bans: &crate::diff::FoldBans) -> Vec<Range<u32>> {
+    use intervals::{IntervalQuery, Order};
+    let mut pieces = Vec::new();
+    let mut at = of.start;
+    for ban in bans.query(of.clone(), Order::Ascending) {
+        if ban.range.end <= at {
+            continue;
+        }
+        if ban.range.start >= of.end {
+            break;
+        }
+        if ban.range.start > at {
+            pieces.push(at..ban.range.start.min(of.end));
+        }
+        at = at.max(ban.range.end);
+        if at >= of.end {
+            break;
+        }
+    }
+    if at < of.end {
+        pieces.push(at..of.end);
+    }
+    pieces
 }
 
 pub(crate) fn derive_folds(
@@ -267,6 +285,61 @@ mod tests {
         let len = left.view().byte_count() as u32;
         assert!(derive_folds(&diff, &left, 0..len, FOLD_CONTEXT).is_empty());
     }
+
+    use crate::diff::{rewrite_bans, FoldBans};
+
+    fn ban_ranges(bans: &FoldBans) -> Vec<Range<u32>> {
+        use intervals::{IntervalQuery, Order};
+        bans.query(0..u32::MAX, Order::Ascending)
+            .map(|interval| interval.range)
+            .collect()
+    }
+
+    fn bans_of(ranges: &[Range<u32>]) -> FoldBans {
+        let mut bans = FoldBans::new();
+        for range in ranges {
+            rewrite_bans(&mut bans, range.clone(), 0..0);
+        }
+        bans
+    }
+
+    #[test]
+    fn a_ban_is_the_extent_minus_the_kept_fold() {
+        let mut bans = FoldBans::new();
+        // A full Remove bans the whole extent.
+        rewrite_bans(&mut bans, 10..50, 0..0);
+        assert_eq!(ban_ranges(&bans), vec![10..50]);
+        // A Hide gives the middle back to the derivation.
+        rewrite_bans(&mut bans, 10..50, 20..40);
+        assert_eq!(ban_ranges(&bans), vec![10..20, 40..50]);
+        // A ban outside the extent survives a rewrite within it.
+        rewrite_bans(&mut bans, 90..100, 0..0);
+        rewrite_bans(&mut bans, 10..50, 15..50);
+        assert_eq!(ban_ranges(&bans), vec![10..15, 90..100]);
+        // A full Hide un-bans the extent entirely.
+        rewrite_bans(&mut bans, 10..50, 10..50);
+        assert_eq!(ban_ranges(&bans), vec![90..100]);
+        // Touching pieces merge into one canonical range.
+        rewrite_bans(&mut bans, 80..90, 0..0);
+        assert_eq!(ban_ranges(&bans), vec![80..100]);
+    }
+
+    #[test]
+    fn subtraction_keeps_the_unrevealed_pieces_in_order() {
+        assert_eq!(subtract_bans(&(0..100), &bans_of(&[])), vec![0..100]);
+        assert_eq!(
+            subtract_bans(&(0..100), &bans_of(&[40..60])),
+            vec![0..40, 60..100]
+        );
+        assert_eq!(
+            subtract_bans(&(0..100), &bans_of(&[0..100])),
+            Vec::<Range<u32>>::new()
+        );
+        assert_eq!(
+            subtract_bans(&(20..80), &bans_of(&[0..30, 50..60, 90..95])),
+            vec![30..50, 60..80]
+        );
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -280,6 +353,18 @@ pub enum FoldCommand {
     HideBottom,
 
     Remove,
+}
+
+impl std::fmt::Display for FoldCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FoldCommand::RevealTop => out.write_str("fold reveal top"),
+            FoldCommand::HideTop => out.write_str("fold hide top"),
+            FoldCommand::RevealBottom => out.write_str("fold reveal bottom"),
+            FoldCommand::HideBottom => out.write_str("fold hide bottom"),
+            FoldCommand::Remove => out.write_str("fold remove"),
+        }
+    }
 }
 
 #[derive(Clone)]

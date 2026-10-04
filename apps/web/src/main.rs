@@ -184,6 +184,15 @@ mod app {
             >,
             target_thread: usize,
         ) -> c_int;
+        fn emscripten_set_mouseleave_callback_on_thread(
+            target: *const c_char,
+            user_data: *mut c_void,
+            use_capture: bool,
+            callback: Option<
+                extern "C" fn(c_int, *const EmscriptenMouseEvent, *mut c_void) -> bool,
+            >,
+            target_thread: usize,
+        ) -> c_int;
         fn emscripten_set_mouseup_callback_on_thread(
             target: *const c_char,
             user_data: *mut c_void,
@@ -253,7 +262,7 @@ mod app {
         );
         let bytes = unsafe { std::slice::from_raw_parts(data.cast::<u8>(), size as usize) };
         let typeface = FontMgr::new()
-            .new_from_data(bytes, None)
+            .new_from_data(skia_safe::Data::new_copy(bytes), None)
             .expect("failed to load JetBrains Mono WOFF2");
         himark::embedded_fonts::install(typeface);
 
@@ -300,19 +309,11 @@ mod app {
             himarkdown::register_handlers(&mut state);
             state.register_command(std::sync::Arc::new(palette::TogglePalette));
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
-            state.register_command(std::sync::Arc::new(himark::hifiles::ToggleSessionSwitcher));
-            state.register_command(std::sync::Arc::new(hidiff::OpenDiff));
-            state.register_row_minter(hidiff::row_minter());
-            state.register_sync_observer(hidiff::canvas_sync_observer());
-            state.register_session_family(hidiff::canvases_session_family());
-            state.register_navigator(hidiff::CanvasNavigator);
+            state.register_command(std::sync::Arc::new(himark::OpenDiff));
+            state.register_row_minter(himark::pair_row_minter());
+            state.register_navigator(himark::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
-            state.register_overlay_surface(peeker::overlay_surface());
-            state.register_overlay_surface(palette::overlay_surface());
-
-            let change_refs = himark::hichanges::ChangeRefs::default();
-            himark::hichanges::Changes::install(&mut state.store_mut(), change_refs.clone());
             himark::hicomments::Comments::install(&mut state.store_mut());
             himark::OpenDocuments::install_hook(
                 &mut state.store_mut(),
@@ -426,7 +427,9 @@ mod app {
                             channels: Arc::clone(&document_channels),
                         },
                     );
-                    state.register_editor_command(Arc::new(himark::SaveDocument::existing_files()));
+                    state.register_document_command(Arc::new(
+                        himark::SaveDocument::existing_files(),
+                    ));
                     state.register_handler::<himark::ListDirectoryEffect>(
                         hiahp::fsroute::RouteList {
                             directory: Arc::clone(&seats),
@@ -472,10 +475,7 @@ mod app {
                         },
                     );
 
-                    state.register_handler::<himark::FetchBaseEffect>(hiahp::fsroute::RouteBase {
-                        refs: change_refs.clone(),
-                    });
-                    state.observe_stripe_bases();
+                    state.observe_stripe_bases(Arc::new(hiahp::fsroute::resolve_base));
 
                     hiahp::open::install_open_handlers(
                         &mut state,
@@ -629,6 +629,13 @@ mod app {
             app,
             true,
             Some(mouse_move),
+            CALLBACK_THREAD_CALLING,
+        );
+        emscripten_set_mouseleave_callback_on_thread(
+            CANVAS,
+            app,
+            true,
+            Some(mouse_leave),
             CALLBACK_THREAD_CALLING,
         );
         emscripten_set_mouseup_callback_on_thread(
@@ -886,6 +893,27 @@ mod app {
                 event.target_x as f32 * app.scale,
                 event.target_y as f32 * app.scale,
             );
+            let mods = imba::event::Modifiers {
+                shift: event.shift_key,
+                control: event.ctrl_key,
+                alt: event.alt_key,
+                command: event.meta_key,
+            };
+            // The secondary button skips the click run — a context
+            // press never double-clicks.
+            if event.button == 2 {
+                return app.state.dispatch_timed(
+                    app.window,
+                    imba::event::Event::MouseDown {
+                        mods,
+                        point,
+                        button: imba::event::MouseButton::Right,
+                        count: 1,
+                    },
+                    skia_safe::Size::new(app.width.max(1) as f32, app.height.max(1) as f32),
+                    event.timestamp / 1000.0,
+                );
+            }
             let Some(count) = app
                 .clicks
                 .count(event.timestamp, point.x, point.y, event.button)
@@ -896,12 +924,7 @@ mod app {
             app.state.dispatch_timed(
                 app.window,
                 imba::event::Event::MouseDown {
-                    mods: imba::event::Modifiers {
-                        shift: event.shift_key,
-                        control: event.ctrl_key,
-                        alt: event.alt_key,
-                        command: event.meta_key,
-                    },
+                    mods,
                     point,
                     button: imba::event::MouseButton::Left,
                     count,
@@ -982,6 +1005,23 @@ mod app {
             }
             let point = window_mouse_point(app, event);
             end_drag(app, point, event.timestamp / 1000.0)
+        }
+    }
+
+    extern "C" fn mouse_leave(
+        _event_type: c_int,
+        _event: *const EmscriptenMouseEvent,
+        user_data: *mut c_void,
+    ) -> bool {
+        unsafe {
+            let app = &mut *user_data.cast::<WebApp>();
+            // A HitTest beyond any component's reach, or hover popups
+            // stick to the last in-canvas point.
+            app.state.dispatch(
+                app.window,
+                imba::event::Event::window_left(),
+                app.state.viewport_size(),
+            )
         }
     }
 

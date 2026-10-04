@@ -1,19 +1,29 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::atomic::{AtomicU32, Ordering};
+//! The chat, split Document/Editor-style (docs/model-view.md step 5):
+//! `ChatPanel` is the conversation MODEL — the transcript as cell
+//! SPECS, the stream fold, the permission ask, the feed — and it owns
+//! its `ChatView` records, one per mount. A view is the laid
+//! furniture: the ListView of measured cells (heights are width-bound
+//! — the reason a single view could never mount twice), the scroll,
+//! the composer with its per-view draft, focus, completion, toolbar.
+//! A model mutation rolls every view in the same batch (`roll`), each
+//! re-laying at its own width; a fresh view is built from the spec
+//! transcript alone.
+
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use crate::higent::{
-    CancelTurnEffect, DispatchChatActionEffect, FetchFileEditEffect, FetchTurnsEffect,
-    PollChatActionsEffect, StartTurnEffect, TurnsPage,
+    CancelTurnEffect, DispatchChatActionEffect, FetchTurnsEffect, PollChatActionsEffect, TurnsPage,
 };
-use crate::{env, fonts::ui_text_font, EditorCommand, PanelView};
+use crate::{env, fonts::ui_text_font};
 use ahp_types::actions::{
     ChatPendingMessageRemovedAction, ChatToolCallConfirmedAction, StateAction,
 };
 use ahp_types::state::{
     ChatState, ConfirmationOption, ConfirmationOptionKind, PendingMessageKind,
-    ToolCallConfirmationReason, ToolInput, Turn,
+    ToolCallConfirmationReason, ToolInput,
 };
 use imba::{
     arena::Arena,
@@ -30,26 +40,50 @@ use imba::{
 };
 use skia_safe::{Paint, Rect, Size};
 
-use crate::higent::cell::{Cell, CellCommand, CellKind};
+use crate::higent::cell::{Cell, CellCommand};
 use crate::higent::composer::{Composer, ComposerCommand, ComposerProps};
 use crate::higent::stack::{PermissionAsk, StackCommand, WidgetStack};
-use crate::higent::tool_group::{ToolCallSpec, ToolFace, ToolUpdate};
-use crate::higent::turn::{
-    completed_tool_face, denied_tool_face, message_cell, part_cells, pending_tool_face,
-    result_diff_specs, running_tool_face, streaming_tool_face, turn_cells, usage_cell, CellSpec,
-    TurnCommand, TurnView,
-};
+use crate::higent::turn::{CellSpec, TurnCommand, TurnView};
 
+#[derive(Clone)]
 pub enum RowCommand {
     Activate,
 
-    Append { cell: Cell, height: f32 },
+    /// A SLEEPING row painted: build me at the row's real width.
+    Wake,
+
+    /// A cell joins the turn where its key belongs.
+    Place {
+        key: crate::higent::turn::CellKey,
+        cell: Cell,
+        height: f32,
+    },
     Turn(TurnCommand),
+}
+
+impl std::fmt::Display for RowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RowCommand::Turn(command) => command.fmt(out),
+            RowCommand::Activate => out.write_str("row activate"),
+            RowCommand::Wake => out.write_str("row wake"),
+            RowCommand::Place { .. } => out.write_str("row place"),
+        }
+    }
 }
 
 #[derive(Clone)]
 enum ChatRow {
-    Loader { armed: bool },
+    Loader {
+        armed: bool,
+    },
+
+    /// An off-viewport turn holds the MODEL turn, not its editors —
+    /// opening a chat is O(visible), not O(history). The first paint
+    /// wakes it (the loader's arm pattern); the height correction
+    /// rides the settle pulse, above the anchor.
+    Sleeping(model::Turn),
+
     Turn(TurnView),
 }
 
@@ -63,7 +97,7 @@ impl View for ChatRow {
     ) -> imba::focus::FocusData<'w, RowCommand> {
         match self {
             ChatRow::Turn(turn) => turn.focus_data(store, ui).map(RowCommand::Turn),
-            ChatRow::Loader { .. } => imba::focus::FocusData::default(),
+            ChatRow::Loader { .. } | ChatRow::Sleeping(_) => imba::focus::FocusData::default(),
         }
     }
 
@@ -84,8 +118,8 @@ impl View for ChatRow {
             (ChatRow::Turn(turn), RowCommand::Turn(command)) => {
                 fx.scope(RowCommand::Turn, |fx| turn.perform(store, ui, command, fx))
             }
-            (ChatRow::Turn(turn), RowCommand::Append { cell, height }) => {
-                turn.append(cell, height);
+            (ChatRow::Turn(turn), RowCommand::Place { key, cell, height }) => {
+                turn.place(key, cell, height);
             }
 
             _ => {}
@@ -132,6 +166,22 @@ impl View for ChatRow {
                     row.place(0.0, 0.0, band);
                     let armed = *armed;
                     Either::Loader(row.wrap(move |inner| ArmedLoader { inner, armed }))
+                }
+                ChatRow::Sleeping(_) => {
+                    let width = constraints.max.width.max(1.0);
+                    let height = constraints.max.height.max(1.0);
+                    let band = imba::leaf::leaf::<RowCommand>(width, height).event(
+                        |_arena, event, _size| match event {
+                            Event::Paint { .. } => EventResult::Command(RowCommand::Wake),
+                            _ => EventResult::Ignored,
+                        },
+                    );
+                    let mut row = container(arena, Size::new(width, height));
+                    row.place(0.0, 0.0, band);
+                    Either::Sleeping(row.wrap(move |inner| ArmedLoader {
+                        inner,
+                        armed: false,
+                    }))
                 }
                 ChatRow::Turn(turn) => Either::Turn(
                     imba::Layout::layout(turn.display(arena, store, ui), arena, constraints)
@@ -180,20 +230,23 @@ impl<'a, Inner: Widget<'a, RowCommand>> Widget<'a, RowCommand> for ArmedLoader<I
     }
 }
 
-enum Either<A, B> {
+enum Either<A, B, C> {
     Loader(A),
     Turn(B),
+    Sleeping(C),
 }
 
-impl<'a, A, B> imba::Thunk<'a, RowCommand> for Either<A, B>
+impl<'a, A, B, C> imba::Thunk<'a, RowCommand> for Either<A, B, C>
 where
     A: imba::Thunk<'a, RowCommand> + 'a,
     B: imba::Thunk<'a, RowCommand> + 'a,
+    C: imba::Thunk<'a, RowCommand> + 'a,
 {
     fn size(&self) -> Size {
         match self {
             Either::Loader(thunk) => thunk.size(),
             Either::Turn(thunk) => thunk.size(),
+            Either::Sleeping(thunk) => thunk.size(),
         }
     }
 
@@ -205,17 +258,22 @@ where
         match self {
             Either::Loader(thunk) => thunk.realize(arena, viewport),
             Either::Turn(thunk) => thunk.realize(arena, viewport),
+            Either::Sleeping(thunk) => thunk.realize(arena, viewport),
         }
     }
 }
 
-impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCommand>
-    for Either<A, B>
+impl<'a, A, B, C> Widget<'a, RowCommand> for Either<A, B, C>
+where
+    A: Widget<'a, RowCommand>,
+    B: Widget<'a, RowCommand>,
+    C: Widget<'a, RowCommand>,
 {
     fn size(&self) -> Size {
         match self {
             Either::Loader(widget) => widget.size(),
             Either::Turn(widget) => widget.size(),
+            Either::Sleeping(widget) => widget.size(),
         }
     }
 
@@ -223,6 +281,7 @@ impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCom
         match self {
             Either::Loader(widget) => widget.overlays(),
             Either::Turn(widget) => widget.overlays(),
+            Either::Sleeping(widget) => widget.overlays(),
         }
     }
 
@@ -235,6 +294,7 @@ impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCom
         match self {
             Either::Loader(widget) => widget.handle_event(arena, event, viewport),
             Either::Turn(widget) => widget.handle_event(arena, event, viewport),
+            Either::Sleeping(widget) => widget.handle_event(arena, event, viewport),
         }
     }
 
@@ -248,6 +308,7 @@ impl<'a, A: Widget<'a, RowCommand>, B: Widget<'a, RowCommand>> Widget<'a, RowCom
         match self {
             Either::Loader(widget) => widget.layout_data(target),
             Either::Turn(widget) => widget.layout_data(target),
+            Either::Sleeping(widget) => widget.layout_data(target),
         }
     }
 }
@@ -260,7 +321,7 @@ enum Link {
     Failed(String),
 }
 
-type Transcript = ListView<ChatRow, String>;
+type Transcript = ListView<ChatRow, crate::higent::TurnId>;
 type Rows = ScrollView<Transcript>;
 type RowsCommand = ScrollCommand<ListCommand<RowCommand>>;
 
@@ -270,14 +331,22 @@ pub enum ChatArea {
     Composer,
 }
 
+#[derive(Clone)]
 pub enum ChatPanelCommand {
+    /// A command addressed to ONE view record — how an effect armed
+    /// while rolling a view finds its way back to that view when it
+    /// lands chat-scoped (no pane in sight).
+    InView(ChatViewId, Box<ChatPanelCommand>),
+
     Rows(RowsCommand),
 
     Focus(ChatArea, Option<Box<ChatPanelCommand>>),
 
+    /// A command for one cell, addressed by KEY: a landing that was in
+    /// flight while the row changed shape still finds its cell.
     Cell {
-        turn: String,
-        cell: usize,
+        turn: crate::higent::TurnId,
+        cell: crate::higent::turn::CellKey,
         command: CellCommand,
     },
     Composer(ComposerCommand),
@@ -287,9 +356,13 @@ pub enum ChatPanelCommand {
     Snapshot(Result<ChatState, String>),
     Older(Result<TurnsPage, String>),
 
-    Accepted {
-        placeholder: String,
-        result: Result<(), String>,
+    /// The host took the turn we dispatched. Nothing to do — the row
+    /// has been on screen since we folded our own action.
+    Sent,
+    /// The host refused it: the turn we minted failed.
+    SendFailed {
+        turn: crate::higent::TurnId,
+        error: String,
     },
 
     Actions(Vec<StateAction>),
@@ -311,65 +384,122 @@ pub enum ChatPanelCommand {
     CompletionFound(crate::completion::CompletionFound),
 }
 
+impl std::fmt::Display for ChatPanelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChatPanelCommand::InView(_, command) => command.fmt(out),
+            ChatPanelCommand::Rows(command) => command.fmt(out),
+            ChatPanelCommand::Focus(_, Some(command)) => command.fmt(out),
+            ChatPanelCommand::Focus(_, None) => out.write_str("chat focus"),
+            ChatPanelCommand::Cell { command, .. } => command.fmt(out),
+            ChatPanelCommand::Composer(command) => command.fmt(out),
+            ChatPanelCommand::Stack(command) => command.fmt(out),
+            ChatPanelCommand::Toolbar(command) => command.fmt(out),
+            ChatPanelCommand::Boot => out.write_str("chat boot"),
+            ChatPanelCommand::Snapshot(_) => out.write_str("chat snapshot"),
+            ChatPanelCommand::Older(_) => out.write_str("chat older"),
+            ChatPanelCommand::Sent => out.write_str("chat sent"),
+            ChatPanelCommand::SendFailed { .. } => out.write_str("chat send failed"),
+            ChatPanelCommand::Actions(_) => out.write_str("chat actions"),
+            ChatPanelCommand::Send => out.write_str("chat send"),
+            ChatPanelCommand::Answer(_) => out.write_str("chat answer"),
+            ChatPanelCommand::Dispatched { .. } => out.write_str("chat dispatched"),
+            ChatPanelCommand::Blurred(_) => out.write_str("chat blurred"),
+            ChatPanelCommand::ToolbarSync => out.write_str("toolbar sync"),
+            ChatPanelCommand::CompletionFound(_) => out.write_str("completion found"),
+        }
+    }
+}
+
 impl ChatPanelCommand {
     pub fn is_send(&self) -> bool {
         match self {
             Self::Send => true,
             Self::Focus(_, Some(inner)) => inner.is_send(),
+            Self::InView(_, inner) => inner.is_send(),
             _ => false,
         }
     }
 }
 
-#[derive(Clone)]
-struct ActiveStream {
-    turn: String,
-    cells: usize,
-    parts: rpds::HashTrieMapSync<String, usize>,
-    tools: rpds::HashTrieMapSync<String, ToolTrack>,
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct ChatViewId(u64);
 
-    group: Option<usize>,
+impl ChatViewId {
+    pub(crate) fn mint() -> Self {
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, Ordering::Relaxed))
+    }
 }
 
-#[derive(Clone)]
-struct ToolTrack {
-    cell: usize,
-    display_name: String,
-    invocation: String,
-
-    call: Option<String>,
+/// One model mutation, as every view consumes it — each view lays
+/// the same op at its own width.
+enum ViewOp {
+    /// The whole conversation re-lays: a subscribe snapshot landed.
+    Reset {
+        turns: rpds::VectorSync<model::Turn>,
+        has_more: bool,
+    },
+    /// A page of older turns joined the top.
+    Prepend {
+        turns: rpds::VectorSync<model::Turn>,
+        has_more: bool,
+    },
+    Loader {
+        armed: bool,
+    },
+    /// One turn re-lays whole: a turn we did not hold joins the tail, a
+    /// turn we did is replaced where it stands (a replayed start RESETS
+    /// its parts, so the old cells must go). The op carries the MODEL
+    /// turn — every view dresses it at its own width.
+    Row(model::Turn),
+    /// ONE cell of a turn moved: placed if the row lacks it, re-dressed
+    /// in place if it stands. Every other cell keeps the document it
+    /// already has — a cell is a document, a parse and a layout, and a
+    /// streamed turn must never mint them again. The op carries the
+    /// SPEC, dressed once; the views only lay it.
+    Cell {
+        turn: crate::higent::TurnId,
+        key: crate::higent::turn::CellKey,
+        spec: CellSpec,
+    },
+    /// A turn ended: the cells after its parts (how it ended, what it
+    /// spent) join the row. At most two.
+    Tail {
+        turn: crate::higent::TurnId,
+        cells: crate::higent::turn::DressedCells,
+    },
+    /// Streamed text joined one part. The view hops from the part id to
+    /// its cell and appends — no counting, no re-lay.
+    Grew {
+        turn: crate::higent::TurnId,
+        part: model::PartId,
+        text: String,
+    },
 }
 
+/// The conversation MODEL: session truth, owner of its views.
 pub struct ChatPanel {
     server: crate::higent::HostId,
 
-    session: ahp_types::common::Uri,
-    chat: ahp_types::common::Uri,
+    session: crate::higent::SessionUri,
+    /// The collection this chat files into — wired at mint
+    /// (docs/entities.md law 4).
+    chats: imba::store::Id<crate::higent::Chats>,
+    chat: crate::higent::ChatUri,
     state: Link,
     title: String,
-    rows: Rows,
 
-    composer: Composer,
+    /// THE conversation: turns by id, the turn in flight, the cursor
+    /// behind the window. Every wire action folds into this and
+    /// nothing else — see `model`.
+    conversation: model::Conversation,
 
     stack: WidgetStack,
-
-    completion: crate::completion::Completion,
-
-    picked: rpds::VectorSync<crate::completion::PickedFile>,
-
-    focus: ChatArea,
-
-    cursor: Option<String>,
 
     fetch_token: Option<CancellationToken>,
 
     poll_token: Option<CancellationToken>,
-
-    active: Option<ActiveStream>,
-
-    has_loader: bool,
-
-    pending: Option<(String, String)>,
 
     /// A STEERED prompt: sent while a turn ran, so the run was
     /// cancelled and this fires the moment the turn ends — the
@@ -378,13 +508,99 @@ pub struct ChatPanel {
 
     initial_prompt: Option<String>,
 
-    toolbar: super::session_toolbar::SessionToolbar,
-
     minted: u64,
+
+    views: rpds::HashTrieMapSync<ChatViewId, ChatView>,
+
+    /// The mounts panes LEFT BEHIND, warm: each stays in `views` and
+    /// keeps taking ops, so walking back to the chat lays nothing. The
+    /// next pane claims the newest (`claim_view`) and dismantles the
+    /// rest. Opens and closes alternate, so this holds at most one
+    /// mount per window that ever showed the chat.
+    parked: rpds::VectorSync<ChatViewId>,
+}
+
+impl Clone for ChatPanel {
+    fn clone(&self) -> Self {
+        Self {
+            server: self.server,
+            session: self.session.clone(),
+            chats: self.chats,
+            chat: self.chat.clone(),
+            state: self.state.clone(),
+            title: self.title.clone(),
+            conversation: self.conversation.clone(),
+            stack: self.stack.clone(),
+            fetch_token: self.fetch_token,
+            poll_token: self.poll_token,
+            steering: self.steering.clone(),
+            initial_prompt: self.initial_prompt.clone(),
+            minted: self.minted,
+            views: self.views.clone(),
+            parked: self.parked.clone(),
+        }
+    }
+}
+
+/// One MOUNT's furniture: the laid list (heights are width-bound),
+/// the scroll, the composer with its per-view draft, focus,
+/// completion, toolbar.
+pub struct ChatView {
+    rows: Rows,
+
+    composer: Composer,
+
+    completion: crate::completion::Completion,
+
+    picked: rpds::VectorSync<crate::completion::PickedFile>,
+
+    focus: ChatArea,
+
+    has_loader: bool,
+
+    toolbar: super::session_toolbar::SessionToolbar,
 
     panel_width: AtomicU32,
 
     rows_height: AtomicU32,
+}
+
+impl Clone for ChatView {
+    fn clone(&self) -> Self {
+        Self {
+            rows: self.rows.clone(),
+            composer: self.composer.clone(),
+            completion: self.completion.clone(),
+            picked: self.picked.clone(),
+            focus: self.focus,
+            has_loader: self.has_loader,
+            toolbar: self.toolbar.clone(),
+            panel_width: AtomicU32::new(self.panel_width.load(Ordering::Relaxed)),
+            rows_height: AtomicU32::new(self.rows_height.load(Ordering::Relaxed)),
+        }
+    }
+}
+
+/// How many tail turns build eagerly on open — roughly the reachable
+/// viewport; everything older sleeps until painted.
+const EAGER_TAIL: usize = 12;
+
+/// A sleeping row's reserved band — a line-count estimate off the
+/// SPECS. Wrong is fine: the wake's correction lands above the
+/// anchor and rides the settle pulse.
+fn sleeping_height(turn: &model::Turn, chrome: &crate::theme::ChatChrome) -> f32 {
+    let line = chrome.title_size * 1.5;
+    let body: f32 = crate::higent::turn::dress(turn)
+        .iter()
+        .map(|(_, cell)| match cell {
+            CellSpec::Text(_, text) => {
+                (text.lines().count().clamp(1, 40) as f32) * line + chrome.gap
+            }
+            CellSpec::Tools(specs) => (specs.len().max(1) as f32) * line + chrome.gap,
+            CellSpec::Diff(_) => line * 3.0 + chrome.gap,
+        })
+        .sum();
+    body.max(line) + chrome.gap
 }
 
 fn completion_editor(command: ::editor::EditorCommand) -> ChatPanelCommand {
@@ -393,68 +609,31 @@ fn completion_editor(command: ::editor::EditorCommand) -> ChatPanelCommand {
     ))
 }
 
-impl Clone for ChatPanel {
-    fn clone(&self) -> Self {
-        Self {
-            server: self.server,
-            session: self.session.clone(),
-            chat: self.chat.clone(),
-            state: self.state.clone(),
-            title: self.title.clone(),
-            rows: self.rows.clone(),
-            composer: self.composer.clone(),
-            stack: self.stack.clone(),
-            completion: self.completion.clone(),
-            picked: self.picked.clone(),
-            focus: self.focus,
-            cursor: self.cursor.clone(),
-            fetch_token: self.fetch_token,
-            poll_token: self.poll_token,
-            active: self.active.clone(),
-            steering: self.steering.clone(),
-            has_loader: self.has_loader,
-            pending: self.pending.clone(),
-            initial_prompt: self.initial_prompt.clone(),
-            toolbar: self.toolbar.clone(),
-            minted: self.minted,
-            panel_width: AtomicU32::new(self.panel_width.load(Ordering::Relaxed)),
-            rows_height: AtomicU32::new(self.rows_height.load(Ordering::Relaxed)),
-        }
-    }
-}
-
 impl ChatPanel {
     pub fn new(
-        store: &imba::store::Store,
-        ui: &UiCtx,
+        _store: &imba::store::Store,
+        _ui: &UiCtx,
         server: crate::higent::HostId,
-        session: impl Into<ahp_types::common::Uri>,
-        chat: impl Into<ahp_types::common::Uri>,
+        session: impl Into<crate::higent::SessionUri>,
+        chats: imba::store::Id<crate::higent::Chats>,
+        chat: impl Into<crate::higent::ChatUri>,
     ) -> Self {
         Self {
             server,
             session: session.into(),
+            chats,
             chat: chat.into(),
             state: Link::Idle,
             title: "Agent Chat".to_owned(),
-            rows: ScrollView::new(ListView::empty()),
-            composer: Composer::new(store, ui),
+            conversation: model::Conversation::default(),
             stack: WidgetStack::new(),
-            completion: crate::completion::Completion::new(),
-            picked: rpds::VectorSync::new_sync(),
-            focus: ChatArea::Composer,
-            cursor: None,
             fetch_token: None,
             poll_token: None,
-            active: None,
-            has_loader: false,
-            pending: None,
             steering: None,
             initial_prompt: None,
-            toolbar: super::session_toolbar::SessionToolbar::new(store, ui),
             minted: 0,
-            panel_width: AtomicU32::new(800.0_f32.to_bits()),
-            rows_height: AtomicU32::new(600.0_f32.to_bits()),
+            views: rpds::HashTrieMapSync::new_sync(),
+            parked: rpds::VectorSync::new_sync(),
         }
     }
 
@@ -467,7 +646,7 @@ impl ChatPanel {
         self.server
     }
 
-    pub(crate) fn session_id(&self) -> crate::SessionId {
+    pub fn session_id(&self) -> crate::SessionId {
         crate::SessionId {
             host: self.server,
             session: self.session.clone(),
@@ -482,47 +661,120 @@ impl ChatPanel {
         self.title.clone()
     }
 
-    pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
-        self.rows
+    fn first_view(&self) -> Option<&ChatView> {
+        self.views.values().next()
+    }
+
+    /// TEST SUPPORT: every view's transcript — the multi-mount
+    /// oracle (a model mutation must reach them all identically).
+    #[doc(hidden)]
+    pub fn view_transcripts(&self) -> Vec<Vec<(String, Vec<(String, String)>)>> {
+        self.views
+            .values()
+            .map(|view| Self::rows_oracle(view))
+            .collect()
+    }
+
+    fn rows_oracle(view: &ChatView) -> Vec<(String, Vec<(String, String)>)> {
+        view.rows
             .content()
             .rows()
             .map(|row| match row {
                 ChatRow::Loader { .. } => ("…".to_owned(), Vec::new()),
+                ChatRow::Sleeping(turn) => (
+                    turn.id.as_str().to_owned(),
+                    crate::higent::turn::dress(&turn)
+                        .iter()
+                        .map(|(_, cell)| match cell {
+                            CellSpec::Text(kind, text) => (format!("{kind:?}"), text.clone()),
+                            CellSpec::Tools(specs) => (
+                                "Tool".to_owned(),
+                                specs
+                                    .iter()
+                                    .map(|spec| spec.face.line.clone())
+                                    .collect::<Vec<_>>()
+                                    .join("\n"),
+                            ),
+                            CellSpec::Diff(spec) => ("Diff".to_owned(), spec.header.title.clone()),
+                        })
+                        .collect(),
+                ),
                 ChatRow::Turn(turn) => (turn.id().to_owned(), turn.cells_oracle()),
             })
             .collect()
     }
 
+    /// How many turns this conversation carries — the counter the
+    /// registry compares across a write-back.
+    pub fn turn_count(&self) -> usize {
+        self.conversation.len()
+    }
+
+    /// The tail turn and the turn in flight: what a shrinking
+    /// write-back needs to name what it would drop. Both are O(1).
+    pub fn tail_turn(&self) -> Option<&str> {
+        self.conversation.tail().map(|turn| turn.id.as_str())
+    }
+
+    pub fn live_turn(&self) -> Option<&str> {
+        self.conversation.live().map(|turn| turn.as_str())
+    }
+
+    pub fn transcript(&self) -> Vec<(String, Vec<(String, String)>)> {
+        self.first_view().map(Self::rows_oracle).unwrap_or_default()
+    }
+
     #[doc(hidden)]
     pub fn completion_open(&self) -> bool {
-        self.completion.open()
+        self.first_view().is_some_and(|view| view.completion.open())
     }
 
     #[doc(hidden)]
     pub fn completion_rows(&self) -> Vec<String> {
-        self.completion.row_labels()
+        self.first_view()
+            .map(|view| view.completion.row_labels())
+            .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn completion_picked(&self) -> Vec<String> {
-        self.picked.iter().map(|pick| pick.rel.clone()).collect()
+        self.first_view()
+            .map(|view| view.picked.iter().map(|pick| pick.rel.clone()).collect())
+            .unwrap_or_default()
     }
 
     pub fn composer_text(&self) -> String {
-        self.composer.text()
+        self.first_view()
+            .map(|view| view.composer.text())
+            .unwrap_or_default()
     }
 
     #[doc(hidden)]
     pub fn blurred(&self) -> bool {
-        self.composer.blurred()
+        self.first_view()
+            .is_some_and(|view| view.composer.blurred())
     }
 
     pub fn footer_height(&self, store: &Store, nominal_height: f32) -> f32 {
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
-        self.composer.band_height(&chrome, nominal_height)
-            + self.stack.height(&chrome)
-            + theme.ui().toolbar.height
+        let band = self
+            .first_view()
+            .map(|view| view.composer.band_height(&chrome, nominal_height))
+            .unwrap_or(0.0);
+        band + self.stack.height(&chrome) + theme.ui().toolbar.height
+    }
+
+    /// Idle -> Subscribing, exactly once: the double-subscription
+    /// guard every boot road shares (paint, install, walk-back).
+    pub(crate) fn boot_feed(&mut self) -> bool {
+        match self.state {
+            Link::Idle => {
+                self.state = Link::Subscribing;
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn ready(&self) -> bool {
@@ -534,127 +786,198 @@ impl ChatPanel {
     }
 
     pub fn composer_content_height(&self) -> f32 {
-        self.composer.content_height()
+        self.first_view()
+            .map(|view| view.composer.content_height())
+            .unwrap_or(0.0)
     }
 
     pub fn queue_oracle(&self) -> Vec<(String, String)> {
         self.stack.queue_oracle()
     }
 
-    fn busy(&self) -> bool {
-        self.pending.is_some() || self.active.is_some()
+    #[doc(hidden)]
+    pub fn toolbar_probe(&self) -> super::session_toolbar::ToolbarProbe {
+        self.first_view()
+            .expect("a mounted chat view")
+            .toolbar
+            .probe()
     }
 
-    fn panel_width(&self) -> f32 {
-        f32::from_bits(self.panel_width.load(Ordering::Relaxed))
+    fn busy(&self) -> bool {
+        self.conversation.is_running()
     }
 
     fn seat(&self, store: &Store) -> Option<std::sync::Arc<dyn crate::higent::AhpServer>> {
         crate::higent::Servers::seat(store, self.server)
     }
 
-    fn near_tail(&self) -> bool {
-        let viewport = f32::from_bits(self.rows_height.load(Ordering::Relaxed));
-        let total = self.rows.content().total_height();
-        self.rows.scroll_y() + viewport >= total - viewport * 0.5
-    }
+    // ------------------------------------------------------------------
+    // The view registry: the model owns its views, panes hold ids.
 
-    fn reveal_tail(&mut self, store: &mut Store) {
-        let _ = store;
-        self.rows.set_scroll_y(f32::MAX);
-    }
-
-    fn build_cell(
-        &self,
+    /// Build the view for `id` from the spec transcript — the road a
+    /// pane takes on its first command (a pane is minted storeless,
+    /// so the record arrives lazily).
+    pub(crate) fn ensure_view(
+        &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        key: &str,
-        index: usize,
-        spec: CellSpec,
-        content_width: f32,
+        id: ChatViewId,
         fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> (Cell, f32) {
-        let turn_key = key.to_owned();
-        match spec {
-            CellSpec::Text(kind, markdown) => fx.scope(
-                move |command: EditorCommand| ChatPanelCommand::Cell {
-                    turn: turn_key.clone(),
-                    cell: index,
-                    command: CellCommand::Editor(command),
-                },
-                |fx| Cell::build(store, ui, kind, &markdown, content_width, fx),
-            ),
-            CellSpec::Tools(specs) => Cell::tools(store, ui, specs, content_width),
-            CellSpec::Diff(spec) => {
-                let Some(seat) = self.seat(store) else {
-                    return Cell::pending_diff(store, spec.header, content_width);
-                };
-                fx.push(
-                    AnyEffect::new(FetchFileEditEffect {
-                        seat,
-                        before: spec.before,
-                        after: spec.after,
-                    })
-                    .map(move |result| ChatPanelCommand::Cell {
-                        turn: turn_key.clone(),
-                        cell: index,
-                        command: CellCommand::ResolveDiff(result),
-                    }),
+    ) {
+        if self.views.contains_key(&id) {
+            return;
+        }
+        eprintln!(
+            "[higent] view rebuild for {}: {} turns",
+            self.chat,
+            self.conversation.len()
+        );
+        let seat = self.seat(store);
+        let mut view = ChatView::new(store, ui);
+        fx.scope(
+            move |command| ChatPanelCommand::InView(id, Box::new(command)),
+            |fx| {
+                let lead_loader = self.conversation.older().is_some();
+                let slice = view.build_page(
+                    store,
+                    ui,
+                    &seat,
+                    self.conversation.turns(),
+                    lead_loader,
+                    EAGER_TAIL,
+                    fx,
                 );
-                Cell::pending_diff(store, spec.header, content_width)
+                let len = view.rows.content().len();
+                view.rows.content_mut().splice_slice(0..len, slice);
+                view.has_loader = lead_loader;
+            },
+        );
+        view.reveal_tail(store);
+        self.views.insert_mut(id, view);
+    }
+
+    /// The mount a fresh pane takes: the one the last pane PARKED
+    /// (laid, and fed every op since — nothing to rebuild), else a new
+    /// one, built here. Any other parked mount is dismantled now: this
+    /// is the road that has effects to spend, and a pane that comes
+    /// back adopts whichever mount is warm.
+    pub(crate) fn claim_view(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) -> ChatViewId {
+        let parked = std::mem::replace(&mut self.parked, rpds::VectorSync::new_sync());
+        let claimed = parked.last().copied();
+        for stale in parked.iter().copied().filter(|id| Some(*id) != claimed) {
+            self.destroy_view(store, stale, fx);
+        }
+        match claimed {
+            Some(id) => id,
+            None => {
+                let id = ChatViewId::mint();
+                self.ensure_view(store, ui, id, fx);
+                id
             }
         }
     }
 
-    fn build_turn(
-        &self,
-        store: &mut Store,
-        ui: &UiCtx,
-        key: &str,
-        cells: Vec<CellSpec>,
-        fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> (TurnView, f32) {
-        let content_width = TurnView::content_width(self.panel_width());
-        let mut rows = Vec::with_capacity(cells.len());
-        let mut total = 0.0;
-        for (index, spec) in cells.into_iter().enumerate() {
-            let (cell, height) = self.build_cell(store, ui, key, index, spec, content_width, fx);
-            total += height;
-            rows.push((cell, height));
+    /// A pane let go of its mount: it stays in `views`, warm and fed,
+    /// for the walk back. Teardown carries no effects (`dismantle` and
+    /// `displaced` have the store and nothing else), so parking only
+    /// MARKS; the next claim dismantles what it does not adopt.
+    pub(crate) fn park_view(&mut self, id: ChatViewId) {
+        if self.views.contains_key(&id) && !self.parked.iter().any(|parked| *parked == id) {
+            self.parked.push_back_mut(id);
         }
-        (TurnView::new(key, content_width, rows), total)
     }
 
-    fn build_page(
-        &self,
-        store: &mut Store,
-        ui: &UiCtx,
-        turns: &[Turn],
-        fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> ListSlice<ChatRow, String> {
-        let chrome = env::Themes::of(store).ui().chat.clone();
-        let mut slice = ListSlice::new();
-        if self.cursor.is_some() {
-            slice.push_sized(ChatRow::Loader { armed: true }, chrome.loader_height);
-        }
-        for turn in turns {
-            let (view, height) = self.build_turn(store, ui, &turn.id, turn_cells(turn), fx);
-            slice.push_keyed_sized(turn.id.clone(), ChatRow::Turn(view), height);
-        }
-        slice
+    /// A pane CLOSED: its mount goes now. Teardown carries no effects,
+    /// and the mount's own are cancellations of builds in flight —
+    /// those land on an id no view holds and are dropped there.
+    pub(crate) fn close_view(&mut self, store: &mut Store, id: ChatViewId) {
+        let mut throwaway = imba::effect::Batch::new();
+        self.destroy_view(store, id, &mut throwaway.effects());
     }
 
-    fn load_older(&mut self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
+    pub(crate) fn destroy_view(
+        &mut self,
+        store: &mut Store,
+        id: ChatViewId,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(mut view) = self.views.get(&id).cloned() else {
+            return;
+        };
+        self.views.remove_mut(&id);
+        if self.parked.iter().any(|parked| *parked == id) {
+            self.parked = self
+                .parked
+                .iter()
+                .copied()
+                .filter(|parked| *parked != id)
+                .collect();
+        }
+        fx.scope(ChatPanelCommand::Rows, |fx| view.rows.destroy(store, fx));
+        fx.scope(ChatPanelCommand::Composer, |fx| {
+            view.composer.destroy(store, fx)
+        });
+    }
+
+    /// THE UPDATE RULE: a model mutation reaches every view in the
+    /// same batch. Each view keeps its own reading position — only a
+    /// view already at the tail follows it.
+    fn roll(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        ops: &[ViewOp],
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        if ops.is_empty() {
+            return;
+        }
+        let seat = self.seat(store);
+        let ids: Vec<ChatViewId> = self.views.keys().copied().collect();
+        for id in ids {
+            let Some(mut view) = self.views.get(&id).cloned() else {
+                continue;
+            };
+            let follow = view.near_tail();
+            fx.scope(
+                move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                |fx| {
+                    for op in ops {
+                        view.apply(store, ui, &seat, op, fx);
+                    }
+                },
+            );
+            if follow {
+                view.reveal_tail(store);
+            }
+            self.views.insert_mut(id, view);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // The model fold: wire state in, spec transcript + view ops out.
+
+    fn load_older(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
         if self.fetch_token.is_some() {
             return;
         }
-        let Some(cursor) = self.cursor.clone() else {
+        let Some(cursor) = self.conversation.older().cloned() else {
             return;
         };
         let Some(seat) = self.seat(store) else {
             return;
         };
-        self.set_loader(store, false);
+        self.roll(store, ui, &[ViewOp::Loader { armed: false }], fx);
         self.fetch_token = Some(
             fx.push(
                 AnyEffect::new(FetchTurnsEffect {
@@ -667,16 +990,8 @@ impl ChatPanel {
         );
     }
 
-    fn set_loader(&mut self, store: &Store, armed: bool) {
-        if !self.has_loader {
-            return;
-        }
-        let height = env::Themes::of(store).ui().chat.loader_height;
-        self.rows
-            .content_mut()
-            .splice(0..1, [(ChatRow::Loader { armed }, height)]);
-    }
-
+    /// The page behind the cursor. The model puts those turns before
+    /// everything it holds; a turn it already holds keeps its place.
     fn apply_older(
         &mut self,
         store: &mut Store,
@@ -687,11 +1002,30 @@ impl ChatPanel {
         self.fetch_token = None;
         match result {
             Ok(page) => {
-                self.cursor = page.next_cursor.clone();
-                let slice = self.build_page(store, ui, &page.turns, fx);
-                let end = usize::from(self.has_loader);
-                self.rows.content_mut().splice_slice(0..end, slice);
-                self.has_loader = self.cursor.is_some();
+                let before: rpds::HashTrieMapSync<crate::higent::TurnId, ()> = self
+                    .conversation
+                    .turns()
+                    .map(|turn| (turn.id.clone(), ()))
+                    .collect();
+                let (next, _) = self.conversation.prepended(&page.turns, page.next_cursor);
+                self.conversation = next;
+                // Only the turns that were NOT already held join the top.
+                let landed: rpds::VectorSync<model::Turn> = self
+                    .conversation
+                    .turns()
+                    .filter(|turn| !before.contains_key(&turn.id))
+                    .cloned()
+                    .collect();
+                let has_more = self.conversation.older().is_some();
+                self.roll(
+                    store,
+                    ui,
+                    &[ViewOp::Prepend {
+                        turns: landed,
+                        has_more,
+                    }],
+                    fx,
+                );
                 // The prepend landed above the viewport: the settle
                 // pulse re-aims the scroll at the anchored row before
                 // this frame paints (docs/editor/viewport-preservation.md).
@@ -699,11 +1033,14 @@ impl ChatPanel {
             }
             Err(error) => {
                 eprintln!("[higent] fetchTurns failed: {error}");
-                self.set_loader(store, true);
+                self.roll(store, ui, &[ViewOp::Loader { armed: true }], fx);
             }
         }
     }
 
+    /// The subscribe snapshot. The model merges it: the wire window is
+    /// the host's tail, the turn in flight is adopted, and history we
+    /// hold beyond the window is ours to keep.
     fn apply_snapshot(
         &mut self,
         store: &mut Store,
@@ -711,56 +1048,51 @@ impl ChatPanel {
         result: Result<ChatState, String>,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        match result {
-            Ok(state) => {
-                self.state = Link::Ready;
-                self.title = state.title.clone();
-                self.cursor = state.turns_next_cursor.clone();
-
-                if let Some(turn) = state
-                    .turns
-                    .iter()
-                    .rev()
-                    .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
-                {
-                    crate::higent::session::Agents::note_turn(
-                        store,
-                        self.server,
-                        &self.chat,
-                        &turn.id,
-                    );
-                }
-                self.stack
-                    .seed_queue(state.queued_messages.iter().flatten().cloned());
-                let slice = self.build_page(store, ui, &state.turns, fx);
-                let len = self.rows.content().len();
-                self.rows.content_mut().splice_slice(0..len, slice);
-                self.has_loader = self.cursor.is_some();
-                self.reveal_tail(store);
-
-                self.mark_read(store, fx);
-                self.relaunch_poll(store, fx);
-
-                if let Some(prompt) = self.initial_prompt.take() {
-                    self.send_text(store, ui, prompt, fx);
-                }
-            }
+        let state = match result {
+            Ok(state) => state,
             Err(error) => {
                 self.state = Link::Failed(error);
+                return;
             }
+        };
+        eprintln!(
+            "[higent] chat snapshot for {}: {} wire turns over {} held",
+            self.chat,
+            state.turns.len(),
+            self.conversation.len()
+        );
+        self.state = Link::Ready;
+        self.title = state.title.clone();
+        if let Some(turn) = state
+            .turns
+            .iter()
+            .rev()
+            .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
+        {
+            crate::higent::session::Agents::note_turn(store, self.server, &self.chat, &turn.id);
+        }
+        self.stack
+            .seed_queue(state.queued_messages.iter().flatten().cloned());
+
+        let (next, _) = self.conversation.landed(&state);
+        self.conversation = next;
+        self.roll(
+            store,
+            ui,
+            &[ViewOp::Reset {
+                turns: self.conversation.turns().cloned().collect(),
+                has_more: self.conversation.older().is_some(),
+            }],
+            fx,
+        );
+        self.mark_read(store, fx);
+        self.relaunch_poll(store, fx);
+        if let Some(prompt) = self.initial_prompt.take() {
+            let _ = self.send_text(store, ui, prompt, None, None, fx);
         }
     }
 
-    #[doc(hidden)]
-    pub fn toolbar_probe(&self) -> super::session_toolbar::ToolbarProbe {
-        self.toolbar.probe()
-    }
-
-    fn model_pick(&self) -> Option<ahp_types::state::ModelSelection> {
-        self.toolbar.model_selection()
-    }
-
-    fn dispatch(
+    fn model_dispatch(
         &self,
         store: &Store,
         action: StateAction,
@@ -773,7 +1105,7 @@ impl ChatPanel {
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
                 seat,
-                channel: self.chat.clone(),
+                channel: self.chat.as_channel(),
                 action,
             })
             .map(move |result| ChatPanelCommand::Dispatched {
@@ -792,7 +1124,7 @@ impl ChatPanel {
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
                 seat,
-                channel: self.session.clone(),
+                channel: self.session.as_channel(),
                 action: StateAction::SessionIsReadChanged(
                     ahp_types::actions::SessionIsReadChangedAction { is_read: true },
                 ),
@@ -809,7 +1141,7 @@ impl ChatPanel {
             return;
         };
         let approved = matches!(option.kind, ConfirmationOptionKind::Approve);
-        self.dispatch(
+        self.model_dispatch(
             store,
             StateAction::ChatToolCallConfirmed(ChatToolCallConfirmedAction {
                 turn_id: turn,
@@ -829,13 +1161,19 @@ impl ChatPanel {
         self.stack.clear_ask();
     }
 
+    /// The turn STOP cancels: the stream we fold, else the turn
+    /// holding a permission ask (it outlives the stream), else the
+    /// turn the wire last told us was in flight. With none of these
+    /// the button has nothing to name — and does nothing.
+    pub fn cancel_target(&self) -> Option<crate::higent::TurnId> {
+        self.conversation
+            .live()
+            .cloned()
+            .or_else(|| self.stack.ask_turn())
+    }
+
     fn stop(&mut self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
-        let turn = self
-            .active
-            .as_ref()
-            .map(|active| active.turn.clone())
-            .or_else(|| self.stack.ask_turn());
-        let Some(turn_id) = turn else {
+        let Some(turn_id) = self.cancel_target() else {
             return;
         };
         let Some(seat) = self.seat(store) else {
@@ -846,37 +1184,6 @@ impl ChatPanel {
             chat: self.chat.clone(),
             turn_id,
         });
-    }
-
-    fn update_tool_call(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        turn_id: &str,
-        tool_call_id: &str,
-        face: ToolFace,
-        fx: &mut Effects<'_, ChatPanelCommand>,
-    ) {
-        let Some(track) = self
-            .active
-            .as_ref()
-            .filter(|active| active.turn == turn_id)
-            .and_then(|active| active.tools.get(tool_call_id))
-        else {
-            return;
-        };
-        let cell = track.cell;
-        self.route_cell(
-            store,
-            ui,
-            turn_id.to_owned(),
-            cell,
-            CellCommand::Tool(ToolUpdate::Face {
-                id: tool_call_id.to_owned(),
-                face,
-            }),
-            fx,
-        );
     }
 
     fn relaunch_poll(&mut self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
@@ -900,6 +1207,10 @@ impl ChatPanel {
         );
     }
 
+    /// Fold a batch of wire actions into the conversation, then carry
+    /// what each one MOVED to the views. The conversation is the only
+    /// state that folds; the asks and the queue are panel furniture and
+    /// ride beside it.
     fn apply_actions(
         &mut self,
         store: &mut Store,
@@ -907,382 +1218,1253 @@ impl ChatPanel {
         actions: Vec<StateAction>,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        let follow = self.near_tail();
+        let mut ops: Vec<ViewOp> = Vec::new();
+        let mut steer: Option<String> = None;
         for action in actions {
-            match action {
-                StateAction::ChatTurnStarted(action) => {
-                    let (kind, text) = message_cell(&action.message);
-                    let (view, height) = self.build_turn(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        vec![CellSpec::Text(kind, text)],
-                        fx,
-                    );
-                    let mut slice = ListSlice::new();
-                    slice.push_keyed_sized(action.turn_id.clone(), ChatRow::Turn(view), height);
-
-                    let range = self
-                        .pending
-                        .take()
-                        .and_then(|(key, _)| self.rows.content().row_range(&key));
-                    let len = self.rows.content().len();
-                    self.rows
-                        .content_mut()
-                        .splice_slice(range.unwrap_or(len..len), slice);
-                    self.active = Some(ActiveStream {
-                        turn: action.turn_id,
-                        cells: 1,
-                        parts: rpds::HashTrieMapSync::new_sync(),
-                        tools: rpds::HashTrieMapSync::new_sync(),
-                        group: None,
-                    });
-                }
-                StateAction::ChatResponsePart(action) => {
-                    let first = self.active.as_ref().map(|active| active.cells);
-                    let specs = part_cells(&action.part);
-                    let minted = !specs.is_empty();
-                    for spec in specs {
-                        self.append_stream_cell(store, ui, &action.turn_id, spec, fx);
-                    }
-                    use ahp_types::state::ResponsePart;
-                    let part_id = match &action.part {
-                        ResponsePart::Markdown(part) => Some(part.id.clone()),
-                        ResponsePart::Reasoning(part) => Some(part.id.clone()),
-                        _ => None,
-                    };
-                    if let (true, Some(id), Some(first), Some(active)) =
-                        (minted, part_id, first, self.active.as_mut())
-                    {
-                        if active.turn == action.turn_id {
-                            active.parts.insert_mut(id, first);
-                        }
-                    }
-                }
-                StateAction::ChatDelta(action) => {
-                    self.append_delta(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        &action.part_id,
-                        action.content,
-                        fx,
-                    );
-                }
-                StateAction::ChatReasoning(action) => {
-                    self.append_delta(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        &action.part_id,
-                        action.content,
-                        fx,
-                    );
-                }
-                StateAction::ChatToolCallStart(action) => {
-                    let index = self.append_stream_cell(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        CellSpec::Tools(vec![ToolCallSpec {
-                            id: action.tool_call_id.clone(),
-                            display_name: action.display_name.clone(),
-                            face: streaming_tool_face(&action.display_name),
-                        }]),
-                        fx,
-                    );
-                    if let (Some(index), Some(active)) = (index, self.active.as_mut()) {
-                        if active.turn == action.turn_id {
-                            active.tools.insert_mut(
-                                action.tool_call_id,
-                                ToolTrack {
-                                    cell: index,
-                                    display_name: action.display_name,
-                                    invocation: String::new(),
-                                    call: None,
-                                },
-                            );
-                        }
-                    }
-                }
-                StateAction::ChatToolCallReady(action) => {
-                    let invocation = action.invocation_message.as_text().to_owned();
-                    let call = match &action.tool_input {
-                        Some(ToolInput::Inline(text)) => Some(text.clone()),
-                        _ => None,
-                    };
-                    let display = self
-                        .active
-                        .as_mut()
-                        .filter(|active| active.turn == action.turn_id)
-                        .and_then(|active| {
-                            let mut track = active.tools.get(&action.tool_call_id)?.clone();
-                            track.invocation = invocation.clone();
-                            track.call = call;
-                            let display = track.display_name.clone();
-                            active.tools.insert_mut(action.tool_call_id.clone(), track);
-                            Some(display)
-                        });
-                    let Some(display) = display else {
-                        continue;
-                    };
-                    if action.confirmed.is_some() {
-                        self.update_tool_call(
-                            store,
-                            ui,
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            running_tool_face(&display, &invocation),
-                            fx,
-                        );
-                    } else {
-                        self.update_tool_call(
-                            store,
-                            ui,
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            pending_tool_face(&display, &invocation),
-                            fx,
-                        );
-                        let input = match &action.tool_input {
-                            Some(ToolInput::Inline(text)) => Some(text.clone()),
-                            _ => None,
-                        };
-                        self.stack.set_ask(PermissionAsk::new(
-                            action.turn_id.clone(),
-                            action.tool_call_id.clone(),
-                            action
-                                .confirmation_title
-                                .as_ref()
-                                .map(|title| title.as_text().to_owned())
-                                .unwrap_or_else(|| display.clone()),
-                            invocation,
-                            input,
-                            action
-                                .options
-                                .clone()
-                                .unwrap_or_else(default_confirmation_options),
-                        ));
-                    }
-                }
-                StateAction::ChatToolCallConfirmed(action) => {
-                    self.stack.clear_ask_for_tool(&action.tool_call_id);
-                    let track = self
-                        .active
-                        .as_ref()
-                        .filter(|active| active.turn == action.turn_id)
-                        .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
-                    if let Some(track) = track {
-                        let face = if action.approved {
-                            running_tool_face(&track.display_name, &track.invocation)
-                        } else {
-                            denied_tool_face(&track.display_name)
-                        };
-                        self.update_tool_call(
-                            store,
-                            ui,
-                            &action.turn_id,
-                            &action.tool_call_id,
-                            face,
-                            fx,
-                        );
-                    }
-                }
-                StateAction::ChatToolCallComplete(action) => {
-                    let track = self
-                        .active
-                        .as_ref()
-                        .filter(|active| active.turn == action.turn_id)
-                        .and_then(|active| active.tools.get(&action.tool_call_id).cloned());
-                    let Some(track) = track else {
-                        continue;
-                    };
-                    let face = completed_tool_face(
-                        &track.display_name,
-                        track.call.as_deref(),
-                        &action.result,
-                    );
-                    self.update_tool_call(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        &action.tool_call_id,
-                        face,
-                        fx,
-                    );
-
-                    for spec in result_diff_specs(&action.result) {
-                        self.append_stream_cell(store, ui, &action.turn_id, spec, fx);
-                    }
-                }
-                StateAction::ChatPendingMessageSet(action)
-                    if matches!(action.kind, PendingMessageKind::Queued) =>
-                {
-                    self.stack.insert_queued(action.id, action.message);
-                }
-                StateAction::ChatPendingMessageRemoved(action) => {
-                    self.stack.remove_queued(&action.id);
-                }
-                StateAction::ChatUsage(action) => {
-                    if let Some((kind, markdown)) = usage_cell(&action.usage) {
-                        self.append_stream_cell(
-                            store,
-                            ui,
-                            &action.turn_id,
-                            CellSpec::Text(kind, markdown),
-                            fx,
-                        );
-                    }
-                }
-                StateAction::ChatTurnComplete(action) => {
-                    if self
-                        .active
-                        .as_ref()
-                        .is_some_and(|active| active.turn == action.turn_id)
-                    {
-                        self.active = None;
-                        self.stack.clear_ask();
-                        if let Some(text) = self.steering.take() {
-                            self.send_text(store, ui, text, fx);
-                        }
-                    }
-
+            self.furniture(&action);
+            let ends = matches!(
+                action,
+                StateAction::ChatTurnComplete(_)
+                    | StateAction::ChatTurnCancelled(_)
+                    | StateAction::ChatError(_)
+            );
+            let (next, change) = self.conversation.fold(&action);
+            let moved = change != model::Change::Nothing;
+            self.conversation = next;
+            self.ops_of(&change, &mut ops);
+            if ends && moved {
+                self.stack.clear_ask();
+                steer = self.steering.take().or(steer);
+                if let StateAction::ChatTurnComplete(done) = &action {
                     crate::higent::session::Agents::note_turn(
                         store,
                         self.server,
                         &self.chat,
-                        &action.turn_id,
+                        &done.turn_id,
                     );
-                    self.mark_read(store, fx);
                 }
-                StateAction::ChatTurnCancelled(action) => {
-                    self.append_stream_cell(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        CellSpec::Text(CellKind::Notice, "*Turn cancelled.*".to_owned()),
-                        fx,
-                    );
-                    self.active = None;
-                    self.stack.clear_ask();
-                    if let Some(text) = self.steering.take() {
-                        self.send_text(store, ui, text, fx);
-                    }
-                    self.mark_read(store, fx);
-                }
-                StateAction::ChatError(action) => {
-                    let markdown = format!(
-                        "**Turn failed** ({}): {}",
-                        action.error.error_type, action.error.message
-                    );
-                    self.append_stream_cell(
-                        store,
-                        ui,
-                        &action.turn_id,
-                        CellSpec::Text(CellKind::Error, markdown),
-                        fx,
-                    );
-                    self.active = None;
-                    self.stack.clear_ask();
-                    if let Some(text) = self.steering.take() {
-                        self.send_text(store, ui, text, fx);
-                    }
-                    self.mark_read(store, fx);
-                }
-
-                _ => {}
+                self.mark_read(store, fx);
             }
         }
-        if follow {
-            self.reveal_tail(store);
+        self.roll(store, ui, &ops, fx);
+        if let Some(text) = steer {
+            let _ = self.send_text(store, ui, text, None, None, fx);
         }
     }
 
-    fn append_delta(
+    /// The ops a change asks the views for — dressed here ONCE, laid by
+    /// every view at its own width.
+    fn ops_of(&self, change: &model::Change, ops: &mut Vec<ViewOp>) {
+        let cell = |turn: &crate::higent::TurnId, part: &model::PartId| {
+            let held = self.conversation.turn(turn)?;
+            let moved = held.part(part)?;
+            // A tool call's cell is its RUN — consecutive calls share
+            // one cell, keyed by the run's first call, however late a
+            // call joins or re-dresses.
+            if matches!(moved, model::Part::Tool(_)) {
+                let (key, spec) = crate::higent::turn::dress_tool_run(held, part)?;
+                return Some(ViewOp::Cell {
+                    turn: turn.clone(),
+                    key,
+                    spec,
+                });
+            }
+            let spec = crate::higent::turn::dress_part(moved);
+            Some(ViewOp::Cell {
+                turn: turn.clone(),
+                key: crate::higent::turn::CellKey::Part(part.clone()),
+                spec,
+            })
+        };
+        let op = match change {
+            model::Change::Nothing => None,
+            // A start RESETS the turn: the row re-lays whole.
+            model::Change::Said(turn) => self.conversation.turn(turn).cloned().map(ViewOp::Row),
+            // A part landed or was re-dressed: THAT cell moves.
+            model::Change::Part { turn, part } => cell(turn, part),
+            model::Change::Parts { turn, parts } => {
+                ops.extend(parts.iter().filter_map(|part| cell(turn, part)));
+                None
+            }
+            model::Change::Retired(turn) => self.conversation.turn(turn).map(|turn| ViewOp::Tail {
+                turn: turn.id.clone(),
+                cells: crate::higent::turn::dress_tail(turn),
+            }),
+            model::Change::Grew { turn, part, text } => Some(ViewOp::Grew {
+                turn: turn.clone(),
+                part: part.clone(),
+                text: text.clone(),
+            }),
+            model::Change::Page => Some(ViewOp::Reset {
+                turns: self.conversation.turns().cloned().collect(),
+                has_more: self.conversation.older().is_some(),
+            }),
+        };
+        ops.extend(op);
+    }
+
+    /// The panel's own furniture: the permission ask a tool call
+    /// raises, and the queue the host keeps beside the transcript.
+    fn furniture(&mut self, action: &StateAction) {
+        match action {
+            StateAction::ChatToolCallReady(ready) if ready.confirmed.is_none() => {
+                let display = self
+                    .conversation
+                    .live()
+                    .filter(|live| live.as_str() == ready.turn_id)
+                    .and_then(|live| self.conversation.turn(live))
+                    .and_then(|turn| turn.tool(&model::PartId::new(ready.tool_call_id.clone())))
+                    .map(|call| call.display.clone());
+                let Some(display) = display else {
+                    return;
+                };
+                let invocation = ready.invocation_message.as_text().to_owned();
+                let input = match &ready.tool_input {
+                    Some(ToolInput::Inline(text)) => Some(text.clone()),
+                    _ => None,
+                };
+                self.stack.set_ask(PermissionAsk::new(
+                    crate::higent::TurnId::new(ready.turn_id.clone()),
+                    ready.tool_call_id.clone(),
+                    ready
+                        .confirmation_title
+                        .as_ref()
+                        .map(|title| title.as_text().to_owned())
+                        .unwrap_or_else(|| display.clone()),
+                    invocation,
+                    input,
+                    ready
+                        .options
+                        .clone()
+                        .unwrap_or_else(default_confirmation_options),
+                ));
+            }
+            StateAction::ChatToolCallConfirmed(answered) => {
+                self.stack.clear_ask_for_tool(&answered.tool_call_id);
+            }
+            StateAction::ChatPendingMessageSet(set)
+                if matches!(set.kind, PendingMessageKind::Queued) =>
+            {
+                self.stack
+                    .insert_queued(set.id.clone(), set.message.clone());
+            }
+            StateAction::ChatPendingMessageRemoved(gone) => {
+                self.stack.remove_queued(&gone.id);
+            }
+            _ => {}
+        }
+    }
+
+    /// The composer's road: send what was typed, then — on a view
+    /// re-read AFTER the model rolled — clear the draft and follow
+    /// the tail.
+    pub(crate) fn submit(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        turn_id: &str,
-        part_id: &str,
-        content: String,
+        id: ChatViewId,
+        text: String,
+        attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
+        model: Option<ahp_types::state::ModelSelection>,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        let Some(active) = &self.active else {
-            return;
-        };
-        if active.turn != turn_id {
+        if !self.send_text(store, ui, text, attachments, model, fx) {
             return;
         }
-        let Some(cell) = active.parts.get(part_id).copied() else {
+        let Some(mut view) = self.views.get(&id).cloned() else {
             return;
         };
-        self.route_cell(
-            store,
-            ui,
-            turn_id.to_owned(),
-            cell,
-            CellCommand::Append(content),
-            fx,
-        );
+        view.composer.clear(store, ui);
+        view.reveal_tail(store);
+        self.views.insert_mut(id, view);
     }
 
-    fn append_stream_cell(
+    /// Send a prompt. Returns true when the text was CONSUMED (sent
+    /// or parked as a steer) — the caller's cue to clear its draft.
+    pub(crate) fn send_text(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        turn_id: &str,
-        spec: CellSpec,
+        text: String,
+        attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
+        model: Option<ahp_types::state::ModelSelection>,
         fx: &mut Effects<'_, ChatPanelCommand>,
-    ) -> Option<usize> {
-        let active = self.active.clone()?;
-        if active.turn != turn_id {
-            return None;
+    ) -> bool {
+        if !matches!(self.state, Link::Ready) {
+            return false;
+        }
+        let Some(seat) = self.seat(store) else {
+            return false;
+        };
+        if text.is_empty() {
+            return false;
         }
 
-        if let (CellSpec::Tools(specs), Some(group)) = (&spec, active.group) {
-            for spec in specs.iter().cloned() {
-                self.route_cell(
+        if self.busy() {
+            // STEERING, the Claude Code Esc-with-prompt shape: a
+            // prompt sent at a running agent drops the queue, cancels
+            // the turn, and fires the moment the turn ends. (The old
+            // road QUEUED here — into a queue nothing ever drained.)
+            for (id, _) in self.stack.queue_oracle() {
+                self.stack.remove_queued(&id);
+                self.model_dispatch(
                     store,
-                    ui,
-                    turn_id.to_owned(),
-                    group,
-                    CellCommand::Tool(ToolUpdate::Add(spec)),
+                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                        kind: PendingMessageKind::Queued,
+                        id,
+                    }),
+                    None,
                     fx,
                 );
             }
-            return Some(group);
+            self.steering = Some(text);
+            self.stop(store, fx);
+            return true;
         }
-        let range = self.rows.content().row_range(&active.turn)?;
+        // WRITE-AHEAD, the protocol's own shape: the client MINTS the
+        // turn id, folds its own `chat/turnStarted`, and dispatches
+        // that very action. The row is on screen before the host has
+        // heard of it, and the host's echo re-applies the same action
+        // and changes nothing — there is no placeholder to reconcile,
+        // and nothing that can leave the composer stuck.
+        self.minted += 1;
+        let turn = crate::higent::TurnId::new(format!(
+            "himark-{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|since| since.as_millis())
+                .unwrap_or_default(),
+            self.minted
+        ));
+        let action = StateAction::ChatTurnStarted(model::Conversation::opening(
+            &turn,
+            &text,
+            attachments,
+            model,
+        ));
+        let (next, change) = self.conversation.fold(&action);
+        self.conversation = next;
+        let mut ops: Vec<ViewOp> = Vec::new();
+        self.ops_of(&change, &mut ops);
+        self.roll(store, ui, &ops, fx);
+
+        let chat = self.chat.clone();
+        let failed = turn.clone();
+        fx.push(
+            AnyEffect::new(DispatchChatActionEffect {
+                seat,
+                channel: chat.as_channel(),
+                action,
+            })
+            .map(move |result| match result {
+                Ok(()) => ChatPanelCommand::Sent,
+                Err(error) => ChatPanelCommand::SendFailed {
+                    turn: failed.clone(),
+                    error,
+                },
+            }),
+        );
+        true
+    }
+
+    /// A send the host never took: the turn we minted is FAILED, said
+    /// the way the protocol says a turn fails.
+    fn apply_send_failed(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        turn: crate::higent::TurnId,
+        error: String,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        eprintln!("[higent] the send was not delivered: {error}");
+        let action = StateAction::ChatError(ahp_types::actions::ChatErrorAction {
+            turn_id: turn.as_str().to_owned(),
+            duration: 0,
+            part: ahp_types::state::ErrorResponsePart {
+                error: ahp_types::state::ErrorInfo {
+                    error_type: "not-delivered".to_owned(),
+                    message: error,
+                    stack: None,
+                    meta: None,
+                },
+                resumable: None,
+            },
+            meta: None,
+        });
+        let (next, change) = self.conversation.fold(&action);
+        self.conversation = next;
+        let mut ops: Vec<ViewOp> = Vec::new();
+        self.ops_of(&change, &mut ops);
+        self.roll(store, ui, &ops, fx);
+    }
+
+    /// The diff header's OPEN: hand the wire uri to the app, which
+    /// resolves it against this session's seat and opens the WORKING
+    /// COPY — the live file, not the snapshots the diff was built from.
+    fn open_edited_file(&self, store: &mut Store, uri: String) {
+        crate::AppRequests::push(
+            store,
+            std::sync::Arc::new(OpenEditedFile {
+                server: self.server,
+                session: self.session.clone(),
+                uri,
+            }),
+        );
+    }
+
+    pub(crate) fn perform_model(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        command: ChatPanelCommand,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        match command {
+            ChatPanelCommand::InView(id, inner) => {
+                self.perform_in_view(store, ui, id, *inner, fx);
+            }
+            ChatPanelCommand::Boot => {
+                if self.boot_feed() {
+                    crate::AppRequests::push(
+                        store,
+                        std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
+                            chats: self.chats,
+                            chat: self.chat.clone(),
+                        }),
+                    );
+                }
+            }
+            ChatPanelCommand::Snapshot(result) => self.apply_snapshot(store, ui, result, fx),
+            ChatPanelCommand::Older(result) => self.apply_older(store, ui, result, fx),
+            ChatPanelCommand::Sent => {}
+            ChatPanelCommand::SendFailed { turn, error } => {
+                self.apply_send_failed(store, ui, turn, error, fx)
+            }
+            ChatPanelCommand::Actions(actions) => {
+                self.apply_actions(store, ui, actions, fx);
+                self.relaunch_poll(store, fx);
+            }
+            ChatPanelCommand::Answer(index) => self.answer(store, index, fx),
+            ChatPanelCommand::Dispatched { undo_queue, result } => {
+                if let Err(error) = result {
+                    eprintln!("[higent] dispatch failed: {error}");
+                    if let Some(id) = undo_queue {
+                        self.stack.remove_queued(&id);
+                    }
+                }
+            }
+            ChatPanelCommand::Composer(ComposerCommand::Stop) => {
+                self.steering = None;
+                self.stop(store, fx);
+            }
+            ChatPanelCommand::Stack(StackCommand::Answer(index)) => self.answer(store, index, fx),
+            ChatPanelCommand::Stack(StackCommand::ToggleQueue) => self.stack.toggle_collapsed(),
+            ChatPanelCommand::Stack(StackCommand::RemoveQueued(id)) => {
+                self.stack.remove_queued(&id);
+                self.model_dispatch(
+                    store,
+                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
+                        kind: PendingMessageKind::Queued,
+                        id,
+                    }),
+                    None,
+                    fx,
+                );
+            }
+            // A view command with no view address: the sheet-era
+            // roads never mint these chat-scoped.
+            other => {
+                let _ = other;
+            }
+        }
+    }
+
+    /// The pane road: `view` is the pane's record. View furniture
+    /// commands land on it; model commands fall through.
+    pub(crate) fn perform_in_view(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        id: ChatViewId,
+        command: ChatPanelCommand,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        // A view is minted by `claim_view` and nowhere else: a landing
+        // addressed to a mount that was dismantled is simply late.
+        if !self.views.contains_key(&id) {
+            return;
+        }
+        match command {
+            ChatPanelCommand::InView(id, inner) => {
+                self.perform_in_view(store, ui, id, *inner, fx);
+            }
+
+            ChatPanelCommand::Focus(area, then) => {
+                if let Some(mut view) = self.views.get(&id).cloned() {
+                    view.focus = area;
+                    self.views.insert_mut(id, view);
+                }
+                if let Some(command) = then {
+                    self.perform_in_view(store, ui, id, *command, fx);
+                }
+            }
+
+            ChatPanelCommand::Rows(command) => {
+                if peeled_activation(&command) {
+                    self.load_older(store, ui, fx);
+                    return;
+                }
+                // A diff header's OPEN is MODEL work — the seat lives
+                // on the panel — so it is consumed before the command
+                // reaches the mount's furniture.
+                if let Some(uri) = peeled_open_file(&command) {
+                    self.open_edited_file(store, uri);
+                    return;
+                }
+                if let Some(index) = peeled_wake(&command) {
+                    let seat = self.seat(store);
+                    let Some(mut view) = self.views.get(&id).cloned() else {
+                        return;
+                    };
+                    fx.scope(
+                        move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                        |fx| view.wake_row(store, ui, &seat, index, fx),
+                    );
+                    self.views.insert_mut(id, view);
+                    return;
+                }
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                fx.scope(
+                    move |command| {
+                        ChatPanelCommand::InView(id, Box::new(ChatPanelCommand::Rows(command)))
+                    },
+                    |fx| view.rows.perform(store, ui, command, fx),
+                );
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::Cell {
+                command: CellCommand::OpenFile(uri),
+                ..
+            } => {
+                self.open_edited_file(store, uri);
+            }
+
+            ChatPanelCommand::Cell {
+                turn,
+                cell,
+                command,
+            } => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                fx.scope(
+                    move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                    |fx| view.route_cell(store, ui, turn, cell, command, fx),
+                );
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::Send | ChatPanelCommand::Composer(ComposerCommand::Submit) => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                if view.composer.is_empty() {
+                    return;
+                }
+                let text = view.composer.text().trim().to_owned();
+                if view.completion.open() {
+                    fx.scope(
+                        move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                        |fx| {
+                            view.completion.drop_state(
+                                view.composer.document_mut(),
+                                store,
+                                ui,
+                                fx,
+                                completion_editor,
+                            )
+                        },
+                    );
+                }
+                let attachments = view.completion_attachments(store, self.server, &text);
+                let model = view.toolbar.model_selection();
+                // The view goes BACK before the send: `send_text` rolls
+                // the echo row into every mounted view, and a clone
+                // taken before that roll would carry the pre-send rows
+                // right back over it — the user's own message would
+                // then appear only when the next op reached the view.
+                self.views.insert_mut(id, view);
+                self.submit(store, ui, id, text, attachments, model, fx);
+            }
+
+            // The STOP button lives in the composer band, so its click
+            // arrives view-scoped — but stopping is MODEL work, and
+            // the composer's own road drops it on the floor.
+            ChatPanelCommand::Composer(ComposerCommand::Stop) => {
+                self.steering = None;
+                self.stop(store, fx);
+            }
+
+            ChatPanelCommand::Composer(command) => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                let session = self.session_id();
+                let Some(recents) = store.entity(self.chats).map(|chats| chats.recents()) else {
+                    return;
+                };
+                fx.scope(
+                    move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                    |fx| view.composer_command(store, ui, &session, recents, command, fx),
+                );
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::Blurred(blurred) => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                fx.scope(
+                    move |command| ChatPanelCommand::InView(id, Box::new(command)),
+                    |fx| {
+                        if blurred && view.completion.open() {
+                            view.completion.drop_state(
+                                view.composer.document_mut(),
+                                store,
+                                ui,
+                                fx,
+                                completion_editor,
+                            );
+                        }
+                    },
+                );
+                view.composer.set_blurred(blurred);
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::CompletionFound(found) => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                let editor = view.composer.editor();
+                let (completion, mut composer) = (&mut view.completion, &mut view.composer);
+                completion.land(store, ui, composer.document_mut(), editor, found);
+                let _ = &mut composer;
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::ToolbarSync => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                if let Some(channel) = super::Agents::channel(store, &self.session_id()) {
+                    view.toolbar.sync(store, ui, self.server, &channel);
+                }
+                self.views.insert_mut(id, view);
+            }
+
+            ChatPanelCommand::Toolbar(command) => {
+                let Some(mut view) = self.views.get(&id).cloned() else {
+                    return;
+                };
+                let ask = {
+                    let mut ask = super::ToolbarAsk::None;
+                    fx.scope(
+                        move |command| {
+                            ChatPanelCommand::InView(
+                                id,
+                                Box::new(ChatPanelCommand::Toolbar(command)),
+                            )
+                        },
+                        |fx| ask = view.toolbar.perform(store, ui, command, fx),
+                    );
+                    ask
+                };
+                self.views.insert_mut(id, view);
+                match ask {
+                    super::ToolbarAsk::Edits(mode) => {
+                        if let Some(seat) = self.seat(store) {
+                            let mut config = serde_json::Map::new();
+                            config.insert("permissionMode".to_owned(), serde_json::json!(mode));
+                            fx.push(
+                                AnyEffect::new(DispatchChatActionEffect {
+                                    seat,
+                                    channel: self.session.as_channel(),
+                                    action: StateAction::SessionConfigChanged(
+                                        ahp_types::actions::SessionConfigChangedAction {
+                                            config,
+                                            replace: None,
+                                        },
+                                    ),
+                                })
+                                .map(|result| {
+                                    ChatPanelCommand::Dispatched {
+                                        undo_queue: None,
+                                        result,
+                                    }
+                                }),
+                            );
+                        }
+                    }
+
+                    super::ToolbarAsk::None => {}
+                }
+            }
+
+            model => self.perform_model(store, ui, model, fx),
+        }
+    }
+
+    pub(crate) fn focus_data_view<'w>(
+        &'w self,
+        store: &'w Store,
+        ui: &'w imba::UiCtx,
+        id: ChatViewId,
+    ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
+        use imba::focus::FocusData;
+        let Some(view) = self.views.get(&id) else {
+            return FocusData::default();
+        };
+        let ask = self.stack.ask_keys();
+        let composer_empty = view.composer.is_empty();
+        let expanded = view.composer.expanded();
+        let focus = view.focus;
+
+        let own = FocusData {
+            on_key: Some(Box::new(move |key, mods| match (key, mods) {
+                (Key::Enter, mods) if ask.is_some() && composer_empty && !mods.shift => {
+                    EventResult::Command(ChatPanelCommand::Answer(0))
+                }
+                (Key::Escape, _) if ask.is_some() => match ask.and_then(|ask| ask.deny) {
+                    Some(deny) => EventResult::Command(ChatPanelCommand::Answer(deny)),
+                    None => EventResult::Ignored,
+                },
+
+                (Key::Escape, _) if expanded => {
+                    EventResult::Command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
+                }
+
+                (Key::Enter, mods) if mods.command && focus == ChatArea::Composer => {
+                    EventResult::Command(ChatPanelCommand::Send)
+                }
+                _ => EventResult::Ignored,
+            })),
+            on_text: Some(Box::new(move |text| {
+                let Some(ask) = ask else {
+                    return EventResult::Ignored;
+                };
+                match text.chars().next().and_then(|c| c.to_digit(10)) {
+                    Some(digit) if digit >= 1 && (digit as usize) <= ask.count => {
+                        EventResult::Command(ChatPanelCommand::Answer(digit as usize - 1))
+                    }
+                    _ => EventResult::Ignored,
+                }
+            })),
+            ..FocusData::default()
+        };
+        let area = match view.focus {
+            ChatArea::Composer => view
+                .composer
+                .focus_data(store, ui)
+                .map(ChatPanelCommand::Composer),
+            ChatArea::Transcript => view.rows.focus_data(store, ui).map(ChatPanelCommand::Rows),
+        };
+        own.merge_under(area)
+    }
+
+    pub(crate) fn display_view<'a>(
+        &'a self,
+        arena: &'a Arena,
+        store: &'a Store,
+        ui: &'a UiCtx,
+        id: ChatViewId,
+    ) -> Option<impl imba::Layout<'a, ChatPanelCommand> + imba::LayoutValue + 'a> {
+        let view = self.views.get(&id)?;
+        Some(imba::laid(
+            move |_arena: &'a Arena, constraints: Constraints| {
+                let size = constraints.max;
+                let theme = env::Themes::of(store);
+                let chrome = theme.ui().chat.clone();
+                view.panel_width
+                    .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
+
+                let band_h = view.composer.band_height(&chrome, size.height);
+                let stack_h = self.stack.height(&chrome);
+
+                let toolbar_h = theme.ui().toolbar.height;
+                let rows_height = (size.height - band_h - stack_h - toolbar_h).max(1.0);
+                view.rows_height
+                    .store(rows_height.to_bits(), Ordering::Relaxed);
+
+                let mut panel = container(arena, size);
+
+                panel.place(
+                    0.0,
+                    0.0,
+                    imba::Layout::layout(
+                        view.rows.display(arena, store, ui),
+                        arena,
+                        Constraints {
+                            min: Size::new(size.width, rows_height),
+                            max: Size::new(size.width, rows_height),
+                        },
+                    )
+                    .map(ChatPanelCommand::Rows)
+                    .focus_scope(view.focus == ChatArea::Transcript),
+                );
+
+                let status = match &self.state {
+                    Link::Idle | Link::Subscribing => "connecting…".to_owned(),
+                    Link::Failed(error) => format!("failed: {error}"),
+                    Link::Ready if self.conversation.is_running() => "responding…".to_owned(),
+                    Link::Ready => String::new(),
+                };
+                let composer_empty = view.composer.is_empty();
+                panel.place(
+                    0.0,
+                    rows_height + stack_h,
+                    view.composer
+                        .layout(
+                            arena,
+                            store,
+                            ui,
+                            size.width,
+                            size.height,
+                            ComposerProps {
+                                focused: view.focus == ChatArea::Composer,
+                            },
+                        )
+                        .map(ChatPanelCommand::Composer),
+                );
+
+                if stack_h > 0.0 {
+                    panel.place(
+                        0.0,
+                        rows_height,
+                        self.stack
+                            .layout(arena, ui, &chrome, size.width)
+                            .map(ChatPanelCommand::Stack),
+                    );
+                }
+
+                // The SEND cell's width, computed up front: the combo
+                // strip's budget ends where SEND begins — the button
+                // always fits and nothing ever covers it.
+                let send_cell_width = {
+                    let ui_theme = theme.ui();
+                    let busy = self.busy();
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    label
+                        .chars()
+                        .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
+                        .sum::<f32>()
+                        + imba::text_advance(ui, &key_font, "⌘⏎")
+                        + ui_theme.combo.gap
+                        + ui_theme.combo.pad * 2.0
+                };
+                let toolbar_cells_right = view.toolbar.place(
+                    arena,
+                    &mut panel,
+                    store,
+                    ui,
+                    size.height - toolbar_h + 1.0,
+                    toolbar_h - 1.0,
+                    (size.width - send_cell_width - theme.ui().combo.gap).max(0.0),
+                );
+
+                // The footer's edges: a hairline between the transcript
+                // and the composer band, and one above the toolbar row
+                // (whose placement already reserves the pixel).
+                {
+                    let rule = theme.ui().toolbar.rule.0;
+                    let hairline =
+                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
+                            let mut paint = skia_safe::Paint::default();
+                            paint.set_anti_alias(false);
+                            paint.set_color(rule);
+                            canvas.draw_rect(rect, &paint);
+                        };
+                    panel.place(
+                        0.0,
+                        rows_height,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                    panel.place(
+                        0.0,
+                        size.height - toolbar_h,
+                        leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
+                    );
+                }
+
+                {
+                    let ui_theme = theme.ui();
+                    let busy = self.busy();
+                    let sendable = !composer_empty && matches!(self.state, Link::Ready);
+                    let stop = busy && composer_empty;
+                    let label = if stop {
+                        "STOP"
+                    } else if busy {
+                        "STEER"
+                    } else {
+                        "SEND"
+                    };
+                    let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
+                    let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
+                    let pad = ui_theme.combo.pad;
+                    let cell_width = send_cell_width;
+                    let accent = if stop {
+                        chrome.stop_color.0
+                    } else {
+                        chrome.accent.0
+                    };
+                    let on_accent = chrome.on_accent.0;
+                    let accent_soft = ui_theme.peeker.dim_text.0;
+                    let gap = ui_theme.combo.gap;
+                    // The cell's two texts as a Row of `Text`s at exact
+                    // baseline parity: the old per-char loop advanced by
+                    // glyph width + 1.5 (= `.tracking(1.5)`) from x =
+                    // left + pad, and drew the key hint a `gap` after the
+                    // label's last advance (= the Row's `.gap`). Each text
+                    // pads down so its baseline lands on the old
+                    // mid + font.size() * 0.35 line. The accent fill and
+                    // left rule stay a backdrop painter; the press is
+                    // `.on_click`, minting Stop or Submit like the old
+                    // event closure.
+                    let cell_h = toolbar_h - 1.0;
+                    let mid = cell_h * 0.5;
+                    let caps_ascent = -caps_font.metrics().1.ascent;
+                    let key_ascent = -key_font.metrics().1.ascent;
+                    let mut row = imba::Row::new(arena).gap(gap).child(
+                        imba::text(ui, label, caps_font.clone(), on_accent)
+                            .tracking(1.5)
+                            .pad_insets(imba::Insets {
+                                left: 0.0,
+                                top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
+                                right: 0.0,
+                                bottom: 0.0,
+                            }),
+                    );
+                    if !stop {
+                        row = row.child(
+                            imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                                imba::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                },
+                            ),
+                        );
+                    }
+                    let cell = row
+                        .pad_insets(imba::Insets {
+                            left: pad,
+                            top: 0.0,
+                            right: 0.0,
+                            bottom: 0.0,
+                        })
+                        .sized(cell_width, cell_h)
+                        .backdrop(
+                            move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
+                                let mut paint = skia_safe::Paint::default();
+                                let mut fill = accent;
+                                if !sendable && !busy {
+                                    fill = fill.with_a(0x50);
+                                }
+                                paint.set_color(fill.with_a(fill.a() / 3));
+                                canvas.draw_rect(rect, &paint);
+                                paint.set_anti_alias(false);
+                                paint.set_color(fill);
+                                canvas.draw_rect(
+                                    skia_safe::Rect::from_xywh(
+                                        rect.left,
+                                        rect.top,
+                                        1.0,
+                                        rect.height(),
+                                    ),
+                                    &paint,
+                                );
+                            },
+                        )
+                        .on_click(move || {
+                            ChatPanelCommand::Composer(match stop {
+                                true => ComposerCommand::Stop,
+                                false => ComposerCommand::Submit,
+                            })
+                        });
+                    panel.place_boxed(
+                        size.width - cell_width,
+                        size.height - toolbar_h + 1.0,
+                        cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
+                    );
+
+                    // The shortcut legend (or the link's status) sits on
+                    // the toolbar, right against the SEND cell. The ⌘⏎
+                    // hint already lives on the cell itself.
+                    let legend = match status.is_empty() {
+                        true => "⎋ chat".to_owned(),
+                        false => status.clone(),
+                    };
+                    let legend_w = imba::text_advance(ui, &key_font, &legend);
+                    let legend_x = size.width - cell_width - gap - legend_w;
+                    // Squeezed out by the combo cells? The legend yields.
+                    if legend_x >= toolbar_cells_right + gap {
+                        panel.place_boxed(
+                            legend_x,
+                            size.height - toolbar_h + 1.0,
+                            imba::text(ui, legend, key_font.clone(), accent_soft)
+                                .pad_insets(imba::Insets {
+                                    left: 0.0,
+                                    top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
+                                    right: 0.0,
+                                    bottom: 0.0,
+                                })
+                                .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
+                        );
+                    }
+                }
+                let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
+                let toolbar_stale =
+                    super::Agents::channel(store, &self.session_id()).is_some_and(|channel| {
+                        super::SessionToolbar::fingerprint(store, self.server, &channel)
+                            != view.toolbar.synced
+                    });
+
+                let rows_height_ = rows_height;
+                let focus = view.focus;
+                let boot = matches!(self.state, Link::Idle);
+                let strip_top = size.height - toolbar_h + 1.0;
+                panel.wrap_realized(move |panel| ChatWidget {
+                    panel,
+                    rows_height: rows_height_,
+                    focus,
+                    boot,
+                    toolbar_stale,
+                    strip_origin,
+                    strip_top,
+                })
+            },
+        ))
+    }
+}
+
+impl ChatView {
+    fn new(store: &Store, ui: &UiCtx) -> Self {
+        Self {
+            rows: ScrollView::new(ListView::empty()),
+            composer: Composer::new(store, ui),
+            completion: crate::completion::Completion::new(),
+            picked: rpds::VectorSync::new_sync(),
+            focus: ChatArea::Composer,
+            has_loader: false,
+            toolbar: super::session_toolbar::SessionToolbar::new(store, ui),
+            panel_width: AtomicU32::new(800.0_f32.to_bits()),
+            rows_height: AtomicU32::new(600.0_f32.to_bits()),
+        }
+    }
+
+    fn panel_width(&self) -> f32 {
+        f32::from_bits(self.panel_width.load(Ordering::Relaxed))
+    }
+
+    fn near_tail(&self) -> bool {
+        let viewport = f32::from_bits(self.rows_height.load(Ordering::Relaxed));
+        let total = self.rows.content().total_height();
+        self.rows.scroll_y() + viewport >= total - viewport * 0.5
+    }
+
+    fn reveal_tail(&mut self, store: &mut Store) {
+        let _ = store;
+        self.rows.set_scroll_y(f32::MAX);
+    }
+
+    fn build_cell(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        turn: &crate::higent::TurnId,
+        key: &crate::higent::turn::CellKey,
+        spec: CellSpec,
+        content_width: f32,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) -> (Cell, f32) {
+        let turn_key = turn.clone();
+        let cell_key = key.clone();
+        match spec {
+            // A markdown cell is a TEXT, a PARSE and a LAYOUT. None of
+            // that belongs on the UI thread: the cell is born as a band
+            // at an estimated height and `BuildDocumentEffect` builds
+            // the document off-thread — the landing only mounts it.
+            CellSpec::Text(kind, markdown) => {
+                let (cell, height) = Cell::pending_text(store, kind, &markdown, content_width);
+                let nonce = cell.pending_nonce().expect("born pending");
+                fx.push(
+                    AnyEffect::new(crate::BuildDocumentEffect {
+                        location: cell_location(),
+                        text: markdown,
+                    })
+                    .map(move |built| ChatPanelCommand::Cell {
+                        turn: turn_key.clone(),
+                        cell: cell_key.clone(),
+                        command: CellCommand::ResolveText { nonce, built },
+                    }),
+                );
+                (cell, height)
+            }
+            CellSpec::Tools(specs) => Cell::tools(store, ui, specs, content_width),
+            // A diff cell is TWO documents, a parse each, a diff and its
+            // marks. The cell is born as a header band and
+            // `BuildFileEditEffect` fetches both sides and builds the
+            // pair off-thread — the landing only lays the editors.
+            CellSpec::Diff(spec) => {
+                let Some(seat) = seat.clone() else {
+                    return Cell::pending_diff(store, spec.header, content_width);
+                };
+                fx.push(
+                    AnyEffect::new(crate::higent::BuildFileEditEffect {
+                        seat,
+                        before: spec.before,
+                        after: spec.after,
+                        name: spec.header.title.clone(),
+                    })
+                    .map(move |result| ChatPanelCommand::Cell {
+                        turn: turn_key.clone(),
+                        cell: cell_key.clone(),
+                        command: CellCommand::ResolveDiff(result),
+                    }),
+                );
+                Cell::pending_diff(store, spec.header, content_width)
+            }
+        }
+    }
+
+    fn build_turn(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        turn: &model::Turn,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) -> (TurnView, f32) {
         let content_width = TurnView::content_width(self.panel_width());
-        let index = active.cells;
-        let opens_run = matches!(spec, CellSpec::Tools(_));
-        let (cell, height) =
-            self.build_cell(store, ui, &active.turn, index, spec, content_width, fx);
+        let mut cells = ListSlice::new();
+        let mut total = 0.0;
+        for (key, spec) in crate::higent::turn::dress(turn).iter().cloned() {
+            let (cell, height) =
+                self.build_cell(store, ui, seat, &turn.id, &key, spec, content_width, fx);
+            total += height;
+            cells.push_keyed_sized(key, cell, height);
+        }
+        (TurnView::new(turn.id.as_str(), content_width, cells), total)
+    }
+
+    /// Only the tail's `eager` turns build their editors now — the
+    /// rest SLEEP at an estimated height and wake on first paint, so
+    /// opening a chat costs the viewport, not the history.
+    fn build_page<'t>(
+        &self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        turns: impl IntoIterator<Item = &'t model::Turn>,
+        lead_loader: bool,
+        eager: usize,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) -> ListSlice<ChatRow, crate::higent::TurnId> {
+        let chrome = env::Themes::of(store).ui().chat.clone();
+        let mut slice = ListSlice::new();
+        if lead_loader {
+            slice.push_sized(ChatRow::Loader { armed: true }, chrome.loader_height);
+        }
+        let turns: Vec<&model::Turn> = turns.into_iter().collect();
+        let asleep = turns.len().saturating_sub(eager);
+        for (at, record) in turns.into_iter().enumerate() {
+            if at < asleep {
+                slice.push_keyed_sized(
+                    record.id.clone(),
+                    ChatRow::Sleeping(record.clone()),
+                    sleeping_height(record, &chrome),
+                );
+                continue;
+            }
+            let (view, height) = self.build_turn(store, ui, seat, record, fx);
+            slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
+        }
+        slice
+    }
+
+    /// Wake ONE sleeping row: build its editors at this view's width
+    /// and settle the anchor over the height correction.
+    fn wake_row(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        index: usize,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(ChatRow::Sleeping(record)) = self.rows.content().view_at(index) else {
+            return;
+        };
+        let (view, height) = self.build_turn(store, ui, seat, &record, fx);
+        let mut slice = ListSlice::new();
+        slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
+        self.rows
+            .content_mut()
+            .splice_slice(index..index + 1, slice);
+        fx.settle();
+    }
+
+    fn set_loader(&mut self, store: &Store, armed: bool) {
+        if !self.has_loader {
+            return;
+        }
+        let height = env::Themes::of(store).ui().chat.loader_height;
+        self.rows
+            .content_mut()
+            .splice(0..1, [(ChatRow::Loader { armed }, height)]);
+    }
+
+    /// ONE cell moved: a row that lacks it builds it and puts it where
+    /// its key belongs; a row that has it re-dresses it in place. A row
+    /// still asleep waits for its wake, which dresses the whole turn
+    /// from the model anyway.
+    fn place_cell(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        turn: &crate::higent::TurnId,
+        key: &crate::higent::turn::CellKey,
+        spec: CellSpec,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(range) = self.rows.content().row_range(turn) else {
+            return;
+        };
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+            return;
+        };
+        if row.cell_at(key).is_some() {
+            for command in redress(&spec) {
+                self.route_cell(store, ui, turn.clone(), key.clone(), command, fx);
+            }
+            return;
+        }
+        let content_width = TurnView::content_width(self.panel_width());
+        let (cell, height) = self.build_cell(store, ui, seat, turn, key, spec, content_width, fx);
         fx.scope(ChatPanelCommand::Rows, |fx| {
             self.rows.perform(
                 store,
                 ui,
                 ScrollCommand::Content(ListCommand::Child(
                     range.start,
-                    RowCommand::Append { cell, height },
+                    RowCommand::Place {
+                        key: key.clone(),
+                        cell,
+                        height,
+                    },
                 )),
                 fx,
             )
         });
-        if let Some(active) = &mut self.active {
-            active.cells += 1;
-            active.group = opens_run.then_some(index);
-        }
-        Some(index)
     }
 
-    fn send(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut Effects<'_, ChatPanelCommand>) {
-        if self.composer.is_empty() {
+    /// From a turn and a cell key to the cell, in two keyed hops — and
+    /// whatever the cell sends back (an editor effect's landing) is
+    /// addressed the same way, so it finds the cell however the row has
+    /// moved meanwhile.
+    fn route_cell(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        turn: crate::higent::TurnId,
+        key: crate::higent::turn::CellKey,
+        command: CellCommand,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(range) = self.rows.content().row_range(&turn) else {
             return;
-        }
+        };
+        let Some(ChatRow::Turn(row)) = self.rows.content().view_at(range.start) else {
+            return;
+        };
+        let Some(cell) = row.cell_at(&key) else {
+            return;
+        };
+        let index = range.start;
+        fx.scope(
+            move |command: RowsCommand| lift_rows_command(&turn, &key, command),
+            |fx| {
+                self.rows.perform(
+                    store,
+                    ui,
+                    ScrollCommand::Content(ListCommand::Child(
+                        index,
+                        RowCommand::Turn(ListCommand::Child(cell, command)),
+                    )),
+                    fx,
+                )
+            },
+        );
+    }
 
-        let text = self.composer.text().trim().to_owned();
-        self.send_text(store, ui, text, fx);
+    fn composer_command(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        session: &crate::SessionId,
+        recents: imba::store::Id<crate::RecentLocations>,
+        command: ComposerCommand,
+        fx: &mut Effects<'_, ChatPanelCommand>,
+    ) {
+        let Some(command) = self.completion_intercept(store, ui, command, fx) else {
+            return;
+        };
+        let typed_at = matches!(
+            &command,
+            ComposerCommand::Editor(imba::scroll::ScrollCommand::Content(
+                ::editor::EditorCommand::InsertText { text }
+            )) if text == "@"
+        );
+        fx.scope(ChatPanelCommand::Composer, |fx| {
+            self.composer.perform(store, ui, command, fx)
+        });
+
+        let editor = self.composer.editor();
+        let at = typed_at.then(|| {
+            self.composer
+                .document()
+                .caret_byte(editor)
+                .saturating_sub(1)
+        });
+        self.completion.sync_path(
+            store,
+            ui,
+            self.composer.document_mut(),
+            editor,
+            at,
+            session,
+            recents,
+            None,
+            fx,
+            ChatPanelCommand::CompletionFound,
+            completion_editor,
+        );
     }
 
     fn completion_intercept(
@@ -1308,13 +2490,15 @@ impl ChatPanel {
                 },
             )));
         }
-        let popup = match inlay.downcast::<crate::completion::CompletionCommand>() {
-            Ok(popup) => *popup,
-            Err(other) => {
+        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
+            Some(_) => inlay
+                .downcast::<crate::completion::CompletionCommand>()
+                .expect("probed above"),
+            None => {
                 return Some(ComposerCommand::Editor(ScrollCommand::Content(
                     ::editor::EditorCommand::Inlay {
                         key,
-                        command: other,
+                        command: inlay,
                     },
                 )))
             }
@@ -1378,9 +2562,10 @@ impl ChatPanel {
     fn completion_attachments(
         &mut self,
         store: &Store,
+        server: crate::higent::HostId,
         text: &str,
     ) -> Option<Vec<ahp_types::state::MessageAttachment>> {
-        let uris = super::Hosts::uris(store, self.server)?;
+        let uris = super::Hosts::uris(store, server)?;
         let picked: Vec<crate::completion::PickedFile> = std::mem::take(&mut self.picked)
             .into_iter()
             .cloned()
@@ -1388,159 +2573,107 @@ impl ChatPanel {
         super::file_completion::resource_attachments(text, picked, uris.as_ref())
     }
 
-    fn send_text(
+    /// One model mutation, laid at THIS view's width.
+    fn apply(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        text: String,
+        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        op: &ViewOp,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        if !matches!(self.state, Link::Ready) {
-            return;
-        }
-        let Some(seat) = self.seat(store) else {
-            return;
-        };
-        if text.is_empty() {
-            return;
-        }
-
-        if self.completion.open() {
-            self.completion.drop_state(
-                self.composer.document_mut(),
-                store,
-                ui,
-                fx,
-                completion_editor,
-            );
-        }
-        if self.busy() {
-            // STEERING, the Claude Code Esc-with-prompt shape: a
-            // prompt sent at a running agent drops the queue, cancels
-            // the turn, and fires the moment the turn ends. (The old
-            // road QUEUED here — into a queue nothing ever drained.)
-            for (id, _) in self.stack.queue_oracle() {
-                self.stack.remove_queued(&id);
-                self.dispatch(
+        match op {
+            ViewOp::Reset { turns, has_more } => {
+                let slice = self.build_page(store, ui, seat, turns, *has_more, EAGER_TAIL, fx);
+                let len = self.rows.content().len();
+                self.rows.content_mut().splice_slice(0..len, slice);
+                self.has_loader = *has_more;
+            }
+            ViewOp::Prepend { turns, has_more } => {
+                // The page lands above the viewport: every turn
+                // sleeps; scrolling up wakes them one paint at a time.
+                let slice = self.build_page(store, ui, seat, turns, *has_more, 0, fx);
+                let end = usize::from(self.has_loader);
+                self.rows.content_mut().splice_slice(0..end, slice);
+                self.has_loader = *has_more;
+            }
+            ViewOp::Loader { armed } => self.set_loader(store, *armed),
+            ViewOp::Row(turn) => {
+                // A turn we hold is replaced where it stands; one we do
+                // not joins the tail. The key is the turn id, so this is
+                // the same op either way.
+                let (view, height) = self.build_turn(store, ui, seat, turn, fx);
+                let mut slice = ListSlice::new();
+                slice.push_keyed_sized(turn.id.clone(), ChatRow::Turn(view), height);
+                let range = self.rows.content().row_range(&turn.id);
+                let len = self.rows.content().len();
+                self.rows
+                    .content_mut()
+                    .splice_slice(range.unwrap_or(len..len), slice);
+            }
+            ViewOp::Cell { turn, key, spec } => {
+                self.place_cell(store, ui, seat, turn, key, spec.clone(), fx);
+            }
+            ViewOp::Tail { turn, cells } => {
+                for (key, spec) in cells.iter().cloned() {
+                    self.place_cell(store, ui, seat, turn, &key, spec, fx);
+                }
+            }
+            ViewOp::Grew { turn, part, text } => {
+                // From the part id straight to its cell: no counting.
+                self.route_cell(
                     store,
-                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
-                        kind: PendingMessageKind::Queued,
-                        id,
-                    }),
-                    None,
+                    ui,
+                    turn.clone(),
+                    crate::higent::turn::CellKey::Part(part.clone()),
+                    CellCommand::Append(text.clone()),
                     fx,
                 );
             }
-            self.steering = Some(text);
-            self.stop(store, fx);
-            self.composer.clear(store, ui);
-            return;
         }
-        let attachments = self.completion_attachments(store, &text);
-        self.minted += 1;
-        let key = format!("local-{}", self.minted);
-        let cells = vec![
-            CellSpec::Text(CellKind::User, text.clone()),
-            CellSpec::Text(CellKind::Notice, "*Thinking…*".to_owned()),
-        ];
-        let (view, height) = self.build_turn(store, ui, &key, cells, fx);
-
-        let mut slice = ListSlice::new();
-        slice.push_keyed_sized(key.clone(), ChatRow::Turn(view), height);
-        let len = self.rows.content().len();
-        self.rows.content_mut().splice_slice(len..len, slice);
-        self.pending = Some((key.clone(), text.clone()));
-        let placeholder = key;
-        fx.push(
-            AnyEffect::new(StartTurnEffect {
-                seat,
-                chat: self.chat.clone(),
-                text,
-                attachments,
-                model: self.model_pick(),
-            })
-            .map(move |result| ChatPanelCommand::Accepted {
-                placeholder: placeholder.clone(),
-                result,
-            }),
-        );
-        self.composer.clear(store, ui);
-        self.reveal_tail(store);
-    }
-
-    fn apply_send_failed(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        placeholder: String,
-        error: String,
-        fx: &mut Effects<'_, ChatPanelCommand>,
-    ) {
-        let follow = self.near_tail();
-        let sent = match &self.pending {
-            Some((key, text)) if *key == placeholder => text.clone(),
-            _ => String::new(),
-        };
-        self.pending = None;
-        let Some(range) = self.rows.content().row_range(&placeholder) else {
-            return;
-        };
-        let cells = vec![
-            CellSpec::Text(CellKind::User, sent),
-            CellSpec::Text(
-                CellKind::Error,
-                format!("**The message was not delivered:** {error}"),
-            ),
-        ];
-        let (view, height) = self.build_turn(store, ui, &placeholder, cells, fx);
-        let mut slice = ListSlice::new();
-        slice.push_keyed_sized(placeholder.clone(), ChatRow::Turn(view), height);
-        self.rows.content_mut().splice_slice(range, slice);
-        if follow {
-            self.reveal_tail(store);
-        }
-    }
-
-    fn route_cell(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        turn: String,
-        cell: usize,
-        command: CellCommand,
-        fx: &mut Effects<'_, ChatPanelCommand>,
-    ) {
-        let Some(range) = self.rows.content().row_range(&turn) else {
-            return;
-        };
-        let index = range.start;
-        let key = turn.clone();
-        fx.scope(
-            move |command: RowsCommand| lift_rows_command(&key, command),
-            |fx| {
-                self.rows.perform(
-                    store,
-                    ui,
-                    ScrollCommand::Content(ListCommand::Child(
-                        index,
-                        RowCommand::Turn(ListCommand::Child(cell, command)),
-                    )),
-                    fx,
-                )
-            },
-        );
     }
 }
 
-fn lift_rows_command(turn: &str, command: RowsCommand) -> ChatPanelCommand {
+/// The name a chat cell's document carries: the build road picks its
+/// parser off the extension, and a cell is always markdown.
+fn cell_location() -> crate::ResourceLocation {
+    crate::ResourceLocation::new(
+        crate::ResourceType::document(),
+        ::editor::Authority::new("chat"),
+        vec!["cell.md".to_owned()],
+    )
+}
+
+/// How a cell that already stands takes a new spec — in place, never
+/// by minting a document again.
+fn redress(spec: &CellSpec) -> Vec<CellCommand> {
+    match spec {
+        CellSpec::Text(_, text) => vec![CellCommand::Rewrite(crate::Text::from_string_exact(text))],
+        // ADD, not Face: a call the group already holds takes it as a
+        // face refresh, a call that just joined the run splices in.
+        CellSpec::Tools(specs) => specs
+            .iter()
+            .map(|spec| CellCommand::Tool(crate::higent::tool_group::ToolUpdate::Add(spec.clone())))
+            .collect(),
+        // A diff cell resolves itself through its own landing.
+        CellSpec::Diff(_) => Vec::new(),
+    }
+}
+
+/// What a routed cell sends back, lifted to the cell's OWN address.
+fn lift_rows_command(
+    turn: &crate::higent::TurnId,
+    key: &crate::higent::turn::CellKey,
+    command: RowsCommand,
+) -> ChatPanelCommand {
     if let ScrollCommand::Content(ListCommand::Child(
         _,
-        RowCommand::Turn(ListCommand::Child(cell, command)),
+        RowCommand::Turn(ListCommand::Child(_, command)),
     )) = command
     {
         return ChatPanelCommand::Cell {
-            turn: turn.to_owned(),
-            cell,
+            turn: turn.clone(),
+            cell: key.clone(),
             command,
         };
     }
@@ -1564,6 +2697,93 @@ fn default_confirmation_options() -> Vec<ConfirmationOption> {
     ]
 }
 
+/// A click on a diff header's OPEN, peeled off the rows road the way
+/// `peeled_wake` peels a wake — clicks arrive focus-wrapped at both
+/// the rows list and the turn's cells.
+fn peeled_open_file(command: &RowsCommand) -> Option<String> {
+    fn peel_turn(command: &TurnCommand) -> Option<String> {
+        match command {
+            ListCommand::Child(_, CellCommand::OpenFile(uri)) => Some(uri.clone()),
+            ListCommand::Focus(_, Some(inner)) => peel_turn(inner),
+            _ => None,
+        }
+    }
+    fn peel(command: &ListCommand<RowCommand>) -> Option<String> {
+        match command {
+            ListCommand::Child(_, RowCommand::Turn(inner)) => peel_turn(inner),
+            ListCommand::Focus(_, Some(inner)) => peel(inner),
+            _ => None,
+        }
+    }
+    match command {
+        ScrollCommand::Content(command) => peel(command),
+        _ => None,
+    }
+}
+
+/// Open the working copy behind a chat diff: resolve the wire uri
+/// against the session's seat authority and open the location —
+/// the same road a search hit or a changes row takes.
+pub(crate) struct OpenEditedFile {
+    server: crate::higent::HostId,
+    session: crate::higent::SessionUri,
+    uri: String,
+}
+
+impl crate::DynamicCommand for OpenEditedFile {
+    fn id(&self) -> &'static str {
+        "chat.open-edited-file"
+    }
+
+    fn name(&self) -> String {
+        "Open Edited File".to_owned()
+    }
+
+    fn perform(
+        &self,
+        _app: &mut crate::Application,
+        store: &mut Store,
+        window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
+    ) {
+        let Some(uris) = crate::higent::Hosts::uris(store, self.server) else {
+            return;
+        };
+        let authority =
+            crate::Authority::new(crate::higent::seat::authority(self.server, &self.session));
+        let Some(location) = uris.location_of(
+            &crate::higent::ResourceUri::new(self.uri.as_str()),
+            crate::ResourceType::document(),
+            &authority,
+        ) else {
+            return;
+        };
+        // The file opens WHERE the user is: the window's own documents.
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
+            return;
+        };
+        let _ = fx.push(crate::open_by_location_effect(
+            window, documents, location, true, true, None,
+        ));
+    }
+}
+
+fn peeled_wake(command: &RowsCommand) -> Option<usize> {
+    fn peel(command: &ListCommand<RowCommand>) -> Option<usize> {
+        match command {
+            ListCommand::Child(index, RowCommand::Wake) => Some(*index),
+            ListCommand::Focus(_, Some(inner)) => peel(inner),
+            _ => None,
+        }
+    }
+    match command {
+        ScrollCommand::Content(command) => peel(command),
+        _ => None,
+    }
+}
+
 fn peeled_activation(command: &RowsCommand) -> bool {
     fn peel(command: &ListCommand<RowCommand>) -> bool {
         match command {
@@ -1578,531 +2798,16 @@ fn peeled_activation(command: &RowsCommand) -> bool {
     }
 }
 
-impl View for ChatPanel {
-    type Command = ChatPanelCommand;
+pub(crate) struct ChatWidget<Inner> {
+    pub(crate) panel: Inner,
+    pub(crate) rows_height: f32,
+    pub(crate) focus: ChatArea,
+    pub(crate) boot: bool,
 
-    fn focus_data<'w>(
-        &'w self,
-        store: &'w Store,
-        ui: &'w imba::UiCtx,
-    ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
-        use imba::focus::FocusData;
-        let ask = self.stack.ask_keys();
-        let composer_empty = self.composer.is_empty();
-        let expanded = self.composer.expanded();
-        let focus = self.focus;
+    pub(crate) toolbar_stale: bool,
 
-        let own = FocusData {
-            on_key: Some(Box::new(move |key, mods| match (key, mods) {
-                (Key::Enter, mods) if ask.is_some() && composer_empty && !mods.shift => {
-                    EventResult::Command(ChatPanelCommand::Answer(0))
-                }
-                (Key::Escape, _) if ask.is_some() => match ask.and_then(|ask| ask.deny) {
-                    Some(deny) => EventResult::Command(ChatPanelCommand::Answer(deny)),
-                    None => EventResult::Ignored,
-                },
-
-                (Key::Escape, _) if expanded => {
-                    EventResult::Command(ChatPanelCommand::Composer(ComposerCommand::ToggleExpand))
-                }
-
-                (Key::Enter, mods) if mods.command && focus == ChatArea::Composer => {
-                    EventResult::Command(ChatPanelCommand::Send)
-                }
-                _ => EventResult::Ignored,
-            })),
-            on_text: Some(Box::new(move |text| {
-                let Some(ask) = ask else {
-                    return EventResult::Ignored;
-                };
-                match text.chars().next().and_then(|c| c.to_digit(10)) {
-                    Some(digit) if digit >= 1 && (digit as usize) <= ask.count => {
-                        EventResult::Command(ChatPanelCommand::Answer(digit as usize - 1))
-                    }
-                    _ => EventResult::Ignored,
-                }
-            })),
-            ..FocusData::default()
-        };
-        let area = match self.focus {
-            ChatArea::Composer => self
-                .composer
-                .focus_data(store, ui)
-                .map(ChatPanelCommand::Composer),
-            ChatArea::Transcript => self.rows.focus_data(store, ui).map(ChatPanelCommand::Rows),
-        };
-        own.merge_under(area)
-    }
-
-    fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
-        if let Some(token) = self.fetch_token.take() {
-            fx.cancel(token);
-        }
-        if let Some(token) = self.poll_token.take() {
-            fx.cancel(token);
-        }
-        fx.scope(ChatPanelCommand::Rows, |fx| self.rows.destroy(store, fx));
-        fx.scope(ChatPanelCommand::Composer, |fx| {
-            self.composer.destroy(store, fx)
-        });
-    }
-
-    fn perform(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        command: Self::Command,
-        fx: &mut Effects<'_, Self::Command>,
-    ) {
-        match command {
-            ChatPanelCommand::Boot => {
-                if matches!(self.state, Link::Idle) {
-                    self.state = Link::Subscribing;
-                    crate::AppRequests::push(
-                        store,
-                        std::sync::Arc::new(crate::higent::chats::EnsureChatFeed {
-                            chat: self.chat.clone(),
-                        }),
-                    );
-                }
-            }
-            ChatPanelCommand::Focus(area, then) => {
-                self.focus = area;
-                if let Some(command) = then {
-                    self.perform(store, ui, *command, fx);
-                }
-            }
-            ChatPanelCommand::Snapshot(result) => self.apply_snapshot(store, ui, result, fx),
-            ChatPanelCommand::Older(result) => self.apply_older(store, ui, result, fx),
-            ChatPanelCommand::Accepted {
-                placeholder,
-                result,
-            } => {
-                if let Err(error) = result {
-                    self.apply_send_failed(store, ui, placeholder, error, fx);
-                }
-            }
-            ChatPanelCommand::Actions(actions) => {
-                self.apply_actions(store, ui, actions, fx);
-                self.relaunch_poll(store, fx);
-            }
-            ChatPanelCommand::Send => self.send(store, ui, fx),
-            ChatPanelCommand::Answer(index) => self.answer(store, index, fx),
-            ChatPanelCommand::Dispatched { undo_queue, result } => {
-                if let Err(error) = result {
-                    eprintln!("[higent] dispatch failed: {error}");
-                    if let Some(id) = undo_queue {
-                        self.stack.remove_queued(&id);
-                    }
-                }
-            }
-            ChatPanelCommand::ToolbarSync => {
-                if let Some(channel) = super::Agents::channel(store, &self.session_id()) {
-                    self.toolbar.sync(store, ui, self.server, &channel);
-                }
-            }
-            ChatPanelCommand::Toolbar(command) => match {
-                let mut ask = super::ToolbarAsk::None;
-                fx.scope(ChatPanelCommand::Toolbar, |fx| {
-                    ask = self.toolbar.perform(store, ui, command, fx)
-                });
-                ask
-            } {
-                super::ToolbarAsk::Edits(mode) => {
-                    if let Some(seat) = self.seat(store) {
-                        let mut config = serde_json::Map::new();
-                        config.insert("permissionMode".to_owned(), serde_json::json!(mode));
-                        fx.push(
-                            AnyEffect::new(DispatchChatActionEffect {
-                                seat,
-                                channel: self.session.clone(),
-                                action: StateAction::SessionConfigChanged(
-                                    ahp_types::actions::SessionConfigChangedAction {
-                                        config,
-                                        replace: None,
-                                    },
-                                ),
-                            })
-                            .map(|result| {
-                                ChatPanelCommand::Dispatched {
-                                    undo_queue: None,
-                                    result,
-                                }
-                            }),
-                        );
-                    }
-                }
-
-                super::ToolbarAsk::AddFolder => {
-                    crate::AppRequests::push(
-                        store,
-                        std::sync::Arc::new(super::AddSessionFolders {
-                            server: self.server,
-                            session: self.session.clone(),
-                        }),
-                    );
-                }
-                super::ToolbarAsk::None => {}
-            },
-            ChatPanelCommand::Cell {
-                turn,
-                cell,
-                command,
-            } => self.route_cell(store, ui, turn, cell, command, fx),
-            ChatPanelCommand::Rows(command) => {
-                if peeled_activation(&command) {
-                    self.load_older(store, fx);
-                    return;
-                }
-                fx.scope(ChatPanelCommand::Rows, |fx| {
-                    self.rows.perform(store, ui, command, fx)
-                });
-            }
-
-            ChatPanelCommand::Blurred(blurred) => {
-                if blurred && self.completion.open() {
-                    let editor = self.composer.editor();
-                    let _ = editor;
-                    self.completion.drop_state(
-                        self.composer.document_mut(),
-                        store,
-                        ui,
-                        fx,
-                        completion_editor,
-                    );
-                }
-                self.composer.set_blurred(blurred)
-            }
-            ChatPanelCommand::CompletionFound(found) => {
-                let editor = self.composer.editor();
-                self.completion
-                    .land(store, ui, self.composer.document_mut(), editor, found);
-            }
-            ChatPanelCommand::Composer(ComposerCommand::Submit) => self.send(store, ui, fx),
-            ChatPanelCommand::Composer(ComposerCommand::Stop) => {
-                self.steering = None;
-                self.stop(store, fx);
-            }
-            ChatPanelCommand::Composer(command) => {
-                let Some(command) = self.completion_intercept(store, ui, command, fx) else {
-                    return;
-                };
-                let typed_at = matches!(
-                    &command,
-                    ComposerCommand::Editor(imba::scroll::ScrollCommand::Content(
-                        ::editor::EditorCommand::InsertText { text }
-                    )) if text == "@"
-                );
-                fx.scope(ChatPanelCommand::Composer, |fx| {
-                    self.composer.perform(store, ui, command, fx)
-                });
-
-                let editor = self.composer.editor();
-                let at = typed_at.then(|| {
-                    self.composer
-                        .document()
-                        .caret_byte(editor)
-                        .saturating_sub(1)
-                });
-                let session = self.session_id();
-                self.completion.sync_path(
-                    store,
-                    ui,
-                    self.composer.document_mut(),
-                    editor,
-                    at,
-                    &session,
-                    None,
-                    fx,
-                    ChatPanelCommand::CompletionFound,
-                    completion_editor,
-                );
-            }
-            ChatPanelCommand::Stack(StackCommand::Answer(index)) => self.answer(store, index, fx),
-            ChatPanelCommand::Stack(StackCommand::ToggleQueue) => self.stack.toggle_collapsed(),
-            ChatPanelCommand::Stack(StackCommand::RemoveQueued(id)) => {
-                self.stack.remove_queued(&id);
-                self.dispatch(
-                    store,
-                    StateAction::ChatPendingMessageRemoved(ChatPendingMessageRemovedAction {
-                        kind: PendingMessageKind::Queued,
-                        id,
-                    }),
-                    None,
-                    fx,
-                );
-            }
-        }
-    }
-
-    fn display<'a>(
-        &'a self,
-        arena: &'a Arena,
-        store: &'a Store,
-        ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let size = constraints.max;
-            let theme = env::Themes::of(store);
-            let chrome = theme.ui().chat.clone();
-            self.panel_width
-                .store(size.width.max(1.0).to_bits(), Ordering::Relaxed);
-
-            let band_h = self.composer.band_height(&chrome, size.height);
-            let stack_h = self.stack.height(&chrome);
-
-            let toolbar_h = theme.ui().toolbar.height;
-            let rows_height = (size.height - band_h - stack_h - toolbar_h).max(1.0);
-            self.rows_height
-                .store(rows_height.to_bits(), Ordering::Relaxed);
-
-            let mut panel = container(arena, size);
-
-            panel.place(
-                0.0,
-                0.0,
-                imba::Layout::layout(
-                    self.rows.display(arena, store, ui),
-                    arena,
-                    Constraints {
-                        min: Size::new(size.width, rows_height),
-                        max: Size::new(size.width, rows_height),
-                    },
-                )
-                .map(ChatPanelCommand::Rows)
-                .focus_scope(self.focus == ChatArea::Transcript),
-            );
-
-            let status = match &self.state {
-                Link::Idle | Link::Subscribing => "connecting…".to_owned(),
-                Link::Failed(error) => format!("failed: {error}"),
-                Link::Ready if self.pending.is_some() => "thinking…".to_owned(),
-                Link::Ready if self.active.is_some() => "responding…".to_owned(),
-                Link::Ready => String::new(),
-            };
-            let composer_empty = self.composer.is_empty();
-            panel.place(
-                0.0,
-                rows_height + stack_h,
-                self.composer
-                    .layout(
-                        arena,
-                        store,
-                        ui,
-                        size.width,
-                        size.height,
-                        ComposerProps {
-                            focused: self.focus == ChatArea::Composer,
-                        },
-                    )
-                    .map(ChatPanelCommand::Composer),
-            );
-
-            if stack_h > 0.0 {
-                panel.place(
-                    0.0,
-                    rows_height,
-                    self.stack
-                        .layout(arena, ui, &chrome, size.width)
-                        .map(ChatPanelCommand::Stack),
-                );
-            }
-
-            let toolbar_cells_right = self.toolbar.place(
-                arena,
-                &mut panel,
-                store,
-                ui,
-                size.height - toolbar_h + 1.0,
-                toolbar_h - 1.0,
-            );
-
-            // The footer's edges: a hairline between the transcript
-            // and the composer band, and one above the toolbar row
-            // (whose placement already reserves the pixel).
-            {
-                let rule = theme.ui().toolbar.rule.0;
-                let hairline =
-                    move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: skia_safe::Rect| {
-                        let mut paint = skia_safe::Paint::default();
-                        paint.set_anti_alias(false);
-                        paint.set_color(rule);
-                        canvas.draw_rect(rect, &paint);
-                    };
-                panel.place(
-                    0.0,
-                    rows_height,
-                    leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                );
-                panel.place(
-                    0.0,
-                    size.height - toolbar_h,
-                    leaf::<ChatPanelCommand>(size.width, 1.0).paint_instead(hairline),
-                );
-            }
-
-            {
-                let ui_theme = theme.ui();
-                let busy = self.busy();
-                let sendable = !composer_empty && matches!(self.state, Link::Ready);
-                let stop = busy && composer_empty;
-                let label = if stop {
-                    "STOP"
-                } else if busy {
-                    "STEER"
-                } else {
-                    "SEND"
-                };
-                let caps_font = crate::fonts::ui_font(ui, ui_theme.combo.label_size * 1.1);
-                let key_font = crate::fonts::ui_text_font(ui, ui_theme.peeker.hint_size * 0.95);
-                let pad = ui_theme.combo.pad;
-                let cell_width = label
-                    .chars()
-                    .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
-                    .sum::<f32>()
-                    + imba::text_advance(ui, &key_font, "⌘⏎")
-                    + ui_theme.combo.gap
-                    + pad * 2.0;
-                let accent = if stop {
-                    chrome.stop_color.0
-                } else {
-                    chrome.accent.0
-                };
-                let on_accent = chrome.on_accent.0;
-                let accent_soft = ui_theme.peeker.dim_text.0;
-                let gap = ui_theme.combo.gap;
-                // The cell's two texts as a Row of `Text`s at exact
-                // baseline parity: the old per-char loop advanced by
-                // glyph width + 1.5 (= `.tracking(1.5)`) from x =
-                // left + pad, and drew the key hint a `gap` after the
-                // label's last advance (= the Row's `.gap`). Each text
-                // pads down so its baseline lands on the old
-                // mid + font.size() * 0.35 line. The accent fill and
-                // left rule stay a backdrop painter; the press is
-                // `.on_click`, minting Stop or Submit like the old
-                // event closure.
-                let cell_h = toolbar_h - 1.0;
-                let mid = cell_h * 0.5;
-                let caps_ascent = -caps_font.metrics().1.ascent;
-                let key_ascent = -key_font.metrics().1.ascent;
-                let mut row = imba::Row::new(arena).gap(gap).child(
-                    imba::text(ui, label, caps_font.clone(), on_accent)
-                        .tracking(1.5)
-                        .pad_insets(imba::Insets {
-                            left: 0.0,
-                            top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
-                            right: 0.0,
-                            bottom: 0.0,
-                        }),
-                );
-                if !stop {
-                    row = row.child(
-                        imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                            imba::Insets {
-                                left: 0.0,
-                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            },
-                        ),
-                    );
-                }
-                let cell = row
-                    .pad_insets(imba::Insets {
-                        left: pad,
-                        top: 0.0,
-                        right: 0.0,
-                        bottom: 0.0,
-                    })
-                    .sized(cell_width, cell_h)
-                    .backdrop(
-                        move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
-                            let mut paint = skia_safe::Paint::default();
-                            let mut fill = accent;
-                            if !sendable && !busy {
-                                fill = fill.with_a(0x50);
-                            }
-                            paint.set_color(fill.with_a(fill.a() / 3));
-                            canvas.draw_rect(rect, &paint);
-                            paint.set_anti_alias(false);
-                            paint.set_color(fill);
-                            canvas.draw_rect(
-                                skia_safe::Rect::from_xywh(rect.left, rect.top, 1.0, rect.height()),
-                                &paint,
-                            );
-                        },
-                    )
-                    .on_click(move || {
-                        ChatPanelCommand::Composer(match stop {
-                            true => ComposerCommand::Stop,
-                            false => ComposerCommand::Submit,
-                        })
-                    });
-                panel.place_boxed(
-                    size.width - cell_width,
-                    size.height - toolbar_h + 1.0,
-                    cell.layout(arena, Constraints::tight(Size::new(cell_width, cell_h))),
-                );
-
-                // The shortcut legend (or the link's status) sits on
-                // the toolbar, right against the SEND cell. The ⌘⏎
-                // hint already lives on the cell itself.
-                let legend = match status.is_empty() {
-                    true => "⎋ chat".to_owned(),
-                    false => status.clone(),
-                };
-                let legend_w = imba::text_advance(ui, &key_font, &legend);
-                let legend_x = size.width - cell_width - gap - legend_w;
-                // Squeezed out by the combo cells? The legend yields.
-                if legend_x >= toolbar_cells_right + gap {
-                    panel.place_boxed(
-                        legend_x,
-                        size.height - toolbar_h + 1.0,
-                        imba::text(ui, legend, key_font.clone(), accent_soft)
-                            .pad_insets(imba::Insets {
-                                left: 0.0,
-                                top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
-                                right: 0.0,
-                                bottom: 0.0,
-                            })
-                            .layout(arena, Constraints::tight(Size::new(legend_w, cell_h))),
-                    );
-                }
-            }
-            let strip_origin = std::sync::Arc::clone(&self.toolbar.strip_origin);
-            let toolbar_stale =
-                super::Agents::channel(store, &self.session_id()).is_some_and(|channel| {
-                    super::SessionToolbar::fingerprint(store, self.server, &channel)
-                        != self.toolbar.synced
-                });
-
-            let rows_height_ = rows_height;
-            let focus = self.focus;
-            let boot = matches!(self.state, Link::Idle);
-            let strip_top = size.height - toolbar_h + 1.0;
-            panel.wrap_realized(move |panel| ChatWidget {
-                panel,
-                rows_height: rows_height_,
-                focus,
-                boot,
-                toolbar_stale,
-                strip_origin,
-                strip_top,
-            })
-        })
-    }
-}
-
-struct ChatWidget<Inner> {
-    panel: Inner,
-    rows_height: f32,
-    focus: ChatArea,
-    boot: bool,
-
-    toolbar_stale: bool,
-
-    strip_origin: std::sync::Arc<std::sync::atomic::AtomicU64>,
-    strip_top: f32,
+    pub(crate) strip_origin: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub(crate) strip_top: f32,
 }
 
 const ROWS_CHILD: usize = 0;
@@ -2181,190 +2886,10 @@ impl<'a> Widget<'a, ChatPanelCommand>
     }
 }
 
-impl PanelView for ChatPanel {
-    type Place = crate::NoPlace;
-
-    fn title(&self, _store: &Store) -> String {
-        self.title.clone()
-    }
-
-    fn dismantle(&mut self, _store: &mut Store) {}
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self
-    }
-}
+pub mod model;
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::higent::ahp_types::actions::ChatTurnCancelledAction;
-    use crate::higent::ahp_types::state::{Message, MessageKind, MessageOrigin};
-    use std::sync::Arc;
+mod panel_tests;
 
-    struct InertSeat;
-
-    macro_rules! unreached {
-        ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
-            $(fn $name(&self, $($arg: $ty),*) -> $out {
-                $(let _ = $arg;)*
-                unreachable!("the steering tests never reach the seat")
-            })*
-        };
-    }
-
-    impl crate::higent::AhpServer for InertSeat {
-        unreached! {
-            connect() -> crate::higent::SeatFuture<Result<crate::higent::RootInfo, String>>;
-            list_sessions(cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::SessionsPage, String>>;
-            poll_root() -> crate::higent::SeatFuture<Vec<crate::higent::ServerEvent>>;
-            create_session(dirs: Vec<String>, options: crate::higent::SessionOptions) -> crate::higent::SeatFuture<Result<String, String>>;
-            resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-            dispose_session(session: String) -> crate::higent::SeatFuture<Result<(), String>>;
-            subscribe_session(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::SessionState, String>>;
-            poll_session(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            create_chat(session: String) -> crate::higent::SeatFuture<Result<String, String>>;
-            subscribe_chat(chat: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChatState, String>>;
-            fetch_turns(chat: String, cursor: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::TurnsPage, String>>;
-            start_turn(chat: String, text: String, attachments: Option<Vec<crate::higent::ahp_types::state::MessageAttachment>>, model: Option<crate::higent::ahp_types::state::ModelSelection>) -> crate::higent::SeatFuture<Result<(), String>>;
-            poll_chat(chat: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            cancel_turn(chat: String, turn: String) -> crate::higent::SeatFuture<()>;
-            dispatch_action(chat: String, action: StateAction) -> crate::higent::SeatFuture<Result<(), String>>;
-            read_file_edit(before: Option<String>, after: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::FileEditContents, String>>;
-            resource_read(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<String>>;
-            resource_write(session: String, uri: crate::higent::ResourceUri, text: String) -> crate::higent::SeatFuture<bool>;
-            resource_list(session: String, uri: crate::higent::ResourceUri) -> crate::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-            resource_watch(session: String, uri: crate::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> crate::higent::SeatFuture<Option<crate::higent::WatchHandle>>;
-            resource_unwatch(handle: crate::higent::WatchHandle) -> crate::higent::SeatFuture<()>;
-            search(session: String, ask: crate::higent::SearchAsk) -> crate::higent::SeatFuture<Option<crate::higent::SearchResult>>;
-            terminal_input(channel: &String, data: String) -> ();
-            terminal_resize(channel: &String, cols: u16, rows: u16) -> ();
-            terminal_dispose(channel: &String) -> ();
-            subscribe_changeset(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::ChangesetState, String>>;
-            poll_changeset(channel: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            unsubscribe_changeset(channel: &String) -> ();
-            subscribe_annotations(session: String) -> crate::higent::SeatFuture<Result<crate::higent::ahp_types::state::AnnotationsState, String>>;
-            poll_annotations(session: String) -> crate::higent::SeatFuture<Vec<StateAction>>;
-            dispatch_annotations(session: &String, action: StateAction) -> ();
-            unsubscribe_annotations(session: &String) -> ();
-            open_document(session: String, uri: Option<crate::higent::ResourceUri>, text: Option<String>) -> crate::higent::SeatFuture<Result<crate::higent::seat::OpenDocumentResult, String>>;
-            subscribe_document(channel: String) -> crate::higent::SeatFuture<Result<crate::higent::seat::DocumentState, String>>;
-            poll_document(channel: String) -> crate::higent::SeatFuture<Vec<crate::higent::seat::DocumentApplied>>;
-            dispatch_document(channel: &String, action: crate::higent::seat::DocumentApplied) -> ();
-            unsubscribe_document(channel: &String) -> crate::higent::SeatFuture<()>;
-            lsp(session: String, method: String, params: serde_json::Value) -> crate::higent::SeatFuture<Result<serde_json::Value, String>>;
-        }
-
-        fn terminal_open(
-            &self,
-            _session: String,
-            _channel: String,
-            _cwd: Option<String>,
-            _cols: u16,
-            _rows: u16,
-            _events: Arc<dyn Fn(crate::higent::TerminalEvent) + Send + Sync>,
-        ) -> crate::higent::SeatFuture<Option<crate::higent::TerminalHandle>> {
-            unreachable!("the steering tests never reach the seat")
-        }
-    }
-
-    fn running_panel(store: &mut Store, ui: &UiCtx) -> ChatPanel {
-        let mut host = crate::higent::HostId::LOCAL;
-        store.update::<crate::higent::Servers>(|servers| {
-            host = servers.mint(Arc::new(InertSeat));
-        });
-        let mut panel = ChatPanel::new(store, ui, host, "s", "chat:1");
-        panel.state = Link::Ready;
-        panel.active = Some(ActiveStream {
-            turn: "t1".to_owned(),
-            cells: 0,
-            parts: rpds::HashTrieMapSync::new_sync(),
-            tools: rpds::HashTrieMapSync::new_sync(),
-            group: None,
-        });
-        panel
-    }
-
-    fn queued(id: &str) -> Message {
-        Message {
-            text: format!("queued {id}"),
-            origin: MessageOrigin {
-                kind: MessageKind::User,
-            },
-            attachments: None,
-            model: None,
-            agent: None,
-            meta: None,
-        }
-    }
-
-    /// The Claude Code Esc-with-prompt shape: a prompt at a running
-    /// agent DROPS the queue, cancels the turn, and fires the moment
-    /// the turn ends — never parked in a queue nothing drains.
-    #[test]
-    fn a_prompt_at_a_running_agent_steers() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut panel = running_panel(&mut store, ui);
-        panel.stack.insert_queued("q1".to_owned(), queued("q1"));
-        let mut batch = imba::effect::Batch::new();
-
-        panel.send_text(&mut store, ui, "steer me".to_owned(), &mut batch.effects());
-        assert_eq!(panel.steering.as_deref(), Some("steer me"));
-        assert!(
-            panel.stack.queue_oracle().is_empty(),
-            "the standing queue dropped"
-        );
-        assert!(panel.pending.is_none(), "no turn starts under the cancel");
-
-        // The cancel lands: the steered prompt fires as a REAL send.
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                turn_id: "t1".to_owned(),
-                duration: 0,
-                meta: None,
-            })],
-            &mut batch.effects(),
-        );
-        assert!(panel.steering.is_none());
-        assert_eq!(
-            panel.pending.as_ref().map(|(_, text)| text.as_str()),
-            Some("steer me"),
-            "the steered prompt became the next turn"
-        );
-    }
-
-    /// An explicit STOP is just a stop — it drops a standing steer.
-    #[test]
-    fn an_explicit_stop_drops_the_steer() {
-        let mut store = Store::new();
-        let ui = ::editor::test_document::test_ui();
-        let mut panel = running_panel(&mut store, ui);
-        let mut batch = imba::effect::Batch::new();
-
-        panel.send_text(&mut store, ui, "steer me".to_owned(), &mut batch.effects());
-        assert!(panel.steering.is_some());
-        imba::View::perform(
-            &mut panel,
-            &mut store,
-            ui,
-            ChatPanelCommand::Composer(ComposerCommand::Stop),
-            &mut batch.effects(),
-        );
-        assert!(panel.steering.is_none(), "STOP is not a steer");
-
-        panel.apply_actions(
-            &mut store,
-            ui,
-            vec![StateAction::ChatTurnCancelled(ChatTurnCancelledAction {
-                turn_id: "t1".to_owned(),
-                duration: 0,
-                meta: None,
-            })],
-            &mut batch.effects(),
-        );
-        assert!(panel.pending.is_none(), "nothing fires after a plain stop");
-    }
-}
+#[cfg(test)]
+mod model_tests;

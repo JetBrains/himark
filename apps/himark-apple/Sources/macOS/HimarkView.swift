@@ -144,6 +144,15 @@ final class HimarkView: NSView, NSTextInputClient {
         }
     }
 
+    override func rightMouseDown(with event: NSEvent) {
+        let (x, y) = devicePoint(event)
+        let handled = engine.secondaryDown(
+            window: windowId, x: x, y: y, mods: himarkMods(event)
+        )
+        if handled { request() }
+        window?.makeFirstResponder(self)
+    }
+
     private func titlebarDoubleClick() {
         switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
         case "Minimize": window?.performMiniaturize(nil)
@@ -167,12 +176,16 @@ final class HimarkView: NSView, NSTextInputClient {
         if engine.mouseMove(window: windowId, x: x, y: y) { request() }
     }
 
+    override func mouseExited(with event: NSEvent) {
+        if engine.mouseLeft(window: windowId) { request() }
+    }
+
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
         for area in trackingAreas { removeTrackingArea(area) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseMoved, .activeInKeyWindow, .inVisibleRect],
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeInKeyWindow, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
@@ -215,6 +228,14 @@ final class HimarkView: NSView, NSTextInputClient {
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
         render()
+    }
+
+    // The backing scale can flip (wake from hibernation, moving to a
+    // differently-scaled display) while rendering is paused; without a
+    // repaint the last frame stays composited at the old scale.
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        request()
     }
 
     override func viewWillStartLiveResize() {
@@ -317,8 +338,8 @@ final class HimarkView: NSView, NSTextInputClient {
         if engine.perform(window: windowId, command: "changes.view") { request() }
     }
 
-    @objc func toggleWorkspaceSwitcher(_ sender: Any?) {
-        if engine.perform(window: windowId, command: "session.switch") { request() }
+    @objc func toggleAgentsSwitcher(_ sender: Any?) {
+        if engine.perform(window: windowId, command: "agent.toggle-agents") { request() }
     }
 
     @objc func splitPane(_ sender: Any?) {

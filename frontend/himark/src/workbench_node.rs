@@ -21,6 +21,15 @@ pub trait PanelView: imba::CloneDynView + Clone + Sized + 'static {
 
     fn dismantle(&mut self, store: &mut Store);
 
+    /// The pane LEFT ITS SLOT without being closed: another panel took
+    /// the slot, or the slot walked elsewhere. The instance is dropped
+    /// right after — a pane that keeps state outside itself (the chat's
+    /// laid mount) hands it back here, so the walk back adopts it
+    /// instead of rebuilding. Closing is `dismantle`; this is not.
+    fn displaced(&mut self, store: &mut Store) {
+        let _ = store;
+    }
+
     fn take_request(&mut self) -> Option<PanelRequest> {
         None
     }
@@ -69,6 +78,7 @@ pub trait DynPanelView: imba::CloneDynView {
     fn clone_panel(&self) -> Box<dyn DynPanelView>;
     fn title(&self, store: &Store) -> String;
     fn dismantle(&mut self, store: &mut Store);
+    fn displaced(&mut self, store: &mut Store);
     fn take_request(&mut self) -> Option<PanelRequest>;
     fn family_row(&self) -> Option<crate::FamilyRow>;
     fn collapsed_height(&self, store: &Store, nominal_height: f32) -> Option<f32>;
@@ -98,6 +108,9 @@ impl<P: PanelView> DynPanelView for P {
     }
     fn dismantle(&mut self, store: &mut Store) {
         PanelView::dismantle(self, store)
+    }
+    fn displaced(&mut self, store: &mut Store) {
+        PanelView::displaced(self, store)
     }
     fn take_request(&mut self) -> Option<PanelRequest> {
         PanelView::take_request(self)
@@ -215,6 +228,7 @@ impl Clone for Panel {
     }
 }
 
+#[derive(Clone)]
 pub enum PanelCommand {
     Editor(PaneCommand),
     Plugin(imba::DynCommand),
@@ -226,6 +240,19 @@ pub enum PanelCommand {
     Hover(crate::hover::HoverFound),
 
     HoverTick(imba::anim::AnimationClock),
+}
+
+impl std::fmt::Display for PanelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PanelCommand::Editor(command) => command.fmt(out),
+            PanelCommand::Plugin(command) => command.fmt(out),
+            PanelCommand::Find(command) => command.fmt(out),
+            PanelCommand::Completion(_) => out.write_str("completion found"),
+            PanelCommand::Hover(_) => out.write_str("hover found"),
+            PanelCommand::HoverTick(_) => out.write_str("hover tick"),
+        }
+    }
 }
 
 impl Panel {
@@ -256,6 +283,14 @@ impl Panel {
         }
     }
 
+    /// The panel left its slot and is about to be dropped (see
+    /// `PanelView::displaced`).
+    pub fn displaced(&mut self, store: &mut Store) {
+        if let Self::Plugin(view) = self {
+            view.displaced(store);
+        }
+    }
+
     pub fn scroll_y(&self) -> f32 {
         match self {
             Self::Editor(pane) => pane.scroll_y(),
@@ -273,11 +308,12 @@ impl Panel {
     pub(crate) fn title(&self, store: &Store) -> String {
         match self {
             Self::Editor(pane) => {
+                let documents = pane.content().documents();
                 let document = pane.content().document();
-                let name = crate::OpenDocuments::name(store, document)
+                let name = crate::OpenDocuments::name(store, documents, document)
                     .unwrap_or_else(|| "untitled".to_owned());
                 // The unsaved mark rides the omnibox title.
-                match crate::OpenDocuments::entity(store, document)
+                match crate::OpenDocuments::entity(store, documents, document)
                     .is_some_and(|entity| entity.modified())
                 {
                     true => format!("{name}*"),
@@ -308,9 +344,11 @@ impl Panel {
         match self {
             Self::Editor(pane) => {
                 let view = pane.content();
-                let location = crate::OpenDocuments::location(store, view.document())?;
+                let location =
+                    crate::OpenDocuments::location(store, view.documents(), view.document())?;
 
-                let document = crate::OpenDocuments::document_ref(store, view.document())?;
+                let document =
+                    crate::OpenDocuments::document_ref(store, view.documents(), view.document())?;
                 if !document.has_outline() {
                     return None;
                 }
@@ -318,6 +356,7 @@ impl Panel {
                     store,
                     ui,
                     window,
+                    view.documents(),
                     view.document(),
                     location,
                 )) as Box<dyn crate::ModalView>)
@@ -330,8 +369,10 @@ impl Panel {
         match self {
             Self::Editor(pane) => {
                 let view = pane.content();
-                let location = crate::OpenDocuments::location(store, view.document())?;
-                let document = crate::OpenDocuments::document_ref(store, view.document())?;
+                let location =
+                    crate::OpenDocuments::location(store, view.documents(), view.document())?;
+                let document =
+                    crate::OpenDocuments::document_ref(store, view.documents(), view.document())?;
 
                 if crate::is_scratch(&location) && document.revision() == 0 {
                     return None;
@@ -360,21 +401,44 @@ impl Panel {
                     return false;
                 };
                 let view = *pane.content();
-                if crate::OpenDocuments::location(store, view.document()).as_ref()
+                if crate::OpenDocuments::location(store, view.documents(), view.document()).as_ref()
                     != Some(&place.location)
                 {
                     return false;
                 }
-                let Some(mut document) = crate::OpenDocuments::document(store, view.document())
+                let Some(mut document) =
+                    crate::OpenDocuments::document(store, view.documents(), view.document())
                 else {
                     return false;
                 };
                 let fonts = ::editor::env::Fonts::of(store)();
                 let theme = ::editor::env::Themes::of(store);
-                crate::app::entity_scope(view.document(), fx, |fx| {
-                    document.reveal_at(view.editor(), place.caret, store, ui, &fonts, &theme, fx)
-                });
-                crate::OpenDocuments::put_document(store, view.document(), document);
+                let (documents, target) = (view.documents(), view.document());
+                fx.scope(
+                    move |command| {
+                        crate::AppCommand::at(
+                            documents,
+                            crate::DocumentsCommand::Editor(target, command),
+                        )
+                    },
+                    |fx| {
+                        document.reveal_at(
+                            view.editor(),
+                            place.caret,
+                            store,
+                            ui,
+                            &fonts,
+                            &theme,
+                            fx,
+                        )
+                    },
+                );
+                crate::OpenDocuments::put_document(
+                    store,
+                    view.documents(),
+                    view.document(),
+                    document,
+                );
                 pane.set_scroll_y(place.scroll_y);
                 true
             }
@@ -405,7 +469,7 @@ impl View for Panel {
                 let anchor = match &command {
                     ScrollCommand::Content(EditorCommand::Viewport { width, anchor, .. }) => {
                         let view = pane.content();
-                        crate::OpenDocuments::document_ref(store, view.document())
+                        crate::OpenDocuments::document_ref(store, view.documents(), view.document())
                             .map(|document| {
                                 (document.layout_width(view.editor()) - *width).abs() > 1.0
                             })
@@ -423,19 +487,26 @@ impl View for Panel {
                     {
                         let view = *pane.content();
                         if let Some(mut document) =
-                            crate::OpenDocuments::document(store, view.document())
+                            crate::OpenDocuments::document(store, view.documents(), view.document())
                         {
                             document.cancel_reveal(view.editor());
-                            crate::OpenDocuments::put_document(store, view.document(), document);
+                            crate::OpenDocuments::put_document(
+                                store,
+                                view.documents(),
+                                view.document(),
+                                document,
+                            );
                         }
                     }
                 }
                 if let Some(anchor) = anchor {
                     {
                         let view = *pane.content();
-                        if let Some(document) =
-                            crate::OpenDocuments::document_ref(store, view.document())
-                        {
+                        if let Some(document) = crate::OpenDocuments::document_ref(
+                            store,
+                            view.documents(),
+                            view.document(),
+                        ) {
                             let target = document.height_before(view.editor(), anchor);
                             pane.set_scroll_y(target);
                         }
@@ -510,9 +581,60 @@ impl WorkbenchNode {
     }
 }
 
+/// A workbench-minted identity for the panel occupying a leaf. Effects a
+/// panel launches are routed by leaf PATH, so an async result can land
+/// after a swap put a different panel in that leaf; the id the command
+/// was tagged with lets the delivery drop a stale command instead of
+/// mis-delivering it to whoever now sits there (docs/editor/diff-canvas.md).
+/// Minted fresh whenever a leaf's occupant is replaced; it rides the slot
+/// (and so travels with the panel) when the tree reshapes.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PanelId(u64);
+
+impl PanelId {
+    fn mint() -> Self {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        Self(NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// A panel bundled with its workbench identity, so the two are always
+/// replaced together (a `PaneSlot` outlives its occupants — its history
+/// persists across navigations — so keeping `id` beside `panel` as
+/// separate fields would risk them drifting out of sync). Derefs to the
+/// `Panel` so read access reads through transparently; use `PaneSlot::
+/// replace_panel` to swap the occupant, which mints a fresh id.
+#[derive(Clone)]
+pub struct PanelWithId {
+    pub(crate) id: PanelId,
+    pub(crate) panel: Panel,
+}
+
+impl PanelWithId {
+    fn new(panel: Panel) -> Self {
+        Self {
+            id: PanelId::mint(),
+            panel,
+        }
+    }
+}
+
+impl std::ops::Deref for PanelWithId {
+    type Target = Panel;
+    fn deref(&self) -> &Panel {
+        &self.panel
+    }
+}
+
+impl std::ops::DerefMut for PanelWithId {
+    fn deref_mut(&mut self) -> &mut Panel {
+        &mut self.panel
+    }
+}
+
 #[derive(Clone)]
 pub struct PaneSlot {
-    pub(crate) panel: Panel,
+    pub(crate) panel: PanelWithId,
     pub(crate) back: rpds::VectorSync<crate::NavigationLocation>,
     pub(crate) forward: rpds::VectorSync<crate::NavigationLocation>,
 
@@ -560,7 +682,7 @@ impl PaneSlot {
 
     pub(crate) fn of(panel: Panel) -> Self {
         Self {
-            panel,
+            panel: PanelWithId::new(panel),
             back: rpds::VectorSync::new_sync(),
             forward: rpds::VectorSync::new_sync(),
             pending: None,
@@ -568,6 +690,17 @@ impl PaneSlot {
             completion: crate::completion::Completion::new(),
             hover: crate::hover::Hover::new(),
         }
+    }
+
+    pub(crate) fn panel_id(&self) -> PanelId {
+        self.panel.id
+    }
+
+    /// Swap in a new occupant, minting it a fresh `PanelId` so any effect
+    /// still in flight for the departing panel is dropped on delivery
+    /// rather than mis-routed to the newcomer. Returns the displaced panel.
+    pub(crate) fn replace_panel(&mut self, panel: Panel) -> Panel {
+        std::mem::replace(&mut self.panel, PanelWithId::new(panel)).panel
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -581,32 +714,48 @@ impl PaneSlot {
             .map(|pane| (pane.content().document(), pane.content().editor()))
     }
 
+    /// The collection this leaf's editor reads through — the pane
+    /// holds the id (docs/entities.md law 3).
+    pub(crate) fn documents_id(&self) -> Option<imba::store::Id<crate::OpenDocuments>> {
+        self.panel.editor().map(|pane| pane.content().documents())
+    }
+
     pub(crate) fn sync_find(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
-        let Some(find) = &mut self.find else {
-            return;
-        };
         let target = self
             .panel
             .editor()
             .map(|pane| (pane.content().document(), pane.content().editor()));
-
+        let target_documents = self.documents_id();
+        let Some(find) = &mut self.find else {
+            return;
+        };
+        let documents = match target_documents {
+            Some(documents) => documents,
+            None => return,
+        };
         let fonts = ::editor::env::ui_collection(store, ui);
         let theme = ::editor::env::Themes::of(store);
         fx.scope(
             |command| PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command)),
-            |fx| find.sync(store, target, ui, &fonts, &theme, fx),
+            |fx| find.sync(store, documents, target, ui, &fonts, &theme, fx),
         );
 
         let Some(find) = &mut self.find else {
             return;
         };
         fx.scope(PanelCommand::Find, |fx| {
-            find.launch(store, target, fx, crate::find::FindCommand::Scanned)
+            find.launch(
+                store,
+                documents,
+                target,
+                fx,
+                crate::find::FindCommand::Scanned,
+            )
         });
     }
 
@@ -638,15 +787,20 @@ impl PaneSlot {
         if Some(key) != self.completion.inlay_key() {
             return Some(rewrap(inlay));
         }
-        let popup = match inlay.downcast::<crate::completion::CompletionCommand>() {
-            Ok(popup) => *popup,
-            Err(other) => return Some(rewrap(other)),
+        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
+            Some(_) => inlay
+                .downcast::<crate::completion::CompletionCommand>()
+                .expect("probed above"),
+            None => return Some(rewrap(inlay)),
         };
         use crate::completion::CompletionCommand;
         let Some((id, editor)) = self.completion.installed() else {
             return None;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+        let Some(documents) = self.documents_id() else {
+            return None;
+        };
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
             self.completion.clear();
             return None;
         };
@@ -687,7 +841,7 @@ impl PaneSlot {
                     .drop_state(&mut document, store, ui, fx, Self::completion_editor);
             }
         }
-        crate::OpenDocuments::put_document(store, id, document);
+        crate::OpenDocuments::put_document(store, documents, id, document);
         None
     }
 
@@ -699,10 +853,13 @@ impl PaneSlot {
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
         let target = self.find_target();
+        let Some(documents) = self.documents_id() else {
+            return;
+        };
 
         if let Some(installed) = self.completion.installed() {
             if target != Some(installed) {
-                match crate::OpenDocuments::document(store, installed.0) {
+                match crate::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
                         self.completion.drop_state(
                             &mut old,
@@ -711,7 +868,7 @@ impl PaneSlot {
                             fx,
                             Self::completion_editor,
                         );
-                        crate::OpenDocuments::put_document(store, installed.0, old);
+                        crate::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.completion.clear(),
                 }
@@ -721,14 +878,15 @@ impl PaneSlot {
         if !self.completion.open() && inserted.is_none() {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
             return;
         };
 
         let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
         if markdown {
-            let Some(session) = crate::Gathered::scope(store).cloned() else {
-                crate::OpenDocuments::put_document(store, id, document);
+            let Some((session, family)) = crate::higent::Hosts::home_of_documents(store, documents)
+            else {
+                crate::OpenDocuments::put_document(store, documents, id, document);
                 return;
             };
             let typed_at =
@@ -740,13 +898,14 @@ impl PaneSlot {
                 editor,
                 typed_at,
                 &session,
+                family.recents(),
                 Some((id, editor)),
                 fx,
                 PanelCommand::Completion,
                 Self::completion_editor,
             );
         } else {
-            match crate::OpenDocuments::location(store, id) {
+            match crate::OpenDocuments::location(store, documents, id) {
                 Some(location) if !location.is_synthetic() => {
                     self.completion.sync_lsp(
                         store,
@@ -774,7 +933,7 @@ impl PaneSlot {
                 _ => {}
             }
         }
-        crate::OpenDocuments::put_document(store, id, document);
+        crate::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn land_completion(
@@ -788,13 +947,16 @@ impl PaneSlot {
         let Some((id, editor)) = self.completion.installed() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+        let Some(documents) = self.documents_id() else {
+            return;
+        };
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
             self.completion.clear();
             return;
         };
         self.completion
             .land(store, ui, &mut document, editor, found);
-        crate::OpenDocuments::put_document(store, id, document);
+        crate::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn sync_hover(
@@ -805,14 +967,17 @@ impl PaneSlot {
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
         let target = self.find_target();
+        let Some(documents) = self.documents_id() else {
+            return;
+        };
 
         if let Some(installed) = self.hover.installed() {
             if target != Some(installed) {
-                match crate::OpenDocuments::document(store, installed.0) {
+                match crate::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
                         self.hover
                             .retract(store, ui, &mut old, fx, Self::completion_editor);
-                        crate::OpenDocuments::put_document(store, installed.0, old);
+                        crate::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.hover.clear(),
                 }
@@ -822,22 +987,22 @@ impl PaneSlot {
 
         let Some(point) = point else {
             if self.hover.open() {
-                if let Some(mut document) = crate::OpenDocuments::document(store, id) {
+                if let Some(mut document) = crate::OpenDocuments::document(store, documents, id) {
                     self.hover
                         .retract(store, ui, &mut document, fx, Self::completion_editor);
-                    crate::OpenDocuments::put_document(store, id, document);
+                    crate::OpenDocuments::put_document(store, documents, id, document);
                 }
             }
             return;
         };
 
-        let Some(location) = crate::OpenDocuments::location(store, id) else {
+        let Some(location) = crate::OpenDocuments::location(store, documents, id) else {
             return;
         };
         if location.is_synthetic() {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
             return;
         };
         let fonts = ::editor::env::ui_collection(store, ui);
@@ -854,7 +1019,7 @@ impl PaneSlot {
             fx,
             Self::completion_editor,
         );
-        crate::OpenDocuments::put_document(store, id, document);
+        crate::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn tick_hover(
@@ -866,8 +1031,10 @@ impl PaneSlot {
         let Some((id, _editor)) = self.hover.installed() else {
             return;
         };
-
-        let Some(document) = crate::OpenDocuments::document_ref(store, id) else {
+        let Some(documents) = self.documents_id() else {
+            return;
+        };
+        let Some(document) = crate::OpenDocuments::document_ref(store, documents, id) else {
             self.hover.clear();
             return;
         };
@@ -884,7 +1051,10 @@ impl PaneSlot {
         let Some((id, editor)) = self.hover.installed() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, id) else {
+        let Some(documents) = self.documents_id() else {
+            return;
+        };
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
             self.hover.clear();
             return;
         };
@@ -897,7 +1067,7 @@ impl PaneSlot {
             fx,
             Self::completion_editor,
         );
-        crate::OpenDocuments::put_document(store, id, document);
+        crate::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn perform_find(
@@ -922,33 +1092,42 @@ impl PaneSlot {
             FindCommand::Next | FindCommand::Previous => {
                 let forward = matches!(command, FindCommand::Next);
                 self.sync_find(store, ui, fx);
+                let Some(documents) = self.documents_id() else {
+                    return;
+                };
                 if let Some(find) = &mut self.find {
                     fx.scope(
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.step(store, forward, ui, &fonts, &theme, fx),
+                        |fx| find.step(store, documents, forward, ui, &fonts, &theme, fx),
                     );
                 }
             }
             FindCommand::Close => {
+                let Some(documents) = self.documents_id() else {
+                    return;
+                };
                 if let Some(mut find) = self.find.take() {
                     fx.scope(
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.uninstall(store, ui, &fonts, &theme, fx),
+                        |fx| find.uninstall(store, documents, ui, &fonts, &theme, fx),
                     );
                 }
             }
             FindCommand::Scanned(landed) => {
                 let target = self.find_target();
+                let Some(documents) = self.documents_id() else {
+                    return;
+                };
                 if let Some(find) = &mut self.find {
                     fx.scope(
                         |command| {
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
                         },
-                        |fx| find.adopt(store, target, &landed, ui, &fonts, &theme, fx),
+                        |fx| find.adopt(store, documents, target, &landed, ui, &fonts, &theme, fx),
                     );
                 }
             }
@@ -956,14 +1135,46 @@ impl PaneSlot {
     }
 }
 
+#[derive(Clone)]
 pub enum NodeCommand {
-    Leaf(PanelCommand),
+    Leaf {
+        /// The occupant this command was addressed to; a leaf drops it if
+        /// its current occupant no longer carries this id (a stale route
+        /// after a panel swap).
+        target: PanelId,
+        command: PanelCommand,
+    },
     Split(Box<SplitCommand<NodeCommand, NodeCommand>>),
+}
+
+impl std::fmt::Display for NodeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NodeCommand::Leaf { command, .. } => command.fmt(out),
+            NodeCommand::Split(command) => command.fmt(out),
+        }
+    }
+}
+
+/// Tag a leaf's outgoing commands with the occupant they belong to.
+fn wrap_leaf(target: PanelId) -> impl Fn(PanelCommand) -> NodeCommand + Copy {
+    move |command| NodeCommand::Leaf { target, command }
 }
 
 impl WorkbenchNode {
     pub fn editor_leaf(pane: EditorPane) -> Self {
         Self::Leaf(PaneSlot::of(Panel::Editor(pane)))
+    }
+
+    /// A tree with nothing open: the sole leaf holds the blank panel.
+    pub fn vacant() -> Self {
+        Self::Leaf(PaneSlot::of(Panel::blank()))
+    }
+
+    /// Nothing open — the chat column (when present) owns the whole
+    /// workbench, and closing the last panel brings the chat back.
+    pub fn is_vacant(&self) -> bool {
+        matches!(self, Self::Leaf(slot) if slot.panel.panel.is_blank())
     }
 
     pub fn split_of(first: EditorPane, second: EditorPane, ratio: f32) -> Self {
@@ -1006,11 +1217,16 @@ impl WorkbenchNode {
     }
 
     pub fn focused_pane(&self) -> &Panel {
-        &self.focused_slot().panel
+        &self.focused_slot().panel.panel
     }
 
     pub fn focused_pane_mut(&mut self) -> &mut Panel {
-        &mut self.focused_slot_mut().panel
+        &mut self.focused_slot_mut().panel.panel
+    }
+
+    /// Swap the focused leaf's occupant, minting it a fresh `PanelId`.
+    pub(crate) fn replace_focused_panel(&mut self, panel: Panel) -> Panel {
+        self.focused_slot_mut().replace_panel(panel)
     }
 
     pub(crate) fn focused_slot(&self) -> &PaneSlot {
@@ -1035,7 +1251,7 @@ impl WorkbenchNode {
 
     pub fn for_each_pane(&self, visit: &mut impl FnMut(&Panel)) {
         match self {
-            Self::Leaf(slot) => visit(&slot.panel),
+            Self::Leaf(slot) => visit(&slot.panel.panel),
             Self::Split(split) => {
                 split.first().for_each_pane(visit);
                 split.second().for_each_pane(visit);
@@ -1055,7 +1271,7 @@ impl WorkbenchNode {
 
     pub fn for_each_pane_mut(&mut self, visit: &mut impl FnMut(&mut Panel)) {
         match self {
-            Self::Leaf(slot) => visit(&mut slot.panel),
+            Self::Leaf(slot) => visit(&mut slot.panel.panel),
             Self::Split(split) => {
                 split.first_mut().for_each_pane_mut(visit);
                 split.second_mut().for_each_pane_mut(visit);
@@ -1075,9 +1291,9 @@ impl WorkbenchNode {
             },
             Self::Leaf(slot) => {
                 let placeholder = new_panel.placeholder();
-                let current = std::mem::replace(&mut slot.panel, placeholder);
+                let current = std::mem::replace(&mut slot.panel, PanelWithId::new(placeholder));
                 let history = (slot.back.clone(), slot.forward.clone());
-                let mut current_slot = PaneSlot::of(current);
+                let mut current_slot = PaneSlot::of(current.panel);
                 current_slot.back = history.0.clone();
                 current_slot.forward = history.1.clone();
                 let mut new_slot = PaneSlot::of(new_panel);
@@ -1106,7 +1322,7 @@ impl View for WorkbenchNode {
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, NodeCommand> {
         match self {
-            Self::Leaf(slot) => slot.focus_data(store, ui).map(NodeCommand::Leaf),
+            Self::Leaf(slot) => slot.focus_data(store, ui).map(wrap_leaf(slot.panel_id())),
             Self::Split(split) => split
                 .focus_data(store, ui)
                 .map(|command| NodeCommand::Split(Box::new(command))),
@@ -1121,59 +1337,65 @@ impl View for WorkbenchNode {
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
         match (self, command) {
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Find(command))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.perform_find(store, ui, command, fx)
-                }),
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Completion(found))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.land_completion(store, ui, found, fx)
-                }),
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::Hover(found))) => fx
-                .scope(NodeCommand::Leaf, |fx| {
-                    slot.land_hover(store, ui, found, fx)
-                }),
-
-            (Self::Leaf(slot), NodeCommand::Leaf(PanelCommand::HoverTick(now))) => {
-                fx.scope(NodeCommand::Leaf, |fx| slot.tick_hover(store, now, fx))
-            }
-            (Self::Leaf(slot), NodeCommand::Leaf(command)) => {
-                if let (
-                    Some(find),
-                    PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                        ::editor::EditorCommand::Click { .. },
-                    )),
-                ) = (&mut slot.find, &command)
-                {
-                    find.focused = false;
+            (Self::Leaf(slot), NodeCommand::Leaf { target, command }) => {
+                // Stale route: an async result addressed to a panel that
+                // has since left this leaf (a swap put another there).
+                // Drop it — its panel, if still alive elsewhere, re-derives.
+                if slot.panel_id() != target {
+                    return;
                 }
+                let wrap = wrap_leaf(target);
+                match command {
+                    PanelCommand::Find(command) => {
+                        fx.scope(wrap, |fx| slot.perform_find(store, ui, command, fx))
+                    }
+                    PanelCommand::Completion(found) => {
+                        fx.scope(wrap, |fx| slot.land_completion(store, ui, found, fx))
+                    }
+                    PanelCommand::Hover(found) => {
+                        fx.scope(wrap, |fx| slot.land_hover(store, ui, found, fx))
+                    }
+                    PanelCommand::HoverTick(now) => {
+                        fx.scope(wrap, |fx| slot.tick_hover(store, now, fx))
+                    }
+                    command => {
+                        if let (
+                            Some(find),
+                            PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                                ::editor::EditorCommand::Click { .. },
+                            )),
+                        ) = (&mut slot.find, &command)
+                        {
+                            find.focused = false;
+                        }
 
-                if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                    ::editor::EditorCommand::Hover(point),
-                )) = &command
-                {
-                    let point = *point;
-                    return fx.scope(NodeCommand::Leaf, |fx| {
-                        slot.sync_hover(store, ui, point, fx)
-                    });
+                        if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                            ::editor::EditorCommand::Hover(point),
+                        )) = &command
+                        {
+                            let point = *point;
+                            return fx.scope(wrap, |fx| slot.sync_hover(store, ui, point, fx));
+                        }
+                        fx.scope(wrap, |fx| {
+                            let Some(command) = slot.intercept_completion(store, ui, command, fx)
+                            else {
+                                return;
+                            };
+
+                            let inserted = match &command {
+                                PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
+                                    ::editor::EditorCommand::InsertText { text },
+                                )) => Some(text.clone()),
+                                _ => None,
+                            };
+                            slot.panel.perform(store, ui, command, fx);
+                            slot.sync_find(store, ui, fx);
+                            slot.sync_completion(store, ui, inserted.as_deref(), fx);
+
+                            slot.sync_hover(store, ui, None, fx);
+                        })
+                    }
                 }
-                fx.scope(NodeCommand::Leaf, |fx| {
-                    let Some(command) = slot.intercept_completion(store, ui, command, fx) else {
-                        return;
-                    };
-
-                    let inserted = match &command {
-                        PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                            ::editor::EditorCommand::InsertText { text },
-                        )) => Some(text.clone()),
-                        _ => None,
-                    };
-                    slot.panel.perform(store, ui, command, fx);
-                    slot.sync_find(store, ui, fx);
-                    slot.sync_completion(store, ui, inserted.as_deref(), fx);
-
-                    slot.sync_hover(store, ui, None, fx);
-                })
             }
             (Self::Split(split), NodeCommand::Split(command)) => fx.scope(
                 |command| NodeCommand::Split(Box::new(command)),
@@ -1200,10 +1422,11 @@ impl View for WorkbenchNode {
                             arena,
                             constraints,
                         )
-                        .map(NodeCommand::Leaf),
+                        .map(wrap_leaf(slot.panel_id())),
                     ),
 
                     Some(find) => {
+                        let leaf = wrap_leaf(slot.panel_id());
                         let size = constraints.max;
                         let chrome = ::editor::env::Themes::of(store).ui().search.clone();
                         let bar_height = crate::find::FindBar::height(&chrome).min(size.height);
@@ -1219,13 +1442,13 @@ impl View for WorkbenchNode {
                                     (size.height - bar_height).max(1.0),
                                 )),
                             )
-                            .map(NodeCommand::Leaf),
+                            .map(leaf),
                         );
                         column.place(
                             0.0,
                             0.0,
                             find.layout(arena, store, ui, size.width)
-                                .map(|command| NodeCommand::Leaf(PanelCommand::Find(command))),
+                                .map(move |command| leaf(PanelCommand::Find(command))),
                         );
                         imba::ThunkBox::new(arena, column)
                     }
@@ -1251,18 +1474,21 @@ impl View for WorkbenchNode {
                 }
             };
 
-            if matches!(self, Self::Leaf(slot) if slot.hover.armed()) {
-                return imba::ThunkBox::new(
-                    arena,
-                    widget.event(|_arena, event, _size| match event {
-                        imba::event::Event::AnimationClock { now } => {
-                            imba::event::EventResult::Command(NodeCommand::Leaf(
-                                PanelCommand::HoverTick(*now),
-                            ))
-                        }
-                        _ => imba::event::EventResult::Ignored,
-                    }),
-                );
+            if let Self::Leaf(slot) = self {
+                if slot.hover.armed() {
+                    let leaf = wrap_leaf(slot.panel_id());
+                    return imba::ThunkBox::new(
+                        arena,
+                        widget.event(move |_arena, event, _size| match event {
+                            imba::event::Event::AnimationClock { now } => {
+                                imba::event::EventResult::Command(leaf(PanelCommand::HoverTick(
+                                    *now,
+                                )))
+                            }
+                            _ => imba::event::EventResult::Ignored,
+                        }),
+                    );
+                }
             }
             widget
         })

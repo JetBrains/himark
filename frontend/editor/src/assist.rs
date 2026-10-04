@@ -117,8 +117,9 @@ impl Document {
                 }
             }
         }
+        builder.push_retain(text_cursor::byte_count(&self.text).saturating_sub(cursor));
         let operation = builder.finish();
-        if !operation.is_empty() {
+        if !operation.iter().all(|op| matches!(op, Op::Retain(_))) {
             self.edit(&operation, store, ui, fonts, theme, fx);
         }
         self.set_carets(

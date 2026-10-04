@@ -25,7 +25,6 @@ pub enum TreeTint {
 #[derive(Clone)]
 pub struct TreeLabel {
     label: String,
-    pick: bool,
     dim: bool,
 
     tint: TreeTint,
@@ -43,17 +42,37 @@ pub struct TreeLabel {
 
 #[derive(Clone, Copy)]
 pub enum TreeLabelCommand {
-    Activate,
-
     /// The row's right-aligned action chip was pressed.
     Action,
+
+    /// A secondary press on the row body (right button, or
+    /// control-click on platforms that fold it into Left).
+    Context,
+}
+
+impl std::fmt::Display for TreeLabelCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeLabelCommand::Action => out.write_str("row action"),
+            TreeLabelCommand::Context => out.write_str("row context"),
+        }
+    }
+}
+
+/// The one definition of "secondary press" — shells that cannot send
+/// `MouseButton::Right` still deliver control as a modifier.
+pub fn secondary_press(button: imba::event::MouseButton, mods: &imba::event::Modifiers) -> bool {
+    matches!(button, imba::event::MouseButton::Right)
+        || (matches!(button, imba::event::MouseButton::Left) && mods.control)
 }
 
 impl TreeLabel {
-    pub fn new(label: String, pick: bool, dim: bool) -> Self {
+    /// `pick` is presentation-free now: activation is the LIST's
+    /// signal (docs/ui/list-keyboard.md §2), and what a pick means is
+    /// the surface's per-key decision.
+    pub fn new(label: String, _pick: bool, dim: bool) -> Self {
         Self {
             label,
-            pick,
             dim,
             tint: TreeTint::Label,
             badge: None,
@@ -127,13 +146,15 @@ impl View for TreeLabel {
         for (text, color) in &self.trail {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }
-        let pick = self.pick;
         let action = self.action.clone();
         imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+            // The row body consumes nothing: an unclaimed click is the
+            // LIST's to answer — `Select` then `Activate(Click)`
+            // (docs/ui/list-keyboard.md §2).
             let row = row.on_event(
                 move |_arena: &Arena, event: &Event<'_>, _size| match event {
-                    Event::MouseDown { .. } if pick => {
-                        EventResult::Command(TreeLabelCommand::Activate)
+                    Event::MouseDown { button, mods, .. } if secondary_press(*button, mods) => {
+                        EventResult::Command(TreeLabelCommand::Context)
                     }
                     Event::MouseDown { .. } => EventResult::Handled,
                     _ => EventResult::Ignored,
@@ -184,9 +205,19 @@ pub struct TreeItemView<V: Clone> {
     action_first: bool,
 }
 
+#[derive(Clone)]
 pub enum TreeItemCommand<C> {
     Toggle,
     Inner(C),
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for TreeItemCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TreeItemCommand::Toggle => out.write_str("toggle"),
+            TreeItemCommand::Inner(command) => command.fmt(out),
+        }
+    }
 }
 
 impl<V: Clone> TreeItemView<V> {
@@ -447,6 +478,15 @@ where
                 canvas.restore();
                 result
             }
+            // The secondary press is the INNER's before any toggle
+            // claim — a context ask must not fold the row.
+            Event::MouseDown { button, mods, .. } if secondary_press(*button, mods) => {
+                let local = event.translated(-self.offset, 0.0);
+                self.inner
+                    .handle_event(arena, &local, child_viewport)
+                    .map(TreeItemCommand::Inner)
+                    .reveal_translated(self.offset, 0.0)
+            }
             Event::MouseDown { point, .. } if self.expanded.is_some() && point.x < self.zone => {
                 // The toggle claim, with ONE exception: on rows whose
                 // inner carries an ACTION CHIP, a press the inner
@@ -499,7 +539,11 @@ where
 pub type TreeListCommand =
     imba::scroll::ScrollCommand<imba::list::ListCommand<TreeItemCommand<TreeLabelCommand>>>;
 
-pub fn tree_interaction(command: &TreeListCommand) -> Option<(usize, bool)> {
+/// A press on a row's chevron (or a toggling body): the fold
+/// protocol's click half. Body picks are NOT here — those arrive as
+/// `ListCommand::Select`/`Activate` from the list itself
+/// (docs/ui/list-keyboard.md §2).
+pub fn tree_toggle(command: &TreeListCommand) -> Option<usize> {
     use imba::list::ListCommand;
     use imba::scroll::ScrollCommand;
     let ScrollCommand::Content(command) = command else {
@@ -514,9 +558,8 @@ pub fn tree_interaction(command: &TreeListCommand) -> Option<(usize, bool)> {
         _ => return None,
     };
     match command {
-        TreeItemCommand::Toggle => Some((index, true)),
-        TreeItemCommand::Inner(TreeLabelCommand::Activate) => Some((index, false)),
-        TreeItemCommand::Inner(TreeLabelCommand::Action) => None,
+        TreeItemCommand::Toggle => Some(index),
+        TreeItemCommand::Inner(TreeLabelCommand::Action | TreeLabelCommand::Context) => None,
     }
 }
 
@@ -538,6 +581,27 @@ pub fn tree_action(command: &TreeListCommand) -> Option<usize> {
     };
     match command {
         TreeItemCommand::Inner(TreeLabelCommand::Action) => Some(index),
+        _ => None,
+    }
+}
+
+/// A secondary press on a row body, decoded like `tree_action`.
+pub fn tree_context(command: &TreeListCommand) -> Option<usize> {
+    use imba::list::ListCommand;
+    use imba::scroll::ScrollCommand;
+    let ScrollCommand::Content(command) = command else {
+        return None;
+    };
+    let (index, command) = match command {
+        ListCommand::Child(index, command) => (*index, command),
+        ListCommand::Focus(index, Some(then)) => match then.as_ref() {
+            ListCommand::Child(_, command) => (*index, command),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    match command {
+        TreeItemCommand::Inner(TreeLabelCommand::Context) => Some(index),
         _ => None,
     }
 }

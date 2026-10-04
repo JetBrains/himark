@@ -18,6 +18,7 @@ use crate::higent::turn::TurnView;
 
 type ChatChrome = crate::theme::ChatChrome;
 
+#[derive(Clone)]
 pub enum StackCommand {
     Answer(usize),
 
@@ -26,9 +27,19 @@ pub enum StackCommand {
     RemoveQueued(String),
 }
 
+impl std::fmt::Display for StackCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StackCommand::Answer(_) => out.write_str("stack answer"),
+            StackCommand::ToggleQueue => out.write_str("toggle queue"),
+            StackCommand::RemoveQueued(_) => out.write_str("remove queued"),
+        }
+    }
+}
+
 #[derive(Clone)]
 pub(crate) struct PermissionAsk {
-    turn: String,
+    turn: crate::higent::TurnId,
     tool: String,
     title: String,
     invocation: String,
@@ -39,7 +50,7 @@ pub(crate) struct PermissionAsk {
 
 impl PermissionAsk {
     pub(crate) fn new(
-        turn: String,
+        turn: crate::higent::TurnId,
         tool: String,
         title: String,
         invocation: String,
@@ -105,7 +116,7 @@ impl WidgetStack {
         }
     }
 
-    pub(crate) fn ask_turn(&self) -> Option<String> {
+    pub(crate) fn ask_turn(&self) -> Option<crate::higent::TurnId> {
         self.ask.as_ref().map(|ask| ask.turn.clone())
     }
 
@@ -122,7 +133,7 @@ impl WidgetStack {
     ) -> Option<(String, String, ConfirmationOption)> {
         let ask = self.ask.as_ref()?;
         let option = ask.options.iter().nth(index).cloned()?;
-        Some((ask.turn.clone(), ask.tool.clone(), option))
+        Some((ask.turn.as_str().to_owned(), ask.tool.clone(), option))
     }
 
     pub(crate) fn permission_oracle(
@@ -390,6 +401,7 @@ impl WidgetStack {
                     let id = held.id.clone();
                     let text: String = held.message.text.lines().next().unwrap_or("").to_owned();
                     let row_font = row_font.clone();
+                    let shaper = imba::TextShaper::of(ui);
                     let row_y = queue_y + line + index as f32 * line;
                     let row = leaf::<StackCommand>(box_w - box_pad * 2.0, line)
                         .paint_instead(move |_arena, canvas, rect| {
@@ -401,12 +413,14 @@ impl WidgetStack {
                                 2.5,
                                 &paint,
                             );
-                            paint.set_color(text_color);
-                            canvas.draw_str(
-                                text.as_str(),
-                                (rect.left + line * 0.55, rect.top + line * 0.66),
+                            shaper.draw(
+                                canvas,
                                 &row_font,
-                                &paint,
+                                &text,
+                                text_color,
+                                0.0,
+                                rect.left + line * 0.55,
+                                rect.top + line * 0.66,
                             );
                             paint.set_color(dim);
 

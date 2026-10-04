@@ -11,7 +11,7 @@ operation = { path = "../operation" }
 rebase = { path = "../rebase" }
 rpds = "1"
 text = { path = "../text" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 
 [dev-dependencies]
 myersdiff = { path = "../myersdiff" }

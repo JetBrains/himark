@@ -21,7 +21,19 @@ pub(crate) fn assist(
         return None;
     }
     let local = location.start.checked_sub(base)? as usize;
-    let node = tree.root_node().descendant_for_byte_range(local, local)?;
+    let root = tree.root_node();
+    // The tree ends AT the text (EOF is a line ending — mdparser
+    // grammar/README.md): a caret at the end of an unterminated last
+    // line sits ON that line, so probe the byte before it, or the
+    // lookup answers the root and no assist fires. A caret after a
+    // trailing newline is a fresh empty line and stays assist-free.
+    let after_newline =
+        location.start > 0 && slice(text, location.start - 1..location.start) == "\n";
+    let probe = match local >= root.end_byte() && local > 0 && !after_newline {
+        true => local - 1,
+        false => local,
+    };
+    let node = root.descendant_for_byte_range(probe, probe)?;
     let item = enclosing_list_item(node)?;
     let item_start = base + item.byte_range().start.min(u32::MAX as usize) as u32;
     let line = line_of(text, item_start);

@@ -82,8 +82,9 @@ middle paragraph between the fences with plain words.\n\n\
     );
 
     let at = source.find("AlphaQx --> BetaQx").expect("edge") as u32;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(at, "X"),
+        &operation::Operation::insert_in(len, at, "X"),
         store,
         ui,
         &fonts(),
@@ -99,8 +100,9 @@ middle paragraph between the fences with plain words.\n\n\
     assert_eq!(marked_renders("GammaQx"), 1, "the sibling did NOT");
 
     let at = source.find("middle").expect("paragraph") as u32 + 1;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(at, "y"),
+        &operation::Operation::insert_in(len, at, "y"),
         store,
         ui,
         &fonts(),

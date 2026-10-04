@@ -111,6 +111,12 @@ pub struct PickFoldersEffect {
     pub window: crate::WindowId,
 }
 
+impl std::fmt::Display for PickFoldersEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("pick folders")
+    }
+}
+
 impl imba::effect::Effect for PickFoldersEffect {
     type Result = Vec<crate::ResourceLocation>;
 }
@@ -229,6 +235,7 @@ pub struct NewSessionProbe {
     pub cells: Vec<(f32, f32)>,
 }
 
+#[derive(Clone)]
 pub enum NewSessionCommand {
     Editor(ScrollCommand<EditorCommand>),
     Host(ComboCommand),
@@ -243,6 +250,24 @@ pub enum NewSessionCommand {
 
     Rewrap(f32),
     Start,
+}
+
+impl std::fmt::Display for NewSessionCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NewSessionCommand::Editor(command) => command.fmt(out),
+            NewSessionCommand::Host(command) => command.fmt(out),
+            NewSessionCommand::Dir(command) => command.fmt(out),
+            NewSessionCommand::Mode(command) => command.fmt(out),
+            NewSessionCommand::Model(command) => command.fmt(out),
+            NewSessionCommand::Effort(command) => command.fmt(out),
+            NewSessionCommand::Edits(command) => command.fmt(out),
+            NewSessionCommand::ToggleWorktree => out.write_str("toggle worktree"),
+            NewSessionCommand::Sync => out.write_str("new session sync"),
+            NewSessionCommand::Rewrap(_) => out.write_str("new session rewrap"),
+            NewSessionCommand::Start => out.write_str("new session start"),
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -722,7 +747,11 @@ fn host_folders(store: &Store, host: HostId) -> Vec<crate::ResourceLocation> {
         if id != host {
             continue;
         }
-        let mut sessions: Vec<String> = entry.sessions.iter().map(|s| s.resource.clone()).collect();
+        let mut sessions: Vec<crate::higent::SessionUri> = entry
+            .sessions
+            .iter()
+            .map(|s| crate::higent::SessionUri::new(s.resource.clone()))
+            .collect();
         for (session, _) in entry.states.iter() {
             sessions.push(session.clone());
         }
@@ -1588,7 +1617,12 @@ impl crate::DynamicCommand for StartComposedSession {
 
         if let Some((_, _, session)) =
             Placeholders::session_of(store, window).filter(|(host, provider, _)| {
-                *host == server && self.options.provider.as_deref() == Some(provider.as_str())
+                *host == server
+                    && self
+                        .options
+                        .provider
+                        .as_deref()
+                        .is_none_or(|picked| picked == provider.as_str())
             })
         {
             let applied: Vec<String> = store
@@ -1604,7 +1638,7 @@ impl crate::DynamicCommand for StartComposedSession {
                     fx.push(
                         AnyEffect::new(crate::higent::DispatchChatActionEffect {
                             seat: Arc::clone(&seat),
-                            channel: session.clone(),
+                            channel: session.as_channel(),
                             action: crate::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
                                 crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
                                     directory: directory.clone(),
@@ -1639,7 +1673,7 @@ impl crate::DynamicCommand for StartComposedSession {
                 fx.push(
                     AnyEffect::new(crate::higent::DispatchChatActionEffect {
                         seat,
-                        channel: session.clone(),
+                        channel: session.as_channel(),
                         action:
                             crate::higent::ahp_types::actions::StateAction::SessionConfigChanged(
                                 crate::higent::ahp_types::actions::SessionConfigChangedAction {
@@ -1916,6 +1950,43 @@ fn bump_feed(store: &mut Store) {
     store.update::<ComposerFeed>(|feed| feed.generation = feed.generation.wrapping_add(1));
 }
 
+/// Dispose a PLACEHOLDER session — through the one guarded door: a
+/// session any window currently shows is the user's LIVE session
+/// (the composer rekeys the window onto its placeholder), and
+/// disposing it kills the host's chats and feeds mid-conversation.
+fn dispose_placeholder(
+    store: &Store,
+    window: crate::WindowId,
+    host: HostId,
+    session: crate::higent::SessionUri,
+    fx: &mut crate::app::AppFx<'_>,
+) {
+    let live = crate::Windows::list(store).into_iter().any(|id| {
+        crate::Windows::window_ref(store, id).is_some_and(|entity| {
+            let current = entity.current_session();
+            current.host == host && current.session == session
+        })
+    });
+    if live {
+        eprintln!("[new-session] NOT disposing {session}: a window lives in it");
+        return;
+    }
+    let Some(seat) = Servers::seat(store, host) else {
+        return;
+    };
+    fx.push(
+        AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(move |result| {
+            crate::app::AppCommand::Dynamic(
+                window,
+                Arc::new(PlaceholderDispatched {
+                    label: "dispose",
+                    result: result.map(|_| ()),
+                }),
+            )
+        }),
+    );
+}
+
 #[derive(Clone, Default)]
 pub struct Placeholders(rpds::HashTrieMapSync<crate::WindowId, Placeholder>);
 
@@ -1924,7 +1995,7 @@ struct Placeholder {
     host: HostId,
     provider: String,
 
-    session: Option<String>,
+    session: Option<crate::higent::SessionUri>,
 
     applied: rpds::VectorSync<String>,
 
@@ -1933,7 +2004,10 @@ struct Placeholder {
 
 impl Placeholders {
     #[doc(hidden)]
-    pub fn session_of(store: &Store, window: crate::WindowId) -> Option<(HostId, String, String)> {
+    pub fn session_of(
+        store: &Store,
+        window: crate::WindowId,
+    ) -> Option<(HostId, String, crate::higent::SessionUri)> {
         let rows = store.get::<Placeholders>()?;
         let row = rows.0.get(&window)?;
         Some((row.host, row.provider.clone(), row.session.clone()?))
@@ -1991,20 +2065,8 @@ fn ensure_placeholder(
             }
         }
         Some(row) => {
-            if let (Some(session), Some(seat)) = (row.session, Servers::seat(store, row.host)) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
-                        move |result| {
-                            crate::app::AppCommand::Dynamic(
-                                window,
-                                Arc::new(PlaceholderDispatched {
-                                    label: "dispose",
-                                    result: result.map(|_| ()),
-                                }),
-                            )
-                        },
-                    ),
-                );
+            if let Some(session) = row.session {
+                dispose_placeholder(store, window, row.host, session, fx);
             }
             store.update::<Placeholders>(|rows| {
                 rows.0.remove_mut(&window);
@@ -2073,7 +2135,7 @@ fn grant_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
 ) {
     let Some(seat) = Servers::seat(store, host) else {
@@ -2103,7 +2165,7 @@ fn revoke_folder(
     store: &mut Store,
     window: crate::WindowId,
     host: HostId,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
 ) {
     let Some(seat) = Servers::seat(store, host) else {
@@ -2135,7 +2197,7 @@ fn revoke_folder(
 struct GrantPlaceholderFolder {
     host: HostId,
     seat: Arc<dyn crate::higent::AhpServer>,
-    session: String,
+    session: crate::higent::SessionUri,
     directory: String,
     revoke: bool,
 }
@@ -2178,7 +2240,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
                 seat: Arc::clone(&self.seat),
-                channel: self.session.clone(),
+                channel: self.session.as_channel(),
                 action,
             })
             .map(move |result| {
@@ -2194,7 +2256,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
 struct PlaceholderCreated {
     host: HostId,
     provider: String,
-    result: Result<String, String>,
+    result: Result<crate::higent::SessionUri, String>,
 }
 
 impl crate::DynamicCommand for PlaceholderCreated {
@@ -2234,23 +2296,7 @@ impl crate::DynamicCommand for PlaceholderCreated {
         let Some(row) = standing.filter(|row| {
             row.host == self.host && row.provider == self.provider && row.session.is_none()
         }) else {
-            if let Some(seat) = Servers::seat(store, self.host) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect {
-                        seat,
-                        session: session.clone(),
-                    })
-                    .map(move |result| {
-                        crate::app::AppCommand::Dynamic(
-                            window,
-                            Arc::new(PlaceholderDispatched {
-                                label: "dispose",
-                                result: result.map(|_| ()),
-                            }),
-                        )
-                    }),
-                );
-            }
+            dispose_placeholder(store, window, self.host, session.clone(), fx);
             return;
         };
         store.update::<Placeholders>(|rows| {
@@ -2264,7 +2310,11 @@ impl crate::DynamicCommand for PlaceholderCreated {
             session: session.clone(),
         };
         if let Some(mut entity) = crate::Windows::window(store, window) {
+            let previous = entity.current_session();
             if entity.rekey_current(key.clone()) {
+                // The name changed, the ids did not: the window keeps
+                // its bundle and the catalog row moves under the new key.
+                crate::higent::Hosts::rekey_family(store, &previous, &key);
                 crate::Windows::put(store, window, entity);
             } else {
                 crate::Windows::put(store, window, entity);
@@ -2348,21 +2398,7 @@ impl crate::DynamicCommand for OpenNewSession {
         }
 
         if let Some((host, _, session)) = Placeholders::session_of(store, window) {
-            if let Some(seat) = Servers::seat(store, host) {
-                fx.push(
-                    AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(
-                        move |result| {
-                            crate::app::AppCommand::Dynamic(
-                                window,
-                                Arc::new(PlaceholderDispatched {
-                                    label: "dispose",
-                                    result: result.map(|_| ()),
-                                }),
-                            )
-                        },
-                    ),
-                );
-            }
+            dispose_placeholder(store, window, host, session, fx);
         }
         store.update::<Placeholders>(|rows| {
             rows.0.remove_mut(&window);
@@ -2445,9 +2481,9 @@ impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
             crate::fonts::ui_text_font(ui, chrome.menu_row_size)
         };
         let text_width = if heading {
-            crate::combo::tracked_width(&font, &label)
+            crate::combo::tracked_width(ui, &font, &label)
         } else {
-            font.measure_str(&label, None).0
+            imba::text_advance(ui, &font, &label)
         };
         let natural = text_width + chrome.menu_pad * if heading { 2.0 } else { 2.75 };
         let width = if constraints.max.width.is_finite() {

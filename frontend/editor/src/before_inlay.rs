@@ -234,6 +234,45 @@ impl Document {
         }
     }
 
+    /// Re-expand the editor's before-cards from the diff's CURRENT
+    /// operation, IN PLACE: the standing cards are removed and the
+    /// fresh set pushed — inlay surgery only, no editor teardown, so a
+    /// caret in the host text survives (inlays never move text
+    /// offsets). O(cards) per call; a set-reconcile that leaves
+    /// untouched blocks alone is the refinement if the churn ever
+    /// shows.
+    pub fn refresh_before_inlays(
+        &mut self,
+        editor: EditorId,
+        base: &Document,
+        diff: crate::diff::DiffId,
+        store: &imba::store::Store,
+        ui: &imba::UiCtx,
+        fonts: &skia_safe::textlayout::FontCollection,
+        theme: &crate::theme::Theme,
+        fx: &mut EditorEffects<'_>,
+    ) {
+        if let Some(markup_id) = self.editors.get(&editor).and_then(|state| state.before) {
+            let standing: Vec<InlayKey> = self
+                .feature_markup(markup_id)
+                .map(|markup| {
+                    markup
+                        .all_inlays_in(0..u32::MAX)
+                        .into_iter()
+                        .map(|hit| InlayKey {
+                            layer: MarkupLayer::Markup(markup_id),
+                            key: hit.key.key,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            for key in standing {
+                self.remove_inlay(key, store, ui, fonts, theme, fx);
+            }
+        }
+        self.expand_before_inlays(editor, base, diff, store, ui, fonts, theme, fx);
+    }
+
     fn before_markup_of(&mut self, editor: EditorId) -> Option<MarkupId> {
         if let Some(id) = self.editors.get(&editor)?.before {
             return Some(id);
@@ -308,12 +347,23 @@ fn hard_lines(view: &mut text::TextView, range: Range<u32>) -> Range<u32> {
     start..end.max(start)
 }
 
+#[derive(Clone)]
 pub enum BeforeCommand {
     Editor(crate::editor_view::EditorCommand),
 
     Rewrap(f32),
 
     Tick(AnimationClock),
+}
+
+impl std::fmt::Display for BeforeCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeforeCommand::Editor(command) => command.fmt(out),
+            BeforeCommand::Rewrap(_) => out.write_str("before rewrap"),
+            BeforeCommand::Tick(_) => out.write_str("before tick"),
+        }
+    }
 }
 
 impl BeforeCommand {

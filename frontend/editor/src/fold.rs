@@ -15,6 +15,15 @@ pub enum FoldCommand {
     Tick(AnimationClock),
 }
 
+impl std::fmt::Display for FoldCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FoldCommand::Unfold => out.write_str("unfold"),
+            FoldCommand::Tick(_) => out.write_str("fold tick"),
+        }
+    }
+}
+
 impl Document {
     pub fn toggle_fold(
         &mut self,

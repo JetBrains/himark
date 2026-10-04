@@ -189,27 +189,21 @@ fn parse_markdown_incremental(
     let end = (range.end as usize).min(text.byte_count());
     let start = (range.start as usize).min(end);
 
-    let virtual_newline = end > start && {
-        let mut last = Vec::with_capacity(1);
-        text.view().byte_range_into(end - 1, end, &mut last);
-        last != b"\n"
-    };
-
+    // No virtual trailing newline: the vendored grammar treats EOF as
+    // a line ending (mdparser tests/eof_line_ending.rs), so trees
+    // never extend past their source.
     let mut view = text.view();
     parser
         .parse_with_options(
             &mut |offset, _point| {
                 let at = start + offset;
-                if at < end {
-                    let to = (at + 8 * 1024).min(end);
-                    let mut page = Vec::with_capacity(to - at);
-                    view.byte_range_into(at, to, &mut page);
-                    return page;
+                if at >= end {
+                    return Vec::new();
                 }
-                if virtual_newline && at == end {
-                    return b"\n".to_vec();
-                }
-                Vec::new()
+                let to = (at + 8 * 1024).min(end);
+                let mut page = Vec::with_capacity(to - at);
+                view.byte_range_into(at, to, &mut page);
+                page
             },
             old,
             None,

@@ -18,9 +18,19 @@ pub struct Stack<Base, Modal> {
     modal: Option<Modal>,
 }
 
+#[derive(Clone)]
 pub enum StackCommand<BaseCommand, ModalCommand> {
     Base(BaseCommand),
     Modal(ModalCommand),
+}
+
+impl<B: std::fmt::Display, M: std::fmt::Display> std::fmt::Display for StackCommand<B, M> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            StackCommand::Base(command) => command.fmt(out),
+            StackCommand::Modal(command) => command.fmt(out),
+        }
+    }
 }
 
 impl<Base, Modal> Stack<Base, Modal> {

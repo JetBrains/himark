@@ -105,6 +105,17 @@ pub enum Event<'a> {
 }
 
 impl Event<'_> {
+    /// The cursor left the window: a HitTest beyond any component's
+    /// reach, so hover state — tooltips, hover popups — lets go.
+    /// Every shell issues this on its cursor-exit notification;
+    /// nothing else ever arrives from outside the window.
+    pub fn window_left() -> Event<'static> {
+        Event::HitTest {
+            point: Point::new(-1.0e6, -1.0e6),
+            miss: true,
+        }
+    }
+
     pub fn translated(self, dx: f32, dy: f32) -> Self {
         match self {
             Event::MouseDown {

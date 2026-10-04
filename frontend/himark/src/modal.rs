@@ -114,7 +114,9 @@ pub fn dock_scope(
     move |command| {
         AppCommand::Content(
             window,
-            crate::WindowCommand::Dock(Box::new(crate::dock::DockCommand::Content(command))),
+            crate::WindowCommand::Dock(imba::DynCommand::new(crate::dock::DockCommand::Content(
+                command,
+            ))),
         )
     }
 }
@@ -125,7 +127,9 @@ pub fn side_scope(
     move |command| {
         AppCommand::Content(
             window,
-            crate::WindowCommand::Side(Box::new(crate::drawer::DrawerCommand::Content(command))),
+            crate::WindowCommand::Side(imba::DynCommand::new(
+                crate::drawer::DrawerCommand::Content(command),
+            )),
         )
     }
 }

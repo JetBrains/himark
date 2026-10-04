@@ -27,11 +27,22 @@ impl DiffLayout {
     }
 }
 
+#[derive(Clone)]
 pub enum UnifiedDiffCommand {
     Split(SplitDiffCommand),
 
     Inline(EditorCommand),
     SetLayout(DiffLayout),
+}
+
+impl std::fmt::Display for UnifiedDiffCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            UnifiedDiffCommand::Split(command) => command.fmt(out),
+            UnifiedDiffCommand::Inline(command) => command.fmt(out),
+            UnifiedDiffCommand::SetLayout(_) => out.write_str("set layout"),
+        }
+    }
 }
 
 pub type UnifiedDiffEffects<'a> = imba::effect::Effects<'a, UnifiedDiffCommand>;
@@ -44,6 +55,23 @@ pub struct UnifiedDiffView {
 }
 
 impl UnifiedDiffView {
+    /// FULLY DRESSED — presentable: an honest generation adopted,
+    /// marks landed, the inline face (when worn) rebuilt from them. A
+    /// freshly-mounted pair answers false until the whole dressing
+    /// chain has run; hosts that stage a placeholder (the canvas row)
+    /// hold it up until this flips, so loader → diff is ONE swap.
+    pub fn dressed(&self) -> bool {
+        self.split.state.dressed()
+    }
+
+    /// Dressed now, or ever before. The canvas row's placeholder
+    /// stands only until the FIRST dressing — a later edit undresses
+    /// the face for a beat, and the once-shown diff must keep
+    /// showing through it (stub -> diff happens once).
+    pub fn ever_dressed(&self) -> bool {
+        self.split.state.ever_dressed()
+    }
+
     pub fn new(split: SplitDiffView) -> Self {
         let layout = split.state.unified_layout();
         let inline_editor = split.state.inline_editor();
@@ -78,39 +106,103 @@ impl UnifiedDiffView {
             return;
         }
         if next == DiffLayout::Inline && self.inline_editor.is_none() {
+            let editor = self.build_inline_editor(store, ui, fx);
+            self.inline_editor = Some(editor);
+            self.split.state.note_inline_built();
+        }
+        self.layout = next;
+        self.split
+            .state
+            .set_unified(self.layout, self.inline_editor);
+    }
+
+    /// A bounded build of the inline face off the CURRENT dressing: it
+    /// shows the hunk washes and the fold strips (`right_marks`), and
+    /// its before-cards are expanded from the pane's live diff
+    /// operation. Never diffs (docs/no-diff-on-ui-thread).
+    fn build_inline_editor(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut UnifiedDiffEffects<'_>,
+    ) -> EditorId {
+        let fonts = crate::env::ui_collection(store, ui);
+        let theme = crate::env::Themes::of(store);
+        let width = self
+            .split
+            .right
+            .document
+            .layout_width(self.split.right.editor)
+            .max(200.0);
+        let shown = [
+            self.split.state.hunk_markup(),
+            self.split.state.right_marks(),
+        ];
+        let diff = self.split.state.diff_id();
+        let base = self.split.left.document.clone();
+        let right = &mut self.split.right.document;
+        fx.scope(UnifiedDiffCommand::Inline, |fx| {
+            let editor = right.add_editor(
+                width,
+                None,
+                EditorBuild::Bounded,
+                &shown,
+                store,
+                ui,
+                &fonts,
+                &theme,
+                fx,
+            );
+            right.expand_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx);
+            editor
+        })
+    }
+
+    /// The normalize lane landed a fresh generation and the inline face
+    /// wears an older dressing. TWO very different cases:
+    ///
+    /// The face still wears the whole-replace SEED (built at mount,
+    /// before the first honest diff): rebuild it wholesale — its one
+    /// giant before-card and foldless height are the seed's shape, and
+    /// a face frames old holds nobody's caret. This is the ONLY
+    /// rebuild.
+    ///
+    /// An honest generation replaced an honest one (a keystroke's own
+    /// landing included): heal IN PLACE, like the split face — folds
+    /// and washes already arrived through the shared marks markup the
+    /// inline editor shows, and the before-cards re-expand as inlay
+    /// surgery. The editor survives, and with it the caret: tearing it
+    /// down here is what snapped typing back to offset zero.
+    fn refresh_inline_if_stale(
+        &mut self,
+        store: &mut Store,
+        ui: &UiCtx,
+        fx: &mut UnifiedDiffEffects<'_>,
+    ) {
+        if !self.split.state.inline_stale() {
+            return;
+        }
+        if self.split.state.inline_wears_the_seed() {
+            let Some(stale) = self.inline_editor.take() else {
+                return;
+            };
+            self.split.right.document.remove_editor(stale);
+            let editor = self.build_inline_editor(store, ui, fx);
+            self.inline_editor = Some(editor);
+        } else {
+            let Some(editor) = self.inline_editor else {
+                return;
+            };
             let fonts = crate::env::ui_collection(store, ui);
             let theme = crate::env::Themes::of(store);
-            let width = self
-                .split
-                .right
-                .document
-                .layout_width(self.split.right.editor)
-                .max(200.0);
-            let shown = [
-                self.split.state.hunk_markup(),
-                self.split.state.right_marks(),
-            ];
             let diff = self.split.state.diff_id();
             let base = self.split.left.document.clone();
             let right = &mut self.split.right.document;
-            let editor = fx.scope(UnifiedDiffCommand::Inline, |fx| {
-                let editor = right.add_editor(
-                    width,
-                    None,
-                    EditorBuild::Bounded,
-                    &shown,
-                    store,
-                    ui,
-                    &fonts,
-                    &theme,
-                    fx,
-                );
-                right.expand_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx);
-                editor
+            fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                right.refresh_before_inlays(editor, &base, diff, store, ui, &fonts, &theme, fx)
             });
-            self.inline_editor = Some(editor);
         }
-        self.layout = next;
+        self.split.state.note_inline_built();
         self.split
             .state
             .set_unified(self.layout, self.inline_editor);
@@ -208,30 +300,40 @@ impl imba::View for UnifiedDiffView {
                 });
             }
             UnifiedDiffCommand::Inline(command) => {
-                if let EditorCommand::Inlay { key, command } = &command {
-                    if let Some(fold_command) = command.downcast_ref::<fold::FoldCommand>() {
-                        let key = *key;
-                        let fold_command = *fold_command;
-                        return fx.scope(UnifiedDiffCommand::Split, |fx| {
+                let fold = match &command {
+                    EditorCommand::Inlay { key, command } => command
+                        .downcast_ref::<fold::FoldCommand>()
+                        .map(|fold_command| (*key, *fold_command)),
+                    _ => None,
+                };
+                match fold {
+                    Some((key, fold_command)) => {
+                        fx.scope(UnifiedDiffCommand::Split, |fx| {
                             self.split.adjust_fold(key, fold_command, store, ui, fx)
                         });
                     }
+                    None => {
+                        let Some(mut view) = self.inline_face(store) else {
+                            return;
+                        };
+                        fx.scope(UnifiedDiffCommand::Inline, |fx| {
+                            view.perform(store, ui, command, fx)
+                        });
+
+                        self.split.right.document = view.document;
+
+                        fx.scope(UnifiedDiffCommand::Split, |fx| {
+                            self.split.settle_after(None, None);
+                            self.split.pair_lane(fx);
+                        });
+                    }
                 }
-                let Some(mut view) = self.inline_face(store) else {
-                    return;
-                };
-                fx.scope(UnifiedDiffCommand::Inline, |fx| {
-                    view.perform(store, ui, command, fx)
-                });
-
-                self.split.right.document = view.document;
-
-                fx.scope(UnifiedDiffCommand::Split, |fx| {
-                    self.split.settle_after(None, None);
-                    self.split.pair_lane(fx);
-                });
             }
         }
+        // A command may have adopted a freshly-normalized generation
+        // (the pane's settle runs inside these handlers); the inline
+        // face rebuilds off the new dressing if so.
+        self.refresh_inline_if_stale(store, ui, fx);
     }
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {

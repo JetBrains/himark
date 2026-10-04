@@ -60,8 +60,9 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(0, "pub "),
+        &operation::Operation::insert_in(len, 0, "pub "),
         store,
         ui,
         &fonts,
@@ -145,8 +146,9 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
     keyword_at(&document, "let third", "before typing");
 
     let at = source.find("first").unwrap() as u32 + "first".len() as u32;
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(at, "x"),
+        &operation::Operation::insert_in(len, at, "x"),
         store,
         ui,
         &fonts,
@@ -201,8 +203,9 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
         &mut imba::effect::Batch::new().effects(),
     );
 
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(20, "xx"),
+        &operation::Operation::insert_in(len, 20, "xx"),
         store,
         ui,
         &fonts,
@@ -292,8 +295,9 @@ fn declarations_emit_outline_items_at_parse() {
         Some(range.clone()),
         "the (syntax, key) address resolves"
     );
+    let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_at(0, "// head\n"),
+        &operation::Operation::insert_in(len, 0, "// head\n"),
         store,
         ui,
         &fonts,

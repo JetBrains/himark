@@ -9,9 +9,10 @@ name = "himark-agent-host"
 path = "src/main.rs"
 
 [dependencies]
-ahp = "0.7"
+ahp = "0.9"
 base64 = "0.22"
-ahp-types = "0.7"
+ahp-types = "0.9"
+fsp-types = { path = "../../vendor/fsp-types" }
 hifind = { path = "../find" }
 higit = { path = "../git" }
 host-discovery = { path = "../../protocol/host-discovery" }

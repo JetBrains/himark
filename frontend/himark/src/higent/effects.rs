@@ -8,10 +8,18 @@ use ahp_types::common::Uri;
 use ahp_types::state::{ChatState, SessionState, Turn};
 use imba::effect::Effect;
 
-use crate::higent::seat::{AhpServer, RootInfo, ServerEvent, SessionsPage};
+use crate::higent::seat::{
+    AhpServer, ChannelUri, ChatUri, RootInfo, ServerEvent, SessionUri, SessionsPage, TurnId,
+};
 
 pub struct ConnectServerEffect {
     pub seat: Arc<dyn AhpServer>,
+}
+
+impl std::fmt::Display for ConnectServerEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("connect server")
+    }
 }
 
 impl Effect for ConnectServerEffect {
@@ -20,6 +28,12 @@ impl Effect for ConnectServerEffect {
 
 pub struct ShareHostEffect {
     pub seat: Arc<dyn AhpServer>,
+}
+
+impl std::fmt::Display for ShareHostEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("share host")
+    }
 }
 
 impl Effect for ShareHostEffect {
@@ -31,12 +45,24 @@ pub struct ListSessionsEffect {
     pub cursor: Option<String>,
 }
 
+impl std::fmt::Display for ListSessionsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("list sessions")
+    }
+}
+
 impl Effect for ListSessionsEffect {
     type Result = Result<SessionsPage, String>;
 }
 
 pub struct PollServerEffect {
     pub seat: Arc<dyn AhpServer>,
+}
+
+impl std::fmt::Display for PollServerEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("poll server")
+    }
 }
 
 impl Effect for PollServerEffect {
@@ -49,8 +75,14 @@ pub struct CreateSessionEffect {
     pub options: crate::higent::SessionOptions,
 }
 
+impl std::fmt::Display for CreateSessionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("create session")
+    }
+}
+
 impl Effect for CreateSessionEffect {
-    type Result = Result<Uri, String>;
+    type Result = Result<SessionUri, String>;
 }
 
 pub struct ResolveSessionConfigEffect {
@@ -59,13 +91,25 @@ pub struct ResolveSessionConfigEffect {
     pub config: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
+impl std::fmt::Display for ResolveSessionConfigEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("resolve session config")
+    }
+}
+
 impl Effect for ResolveSessionConfigEffect {
     type Result = Result<ahp_types::commands::ResolveSessionConfigResult, String>;
 }
 
 pub struct DisposeSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for DisposeSessionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "dispose session {}", self.session.as_str())
+    }
 }
 
 impl Effect for DisposeSessionEffect {
@@ -74,7 +118,13 @@ impl Effect for DisposeSessionEffect {
 
 pub struct SubscribeSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for SubscribeSessionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe session {}", self.session.as_str())
+    }
 }
 
 impl Effect for SubscribeSessionEffect {
@@ -83,7 +133,13 @@ impl Effect for SubscribeSessionEffect {
 
 pub struct PollSessionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for PollSessionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll session {}", self.session.as_str())
+    }
 }
 
 impl Effect for PollSessionEffect {
@@ -92,23 +148,35 @@ impl Effect for PollSessionEffect {
 
 pub struct CreateChatEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for CreateChatEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "create chat {}", self.session.as_str())
+    }
 }
 
 impl Effect for CreateChatEffect {
-    type Result = Result<Uri, String>;
+    type Result = Result<ChatUri, String>;
 }
 
 pub struct SubscribeChatEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
+}
+
+impl std::fmt::Display for SubscribeChatEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe chat {}", self.chat.as_str())
+    }
 }
 
 impl Effect for SubscribeChatEffect {
     type Result = Result<ChatState, String>;
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TurnsPage {
     pub turns: Vec<Turn>,
 
@@ -117,9 +185,15 @@ pub struct TurnsPage {
 
 pub struct FetchTurnsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
 
     pub cursor: Option<String>,
+}
+
+impl std::fmt::Display for FetchTurnsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "fetch turns {}", self.chat.as_str())
+    }
 }
 
 impl Effect for FetchTurnsEffect {
@@ -128,12 +202,18 @@ impl Effect for FetchTurnsEffect {
 
 pub struct StartTurnEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
     pub text: String,
 
     pub attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
 
     pub model: Option<ahp_types::state::ModelSelection>,
+}
+
+impl std::fmt::Display for StartTurnEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "start turn {}", self.chat.as_str())
+    }
 }
 
 impl Effect for StartTurnEffect {
@@ -142,12 +222,18 @@ impl Effect for StartTurnEffect {
 
 pub struct PollChatActionsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
+    pub chat: ChatUri,
 }
 
 pub struct SubscribeChangesetEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for SubscribeChangesetEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe changeset {}", self.channel.as_str())
+    }
 }
 
 impl Effect for SubscribeChangesetEffect {
@@ -156,7 +242,13 @@ impl Effect for SubscribeChangesetEffect {
 
 pub struct SubscribeHistoryEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for SubscribeHistoryEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe history {}", self.channel.as_str())
+    }
 }
 
 impl Effect for SubscribeHistoryEffect {
@@ -165,11 +257,23 @@ impl Effect for SubscribeHistoryEffect {
 
 pub struct PollChangesetEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for PollChangesetEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll changeset {}", self.channel.as_str())
+    }
 }
 
 impl Effect for PollChangesetEffect {
     type Result = Vec<ahp_types::actions::StateAction>;
+}
+
+impl std::fmt::Display for PollChatActionsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll chat actions {}", self.chat.as_str())
+    }
 }
 
 impl Effect for PollChatActionsEffect {
@@ -178,7 +282,13 @@ impl Effect for PollChatActionsEffect {
 
 pub struct SubscribeLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for SubscribeLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe locations {}", self.channel.as_str())
+    }
 }
 
 impl Effect for SubscribeLocationsEffect {
@@ -187,7 +297,13 @@ impl Effect for SubscribeLocationsEffect {
 
 pub struct PollLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for PollLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll locations {}", self.channel.as_str())
+    }
 }
 
 impl Effect for PollLocationsEffect {
@@ -198,7 +314,13 @@ impl Effect for PollLocationsEffect {
 /// its producer host-side.
 pub struct UnsubscribeLocationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
+}
+
+impl std::fmt::Display for UnsubscribeLocationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "unsubscribe locations {}", self.channel.as_str())
+    }
 }
 
 impl Effect for UnsubscribeLocationsEffect {
@@ -207,7 +329,13 @@ impl Effect for UnsubscribeLocationsEffect {
 
 pub struct SubscribeAnnotationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for SubscribeAnnotationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "subscribe annotations {}", self.session.as_str())
+    }
 }
 
 impl Effect for SubscribeAnnotationsEffect {
@@ -216,7 +344,13 @@ impl Effect for SubscribeAnnotationsEffect {
 
 pub struct PollAnnotationsEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub session: Uri,
+    pub session: SessionUri,
+}
+
+impl std::fmt::Display for PollAnnotationsEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "poll annotations {}", self.session.as_str())
+    }
 }
 
 impl Effect for PollAnnotationsEffect {
@@ -225,8 +359,14 @@ impl Effect for PollAnnotationsEffect {
 
 pub struct CancelTurnEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub chat: Uri,
-    pub turn_id: String,
+    pub chat: ChatUri,
+    pub turn_id: TurnId,
+}
+
+impl std::fmt::Display for CancelTurnEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "cancel turn {}", self.turn_id.as_str())
+    }
 }
 
 impl Effect for CancelTurnEffect {
@@ -235,8 +375,14 @@ impl Effect for CancelTurnEffect {
 
 pub struct DispatchChatActionEffect {
     pub seat: Arc<dyn AhpServer>,
-    pub channel: Uri,
+    pub channel: ChannelUri,
     pub action: StateAction,
+}
+
+impl std::fmt::Display for DispatchChatActionEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "dispatch chat action {}", self.channel.as_str())
+    }
 }
 
 impl Effect for DispatchChatActionEffect {
@@ -255,6 +401,34 @@ pub struct FileEditContents {
     pub after: Option<String>,
 }
 
+impl std::fmt::Display for FetchFileEditEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("fetch file edit")
+    }
+}
+
 impl Effect for FetchFileEditEffect {
     type Result = Result<FileEditContents, String>;
+}
+
+/// Both sides of a file edit, fetched AND built (two documents with
+/// syntax, the diff, the prepared marks) off the UI thread — the chat's
+/// diff cell only mounts the result. A coding turn brings hundreds of
+/// edits; none of this is frame work.
+pub struct BuildFileEditEffect {
+    pub seat: Arc<dyn AhpServer>,
+    pub before: Option<Uri>,
+    pub after: Option<Uri>,
+    /// The edited file's name — it names the language.
+    pub name: String,
+}
+
+impl std::fmt::Display for BuildFileEditEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "build file edit {}", self.name)
+    }
+}
+
+impl Effect for BuildFileEditEffect {
+    type Result = Result<crate::higent::BuiltFileEdit, String>;
 }

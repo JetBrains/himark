@@ -253,8 +253,21 @@ the same native store and remain available to the CLI.
 
 - **The prompt queue**: `pendingMessageSet` mirrors into host state;
   on natural turn completion the host drains the head into the next
-  prompt and emits `pendingMessageRemoved` +
-  `turnStarted {queuedMessageId}`. Stop leaves the queue paused.
+  prompt (attachments expanded, as at any turn start) and emits
+  `pendingMessageRemoved` + `turnStarted {queuedMessageId}`. Stop
+  leaves the queue paused.
+- **ONE live turn per chat.** A `chat/turnStarted` that arrives while
+  a turn is live is not a second turn: the reducer would make it the
+  active turn and orphan every part of the live one, and both
+  providers answer prompts strictly in order — Claude folds a prompt
+  written mid-turn into the running turn (or an interrupt drops it)
+  and emits ONE `result` for the pair, after which every later reply
+  would land on the previous turn's id, a turn the client has already
+  closed. So the host files it as a queued message (id = the turn id)
+  and drains it on natural completion; the provider adapters refuse
+  a second live prompt outright. `chat/turnCancelled` interrupts the
+  turn it NAMES: the live one gets the provider's interrupt, a queued
+  one just leaves the queue, a stale id touches nothing.
 - **Sessions mutate mid-flight.** The uniform lever: mutate the
   manifest, persist, RETIRE the chat's agent process — an idle one
   now, an active one after its turn — and the next turn respawns
@@ -264,9 +277,10 @@ the same native store and remain available to the CLI.
   `Message.model` (id + thinking level) becomes the session's new
   default and respawns for THAT turn. The session state publishes
   the current values in `config.values` so clients seed their
-  pickers. (`worktree` is accepted and persisted but not acted on;
-  `isolation` is accepted and ignored — folder semantics are the
-  only session bootstrapping the host performs.)
+  pickers. (`worktree: true` bootstraps a git worktree of the
+  primary directory's repository at creation and makes it the
+  session's primary — docs/ahp/agents.md has the exact shape;
+  `isolation` is accepted and ignored.)
 - **Turn ids, part ids, timestamps**: minted by the host, persisted
   in the AHP transcript; providers keep their native ids in `_meta`
   for interop.
@@ -294,10 +308,15 @@ socket — each service either a method or a channel family
   `resourceWrite`s; blob sides travel as `hihost-git:/` refs served
   by `resourceRead`. History channels (`hihost-history:/<folder>`)
   page the revision log (docs/ahp/ahp-history.md).
-- **search**: the `search` method walks the session's directories
-  with the ripgrep stack on a per-connection LEASH — the next search
-  supersedes the running one, a dead connection raises the cancel
-  flag, a cut answer says `truncated` (docs/ahp/ahp-search.md).
+- **search**: `search` and `searchLocations` ride the indexed FSP
+  engine when an `fsp-server` binary was discovered at boot — a
+  supervised sidecar fed the session's folders and document-channel
+  overlays — and the in-process ripgrep-stack walk otherwise
+  (docs/file-search.md). Cancellation is unchanged either way: the
+  per-connection leash for `search` (the next search supersedes,
+  a dead connection cancels, a cut answer says `truncated`), the
+  channel's disposal for `searchLocations`
+  (docs/ahp/ahp-search.md, docs/ahp/ahp-locations.md).
 - **lsp**: the host supervises language servers per workspace root
   (`lsp/*` envelope methods forwarded verbatim; capabilities and
   diagnostics host-synthesized; diagnostics stream on their own

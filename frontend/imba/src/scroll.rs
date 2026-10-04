@@ -46,6 +46,7 @@ pub struct Glide {
     last: Option<crate::anim::AnimationClock>,
 }
 
+#[derive(Clone)]
 pub enum ScrollCommand<ContentCommand> {
     Content(ContentCommand),
     SetScrollY(f32),
@@ -63,6 +64,20 @@ pub enum ScrollCommand<ContentCommand> {
         grab: f32,
     },
     EndKnobDrag,
+}
+
+impl<C: std::fmt::Display> std::fmt::Display for ScrollCommand<C> {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScrollCommand::Content(command) => command.fmt(out),
+            ScrollCommand::SetScrollY(_) => out.write_str("scroll set"),
+            ScrollCommand::GlideTo(_) => out.write_str("scroll glide"),
+            ScrollCommand::JumpTo(_) => out.write_str("scroll jump"),
+            ScrollCommand::GlideStep(..) => out.write_str("scroll glide step"),
+            ScrollCommand::BeginKnobDrag { .. } => out.write_str("scroll knob drag"),
+            ScrollCommand::EndKnobDrag => out.write_str("scroll knob release"),
+        }
+    }
 }
 
 pub struct ScrollWidget<ContentThunk, ContentCommand> {

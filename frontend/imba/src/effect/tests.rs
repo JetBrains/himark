@@ -5,6 +5,12 @@ use super::*;
 
 struct Probe(u32);
 
+impl std::fmt::Display for Probe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("probe")
+    }
+}
+
 impl Effect for Probe {
     type Result = u32;
 }
@@ -16,6 +22,12 @@ enum Root {
 }
 
 struct RootProbe(#[allow(dead_code)] u32);
+
+impl std::fmt::Display for RootProbe {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.write_str("rootprobe")
+    }
+}
 
 impl Effect for RootProbe {
     type Result = Root;
@@ -104,6 +116,12 @@ fn effect_caller_calls_registered_types_and_answers_none_otherwise() {
     }));
 
     struct Unregistered;
+
+    impl std::fmt::Display for Unregistered {
+        fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            out.write_str("unregistered")
+        }
+    }
     impl Effect for Unregistered {
         type Result = u32;
     }

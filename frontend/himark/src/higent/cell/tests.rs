@@ -20,17 +20,30 @@ fn resolved(before: &str, after: &str) -> Cell {
             title: "sample.md".to_owned(),
             added: Some(1),
             removed: Some(1),
+            uri: None,
         },
         640.0,
+    );
+    // The pair is BUILT off the UI thread in production (the handler
+    // behind `BuildFileEditEffect`); here the test plays that part.
+    let built = crate::higent::build_file_edit(
+        "sample.md",
+        &crate::higent::FileEditContents {
+            before: Some(before.to_owned()),
+            after: Some(after.to_owned()),
+        },
+        &std::sync::Arc::new(crate::SyntaxLanguages::new()),
+        &(std::sync::Arc::new(myersdiff::Myers) as std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
+        &store,
+        &ui,
+        &env::ui_collection(&store, &ui),
+        &env::Themes::of(&store),
     );
     let mut batch = imba::effect::Batch::new();
     cell.perform(
         &mut store,
         &ui,
-        CellCommand::ResolveDiff(Ok(crate::higent::FileEditContents {
-            before: Some(before.to_owned()),
-            after: Some(after.to_owned()),
-        })),
+        CellCommand::ResolveDiff(Ok(built)),
         &mut batch.effects(),
     );
     cell
@@ -247,7 +260,17 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
         cells.push((cell, height));
     }
     let declared: f32 = cells.iter().map(|(_, height)| height).sum();
-    let turn = crate::higent::TurnView::new("turn", 640.0, cells);
+    let mut slice = imba::list::ListSlice::new();
+    for (at, (cell, height)) in cells.into_iter().enumerate() {
+        slice.push_keyed_sized(
+            crate::higent::turn::CellKey::Part(crate::higent::chat::model::PartId::new(format!(
+                "p{at}"
+            ))),
+            cell,
+            height,
+        );
+    }
+    let turn = crate::higent::TurnView::new("turn", 640.0, slice);
     let mut scroll = ScrollView::new(turn);
     let width = 640.0f32;
     let view_h = 700.0f32;

@@ -6,63 +6,69 @@ use imba::store::Store;
 use crate::{AppCommand, AppFx};
 
 pub use documents::watch::{
-    FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, RefetchRebase,
-    SubscribeEffect, Subscription, UnsubscribeEffect, Watching,
+    FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect,
+    Subscription, UnsubscribeEffect, Watching,
 };
 
-pub fn sync_document_watches(store: &mut Store, fx: &mut AppFx<'_>) {
-    documents::watch::sync_document_watches(store, fx, |document, subscription| {
-        AppCommand::Watched(document, subscription)
-    });
-}
+use crate::app::DocumentsCommand;
 
-pub(crate) fn refetch_watched(store: &mut Store, subscription: Subscription, fx: &mut AppFx<'_>) {
-    documents::watch::refetch_watched(store, subscription, fx, |document, serial, text| {
-        AppCommand::Refetched {
-            document,
-            serial,
-            text,
-        }
-    });
-}
-
-pub(crate) fn apply_refetched(
+pub fn sync_document_watches(
     store: &mut Store,
-    document_id: crate::DocumentId,
-    serial: u64,
-    text: Option<String>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     fx: &mut AppFx<'_>,
 ) {
-    documents::watch::apply_refetched(
+    documents::watch::sync_document_watches(store, documents, fx, move |document, subscription| {
+        AppCommand::at(documents, DocumentsCommand::Watched(document, subscription))
+    });
+}
+
+pub(crate) fn refetch_watched(
+    store: &mut Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    subscription: Subscription,
+    fx: &mut AppFx<'_>,
+) {
+    documents::watch::refetch_watched(
         store,
-        document_id,
-        serial,
-        text,
+        documents,
+        subscription,
         fx,
-        |document, base_revision, serial, rebase| AppCommand::RefetchDiffed {
-            document,
-            base_revision,
-            serial,
-            rebase,
+        move |document, serial, text| {
+            AppCommand::at(
+                documents,
+                DocumentsCommand::Refetched {
+                    document,
+                    serial,
+                    text,
+                },
+            )
         },
     );
 }
 
-pub fn refetch_document(store: &mut Store, document: crate::DocumentId, fx: &mut AppFx<'_>) {
-    let Some(location) = documents::OpenDocuments::location(store, document) else {
+pub fn refetch_document(
+    store: &mut Store,
+    documents_id: imba::store::Id<crate::OpenDocuments>,
+    document: crate::DocumentId,
+    fx: &mut AppFx<'_>,
+) {
+    let Some(location) = documents::OpenDocuments::location(store, documents_id, document) else {
         return;
     };
     if crate::is_synthetic(&location) {
         return;
     }
-    let serial = documents::OpenDocuments::stamp_refetch(store, document);
+    let serial = documents::OpenDocuments::stamp_refetch(store, documents_id, document);
     let _ = fx.push(
         imba::effect::AnyEffect::new(crate::FetchDocumentEffect { location }).map(move |text| {
-            AppCommand::Refetched {
-                document,
-                serial,
-                text,
-            }
+            AppCommand::at(
+                documents_id,
+                DocumentsCommand::Refetched {
+                    document,
+                    serial,
+                    text,
+                },
+            )
         }),
     );
 }
@@ -90,7 +96,10 @@ impl crate::DynamicCommand for ReloadDocument {
         else {
             return;
         };
-        refetch_document(store, document, fx);
+        let Some(family) = crate::Windows::session_family(store, window) else {
+            return;
+        };
+        refetch_document(store, family.documents(), document, fx);
     }
 }
 

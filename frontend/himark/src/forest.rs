@@ -5,7 +5,7 @@ use std::hash::Hash;
 
 use imba::{
     arena::Arena,
-    list::{ListSlice, ListView, SearchableList},
+    list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView},
     scroll::ScrollView,
     store::Store,
     UiCtx, View,
@@ -460,17 +460,46 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> crate::Searcher for ForestSea
     }
 }
 
-impl<K: Clone + Eq + Hash + Send + Sync + 'static> SearchableList<K> for ForestList<K> {
+impl<K: Clone + Eq + Hash + Send + Sync + 'static> ListOps for ForestList<K> {
+    type Key = K;
+
     fn set_matches(&mut self, keys: &[K]) {
         self.list.set_matches(keys);
     }
     fn clear_matches(&mut self) {
         self.list.clear_matches();
     }
-    fn step_matched(&mut self, delta: isize) {
-        self.list.step_matched(delta);
-    }
     fn match_count(&self) -> usize {
         self.list.match_count()
+    }
+    fn cursor_index(&self) -> Option<usize> {
+        self.list.cursor_index()
+    }
+    fn step_index(&self, delta: isize) -> Option<usize> {
+        self.list.step_index(delta)
+    }
+    fn matched_step_index(&self, delta: isize) -> Option<usize> {
+        self.list.matched_step_index(delta)
+    }
+    fn edge_index(&self, edge: Edge) -> Option<usize> {
+        self.list.edge_index(edge)
+    }
+    fn matched_edge_index(&self, edge: Edge) -> Option<usize> {
+        self.list.matched_edge_index(edge)
+    }
+    fn page_index(&self, direction: isize) -> Option<usize> {
+        self.list.page_index(direction)
+    }
+    fn select_command(&self, index: usize) -> Self::Command {
+        self.list.select_command(index)
+    }
+    fn activate_command(&self, index: usize, trigger: ActivateTrigger) -> Self::Command {
+        self.list.activate_command(index, trigger)
+    }
+    fn selected_index(command: &Self::Command) -> Option<usize> {
+        <ScrollView<ListView<TreeRow, K>>>::selected_index(command)
+    }
+    fn activated(command: &Self::Command) -> Option<(usize, ActivateTrigger)> {
+        <ScrollView<ListView<TreeRow, K>>>::activated(command)
     }
 }

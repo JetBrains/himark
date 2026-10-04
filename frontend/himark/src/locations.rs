@@ -343,16 +343,30 @@ impl PendingWashes {
 pub struct LocationsWashHook;
 
 impl crate::DocumentHook for LocationsWashHook {
-    fn opened(&self, store: &mut Store, document: crate::DocumentId) {
-        let Some(location) = crate::OpenDocuments::location(store, document) else {
+    fn opened(
+        &self,
+        store: &mut Store,
+        _documents: imba::store::Id<crate::OpenDocuments>,
+        document: crate::DocumentId,
+        location: Option<&crate::ResourceLocation>,
+    ) {
+        let Some(location) = location else {
             return;
         };
-        if let Some(feed) = PendingWashes::take(store, &location) {
+        if let Some(feed) = PendingWashes::take(store, location) {
             crate::AppRequests::push(store, std::sync::Arc::new(WashDocument { feed, document }));
         }
     }
 
-    fn closing(&self, _store: &mut Store, _document: crate::DocumentId) {}
+    fn closing(
+        &self,
+        _store: &mut Store,
+        _documents: imba::store::Id<crate::OpenDocuments>,
+        _document: crate::DocumentId,
+        _location: Option<&crate::ResourceLocation>,
+        _doc: &crate::Document,
+    ) {
+    }
 }
 
 /// Install the feed's find-results markup on an opened document:
@@ -379,7 +393,7 @@ impl crate::DynamicCommand for WashDocument {
         &self,
         app: &mut crate::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -389,10 +403,16 @@ impl crate::DynamicCommand for WashDocument {
         if row.washes.contains_key(&self.document) {
             return;
         }
-        let Some(location) = crate::OpenDocuments::location(store, self.document) else {
+        let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, self.document) else {
+        let Some(location) = crate::OpenDocuments::location(store, documents, self.document) else {
+            return;
+        };
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, self.document)
+        else {
             return;
         };
 
@@ -409,7 +429,7 @@ impl crate::DynamicCommand for WashDocument {
                 .collect()
         };
         if ranges.is_empty() {
-            crate::OpenDocuments::put_document(store, self.document, document);
+            crate::OpenDocuments::put_document(store, documents, self.document, document);
             return;
         }
         ranges.sort_by_key(|range| range.start);
@@ -425,10 +445,15 @@ impl crate::DynamicCommand for WashDocument {
         }
         let entity = self.document;
         fx.scope(
-            move |command| crate::AppCommand::Entity(entity, command),
+            move |command| {
+                crate::AppCommand::at(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(entity, command),
+                )
+            },
             |fx| document.replace_markup(markup, tints, &ranges, store, ui, &fonts, &theme, fx),
         );
-        crate::OpenDocuments::put_document(store, self.document, document);
+        crate::OpenDocuments::put_document(store, documents, self.document, document);
 
         row.washes.insert_mut(
             self.document,
@@ -446,6 +471,7 @@ impl crate::DynamicCommand for WashDocument {
 
 fn remove_washes(
     store: &mut Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
     row: &LocationsFeedRow,
     fx: &mut crate::app::AppFx<'_>,
@@ -453,17 +479,22 @@ fn remove_washes(
     let fonts = crate::env::Fonts::of(store)();
     let theme = crate::env::Themes::of(store);
     for (id, (markup, pushed)) in row.washes.iter() {
-        let Some(mut document) = crate::OpenDocuments::document(store, *id) else {
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, *id) else {
             continue; // closed — the markup died with it
         };
         let changed: Vec<std::ops::Range<u32>> =
             pushed.iter().map(|(start, end)| *start..*end).collect();
         let entity = *id;
         fx.scope(
-            move |command| crate::AppCommand::Entity(entity, command),
+            move |command| {
+                crate::AppCommand::at(
+                    documents,
+                    crate::app::DocumentsCommand::Editor(entity, command),
+                )
+            },
             |fx| document.remove_markup(*markup, &changed, store, ui, &fonts, &theme, fx),
         );
-        crate::OpenDocuments::put_document(store, *id, document);
+        crate::OpenDocuments::put_document(store, documents, *id, document);
     }
 }
 
@@ -539,7 +570,11 @@ impl crate::DynamicCommand for DisposeFeed {
         let Some(row) = LocationsFeeds::row(store, self.feed) else {
             return;
         };
-        remove_washes(store, ui, &row, fx);
+        if let Some(documents) =
+            crate::Windows::session_family(store, window).map(|family| family.documents())
+        {
+            remove_washes(store, documents, ui, &row, fx);
+        }
         PendingWashes::sweep(store, self.feed);
         if let Some(token) = row.poll {
             fx.cancel(token);

@@ -264,9 +264,19 @@ enum DemoTone {
     Rule,
 }
 
+#[derive(Clone)]
 enum DemoInlayCommand {
     Toggle,
     Tick(AnimationClock),
+}
+
+impl std::fmt::Display for DemoInlayCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DemoInlayCommand::Toggle => out.write_str("demo toggle"),
+            DemoInlayCommand::Tick(_) => out.write_str("demo tick"),
+        }
+    }
 }
 
 impl DemoInlay {

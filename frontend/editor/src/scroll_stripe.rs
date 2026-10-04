@@ -201,6 +201,7 @@ pub(crate) struct StripeWork {
     pub(crate) layout: DocumentLayout,
 }
 
+#[derive(Clone)]
 pub struct StripeOutcome {
     pub(crate) token: DocumentToken,
     pub(crate) editor: EditorId,
@@ -211,6 +212,12 @@ pub struct StripeOutcome {
 impl StripeOutcome {
     pub fn editor(&self) -> EditorId {
         self.editor
+    }
+}
+
+impl std::fmt::Display for ScrollStripeEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "compute scroll stripes {:?}", self.work.editor)
     }
 }
 

@@ -18,6 +18,8 @@ fn host_at(dir: &std::path::Path) -> Arc<agent_host::Host> {
         codex_home: dir.join("dot-codex"),
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
+        fsp_binary: None,
+        fsp_data_dir: dir.join("fsp"),
     })
 }
 

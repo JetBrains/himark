@@ -6,7 +6,6 @@ use std::sync::Arc;
 use super::Agents;
 use crate::higent::{CreateChatEffect, HostId};
 use crate::{AppCommand, DynamicCommand, SessionId, Windows};
-use ahp_types::common::Uri;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
@@ -56,7 +55,7 @@ impl DynamicCommand for NewChat {
 
 struct OpenCreatedChat {
     server: HostId,
-    created: Result<Uri, String>,
+    created: Result<crate::higent::ChatUri, String>,
 }
 
 impl DynamicCommand for OpenCreatedChat {
@@ -84,18 +83,18 @@ impl DynamicCommand for OpenCreatedChat {
             }
         };
 
-        let session = Windows::window_ref(store, window)
-            .expect("the window entity")
-            .current_session()
-            .session;
-        let pane = crate::higent::Chats::open(store, ui, self.server, session, chat);
         let mut entity = Windows::window(store, window).expect("the window entity");
+        let session = entity.current_session().session;
+        let pane = crate::higent::Chats::open(
+            store,
+            ui,
+            entity.family().chats(),
+            self.server,
+            session,
+            chat,
+        );
 
-        if crate::FloatingChat::on(store) {
-            entity.open_bottom(pane);
-        } else {
-            let _ = entity.open_panel(store, ui, pane, fx);
-        }
+        let _ = entity.open_chat_panel(store, ui, pane, fx);
         Windows::put(store, window, entity);
     }
 }

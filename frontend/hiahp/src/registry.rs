@@ -40,7 +40,10 @@ impl EffectHandler<PollServerEffect> for HandlePollServer {
 pub struct HandleCreateSession;
 
 impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
-    async fn handle(&self, effect: CreateSessionEffect) -> Result<String, String> {
+    async fn handle(
+        &self,
+        effect: CreateSessionEffect,
+    ) -> Result<himark::higent::SessionUri, String> {
         effect
             .seat
             .create_session(effect.working_directories, effect.options)
@@ -89,7 +92,7 @@ impl EffectHandler<PollSessionEffect> for HandlePollSession {
 pub struct HandleCreateChat;
 
 impl EffectHandler<CreateChatEffect> for HandleCreateChat {
-    async fn handle(&self, effect: CreateChatEffect) -> Result<String, String> {
+    async fn handle(&self, effect: CreateChatEffect) -> Result<himark::higent::ChatUri, String> {
         effect.seat.create_chat(effect.session).await
     }
 }

@@ -45,13 +45,44 @@ const MAX_STRUCTURAL_BYTES: usize = 1024 * 1024;
 /// `ERROR`/`MISSING` nodes the tree is not trusted.
 const MAX_ERROR_RATIO: f64 = 0.05;
 
-pub fn diff(left: &Text, right: &Text, syntax: Option<&SyntaxInput>) -> Operation {
-    if let Some(input) = syntax {
-        if let Some(operation) = structural(left, right, input) {
-            return operation;
+/// Structural alignment buys READABILITY on a modest change — a
+/// re-indent, a moved block, a rewrite-in-place. Past this change
+/// mass the diff renders as "everything changed" under either engine,
+/// while difftastic's cost explodes (a Dijkstra per changed region:
+/// measured 15.7s on a 461KB global rename whose answer matched Myers
+/// piece for piece). Myers runs FIRST — it is the fallback anyway and
+/// 100-1000x cheaper — and its result is the gate.
+const MAX_STRUCTURAL_PIECES: usize = 256;
+const MAX_STRUCTURAL_CHANGED_BYTES: usize = 64 * 1024;
+
+fn worth_structural(myers: &Operation) -> bool {
+    let mut pieces = 0usize;
+    let mut changed = 0usize;
+    for op in myers.iter() {
+        match op {
+            operation::Op::Retain(_) => {}
+            operation::Op::Delete(text) | operation::Op::Insert(text) => {
+                pieces += 1;
+                changed += text.len();
+            }
+        }
+        if pieces > MAX_STRUCTURAL_PIECES || changed > MAX_STRUCTURAL_CHANGED_BYTES {
+            return false;
         }
     }
-    myersdiff::diff(left, right)
+    true
+}
+
+pub fn diff(left: &Text, right: &Text, syntax: Option<&SyntaxInput>) -> Operation {
+    let myers = myersdiff::diff(left, right);
+    if let Some(input) = syntax {
+        if worth_structural(&myers) {
+            if let Some(operation) = structural(left, right, input) {
+                return operation;
+            }
+        }
+    }
+    myers
 }
 
 /// The edge-installable `editor::diff::DiffPolicy`: structural where
@@ -67,10 +98,19 @@ impl Structural {
         Self { languages }
     }
 
-    fn parse(&self, language: &str, text: &Text) -> Option<Box<dyn editor::SyntaxTree>> {
+    /// Parse a side — INCREMENTALLY when the caller has an
+    /// edit-adjusted (stale) tree: tree-sitter reuses everything the
+    /// edits did not touch, so catching a keystroke up costs ~nothing,
+    /// where a cold parse re-reads the whole file.
+    fn parse(
+        &self,
+        language: &str,
+        text: &Text,
+        old: Option<&dyn editor::SyntaxTree>,
+    ) -> Option<Box<dyn editor::SyntaxTree>> {
         let language = self.languages.ensure(language)?;
         let len = text.view().byte_count() as u32;
-        language.parse(text, 0..len, None)
+        language.parse(text, 0..len, old)
     }
 
     fn try_structural(
@@ -80,18 +120,20 @@ impl Structural {
         syntax: &editor::diff::DiffSyntax<'_>,
     ) -> Option<Operation> {
         let parsed_base;
-        let base_tree = match syntax.base_tree.and_then(hisitter::TsTree::of) {
-            Some(tree) => tree,
-            None => {
-                parsed_base = self.parse(syntax.language, base)?;
+        let base_tree = match &syntax.base {
+            Some(side) if side.fresh => hisitter::TsTree::of(side.tree)?,
+            side => {
+                parsed_base =
+                    self.parse(syntax.language, base, side.as_ref().map(|side| side.tree))?;
                 hisitter::TsTree::of(parsed_base.as_ref())?
             }
         };
         let parsed_target;
-        let target_tree = match syntax.target_tree.and_then(hisitter::TsTree::of) {
-            Some(tree) => tree,
-            None => {
-                parsed_target = self.parse(syntax.language, target)?;
+        let target_tree = match &syntax.target {
+            Some(side) if side.fresh => hisitter::TsTree::of(side.tree)?,
+            side => {
+                parsed_target =
+                    self.parse(syntax.language, target, side.as_ref().map(|side| side.tree))?;
                 hisitter::TsTree::of(parsed_target.as_ref())?
             }
         };
@@ -114,12 +156,15 @@ impl editor::diff::DiffPolicy for Structural {
         target: &Text,
         syntax: Option<&editor::diff::DiffSyntax<'_>>,
     ) -> Operation {
+        let myers = myersdiff::diff(base, target);
         if let Some(syntax) = syntax {
-            if let Some(operation) = self.try_structural(base, target, syntax) {
-                return operation;
+            if worth_structural(&myers) {
+                if let Some(operation) = self.try_structural(base, target, syntax) {
+                    return operation;
+                }
             }
         }
-        myersdiff::diff(base, target)
+        myers
     }
 }
 
@@ -127,6 +172,18 @@ fn structural(left: &Text, right: &Text, input: &SyntaxInput) -> Option<Operatio
     let left_src = materialize(left);
     let right_src = materialize(right);
     if left_src.len().max(right_src.len()) > MAX_STRUCTURAL_BYTES {
+        return None;
+    }
+    // A tree that outruns its text is not trusted, exactly like an
+    // error-heavy one — Myers serves the request. (The 2026-09 crash:
+    // markdown trees were parsed over a virtual trailing newline and
+    // ended at len+1; the grammar now treats EOF as a line ending —
+    // mdparser tests/eof_line_ending.rs pins the producer — and this
+    // gate keeps a regressing producer from aborting the app, since a
+    // panic on the normalize lane cannot unwind.)
+    if input.left_tree.root_node().end_byte() > left_src.len()
+        || input.right_tree.root_node().end_byte() > right_src.len()
+    {
         return None;
     }
 
@@ -235,4 +292,41 @@ pub fn apply(operation: &Operation, left: &str) -> Option<String> {
         }
     }
     (at == left.len()).then_some(out)
+}
+
+#[cfg(test)]
+mod gate {
+    use super::*;
+    use operation::Op;
+
+    #[test]
+    fn a_modest_change_is_worth_structural() {
+        let op = Operation::from_ops([
+            Op::Retain(1000),
+            Op::Delete("old body".to_owned()),
+            Op::Insert("new body".to_owned()),
+            Op::Retain(1000),
+        ]);
+        assert!(worth_structural(&op));
+    }
+
+    #[test]
+    fn a_scattered_rewrite_gates_out() {
+        let mut ops = Vec::new();
+        for _ in 0..300 {
+            ops.push(Op::Retain(10));
+            ops.push(Op::Delete("x".to_owned()));
+            ops.push(Op::Insert("y".to_owned()));
+        }
+        assert!(!worth_structural(&Operation::from_ops(ops)));
+    }
+
+    #[test]
+    fn a_bulk_replacement_gates_out() {
+        let big = "x".repeat(65 * 1024);
+        assert!(!worth_structural(&Operation::from_ops([
+            Op::Delete(big.clone()),
+            Op::Insert(big),
+        ])));
+    }
 }

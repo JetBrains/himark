@@ -256,7 +256,7 @@ jobs:
 
   macos:
     name: macOS (arm64)
-    runs-on: macos-14
+    runs-on: macos-15
     needs: [version, web]
     timeout-minutes: 120
     env:

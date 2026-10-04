@@ -3,6 +3,7 @@
 
 mod app;
 mod app_ext;
+pub mod changes_view;
 pub mod combo;
 mod commands;
 pub mod completion;
@@ -23,14 +24,14 @@ pub mod hipeek;
 pub mod hisearch;
 pub mod hover;
 mod keymap;
+mod list_keyboard;
 pub mod locations;
+pub mod menu;
 mod modal;
 mod navigation;
 pub mod new_session;
 pub mod rows;
 mod save;
-mod sheet;
-mod speedsearch;
 mod startup_profile;
 mod state;
 mod stats;
@@ -43,15 +44,18 @@ mod toc;
 mod tree_item;
 pub mod ui;
 pub use forest::{Forest, ForestList, ForestNode, ForestSearcher, TreeRow};
-pub use speedsearch::{
-    subsequence_match, ItemSource, Searcher, SpeedSearchCommand, SpeedSearchEffect,
-    SpeedSearchHandler, SpeedSearchView,
+pub use list_keyboard::{
+    subsequence_match, ActivateTrigger, AnnounceSelect, AnnounceSelectHandler, ItemSource,
+    ListKeyCommand, ListKeyboardController, NoSearcher, Searcher, SpeedSearchEffect,
+    SpeedSearchHandler, SpeedSearchMatches,
 };
 pub use tree_item::{
-    tree_action, tree_interaction, TreeItemCommand, TreeItemView, TreeLabel, TreeLabelCommand,
-    TreeListCommand, TreeTint,
+    secondary_press, tree_action, tree_context, tree_toggle, TreeItemCommand, TreeItemView,
+    TreeLabel, TreeLabelCommand, TreeListCommand, TreeTint,
 };
 pub mod diff_canvas;
+pub(crate) mod diff_header;
+pub mod diff_pane;
 mod family_rows;
 mod toolbar;
 mod watch;
@@ -60,19 +64,24 @@ mod workbench;
 mod workbench_node;
 mod workspace;
 
+pub use crate::diff_canvas::canvas::{CanvasNavigator, Canvases, DiffCanvasView};
+pub use crate::diff_pane::{
+    diff_panel, gathered_view, open_diff_documents, open_opened_diff_pane, pair_row_minter,
+    DiffPanelView, DiffPlace, OpenDiff, PairPane,
+};
 pub use crate::diffs::{
-    rearm_base_asks, sync_stripe_bases, DiffChanged, DiffHandle, DiffNormalizeEffect,
-    DiffNormalizeHandler, DiffView, DiffViewId, FetchBaseEffect, StripeBases,
+    build_diff_view, gather_diff_view, install_opened_pair, rearm_base_asks, rewrap_pair,
+    sync_stripe_bases, teardown_diff_view, DiffHandle, DiffNormalizeEffect, DiffNormalizeHandler,
+    DiffView, DiffViewId, DressedViews, StripeBaseResolver, StripeBases, OPEN_HALF_WIDTH,
 };
-pub use crate::family_rows::{
-    mint_unfronted, FamilyRow, RowMinter, RowMinters, SessionFamilies, SessionFamilyMember,
-    SessionFamilyValue, SyncObserver, SyncObservers,
-};
+pub use crate::family_rows::{mint, mint_unfronted, FamilyRow, RowMinter, RowMinters};
 pub use crate::workspace::{
-    open_by_location_effect, open_locations, BuildDocumentEffect, BuildFileDiffEffect,
-    BuiltDocument, BuiltFileDiff, FindEffect, ListDirectoryEffect, LocationsChannel,
-    LspLocationsEffect, LspLocationsKind, OpenByLocationEffect, OpenDiffByLocationsEffect,
-    PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId, StoreDocumentEffect,
+    open_by_location_effect, open_locations, BuildDocumentEffect, BuiltDocument,
+    CreateDocumentEffect, DeleteResourceEffect, DiffSide, DiffSideInput, FindEffect,
+    ListDirectoryEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind,
+    MoveResourceEffect, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
+    OpenedDiffPair, PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId,
+    StoreDocumentEffect,
 };
 pub use ::editor::*;
 pub use app::*;
@@ -82,8 +91,9 @@ pub use completion::{LspAnswer, LspCompletionEffect, LspItem};
 pub use dock::{DockCommand, DOCK_MIN_WIDTH, DOCK_WIDTH};
 pub use documents::{
     close_editor, deliver, is_scratch, is_synthetic, line_col_at, mount_editor,
-    next_scratch_location, offset_at, DocumentHook, DocumentId, EditorIdView, FetchDocumentEffect,
-    FetchResourceBytesEffect, LineCol, OpenDocument, OpenDocuments,
+    next_scratch_location, offset_at, DocumentCommand, DocumentCommands, DocumentHook, DocumentId,
+    EditorIdView, FetchDocumentEffect, FetchResourceBytesEffect, LineCol, OpenDocument,
+    OpenDocuments,
 };
 pub use drawer::DRAWER_WIDTH;
 pub use effects::*;
@@ -95,27 +105,26 @@ pub use modal::{dock_scope, modal_scope, side_scope, ModalRequest, ModalView, Re
 pub use navigation::{
     EditorPlace, NavigationLocation, Navigator, Navigators, NoPlace, Place, RecentLocations,
 };
-pub use rows::{
-    paint_panel_chrome, panel_inset, selection_style, LabelRow, RowList, RowListCommand,
-};
+pub use rows::{label_slice, paint_panel_chrome, panel_inset, selection_style, LabelRow};
 pub use save::{SaveAll, SaveDocument};
-pub use sheet::{composer_button, FloatingChat};
-pub use state::{AppState, Gathered};
+pub use state::AppState;
 pub use stats::Stats;
 pub use toc::{
     OutlineCommand, OutlineEffect, OutlineHandler, OutlineRows, OutlineView, TocCommand, TocView,
     ToggleToc,
 };
 pub use toolbar::{
-    toggle_toolbar_session, OverlaySurface, OverlaySurfaces, ToolbarButton, ToolbarButtons,
-    ToolbarCommand, ToolbarRequest, ToolbarSide,
+    composer_button, ToolbarButton, ToolbarButtons, ToolbarCommand, ToolbarRequest, ToolbarSide,
 };
 pub use watch::{
     refetch_document, sync_document_watches, FileChanged, ReloadDocument, SubscribeEffect,
     Subscription, UnsubscribeEffect, Watching,
 };
 pub use window::{LayerFocus, Window, WindowCommand, WindowId, Windows};
-pub use workbench::{workbench_geometry, Workbench, WorkbenchGeometry};
+pub use workbench::{
+    chat_column_engaged, chat_column_width, workbench_geometry, ChatColumn, Workbench,
+    WorkbenchCommand, WorkbenchGeometry,
+};
 pub use workbench_node::{
     DynPanelView, EditorPane, NodeCommand, PaneCommand, Panel, PanelCommand, PanelRequest,
     PanelView, WidgetOrigin, WorkbenchNode,

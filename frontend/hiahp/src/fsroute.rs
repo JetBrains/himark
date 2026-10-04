@@ -6,8 +6,9 @@ use std::sync::Arc;
 use crate::fs::SeatDirectory;
 use himark::higent::seat as fs;
 use himark::{
-    FetchDocumentEffect, ListDirectoryEffect, ResourceLocation, StoreDocumentEffect,
-    SubscribeEffect, Subscription, UnsubscribeEffect,
+    CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
+    MoveResourceEffect, ResourceLocation, StoreDocumentEffect, SubscribeEffect, Subscription,
+    UnsubscribeEffect,
 };
 use imba::effect::EffectHandler;
 
@@ -16,7 +17,10 @@ const LOCAL_AUTHORITY: &str = "local";
 pub fn seat_of_authority(
     directory: &SeatDirectory,
     authority: &str,
-) -> Option<(Arc<dyn himark::higent::AhpServer>, String)> {
+) -> Option<(
+    Arc<dyn himark::higent::AhpServer>,
+    himark::higent::SessionUri,
+)> {
     if fs::scoped(authority) {
         let (server, session) = fs::parse(authority)?;
         let seat = directory.seat(server)?;
@@ -31,7 +35,10 @@ pub fn seat_of_authority(
 pub fn seat_of(
     directory: &SeatDirectory,
     location: &ResourceLocation,
-) -> Option<(Arc<dyn himark::higent::AhpServer>, String)> {
+) -> Option<(
+    Arc<dyn himark::higent::AhpServer>,
+    himark::higent::SessionUri,
+)> {
     seat_of_authority(directory, location.authority().as_str())
 }
 
@@ -165,6 +172,60 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
     }
 }
 
+pub struct RouteCreate {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<CreateDocumentEffect> for RouteCreate {
+    async fn handle(&self, effect: CreateDocumentEffect) -> bool {
+        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+            return false;
+        };
+        seat.resource_create(session, self.uris.uri_of(&effect.location))
+            .await
+    }
+}
+
+pub struct RouteDelete {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<DeleteResourceEffect> for RouteDelete {
+    async fn handle(&self, effect: DeleteResourceEffect) -> bool {
+        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+            return false;
+        };
+        seat.resource_delete(
+            session,
+            self.uris.uri_of(&effect.location),
+            effect.recursive,
+        )
+        .await
+    }
+}
+
+pub struct RouteMove {
+    pub directory: Arc<SeatDirectory>,
+    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+}
+
+impl EffectHandler<MoveResourceEffect> for RouteMove {
+    async fn handle(&self, effect: MoveResourceEffect) -> bool {
+        // One seat serves both ends: a move never crosses authorities.
+        let Some((seat, session)) = seat_of(&self.directory, &effect.from) else {
+            return false;
+        };
+        seat.resource_move(
+            session,
+            self.uris.uri_of(&effect.from),
+            self.uris.uri_of(&effect.to),
+        )
+        .await
+    }
+}
+
 pub struct RouteSubscribe {
     pub directory: Arc<SeatDirectory>,
     pub uris: Arc<dyn himark::higent::ResourceUriMap>,
@@ -194,22 +255,28 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
     }
 }
 
-pub struct RouteBase {
-    pub refs: himark::hichanges::ChangeRefs,
-}
-
-impl EffectHandler<himark::FetchBaseEffect> for RouteBase {
-    async fn handle(&self, effect: himark::FetchBaseEffect) -> Option<ResourceLocation> {
-        if himark::hichanges::scoped(&effect.location) || !served(&effect.location) {
-            return None;
-        }
-        let before = self
-            .refs
-            .lookup(&format!("/{}", effect.location.path().join("/")))?;
-
-        let (origin, _) = himark::hichanges::raw_ref(&before)?;
-        (origin == effect.location.authority().as_str()).then_some(before)
+/// The BASE RESOLVER (installed as `StripeBases`): a working file's
+/// base ref, read straight off the `Changes` model at ask time —
+/// synchronous, store in hand, no worker hop. (This replaced an async
+/// handler fed through a shared Arc<Mutex<HashMap>>.)
+pub fn resolve_base(
+    store: &imba::store::Store,
+    documents: imba::store::Id<himark::OpenDocuments>,
+    location: &ResourceLocation,
+) -> Option<ResourceLocation> {
+    if himark::hichanges::scoped(location) || !served(location) {
+        return None;
     }
+    // The ask names its documents collection; the bases live in the
+    // change sets next to it.
+    let changes = himark::higent::Hosts::family_of_documents(store, documents)?.changes();
+    let before = himark::hichanges::Changes::base_ref(
+        store,
+        changes,
+        &format!("/{}", location.path().join("/")),
+    )?;
+    let (origin, _) = himark::hichanges::raw_ref(&before)?;
+    (origin == location.authority().as_str()).then_some(before)
 }
 
 pub struct RouteUnsubscribe {

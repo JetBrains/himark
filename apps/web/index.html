@@ -77,6 +77,8 @@
       (() => {
         const canvas = document.getElementById("canvas");
         canvas.focus();
+        // Right-click is the app's context press, not the browser's.
+        canvas.addEventListener("contextmenu", (event) => event.preventDefault());
         // The command bridge the app polls once per frame — kept as a
         // dev door (push from the console); no DOM UI feeds it.
         const queue = [];

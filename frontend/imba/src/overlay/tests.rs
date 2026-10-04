@@ -19,10 +19,16 @@ use super::OverlayHost;
 const HOST: OverlayHost = OverlayHost("test-host");
 const OUTER: OverlayHost = OverlayHost("outer-host");
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 enum Cmd {
     Hit(&'static str, Point),
     Text(&'static str),
+}
+
+impl std::fmt::Display for Cmd {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "{self:?}")
+    }
 }
 
 struct HitBox {

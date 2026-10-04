@@ -58,6 +58,7 @@ impl EffectHandler<himark::OpenByLocationEffect> for StubOpenByLocation {
         himark::AppCommand::Opened(
             effect.window,
             OpenedDocument {
+                documents: effect.documents,
                 name: effect.location.name().to_owned(),
                 document: plain_document("fallback body"),
                 location: Some(effect.location),
@@ -152,7 +153,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store()).len();
+    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
@@ -173,7 +174,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "the found row previews like an open document"
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the fetched preview registered at display"
     );
@@ -195,7 +196,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         Some("workspace notes body"),
         "the adopted document took the pane"
     );
-    let adopted = himark::OpenDocuments::list(app.store())
+    let adopted = himark::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "notes.md")
         .expect("the adopted document is listed");
@@ -204,13 +205,13 @@ fn found_documents_preview_and_adopt_on_pick() {
         Some(doc_location("notes.md"))
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the temp became THE document; the displaced scratch is spared"
     );
 
     settle(&mut app, &arriving, &runner);
-    let adopted = himark::OpenDocuments::list(app.store())
+    let adopted = himark::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "notes.md")
         .expect("still listed");
@@ -231,7 +232,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store()).len();
+    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
@@ -243,7 +244,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         "the fetched temp previews while the peeker is up"
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the fetched preview registered at display"
     );
@@ -254,7 +255,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
     ));
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs,
         "the close retracted the preview editor — editorless, the document left whole"
     );
@@ -291,7 +292,7 @@ fn outside_dismissal_releases_glanced_documents() {
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store()).len();
+    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
@@ -299,7 +300,7 @@ fn outside_dismissal_releases_glanced_documents() {
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the glanced preview registered at display"
     );
@@ -307,7 +308,7 @@ fn outside_dismissal_releases_glanced_documents() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(labels(&app).is_none(), "the toggle dismissed the peeker");
     assert_eq!(
-        himark::OpenDocuments::list(app.store()).len(),
+        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs,
         "the glanced document left the registry with the modal"
     );

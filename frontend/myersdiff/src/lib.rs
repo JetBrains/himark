@@ -40,9 +40,11 @@ pub fn diff(left: &Text, right: &Text) -> Operation {
     let mut ops: Vec<Op> = Vec::new();
 
     let lines = TextDiff::from_lines(left.as_str(), right.as_str());
+    let old_offsets = prefix_offsets(lines.iter_old_slices());
+    let new_offsets = prefix_offsets(lines.iter_new_slices());
     for op in lines.ops() {
-        let old = byte_span(&left, lines.old_slices(), op.old_range());
-        let new = byte_span(&right, lines.new_slices(), op.new_range());
+        let old = span(&old_offsets, op.old_range());
+        let new = span(&new_offsets, op.new_range());
         match op.tag() {
             DiffTag::Equal => push_retain(&mut ops, old.len()),
             DiffTag::Delete => push_delete(&mut ops, &left[old]),
@@ -65,11 +67,13 @@ pub fn refine(ops: &mut Vec<Op>, old: &str, new: &str) {
         return;
     }
     let chars = TextDiff::from_chars(old, new);
+    let old_offsets = prefix_offsets(chars.iter_old_slices());
+    let new_offsets = prefix_offsets(chars.iter_new_slices());
 
     let mut refined: Vec<Op> = Vec::new();
     for op in chars.ops() {
-        let old_span = char_span(old, chars.old_slices(), op.old_range());
-        let new_span = char_span(new, chars.new_slices(), op.new_range());
+        let old_span = span(&old_offsets, op.old_range());
+        let new_span = span(&new_offsets, op.new_range());
         match op.tag() {
             DiffTag::Equal => push_retain(&mut refined, old_span.len()),
             DiffTag::Delete => push_delete(&mut refined, &old[old_span]),
@@ -152,17 +156,19 @@ fn materialize(text: &Text) -> String {
     view.byte_string(0, count)
 }
 
-fn byte_span(source: &str, slices: &[&str], elements: Range<usize>) -> Range<usize> {
-    span_of(source, slices, elements)
+/// Byte offset of every slice boundary, built ONCE per diff —
+/// `offsets[i]` is where slice `i` starts, the last entry is the total.
+/// The old per-op slice-length summation was quadratic in ops.
+fn prefix_offsets<'a>(slices: impl Iterator<Item = &'a str>) -> Vec<usize> {
+    let mut offsets = vec![0usize];
+    let mut at = 0usize;
+    for slice in slices {
+        at += slice.len();
+        offsets.push(at);
+    }
+    offsets
 }
 
-fn char_span(source: &str, slices: &[&str], elements: Range<usize>) -> Range<usize> {
-    span_of(source, slices, elements)
-}
-
-fn span_of(source: &str, slices: &[&str], elements: Range<usize>) -> Range<usize> {
-    let start: usize = slices[..elements.start].iter().map(|s| s.len()).sum();
-    let len: usize = slices[elements.clone()].iter().map(|s| s.len()).sum();
-    debug_assert!(source.is_char_boundary(start) && source.is_char_boundary(start + len));
-    start..start + len
+fn span(offsets: &[usize], elements: Range<usize>) -> Range<usize> {
+    offsets[elements.start]..offsets[elements.end]
 }

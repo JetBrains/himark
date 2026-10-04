@@ -6,6 +6,8 @@
 //! module only shapes it. The panel itself lives in `plugins/hidiff`
 //! (the workbench face rule) and is minted through `FamilyRow`.
 
+pub mod canvas;
+
 use imba::store::Store;
 
 use crate::hichanges::{empty_side, ChangeEntry, Changes, ChangesStatus};
@@ -20,7 +22,7 @@ pub enum CanvasSource {
     /// One commit's changeset — a history view revision row.
     Commit {
         folder: ResourceLocation,
-        id: String,
+        id: crate::hichanges::Revision,
     },
 }
 
@@ -32,20 +34,24 @@ impl CanvasSource {
         }
     }
 
-    pub fn title(&self, store: &Store) -> String {
+    pub fn title(&self, store: &Store, changes: imba::store::Id<Changes>) -> String {
         match self {
             CanvasSource::WorkingCopy { folder } => format!("Changes — {}", folder.name()),
             CanvasSource::Commit { folder, id } => {
-                let summary = crate::hihistory::History::folder(store, folder).and_then(|held| {
-                    held.commits
-                        .iter()
-                        .find(|commit| commit.id == *id)
-                        .map(|commit| commit.summary.clone())
-                });
+                let summary = Changes::of(store, changes)
+                    .and_then(|held| {
+                        crate::hihistory::History::folder(store, held.history(), folder)
+                    })
+                    .and_then(|held| {
+                        held.commits
+                            .iter()
+                            .find(|commit| commit.id == id.as_str())
+                            .map(|commit| commit.summary.clone())
+                    });
                 match summary {
                     Some(summary) => summary,
                     None => {
-                        let short: String = id.chars().take(8).collect();
+                        let short: String = id.as_str().chars().take(8).collect();
                         format!("Commit {short}")
                     }
                 }
@@ -101,14 +107,22 @@ pub enum CanvasBanner {
     },
 }
 
-pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanner> {
+pub fn canvas_banner(
+    store: &Store,
+    changes: imba::store::Id<Changes>,
+    source: &CanvasSource,
+) -> Option<CanvasBanner> {
     match source {
         CanvasSource::WorkingCopy { folder } => Some(CanvasBanner::Composer {
             folder: folder.clone(),
         }),
         CanvasSource::Commit { folder, id } => {
-            let held = crate::hihistory::History::folder(store, folder)?;
-            let commit = held.commits.iter().find(|commit| commit.id == *id)?;
+            let history = Changes::of(store, changes)?.history();
+            let held = crate::hihistory::History::folder(store, history, folder)?;
+            let commit = held
+                .commits
+                .iter()
+                .find(|commit| commit.id == id.as_str())?;
             Some(CanvasBanner::Commit {
                 message: commit
                     .message
@@ -125,21 +139,33 @@ pub fn canvas_banner(store: &Store, source: &CanvasSource) -> Option<CanvasBanne
 
 /// The per-frame staleness probe — O(1), no listing built. The panel
 /// derives rows only when this moves (the ReconcileShell contract).
-pub fn canvas_generation(store: &Store, source: &CanvasSource) -> u64 {
+pub fn canvas_generation(
+    store: &Store,
+    changes: imba::store::Id<Changes>,
+    source: &CanvasSource,
+) -> u64 {
     match source {
-        CanvasSource::WorkingCopy { .. } => Changes::generation(store),
-        CanvasSource::Commit { .. } => crate::hihistory::History::generation(store),
+        // Per-SET staleness (docs/model-view.md): a canvas re-derives
+        // when ITS set moved, not when anything in the session did.
+        CanvasSource::WorkingCopy { folder } => Changes::folder_generation(store, changes, folder),
+        CanvasSource::Commit { folder, id } => {
+            Changes::commit_generation(store, changes, folder, id)
+        }
     }
 }
 
 /// The staleness probe + the listing, in one read. The generation is
 /// the owning store's (`Changes` / `History`) — the panel re-derives
 /// on movement, the ReconcileShell contract.
-pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing) {
+pub fn canvas_files(
+    store: &Store,
+    changes: imba::store::Id<Changes>,
+    source: &CanvasSource,
+) -> (u64, CanvasListing) {
     match source {
         CanvasSource::WorkingCopy { folder } => {
-            let generation = Changes::generation(store);
-            let listing = match Changes::folder(store, folder) {
+            let generation = Changes::folder_generation(store, changes, folder);
+            let listing = match Changes::folder(store, changes, folder) {
                 None => CanvasListing::Pending("no changes source".to_owned()),
                 Some(changes) => listing_of(&changes.status, changes.files.iter(), |entry| {
                     // The working-copy pair diffs the LIVE file — the
@@ -150,9 +176,11 @@ pub fn canvas_files(store: &Store, source: &CanvasSource) -> (u64, CanvasListing
             (generation, listing)
         }
         CanvasSource::Commit { folder, id } => {
-            let generation = crate::hihistory::History::generation(store);
-            let held = crate::hihistory::History::folder(store, folder)
-                .and_then(|held| held.commit_files.get(id).cloned());
+            // Per-SET staleness: the commit's own ChangeSet carries
+            // the content and the generation (docs/model-view.md).
+            let generation = Changes::commit_generation(store, changes, folder, id);
+            let held =
+                Changes::commit_set(store, changes, folder, id).filter(|set| set.generation() > 0);
             let listing = match held {
                 None => CanvasListing::Pending("fetching the commit…".to_owned()),
                 Some(commit) => listing_of(&commit.status, commit.files.iter(), |entry| {
@@ -236,6 +264,9 @@ fn tree_order(a: &[String], b: &[String]) -> std::cmp::Ordering {
 /// the reveal is a delivery, not an identity.
 #[derive(Clone)]
 pub struct CanvasPlace {
+    /// The collection the canvas reads from — a walk back has to land
+    /// in the same one.
+    pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -252,6 +283,8 @@ impl crate::Place for CanvasPlace {}
 /// canvas is found by source in the store; a fresh view of it costs
 /// nothing). An armed reveal rides the place.
 pub struct OpenDiffCanvas {
+    /// The collection whose set this canvas shows.
+    pub changes: imba::store::Id<Changes>,
     pub source: CanvasSource,
     pub reveal: Option<ResourceLocation>,
 }
@@ -274,21 +307,25 @@ impl crate::DynamicCommand for OpenDiffCanvas {
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
-            crate::DynamicCommand::perform(
-                &crate::hihistory::FetchCommitFiles {
-                    folder: folder.clone(),
-                    commit: id.clone(),
-                },
-                app,
-                store,
-                window,
-                fx,
-            );
+            if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
+                crate::DynamicCommand::perform(
+                    &crate::hihistory::FetchCommitFiles {
+                        history,
+                        folder: folder.clone(),
+                        commit: id.clone(),
+                    },
+                    app,
+                    store,
+                    window,
+                    fx,
+                );
+            }
         }
         let Some(mut entity) = crate::Windows::window(store, window) else {
             return;
         };
         let place = CanvasPlace {
+            changes: self.changes,
             source: self.source.clone(),
             reveal: self.reveal.clone(),
         };
@@ -339,7 +376,10 @@ impl crate::DynamicCommand for OpenCanvasFile {
         // Honor the caret: the canvas row's document is registered
         // (docs/editor/diff-canvas.md §7), so this is a show at target;
         // fall back to a targeted fetch if it somehow is not.
-        match crate::OpenDocuments::by_location(store, &self.location) {
+        let documents = crate::Windows::session_family(store, window)
+            .expect("canvas navigation runs in a window with a session")
+            .documents();
+        match crate::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
                 if let Some(mut entity) = crate::Windows::window(store, window) {
                     entity.show_document(store, ui, window, document_id, Some(target), false, fx);
@@ -349,6 +389,7 @@ impl crate::DynamicCommand for OpenCanvasFile {
             None => {
                 fx.push(crate::open_by_location_effect(
                     window,
+                    documents,
                     self.location.clone(),
                     true,
                     false,

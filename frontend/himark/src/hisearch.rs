@@ -21,14 +21,15 @@ use imba::{
 use skia_safe::Size;
 
 use crate::forest::{ForestList, ForestSearcher};
+use crate::list_keyboard::{ListKeyCommand, ListKeyboardController};
 use crate::locations::{
     locations_forest, open_feed, AttachFeedStream, DisposeFeed, FeedId, LocationKey,
     LocationsFeedRow, LocationsFeeds, SessionSearchFeeds, StopFeed,
 };
 use crate::modal::RequestSlot;
-use crate::speedsearch::{SpeedSearchCommand, SpeedSearchView};
-use crate::tree_item::{tree_interaction, TreeListCommand};
+use crate::tree_item::{tree_toggle, TreeListCommand};
 use crate::{AppRequests, EditorCommand, EditorView, ModalRequest, SessionId, WindowId};
+use imba::list::{ActivateTrigger, ListOps};
 
 /// The dock owner id — the toggle command's, shared by everything
 /// that lands content into this tab.
@@ -45,12 +46,10 @@ pub enum SearchArea {
     Results,
 }
 
+#[derive(Clone)]
 pub enum SearchCommand {
     Input(EditorCommand),
-    List(SpeedSearchCommand<TreeListCommand>),
-    Select(isize),
-    Fold(bool),
-    Pick,
+    List(ListKeyCommand<TreeListCommand>),
     /// A click landed: move the keyboard to the clicked area, then
     /// forward the click itself.
     Focus(SearchArea, Option<Box<SearchCommand>>),
@@ -66,11 +65,26 @@ pub enum SearchCommand {
     },
 }
 
+impl std::fmt::Display for SearchCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SearchCommand::Input(command) => command.fmt(out),
+            SearchCommand::List(command) => command.fmt(out),
+            SearchCommand::Focus(_, Some(command)) => command.fmt(out),
+            SearchCommand::Focus(_, None) => out.write_str("search focus"),
+            SearchCommand::Cancel => out.write_str("search cancel"),
+            SearchCommand::Dismiss => out.write_str("search dismiss"),
+            SearchCommand::Refresh => out.write_str("search refresh"),
+            SearchCommand::Asked { .. } => out.write_str("search asked"),
+        }
+    }
+}
+
 pub struct SearchView {
     window: WindowId,
     session: SessionId,
     input: EditorView,
-    search: SpeedSearchView<ForestList<LocationKey>, ForestSearcher<LocationKey>>,
+    search: ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>,
     focus: SearchArea,
     last_query: String,
 
@@ -119,13 +133,14 @@ impl SearchView {
             window,
             session,
             input: seeded_input(store, ui, &row.query),
-            search: SpeedSearchView::new(
+            search: ListKeyboardController::searchable(
                 ForestList::new(store),
                 ForestSearcher::default(),
                 store,
                 ui,
                 crate::env::Fonts::of(store),
-            ),
+            )
+            .with_folds(),
             focus: SearchArea::Input,
             last_query: row.query.clone(),
             targets: rpds::HashTrieMapSync::new_sync(),
@@ -304,8 +319,11 @@ impl crate::DynamicCommand for OpenFoundLocation {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
+        let documents = crate::Windows::session_family(store, window)
+            .expect("search runs in a window with a session")
+            .documents();
         if let Some(feed) = self.feed {
-            match crate::OpenDocuments::by_location(store, &self.location) {
+            match crate::OpenDocuments::by_location(store, documents, &self.location) {
                 Some(document) => crate::AppRequests::push(
                     store,
                     Arc::new(crate::locations::WashDocument { feed, document }),
@@ -315,6 +333,7 @@ impl crate::DynamicCommand for OpenFoundLocation {
         }
         let _ = fx.push(crate::open_by_location_effect(
             window,
+            documents,
             self.location.clone(),
             true,
             self.focus,
@@ -335,6 +354,8 @@ impl View for SearchView {
         let focus = self.focus;
         let searching = self.focus == SearchArea::Results && self.search.searching();
         let rows = self.search.inner().list().len();
+        // Area moves are the surface's; the movement keys inside the
+        // results area are the controller's table.
         let own = FocusData {
             on_key: Some(Box::new(move |key, _mods| match (focus, key) {
                 (_, InputKey::Escape) if !searching => EventResult::Command(SearchCommand::Dismiss),
@@ -348,21 +369,6 @@ impl View for SearchView {
                 }
                 (SearchArea::Results, InputKey::Tab) => {
                     EventResult::Command(SearchCommand::Focus(SearchArea::Input, None))
-                }
-                (SearchArea::Results, InputKey::Up) if !searching => {
-                    EventResult::Command(SearchCommand::Select(-1))
-                }
-                (SearchArea::Results, InputKey::Down) if !searching => {
-                    EventResult::Command(SearchCommand::Select(1))
-                }
-                (SearchArea::Results, InputKey::Left) if !searching => {
-                    EventResult::Command(SearchCommand::Fold(false))
-                }
-                (SearchArea::Results, InputKey::Right) if !searching => {
-                    EventResult::Command(SearchCommand::Fold(true))
-                }
-                (SearchArea::Results, InputKey::Enter) if rows > 0 => {
-                    EventResult::Command(SearchCommand::Pick)
                 }
                 _ => EventResult::Ignored,
             })),
@@ -391,42 +397,49 @@ impl View for SearchView {
                 self.requery(store, ui, query, fx);
             }
             SearchCommand::List(command) => {
-                if let SpeedSearchCommand::Inner(inner) = &command {
-                    if let Some((index, toggle)) = tree_interaction(inner) {
-                        let Some(key) = self.search.inner().list().key_at(index).cloned() else {
-                            return;
-                        };
-                        self.search.inner_mut().list_mut().select_only(key.clone());
+                type Search =
+                    ListKeyboardController<ForestList<LocationKey>, ForestSearcher<LocationKey>>;
+                match &command {
+                    ListKeyCommand::Fold { expand, .. } => {
+                        self.search.inner_mut().fold_cursor(*expand, store, ui);
+                        return self.navigate_selection(store);
+                    }
+                    ListKeyCommand::Inner(inner) => {
+                        if let Some(index) = tree_toggle(inner) {
+                            let Some(key) = self.search.inner().list().key_at(index).cloned()
+                            else {
+                                return;
+                            };
+                            self.search.inner_mut().list_mut().select_only(key.clone());
+                            return self.search.inner_mut().toggle(&key, store, ui);
+                        }
+                    }
+                    _ => {}
+                }
+                if let Some((index, trigger)) = Search::activated(&command) {
+                    if let Some(key) = self.search.inner().list().key_at(index).cloned() {
                         let branch = matches!(&key, LocationKey::Node(location)
                             if location.kind().is_directory());
-                        match toggle || branch {
-                            true => self.search.inner_mut().toggle(&key, store, ui),
-                            // A click browses too — the keyboard stays
-                            // with the tree; only Enter is the jump.
-                            false => self.pick(store, key, false),
+                        match (trigger, branch) {
+                            (_, true) => self.search.inner_mut().toggle(&key, store, ui),
+                            // Enter is the deliberate jump — the
+                            // keyboard moves to the editor; a click
+                            // browses, the keyboard stays here.
+                            (ActivateTrigger::Enter, false) => self.pick(store, key, true),
+                            (ActivateTrigger::Click, false) => self.pick(store, key, false),
                         }
                         return;
                     }
                 }
-                let before = self.search.inner().list().cursor().cloned();
+                let selected = Search::selected_index(&command).is_some();
                 fx.scope(SearchCommand::List, |fx| {
                     self.search.perform(store, ui, command, fx)
                 });
-                if self.search.inner().list().cursor().cloned() != before {
+                // Selection IS navigation (docs/ui/location-list.md):
+                // any selection edit — keyboard, click or search step
+                // — shows what the cursor stands on.
+                if selected {
                     self.navigate_selection(store);
-                }
-            }
-            SearchCommand::Select(delta) => {
-                self.search.inner_mut().list_mut().cursor_step(delta);
-                self.navigate_selection(store);
-            }
-            SearchCommand::Fold(expand) => {
-                self.search.inner_mut().fold_cursor(expand, store, ui);
-                self.navigate_selection(store);
-            }
-            SearchCommand::Pick => {
-                if let Some(key) = self.search.inner().list().cursor().cloned() {
-                    self.pick(store, key, true);
                 }
             }
             SearchCommand::Focus(area, then) => {
@@ -754,10 +767,9 @@ impl crate::ModalView for SearchView {
     ) {
         self.input = seeded_input(store, ui, query);
         self.focus = SearchArea::Input;
-        fx.scope(
-            |command: SearchCommand| Box::new(command) as imba::DynCommand,
-            |fx| self.requery(store, ui, query.to_owned(), fx),
-        );
+        fx.scope(imba::DynCommand::new::<SearchCommand>, |fx| {
+            self.requery(store, ui, query.to_owned(), fx)
+        });
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -889,7 +901,7 @@ impl crate::DynamicCommand for FocusSearchView {
                     move |command| {
                         crate::AppCommand::Content(
                             window,
-                            crate::WindowCommand::Dock(Box::new(
+                            crate::WindowCommand::Dock(imba::DynCommand::new(
                                 crate::dock::DockCommand::Content(command),
                             )),
                         )
@@ -899,7 +911,7 @@ impl crate::DynamicCommand for FocusSearchView {
                             panel.as_mut(),
                             store,
                             &ui,
-                            Box::new(SearchCommand::Focus(SearchArea::Input, None)),
+                            imba::DynCommand::new(SearchCommand::Focus(SearchArea::Input, None)),
                             fx,
                         )
                     },
@@ -990,7 +1002,7 @@ mod tests {
     fn session() -> SessionId {
         SessionId {
             host: crate::higent::HostId::LOCAL,
-            session: "test".to_owned(),
+            session: crate::higent::SessionUri::new("test"),
         }
     }
 
@@ -1068,7 +1080,7 @@ mod tests {
         assert_eq!(view.files, 2);
 
         // Zero fetches anywhere: nothing above registered a document.
-        assert!(crate::OpenDocuments::list(&store).is_empty());
+        assert!(crate::OpenDocuments::list(&store, imba::store::Id::mint()).is_empty());
     }
 
     #[test]
@@ -1135,13 +1147,11 @@ mod tests {
             "entering the results opens the row the cursor lands on"
         );
 
-        // Down onto the hit under a.rs: a fresh key, a fresh open.
-        view.perform(
-            &mut store,
-            &ui,
-            SearchCommand::Select(1),
-            &mut batch.effects(),
-        );
+        // Down onto the hit under a.rs: a fresh key, a fresh open —
+        // through the same Select command the key table emits.
+        let step = view.search.step_index(1).expect("a next row");
+        let select = SearchCommand::List(view.search.select_command(step));
+        view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             crate::ModalView::take_request(&mut view).is_some(),
             "the selection move navigated"
@@ -1161,12 +1171,9 @@ mod tests {
         );
 
         // Down again onto b.rs: navigates too.
-        view.perform(
-            &mut store,
-            &ui,
-            SearchCommand::Select(1),
-            &mut batch.effects(),
-        );
+        let step = view.search.step_index(1).expect("a next row");
+        let select = SearchCommand::List(view.search.select_command(step));
+        view.perform(&mut store, &ui, select, &mut batch.effects());
         assert!(
             crate::ModalView::take_request(&mut view).is_some(),
             "the next row navigates too"
@@ -1174,7 +1181,9 @@ mod tests {
 
         // Enter on the same row still opens (the deliberate, focusing
         // jump — dedup never swallows an explicit pick).
-        view.perform(&mut store, &ui, SearchCommand::Pick, &mut batch.effects());
+        let at = view.search.cursor_index().expect("a cursor row");
+        let pick = SearchCommand::List(view.search.activate_command(at, ActivateTrigger::Enter));
+        view.perform(&mut store, &ui, pick, &mut batch.effects());
         assert!(
             crate::ModalView::take_request(&mut view).is_some(),
             "an explicit pick always opens"

@@ -145,10 +145,6 @@ final class HimarkView: UIView {
         if engine.perform(window: windowId, command: "files.tree") { request() }
     }
 
-    func toggleWorkspaceSwitcher() {
-        if engine.perform(window: windowId, command: "session.switch") { request() }
-    }
-
     func splitPane() {
         if engine.perform(window: windowId, command: "workbench.split-pane") { request() }
     }

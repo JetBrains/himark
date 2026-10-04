@@ -10,6 +10,7 @@ use crate::{
     editor_view::EditorCommand,
 };
 
+#[derive(Clone)]
 pub struct RepairedLayout {
     pub(crate) editor: EditorId,
     pub(crate) revision: u64,
@@ -127,6 +128,12 @@ impl RepairHandler {
                 }
             })
             .collect()
+    }
+}
+
+impl std::fmt::Display for RepairEffect {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(out, "repair layout for {} editors", self.editors.len())
     }
 }
 

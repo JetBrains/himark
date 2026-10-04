@@ -17,14 +17,16 @@ use crate::{
     app::{panel_width, AppFx},
     Application,
 };
-use crate::{EditorIdView, ModalRequest, ModalView, NodeCommand, Panel, Workbench, WorkbenchNode};
+use crate::{
+    EditorIdView, ModalRequest, ModalView, Panel, Workbench, WorkbenchCommand, WorkbenchNode,
+};
 
+#[derive(Clone)]
 pub enum WindowCommand {
-    Base(NodeCommand),
+    Base(WorkbenchCommand),
 
     Toolbar(crate::toolbar::ToolbarCommand),
 
-    Bottom(imba::DynCommand),
     Side(imba::DynCommand),
 
     Dock(imba::DynCommand),
@@ -35,14 +37,26 @@ pub enum WindowCommand {
     Focus(LayerFocus),
 }
 
+impl std::fmt::Display for WindowCommand {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WindowCommand::Base(command) => command.fmt(out),
+            WindowCommand::Toolbar(command) => command.fmt(out),
+            WindowCommand::Side(command) => command.fmt(out),
+            WindowCommand::Dock(command) => command.fmt(out),
+            WindowCommand::Modal(command) => command.fmt(out),
+            WindowCommand::SideFocusLost => out.write_str("side focus lost"),
+            WindowCommand::Focus(_) => out.write_str("layer focus"),
+        }
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum LayerFocus {
     Toolbar,
     Content,
 
     Dock,
-
-    Bottom,
 }
 
 #[derive(Clone)]
@@ -80,17 +94,6 @@ impl View for Layers {
                     });
                 }
             }
-            WindowCommand::Bottom(command) => {
-                let keys = fx.scope(WindowCommand::Bottom, |fx| {
-                    self.workbench.perform_sheet(store, ui, command, fx)
-                });
-                if let Some(expanding) = keys {
-                    self.focus = match expanding {
-                        true => LayerFocus::Bottom,
-                        false => LayerFocus::Content,
-                    };
-                }
-            }
             WindowCommand::Dock(command) => {
                 fx.scope(WindowCommand::Dock, |fx| {
                     self.workbench.perform_dock(store, ui, command, fx)
@@ -109,22 +112,7 @@ impl View for Layers {
                 }
             }
             WindowCommand::Focus(focus) => {
-                let was = self.focus;
                 self.focus = focus;
-
-                if was != focus && (was == LayerFocus::Bottom || focus == LayerFocus::Bottom) {
-                    fx.scope(
-                        |command| WindowCommand::Bottom(Box::new(command)),
-                        |fx| {
-                            self.workbench.sheet_focus_changed(
-                                store,
-                                ui,
-                                focus == LayerFocus::Bottom,
-                                fx,
-                            )
-                        },
-                    );
-                }
             }
         }
     }
@@ -156,9 +144,6 @@ impl View for Layers {
             .workbench
             .dock()
             .map(|dock| dock.focus_data_dyn(store, ui).map(WindowCommand::Dock));
-        let bottom = self.workbench.shown_bottom().map(|bottom| {
-            imba::DynView::focus_data_dyn(bottom, store, ui).map(WindowCommand::Bottom)
-        });
         let base = self
             .workbench
             .focus_data(store, ui)
@@ -170,7 +155,6 @@ impl View for Layers {
         let mut modal = modal.unwrap_or_default();
         let mut side = side.unwrap_or_default();
         let mut dock = dock.unwrap_or_default();
-        let mut bottom = bottom.unwrap_or_default();
         let mut toolbar = toolbar;
         let mut base = base;
         if has_modal {
@@ -180,18 +164,12 @@ impl View for Layers {
             commands.append(&mut modal.commands);
         } else {
             commands.append(&mut side.commands);
-            if focus == LayerFocus::Bottom {
-                commands.append(&mut bottom.commands);
-            }
             if focus == LayerFocus::Dock {
                 commands.append(&mut dock.commands);
             }
             commands.append(&mut base.commands);
             if focus != LayerFocus::Dock {
                 commands.append(&mut dock.commands);
-            }
-            if focus != LayerFocus::Bottom {
-                commands.append(&mut bottom.commands);
             }
         }
 
@@ -219,18 +197,16 @@ impl View for Layers {
             modal.on_key.take(),
             side.on_key.take(),
             dock.on_key.take(),
-            bottom.on_key.take(),
             toolbar.on_key.take(),
             base.on_key.take(),
         );
         let on_key = Some(Box::new(move |key, mods| {
-            let (modal, side, dock, bottom, toolbar, base) = (
+            let (modal, side, dock, toolbar, base) = (
                 &mut key_parts.0,
                 &mut key_parts.1,
                 &mut key_parts.2,
                 &mut key_parts.3,
                 &mut key_parts.4,
-                &mut key_parts.5,
             );
 
             if has_modal {
@@ -240,12 +216,6 @@ impl View for Layers {
                 };
             }
             let mut below = |key, mods| {
-                if focus == LayerFocus::Bottom {
-                    match try_key(bottom, key, mods) {
-                        EventResult::Ignored => {}
-                        result => return result,
-                    }
-                }
                 if focus == LayerFocus::Dock {
                     match try_key(dock, key, mods) {
                         EventResult::Ignored => {}
@@ -279,18 +249,16 @@ impl View for Layers {
             modal.on_text.take(),
             side.on_text.take(),
             dock.on_text.take(),
-            bottom.on_text.take(),
             toolbar.on_text.take(),
             base.on_text.take(),
         );
         let on_text = Some(Box::new(move |text: &str| {
-            let (modal, side, dock, bottom, toolbar, base) = (
+            let (modal, side, dock, toolbar, base) = (
                 &mut text_parts.0,
                 &mut text_parts.1,
                 &mut text_parts.2,
                 &mut text_parts.3,
                 &mut text_parts.4,
-                &mut text_parts.5,
             );
 
             if focus == LayerFocus::Toolbar {
@@ -307,12 +275,6 @@ impl View for Layers {
             }
             if has_side {
                 match try_text(side, text) {
-                    EventResult::Ignored => {}
-                    result => return result,
-                }
-            }
-            if focus == LayerFocus::Bottom {
-                match try_text(bottom, text) {
                     EventResult::Ignored => {}
                     result => return result,
                 }
@@ -354,11 +316,6 @@ impl View for Layers {
                 dock.location.take(),
                 dock.seat.take(),
             );
-            let b = (
-                bottom.clipboard.take(),
-                bottom.location.take(),
-                bottom.seat.take(),
-            );
             let ba = (
                 base.clipboard.take(),
                 base.location.take(),
@@ -374,15 +331,10 @@ impl View for Layers {
                         }
                     } else {
                         let banded = |gate: bool, seat| if gate { seat } else { None };
-                        let bottom_seat = banded(focus == LayerFocus::Bottom, b.$slot);
                         let dock_seat = banded(focus == LayerFocus::Dock, d.$slot);
                         match toolbar_first {
-                            true => {
-                                first(vec![t.$slot, sd.$slot, bottom_seat, dock_seat, ba.$slot])
-                            }
-                            false => {
-                                first(vec![sd.$slot, bottom_seat, dock_seat, t.$slot, ba.$slot])
-                            }
+                            true => first(vec![t.$slot, sd.$slot, dock_seat, ba.$slot]),
+                            false => first(vec![sd.$slot, dock_seat, t.$slot, ba.$slot]),
                         }
                     }
                 }};
@@ -414,6 +366,19 @@ impl View for Layers {
     }
 }
 
+/// The chat connects the moment it is OPEN, painted or not — its
+/// feed is addressed by id, like any panel's commands.
+fn boot_chat_feed(
+    store: &mut Store,
+    chats: imba::store::Id<crate::higent::Chats>,
+    chat: crate::higent::ChatUri,
+) {
+    crate::AppRequests::push(
+        store,
+        std::sync::Arc::new(crate::higent::chats::BootChat { chats, chat }),
+    );
+}
+
 fn below_layer<'a, Command: 'a>(
     arena: &'a Arena,
     size: Size,
@@ -430,14 +395,19 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
     toolbar: ToolbarWidget,
     side: Option<DynWidget>,
     dock: Option<DynWidget>,
-    bottom: Option<DynWidget>,
     modal: Option<DynWidget>,
 
     focus: LayerFocus,
 
     toolbar_height: f32,
 
-    bottom_rect: Option<skia_safe::Rect>,
+    /// The global cluster's hit width: the toolbar layer claims ONLY
+    /// this top-left corner — column headers own the rest of the band.
+    cluster_width: f32,
+
+    /// The dock cluster's left edge while the dock is CLOSED — the
+    /// toolbar layer claims that top-right corner too.
+    dock_strip_x: Option<f32>,
 
     dock_edge_x: Option<f32>,
 }
@@ -445,7 +415,7 @@ struct LayersWidget<BaseWidget, ToolbarWidget, DynWidget> {
 impl<'a, BaseThunk, ToolbarThunk, DynThunk> Thunk<'a, WindowCommand>
     for LayersWidget<BaseThunk, ToolbarThunk, DynThunk>
 where
-    BaseThunk: Thunk<'a, NodeCommand> + 'a,
+    BaseThunk: Thunk<'a, WorkbenchCommand> + 'a,
     ToolbarThunk: Thunk<'a, crate::toolbar::ToolbarCommand> + 'a,
     DynThunk: Thunk<'a, imba::DynCommand> + 'a,
 {
@@ -463,11 +433,11 @@ where
             toolbar,
             side,
             dock,
-            bottom,
             modal,
             focus,
             toolbar_height,
-            bottom_rect,
+            cluster_width,
+            dock_strip_x,
             dock_edge_x,
         } = self;
 
@@ -478,11 +448,11 @@ where
                 toolbar: toolbar.realize(arena, viewport),
                 side: side.map(|side| side.realize(arena, viewport)),
                 dock: dock.map(|dock| dock.realize(arena, viewport)),
-                bottom: bottom.map(|bottom| bottom.realize(arena, viewport)),
                 modal: modal.map(|modal| modal.realize(arena, viewport)),
                 focus,
                 toolbar_height,
-                bottom_rect,
+                cluster_width,
+                dock_strip_x,
                 dock_edge_x,
             },
         )
@@ -490,15 +460,15 @@ where
 }
 
 struct RealizedLayers<'a> {
-    base: imba::WidgetBox<'a, NodeCommand>,
+    base: imba::WidgetBox<'a, WorkbenchCommand>,
     toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
     side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    bottom: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     modal: Option<imba::WidgetBox<'a, imba::DynCommand>>,
     focus: LayerFocus,
     toolbar_height: f32,
-    bottom_rect: Option<skia_safe::Rect>,
+    cluster_width: f32,
+    dock_strip_x: Option<f32>,
     dock_edge_x: Option<f32>,
 }
 
@@ -519,9 +489,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         }
         if let Some(dock) = &mut self.dock {
             overlays.append(&mut map_overlays(dock.overlays(), &WindowCommand::Dock));
-        }
-        if let Some(bottom) = &mut self.bottom {
-            overlays.append(&mut map_overlays(bottom.overlays(), &WindowCommand::Bottom));
         }
         if let Some(modal) = &mut self.modal {
             overlays.append(&mut map_overlays(modal.overlays(), &WindowCommand::Modal));
@@ -555,12 +522,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
             folded = dock
                 .layout_data(target)
                 .map(WindowCommand::Dock)
-                .merge_over(folded);
-        }
-        if let Some(bottom) = &mut self.bottom {
-            folded = bottom
-                .layout_data(target)
-                .map(WindowCommand::Bottom)
                 .merge_over(folded);
         }
         if let Some(modal) = &mut self.modal {
@@ -619,17 +580,6 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
                     .map(WindowCommand::Dock),
                 );
             }
-            if let Some(bottom) = &self.bottom {
-                result = result.merge(
-                    bottom
-                        .handle_event(
-                            arena,
-                            &scoped(self.modal.is_none() && self.focus == LayerFocus::Bottom),
-                            viewport,
-                        )
-                        .map(WindowCommand::Bottom),
-                );
-            }
             if let Some(modal) = &self.modal {
                 result = result.merge(
                     modal
@@ -642,16 +592,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
 
         let flip = match event {
             Event::MouseDown { point, .. } => {
-                let target = if point.y < self.toolbar_height {
-                    LayerFocus::Toolbar
-                } else if self.bottom_rect.is_some_and(|rect| {
-                    point.x >= rect.left
-                        && point.x < rect.right
-                        && point.y >= rect.top
-                        && point.y < rect.bottom
-                }) {
-                    LayerFocus::Bottom
-                } else if self.dock_edge_x.is_some_and(|edge| point.x >= edge) {
+                let target = if self.dock_edge_x.is_some_and(|edge| point.x >= edge) {
                     LayerFocus::Dock
                 } else {
                     LayerFocus::Content
@@ -705,14 +646,6 @@ impl<'a> RealizedLayers<'a> {
                         .map(WindowCommand::Side),
                 );
             }
-            if let Some(bottom) = &self.bottom {
-                let event = tick(&mut claimed, bottom.blocks_pointer(*point));
-                merged = merged.merge(
-                    bottom
-                        .handle_event(arena, &event, viewport)
-                        .map(WindowCommand::Bottom),
-                );
-            }
             if let Some(dock) = &self.dock {
                 let event = tick(&mut claimed, dock.blocks_pointer(*point));
                 merged = merged.merge(
@@ -721,7 +654,12 @@ impl<'a> RealizedLayers<'a> {
                 );
             }
             {
-                let event = tick(&mut claimed, point.y < self.toolbar_height);
+                let event = tick(
+                    &mut claimed,
+                    point.y < self.toolbar_height
+                        && (point.x < self.cluster_width
+                            || self.dock_strip_x.is_some_and(|edge| point.x >= edge)),
+                );
                 merged = merged.merge(
                     self.toolbar
                         .handle_event(arena, &event, viewport)
@@ -777,14 +715,6 @@ impl<'a> RealizedLayers<'a> {
         let drag_path = matches!(event, Event::MouseDrag { .. } | Event::MouseUp { .. });
         let focus_routed = drag_path;
 
-        if let Some(bottom) = &self.bottom {
-            if !focus_routed || self.focus == LayerFocus::Bottom {
-                match bottom.handle_event(arena, event, viewport) {
-                    EventResult::Ignored => {}
-                    result => return result.map(WindowCommand::Bottom),
-                }
-            }
-        }
         if let Some(dock) = &self.dock {
             if !focus_routed || self.focus == LayerFocus::Dock {
                 match dock.handle_event(arena, event, viewport) {
@@ -829,6 +759,18 @@ pub struct Windows {
 }
 
 impl Windows {
+    /// The family of the session a WINDOW is working in — read off the
+    /// window's OWN record (docs/entities.md law 3): the bundle is
+    /// wired at session entry, so no catalog consult and no ambient
+    /// scope. The ids are stable where the `SessionId` is not
+    /// (placeholder and local-host rekeys move the key, never the ids).
+    pub fn session_family(
+        store: &Store,
+        window: crate::WindowId,
+    ) -> Option<crate::higent::SessionState> {
+        Some(Self::window_ref(store, window)?.family().clone())
+    }
+
     pub(crate) fn add(store: &mut imba::store::Store, entity: Window) -> WindowId {
         let mut windows = store.get::<Windows>().cloned().unwrap_or_default();
         let id = WindowId(windows.next);
@@ -844,6 +786,15 @@ impl Windows {
 
     pub fn window_ref(store: &imba::store::Store, id: WindowId) -> Option<&Window> {
         store.get::<Windows>()?.entries.get(&id)
+    }
+
+    pub(crate) fn any_window_holds(store: &imba::store::Store, session: &crate::SessionId) -> bool {
+        store.get::<Windows>().is_some_and(|windows| {
+            windows
+                .entries
+                .values()
+                .any(|window| window.holds_session(session))
+        })
     }
 
     pub fn put(store: &mut imba::store::Store, id: WindowId, entity: Window) {
@@ -916,6 +867,11 @@ pub struct Window {
 
     current_session: crate::SessionId,
 
+    /// The id bundle of `current_session`'s collections, wired at
+    /// session ENTRY (creation and switch). Rekeys change the
+    /// `SessionId`, never this: the ids are the stable currency.
+    family: crate::higent::SessionState,
+
     dock_width: f32,
 
     workbenches: rpds::HashTrieMapSync<crate::SessionId, Workbench>,
@@ -940,7 +896,11 @@ impl Window {
         }
     }
 
-    pub(crate) fn new(root: WorkbenchNode, workspace: crate::SessionId) -> Self {
+    pub(crate) fn new(
+        root: WorkbenchNode,
+        workspace: crate::SessionId,
+        family: crate::higent::SessionState,
+    ) -> Self {
         Self {
             content: Layers {
                 toolbar: crate::toolbar::Toolbar::default(),
@@ -952,6 +912,7 @@ impl Window {
             viewport_size: Size::new(1.0, 1.0),
             dock_width: crate::dock::DOCK_WIDTH,
             current_session: workspace,
+            family,
             workbenches: rpds::HashTrieMapSync::new_sync(),
             focused_location: None,
             focus_generation: 0,
@@ -962,15 +923,31 @@ impl Window {
         self.current_session.clone()
     }
 
+    /// The window holds a session while it shows it or keeps its
+    /// stashed workbench — the grip that spares the family from the
+    /// all-empty sweep.
+    pub(crate) fn holds_session(&self, session: &crate::SessionId) -> bool {
+        self.current_session == *session || self.workbenches.get(session).is_some()
+    }
+
+    pub fn family(&self) -> &crate::higent::SessionState {
+        &self.family
+    }
+
     #[must_use]
-    pub(crate) fn switch_to(&mut self, workspace: crate::SessionId) -> Option<crate::SessionId> {
+    pub(crate) fn switch_to(
+        &mut self,
+        workspace: crate::SessionId,
+        family: crate::higent::SessionState,
+    ) -> Option<crate::SessionId> {
         if workspace == self.current_session {
             return None;
         }
 
-        if matches!(self.content.focus, LayerFocus::Dock | LayerFocus::Bottom) {
+        if matches!(self.content.focus, LayerFocus::Dock) {
             self.content.focus = LayerFocus::Content;
         }
+        self.family = family;
         let Some(stashed) = self.workbenches.get(&workspace) else {
             return Some(std::mem::replace(&mut self.current_session, workspace));
         };
@@ -984,6 +961,8 @@ impl Window {
         None
     }
 
+    /// A rekey changes the session's NAME, not its identity: the
+    /// family bundle stays — the caller moves the catalog row with it.
     pub(crate) fn rekey_current(&mut self, workspace: crate::SessionId) -> bool {
         if workspace == self.current_session {
             return true;
@@ -1002,7 +981,7 @@ impl Window {
 
     pub(crate) fn adopt_local_host(&mut self, host: crate::higent::HostId) -> bool {
         let is_stale_local = |id: &crate::SessionId| {
-            id.session == host_discovery::LOCAL_FS_SESSION && id.host != host
+            id.session.as_str() == host_discovery::LOCAL_FS_SESSION && id.host != host
         };
         let mut changed = false;
         if is_stale_local(&self.current_session) {
@@ -1025,14 +1004,6 @@ impl Window {
             changed = true;
         }
         changed
-    }
-
-    pub(crate) fn visited_sessions(&self) -> Vec<crate::SessionId> {
-        let mut ids = vec![self.current_session.clone()];
-        for (id, _) in self.workbenches.iter() {
-            ids.push(id.clone());
-        }
-        ids
     }
 
     pub(crate) fn stashed_workbenches(
@@ -1075,7 +1046,6 @@ impl Window {
 
     pub fn dismiss_modal(&mut self, store: &mut Store, fx: &mut Effects<'_, WindowCommand>) {
         self.release_modal_for_swap(store, fx);
-        self.content.toolbar.end_session();
         self.content.focus = LayerFocus::Content;
     }
 
@@ -1096,50 +1066,6 @@ impl Window {
                 imba::DynView::destroy_dyn(modal.as_mut(), store, fx)
             });
         }
-    }
-
-    pub(crate) fn set_overlay(
-        &mut self,
-        store: &mut Store,
-        modal: Box<dyn ModalView>,
-        fx: &mut Effects<'_, WindowCommand>,
-    ) {
-        self.dismiss_side_panel(store, fx);
-        self.content.modal = Some(modal);
-    }
-
-    pub(crate) fn modal_set_query(
-        &mut self,
-        store: &mut Store,
-        ui: &imba::UiCtx,
-        query: &str,
-        fx: &mut Effects<'_, imba::DynCommand>,
-    ) {
-        if let Some(modal) = &mut self.content.modal {
-            modal.set_query(store, ui, query, fx);
-        }
-    }
-
-    pub(crate) fn toolbar_session_class(&self) -> Option<Option<char>> {
-        self.content.toolbar.session_class()
-    }
-
-    pub(crate) fn toolbar_start_session(
-        &mut self,
-        store: &Store,
-        ui: &imba::UiCtx,
-        class: Option<char>,
-        text: &str,
-        width: f32,
-    ) {
-        self.content
-            .toolbar
-            .start_session(store, ui, class, text, width);
-        self.content.focus = LayerFocus::Toolbar;
-    }
-
-    pub(crate) fn toolbar_set_session_class(&mut self, class: Option<char>) {
-        self.content.toolbar.set_session_class(class);
     }
 
     pub fn plugin_modal(&self) -> Option<&dyn ModalView> {
@@ -1179,70 +1105,91 @@ impl Window {
         self.content.side.as_ref().map(|drawer| drawer.content())
     }
 
-    pub(crate) fn open_bottom(&mut self, pane: Box<dyn crate::DynPanelView>) {
-        self.content.workbench.open_sheet(pane);
-        self.content.focus = LayerFocus::Bottom;
+    /// Is the chat SHOWING right now, by the same derivation the
+    /// layout uses? Vacant tree or fronted means yes; side by side
+    /// means yes; a narrow window with panels means no.
+    fn chat_showing(&self, store: &Store) -> bool {
+        let workbench = self.workbench();
+        if workbench.chat().is_none() || workbench.root.full_bleed() {
+            return false;
+        }
+        if workbench.root.is_vacant() || workbench.chat_fronted() {
+            return true;
+        }
+        if workbench.chat_minimized() {
+            return false;
+        }
+        let theme = ::editor::env::Themes::of(store);
+        crate::chat_column_engaged(self.viewport_size().width, &theme.ui().window)
     }
 
-    pub(crate) fn toggle_composer(
-        &mut self,
-        store: &mut Store,
-        ui: &UiCtx,
-        window: crate::WindowId,
-        fx: &mut AppFx<'_>,
-    ) {
+    /// `chat.composer` (the toolbar bubble, ⌘I): the chat is ALWAYS
+    /// open from the workbench's point of view — this fills the slot
+    /// on first use and gives it the keyboard. Whether it is VISIBLE
+    /// is the layout's call alone (full when the tree is vacant, the
+    /// left column when the window fits both, hidden otherwise).
+    pub(crate) fn front_chat(&mut self, store: &mut Store, ui: &UiCtx, fx: &mut AppFx<'_>) {
+        let _ = (ui, fx);
         if self.has_modal() {
             return;
         }
-        let held = self.content.focus == LayerFocus::Bottom;
-        let Some(sheet) = self.content.workbench.bottom_mut() else {
-            return;
-        };
-        let to_sheet = move |command: crate::sheet::SheetCommand| {
-            crate::AppCommand::Content(window, WindowCommand::Bottom(Box::new(command)))
-        };
-        if sheet.shown() && held {
-            fx.scope(to_sheet, |fx| sheet.focus_changed(store, ui, false, fx));
-            self.content.focus = LayerFocus::Content;
-        } else {
-            sheet.show();
-            fx.scope(to_sheet, |fx| sheet.set_blur(store, ui, false, fx));
-            self.content.focus = LayerFocus::Bottom;
+        if self.workbench().chat().is_none() {
+            let chats = self.family.chats();
+            let Some(chat) = crate::higent::Chats::list(store, chats).into_iter().next() else {
+                return;
+            };
+            let Some(pane) =
+                crate::family_rows::mint(store, &crate::FamilyRow::Chat(chats, chat.clone()))
+            else {
+                return;
+            };
+            self.workbench_mut().dock_chat(Panel::Plugin(pane));
+            boot_chat_feed(store, chats, chat);
         }
+        // Cmd-I always brings the chat back from a maximize.
+        self.workbench_mut().restore_chat();
+        self.workbench_mut().focus_chat(true);
+        // Hidden by the single-panel presentation? Cmd-I means SHOW
+        // it — front the chat until a panel is opened again.
+        if !self.chat_showing(store) {
+            self.workbench_mut().front_chat_over_panels();
+        }
+        self.content.focus = LayerFocus::Content;
+    }
+
+    /// A freshly minted chat pane lands in the workbench's chat slot —
+    /// never in the split tree.
+    pub(crate) fn open_chat_panel<R: 'static>(
+        &mut self,
+        store: &mut Store,
+        ui: &imba::UiCtx,
+        pane: Box<dyn crate::DynPanelView>,
+        fx: &mut Effects<'_, R>,
+    ) -> bool {
+        if self.has_modal() {
+            return false;
+        }
+        let row = pane.family_row();
+        match self.workbench_mut().chat_mut() {
+            Some(chat) => {
+                let displaced = chat.replace_panel(Panel::Plugin(pane));
+                self.retire_displaced(store, ui, displaced, fx);
+            }
+            None => {
+                self.workbench_mut().dock_chat(Panel::Plugin(pane));
+            }
+        }
+        if let Some(crate::FamilyRow::Chat(chats, chat)) = row {
+            boot_chat_feed(store, chats, chat);
+        }
+        self.workbench_mut().focus_chat(true);
+        self.content.focus = LayerFocus::Content;
+        true
     }
 
     #[doc(hidden)]
     pub fn layer_focus(&self) -> LayerFocus {
         self.content.focus
-    }
-
-    pub fn bottom_pane(&self) -> Option<&dyn crate::DynPanelView> {
-        self.content.workbench.bottom().map(|sheet| sheet.pane())
-    }
-
-    pub fn bottom_expanded(&self) -> Option<bool> {
-        self.content
-            .workbench
-            .bottom()
-            .map(crate::sheet::Sheet::expanded)
-    }
-
-    #[doc(hidden)]
-    pub fn bottom_rect(
-        &self,
-        store: &imba::store::Store,
-        size: skia_safe::Size,
-    ) -> Option<skia_safe::Rect> {
-        let chrome = ::editor::env::Themes::of(store).ui().sheet.clone();
-        let toolbar = ::editor::env::Themes::of(store).ui().toolbar.height;
-
-        let below = skia_safe::Size::new(size.width.max(1.0), (size.height - toolbar).max(1.0));
-
-        self.content.workbench.shown_bottom().map(|sheet| {
-            let mut rect = sheet.rect(&chrome, store, below);
-            rect.offset((0.0, toolbar));
-            rect
-        })
     }
 
     pub fn side_panel_mut(&mut self) -> Option<&mut Box<dyn ModalView>> {
@@ -1282,9 +1229,7 @@ impl Window {
                     .swap(panel, owner);
                 fx.scope(WindowCommand::Dock, |fx| {
                     fx.scope(
-                        |command| {
-                            Box::new(crate::dock::DockCommand::Content(command)) as imba::DynCommand
-                        },
+                        |command| imba::DynCommand::new(crate::dock::DockCommand::Content(command)),
                         |fx| imba::DynView::destroy_dyn(outgoing.as_mut(), store, fx),
                     )
                 });
@@ -1387,6 +1332,16 @@ impl Window {
             .and_then(|view| view.take_request())
     }
 
+    /// The dock header's pressed button, if any — the dock's own
+    /// toolbar road, drained like the window cluster's.
+    pub(crate) fn take_dock_command(&mut self) -> Option<&'static str> {
+        self.content
+            .workbench
+            .dock_mut()
+            .as_mut()
+            .and_then(|dock| dock.take_command())
+    }
+
     pub(crate) fn take_toolbar_request(&mut self) -> Option<crate::toolbar::ToolbarRequest> {
         self.content.toolbar.take_request()
     }
@@ -1400,6 +1355,11 @@ impl Window {
 
     pub(crate) fn take_panel_request(&mut self) -> Option<crate::PanelRequest> {
         let mut request = None;
+        if let Some(chat) = self.workbench_mut().chat_mut() {
+            if let Panel::Plugin(view) = chat.panel_mut() {
+                request = view.take_request();
+            }
+        }
         self.workbench_mut().root.for_each_pane_mut(&mut |panel| {
             if request.is_none() {
                 if let Panel::Plugin(view) = panel {
@@ -1420,27 +1380,14 @@ impl Window {
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        let was = self.content.focus;
+        let _ = (store, ui, window, fx);
         self.content.focus = LayerFocus::Content;
-        if was == LayerFocus::Bottom {
-            fx.scope(
-                move |command| {
-                    crate::AppCommand::Content(window, WindowCommand::Bottom(Box::new(command)))
-                },
-                |fx| {
-                    self.content
-                        .workbench
-                        .sheet_focus_changed(store, ui, false, fx)
-                },
-            );
-        }
     }
 
     pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
-        let _ = store;
-        let displaced = std::mem::replace(self.workbench_mut().root.focused_pane_mut(), panel);
+        let displaced = self.workbench_mut().root.replace_focused_panel(panel);
 
-        self.stash_displaced(displaced);
+        self.stash_displaced(store, displaced);
     }
 
     pub fn focused_document_id(&self) -> Option<crate::DocumentId> {
@@ -1454,8 +1401,11 @@ impl Window {
         )
     }
 
-    fn stash_displaced(&mut self, displaced: Panel) {
-        let _ = displaced;
+    /// The displaced panel's last word before it is dropped: a pane
+    /// that parked state elsewhere (the chat's laid mount) hands it over
+    /// now, so the walk back adopts it.
+    fn stash_displaced(&mut self, store: &mut Store, mut displaced: Panel) {
+        displaced.displaced(store);
     }
 
     pub fn unmount_all_widgets(
@@ -1498,12 +1448,13 @@ impl Window {
         }
     }
 
-    pub fn mount_focused(&mut self, widget: Box<dyn crate::DynPanelView>) {
-        let displaced = std::mem::replace(
-            self.workbench_mut().root.focused_pane_mut(),
-            Panel::Plugin(widget),
-        );
-        self.stash_displaced(displaced);
+    pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn crate::DynPanelView>) {
+        self.workbench_mut().yield_chat();
+        let displaced = self
+            .workbench_mut()
+            .root
+            .replace_focused_panel(Panel::Plugin(widget));
+        self.stash_displaced(store, displaced);
     }
 
     pub fn open_panel<R: 'static>(
@@ -1513,6 +1464,11 @@ impl Window {
         panel: Box<dyn crate::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
+        // A chat pane has ONE home, whatever road carried it here:
+        // the workbench's chat slot, never a tree leaf.
+        if matches!(panel.family_row(), Some(crate::FamilyRow::Chat(..))) {
+            return self.open_chat_panel(store, ui, panel, fx);
+        }
         if self.has_modal() {
             return false;
         }
@@ -1525,19 +1481,30 @@ impl Window {
             return false;
         }
 
-        let _ = store;
+        // The chat never closes; content merely displaces it. The
+        // guard holds only while the chat is actually SHOWING — a
+        // hidden chat's stale focus must not block closing the panel.
+        if self.workbench().chat_focused() && self.chat_showing(store) {
+            return false;
+        }
+
         let displaced =
             std::mem::replace(self.workbench_mut().root.focused_pane_mut(), Panel::blank());
-        match self.workbench_mut().root.close_focused() {
+        let closed = match self.workbench_mut().root.close_focused() {
             true => {
-                self.stash_displaced(displaced);
+                self.stash_displaced(store, displaced);
                 true
             }
             false => {
                 *self.workbench_mut().root.focused_pane_mut() = displaced;
                 false
             }
+        };
+        // Closing the last panel hands the workbench back to the chat.
+        if self.workbench().root.is_vacant() {
+            self.workbench_mut().focus_chat(true);
         }
+        closed
     }
 
     pub(crate) fn split_current(
@@ -1562,34 +1529,45 @@ impl Window {
         let document_id = entity.document();
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
+        let documents = self.family.documents();
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
         let fonts = ::editor::env::Fonts::of(store)();
         let theme = ::editor::env::Themes::of(store);
-        let new_editor = crate::app::entity_scope(document_id, fx, |fx| {
-            document.add_editor(
-                width,
-                None,
-                ::editor::EditorBuild::Bounded,
-                &[],
-                store,
-                ui,
-                &fonts,
-                &theme,
-                fx,
-            )
-        });
+        let new_editor = fx.scope(
+            move |command| {
+                crate::AppCommand::at(
+                    documents,
+                    crate::DocumentsCommand::Editor(document_id, command),
+                )
+            },
+            |fx| {
+                document.add_editor(
+                    width,
+                    None,
+                    ::editor::EditorBuild::Bounded,
+                    &[],
+                    store,
+                    ui,
+                    &fonts,
+                    &theme,
+                    fx,
+                )
+            },
+        );
         documents::scroll_stripes::enable_scroll_stripes(
             store,
+            documents,
             document_id,
             &mut document,
             new_editor,
         );
 
-        crate::OpenDocuments::put_document(store, document_id, document);
+        crate::OpenDocuments::put_document(store, documents, document_id, document);
 
-        let pane_height = crate::OpenDocuments::document_ref(store, document_id)
+        let pane_height = crate::OpenDocuments::document_ref(store, documents, document_id)
             .and_then(|document| document.viewport(entity.editor()))
             .map(|band| band.end - band.start);
         let pane_width = width + ::editor::env::Themes::of(store).ui().editor_gutter.width;
@@ -1600,7 +1578,7 @@ impl Window {
         };
         self.workbench_mut().root.split_focused(
             Panel::Editor(ScrollView::new(
-                EditorIdView::new(document_id, new_editor).with_gutter(),
+                EditorIdView::new(documents, document_id, new_editor).with_gutter(),
             )),
             arrangement,
             false,
@@ -1619,6 +1597,7 @@ impl Window {
             if same_editor_location(&walk.target, target)
                 && self.complete_walk(store, ui, window, &walk.target, walk.step, fx)
             {
+                self.workbench_mut().yield_chat();
                 return true;
             }
         }
@@ -1632,7 +1611,10 @@ impl Window {
                         slot.forward = rpds::VectorSync::new_sync();
                     }
                 }
-                Self::touch_recent(store, target);
+                Self::touch_recent(store, self.family.recents(), target);
+                // The focused pane absorbed the location — a landing
+                // all the same: the fronted chat hands the window back.
+                self.workbench_mut().yield_chat();
                 return true;
             }
         }
@@ -1640,7 +1622,7 @@ impl Window {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
-        Self::touch_recent(store, target);
+        Self::touch_recent(store, self.family.recents(), target);
         true
     }
 
@@ -1687,10 +1669,10 @@ impl Window {
             WalkStep::Replace => {}
         }
         if let Some(panel) = panel {
-            let displaced = std::mem::replace(&mut slot.panel, panel);
+            let displaced = slot.replace_panel(panel);
             self.retire_displaced(store, ui, displaced, fx);
         }
-        Self::touch_recent(store, target);
+        Self::touch_recent(store, self.family.recents(), target);
         true
     }
 
@@ -1704,15 +1686,28 @@ impl Window {
         if self.has_modal() {
             return false;
         }
+
+        // The chat never closes; content merely displaces it. The
+        // guard holds only while the chat is actually SHOWING — a
+        // hidden chat's stale focus must not block closing the panel.
+        if self.workbench().chat_focused() && self.chat_showing(store) {
+            return false;
+        }
         let closed = {
             let slot = self.workbench_mut().root.focused_slot_mut();
-            std::mem::replace(&mut slot.panel, Panel::blank())
+            slot.replace_panel(Panel::blank())
         };
         match closed {
             Panel::Editor(pane) => {
                 let view = *pane.content();
-                crate::close_editor(store, view.document(), view.editor());
-                crate::OpenDocuments::remove_on_close(store, ui, view.document(), fx);
+                crate::close_editor(store, view.documents(), view.document(), view.editor());
+                crate::OpenDocuments::remove_on_close(
+                    store,
+                    view.documents(),
+                    ui,
+                    view.document(),
+                    fx,
+                );
             }
             Panel::Plugin(mut view) => {
                 if !view.as_any().is::<crate::workbench_node::ClosedPanel>() {
@@ -1741,12 +1736,20 @@ impl Window {
                 });
             }
         }
+        // Closing the last panel hands the workbench back to the chat.
+        if self.workbench().root.is_vacant() {
+            self.workbench_mut().focus_chat(true);
+        }
         true
     }
 
-    fn touch_recent(store: &mut Store, target: &crate::NavigationLocation) {
+    fn touch_recent(
+        store: &mut Store,
+        recents: imba::store::Id<crate::RecentLocations>,
+        target: &crate::NavigationLocation,
+    ) {
         if let Some(place) = target.place::<crate::EditorPlace>() {
-            crate::RecentLocations::touch(store, &place.location);
+            crate::RecentLocations::touch(store, recents, &place.location);
         }
     }
 
@@ -1762,12 +1765,15 @@ impl Window {
         panel: Panel,
         fx: &mut Effects<'_, R>,
     ) {
+        // A panel landing in the tree takes the window back from the
+        // chat — keyboard and any fronting.
+        self.workbench_mut().yield_chat();
         let slot = self.workbench_mut().root.focused_slot_mut();
         if let Some(place) = slot.panel.navigation_location(store) {
             slot.back.push_back_mut(place);
             slot.forward = rpds::VectorSync::new_sync();
         }
-        let displaced = std::mem::replace(&mut slot.panel, panel);
+        let displaced = slot.replace_panel(panel);
         self.retire_displaced(store, ui, displaced, fx);
     }
 
@@ -1814,6 +1820,8 @@ impl Window {
             WalkStep::Forward
         };
         if self.complete_walk(store, ui, window, &target, step, fx) {
+            // Walking history is tree work — the fronted chat yields.
+            self.workbench_mut().yield_chat();
             return true;
         }
 
@@ -1821,6 +1829,7 @@ impl Window {
             true => {
                 let slot = self.workbench_mut().root.focused_slot_mut();
                 slot.pending = Some(PendingWalk { target, step });
+                self.workbench_mut().yield_chat();
                 true
             }
             false => false,
@@ -1836,10 +1845,16 @@ impl Window {
     ) {
         if let Panel::Editor(pane) = &displaced {
             let view = *pane.content();
-            crate::close_editor(store, view.document(), view.editor());
-            crate::OpenDocuments::remove_if_editorless(store, ui, view.document(), fx);
+            crate::close_editor(store, view.documents(), view.document(), view.editor());
+            crate::OpenDocuments::remove_if_editorless(
+                store,
+                view.documents(),
+                ui,
+                view.document(),
+                fx,
+            );
         }
-        self.stash_displaced(displaced);
+        self.stash_displaced(store, displaced);
     }
 
     pub fn show_document(
@@ -1855,11 +1870,16 @@ impl Window {
         if focus {
             self.focus_content_layer(store, ui, window, fx);
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, document_id) else {
+        // The document lands in the tree — the window comes back from
+        // the chat.
+        self.workbench_mut().yield_chat();
+        let documents = self.family.documents();
+        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        else {
             return;
         };
 
-        if let Some(location) = crate::OpenDocuments::location(store, document_id) {
+        if let Some(location) = crate::OpenDocuments::location(store, documents, document_id) {
             if target.is_none() {
                 let walk_waits = self
                     .workbench()
@@ -1878,12 +1898,16 @@ impl Window {
                         .focused_pane()
                         .editor()
                         .is_some_and(|pane| {
-                            crate::OpenDocuments::location(store, pane.content().document())
-                                .as_ref()
+                            crate::OpenDocuments::location(
+                                store,
+                                pane.content().documents(),
+                                pane.content().document(),
+                            )
+                            .as_ref()
                                 == Some(&location)
                         });
                 if already_shown && !walk_waits {
-                    crate::OpenDocuments::touch(store, document_id);
+                    crate::OpenDocuments::touch(store, documents, document_id);
                     return;
                 }
             }
@@ -1906,28 +1930,38 @@ impl Window {
             ) {
                 return;
             }
-            let Some(document_again) = crate::OpenDocuments::document(store, document_id) else {
+            let Some(document_again) =
+                crate::OpenDocuments::document(store, documents, document_id)
+            else {
                 return;
             };
             document = document_again;
         }
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
-        let editor_id = crate::app::entity_scope(document_id, fx, |fx| {
-            crate::mount_editor(store, ui, &mut document, width, target, fx)
-        });
+        let documents = self.family.documents();
+        let editor_id = fx.scope(
+            move |command| {
+                crate::AppCommand::at(
+                    documents,
+                    crate::DocumentsCommand::Editor(document_id, command),
+                )
+            },
+            |fx| crate::mount_editor(store, ui, &mut document, width, target, fx),
+        );
         documents::scroll_stripes::enable_scroll_stripes(
             store,
+            documents,
             document_id,
             &mut document,
             editor_id,
         );
-        crate::OpenDocuments::put_document(store, document_id, document);
-        crate::OpenDocuments::touch(store, document_id);
+        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        crate::OpenDocuments::touch(store, documents, document_id);
         self.replace_focused_panel(
             store,
             Panel::Editor(ScrollView::new(
-                EditorIdView::new(document_id, editor_id).with_gutter(),
+                EditorIdView::new(documents, document_id, editor_id).with_gutter(),
             )),
         );
     }
@@ -2043,7 +2077,7 @@ fn same_editor_location(a: &crate::NavigationLocation, b: &crate::NavigationLoca
 }
 
 /// The window WIREFRAME, reified (docs/ui/UI.md stage 2): toolbar band,
-/// base workbench, side/dock/bottom layers — geometry cut per
+/// base workbench, side/dock layers — geometry cut per
 /// constraints, composed into the focus-routing `LayersWidget`.
 /// Captures the store/ui borrows the `laid` closure used to hide;
 /// hoisting the child `display` calls up is this view's next verse.
@@ -2063,40 +2097,48 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
     ) -> imba::ThunkBox<'a, WindowCommand> {
         let WindowFrame { layers, store, ui } = self;
         imba::ThunkBox::new(arena, {
-            let title = layers.workbench.root.focused_pane().title(store);
-
             let size = constraints.max;
+            // No window toolbar band: columns draw their OWN headers.
+            // The band height still shapes the overlay layers (side,
+            // modal), which open under the header line; the global
+            // cluster floats over the leftmost column's header.
             let toolbar_height = ::editor::env::Themes::of(store).ui().toolbar.height;
             let below = Constraints::tight(Size::new(
                 size.width,
                 (size.height - toolbar_height).max(1.0),
             ));
+            let full = Constraints::tight(size);
 
             let revealed = layers
                 .workbench
                 .dock()
                 .map_or(0.0, crate::dock::Dock::revealed);
-            let base_below = Constraints::tight(Size::new(
-                (size.width - revealed).max(1.0),
-                (size.height - toolbar_height).max(1.0),
-            ));
+            let base_below =
+                Constraints::tight(Size::new((size.width - revealed).max(1.0), size.height));
 
-            let bottom_rect = layers.workbench.shown_bottom().map(|bottom| {
-                let chrome = ::editor::env::Themes::of(store).ui().sheet.clone();
-
-                let mut rect = bottom.rect(&chrome, store, below.max);
-                rect.offset((0.0, toolbar_height));
-                rect
-            });
             LayersWidget {
                 focus: layers.focus,
                 toolbar_height,
-                bottom_rect,
+                cluster_width: crate::toolbar::global_cluster_width(
+                    store,
+                    ui,
+                    !layers
+                        .workbench
+                        .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
+                ),
+                dock_strip_x: match layers
+                    .workbench
+                    .dock()
+                    .is_some_and(|dock| dock.target_width() > 0.0)
+                {
+                    true => None,
+                    false => Some(size.width - crate::toolbar::dock_cluster_width(store)),
+                },
                 dock_edge_x: layers.workbench.dock().map(|_| size.width - revealed),
                 base: below_layer(
                     arena,
                     size,
-                    toolbar_height,
+                    0.0,
                     imba::ThunkBox::new(
                         arena,
                         imba::Layout::layout(
@@ -2110,13 +2152,14 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     arena,
                     store,
                     ui,
-                    constraints.max.width,
-                    title,
+                    !layers
+                        .workbench
+                        .chat_presented(size.width, &::editor::env::Themes::of(store).ui().window),
+                    size.width,
                     layers
                         .workbench
                         .dock()
-                        .filter(|dock| dock.target_width() > 0.0)
-                        .map(crate::dock::Dock::owner),
+                        .is_some_and(|dock| dock.target_width() > 0.0),
                 ),
                 side: layers.side.as_ref().map(|side| {
                     below_layer(
@@ -2127,20 +2170,7 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     )
                 }),
                 dock: layers.workbench.dock().map(|dock| {
-                    below_layer(
-                        arena,
-                        size,
-                        toolbar_height,
-                        dock.layout_dyn(arena, store, ui, below),
-                    )
-                }),
-                bottom: layers.workbench.shown_bottom().map(|bottom| {
-                    below_layer(
-                        arena,
-                        size,
-                        toolbar_height,
-                        imba::DynView::layout_dyn(bottom, arena, store, ui, below),
-                    )
+                    below_layer(arena, size, 0.0, dock.layout_dyn(arena, store, ui, full))
                 }),
                 modal: layers.modal.as_ref().map(|modal| {
                     below_layer(

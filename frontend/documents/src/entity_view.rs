@@ -13,8 +13,11 @@ impl EditorIdView {
     }
 }
 
+/// The pane holds IDS (docs/entities.md): the collection it reads
+/// through, and its private keys within it.
 #[derive(Clone, Copy)]
 pub struct EditorIdView {
+    documents: imba::store::Id<crate::OpenDocuments>,
     document: DocumentId,
     editor: EditorId,
 
@@ -24,13 +27,22 @@ pub struct EditorIdView {
 }
 
 impl EditorIdView {
-    pub fn new(document: DocumentId, editor: EditorId) -> Self {
+    pub fn new(
+        documents: imba::store::Id<crate::OpenDocuments>,
+        document: DocumentId,
+        editor: EditorId,
+    ) -> Self {
         Self {
+            documents,
             document,
             editor,
             blurred: false,
             gutter: false,
         }
+    }
+
+    pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+        self.documents
     }
 
     pub fn blurred(mut self) -> Self {
@@ -52,13 +64,13 @@ impl EditorIdView {
     }
 
     pub fn gathered(&self, store: &Store) -> Option<EditorView> {
-        let document = crate::OpenDocuments::document(store, self.document)?;
+        let document = crate::OpenDocuments::document(store, self.documents, self.document)?;
         let mut view = EditorView {
             document,
             editor: self.editor,
             reports_geometry: true,
 
-            location: crate::OpenDocuments::location(store, self.document),
+            location: crate::OpenDocuments::location(store, self.documents, self.document),
 
             gutter_width: match self.gutter {
                 true => ::editor::env::Themes::of(store).ui().editor_gutter.width,
@@ -66,12 +78,12 @@ impl EditorIdView {
             },
 
             base: match self.gutter {
-                true => {
-                    crate::OpenDocuments::stripe_diff(store, self.document).and_then(|handle| {
-                        let base = crate::OpenDocuments::document(store, handle.base)?;
+                true => crate::OpenDocuments::stripe_diff(store, self.documents, self.document)
+                    .and_then(|handle| {
+                        let base =
+                            crate::OpenDocuments::document(store, self.documents, handle.base)?;
                         Some((base, handle.id))
-                    })
-                }
+                    }),
                 false => None,
             },
         };
@@ -86,11 +98,11 @@ impl View for EditorIdView {
     type Command = EditorCommand;
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
-        crate::close_editor(store, self.document, self.editor);
+        crate::close_editor(store, self.documents, self.document, self.editor);
         // Teardown-only: `View::destroy` carries no UiCtx, and the
         // release may reshape a surviving base document's markup once.
         let ui = &imba::UiCtx::dont_use_too_slow();
-        crate::OpenDocuments::remove_if_editorless(store, ui, self.document, fx);
+        crate::OpenDocuments::remove_if_editorless(store, self.documents, ui, self.document, fx);
     }
 
     fn perform(
@@ -100,12 +112,44 @@ impl View for EditorIdView {
         command: Self::Command,
         fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
+        // Collection-scoped dynamic commands dispatch HERE, where the
+        // pane's ids are in hand — never through an owner lookup.
+        if let EditorCommand::Dynamic { id, .. } = &command {
+            if let Some(entry) = crate::DocumentCommands::of(store).find(id).cloned() {
+                let EditorCommand::Dynamic { payload, .. } = command else {
+                    unreachable!("matched above");
+                };
+                let Some(location) =
+                    crate::OpenDocuments::location(store, self.documents, self.document)
+                else {
+                    return;
+                };
+                let Some(mut document) =
+                    crate::OpenDocuments::document(store, self.documents, self.document)
+                else {
+                    return;
+                };
+                entry.perform(
+                    store,
+                    ui,
+                    self.documents,
+                    self.document,
+                    &mut document,
+                    self.editor,
+                    &location,
+                    payload.and_then(editor::DynPayload::take),
+                    fx,
+                );
+                crate::OpenDocuments::put_document(store, self.documents, self.document, document);
+                return;
+            }
+        }
         let Some(mut view) = self.gathered(store) else {
             return;
         };
 
         view.perform(store, ui, command, fx);
-        crate::OpenDocuments::put_document(store, self.document, view.document);
+        crate::OpenDocuments::put_document(store, self.documents, self.document, view.document);
     }
 
     fn focus_data<'w>(
@@ -118,7 +162,7 @@ impl View for EditorIdView {
         // The editor view is MINTED from the store per ask (documents
         // are persistent, the clone is cheap); handlers re-mint per
         // call because the data may not outlive a temporary.
-        let (commands, location, seat) = match self.gathered(store) {
+        let (mut commands, location, seat) = match self.gathered(store) {
             Some(view) => {
                 let mut data = view.focus_data(store, ui);
                 (
@@ -129,6 +173,20 @@ impl View for EditorIdView {
             }
             None => (Vec::new(), None, None),
         };
+        if let Some(at) = crate::OpenDocuments::location(store, self.documents, self.document) {
+            for entry in crate::DocumentCommands::of(store).iter() {
+                if entry.offers_at(&at) {
+                    commands.push(imba::PresentableCommand::new(
+                        entry.id(),
+                        entry.name(),
+                        EditorCommand::Dynamic {
+                            id: entry.id(),
+                            payload: None,
+                        },
+                    ));
+                }
+            }
+        }
         let with_view =
             move |f: &mut dyn FnMut(FocusData<'_, EditorCommand>) -> EventResult<EditorCommand>| {
                 match self.gathered(store) {

@@ -10,7 +10,7 @@ himark = { path = "../../himark" }
 hirust = { path = "../lang/hirust" }
 himarkdown = { path = "../himarkdown" }
 imba = { path = "../../imba" }
-skia-safe = { version = "0.99.0", features = ["textlayout"] }
+skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../../text" }
 operation = { path = "../../operation" }
 
