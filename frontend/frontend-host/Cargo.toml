@@ -13,7 +13,6 @@ demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
 structdiff = { path = "../structdiff" }
 myersdiff = { path = "../myersdiff" }
-hiahp = { path = "../hiahp" }
 himarkdown = { path = "../plugins/himarkdown" }
 hisitter = { path = "../hisitter" }
 hiscript = { path = "../hiscript" }

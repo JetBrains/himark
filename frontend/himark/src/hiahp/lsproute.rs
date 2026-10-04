@@ -3,20 +3,20 @@
 
 use std::sync::Arc;
 
-use himark::LineCol;
+use crate::LineCol;
 use imba::effect::EffectHandler;
 use serde_json::json;
 
-use crate::fs::SeatDirectory;
+use crate::hiahp::fs::SeatDirectory;
 
 pub struct CompletionRoute {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
-impl EffectHandler<himark::LspCompletionEffect> for CompletionRoute {
-    async fn handle(&self, effect: himark::LspCompletionEffect) -> Option<himark::LspAnswer> {
-        let (seat, session) = crate::fsroute::seat_of(&self.directory, &effect.location)?;
+impl EffectHandler<crate::LspCompletionEffect> for CompletionRoute {
+    async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<crate::LspAnswer> {
+        let (seat, session) = crate::hiahp::fsroute::seat_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },
@@ -30,7 +30,7 @@ impl EffectHandler<himark::LspCompletionEffect> for CompletionRoute {
     }
 }
 
-pub fn parse_completion(result: &serde_json::Value) -> himark::LspAnswer {
+pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
     const PARSE_CAP: usize = 512;
     let (items, incomplete) = match result {
         serde_json::Value::Array(items) => (items.as_slice(), false),
@@ -69,7 +69,7 @@ pub fn parse_completion(result: &serde_json::Value) -> himark::LspAnswer {
                     .and_then(range_of)?;
                 Some((range, text))
             });
-            Some(himark::LspItem {
+            Some(crate::LspItem {
                 label,
                 detail: item.get("detail").and_then(text_of),
                 filter_text: item.get("filterText").and_then(text_of),
@@ -79,7 +79,7 @@ pub fn parse_completion(result: &serde_json::Value) -> himark::LspAnswer {
             })
         })
         .collect();
-    himark::LspAnswer {
+    crate::LspAnswer {
         items: parsed,
         incomplete,
     }
@@ -87,15 +87,15 @@ pub fn parse_completion(result: &serde_json::Value) -> himark::LspAnswer {
 
 pub struct HoverRoute {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
-impl EffectHandler<himark::hover::LspHoverEffect> for HoverRoute {
+impl EffectHandler<crate::hover::LspHoverEffect> for HoverRoute {
     async fn handle(
         &self,
-        effect: himark::hover::LspHoverEffect,
-    ) -> Option<himark::hover::HoverInfo> {
-        let (seat, session) = crate::fsroute::seat_of(&self.directory, &effect.location)?;
+        effect: crate::hover::LspHoverEffect,
+    ) -> Option<crate::hover::HoverInfo> {
+        let (seat, session) = crate::hiahp::fsroute::seat_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },
@@ -110,7 +110,7 @@ impl EffectHandler<himark::hover::LspHoverEffect> for HoverRoute {
     }
 }
 
-pub fn parse_hover(result: &serde_json::Value) -> himark::hover::HoverInfo {
+pub fn parse_hover(result: &serde_json::Value) -> crate::hover::HoverInfo {
     const LINE_CAP: usize = 80;
     let mut text = String::new();
     collect_hover(
@@ -129,7 +129,7 @@ pub fn parse_hover(result: &serde_json::Value) -> himark::hover::HoverInfo {
     if capped {
         markdown.push_str("\n…");
     }
-    himark::hover::HoverInfo { markdown }
+    crate::hover::HoverInfo { markdown }
 }
 
 fn collect_hover(node: &serde_json::Value, out: &mut String) {

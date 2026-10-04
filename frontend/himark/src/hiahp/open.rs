@@ -3,21 +3,21 @@
 
 use std::sync::Arc;
 
-use himark::{
+use crate::{
     AppCommand, AppFx, DynamicCommand, FetchDocumentEffect, OpenByLocationEffect, ResourceLocation,
 };
 use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
 pub fn document_for(
-    languages: &himark::SyntaxLanguages,
+    languages: &crate::SyntaxLanguages,
     name: &str,
     source: &str,
     store: &imba::store::Store,
     ui: &imba::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
-) -> himark::Document {
+    theme: &crate::Theme,
+) -> crate::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
     // Markdown is just another registered language; anything the
     // registry does not know reads as markdown, like it always has.
@@ -26,8 +26,8 @@ pub fn document_for(
         known if languages.knows(known) => known,
         _ => "markdown",
     };
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = crate::Document::from_language(
+        crate::Text::from_string_exact(source),
         language,
         languages,
         store,
@@ -45,17 +45,17 @@ pub fn document_for(
 /// filesystem capability — the chat's cells build off-thread with no host
 /// in sight. It installs at boot, on its own.
 pub fn install_build_handler(
-    app: &mut himark::Application,
-    languages: Arc<himark::SyntaxLanguages>,
+    app: &mut crate::Application,
+    languages: Arc<crate::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
     let workshop = Arc::clone(app.workshop());
     let caller = app.effect_caller();
-    app.register_handler::<himark::BuildDocumentEffect>(BuildDocumentHandler(
+    app.register_handler::<crate::BuildDocumentEffect>(BuildDocumentHandler(
         Arc::clone(&workshop),
         Arc::clone(&languages),
     ));
-    app.register_handler::<himark::higent::BuildFileEditEffect>(BuildFileEditHandler {
+    app.register_handler::<crate::higent::BuildFileEditEffect>(BuildFileEditHandler {
         caller,
         workshop,
         languages,
@@ -68,19 +68,19 @@ pub fn install_build_handler(
 /// marks) in the workshop. The cell only lays the editors.
 struct BuildFileEditHandler {
     caller: imba::effect::EffectCaller,
-    workshop: Arc<::himark::Workshop>,
-    languages: Arc<himark::SyntaxLanguages>,
+    workshop: Arc<crate::Workshop>,
+    languages: Arc<crate::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 }
 
-impl EffectHandler<himark::higent::BuildFileEditEffect> for BuildFileEditHandler {
+impl EffectHandler<crate::higent::BuildFileEditEffect> for BuildFileEditHandler {
     async fn handle(
         &self,
-        effect: himark::higent::BuildFileEditEffect,
-    ) -> Result<himark::higent::BuiltFileEdit, String> {
+        effect: crate::higent::BuildFileEditEffect,
+    ) -> Result<crate::higent::BuiltFileEdit, String> {
         let contents = self
             .caller
-            .call(himark::higent::FetchFileEditEffect {
+            .call(crate::higent::FetchFileEditEffect {
                 seat: effect.seat,
                 before: effect.before,
                 after: effect.after,
@@ -90,7 +90,7 @@ impl EffectHandler<himark::higent::BuildFileEditEffect> for BuildFileEditHandler
         let fonts = self.workshop.fonts();
         let theme = self.workshop.theme();
         Ok(self.workshop.with_ctx(|store, ui| {
-            himark::higent::build_file_edit(
+            crate::higent::build_file_edit(
                 &effect.name,
                 &contents,
                 &self.languages,
@@ -105,9 +105,9 @@ impl EffectHandler<himark::higent::BuildFileEditEffect> for BuildFileEditHandler
 }
 
 pub fn install_open_handlers(
-    app: &mut himark::Application,
-    languages: Arc<himark::SyntaxLanguages>,
-    diff_policy: Arc<dyn himark::diff::DiffPolicy>,
+    app: &mut crate::Application,
+    languages: Arc<crate::SyntaxLanguages>,
+    diff_policy: Arc<dyn crate::diff::DiffPolicy>,
 ) {
     let caller = app.effect_caller();
     let workshop = Arc::clone(app.workshop());
@@ -122,10 +122,10 @@ pub fn install_open_handlers(
         workshop,
         languages,
     };
-    app.register_handler::<himark::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
+    app.register_handler::<crate::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
         shop.clone(),
     ));
-    app.register_handler::<himark::OpenDiffPairEffect>(OpenDiffPairHandler(shop));
+    app.register_handler::<crate::OpenDiffPairEffect>(OpenDiffPairHandler(shop));
     app.register_windowed_navigator(DiffNavigator);
 }
 
@@ -137,18 +137,18 @@ pub fn install_open_handlers(
 #[derive(Clone)]
 struct DiffOpenShop {
     caller: imba::effect::EffectCaller,
-    workshop: Arc<::himark::Workshop>,
-    languages: Arc<himark::SyntaxLanguages>,
+    workshop: Arc<crate::Workshop>,
+    languages: Arc<crate::SyntaxLanguages>,
 }
 
 impl DiffOpenShop {
     /// Resolve a side to the thing the landing installs, and whether it
     /// was reachable. An open side passes through; a closed side is
     /// fetched and built (registered at the landing, at its location).
-    async fn resolve(&self, input: himark::DiffSideInput) -> (himark::DiffSide, bool) {
+    async fn resolve(&self, input: crate::DiffSideInput) -> (crate::DiffSide, bool) {
         match input {
-            himark::DiffSideInput::Open(document) => (himark::DiffSide::Open(document), true),
-            himark::DiffSideInput::Fetch(location) => {
+            crate::DiffSideInput::Open(document) => (crate::DiffSide::Open(document), true),
+            crate::DiffSideInput::Fetch(location) => {
                 let text = self
                     .caller
                     .call(FetchDocumentEffect {
@@ -169,9 +169,9 @@ impl DiffOpenShop {
                     )
                 });
                 (
-                    himark::DiffSide::Built {
+                    crate::DiffSide::Built {
                         location,
-                        document: himark::BuiltDocument { document },
+                        document: crate::BuiltDocument { document },
                     },
                     present,
                 )
@@ -181,13 +181,13 @@ impl DiffOpenShop {
 
     async fn open_pair(
         &self,
-        old: himark::DiffSideInput,
-        new: himark::DiffSideInput,
+        old: crate::DiffSideInput,
+        new: crate::DiffSideInput,
         width: f32,
-    ) -> himark::OpenedDiffPair {
+    ) -> crate::OpenedDiffPair {
         let (old_side, old_present) = self.resolve(old).await;
         let (new_side, new_present) = self.resolve(new).await;
-        himark::OpenedDiffPair {
+        crate::OpenedDiffPair {
             old: old_side,
             new: new_side,
             width,
@@ -198,8 +198,8 @@ impl DiffOpenShop {
 
 struct OpenDiffByLocationsHandler(DiffOpenShop);
 
-impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
-    async fn handle(&self, effect: himark::OpenDiffByLocationsEffect) -> AppCommand {
+impl EffectHandler<crate::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
+    async fn handle(&self, effect: crate::OpenDiffByLocationsEffect) -> AppCommand {
         // The pane's editor width is resolved by `install_opened_pair`
         // (non-embedded → OPEN_HALF_WIDTH); the carried width is unused.
         let pair = self.0.open_pair(effect.old, effect.new, 0.0).await;
@@ -209,8 +209,8 @@ impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHan
             let location = [&pair.old, &pair.new]
                 .into_iter()
                 .find_map(|side| match side {
-                    himark::DiffSide::Built { location, .. } => Some(location.clone()),
-                    himark::DiffSide::Open(_) => None,
+                    crate::DiffSide::Built { location, .. } => Some(location.clone()),
+                    crate::DiffSide::Open(_) => None,
                 })
                 .expect("a failed pair has a built side");
             return AppCommand::Dynamic(effect.window, Arc::new(FetchFailed { location }));
@@ -228,34 +228,34 @@ impl EffectHandler<himark::OpenDiffByLocationsEffect> for OpenDiffByLocationsHan
 
 struct OpenDiffPairHandler(DiffOpenShop);
 
-impl EffectHandler<himark::OpenDiffPairEffect> for OpenDiffPairHandler {
-    async fn handle(&self, effect: himark::OpenDiffPairEffect) -> himark::OpenedDiffPair {
+impl EffectHandler<crate::OpenDiffPairEffect> for OpenDiffPairHandler {
+    async fn handle(&self, effect: crate::OpenDiffPairEffect) -> crate::OpenedDiffPair {
         self.0.open_pair(effect.old, effect.new, effect.width).await
     }
 }
 
 pub struct DiffNavigator;
 
-impl himark::navigation::WindowedNavigator for DiffNavigator {
-    type Place = himark::DiffPlace;
+impl crate::navigation::WindowedNavigator for DiffNavigator {
+    type Place = crate::DiffPlace;
 
     fn navigate(
         &self,
         store: &mut Store,
         _ui: &imba::UiCtx,
-        window: himark::WindowId,
-        place: &himark::DiffPlace,
+        window: crate::WindowId,
+        place: &crate::DiffPlace,
         fx: &mut AppFx<'_>,
-    ) -> Option<himark::Panel> {
+    ) -> Option<crate::Panel> {
         // Resolve both sides on the UI thread — an open side hands over
         // its live snapshot; the prep runs off-thread and the landing
         // opens the dressed pane. Diffing never runs here.
-        let documents = himark::Windows::session_family(store, window)
+        let documents = crate::Windows::session_family(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
-        let old = himark::DiffSideInput::resolve(store, documents, place.old.clone());
-        let new = himark::DiffSideInput::resolve(store, documents, place.new.clone());
-        fx.push(AnyEffect::new(himark::OpenDiffByLocationsEffect {
+        let old = crate::DiffSideInput::resolve(store, documents, place.old.clone());
+        let new = crate::DiffSideInput::resolve(store, documents, place.new.clone());
+        fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
             window,
             documents,
             old,
@@ -266,9 +266,9 @@ impl himark::navigation::WindowedNavigator for DiffNavigator {
 }
 
 pub struct OpenDiffPair {
-    window: himark::WindowId,
-    documents: imba::store::Id<himark::OpenDocuments>,
-    pair: himark::OpenedDiffPair,
+    window: crate::WindowId,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    pair: crate::OpenedDiffPair,
 }
 
 impl DynamicCommand for OpenDiffPair {
@@ -280,13 +280,13 @@ impl DynamicCommand for OpenDiffPair {
     }
     fn perform(
         &self,
-        app: &mut himark::Application,
+        app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
+        _window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let _ = himark::open_opened_diff_pane(
+        let _ = crate::open_opened_diff_pane(
             store,
             ui,
             self.window,
@@ -294,21 +294,18 @@ impl DynamicCommand for OpenDiffPair {
             self.pair.clone(),
             fx,
         );
-        himark::sync_document_watches(store, self.documents, fx);
-        himark::sync_stripe_bases(store, self.documents, ui, fx);
+        crate::sync_document_watches(store, self.documents, fx);
+        crate::sync_stripe_bases(store, self.documents, ui, fx);
     }
 }
 
 /// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
 /// fetches, both documents, the Myers pass and the mark prep all run
 /// here, off the UI thread; the landing only mounts editors.
-pub struct BuildDocumentHandler(
-    pub Arc<::himark::Workshop>,
-    pub Arc<himark::SyntaxLanguages>,
-);
+pub struct BuildDocumentHandler(pub Arc<crate::Workshop>, pub Arc<crate::SyntaxLanguages>);
 
-impl EffectHandler<himark::BuildDocumentEffect> for BuildDocumentHandler {
-    async fn handle(&self, effect: himark::BuildDocumentEffect) -> himark::BuiltDocument {
+impl EffectHandler<crate::BuildDocumentEffect> for BuildDocumentHandler {
+    async fn handle(&self, effect: crate::BuildDocumentEffect) -> crate::BuiltDocument {
         let fonts = self.0.fonts();
         let theme = self.0.theme();
         let document = self.0.with_ctx(|store, ui| {
@@ -323,14 +320,14 @@ impl EffectHandler<himark::BuildDocumentEffect> for BuildDocumentHandler {
             )
         });
 
-        himark::BuiltDocument { document }
+        crate::BuiltDocument { document }
     }
 }
 
 pub struct OpenByLocationHandler {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<::himark::Workshop>,
-    pub languages: Arc<himark::SyntaxLanguages>,
+    pub workshop: Arc<crate::Workshop>,
+    pub languages: Arc<crate::SyntaxLanguages>,
 }
 
 impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
@@ -356,7 +353,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 });
                 AppCommand::Opened(
                     effect.window,
-                    himark::OpenedDocument {
+                    crate::OpenedDocument {
                         documents: effect.documents,
                         name: effect.location.name().to_owned(),
                         document,
@@ -391,9 +388,9 @@ impl DynamicCommand for FetchFailed {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut crate::Application,
         _store: &mut Store,
-        _window: himark::WindowId,
+        _window: crate::WindowId,
         _fx: &mut AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);

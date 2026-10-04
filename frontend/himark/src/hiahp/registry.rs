@@ -5,7 +5,7 @@ use ahp_types::actions::StateAction;
 use ahp_types::state::{ChatState, SessionState};
 use imba::effect::EffectHandler;
 
-use himark::higent::{
+use crate::higent::{
     CancelTurnEffect, ConnectServerEffect, CreateChatEffect, CreateSessionEffect,
     DispatchChatActionEffect, DisposeSessionEffect, FetchFileEditEffect, FetchTurnsEffect,
     FileEditContents, ListSessionsEffect, PollChatActionsEffect, PollServerEffect,
@@ -43,7 +43,7 @@ impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
     async fn handle(
         &self,
         effect: CreateSessionEffect,
-    ) -> Result<himark::higent::SessionUri, String> {
+    ) -> Result<crate::higent::SessionUri, String> {
         effect
             .seat
             .create_session(effect.working_directories, effect.options)
@@ -53,10 +53,10 @@ impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
 
 pub struct HandleResolveSessionConfig;
 
-impl EffectHandler<himark::higent::ResolveSessionConfigEffect> for HandleResolveSessionConfig {
+impl EffectHandler<crate::higent::ResolveSessionConfigEffect> for HandleResolveSessionConfig {
     async fn handle(
         &self,
-        effect: himark::higent::ResolveSessionConfigEffect,
+        effect: crate::higent::ResolveSessionConfigEffect,
     ) -> Result<ahp_types::commands::ResolveSessionConfigResult, String> {
         effect
             .seat
@@ -92,7 +92,7 @@ impl EffectHandler<PollSessionEffect> for HandlePollSession {
 pub struct HandleCreateChat;
 
 impl EffectHandler<CreateChatEffect> for HandleCreateChat {
-    async fn handle(&self, effect: CreateChatEffect) -> Result<himark::higent::ChatUri, String> {
+    async fn handle(&self, effect: CreateChatEffect) -> Result<crate::higent::ChatUri, String> {
         effect.seat.create_chat(effect.session).await
     }
 }
@@ -126,10 +126,10 @@ impl EffectHandler<StartTurnEffect> for HandleStartTurn {
 
 pub struct HandleSubscribeChangeset;
 
-impl EffectHandler<himark::higent::SubscribeChangesetEffect> for HandleSubscribeChangeset {
+impl EffectHandler<crate::higent::SubscribeChangesetEffect> for HandleSubscribeChangeset {
     async fn handle(
         &self,
-        effect: himark::higent::SubscribeChangesetEffect,
+        effect: crate::higent::SubscribeChangesetEffect,
     ) -> Result<ahp_types::state::ChangesetState, String> {
         effect.seat.subscribe_changeset(effect.channel).await
     }
@@ -137,10 +137,10 @@ impl EffectHandler<himark::higent::SubscribeChangesetEffect> for HandleSubscribe
 
 pub struct HandleSubscribeLocations;
 
-impl EffectHandler<himark::higent::SubscribeLocationsEffect> for HandleSubscribeLocations {
+impl EffectHandler<crate::higent::SubscribeLocationsEffect> for HandleSubscribeLocations {
     async fn handle(
         &self,
-        effect: himark::higent::SubscribeLocationsEffect,
+        effect: crate::higent::SubscribeLocationsEffect,
     ) -> Result<himark_ahp_ext_types::LocationList, String> {
         effect.seat.subscribe_locations(effect.channel).await
     }
@@ -148,10 +148,10 @@ impl EffectHandler<himark::higent::SubscribeLocationsEffect> for HandleSubscribe
 
 pub struct HandlePollLocations;
 
-impl EffectHandler<himark::higent::PollLocationsEffect> for HandlePollLocations {
+impl EffectHandler<crate::higent::PollLocationsEffect> for HandlePollLocations {
     async fn handle(
         &self,
-        effect: himark::higent::PollLocationsEffect,
+        effect: crate::higent::PollLocationsEffect,
     ) -> Vec<himark_ahp_ext_types::LocationList> {
         effect.seat.poll_locations(effect.channel).await
     }
@@ -159,18 +159,18 @@ impl EffectHandler<himark::higent::PollLocationsEffect> for HandlePollLocations 
 
 pub struct HandleUnsubscribeLocations;
 
-impl EffectHandler<himark::higent::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
-    async fn handle(&self, effect: himark::higent::UnsubscribeLocationsEffect) {
+impl EffectHandler<crate::higent::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
+    async fn handle(&self, effect: crate::higent::UnsubscribeLocationsEffect) {
         effect.seat.unsubscribe_locations(&effect.channel);
     }
 }
 
 pub struct HandleSubscribeHistory;
 
-impl EffectHandler<himark::higent::SubscribeHistoryEffect> for HandleSubscribeHistory {
+impl EffectHandler<crate::higent::SubscribeHistoryEffect> for HandleSubscribeHistory {
     async fn handle(
         &self,
-        effect: himark::higent::SubscribeHistoryEffect,
+        effect: crate::higent::SubscribeHistoryEffect,
     ) -> Result<himark_ahp_ext_types::history::HistoryState, String> {
         effect.seat.subscribe_history(effect.channel).await
     }
@@ -178,10 +178,10 @@ impl EffectHandler<himark::higent::SubscribeHistoryEffect> for HandleSubscribeHi
 
 pub struct HandlePollChangeset;
 
-impl EffectHandler<himark::higent::PollChangesetEffect> for HandlePollChangeset {
+impl EffectHandler<crate::higent::PollChangesetEffect> for HandlePollChangeset {
     async fn handle(
         &self,
-        effect: himark::higent::PollChangesetEffect,
+        effect: crate::higent::PollChangesetEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
         effect.seat.poll_changeset(effect.channel).await
     }
@@ -189,10 +189,10 @@ impl EffectHandler<himark::higent::PollChangesetEffect> for HandlePollChangeset 
 
 pub struct HandleSubscribeAnnotations;
 
-impl EffectHandler<himark::higent::SubscribeAnnotationsEffect> for HandleSubscribeAnnotations {
+impl EffectHandler<crate::higent::SubscribeAnnotationsEffect> for HandleSubscribeAnnotations {
     async fn handle(
         &self,
-        effect: himark::higent::SubscribeAnnotationsEffect,
+        effect: crate::higent::SubscribeAnnotationsEffect,
     ) -> Result<ahp_types::state::AnnotationsState, String> {
         effect.seat.subscribe_annotations(effect.session).await
     }
@@ -200,10 +200,10 @@ impl EffectHandler<himark::higent::SubscribeAnnotationsEffect> for HandleSubscri
 
 pub struct HandlePollAnnotations;
 
-impl EffectHandler<himark::higent::PollAnnotationsEffect> for HandlePollAnnotations {
+impl EffectHandler<crate::higent::PollAnnotationsEffect> for HandlePollAnnotations {
     async fn handle(
         &self,
-        effect: himark::higent::PollAnnotationsEffect,
+        effect: crate::higent::PollAnnotationsEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
         effect.seat.poll_annotations(effect.session).await
     }
@@ -247,29 +247,29 @@ impl EffectHandler<FetchFileEditEffect> for HandleFetchFileEdit {
     }
 }
 
-pub fn register_all(app: &mut himark::Application) {
-    app.register_handler::<himark::higent::ConnectServerEffect>(HandleConnectServer);
-    app.register_handler::<himark::higent::ListSessionsEffect>(HandleListSessions);
-    app.register_handler::<himark::higent::PollServerEffect>(HandlePollServer);
-    app.register_handler::<himark::higent::CreateSessionEffect>(HandleCreateSession);
-    app.register_handler::<himark::higent::ResolveSessionConfigEffect>(HandleResolveSessionConfig);
-    app.register_handler::<himark::higent::DisposeSessionEffect>(HandleDisposeSession);
-    app.register_handler::<himark::higent::SubscribeSessionEffect>(HandleSubscribeSession);
-    app.register_handler::<himark::higent::PollSessionEffect>(HandlePollSession);
-    app.register_handler::<himark::higent::CreateChatEffect>(HandleCreateChat);
-    app.register_handler::<himark::higent::SubscribeChatEffect>(HandleSubscribeChat);
-    app.register_handler::<himark::higent::FetchTurnsEffect>(HandleFetchTurns);
-    app.register_handler::<himark::higent::StartTurnEffect>(HandleStartTurn);
-    app.register_handler::<himark::higent::PollChatActionsEffect>(HandlePollChatActions);
-    app.register_handler::<himark::higent::CancelTurnEffect>(HandleCancelTurn);
-    app.register_handler::<himark::higent::DispatchChatActionEffect>(HandleDispatchChatAction);
-    app.register_handler::<himark::higent::FetchFileEditEffect>(HandleFetchFileEdit);
-    app.register_handler::<himark::higent::SubscribeChangesetEffect>(HandleSubscribeChangeset);
-    app.register_handler::<himark::higent::PollChangesetEffect>(HandlePollChangeset);
-    app.register_handler::<himark::higent::SubscribeHistoryEffect>(HandleSubscribeHistory);
-    app.register_handler::<himark::higent::SubscribeLocationsEffect>(HandleSubscribeLocations);
-    app.register_handler::<himark::higent::PollLocationsEffect>(HandlePollLocations);
-    app.register_handler::<himark::higent::UnsubscribeLocationsEffect>(HandleUnsubscribeLocations);
-    app.register_handler::<himark::higent::SubscribeAnnotationsEffect>(HandleSubscribeAnnotations);
-    app.register_handler::<himark::higent::PollAnnotationsEffect>(HandlePollAnnotations);
+pub fn register_all(app: &mut crate::Application) {
+    app.register_handler::<crate::higent::ConnectServerEffect>(HandleConnectServer);
+    app.register_handler::<crate::higent::ListSessionsEffect>(HandleListSessions);
+    app.register_handler::<crate::higent::PollServerEffect>(HandlePollServer);
+    app.register_handler::<crate::higent::CreateSessionEffect>(HandleCreateSession);
+    app.register_handler::<crate::higent::ResolveSessionConfigEffect>(HandleResolveSessionConfig);
+    app.register_handler::<crate::higent::DisposeSessionEffect>(HandleDisposeSession);
+    app.register_handler::<crate::higent::SubscribeSessionEffect>(HandleSubscribeSession);
+    app.register_handler::<crate::higent::PollSessionEffect>(HandlePollSession);
+    app.register_handler::<crate::higent::CreateChatEffect>(HandleCreateChat);
+    app.register_handler::<crate::higent::SubscribeChatEffect>(HandleSubscribeChat);
+    app.register_handler::<crate::higent::FetchTurnsEffect>(HandleFetchTurns);
+    app.register_handler::<crate::higent::StartTurnEffect>(HandleStartTurn);
+    app.register_handler::<crate::higent::PollChatActionsEffect>(HandlePollChatActions);
+    app.register_handler::<crate::higent::CancelTurnEffect>(HandleCancelTurn);
+    app.register_handler::<crate::higent::DispatchChatActionEffect>(HandleDispatchChatAction);
+    app.register_handler::<crate::higent::FetchFileEditEffect>(HandleFetchFileEdit);
+    app.register_handler::<crate::higent::SubscribeChangesetEffect>(HandleSubscribeChangeset);
+    app.register_handler::<crate::higent::PollChangesetEffect>(HandlePollChangeset);
+    app.register_handler::<crate::higent::SubscribeHistoryEffect>(HandleSubscribeHistory);
+    app.register_handler::<crate::higent::SubscribeLocationsEffect>(HandleSubscribeLocations);
+    app.register_handler::<crate::higent::PollLocationsEffect>(HandlePollLocations);
+    app.register_handler::<crate::higent::UnsubscribeLocationsEffect>(HandleUnsubscribeLocations);
+    app.register_handler::<crate::higent::SubscribeAnnotationsEffect>(HandleSubscribeAnnotations);
+    app.register_handler::<crate::higent::PollAnnotationsEffect>(HandlePollAnnotations);
 }

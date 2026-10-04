@@ -1,12 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::higent::ResourceUri;
-use himark::{Authority, ResourceLocation, ResourceType};
+use crate::higent::ResourceUri;
+use crate::{Authority, ResourceLocation, ResourceType};
 
 pub struct FileUris;
 
-impl himark::higent::ResourceUriMap for FileUris {
+impl crate::higent::ResourceUriMap for FileUris {
     fn uri_of(&self, location: &ResourceLocation) -> ResourceUri {
         ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }

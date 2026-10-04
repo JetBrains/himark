@@ -9,7 +9,6 @@ members = [
     "frontend/tokenize",
     "frontend/mdparser",
     "frontend/imba",
-    "frontend/hiahp",
     "frontend/editor",
     "frontend/hisitter",
     "frontend/hiscript",

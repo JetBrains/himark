@@ -9,11 +9,11 @@ pub use himark::terminal::TerminalBackend;
 pub use himark::AppFonts;
 pub use host::{HimarkHostCallbacks, HimarkLocation, HimarkStr};
 
-pub use hiahp;
-use hiahp::{docsync, find, fsroute};
+pub use himark::hiahp;
+use himark::hiahp::{docsync, find, fsroute};
 mod host;
 mod lsproute;
-use hiahp::uris;
+use himark::hiahp::uris;
 
 use demo::demo_location;
 use himark::{AppCommand, AppExt, Application, BackgroundRunner};
@@ -63,7 +63,7 @@ pub struct HimarkEngine {
 
     agent_host_filesystem: AgentHostFilesystemCapabilities,
 
-    seats: Arc<hiahp::fs::SeatDirectory>,
+    seats: Arc<himark::hiahp::fs::SeatDirectory>,
 
     shared: Arc<Shared>,
 
@@ -120,7 +120,7 @@ impl ClickCounter {
 
 fn register_agent_server(
     app: &mut Application,
-    seats: &hiahp::fs::SeatDirectory,
+    seats: &himark::hiahp::fs::SeatDirectory,
     name: &str,
     seat: Arc<dyn himark::higent::AhpServer>,
 ) -> himark::higent::HostId {
@@ -454,8 +454,8 @@ impl HimarkEngine {
         himarkdown::register_handlers(&mut app);
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
-        hiahp::registry::register_all(&mut app);
-        hiahp::open::install_build_handler(&mut app, languages, diff_policy);
+        himark::hiahp::registry::register_all(&mut app);
+        himark::hiahp::open::install_build_handler(&mut app, languages, diff_policy);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
         // The comments hook and the comment gesture are no longer
@@ -505,7 +505,7 @@ impl HimarkEngine {
         };
         let runner = app.attach_host(dispatcher, scheduler);
 
-        let seats = Arc::new(hiahp::fs::SeatDirectory::new({
+        let seats = Arc::new(himark::hiahp::fs::SeatDirectory::new({
             let inbox = inbox.clone();
             let wake = wake.clone();
             Arc::new(move |subscription| {
@@ -518,13 +518,14 @@ impl HimarkEngine {
         }));
 
         host_discovery::logging::init("app");
-        let connector: Arc<dyn hiahp::transport::Connector> = Arc::new(desktop::DesktopConnector);
+        let connector: Arc<dyn himark::hiahp::transport::Connector> =
+            Arc::new(desktop::DesktopConnector);
 
         register_agent_server(
             &mut app,
             &seats,
             "VS Code Agent Host",
-            Arc::new(hiahp::wire::WireHost::new(
+            Arc::new(himark::hiahp::wire::WireHost::new(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
             )),
@@ -534,7 +535,7 @@ impl HimarkEngine {
             &mut app,
             &seats,
             "himark Agent Host",
-            Arc::new(hiahp::wire::WireHost::discovered(
+            Arc::new(himark::hiahp::wire::WireHost::discovered(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
                 himark_host_resolver(),
@@ -551,7 +552,7 @@ impl HimarkEngine {
                 &mut app.store_mut(),
                 Arc::new(move |app, store, url| {
                     let seat: Arc<dyn himark::higent::AhpServer> =
-                        Arc::new(hiahp::wire::WireHost::at(
+                        Arc::new(himark::hiahp::wire::WireHost::at(
                             handle.clone(),
                             Arc::clone(&connector),
                             url.to_owned(),
@@ -1044,7 +1045,7 @@ impl HimarkEngine {
         let installed = self.agent_host_filesystem;
 
         if capabilities.fetch_document && !installed.fetch_document {
-            hiahp::open::install_open_handlers(
+            himark::hiahp::open::install_open_handlers(
                 &mut self.app,
                 Arc::new(syntax_languages()),
                 Arc::new(structdiff::Structural::new(Arc::new(syntax_languages()))),
@@ -1069,19 +1070,19 @@ impl HimarkEngine {
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app.register_handler::<himark::LspCompletionEffect>(
-                hiahp::lsproute::CompletionRoute {
+                himark::hiahp::lsproute::CompletionRoute {
                     directory: Arc::clone(&self.seats),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::hover::LspHoverEffect>(
-                hiahp::lsproute::HoverRoute {
+                himark::hiahp::lsproute::HoverRoute {
                     directory: Arc::clone(&self.seats),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::LspLocationsEffect>(
-                hiahp::locations::RouteLspLocations {
+                himark::hiahp::locations::RouteLspLocations {
                     directory: Arc::clone(&self.seats),
                     uris: Arc::clone(&self.resource_uris),
                 },
@@ -1126,7 +1127,7 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.seats),
                 });
             self.app.register_handler::<himark::SearchLocationsEffect>(
-                hiahp::locations::RouteSearchLocations {
+                himark::hiahp::locations::RouteSearchLocations {
                     directory: Arc::clone(&self.seats),
                 },
             );
@@ -1912,7 +1913,7 @@ fn document_for(
     fonts: &skia_safe::textlayout::FontCollection,
     theme: &himark::Theme,
 ) -> himark::Document {
-    hiahp::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
+    himark::hiahp::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
 }
 
 #[no_mangle]
@@ -2106,7 +2107,7 @@ unsafe fn write_optional_out<T: Copy>(value: Option<T>, out: *mut T) -> bool {
 }
 
 #[cfg(test)]
-fn test_connector() -> Arc<dyn hiahp::transport::Connector> {
+fn test_connector() -> Arc<dyn himark::hiahp::transport::Connector> {
     Arc::new(desktop::DesktopConnector)
 }
 

@@ -5251,7 +5251,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     settle_until(
         &mut engine,
         "the served open seated its sync loop",
-        |engine| hiahp::docsync::SyncSeats::count(engine.app.store()) == 1,
+        |engine| himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 1,
     );
     assert!(engine.perform_command(window, "workbench.close"));
     // The drain is a cross-process round trip: the stopped life
@@ -5259,7 +5259,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     settle_until(
         &mut engine,
         "the closed document took its loop with it",
-        |engine| hiahp::docsync::SyncSeats::count(engine.app.store()) == 0,
+        |engine| himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 0,
     );
 }
 
@@ -7898,13 +7898,13 @@ fn a_reopened_document_types_exactly_once() {
             live(engine).is_some()
         });
         assert_eq!(
-            hiahp::docsync::SyncSeats::count(engine.app.store()),
+            himark::hiahp::docsync::SyncSeats::count(engine.app.store()),
             1,
             "one open, one sync loop"
         );
         assert!(engine.perform_command(window, "workbench.close"));
         settle_until(&mut engine, "the close took the sync loop", |engine| {
-            hiahp::docsync::SyncSeats::count(engine.app.store()) == 0
+            himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 0
         });
     }
 
@@ -7955,7 +7955,7 @@ fn a_reopened_document_types_exactly_once() {
         });
     }
     assert_eq!(
-        hiahp::docsync::SyncSeats::count(engine.app.store()),
+        himark::hiahp::docsync::SyncSeats::count(engine.app.store()),
         1,
         "one document, one sync loop"
     );

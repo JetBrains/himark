@@ -13,6 +13,7 @@ pub mod drivers;
 mod effects;
 mod find;
 mod focus;
+pub mod hiahp;
 pub mod hichanges;
 pub mod hicomments;
 pub mod hifiles;

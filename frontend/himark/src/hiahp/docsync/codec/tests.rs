@@ -3,11 +3,11 @@
 
 use super::*;
 
-fn text(source: &str) -> himark::Text {
-    himark::Text::from_string_exact(source)
+fn text(source: &str) -> crate::Text {
+    crate::Text::from_string_exact(source)
 }
 
-fn read(value: &himark::Text) -> String {
+fn read(value: &crate::Text) -> String {
     let end = value.byte_count() as u32;
     value.view().substring(0..end)
 }

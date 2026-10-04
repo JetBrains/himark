@@ -8,13 +8,13 @@ use operation::{Op, Operation, OperationBuilder};
 use std::sync::Arc;
 
 pub fn resolve_wire(operation: TextOperation) -> Resolve {
-    Arc::new(move |text: &himark::Text| {
+    Arc::new(move |text: &crate::Text| {
         let spans = himark_ahp_ext_types::text::spans_of(text, &operation).ok()?;
         operation_of_spans(text, &spans)
     })
 }
 
-fn operation_of_spans(text: &himark::Text, spans: &[Span]) -> Option<Operation> {
+fn operation_of_spans(text: &crate::Text, spans: &[Span]) -> Option<Operation> {
     himark_ahp_ext_types::text::check_spans(text, spans).ok()?;
     let mut view = text.view();
     let mut builder = OperationBuilder::new();
@@ -39,7 +39,7 @@ fn operation_of_spans(text: &himark::Text, spans: &[Span]) -> Option<Operation> 
 }
 
 #[doc(hidden)]
-pub fn wire_operation(text: &himark::Text, operation: &Operation) -> TextOperation {
+pub fn wire_operation(text: &crate::Text, operation: &Operation) -> TextOperation {
     himark_ahp_ext_types::text::wire_of(text, &spans_of_operation(operation))
 }
 

@@ -1,6 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The AHP adapter: the transport, the session-channel wire, the
+//! fs/doc/LSP effect routes and the docsync codec — himark's
+//! protocol connection to its hosts, inboard now so it can leave
+//! TOGETHER with higent and the drivers as the protocol crate.
+
 pub mod docsync;
 pub mod find;
 pub mod fs;

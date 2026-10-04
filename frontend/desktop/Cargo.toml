@@ -9,7 +9,6 @@ himark = { path = "../himark" }
 host-discovery = { path = "../../protocol/host-discovery" }
 ahp = "0.9"
 ahp-ws = "0.9"
-hiahp = { path = "../hiahp" }
 serde_json = "1"
 tracing = "0.1"
 tokio = { version = "1", features = ["net", "io-util", "sync"] }

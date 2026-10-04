@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
-use himark::higent::seat as fs;
-use himark::{
+use crate::hiahp::fs::SeatDirectory;
+use crate::higent::seat as fs;
+use crate::{
     CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
     MoveResourceEffect, ResourceLocation, StoreDocumentEffect, SubscribeEffect, Subscription,
     UnsubscribeEffect,
@@ -17,10 +17,7 @@ const LOCAL_AUTHORITY: &str = "local";
 pub fn seat_of_authority(
     directory: &SeatDirectory,
     authority: &str,
-) -> Option<(
-    Arc<dyn himark::higent::AhpServer>,
-    himark::higent::SessionUri,
-)> {
+) -> Option<(Arc<dyn crate::higent::AhpServer>, crate::higent::SessionUri)> {
     if fs::scoped(authority) {
         let (server, session) = fs::parse(authority)?;
         let seat = directory.seat(server)?;
@@ -35,10 +32,7 @@ pub fn seat_of_authority(
 pub fn seat_of(
     directory: &SeatDirectory,
     location: &ResourceLocation,
-) -> Option<(
-    Arc<dyn himark::higent::AhpServer>,
-    himark::higent::SessionUri,
-)> {
+) -> Option<(Arc<dyn crate::higent::AhpServer>, crate::higent::SessionUri)> {
     seat_of_authority(directory, location.authority().as_str())
 }
 
@@ -49,15 +43,15 @@ pub fn served(location: &ResourceLocation) -> bool {
 
 pub struct RouteFetch {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<FetchDocumentEffect> for RouteFetch {
     async fn handle(&self, effect: FetchDocumentEffect) -> Option<String> {
-        if let Some((origin, raw)) = himark::hichanges::raw_ref(&effect.location) {
+        if let Some((origin, raw)) = crate::hichanges::raw_ref(&effect.location) {
             let (seat, session) = seat_of_authority(&self.directory, &origin)?;
             return seat
-                .resource_read(session, himark::higent::seat::ResourceUri::new(raw))
+                .resource_read(session, crate::higent::seat::ResourceUri::new(raw))
                 .await;
         }
         let (seat, session) = seat_of(&self.directory, &effect.location)?;
@@ -73,15 +67,15 @@ impl EffectHandler<FetchDocumentEffect> for RouteFetch {
 
 pub struct RouteFetchBytes {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
-impl EffectHandler<himark::FetchResourceBytesEffect> for RouteFetchBytes {
-    async fn handle(&self, effect: himark::FetchResourceBytesEffect) -> Option<Vec<u8>> {
+impl EffectHandler<crate::FetchResourceBytesEffect> for RouteFetchBytes {
+    async fn handle(&self, effect: crate::FetchResourceBytesEffect) -> Option<Vec<u8>> {
         let (seat, session) = seat_of(&self.directory, &effect.origin)?;
 
         let uri = match absolute(&effect.reference) {
-            true => himark::higent::seat::ResourceUri::new(effect.reference),
+            true => crate::higent::seat::ResourceUri::new(effect.reference),
             false => {
                 let location = relative_to(&effect.origin, &effect.reference)?;
                 self.uris.uri_of(&location)
@@ -115,7 +109,7 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
         return None;
     }
     Some(ResourceLocation::new(
-        himark::ResourceType::document(),
+        crate::ResourceType::document(),
         origin.authority().clone(),
         segments,
     ))
@@ -123,8 +117,8 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
 
 pub struct RouteStore {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
-    pub channels: Arc<crate::docsync::DocumentChannels>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
+    pub channels: Arc<crate::hiahp::docsync::DocumentChannels>,
 }
 
 impl EffectHandler<StoreDocumentEffect> for RouteStore {
@@ -148,7 +142,7 @@ impl EffectHandler<StoreDocumentEffect> for RouteStore {
 
 pub struct RouteList {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<ListDirectoryEffect> for RouteList {
@@ -162,8 +156,8 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
                 .into_iter()
                 .map(|(name, directory)| {
                     let kind = match directory {
-                        true => himark::ResourceType::directory(),
-                        false => himark::ResourceType::document(),
+                        true => crate::ResourceType::directory(),
+                        false => crate::ResourceType::document(),
                     };
                     effect.location.child(kind, &name)
                 })
@@ -174,7 +168,7 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
 
 pub struct RouteCreate {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<CreateDocumentEffect> for RouteCreate {
@@ -189,7 +183,7 @@ impl EffectHandler<CreateDocumentEffect> for RouteCreate {
 
 pub struct RouteDelete {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<DeleteResourceEffect> for RouteDelete {
@@ -208,7 +202,7 @@ impl EffectHandler<DeleteResourceEffect> for RouteDelete {
 
 pub struct RouteMove {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<MoveResourceEffect> for RouteMove {
@@ -228,7 +222,7 @@ impl EffectHandler<MoveResourceEffect> for RouteMove {
 
 pub struct RouteSubscribe {
     pub directory: Arc<SeatDirectory>,
-    pub uris: Arc<dyn himark::higent::ResourceUriMap>,
+    pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<SubscribeEffect> for RouteSubscribe {
@@ -261,21 +255,21 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
 /// handler fed through a shared Arc<Mutex<HashMap>>.)
 pub fn resolve_base(
     store: &imba::store::Store,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: &ResourceLocation,
 ) -> Option<ResourceLocation> {
-    if himark::hichanges::scoped(location) || !served(location) {
+    if crate::hichanges::scoped(location) || !served(location) {
         return None;
     }
     // The ask names its documents collection; the bases live in the
     // change sets next to it.
-    let changes = himark::higent::Hosts::family_of_documents(store, documents)?.changes();
-    let before = himark::hichanges::Changes::base_ref(
+    let changes = crate::higent::Hosts::family_of_documents(store, documents)?.changes();
+    let before = crate::hichanges::Changes::base_ref(
         store,
         changes,
         &format!("/{}", location.path().join("/")),
     )?;
-    let (origin, _) = himark::hichanges::raw_ref(&before)?;
+    let (origin, _) = crate::hichanges::raw_ref(&before)?;
     (origin == location.authority().as_str()).then_some(before)
 }
 
@@ -297,8 +291,8 @@ mod tests {
 
     fn page() -> ResourceLocation {
         ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("local"),
+            crate::ResourceType::document(),
+            crate::Authority::new("local"),
             vec!["repo".to_owned(), "docs".to_owned(), "page.md".to_owned()],
         )
     }

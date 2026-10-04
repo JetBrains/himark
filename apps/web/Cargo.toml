@@ -59,7 +59,6 @@ hisolidity = { path = "../../frontend/plugins/lang/hisolidity" }
 hixml = { path = "../../frontend/plugins/lang/hixml" }
 himarkdown = { path = "../../frontend/plugins/himarkdown" }
 imba = { path = "../../frontend/imba" }
-hiahp = { path = "../../frontend/hiahp" }
 ahp = "0.9"
 tokio = { version = "1", features = ["rt", "sync", "macros", "time"] }
 tracing = "0.1"

@@ -26,8 +26,8 @@ mod rules;
 
 use std::sync::Arc;
 
-use himark::higent::AhpServer;
-use himark::{AppCommand, ResourceLocation};
+use crate::higent::AhpServer;
+use crate::{AppCommand, ResourceLocation};
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::store::Store;
 use rebase::{Local, Offer, RebaseLog};
@@ -225,7 +225,7 @@ pub struct StoreHandle {
 }
 
 impl StoreHandle {
-    pub async fn store(self, uri: himark::higent::seat::ResourceUri) -> bool {
+    pub async fn store(self, uri: crate::higent::seat::ResourceUri) -> bool {
         let (done, landed) = oneshot::channel();
         if self.edits.send(Local::Flush(done)).is_err() {
             return false;
@@ -235,7 +235,7 @@ impl StoreHandle {
         }
         match self
             .server
-            .store_document(himark::higent::ChannelUri::new(self.channel), uri)
+            .store_document(crate::higent::ChannelUri::new(self.channel), uri)
             .await
         {
             Ok(()) => true,
@@ -263,7 +263,7 @@ struct ChannelState {
 
 pub struct DocumentChannels {
     post: Arc<dyn Fn(AppCommand) + Send + Sync>,
-    uris: Arc<dyn himark::higent::ResourceUriMap>,
+    uris: Arc<dyn crate::higent::ResourceUriMap>,
     runtime: tokio::runtime::Handle,
 
     salt: u128,
@@ -274,7 +274,7 @@ impl DocumentChannels {
     pub fn new(
         runtime: tokio::runtime::Handle,
         post: Arc<dyn Fn(AppCommand) + Send + Sync>,
-        uris: Arc<dyn himark::higent::ResourceUriMap>,
+        uris: Arc<dyn crate::higent::ResourceUriMap>,
     ) -> Arc<Self> {
         let salt = {
             use std::hash::{BuildHasher, Hasher};
@@ -351,7 +351,7 @@ impl DocumentChannels {
     /// carries it (docs/entities.md law 3).
     pub fn ensure(
         self: &Arc<Self>,
-        documents: imba::store::Id<himark::OpenDocuments>,
+        documents: imba::store::Id<crate::OpenDocuments>,
         location: ResourceLocation,
         seat: Arc<dyn AhpServer>,
         session: String,
@@ -365,9 +365,9 @@ impl DocumentChannels {
         });
     }
 
-    fn post(&self, command: impl himark::DynamicCommand + 'static) {
+    fn post(&self, command: impl crate::DynamicCommand + 'static) {
         (self.post)(AppCommand::Dynamic(
-            himark::WindowId::from_raw(0),
+            crate::WindowId::from_raw(0),
             Arc::new(command),
         ));
     }
@@ -379,7 +379,7 @@ impl DocumentChannels {
 fn connect(
     channels: &Arc<DocumentChannels>,
     store: &mut Store,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: &ResourceLocation,
     seat: &Arc<dyn AhpServer>,
     session: &str,
@@ -387,8 +387,8 @@ fn connect(
     channels.store_connecting(location);
     let since = Some(documents)
         .and_then(|documents| {
-            himark::OpenDocuments::by_location(store, documents, location)
-                .and_then(|id| himark::OpenDocuments::document_ref(store, documents, id))
+            crate::OpenDocuments::by_location(store, documents, location)
+                .and_then(|id| crate::OpenDocuments::document_ref(store, documents, id))
         })
         .map(|document| document.revision())
         .unwrap_or_default();
@@ -412,7 +412,7 @@ type Seeded = (SyncState, Uid, mpsc::UnboundedReceiver<Local<SyncEdit>>);
 
 async fn channel_life(
     channels: Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
     server: Arc<dyn AhpServer>,
     session: String,
@@ -438,7 +438,7 @@ async fn channel_life(
 
 async fn life(
     channels: &Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: &ResourceLocation,
     server: Arc<dyn AhpServer>,
     session: String,
@@ -450,7 +450,7 @@ async fn life(
         // Stopped before the subscribe was ever sent: nothing to
         // release — an open at most mints (or re-finds) the channel.
         _ = stopped.recv() => return,
-        opened = server.open_document(himark::higent::SessionUri::new(session), Some(uri), None) => match opened {
+        opened = server.open_document(crate::higent::SessionUri::new(session), Some(uri), None) => match opened {
             Ok(opened) => opened,
             Err(error) => {
                 tracing::warn!(%error, "docsync: could not reach the channel");
@@ -468,14 +468,14 @@ async fn life(
     // that made it. A leaked subscription re-subscribes later and
     // every broadcast arrives twice: the character-doubling bug.
     let snapshot = match server
-        .subscribe_document(himark::higent::ChannelUri::new(opened.document.clone()))
+        .subscribe_document(crate::higent::ChannelUri::new(opened.document.clone()))
         .await
     {
         Ok(snapshot) => snapshot,
         Err(error) => {
             tracing::warn!(%error, "docsync: could not subscribe the channel");
             server
-                .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+                .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
                 .await;
             channels.post(GiveUp {
                 channels: Arc::clone(channels),
@@ -487,7 +487,7 @@ async fn life(
     };
     if stopped.try_recv().is_ok() {
         server
-            .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+            .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
             .await;
         return;
     }
@@ -512,7 +512,7 @@ async fn life(
         // Adoption declined (no registered document), or the document
         // closed while we were connecting: release the channel.
         server
-            .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+            .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
             .await;
         return;
     };
@@ -535,7 +535,7 @@ async fn life(
 
     {
         let server = Arc::clone(&server);
-        let channel = himark::higent::ChannelUri::new(opened.document.clone());
+        let channel = crate::higent::ChannelUri::new(opened.document.clone());
         channels.runtime.spawn(async move {
             while let Some(dispatch) = wire_rx.recv().await {
                 let Some(operation) = dispatch.action.operation() else {
@@ -573,10 +573,10 @@ async fn life(
         let heard = tokio::select! {
             biased;
             _ = stopped.recv() => {
-                server.unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone())).await;
+                server.unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone())).await;
                 return;
             }
-            heard = server.poll_document(himark::higent::ChannelUri::new(opened.document.clone())) => heard,
+            heard = server.poll_document(crate::higent::ChannelUri::new(opened.document.clone())) => heard,
         };
         for action in heard {
             let applied = rebase::Applied {
@@ -587,7 +587,7 @@ async fn life(
             };
             if actions.send(applied).await.is_err() {
                 server
-                    .unsubscribe_document(&himark::higent::ChannelUri::new(opened.document.clone()))
+                    .unsubscribe_document(&crate::higent::ChannelUri::new(opened.document.clone()))
                     .await;
                 return;
             }
@@ -597,13 +597,13 @@ async fn life(
 
 struct EnsureSync {
     channels: Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
     seat: Arc<dyn AhpServer>,
     session: String,
 }
 
-impl himark::DynamicCommand for EnsureSync {
+impl crate::DynamicCommand for EnsureSync {
     fn id(&self) -> &'static str {
         "docsync.ensure"
     }
@@ -612,10 +612,10 @@ impl himark::DynamicCommand for EnsureSync {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
-        _fx: &mut himark::AppFx<'_>,
+        _window: crate::WindowId,
+        _fx: &mut crate::AppFx<'_>,
     ) {
         if SyncSeats::draining(store, &self.location) {
             SyncSeats::queue_reopen(
@@ -647,11 +647,11 @@ impl himark::DynamicCommand for EnsureSync {
 /// after the old unsubscribe.
 struct Drained {
     channels: Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
 }
 
-impl himark::DynamicCommand for Drained {
+impl crate::DynamicCommand for Drained {
     fn id(&self) -> &'static str {
         "docsync.drained"
     }
@@ -660,10 +660,10 @@ impl himark::DynamicCommand for Drained {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        _window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
     ) {
         match SyncSeats::retire(store, &self.location) {
             Some(SeatState::Draining {
@@ -686,13 +686,13 @@ impl himark::DynamicCommand for Drained {
                 {
                     let documents = self.documents;
                     if let Some(document) =
-                        himark::OpenDocuments::by_location(store, documents, &self.location)
+                        crate::OpenDocuments::by_location(store, documents, &self.location)
                     {
-                        himark::OpenDocuments::set_host_synced(
+                        crate::OpenDocuments::set_host_synced(
                             store, documents, document, false, fx,
                         );
-                        himark::sync_document_watches(store, documents, fx);
-                        himark::refetch_document(store, documents, document, fx);
+                        crate::sync_document_watches(store, documents, fx);
+                        crate::refetch_document(store, documents, document, fx);
                     }
                 }
             }
@@ -705,7 +705,7 @@ impl himark::DynamicCommand for Drained {
 
 struct AdoptSnapshot {
     channels: Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     server: Arc<dyn AhpServer>,
     document: himark_ahp_ext_types::Uri,
     location: ResourceLocation,
@@ -714,7 +714,7 @@ struct AdoptSnapshot {
     seeded: mpsc::Sender<Seeded>,
 }
 
-impl himark::DynamicCommand for AdoptSnapshot {
+impl crate::DynamicCommand for AdoptSnapshot {
     fn id(&self) -> &'static str {
         "docsync.adopt"
     }
@@ -723,25 +723,24 @@ impl himark::DynamicCommand for AdoptSnapshot {
     }
     fn perform(
         &self,
-        app: &mut himark::Application,
+        app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        _window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let Some((stop, since)) = SyncSeats::connecting(store, &self.location) else {
             return;
         };
         let documents = self.documents;
-        let Some(document_id) =
-            himark::OpenDocuments::by_location(store, documents, &self.location)
+        let Some(document_id) = crate::OpenDocuments::by_location(store, documents, &self.location)
         else {
             SyncSeats::detach(store, &self.location);
             self.channels.forget_store(&self.location);
             return;
         };
         let Some(document) =
-            himark::OpenDocuments::document_ref(store, documents, document_id).cloned()
+            crate::OpenDocuments::document_ref(store, documents, document_id).cloned()
         else {
             SyncSeats::detach(store, &self.location);
             self.channels.forget_store(&self.location);
@@ -754,7 +753,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
             Some(meanwhile) => document.text().edit(&meanwhile.invert()),
             None => document.text().clone(),
         };
-        let snapshot = himark::Text::from_string_exact(&self.snapshot);
+        let snapshot = crate::Text::from_string_exact(&self.snapshot);
         let mut history = log.as_of(since);
         // A patch, not a picture: the minimal exact edit
         // (docs/editor/structural-diff.md, decision 3).
@@ -797,7 +796,7 @@ impl himark::DynamicCommand for AdoptSnapshot {
         // file and broadcasts reloads as its own edits; this client
         // stops watching (docs: agents edit files, clients edit
         // documents).
-        himark::OpenDocuments::set_host_synced(store, documents, document_id, true, fx);
+        crate::OpenDocuments::set_host_synced(store, documents, document_id, true, fx);
 
         if adopted {
             let shown = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -810,13 +809,13 @@ impl himark::DynamicCommand for AdoptSnapshot {
                 SyncSeats::expect(store, &self.location, identity);
                 let applied = fx.scope(
                     move |command| {
-                        himark::AppCommand::at(
+                        crate::AppCommand::at(
                             documents,
-                            himark::DocumentsCommand::Editor(document_id, command),
+                            crate::DocumentsCommand::Editor(document_id, command),
                         )
                     },
                     |fx| {
-                        himark::OpenDocuments::edit_shared(
+                        crate::OpenDocuments::edit_shared(
                             store,
                             documents,
                             ui,
@@ -840,11 +839,11 @@ impl himark::DynamicCommand for AdoptSnapshot {
 
 struct GiveUp {
     channels: Arc<DocumentChannels>,
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
 }
 
-impl himark::DynamicCommand for GiveUp {
+impl crate::DynamicCommand for GiveUp {
     fn id(&self) -> &'static str {
         "docsync.give-up"
     }
@@ -853,10 +852,10 @@ impl himark::DynamicCommand for GiveUp {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        _window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
     ) {
         if SyncSeats::connecting(store, &self.location).is_some() {
             SyncSeats::detach(store, &self.location);
@@ -867,23 +866,23 @@ impl himark::DynamicCommand for GiveUp {
         {
             let documents = self.documents;
             if let Some(document) =
-                himark::OpenDocuments::by_location(store, documents, &self.location)
+                crate::OpenDocuments::by_location(store, documents, &self.location)
             {
-                himark::OpenDocuments::set_host_synced(store, documents, document, false, fx);
-                himark::sync_document_watches(store, documents, fx);
-                himark::refetch_document(store, documents, document, fx);
+                crate::OpenDocuments::set_host_synced(store, documents, document, false, fx);
+                crate::sync_document_watches(store, documents, fx);
+                crate::refetch_document(store, documents, document, fx);
             }
         }
     }
 }
 
 struct ApplyOffer {
-    documents: imba::store::Id<himark::OpenDocuments>,
+    documents: imba::store::Id<crate::OpenDocuments>,
     location: ResourceLocation,
     offer: Offer<SyncState>,
 }
 
-impl himark::DynamicCommand for ApplyOffer {
+impl crate::DynamicCommand for ApplyOffer {
     fn id(&self) -> &'static str {
         "docsync.offer"
     }
@@ -892,22 +891,21 @@ impl himark::DynamicCommand for ApplyOffer {
     }
     fn perform(
         &self,
-        app: &mut himark::Application,
+        app: &mut crate::Application,
         store: &mut Store,
-        _window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        _window: crate::WindowId,
+        fx: &mut crate::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let Some(seat) = SyncSeats::seat(store, &self.location) else {
             return;
         };
         let documents = self.documents;
-        let Some(document_id) =
-            himark::OpenDocuments::by_location(store, documents, &self.location)
+        let Some(document_id) = crate::OpenDocuments::by_location(store, documents, &self.location)
         else {
             return;
         };
-        let Some(document) = himark::OpenDocuments::document_ref(store, documents, document_id)
+        let Some(document) = crate::OpenDocuments::document_ref(store, documents, document_id)
         else {
             return;
         };
@@ -934,13 +932,13 @@ impl himark::DynamicCommand for ApplyOffer {
         SyncSeats::expect(store, &self.location, identity);
         let applied = fx.scope(
             move |command| {
-                himark::AppCommand::at(
+                crate::AppCommand::at(
                     documents,
-                    himark::DocumentsCommand::Editor(document_id, command),
+                    crate::DocumentsCommand::Editor(document_id, command),
                 )
             },
             |fx| {
-                himark::OpenDocuments::edit_shared(
+                crate::OpenDocuments::edit_shared(
                     store,
                     documents,
                     ui,
@@ -967,7 +965,7 @@ impl editor::ChangeSink for SyncSink {
         document: &editor::Document,
         location: &editor::ResourceLocation,
         base_revision: u64,
-        _text_before: &himark::Text,
+        _text_before: &crate::Text,
         _fx: &mut editor::EditorEffects<'_>,
     ) {
         let Some(seat) = SyncSeats::seat(store, location) else {
@@ -982,16 +980,16 @@ impl editor::ChangeSink for SyncSink {
 
 pub struct DocsyncHook {
     pub channels: Arc<DocumentChannels>,
-    pub directory: Arc<crate::fs::SeatDirectory>,
+    pub directory: Arc<crate::hiahp::fs::SeatDirectory>,
 }
 
-impl himark::DocumentHook for DocsyncHook {
+impl crate::DocumentHook for DocsyncHook {
     fn opened(
         &self,
         _store: &mut Store,
-        documents: imba::store::Id<himark::OpenDocuments>,
-        _document: himark::DocumentId,
-        location: Option<&himark::ResourceLocation>,
+        documents: imba::store::Id<crate::OpenDocuments>,
+        _document: crate::DocumentId,
+        location: Option<&crate::ResourceLocation>,
     ) {
         // The invariant (2026-09-15): every located document that
         // talks to the outside world is registered in OpenDocuments —
@@ -999,10 +997,11 @@ impl himark::DocumentHook for DocsyncHook {
         let Some(location) = location else {
             return;
         };
-        if himark::is_synthetic(location) || !location.kind().is_document() {
+        if crate::is_synthetic(location) || !location.kind().is_document() {
             return;
         }
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, location) else {
+        let Some((seat, session)) = crate::hiahp::fsroute::seat_of(&self.directory, location)
+        else {
             return;
         };
         DocumentChannels::ensure(
@@ -1017,10 +1016,10 @@ impl himark::DocumentHook for DocsyncHook {
     fn closing(
         &self,
         store: &mut Store,
-        _documents: imba::store::Id<himark::OpenDocuments>,
-        _document: himark::DocumentId,
-        location: Option<&himark::ResourceLocation>,
-        _doc: &himark::Document,
+        _documents: imba::store::Id<crate::OpenDocuments>,
+        _document: crate::DocumentId,
+        location: Option<&crate::ResourceLocation>,
+        _doc: &crate::Document,
     ) {
         // The row leaves the collection right after this hook — no
         // flag writes back into it; the release already unsubscribes

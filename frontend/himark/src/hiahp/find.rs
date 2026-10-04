@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
-use himark::higent::{SearchAsk, SearchKind, SearchTarget};
-use himark::{FindEffect, ResourceLocation, ResourceType};
+use crate::hiahp::fs::SeatDirectory;
+use crate::higent::{SearchAsk, SearchKind, SearchTarget};
+use crate::{FindEffect, ResourceLocation, ResourceType};
 use imba::effect::EffectHandler;
 
 const PATH_CAP: usize = 128;
@@ -28,12 +28,13 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
             if remaining == 0 {
                 break;
             }
-            let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, folder) else {
+            let Some((seat, session)) = crate::hiahp::fsroute::seat_of(&self.directory, folder)
+            else {
                 continue;
             };
             let ask = SearchAsk {
-                folders: vec![himark::higent::ResourceUriMap::uri_of(
-                    &crate::uris::FileUris,
+                folders: vec![crate::higent::ResourceUriMap::uri_of(
+                    &crate::hiahp::uris::FileUris,
                     folder,
                 )
                 .into_string()],
@@ -58,7 +59,7 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
 
 fn location_under(folder: &ResourceLocation, uri: &str) -> Option<ResourceLocation> {
     let prefix =
-        himark::higent::ResourceUriMap::uri_of(&crate::uris::FileUris, folder).into_string();
+        crate::higent::ResourceUriMap::uri_of(&crate::hiahp::uris::FileUris, folder).into_string();
     let rest = uri.strip_prefix(&prefix)?.strip_prefix('/')?;
     let mut location = folder.clone();
     let mut segments = rest

@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use himark::higent::{AhpServer, HostId, WatchHandle};
+use crate::higent::{AhpServer, HostId, WatchHandle};
 
 const SUBSCRIPTION_BASE: u64 = 1 << 48;
 
@@ -34,12 +34,12 @@ impl SeatDirectory {
         *self.local.lock().expect("seat directory") = Some(server);
     }
 
-    pub fn local_seat(&self) -> Option<(Arc<dyn AhpServer>, himark::higent::SessionUri)> {
+    pub fn local_seat(&self) -> Option<(Arc<dyn AhpServer>, crate::higent::SessionUri)> {
         let server = (*self.local.lock().expect("seat directory"))?;
         let seat = self.seat(server)?;
         Some((
             seat,
-            himark::higent::SessionUri::new(himark::higent::LOCAL_FS_SESSION),
+            crate::higent::SessionUri::new(crate::higent::LOCAL_FS_SESSION),
         ))
     }
 

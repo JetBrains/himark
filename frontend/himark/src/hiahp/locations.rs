@@ -3,9 +3,9 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
-use himark::higent::{LocationsAsk, ResourceUriMap, SearchKind};
-use himark::{
+use crate::hiahp::fs::SeatDirectory;
+use crate::higent::{LocationsAsk, ResourceUriMap, SearchKind};
+use crate::{
     Authority, LocationsChannel, LspLocationsEffect, LspLocationsKind, ResourceLocation,
     ResourceType, SearchLocationsEffect,
 };
@@ -20,7 +20,7 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
         let Some(first) = effect.folders.first() else {
             return Err("no folders to search".to_owned());
         };
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, first) else {
+        let Some((seat, session)) = crate::hiahp::fsroute::seat_of(&self.directory, first) else {
             return Err(format!("no seat serves {}", first.authority().as_str()));
         };
         // A session's folders live on one seat; a stray foreign
@@ -30,7 +30,9 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
             .folders
             .iter()
             .filter(|folder| folder.authority().as_str() == authority.as_str())
-            .map(|folder| ResourceUriMap::uri_of(&crate::uris::FileUris, folder).into_string())
+            .map(|folder| {
+                ResourceUriMap::uri_of(&crate::hiahp::uris::FileUris, folder).into_string()
+            })
             .collect();
         let ask = LocationsAsk {
             folders,
@@ -58,7 +60,8 @@ pub struct RouteLspLocations {
 
 impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
     async fn handle(&self, effect: LspLocationsEffect) -> Result<LocationsChannel, String> {
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, &effect.location)
+        let Some((seat, session)) =
+            crate::hiahp::fsroute::seat_of(&self.directory, &effect.location)
         else {
             let authority = effect.location.authority().as_str();
             tracing::warn!(target: "ahp_wire", %authority, "lsp/locations: no seat serves the asked document");
@@ -97,8 +100,8 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
 fn resolver(authority: Authority) -> Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync> {
     Arc::new(move |uri| {
         ResourceUriMap::location_of(
-            &crate::uris::FileUris,
-            &himark::higent::seat::ResourceUri::new(uri),
+            &crate::hiahp::uris::FileUris,
+            &crate::higent::seat::ResourceUri::new(uri),
             ResourceType::document(),
             &authority,
         )

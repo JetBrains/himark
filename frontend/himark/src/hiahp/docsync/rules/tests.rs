@@ -18,7 +18,7 @@ fn insert(at: usize, text: &str, len: usize) -> Operation {
 }
 
 fn state(source: &str) -> SyncState {
-    SyncState::new(himark::Text::from_string_exact(source), EditLog::new())
+    SyncState::new(crate::Text::from_string_exact(source), EditLog::new())
 }
 
 #[test]
@@ -62,7 +62,7 @@ fn an_offer_that_predates_a_keystroke_is_dropped() {
     let mut offered = state("hello");
     offered.log = document.clone();
     let identity = offered.log.record(&insert(5, "!", 5), 5);
-    offered.text = himark::Text::from_string_exact("hello!");
+    offered.text = crate::Text::from_string_exact("hello!");
 
     let fits = Offer {
         seen_local: 1,
@@ -86,7 +86,7 @@ fn a_slice_that_misses_the_text_is_dropped() {
     let mut offered = state("hello");
     offered.log = document.clone();
     offered.log.record(&insert(5, "!", 5), 5);
-    offered.text = himark::Text::from_string_exact("hello!");
+    offered.text = crate::Text::from_string_exact("hello!");
     let offer = Offer {
         seen_local: 1,
         state: offered,
@@ -103,7 +103,7 @@ fn an_offer_of_the_same_state_lands_as_nothing() {
     document.record(&insert(0, "hello", 0), 0);
     let offer = Offer {
         seen_local: 1,
-        state: SyncState::new(himark::Text::from_string_exact("hello"), document.clone()),
+        state: SyncState::new(crate::Text::from_string_exact("hello"), document.clone()),
     };
     assert!(offer_landing(&document, 1, 0, 0, 5, &offer).is_none());
 }
