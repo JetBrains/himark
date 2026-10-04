@@ -325,11 +325,10 @@ impl SessionId {
     }
 
     pub fn mint_scratch(store: &mut Store) -> SessionId {
-        let mut minted = 0;
-        store.update::<ScratchSpaces>(|spaces| {
-            spaces.0 += 1;
-            minted = spaces.0;
-        });
+        // Monotonic and never reused — the `Id::mint` pattern; a
+        // store-held counter bought nothing but a component.
+        static MINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let minted = MINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         SessionId {
             host: Self::local_default(store).host,
             session: crate::higent::SessionUri::new(format!("scratch-space:{minted}")),
@@ -341,9 +340,6 @@ impl SessionId {
             && !self.session.as_str().starts_with("scratch-space:")
     }
 }
-
-#[derive(Clone, Default)]
-pub struct ScratchSpaces(u64);
 
 /// The quick-open path find: fuzzy over names, capped, one answer.
 /// Content search is the streaming locations channel

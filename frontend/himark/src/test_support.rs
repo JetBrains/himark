@@ -35,9 +35,6 @@ impl crate::higent::ResourceUriMap for TestUris {
     }
 }
 
-#[derive(Clone, Default)]
-struct SeededSessions(u64);
-
 pub fn seed_session_folders(
     store: &mut Store,
     folders: &[crate::ResourceLocation],
@@ -45,11 +42,8 @@ pub fn seed_session_folders(
     let host = crate::SessionId::local_default(store).host;
     crate::higent::Agents::seed(store, host, "Test Host");
     crate::higent::Hosts::install_uris(store, host, std::sync::Arc::new(TestUris));
-    let mut minted = 0;
-    store.update::<SeededSessions>(|seeded| {
-        seeded.0 += 1;
-        minted = seeded.0;
-    });
+    static SEEDED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    let minted = SEEDED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let id = crate::SessionId {
         host,
         session: crate::higent::SessionUri::new(format!("test-session:/{minted}")),

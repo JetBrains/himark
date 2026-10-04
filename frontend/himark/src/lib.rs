@@ -80,8 +80,7 @@ pub use crate::workspace::{
     CreateDocumentEffect, DeleteResourceEffect, DiffSide, DiffSideInput, FindEffect,
     ListDirectoryEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind,
     MoveResourceEffect, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
-    OpenedDiffPair, PickSaveEffect, ScratchSpaces, SearchLocationsEffect, SessionId,
-    StoreDocumentEffect,
+    OpenedDiffPair, PickSaveEffect, SearchLocationsEffect, SessionId, StoreDocumentEffect,
 };
 pub use ::editor::*;
 pub use app::*;

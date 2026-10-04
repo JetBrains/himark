@@ -571,9 +571,6 @@ impl Default for PendingSweeps {
 }
 
 #[derive(Clone, Default)]
-pub(crate) struct DocumentMint(u64);
-
-#[derive(Clone, Default)]
 struct DocumentHooks {
     global: rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>,
 
@@ -612,12 +609,9 @@ impl OpenDocuments {
         title: String,
         saved_revision: u64,
     ) -> DocumentId {
-        let mut minted = 0;
-        store.update::<DocumentMint>(|mint| {
-            mint.0 += 1;
-            minted = mint.0;
-        });
-        let id = DocumentId(minted);
+        // Monotonic and never reused — the `Id::mint` pattern.
+        static MINT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = DocumentId(MINT.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
         let stamp = Self::next_stamp(self);
         if let Some(location) = &location {
             self.by_location.insert_mut(location.clone(), id);
