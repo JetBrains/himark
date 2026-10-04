@@ -6,8 +6,11 @@ use std::sync::Arc;
 use serde_json::json;
 
 use super::*;
+use crate::drivers::history::{digest_deltas, digest_snapshot};
+use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use crate::Authority;
+use himark_ahp_ext_types::history as history_wire;
 
 struct InertSeat;
 
@@ -174,50 +177,29 @@ fn changes_id() -> imba::store::Id<crate::hichanges::Changes> {
     *ID.get_or_init(imba::store::Id::mint)
 }
 
-/// The landing roads run under the collection's lease in production;
-/// the test takes the row out the same way.
+/// The wire → mirror road the driver's landings travel: digest on
+/// the worker side, fold the mirrors through the model's doors.
 fn land(
     store: &mut imba::store::Store,
     folder: &ResourceLocation,
     state: history_wire::HistoryState,
 ) {
-    let mut row = store
-        .entity(history_id())
-        .cloned()
-        .expect("the history row");
-    row.land_state(store, folder, state);
-    store.put_entity(history_id(), row);
+    let (snapshot, _harvest) = digest_snapshot(state);
+    History::land_snapshot(store, history_id(), folder, snapshot);
 }
 
 fn fold(store: &mut imba::store::Store, folder: &ResourceLocation, actions: &[StateAction]) {
-    let mut row = store
-        .entity(history_id())
-        .cloned()
-        .expect("the history row");
-    row.fold_actions(store, folder, actions);
-    store.put_entity(history_id(), row);
+    let (deltas, _harvest) = digest_deltas(actions);
+    History::fold_deltas(store, history_id(), folder, deltas);
 }
 
 fn history_mirror() -> (imba::store::Store, ResourceLocation) {
     let mut store = imba::store::Store::new();
-    let mut history = History::wired(changes_id());
-    let folder = folder();
-    history.folders.insert_mut(
-        folder.clone(),
-        FolderHistory {
-            seat: Arc::new(InertSeat),
-            session: crate::higent::SessionUri::new("hihost-fs:/local"),
-            channel: Some(crate::higent::ChannelUri::new("hihost-history://tmp/repo")),
-            uris: Arc::new(FileUris),
-            status: ChangesStatus::Computing,
-            head: history_wire::HistoryHead::default(),
-            commits: rpds::VectorSync::new_sync(),
-            more: None,
-        },
-    );
-    store.put_entity(history_id(), history);
+    store.put_entity(history_id(), History::wired(changes_id()));
     let changes = crate::hichanges::Changes::wired(imba::store::Id::mint(), history_id());
     store.put_entity(changes_id(), changes);
+    let folder = folder();
+    History::ensure_folder(&mut store, history_id(), &folder);
     (store, folder)
 }
 
@@ -381,14 +363,16 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         reviewed: None,
         meta: None,
     };
-    let uris: Arc<dyn crate::higent::ResourceUriMap> = Arc::new(FileUris);
     crate::hichanges::Changes::adopt_commit_state(
         &mut store,
         changes_id(),
         &folder,
         &crate::hichanges::Revision::new("b"),
-        &uris,
-        &Ok(ready(vec![file])),
+        &Ok(crate::hichanges::digest_state(
+            &FileUris,
+            &folder,
+            &ready(vec![file]),
+        )),
     );
     let mut items = rpds::HashTrieMapSync::new_sync();
     let node = graph_node(
@@ -467,7 +451,7 @@ fn the_commit_tip_carries_message_author_and_branches() {
         outgoing: false,
         changeset: "cs:abc".to_owned(),
     };
-    let tip = CommitTip::of(&commit);
+    let tip = CommitTip::of(&crate::drivers::history::digest_commit(commit.wire.clone()));
     let lines: Vec<&str> = tip.lines().iter().map(|(line, _)| line.as_str()).collect();
     assert_eq!(
         lines,

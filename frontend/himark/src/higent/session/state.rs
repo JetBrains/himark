@@ -61,6 +61,8 @@ pub struct SessionState {
 
     changes_wire: Id<crate::drivers::changes::ChangesWire>,
 
+    history_wire: Id<crate::drivers::history::HistoryWire>,
+
     history: Id<crate::hihistory::History>,
 
     comments: Id<crate::hicomments::Comments>,
@@ -95,6 +97,10 @@ impl SessionState {
         self.changes_wire
     }
 
+    pub fn history_wire(&self) -> Id<crate::drivers::history::HistoryWire> {
+        self.history_wire
+    }
+
     pub fn history(&self) -> Id<crate::hihistory::History> {
         self.history
     }
@@ -126,6 +132,7 @@ impl SessionState {
             recents: Id::mint(),
             changes: Id::mint(),
             changes_wire: Id::mint(),
+            history_wire: Id::mint(),
             history: Id::mint(),
             comments: Id::mint(),
             terminals: Id::mint(),
@@ -145,6 +152,7 @@ impl SessionState {
         }
         empty(store, self.chats, |it| it.is_empty())
             && empty(store, self.changes_wire, |it| it.is_empty())
+            && empty(store, self.history_wire, |it| it.is_empty())
             && empty(store, self.trees, |it| it.is_empty())
             && empty(store, self.recents, |it| it.is_empty())
             && empty(store, self.changes, |it| it.is_empty())
@@ -164,7 +172,8 @@ impl SessionState {
         store.retract(self.recents);
         store.retract(self.changes);
         store.retract(self.changes_wire);
-        store.dispose(self.history);
+        store.retract(self.history_wire);
+        store.retract(self.history);
         store.dispose(self.comments);
         store.retract(self.terminals);
         // Converted collections leave through `dispose`: the row goes,
@@ -255,6 +264,7 @@ impl Hosts {
             .unwrap_or_default();
         for family in families {
             crate::drivers::changes::ChangesWire::stamp_uris(store, family.changes_wire, &map);
+            crate::drivers::history::HistoryWire::stamp_uris(store, family.history_wire, &map);
             crate::hicomments::Comments::stamp_uris(store, family.comments, &map);
         }
     }
@@ -411,7 +421,15 @@ impl Hosts {
             family.changes_wire,
             crate::drivers::changes::ChangesWire::wired(
                 family.changes,
+                family.history_wire,
+                uris.clone(),
+            ),
+        );
+        store.put_entity(
+            family.history_wire,
+            crate::drivers::history::HistoryWire::wired(
                 family.history,
+                family.changes,
                 uris.clone(),
             ),
         );

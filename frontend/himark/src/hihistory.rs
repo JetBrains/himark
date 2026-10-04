@@ -3,67 +3,92 @@
 
 use std::sync::Arc;
 
-use crate::hichanges::{
-    dir_forest, empty_side, entry_serves, CatalogEntry, ChangeEntry, ChangesStatus, DirSink,
-    DirTrie,
-};
-use crate::higent::ahp_types::actions::StateAction;
-use crate::higent::ahp_types::state::ChangesetState;
-use crate::higent::{
-    AhpServer, DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
-    SubscribeHistoryEffect,
-};
+use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
 use crate::{
-    AppCommand, ForestList, ForestNode, ForestSearcher, ListKeyboardController, ResourceLocation,
-    ResourceType,
+    ForestList, ForestNode, ForestSearcher, ListKeyboardController, ResourceLocation, ResourceType,
 };
-use himark_ahp_ext_types::history as history_wire;
-use imba::{
-    effect::{AnyEffect, Effects},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx,
-};
+use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
 
-/// One commit row: the wire commit plus the id of the CHANGE SET that
-/// is its content (docs/model-view.md — `Commit { change_set }`).
+/// MIRRORS of the wire history state — the collection's OWN types
+/// (ahp stays out of the model; the driver digests wire → mirror).
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommitInfo {
+    pub id: String,
+    pub summary: String,
+    pub message: Option<String>,
+    pub author: CommitAuthor,
+    pub refs: Vec<CommitRef>,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct CommitAuthor {
+    pub name: String,
+    pub email: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CommitRef {
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Default)]
+pub struct HistoryHead {
+    pub branch: Option<String>,
+    pub upstream: Option<String>,
+    pub ahead: Option<u32>,
+    pub behind: Option<u32>,
+}
+
+/// A landed history snapshot, mirrored.
+#[derive(Clone)]
+pub struct HistorySnapshot {
+    pub status: ChangesStatus,
+    pub head: HistoryHead,
+    pub commits: Vec<CommitInfo>,
+    pub more: Option<String>,
+}
+
+/// A streamed history update, mirrored — the driver parses the wire
+/// actions; the model folds values.
+#[derive(Clone)]
+pub enum HistoryDelta {
+    Reset(HistorySnapshot),
+    Appended {
+        commits: Vec<CommitInfo>,
+        more: Option<String>,
+    },
+    Prepended {
+        commits: Vec<CommitInfo>,
+        head: HistoryHead,
+    },
+}
+
+/// One commit row: the mirrored commit plus the id of the CHANGE SET
+/// that is its content (docs/model-view.md — `Commit { change_set }`).
 /// Minted eagerly when the row lands; content lands on the SET,
-/// lazily. Deref keeps wire-field readers direct.
+/// lazily. Deref keeps field readers direct.
 #[derive(Clone)]
 pub struct Commit {
-    pub wire: history_wire::Commit,
+    pub info: CommitInfo,
     pub change_set: crate::hichanges::ChangeSetId,
 }
 
 impl std::ops::Deref for Commit {
-    type Target = history_wire::Commit;
+    type Target = CommitInfo;
 
     fn deref(&self) -> &Self::Target {
-        &self.wire
+        &self.info
     }
 }
 
 #[derive(Clone)]
 pub struct FolderHistory {
-    seat: Arc<dyn AhpServer>,
-    session: crate::higent::SessionUri,
-    channel: Option<crate::higent::ChannelUri>,
-    /// The host's location↔uri translation, handed by the changes
-    /// driver at attach — rides the wire entry until this module's
-    /// own driver split (the commit doors digest with it).
-    uris: Arc<dyn crate::higent::ResourceUriMap>,
     pub status: ChangesStatus,
-    pub head: history_wire::HistoryHead,
+    pub head: HistoryHead,
     pub commits: rpds::VectorSync<Commit>,
     pub more: Option<String>,
-}
-
-impl FolderHistory {
-    pub fn channel_named(&self) -> bool {
-        self.channel.is_some()
-    }
 }
 
 /// The commit-list MODEL per folder. History manages the commit
@@ -78,113 +103,6 @@ pub struct History {
 
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
 }
-
-/// What the collection answers to behind its `At` address
-/// (docs/entities.md law 5): its folders' feed landings and the
-/// commit-file fetches, each stamped with the collection id at launch.
-#[derive(Clone)]
-pub enum HistoryCommand {
-    Snapshot {
-        folder: ResourceLocation,
-        result: Result<history_wire::HistoryState, String>,
-    },
-    Polled {
-        folder: ResourceLocation,
-        actions: Vec<StateAction>,
-    },
-    CommitFiles {
-        folder: ResourceLocation,
-        commit: crate::hichanges::Revision,
-        result: Result<ChangesetState, String>,
-    },
-    CommitFilesPolled {
-        folder: ResourceLocation,
-        commit: crate::hichanges::Revision,
-        actions: Vec<StateAction>,
-    },
-}
-
-impl std::fmt::Display for HistoryCommand {
-    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            HistoryCommand::Snapshot { .. } => out.write_str("history snapshot"),
-            HistoryCommand::Polled { .. } => out.write_str("history polled"),
-            HistoryCommand::CommitFiles { .. } => out.write_str("history commit files"),
-            HistoryCommand::CommitFilesPolled { .. } => {
-                out.write_str("history commit files polled")
-            }
-        }
-    }
-}
-
-impl imba::store::Entity for History {
-    type Command = HistoryCommand;
-
-    fn perform(
-        &mut self,
-        _id: imba::store::Id<Self>,
-        command: HistoryCommand,
-        store: &mut Store,
-        _ui: &UiCtx,
-        fx: &mut Effects<'_, HistoryCommand>,
-    ) {
-        match command {
-            HistoryCommand::Snapshot { folder, result } => {
-                match &result {
-                    Ok(state) => self.land_state(store, &folder, state.clone()),
-                    Err(error) => self.adopt_error(&folder, error.clone()),
-                }
-                crate::hichanges::Changes::nudge_folder(store, self.changes, &folder);
-                if result.is_ok() {
-                    self.relaunch_poll(&folder, fx);
-                }
-            }
-            HistoryCommand::Polled { folder, actions } => {
-                self.fold_actions(store, &folder, &actions);
-                crate::hichanges::Changes::nudge_folder(store, self.changes, &folder);
-                self.relaunch_poll(&folder, fx);
-            }
-            HistoryCommand::CommitFiles {
-                folder,
-                commit,
-                result,
-            } => {
-                if let Some(uris) = self.folders.get(&folder).map(|entry| entry.uris.clone()) {
-                    crate::hichanges::Changes::adopt_commit_state(
-                        store,
-                        self.changes,
-                        &folder,
-                        &commit,
-                        &uris,
-                        &result,
-                    );
-                }
-                self.settle_commit_fetch(store, &folder, &commit, fx);
-            }
-            HistoryCommand::CommitFilesPolled {
-                folder,
-                commit,
-                actions,
-            } => {
-                if let Some(uris) = self.folders.get(&folder).map(|entry| entry.uris.clone()) {
-                    crate::hichanges::Changes::fold_commit_actions(
-                        store,
-                        self.changes,
-                        &folder,
-                        &commit,
-                        &uris,
-                        &actions,
-                    );
-                }
-                self.settle_commit_fetch(store, &folder, &commit, fx);
-            }
-        }
-    }
-
-    fn destroy(&mut self, _store: &mut Store) {}
-}
-
-impl crate::AppEntity for History {}
 
 impl History {
     /// A collection wired to the sets its commits are — minted by the
@@ -227,194 +145,81 @@ impl History {
         self.folders.is_empty()
     }
 
-    /// Attach a folder: the AHP session is the folder's WIRE (the
-    /// channel the feed subscribes through), carried from the route.
+    /// The driver's attach door: an empty folder row, idempotent.
     pub(crate) fn ensure_folder(
         store: &mut Store,
         history: imba::store::Id<History>,
-        wire: &crate::SessionId,
         folder: &ResourceLocation,
-        seat: &Arc<dyn AhpServer>,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
     ) {
         if Self::folder(store, history, folder).is_some() {
             return;
         }
-        let seat = seat.clone();
-        let session = wire.session.clone();
-        let uris = Arc::clone(uris);
         Self::update_folder(store, history, |history| {
             history.folders.insert_mut(
                 folder.clone(),
                 FolderHistory {
-                    seat,
-                    session,
-                    channel: None,
-                    uris,
                     status: ChangesStatus::Computing,
-                    head: history_wire::HistoryHead::default(),
+                    head: HistoryHead::default(),
                     commits: rpds::VectorSync::new_sync(),
                     more: None,
                 },
             );
         });
-        if let Some(changes) = store.entity(history).map(|held| held.changes) {
-            crate::hichanges::Changes::nudge_folder(store, changes, folder);
-        }
     }
 
-    /// The landing's own poll relaunch — the next batch of the
-    /// folder's history channel comes home as `Polled`.
-    fn relaunch_poll(&self, folder: &ResourceLocation, fx: &mut Effects<'_, HistoryCommand>) {
-        let Some(entry) = self.folders.get(folder) else {
-            return;
-        };
-        let Some(channel) = entry.channel.clone() else {
-            return;
-        };
-        let landing = folder.clone();
-        fx.push(
-            AnyEffect::new(PollChangesetEffect {
-                seat: entry.seat.clone(),
-                channel,
-            })
-            .map(move |actions| HistoryCommand::Polled {
-                folder: landing.clone(),
-                actions,
-            }),
-        );
-    }
-
-    /// A commit's files are being fetched: keep polling the commit's
-    /// changeset channel while its set computes, let go once it is.
-    fn settle_commit_fetch(
-        &self,
-        store: &Store,
-        folder: &ResourceLocation,
-        commit: &crate::hichanges::Revision,
-        fx: &mut Effects<'_, HistoryCommand>,
-    ) {
-        let Some(entry) = self.folders.get(folder) else {
-            return;
-        };
-        let Some(held) = crate::hichanges::Changes::commit_set(store, self.changes, folder, commit)
-        else {
-            return;
-        };
-        let Some(wire) = entry.commits.iter().find(|wire| wire.id == commit.as_str()) else {
-            return;
-        };
-        match held.status {
-            ChangesStatus::Computing => {
-                let landing = folder.clone();
-                let commit_id = commit.to_owned();
-                fx.push(
-                    AnyEffect::new(PollChangesetEffect {
-                        seat: entry.seat.clone(),
-                        channel: crate::higent::ChannelUri::new(wire.changeset.clone()),
-                    })
-                    .map(move |actions| HistoryCommand::CommitFilesPolled {
-                        folder: landing.clone(),
-                        commit: commit_id.clone(),
-                        actions,
-                    }),
-                );
-            }
-            _ => entry
-                .seat
-                .unsubscribe_changeset(&crate::higent::ChannelUri::new(wire.changeset.clone())),
-        }
-    }
-
-    fn adopt_catalog(
-        &mut self,
-        session: &crate::higent::SessionUri,
-        entries: &[CatalogEntry],
-    ) -> Vec<(
-        ResourceLocation,
-        Arc<dyn AhpServer>,
-        crate::higent::ChannelUri,
-    )> {
-        let mut fresh = Vec::new();
-        for (folder, entry) in self.folders.clone().iter() {
-            if entry.session != *session || entry.channel.is_some() {
-                continue;
-            }
-            let Some(matched) = entries
-                .iter()
-                .find(|candidate| entry_serves(folder, candidate))
-            else {
-                continue;
-            };
-            let mut entry = entry.clone();
-            entry.channel = Some(matched.uri.clone());
-            let seat = entry.seat.clone();
-            let channel = matched.uri.clone();
-            self.folders.insert_mut(folder.clone(), entry);
-            fresh.push((folder.clone(), seat, channel));
-        }
-        fresh
-    }
-
-    /// Wrap wire commits into rows, minting each commit's CHANGE SET
-    /// eagerly (light) — the row references its set from birth.
+    /// Wrap mirrored commits into rows, minting each commit's CHANGE
+    /// SET eagerly (light) — the row references its set from birth.
     fn commit_rows(
         &self,
         store: &mut Store,
         folder: &ResourceLocation,
-        commits: Vec<history_wire::Commit>,
+        commits: Vec<CommitInfo>,
     ) -> Vec<Commit> {
-        let Some(_entry) = self.folders.get(folder).cloned() else {
-            return Vec::new();
-        };
         commits
             .into_iter()
-            .map(|wire| {
+            .map(|info| {
                 let change_set = crate::hichanges::Changes::ensure_commit_set(
                     store,
                     self.changes,
                     folder,
-                    &crate::hichanges::Revision::new(wire.id.clone()),
+                    &crate::hichanges::Revision::new(info.id.clone()),
                 );
-                Commit { wire, change_set }
+                Commit { info, change_set }
             })
             .collect()
     }
 
-    /// A history snapshot / reset lands: mint the rows' sets (in the
-    /// sibling collection), then adopt.
-    pub(crate) fn land_state(
+    /// A history snapshot lands: mint the rows' sets (in the sibling
+    /// collection), then adopt. The driver's door.
+    pub(crate) fn land_snapshot(
+        store: &mut Store,
+        history: imba::store::Id<History>,
+        folder: &ResourceLocation,
+        snapshot: HistorySnapshot,
+    ) {
+        // Leased out: the row works against the store (it mints the
+        // sibling's commit sets), then goes back whole.
+        let Some(mut held) = store.entity::<History>(history).cloned() else {
+            return;
+        };
+        held.land_snapshot_in_place(store, folder, snapshot);
+        store.put_entity(history, held);
+    }
+
+    fn land_snapshot_in_place(
         &mut self,
         store: &mut Store,
         folder: &ResourceLocation,
-        state: history_wire::HistoryState,
+        snapshot: HistorySnapshot,
     ) {
-        let rows = self.commit_rows(store, folder, state.commits.clone());
-        self.adopt(folder, &state, rows);
-    }
-
-    fn adopt(
-        &mut self,
-        folder: &ResourceLocation,
-        state: &history_wire::HistoryState,
-        rows: Vec<Commit>,
-    ) {
+        let rows = self.commit_rows(store, folder, snapshot.commits);
         let Some(mut entry) = self.folders.get(folder).cloned() else {
             return;
         };
-        entry.status = match state.status {
-            history_wire::HistoryStatus::Computing => ChangesStatus::Computing,
-            history_wire::HistoryStatus::Ready => ChangesStatus::Ready,
-            history_wire::HistoryStatus::Error => ChangesStatus::Error(
-                state
-                    .error
-                    .clone()
-                    .unwrap_or_else(|| "history error".to_owned()),
-            ),
-        };
-        entry.head = state.head.clone();
+        entry.status = snapshot.status;
+        entry.head = snapshot.head;
         entry.commits = rows.into_iter().collect();
-        entry.more = state.more.clone();
+        entry.more = snapshot.more;
         self.folders.insert_mut(folder.clone(), entry);
     }
 
@@ -428,127 +233,98 @@ impl History {
         self.folders.insert_mut(folder.clone(), entry);
     }
 
-    /// The session channel failed: every folder riding that wire
-    /// reports it.
-    pub(crate) fn session_failed(
+    /// One folder's history resolves errored — the driver's door.
+    pub(crate) fn fold_error(
         store: &mut Store,
         history: imba::store::Id<History>,
-        session: &crate::higent::SessionUri,
+        folder: &ResourceLocation,
         error: &str,
     ) {
-        Self::update_folder(store, history, |history| {
-            let riding: Vec<ResourceLocation> = history
-                .folders
-                .iter()
-                .filter(|(_, entry)| entry.session == *session)
-                .map(|(folder, _)| folder.clone())
-                .collect();
-            for folder in riding {
-                history.adopt_error(&folder, error.to_owned());
-            }
+        Self::update_folder(store, history, |held| {
+            held.adopt_error(folder, error.to_owned());
         });
-        if let Some(changes) = store.entity(history).map(|held| held.changes) {
-            crate::hichanges::Changes::nudge_all_in(store, changes);
-        }
     }
 
-    /// Fold the channel's streamed actions — every incoming commit row
+    /// The paging cursor the host handed with the last landing — the
+    /// grow ask carries it back.
+    pub(crate) fn more(
+        store: &Store,
+        history: imba::store::Id<History>,
+        folder: &ResourceLocation,
+    ) -> Option<String> {
+        Self::folder(store, history, folder)?.more
+    }
+
+    /// Fold the driver's mirrored deltas — every incoming commit row
     /// mints its change set in the sibling collection first.
-    pub(crate) fn fold_actions(
+    pub(crate) fn fold_deltas(
+        store: &mut Store,
+        history: imba::store::Id<History>,
+        folder: &ResourceLocation,
+        deltas: Vec<HistoryDelta>,
+    ) {
+        let Some(mut held) = store.entity::<History>(history).cloned() else {
+            return;
+        };
+        for delta in deltas {
+            held.fold_delta_in_place(store, folder, delta);
+        }
+        store.put_entity(history, held);
+    }
+
+    fn fold_delta_in_place(
         &mut self,
         store: &mut Store,
         folder: &ResourceLocation,
-        actions: &[StateAction],
+        delta: HistoryDelta,
     ) {
-        for action in actions {
-            let StateAction::Unknown(value) = action else {
-                continue;
-            };
-            if value["type"] == history_wire::HISTORY_RESET {
-                let Ok(reset) = serde_json::from_value::<history_wire::HistoryReset>(value.clone())
-                else {
-                    continue;
-                };
-                self.land_state(store, folder, reset.state);
-            } else if value["type"] == history_wire::HISTORY_APPENDED {
-                let Ok(appended) =
-                    serde_json::from_value::<history_wire::HistoryAppended>(value.clone())
-                else {
-                    continue;
-                };
-                let rows = self.commit_rows(store, folder, appended.commits);
+        match delta {
+            HistoryDelta::Reset(snapshot) => self.land_snapshot_in_place(store, folder, snapshot),
+            HistoryDelta::Appended { commits, more } => {
+                let rows = self.commit_rows(store, folder, commits);
                 let Some(mut entry) = self.folders.get(folder).cloned() else {
-                    continue;
+                    return;
                 };
                 for commit in rows {
                     entry.commits.push_back_mut(commit);
                 }
-                entry.more = appended.more.clone();
+                entry.more = more;
                 self.folders.insert_mut(folder.clone(), entry);
-            } else if value["type"] == history_wire::HISTORY_PREPENDED {
-                let Ok(prepended) =
-                    serde_json::from_value::<history_wire::HistoryPrepended>(value.clone())
-                else {
-                    continue;
-                };
-                let rows = self.commit_rows(store, folder, prepended.commits);
+            }
+            HistoryDelta::Prepended { commits, head } => {
+                let rows = self.commit_rows(store, folder, commits);
                 let Some(mut entry) = self.folders.get(folder).cloned() else {
-                    continue;
+                    return;
                 };
-                let mut commits = rpds::VectorSync::new_sync();
+                let mut all = rpds::VectorSync::new_sync();
                 for commit in rows {
-                    commits.push_back_mut(commit);
+                    all.push_back_mut(commit);
                 }
                 for commit in entry.commits.iter() {
-                    commits.push_back_mut(commit.clone());
+                    all.push_back_mut(commit.clone());
                 }
-                entry.commits = commits;
-                entry.head = prepended.head.clone();
+                entry.commits = all;
+                entry.head = head;
                 self.folders.insert_mut(folder.clone(), entry);
             }
         }
     }
 }
 
-pub(crate) fn subscribe_fresh(
-    store: &mut Store,
+/// The window gesture: resolve the family's history WIRE at gesture
+/// time and hand the ask to the driver. The drives-check keeps a
+/// stale window honest — a mismatched wire drops the ask loudly.
+fn gesture_wire(
+    store: &imba::store::Store,
     window: crate::WindowId,
-    home: &crate::SessionId,
     history: imba::store::Id<History>,
-    entries: &[CatalogEntry],
-    fx: &mut crate::AppFx<'_>,
-) {
-    let _ = window;
-    let histories: Vec<CatalogEntry> = entries
-        .iter()
-        .filter(|entry| entry.kind == history_wire::HISTORY_CHANGE_KIND)
-        .cloned()
-        .collect();
-    if histories.is_empty() {
-        return;
+) -> Option<imba::store::Id<crate::drivers::history::HistoryWire>> {
+    let wire = crate::Windows::session_family(store, window)?.history_wire();
+    if !crate::drivers::history::drives(store, wire, history) {
+        eprintln!("[hihistory] gesture DROPPED: the window's wire serves another history");
+        return None;
     }
-    let session = home.session.clone();
-    let mut fresh = Vec::new();
-    History::update_folder(store, history, |held| {
-        fresh = held.adopt_catalog(&session, &histories);
-    });
-    if let Some(changes) = store.entity(history).map(|held| held.changes) {
-        crate::hichanges::Changes::nudge_all_in(store, changes);
-    }
-    for (folder, seat, channel) in fresh {
-        let landing = folder.clone();
-        fx.push(
-            AnyEffect::new(SubscribeHistoryEffect { seat, channel }).map(move |result| {
-                AppCommand::at(
-                    history,
-                    HistoryCommand::Snapshot {
-                        folder: landing.clone(),
-                        result,
-                    },
-                )
-            }),
-        );
-    }
+    Some(wire)
 }
 
 pub struct FetchCommitFiles {
@@ -571,51 +347,16 @@ impl crate::DynamicCommand for FetchCommitFiles {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let _ = window;
-        let Some(entry) = History::folder(store, self.history, &self.folder) else {
+        let Some(wire) = gesture_wire(store, window, self.history) else {
             return;
         };
-        let Some(changes) = store.entity(self.history).map(|held| held.changes) else {
-            return;
-        };
-        if crate::hichanges::Changes::commit_generation(store, changes, &self.folder, &self.commit)
-            > 0
-        {
-            return;
-        }
-        let Some(commit) = entry
-            .commits
-            .iter()
-            .find(|held| held.id == self.commit.as_str())
-        else {
-            return;
-        };
-        let channel = crate::higent::ChannelUri::new(commit.changeset.clone());
-        // Mark the SET computing (it exists from the row's birth).
-        crate::hichanges::Changes::mark_commit_computing(
+        crate::drivers::history::fetch_commit_files(
             store,
-            changes,
+            window,
+            wire,
             &self.folder,
             &self.commit,
-        );
-        let landing = self.folder.clone();
-        let commit_id = self.commit.clone();
-        let history = self.history;
-        fx.push(
-            AnyEffect::new(SubscribeChangesetEffect {
-                seat: entry.seat,
-                channel,
-            })
-            .map(move |result| {
-                AppCommand::at(
-                    history,
-                    HistoryCommand::CommitFiles {
-                        folder: landing.clone(),
-                        commit: commit_id.clone(),
-                        result,
-                    },
-                )
-            }),
+            fx,
         );
     }
 }
@@ -639,31 +380,10 @@ impl crate::DynamicCommand for GrowHistory {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(entry) = History::folder(store, self.history, &self.folder) else {
+        let Some(wire) = gesture_wire(store, window, self.history) else {
             return;
         };
-        let (Some(channel), Some(before)) = (entry.channel, entry.more) else {
-            return;
-        };
-        fx.push(
-            AnyEffect::new(DispatchChatActionEffect {
-                seat: entry.seat,
-                channel,
-                action: StateAction::Unknown(history_wire::action_value(
-                    history_wire::HISTORY_GROW,
-                    &history_wire::HistoryGrow {
-                        before,
-                        limit: None,
-                    },
-                )),
-            })
-            .map(move |result| {
-                AppCommand::Dynamic(
-                    window,
-                    Arc::new(crate::drivers::changes::Dispatched { result }),
-                )
-            }),
-        );
+        crate::drivers::history::grow(store, window, wire, &self.folder, fx);
     }
 }
 
@@ -690,29 +410,16 @@ impl crate::DynamicCommand for CommitHistory {
         if self.message.trim().is_empty() {
             return;
         }
-        let Some(entry) = History::folder(store, self.history, &self.folder) else {
+        let Some(wire) = gesture_wire(store, window, self.history) else {
             return;
         };
-        let Some(channel) = entry.channel else {
-            return;
-        };
-        fx.push(
-            AnyEffect::new(DispatchChatActionEffect {
-                seat: entry.seat,
-                channel,
-                action: StateAction::Unknown(history_wire::action_value(
-                    history_wire::HISTORY_COMMIT,
-                    &history_wire::HistoryCommit {
-                        message: self.message.clone(),
-                    },
-                )),
-            })
-            .map(move |result| {
-                AppCommand::Dynamic(
-                    window,
-                    Arc::new(crate::drivers::changes::Dispatched { result }),
-                )
-            }),
+        crate::drivers::history::commit(
+            store,
+            window,
+            wire,
+            &self.folder,
+            self.message.clone(),
+            fx,
         );
     }
 }
@@ -914,7 +621,7 @@ impl CommitTip {
         &self.lines
     }
 
-    fn of(commit: &himark_ahp_ext_types::history::Commit) -> Self {
+    fn of(commit: &CommitInfo) -> Self {
         let mut lines: Vec<(String, bool)> = Vec::new();
         let message = commit.message.as_deref().unwrap_or(commit.summary.as_str());
         for raw in message.lines().take(14) {

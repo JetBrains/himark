@@ -599,11 +599,12 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     let ui = imba::UiCtx::dont_use_too_slow();
     let window = crate::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
-    let history_id: imba::store::Id<crate::hihistory::History> = imba::store::Id::mint();
+    let history_wire: imba::store::Id<crate::drivers::history::HistoryWire> =
+        imba::store::Id::mint();
     store.put_entity(changes_id(), wired());
     store.put_entity(
         wire_id,
-        ChangesWire::wired(changes_id(), history_id, Some(Arc::new(FileUris))),
+        ChangesWire::wired(changes_id(), history_wire, Some(Arc::new(FileUris))),
     );
     ChangesWire::seed_folder_for_tests(
         &mut store,

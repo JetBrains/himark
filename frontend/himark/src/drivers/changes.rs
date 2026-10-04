@@ -41,7 +41,7 @@ struct SessionWire {
 #[derive(Clone)]
 pub struct ChangesWire {
     changes: imba::store::Id<ChangeSets>,
-    history: imba::store::Id<crate::hihistory::History>,
+    history_wire: imba::store::Id<crate::drivers::history::HistoryWire>,
 
     /// The host's location↔uri translation, stamped by the ceremony
     /// (mint, or the heal after a placeholder rekey).
@@ -68,12 +68,12 @@ impl ChangesWire {
 
     pub fn wired(
         changes: imba::store::Id<ChangeSets>,
-        history: imba::store::Id<crate::hihistory::History>,
+        history_wire: imba::store::Id<crate::drivers::history::HistoryWire>,
         uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
     ) -> Self {
         Self {
             changes,
-            history,
+            history_wire,
             uris,
             session: None,
             folders: rpds::HashTrieMapSync::new_sync(),
@@ -152,7 +152,7 @@ pub fn ensure_folder(
         eprintln!("[hichanges] folder NOT attached: no uri map stamped on the driver");
         return;
     };
-    let (changes, history) = (row.changes, row.history);
+    let (changes, history_wire) = (row.changes, row.history_wire);
     update(store, wire, |row| {
         row.folders.insert_mut(
             folder.clone(),
@@ -167,7 +167,7 @@ pub fn ensure_folder(
     // The MODEL half: the set exists (a canvas may have opened it
     // detached already — the door is idempotent and keeps it).
     Changes::ensure_working_set(store, changes, &folder);
-    crate::hihistory::History::ensure_folder(store, history, &scope, &folder, &seat, &uris);
+    crate::drivers::history::ensure_folder(store, history_wire, &scope, &folder, &seat);
     Changes::nudge_folder(store, changes, &folder);
 
     let directory = uris.uri_of(&folder).into_string();
@@ -319,7 +319,7 @@ fn subscribe_fresh(
     let Some(row) = of(store, wire) else {
         return;
     };
-    let (changes, history) = (row.changes, row.history);
+    let (changes, history_wire) = (row.changes, row.history_wire);
     let session = home.session.clone();
     let fresh = claim_channels(&row.folders, &session, &entries);
     update(store, wire, |row| {
@@ -332,7 +332,7 @@ fn subscribe_fresh(
     });
     Changes::nudge_all_in(store, changes);
 
-    crate::hihistory::subscribe_fresh(store, window, home, history, &entries, fx);
+    crate::drivers::history::subscribe_fresh(store, window, home, history_wire, &entries, fx);
     let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
         return;
     };
@@ -621,7 +621,7 @@ impl crate::DynamicCommand for SessionLanded {
         let Some(row) = of(store, self.wire) else {
             return;
         };
-        let (changes, history) = (row.changes, row.history);
+        let (changes, history_wire) = (row.changes, row.history_wire);
         match &self.result {
             Ok(state) => {
                 let entries = digest_catalog(state.changesets.as_deref().unwrap_or_default());
@@ -643,9 +643,9 @@ impl crate::DynamicCommand for SessionLanded {
                     Changes::fold_error(store, changes, &folder, error);
                 }
                 Changes::nudge_all_in(store, changes);
-                crate::hihistory::History::session_failed(
+                crate::drivers::history::session_failed(
                     store,
-                    history,
+                    history_wire,
                     &self.home.session,
                     error,
                 );

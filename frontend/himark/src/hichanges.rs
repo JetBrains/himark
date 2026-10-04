@@ -808,26 +808,17 @@ impl Changes {
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
-        result: &Result<ChangesetState, String>,
+        result: &Result<DigestedChangeset, String>,
     ) {
-        let uris = Arc::clone(uris);
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
             revision: revision.to_owned(),
         };
         Self::update(store, changes, |changes| {
             changes.update_set_by_source(&source, |set| match result {
-                Ok(state) => {
-                    set.status = ChangesStatus::of_wire(
-                        &state.status,
-                        state.error.as_ref().map(|error| error.message.as_str()),
-                    );
-                    set.files = state
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(&*uris, folder, file))
-                        .collect();
+                Ok(digested) => {
+                    set.status = digested.status.clone();
+                    set.files = digested.entries.iter().cloned().collect();
                 }
                 Err(error) => {
                     set.status = ChangesStatus::Error(error.clone());
@@ -846,30 +837,21 @@ impl Changes {
         changes: imba::store::Id<ChangeSets>,
         folder: &ResourceLocation,
         revision: &Revision,
-        uris: &Arc<dyn crate::higent::ResourceUriMap>,
-        actions: &[StateAction],
+        actions: Vec<ChangeAction>,
     ) {
-        let uris = Arc::clone(uris);
         let source = ChangeSetSource::Commit {
             folder: folder.clone(),
             revision: revision.to_owned(),
         };
         Self::update(store, changes, |changes| {
             changes.update_set_by_source(&source, |set| {
-                for action in actions {
+                for action in &actions {
                     match action {
-                        StateAction::ChangesetContentChanged(content) => {
-                            set.files = content
-                                .files
-                                .iter()
-                                .filter_map(|file| entry_of(&*uris, folder, file))
-                                .collect();
+                        ChangeAction::Content(entries) => {
+                            set.files = entries.iter().cloned().collect();
                         }
-                        StateAction::ChangesetStatusChanged(status) => {
-                            set.status = ChangesStatus::of_wire(
-                                &status.status,
-                                status.error.as_ref().map(|error| error.message.as_str()),
-                            );
+                        ChangeAction::Status(status) => {
+                            set.status = status.clone();
                         }
                         _ => {}
                     }
