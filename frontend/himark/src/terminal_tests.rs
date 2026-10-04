@@ -6,7 +6,8 @@
 
 use std::sync::{Arc, Mutex};
 
-use super::*;
+use ::terminals::pane::*;
+use ::terminals::*;
 use crate::app_ext::AppExt;
 use hikit::panel::PanelView;
 use alacritty_terminal::grid::Dimensions;

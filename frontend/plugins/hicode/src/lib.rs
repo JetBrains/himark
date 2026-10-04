@@ -201,7 +201,9 @@ fn navigate(
     );
     himark::window::Windows::put(store, window, window_entity);
 
-    himark::watch::sync_document_watches(store, documents, fx);
+    fx.scope(himark::app::AppCommand::Verb, |fx| {
+        documents::lanes::sync_document_watches(store, documents, fx)
+    });
     fx.scope(himark::app::AppCommand::Verb, |fx| {
         documents::lanes::sync_stripe_bases(store, documents, ui, fx)
     });

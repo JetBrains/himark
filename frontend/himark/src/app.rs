@@ -1359,7 +1359,9 @@ impl Application {
                         crate::window::Windows::put(store, window, entity);
 
                         if let Some(state) = Windows::session_state(store, window) {
-                            crate::watch::sync_document_watches(store, state.documents(), fx);
+                            fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, state.documents(), fx)
+            });
                             fx.scope(AppCommand::Verb, |fx| {
                                 documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
                             });
@@ -1424,7 +1426,9 @@ impl Application {
                             crate::window::Windows::put(store, window, entity);
 
                             if let Some(state) = Windows::session_state(store, window) {
-                                crate::watch::sync_document_watches(store, state.documents(), fx);
+                                fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, state.documents(), fx)
+            });
                                 fx.scope(AppCommand::Verb, |fx| {
                                     documents::lanes::sync_stripe_bases(
                                         store,
@@ -1483,7 +1487,9 @@ impl Application {
                             entity.show_document(store, ui, window, document, None, false, fx);
                             crate::window::Windows::put(store, window, entity);
                             if let Some(state) = Windows::session_state(store, window) {
-                                crate::watch::sync_document_watches(store, state.documents(), fx);
+                                fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, state.documents(), fx)
+            });
                                 fx.scope(AppCommand::Verb, |fx| {
                                     documents::lanes::sync_stripe_bases(
                                         store,
@@ -1607,7 +1613,9 @@ impl Application {
                 if let Some(documents) =
                     ahp_session::session::state::Hosts::documents_of_watch(store, subscription)
                 {
-                    crate::watch::refetch_watched(store, documents, subscription, fx);
+                    fx.scope(crate::app::AppCommand::Verb, |fx| {
+                    documents::lanes::refetch_watched(store, documents, subscription, fx)
+                });
                 }
 
                 self.pending_file_events.push(subscription);
@@ -1636,7 +1644,9 @@ impl Application {
                     ),
                 };
 
-                crate::watch::sync_document_watches(store, documents, fx);
+                fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, documents, fx)
+            });
                 fx.scope(AppCommand::Verb, |fx| {
                     documents::lanes::sync_stripe_bases(store, documents, ui, fx)
                 });

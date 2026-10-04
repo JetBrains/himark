@@ -8,144 +8,22 @@ use crate::commands::DynamicCommand;
 use documents::StoreDocumentEffect;
 use editor::location::ResourceLocation;
 
-pub struct SaveDocument {
-    save_as: bool,
-}
-
-impl SaveDocument {
-    pub fn existing_files() -> Self {
-        Self { save_as: false }
-    }
-
-    pub fn with_save_as() -> Self {
-        Self { save_as: true }
-    }
-}
-
-impl documents::dynamic::DocumentCommand for SaveDocument {
-    fn id(&self) -> &'static str {
-        "file.save"
-    }
-    fn name(&self) -> String {
-        "Save".to_owned()
-    }
-    fn offers_at(&self, location: &ResourceLocation) -> bool {
-        self.save_as || (!documents::is_synthetic(location) && !changesview::hichanges::scoped(location))
-    }
-    fn perform(
-        &self,
-        store: &mut Store,
-        _ui: &imba::ui::UiCtx,
-        documents: imba::store::Id<documents::OpenDocuments>,
-        document_id: documents::DocumentId,
-        document: &mut editor::document::Document,
-        _editor: editor::editor::EditorId,
-        location: &editor::location::ResourceLocation,
-        payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
-    ) {
-        if !documents::dynamic::DocumentCommand::offers_at(self, location) {
-            return;
-        }
-        if let Some(payload) = payload {
-            let payload = match payload.downcast::<(bool, u64, text::text::Text)>() {
-                Ok(landing) => {
-                    let (stored, revision, snapshot) = *landing;
-                    match stored {
-                        true => documents::OpenDocuments::mark_saved(
-                            store,
-                            documents,
-                            document_id,
-                            revision,
-                            snapshot,
-                        ),
-                        false => eprintln!("[himark] store failed for an open document"),
-                    }
-                    return;
-                }
-                Err(payload) => payload,
-            };
-
-            if let Ok(picked) = payload.downcast::<Option<ResourceLocation>>() {
-                let Some(new_location) = *picked else {
-                    return;
-                };
-                documents::OpenDocuments::set_location(
-                    store,
-                    documents,
-                    document_id,
-                    new_location.clone(),
-                );
-                // The RECENTS next to the documents the save ran in —
-                // the sibling of the collection the command closes over.
-                if let Some(recents) = ahp_session::session::state::Hosts::owner_of_documents(store, documents)
+pub fn save_document(save_as: bool) -> documents::save::SaveDocument {
+    documents::save::SaveDocument::new(
+        save_as,
+        std::sync::Arc::new(changesview::hichanges::scoped),
+        std::sync::Arc::new(|store, documents, from, to| {
+            // The RECENTS next to the documents the save ran in — the
+            // sibling of the collection the command closes over.
+            if let Some(recents) =
+                ahp_session::session::state::Hosts::owner_of_documents(store, documents)
                     .map(|state| state.recents())
-                {
-                    ahp_chat::recents::RecentLocations::replace(store, recents, location, &new_location);
-                }
-
-                crate::commands::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
-                Self::launch_store(store, documents, document, document_id, &new_location, fx);
+            {
+                ahp_chat::recents::RecentLocations::replace(store, recents, from, to);
             }
-            return;
-        }
-        if documents::is_synthetic(location) {
-            let mut suggested = location.name().to_owned();
-            if !suggested.contains('.') {
-                suggested.push_str(".md");
-            }
-            fx.push(
-                AnyEffect::new(documents::PickSaveEffect { suggested }).map(|picked| {
-                    editor::editor_view::EditorCommand::Dynamic {
-                        id: "file.save",
-                        payload: Some(editor::dynamic::DynPayload::new(picked)),
-                    }
-                }),
-            );
-            return;
-        }
-        let Some(document_id) = documents::OpenDocuments::by_location(store, documents, location)
-        else {
-            return;
-        };
-        Self::launch_store(store, documents, document, document_id, location, fx);
-    }
-}
-
-impl SaveDocument {
-    fn launch_store(
-        store: &mut Store,
-        documents: imba::store::Id<documents::OpenDocuments>,
-        document: &editor::document::Document,
-        document_id: documents::DocumentId,
-        location: &ResourceLocation,
-        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
-    ) {
-        let Some(entity) = documents::OpenDocuments::entity(store, documents, document_id) else {
-            return;
-        };
-
-        let revision = document.revision();
-        let end = document.text().byte_count().min(u32::MAX as usize) as u32;
-        let text = document.text().view().substring(0..end);
-
-        let snapshot = document.text().clone();
-        let previous = entity.save_token();
-        let token = fx.push(
-            AnyEffect::new(StoreDocumentEffect {
-                location: location.clone(),
-                text,
-            })
-            .map(move |stored| editor::editor_view::EditorCommand::Dynamic {
-                id: "file.save",
-                payload: Some(editor::dynamic::DynPayload::new((stored, revision, snapshot))),
-            }),
-        );
-        if let Some(previous) = previous {
-            fx.cancel(previous);
-        }
-        documents::OpenDocuments::set_save_token(store, documents, document_id, Some(token));
-    }
+            crate::commands::AppRequests::push(store, std::sync::Arc::new(SyncWatches));
+        }),
+    )
 }
 
 /// Stores every open, modified, file-backed document — each through
@@ -234,7 +112,9 @@ impl DynamicCommand for SyncWatches {
         fx: &mut AppFx<'_>,
     ) {
         if let Some(state) = crate::window::Windows::session_state(store, window) {
-            crate::watch::sync_document_watches(store, state.documents(), fx);
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, state.documents(), fx)
+            });
             fx.scope(crate::app::AppCommand::Verb, |fx| {
                 documents::lanes::sync_stripe_bases(store, state.documents(), &app.ui_ctx(), fx)
             });

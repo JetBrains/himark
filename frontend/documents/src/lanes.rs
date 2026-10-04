@@ -74,3 +74,23 @@ pub fn sync_stripe_bases(
         },
     );
 }
+
+/// Refetch the document a WATCH fired for — the landing routes At
+/// the collection like every other watch landing.
+pub fn refetch_watched(
+    store: &mut imba::store::Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    subscription: crate::watch::Subscription,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    crate::watch::refetch_watched(store, documents, subscription, fx, move |document, serial, text| {
+        imba::command::Verb::at(
+            documents,
+            crate::DocumentsCommand::Refetched {
+                document,
+                serial,
+                text,
+            },
+        )
+    });
+}

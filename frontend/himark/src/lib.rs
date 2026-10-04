@@ -3,9 +3,7 @@
 
 pub mod app;
 pub mod app_ext;
-pub mod changes_view;
 pub mod commands;
-pub mod completion;
 pub mod diffs;
 pub mod dock;
 pub mod drawer;
@@ -20,10 +18,7 @@ pub mod higent;
 pub mod hihistory;
 pub mod hipeek;
 pub mod hisearch;
-pub mod hover;
 pub mod keymap;
-pub mod locations;
-pub mod menu;
 pub mod modal;
 pub mod navigation;
 pub mod new_session;
@@ -32,7 +27,6 @@ pub mod save;
 pub mod startup_profile;
 pub mod state;
 pub mod stats;
-pub mod terminal;
 #[cfg(any(test, feature = "test-support"))]
 pub mod test_driver;
 #[cfg(any(test, feature = "test-support"))]
@@ -46,6 +40,8 @@ pub mod diff_pane;
 pub mod pane_rows;
 pub mod toolbar;
 pub mod watch;
+#[cfg(test)]
+mod terminal_tests;
 pub mod window;
 pub mod workbench;
 pub mod workbench_node;

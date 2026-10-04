@@ -167,7 +167,9 @@ impl DynamicCommand for OpenDiffPair {
             self.pair.clone(),
             fx,
         );
-        crate::watch::sync_document_watches(store, self.documents, fx);
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
+                documents::lanes::sync_document_watches(store, self.documents, fx)
+            });
         fx.scope(AppCommand::Verb, |fx| {
             documents::lanes::sync_stripe_bases(store, self.documents, ui, fx)
         });

@@ -426,7 +426,7 @@ mod app {
                         },
                     );
                     state.register_document_command(Arc::new(
-                        himark::save::SaveDocument::existing_files(),
+                        himark::save::save_document(false),
                     ));
                     state.register_handler::<documents::ListDirectoryEffect>(
                         ahp_session::fsroute::RouteList {

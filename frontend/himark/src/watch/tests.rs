@@ -1284,7 +1284,9 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
 
     // ...the sweep leaves it alone...
     let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
-    crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
+    batch.effects().scope(crate::app::AppCommand::Verb, |fx| {
+        documents::lanes::sync_document_watches(&mut store, docs(), fx)
+    });
     assert!(
         crate::test_support::surviving_launches(batch).is_empty(),
         "a host-synced document never re-subscribes"
@@ -1327,7 +1329,9 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     // The channel dies: mode two re-arms the client's own watching.
     let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
     OpenDocuments::set_host_synced(&mut store, docs(), id, false, &mut batch.effects());
-    crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
+    batch.effects().scope(crate::app::AppCommand::Verb, |fx| {
+        documents::lanes::sync_document_watches(&mut store, docs(), fx)
+    });
     assert!(
         crate::test_support::surviving_launches(batch)
             .iter()
