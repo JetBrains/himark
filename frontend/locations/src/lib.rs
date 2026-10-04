@@ -5,9 +5,17 @@
 //! docs/ui/location-list.md): the resolved shape of a result stream
 //! and the session's standing feed rows, addressed by
 //! `(Id<LocationLists>, FeedId)`. Pure model — the stream pump lives
-//! with the drivers, the forests and washes with the workbench. No
+//! with the drivers (the shell's wire lanes); the faces — the
+//! search tab, the peek card — and the washes are this crate's too
+//! (`search`, `peek`, `views`). No
 //! document is fetched here and no URI parsed: locations arrive
 //! resolved.
+
+pub mod peek;
+pub mod search;
+pub mod views;
+
+pub use views::{dispose_feed, files_forest, locations_forest, LocationsWashHook, WashDocument};
 
 use editor::ResourceLocation;
 use imba::store::Store;
