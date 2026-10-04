@@ -1571,7 +1571,7 @@ impl Canvas {
                         let text = self.composer_text().unwrap_or_default();
                         let history = Changes::of(store, self.changes).map(|held| held.history());
                         if let (false, Some(history)) = (text.trim().is_empty(), history) {
-                            self.request = Some(crate::commands::shell_ask(std::sync::Arc::new(
+                            self.request = Some(crate::PanelRequest::Perform(std::sync::Arc::new(
                                 crate::hihistory::CommitHistory {
                                     history,
                                     folder: self.source.folder().clone(),

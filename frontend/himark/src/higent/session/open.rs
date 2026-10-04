@@ -360,9 +360,7 @@ pub(crate) fn apply_channel_actions(
                 if let Some(wire) =
                     crate::higent::Hosts::family(store, key).map(|family| family.changes_wire())
                 {
-                    crate::drivers::changes::adopt_session_catalog(
-                        store, window, key, wire, changed, fx,
-                    );
+                    crate::drivers::changes::adopt_session_catalog(store, key, wire, changed, fx);
                 }
             }
             _ => {}

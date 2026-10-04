@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::any::{Any, TypeId};
+use std::any::TypeId;
 use std::sync::Arc;
 
 use imba::store::Store;

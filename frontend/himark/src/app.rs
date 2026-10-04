@@ -945,6 +945,14 @@ impl Application {
                     &self.ui_ctx(),
                     &mut fx,
                 );
+                // The gesture-ask lanes: the views noted onto their
+                // MODELS (grow, commit fetches, refetches); the
+                // drivers drain the notes onto the wires here — no
+                // view carries a wire or a window for these.
+                fx.scope(AppCommand::Verb, |fx| {
+                    crate::drivers::history::sync(&mut store, family.history_wire(), fx);
+                    crate::drivers::changes::sync(&mut store, family.changes_wire(), fx);
+                });
             }
         }
         // The safety net for a tail lane's follow-up: the queue loop
@@ -1319,7 +1327,9 @@ impl Application {
 
                         if let Some(family) = Windows::session_family(store, window) {
                             crate::watch::sync_document_watches(store, family.documents(), fx);
-                            crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                            fx.scope(AppCommand::Verb, |fx| {
+                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx)
+                            });
                         }
                     }
                     Some(ModalRequest::OpenLocations(locations)) => {
@@ -1365,7 +1375,14 @@ impl Application {
 
                             if let Some(family) = Windows::session_family(store, window) {
                                 crate::watch::sync_document_watches(store, family.documents(), fx);
-                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                                fx.scope(AppCommand::Verb, |fx| {
+                                    crate::diffs::sync_stripe_bases(
+                                        store,
+                                        family.documents(),
+                                        ui,
+                                        fx,
+                                    )
+                                });
                             }
                         }
                         ModalRequest::OpenLocations(locations) => {
@@ -1400,7 +1417,14 @@ impl Application {
                             crate::Windows::put(store, window, entity);
                             if let Some(family) = Windows::session_family(store, window) {
                                 crate::watch::sync_document_watches(store, family.documents(), fx);
-                                crate::diffs::sync_stripe_bases(store, family.documents(), ui, fx);
+                                fx.scope(AppCommand::Verb, |fx| {
+                                    crate::diffs::sync_stripe_bases(
+                                        store,
+                                        family.documents(),
+                                        ui,
+                                        fx,
+                                    )
+                                });
                             }
                         }
                         ModalRequest::OpenLocations(locations) => {
@@ -1512,7 +1536,9 @@ impl Application {
                 };
 
                 crate::watch::sync_document_watches(store, documents, fx);
-                crate::diffs::sync_stripe_bases(store, documents, ui, fx);
+                fx.scope(AppCommand::Verb, |fx| {
+                    crate::diffs::sync_stripe_bases(store, documents, ui, fx)
+                });
 
                 if opened.primary {
                     if let Some(mut entity) = crate::Windows::window(store, window) {

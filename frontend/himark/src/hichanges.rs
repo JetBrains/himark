@@ -311,6 +311,10 @@ pub struct ChangeSets {
     /// not a store component.
     rearms: Vec<ResourceLocation>,
 
+    /// Refetch intents the views NOTED (None = every folder) — the
+    /// wire driver's lane drains them; no view carries a wire.
+    refetch_asks: Vec<Option<ResourceLocation>>,
+
     /// The unified tree VIEWS over this collection's sets — one per
     /// mounted dock, changes- or history-flavored only by the data
     /// they derive rows from (crate::changes_view). The collection
@@ -405,6 +409,7 @@ impl Changes {
             sets: rpds::HashTrieMapSync::new_sync(),
             by_source: rpds::HashTrieMapSync::new_sync(),
             rearms: Vec::new(),
+            refetch_asks: Vec::new(),
             views: rpds::HashTrieMapSync::new_sync(),
             viewers: rpds::HashTrieMapSync::new_sync(),
             stale: rpds::HashTrieSetSync::new_sync(),
@@ -452,7 +457,7 @@ impl Changes {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.sets.is_empty()
+        self.sets.is_empty() && self.refetch_asks.is_empty()
     }
 
     fn folder_set(&self, folder: &ResourceLocation) -> Option<&ChangeSet> {
@@ -889,6 +894,31 @@ impl Changes {
 
     /// Drain the stripe-base re-ask note the mutations left — the
     /// driver runs the asks with the effects the model does not hold.
+    /// Note a refetch ask for the driver's lane (None = all).
+    pub fn ask_refetch(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        only: Option<ResourceLocation>,
+    ) {
+        Self::update(store, changes, |held| held.refetch_asks.push(only));
+    }
+
+    pub(crate) fn owes_refetch(store: &Store, changes: imba::store::Id<ChangeSets>) -> bool {
+        Self::of(store, changes).is_some_and(|held| !held.refetch_asks.is_empty())
+    }
+
+    pub(crate) fn take_refetch_asks(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+    ) -> Vec<Option<ResourceLocation>> {
+        let Some(mut held) = store.entity::<ChangeSets>(changes).cloned() else {
+            return Vec::new();
+        };
+        let asks = std::mem::take(&mut held.refetch_asks);
+        store.put_entity(changes, held);
+        asks
+    }
+
     pub(crate) fn take_rearms(
         store: &mut Store,
         changes: imba::store::Id<ChangeSets>,
@@ -1333,12 +1363,19 @@ impl crate::DynamicCommand for RefetchChanges {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let Some(wire) = self.wire.or_else(|| {
-            crate::Windows::session_family(store, window).map(|family| family.changes_wire())
-        }) else {
+        let _ = fx;
+        let Some(changes) = crate::Windows::session_family(store, window)
+            .map(|family| family.changes())
+            .or_else(|| {
+                // An addressed refetch (the view's chip) names its
+                // wire's collection directly.
+                self.wire
+                    .and_then(|wire| crate::drivers::changes::changes_of(store, wire))
+            })
+        else {
             return;
         };
-        crate::drivers::changes::refetch(store, window, wire, self.folder.as_ref(), fx);
+        Changes::ask_refetch(store, changes, self.folder.clone());
     }
 }
 

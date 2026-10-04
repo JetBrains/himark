@@ -55,10 +55,10 @@ pub fn sync_stripe_bases(
     store: &mut Store,
     documents: imba::store::Id<crate::OpenDocuments>,
     ui: &imba::UiCtx,
-    fx: &mut AppFx<'_>,
+    fx: &mut imba::command::Fx<'_>,
 ) {
     fx.scope(
-        move |command| AppCommand::at(documents, command),
+        move |command| imba::command::Verb::at(documents, command),
         |fx| {
             documents::diffs::sync_stripe_bases(
                 store,

@@ -18,6 +18,7 @@ use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetSt
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
 use crate::{AppCommand, ResourceLocation, ResourceType};
 use himark_ahp_ext_types::history as history_wire;
+use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
 /// One folder's wire: the seat and AHP session its changeset rides,
@@ -97,6 +98,14 @@ impl ChangesWire {
 
 fn of(store: &Store, wire: imba::store::Id<ChangesWire>) -> Option<&ChangesWire> {
     store.entity(wire)
+}
+
+/// The collection a wire drives — the addressed-refetch consult.
+pub(crate) fn changes_of(
+    store: &Store,
+    wire: imba::store::Id<ChangesWire>,
+) -> Option<imba::store::Id<ChangeSets>> {
+    of(store, wire).map(|row| row.changes)
 }
 
 /// Mutate in place; a gone driver takes no write — never minted from
@@ -181,7 +190,7 @@ pub fn ensure_folder(
                 crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction { directory },
             ),
         })
-        .map(move |result| AppCommand::Dynamic(window, Arc::new(Dispatched { result }))),
+        .map(move |result| AppCommand::Verb(Verb::Dynamic(Arc::new(Dispatched { result })))),
     );
     let feed_known = of(store, wire)
         .and_then(|row| row.session.as_ref())
@@ -216,10 +225,9 @@ pub fn ensure_folder(
 /// old poll loop by serial.
 pub fn refetch(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<ChangesWire>,
     only: Option<&ResourceLocation>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -248,14 +256,7 @@ pub fn refetch(
         Changes::nudge_folder(store, changes, folder);
     }
     for (folder, seat, channel) in riding {
-        fx.push(subscribe_set(
-            window,
-            wire,
-            folder,
-            seat,
-            channel,
-            uris.clone(),
-        ));
+        fx.push(subscribe_set(wire, folder, seat, channel, uris.clone()));
     }
 }
 
@@ -263,14 +264,13 @@ pub fn refetch(
 /// poller drained it.
 pub(crate) fn adopt_session_catalog(
     store: &mut Store,
-    window: crate::WindowId,
     home: &crate::SessionId,
     wire: imba::store::Id<ChangesWire>,
     changed: &crate::higent::ahp_types::actions::SessionChangesetsChangedAction,
     fx: &mut crate::AppFx<'_>,
 ) {
     let entries = digest_catalog(changed.changesets.as_deref().unwrap_or_default());
-    subscribe_fresh(store, window, home, wire, entries, fx);
+    subscribe_fresh(store, home, wire, entries, fx);
 }
 
 /// Match catalog entries to the folders riding this session's feed
@@ -312,7 +312,6 @@ pub(crate) fn claim_channels(
 /// the collection first hears of it when a snapshot lands.
 fn subscribe_fresh(
     store: &mut Store,
-    window: crate::WindowId,
     home: &crate::SessionId,
     wire: imba::store::Id<ChangesWire>,
     entries: Vec<CatalogEntry>,
@@ -334,20 +333,15 @@ fn subscribe_fresh(
     });
     Changes::nudge_all_in(store, changes);
 
-    crate::drivers::history::subscribe_fresh(store, window, home, history_wire, &entries, fx);
-    let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
-        return;
-    };
-    for (folder, seat, channel) in fresh {
-        fx.push(subscribe_set(
-            window,
-            wire,
-            folder,
-            seat,
-            channel,
-            uris.clone(),
-        ));
-    }
+    fx.scope(AppCommand::Verb, |fx| {
+        crate::drivers::history::subscribe_fresh(store, home, history_wire, &entries, fx);
+        let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
+            return;
+        };
+        for (folder, seat, channel) in fresh {
+            fx.push(subscribe_set(wire, folder, seat, channel, uris.clone()));
+        }
+    });
 }
 
 /// One folder's changeset subscribe — the snapshot comes home as
@@ -355,22 +349,18 @@ fn subscribe_fresh(
 /// worker; the UI thread receives finished entries
 /// (docs/perf-issue.md §2).
 fn subscribe_set(
-    window: crate::WindowId,
     wire: imba::store::Id<ChangesWire>,
     folder: ResourceLocation,
     seat: Arc<dyn AhpServer>,
     channel: crate::higent::ChannelUri,
     uris: Arc<dyn crate::higent::ResourceUriMap>,
-) -> crate::AppEffect {
+) -> imba::effect::AnyEffect<Verb> {
     AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-        AppCommand::Dynamic(
-            window,
-            Arc::new(SnapshotLanded {
-                wire,
-                result: result.map(|state| digest_state(&*uris, &folder, &state)),
-                folder,
-            }),
-        )
+        Verb::Dynamic(Arc::new(SnapshotLanded {
+            wire,
+            result: result.map(|state| digest_state(&*uris, &folder, &state)),
+            folder,
+        }))
     })
 }
 
@@ -380,10 +370,9 @@ fn subscribe_set(
 /// the one standing loop.
 fn relaunch_poll(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<ChangesWire>,
     folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -408,15 +397,12 @@ fn relaunch_poll(
     let landing = folder.clone();
     fx.push(
         AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(PollDrained {
-                    wire,
-                    serial,
-                    actions: digest_actions(&*uris, &landing, &actions),
-                    folder: landing,
-                }),
-            )
+            Verb::Dynamic(Arc::new(PollDrained {
+                wire,
+                serial,
+                actions: digest_actions(&*uris, &landing, &actions),
+                folder: landing,
+            }))
         }),
     );
 }
@@ -460,7 +446,7 @@ fn run_tail(
     ui: &imba::UiCtx,
     store: &mut Store,
     changes: imba::store::Id<ChangeSets>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some((documents, rearms)) = Changes::take_rearms(store, changes) else {
         return;
@@ -483,29 +469,15 @@ struct SnapshotLanded {
     result: Result<crate::hichanges::DigestedChangeset, String>,
 }
 
-impl crate::DynamicCommand for SnapshotLanded {
+impl imba::command::DynamicCommand for SnapshotLanded {
     fn id(&self) -> &'static str {
         "changes.snapshot"
     }
     fn name(&self) -> String {
         "Changes Snapshot".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        apply_snapshot(
-            store,
-            &app.ui_ctx(),
-            window,
-            self.wire,
-            &self.folder,
-            self.result.clone(),
-            fx,
-        );
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+        apply_snapshot(store, ui, self.wire, &self.folder, self.result.clone(), fx);
     }
 }
 
@@ -514,11 +486,10 @@ impl crate::DynamicCommand for SnapshotLanded {
 pub(crate) fn apply_snapshot(
     store: &mut Store,
     ui: &imba::UiCtx,
-    window: crate::WindowId,
     wire: imba::store::Id<ChangesWire>,
     folder: &ResourceLocation,
     result: Result<crate::hichanges::DigestedChangeset, String>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(changes) = of(store, wire).map(|row| row.changes) else {
         return; // the family went while the ask flew
@@ -527,7 +498,7 @@ pub(crate) fn apply_snapshot(
     Changes::adopt_snapshot(store, changes, folder, result);
     run_tail(ui, store, changes, fx);
     if adopted {
-        relaunch_poll(store, window, wire, folder, fx);
+        relaunch_poll(store, wire, folder, fx);
     }
 }
 
@@ -539,24 +510,17 @@ struct PollDrained {
     actions: Vec<crate::hichanges::ChangeAction>,
 }
 
-impl crate::DynamicCommand for PollDrained {
+impl imba::command::DynamicCommand for PollDrained {
     fn id(&self) -> &'static str {
         "changes.polled"
     }
     fn name(&self) -> String {
         "Changes Poll".to_owned()
     }
-    fn perform(
-        &self,
-        app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         apply_poll(
             store,
-            &app.ui_ctx(),
-            window,
+            ui,
             self.wire,
             &self.folder,
             self.serial,
@@ -568,16 +532,14 @@ impl crate::DynamicCommand for PollDrained {
 
 /// The poll landing's application — store-level so tests drive it
 /// the way the command does.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn apply_poll(
     store: &mut Store,
     ui: &imba::UiCtx,
-    window: crate::WindowId,
     wire: imba::store::Id<ChangesWire>,
     folder: &ResourceLocation,
     serial: u64,
     actions: Vec<crate::hichanges::ChangeAction>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -594,7 +556,7 @@ pub(crate) fn apply_poll(
     // its batch — a drained action is never dropped — but it does
     // not multiply loops (docs/perf-issue.md §2).
     if current {
-        relaunch_poll(store, window, wire, folder, fx);
+        relaunch_poll(store, wire, folder, fx);
     }
 }
 
@@ -627,7 +589,7 @@ impl crate::DynamicCommand for SessionLanded {
         match &self.result {
             Ok(state) => {
                 let entries = digest_catalog(state.changesets.as_deref().unwrap_or_default());
-                subscribe_fresh(store, window, &self.home, self.wire, entries, fx);
+                subscribe_fresh(store, &self.home, self.wire, entries, fx);
                 relaunch_session_poll(store, window, &self.home, self.wire, fx);
             }
             Err(error) => {
@@ -688,20 +650,14 @@ pub(crate) struct Dispatched {
     pub(crate) result: Result<(), String>,
 }
 
-impl crate::DynamicCommand for Dispatched {
+impl imba::command::DynamicCommand for Dispatched {
     fn id(&self) -> &'static str {
         "changes.dispatched"
     }
     fn name(&self) -> String {
         "Changes Dispatch".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        _store: &mut Store,
-        _window: crate::WindowId,
-        _fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, _store: &mut Store, _ui: &imba::UiCtx, _fx: &mut Fx<'_>) {
         if let Err(error) = &self.result {
             eprintln!("[hichanges] workingDirectorySet failed: {error}");
         }
@@ -899,4 +855,18 @@ pub(crate) fn digest_catalog(
 pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> bool {
     let abs = format!("/{}", folder.path().join("/"));
     entry.description.as_deref() == Some(abs.as_str()) || entry.uri.as_str().ends_with(&abs)
+}
+
+/// The batch-tail changes lane: drain the model's refetch asks onto
+/// the wire — a clean collection costs a map read.
+pub(crate) fn sync(store: &mut Store, wire: imba::store::Id<ChangesWire>, fx: &mut Fx<'_>) {
+    let Some(changes) = of(store, wire).map(|row| row.changes) else {
+        return;
+    };
+    if !Changes::owes_refetch(store, changes) {
+        return;
+    }
+    for only in Changes::take_refetch_asks(store, changes) {
+        refetch(store, wire, only.as_ref(), fx);
+    }
 }

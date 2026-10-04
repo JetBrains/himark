@@ -21,7 +21,8 @@ use crate::higent::{
 use crate::hihistory::{
     CommitAuthor, CommitInfo, CommitRef, History, HistoryDelta, HistoryHead, HistorySnapshot,
 };
-use crate::{AppCommand, ResourceLocation};
+use crate::ResourceLocation;
+use imba::command::{Fx, Verb};
 use himark_ahp_ext_types::history as history_wire;
 use imba::{effect::AnyEffect, store::Store};
 
@@ -72,25 +73,10 @@ impl HistoryWire {
     pub(crate) fn is_empty(&self) -> bool {
         self.folders.is_empty()
     }
-
-    /// The model this wire drives — the gesture commands' sanity
-    /// check that a window-resolved wire serves the history they
-    /// were stamped with.
-    pub(crate) fn drives(&self, history: imba::store::Id<History>) -> bool {
-        self.history == history
-    }
 }
 
 fn of(store: &Store, wire: imba::store::Id<HistoryWire>) -> Option<&HistoryWire> {
     store.entity(wire)
-}
-
-pub(crate) fn drives(
-    store: &Store,
-    wire: imba::store::Id<HistoryWire>,
-    history: imba::store::Id<History>,
-) -> bool {
-    of(store, wire).is_some_and(|row| row.drives(history))
 }
 
 /// Mutate in place; a gone driver takes no write — never minted
@@ -143,11 +129,10 @@ pub(crate) fn ensure_folder(
 /// each fresh claim.
 pub(crate) fn subscribe_fresh(
     store: &mut Store,
-    window: crate::WindowId,
     home: &crate::SessionId,
     wire: imba::store::Id<HistoryWire>,
     entries: &[CatalogEntry],
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -184,14 +169,11 @@ pub(crate) fn subscribe_fresh(
         let landing = folder.clone();
         fx.push(
             AnyEffect::new(SubscribeHistoryEffect { seat, channel }).map(move |result| {
-                AppCommand::Dynamic(
-                    window,
-                    Arc::new(SnapshotLanded {
-                        wire,
-                        folder: landing.clone(),
-                        result: result.map(digest_snapshot),
-                    }),
-                )
+                Verb::Dynamic(Arc::new(SnapshotLanded {
+                    wire,
+                    folder: landing.clone(),
+                    result: result.map(digest_snapshot),
+                }))
             }),
         );
     }
@@ -347,10 +329,9 @@ fn store_harvest(
 
 fn relaunch_poll(
     store: &Store,
-    window: crate::WindowId,
     wire: imba::store::Id<HistoryWire>,
     folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(held) = of(store, wire).and_then(|row| row.folders.get(folder)) else {
         return;
@@ -362,15 +343,12 @@ fn relaunch_poll(
     fx.push(
         AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
             let (deltas, harvest) = digest_deltas(&actions);
-            AppCommand::Dynamic(
-                window,
-                Arc::new(Polled {
-                    wire,
-                    folder: landing.clone(),
-                    deltas,
-                    harvest,
-                }),
-            )
+            Verb::Dynamic(Arc::new(Polled {
+                wire,
+                folder: landing.clone(),
+                deltas,
+                harvest,
+            }))
         }),
     );
 }
@@ -382,20 +360,14 @@ struct SnapshotLanded {
     result: Result<(HistorySnapshot, Harvest), String>,
 }
 
-impl crate::DynamicCommand for SnapshotLanded {
+impl imba::command::DynamicCommand for SnapshotLanded {
     fn id(&self) -> &'static str {
         "history.snapshot"
     }
     fn name(&self) -> String {
         "History Snapshot".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire) else {
             return;
         };
@@ -405,7 +377,7 @@ impl crate::DynamicCommand for SnapshotLanded {
                 store_harvest(store, self.wire, &self.folder, harvest);
                 History::land_snapshot(store, history, &self.folder, snapshot);
                 Changes::nudge_folder(store, changes, &self.folder);
-                relaunch_poll(store, window, self.wire, &self.folder, fx);
+                relaunch_poll(store, self.wire, &self.folder, fx);
             }
             Err(error) => {
                 History::fold_error(store, history, &self.folder, &error);
@@ -423,20 +395,14 @@ struct Polled {
     harvest: Harvest,
 }
 
-impl crate::DynamicCommand for Polled {
+impl imba::command::DynamicCommand for Polled {
     fn id(&self) -> &'static str {
         "history.polled"
     }
     fn name(&self) -> String {
         "History Update".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire) else {
             return;
         };
@@ -444,7 +410,7 @@ impl crate::DynamicCommand for Polled {
         store_harvest(store, self.wire, &self.folder, self.harvest.clone());
         History::fold_deltas(store, history, &self.folder, self.deltas.clone());
         Changes::nudge_folder(store, changes, &self.folder);
-        relaunch_poll(store, window, self.wire, &self.folder, fx);
+        relaunch_poll(store, self.wire, &self.folder, fx);
     }
 }
 
@@ -452,11 +418,10 @@ impl crate::DynamicCommand for Polled {
 /// commit's changeset channel while the set computes.
 pub(crate) fn fetch_commit_files(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<HistoryWire>,
     folder: &ResourceLocation,
     commit: &crate::hichanges::Revision,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -480,15 +445,12 @@ pub(crate) fn fetch_commit_files(
     let (landing, commit_id) = (folder.clone(), commit.to_owned());
     fx.push(
         AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(CommitFilesLanded {
-                    wire,
-                    folder: landing.clone(),
-                    commit: commit_id.clone(),
-                    result: result.map(|state| digest_state(&*uris, &landing, &state)),
-                }),
-            )
+            Verb::Dynamic(Arc::new(CommitFilesLanded {
+                wire,
+                folder: landing.clone(),
+                commit: commit_id.clone(),
+                result: result.map(|state| digest_state(&*uris, &landing, &state)),
+            }))
         }),
     );
 }
@@ -502,25 +464,19 @@ struct CommitFilesLanded {
     result: Result<crate::hichanges::DigestedChangeset, String>,
 }
 
-impl crate::DynamicCommand for CommitFilesLanded {
+impl imba::command::DynamicCommand for CommitFilesLanded {
     fn id(&self) -> &'static str {
         "history.commit-files"
     }
     fn name(&self) -> String {
         "Commit Files".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(changes) = of(store, self.wire).map(|row| row.changes) else {
             return;
         };
         Changes::adopt_commit_state(store, changes, &self.folder, &self.commit, &self.result);
-        settle_commit_fetch(store, window, self.wire, &self.folder, &self.commit, fx);
+        settle_commit_fetch(store, self.wire, &self.folder, &self.commit, fx);
     }
 }
 
@@ -532,20 +488,14 @@ struct CommitFilesPolled {
     actions: Vec<crate::hichanges::ChangeAction>,
 }
 
-impl crate::DynamicCommand for CommitFilesPolled {
+impl imba::command::DynamicCommand for CommitFilesPolled {
     fn id(&self) -> &'static str {
         "history.commit-files-polled"
     }
     fn name(&self) -> String {
         "Commit Files Update".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
         let Some(changes) = of(store, self.wire).map(|row| row.changes) else {
             return;
         };
@@ -556,17 +506,16 @@ impl crate::DynamicCommand for CommitFilesPolled {
             &self.commit,
             self.actions.clone(),
         );
-        settle_commit_fetch(store, window, self.wire, &self.folder, &self.commit, fx);
+        settle_commit_fetch(store, self.wire, &self.folder, &self.commit, fx);
     }
 }
 
 fn settle_commit_fetch(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<HistoryWire>,
     folder: &ResourceLocation,
     commit: &crate::hichanges::Revision,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -595,15 +544,12 @@ fn settle_commit_fetch(
             let (landing, commit_id) = (folder.clone(), commit.to_owned());
             fx.push(
                 AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
-                    AppCommand::Dynamic(
-                        window,
-                        Arc::new(CommitFilesPolled {
-                            wire,
-                            folder: landing.clone(),
-                            commit: commit_id.clone(),
-                            actions: digest_actions(&*uris, &landing, &actions),
-                        }),
-                    )
+                    Verb::Dynamic(Arc::new(CommitFilesPolled {
+                        wire,
+                        folder: landing.clone(),
+                        commit: commit_id.clone(),
+                        actions: digest_actions(&*uris, &landing, &actions),
+                    }))
                 }),
             );
         }
@@ -615,10 +561,9 @@ fn settle_commit_fetch(
 /// driver's wire.
 pub(crate) fn grow(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<HistoryWire>,
     folder: &ResourceLocation,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -644,23 +589,17 @@ pub(crate) fn grow(
                 },
             )),
         })
-        .map(move |result| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(crate::drivers::changes::Dispatched { result }),
-            )
-        }),
+        .map(move |result| Verb::Dynamic(Arc::new(crate::drivers::changes::Dispatched { result }))),
     );
 }
 
 /// Commit the working copy with a message.
 pub(crate) fn commit(
     store: &mut Store,
-    window: crate::WindowId,
     wire: imba::store::Id<HistoryWire>,
     folder: &ResourceLocation,
     message: String,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut Fx<'_>,
 ) {
     let Some(held) = of(store, wire).and_then(|row| row.folders.get(folder)) else {
         return;
@@ -679,11 +618,28 @@ pub(crate) fn commit(
                 },
             )),
         })
-        .map(move |result| {
-            AppCommand::Dynamic(
-                window,
-                Arc::new(crate::drivers::changes::Dispatched { result }),
-            )
-        }),
+        .map(move |result| Verb::Dynamic(Arc::new(crate::drivers::changes::Dispatched { result }))),
     );
+}
+
+/// The batch-tail history lane: drain the model's asks onto the
+/// folder wires — a clean collection costs a map read.
+pub(crate) fn sync(store: &mut Store, wire: imba::store::Id<HistoryWire>, fx: &mut Fx<'_>) {
+    let Some(history) = of(store, wire).map(|row| row.history) else {
+        return;
+    };
+    if !History::owes_asks(store, history) {
+        return;
+    }
+    for ask in History::take_asks(store, history) {
+        match ask {
+            crate::hihistory::HistoryAsk::Grow(folder) => grow(store, wire, &folder, fx),
+            crate::hihistory::HistoryAsk::CommitFiles(folder, commit) => {
+                fetch_commit_files(store, wire, &folder, &commit, fx)
+            }
+            crate::hihistory::HistoryAsk::Commit(folder, message) => {
+                commit(store, wire, &folder, message, fx)
+            }
+        }
+    }
 }

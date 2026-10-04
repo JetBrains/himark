@@ -102,6 +102,23 @@ pub struct History {
     changes: imba::store::Id<crate::hichanges::ChangeSets>,
 
     folders: rpds::HashTrieMapSync<ResourceLocation, FolderHistory>,
+
+    /// Outbound intents the views NOTED — the wire driver's lane
+    /// drains them each batch tail; the model never dispatches and
+    /// no view carries a wire or a window for these.
+    asks: Vec<HistoryAsk>,
+}
+
+/// What a face may ask of a folder's history — model vocabulary;
+/// the driver turns an ask into wire traffic.
+#[derive(Clone)]
+pub enum HistoryAsk {
+    /// Older commits behind the cursor the model holds.
+    Grow(ResourceLocation),
+    /// A commit's files into its change set.
+    CommitFiles(ResourceLocation, crate::hichanges::Revision),
+    /// Commit the working copy with a message.
+    Commit(ResourceLocation, String),
 }
 
 impl History {
@@ -111,6 +128,7 @@ impl History {
         Self {
             changes,
             folders: rpds::HashTrieMapSync::new_sync(),
+            asks: Vec::new(),
         }
     }
 
@@ -142,7 +160,31 @@ impl History {
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.folders.is_empty()
+        self.folders.is_empty() && self.asks.is_empty()
+    }
+
+    /// Note an ask for the driver's lane — the faces' door: no wire,
+    /// no window, just the model's own vocabulary.
+    pub fn ask(store: &mut Store, history: imba::store::Id<History>, ask: HistoryAsk) {
+        Self::update_folder(store, history, |held| held.asks.push(ask));
+    }
+
+    pub(crate) fn owes_asks(store: &Store, history: imba::store::Id<History>) -> bool {
+        store
+            .entity::<History>(history)
+            .is_some_and(|held| !held.asks.is_empty())
+    }
+
+    pub(crate) fn take_asks(
+        store: &mut Store,
+        history: imba::store::Id<History>,
+    ) -> Vec<HistoryAsk> {
+        let Some(mut held) = store.entity::<History>(history).cloned() else {
+            return Vec::new();
+        };
+        let asks = std::mem::take(&mut held.asks);
+        store.put_entity(history, held);
+        asks
     }
 
     /// The driver's attach door: an empty folder row, idempotent.
@@ -311,52 +353,24 @@ impl History {
     }
 }
 
-/// The window gesture: resolve the family's history WIRE at gesture
-/// time and hand the ask to the driver. The drives-check keeps a
-/// stale window honest — a mismatched wire drops the ask loudly.
-fn gesture_wire(
-    store: &imba::store::Store,
-    window: crate::WindowId,
-    history: imba::store::Id<History>,
-) -> Option<imba::store::Id<crate::drivers::history::HistoryWire>> {
-    let wire = crate::Windows::session_family(store, window)?.history_wire();
-    if !crate::drivers::history::drives(store, wire, history) {
-        eprintln!("[hihistory] gesture DROPPED: the window's wire serves another history");
-        return None;
-    }
-    Some(wire)
-}
-
 pub struct FetchCommitFiles {
     pub history: imba::store::Id<History>,
     pub folder: ResourceLocation,
     pub commit: crate::hichanges::Revision,
 }
 
-impl crate::DynamicCommand for FetchCommitFiles {
+impl imba::command::DynamicCommand for FetchCommitFiles {
     fn id(&self) -> &'static str {
         "history.fetch-commit"
     }
     fn name(&self) -> String {
         "Fetch Commit".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let Some(wire) = gesture_wire(store, window, self.history) else {
-            return;
-        };
-        crate::drivers::history::fetch_commit_files(
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+        History::ask(
             store,
-            window,
-            wire,
-            &self.folder,
-            &self.commit,
-            fx,
+            self.history,
+            HistoryAsk::CommitFiles(self.folder.clone(), self.commit.clone()),
         );
     }
 }
@@ -366,24 +380,15 @@ pub struct GrowHistory {
     pub folder: ResourceLocation,
 }
 
-impl crate::DynamicCommand for GrowHistory {
+impl imba::command::DynamicCommand for GrowHistory {
     fn id(&self) -> &'static str {
         "history.grow"
     }
     fn name(&self) -> String {
         "Show More History".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
-        let Some(wire) = gesture_wire(store, window, self.history) else {
-            return;
-        };
-        crate::drivers::history::grow(store, window, wire, &self.folder, fx);
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+        History::ask(store, self.history, HistoryAsk::Grow(self.folder.clone()));
     }
 }
 
@@ -393,33 +398,21 @@ pub struct CommitHistory {
     pub message: String,
 }
 
-impl crate::DynamicCommand for CommitHistory {
+impl imba::command::DynamicCommand for CommitHistory {
     fn id(&self) -> &'static str {
         "history.commit"
     }
     fn name(&self) -> String {
         "Commit".to_owned()
     }
-    fn perform(
-        &self,
-        _app: &mut crate::Application,
-        store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
-    ) {
+    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         if self.message.trim().is_empty() {
             return;
         }
-        let Some(wire) = gesture_wire(store, window, self.history) else {
-            return;
-        };
-        crate::drivers::history::commit(
+        History::ask(
             store,
-            window,
-            wire,
-            &self.folder,
-            self.message.clone(),
-            fx,
+            self.history,
+            HistoryAsk::Commit(self.folder.clone(), self.message.clone()),
         );
     }
 }

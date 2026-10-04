@@ -325,11 +325,8 @@ impl ChangesView {
                 else {
                     return;
                 };
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                    AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::hihistory::GrowHistory { history, folder }),
-                    ),
+                self.request = Some(ModalRequest::Perform(imba::command::Verb::Dynamic(
+                    Arc::new(crate::hihistory::GrowHistory { history, folder }),
                 )));
             }
             Some(RowItem::Note) | None => {}
@@ -403,16 +400,11 @@ impl View for ChangesView {
                                     let history =
                                         Changes::of(store, self.changes).map(|held| held.history());
                                     if let (true, Some(history)) = (unfetched, history) {
-                                        self.request = Some(ModalRequest::Perform(
-                                            crate::shell_verb(AppCommand::Dynamic(
-                                                self.window,
-                                                Arc::new(crate::hihistory::FetchCommitFiles {
-                                                    history,
-                                                    folder,
-                                                    commit: id,
-                                                }),
-                                            )),
-                                        ));
+                                        History::ask(
+                                            store,
+                                            history,
+                                            crate::hihistory::HistoryAsk::CommitFiles(folder, id),
+                                        );
                                     }
                                 }
                             }
@@ -467,15 +459,7 @@ impl View for ChangesView {
             }
 
             ChangesViewCommand::Refetch(folder) => {
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                    AppCommand::Dynamic(
-                        self.window,
-                        Arc::new(crate::hichanges::RefetchChanges {
-                            wire: Some(self.wire),
-                            folder: Some(folder),
-                        }),
-                    ),
-                )));
+                Changes::ask_refetch(store, self.changes, Some(folder));
             }
 
             ChangesViewCommand::AutoGrow => {
@@ -492,12 +476,7 @@ impl View for ChangesView {
                         continue;
                     }
                     self.grown.insert_mut(folder.clone(), more);
-                    self.request = Some(ModalRequest::Perform(crate::shell_verb(
-                        AppCommand::Dynamic(
-                            self.window,
-                            Arc::new(crate::hihistory::GrowHistory { history, folder }),
-                        ),
-                    )));
+                    History::ask(store, history, crate::hihistory::HistoryAsk::Grow(folder));
 
                     break;
                 }

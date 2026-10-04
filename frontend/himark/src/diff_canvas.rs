@@ -308,16 +308,10 @@ impl crate::DynamicCommand for OpenDiffCanvas {
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
             if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
-                crate::DynamicCommand::perform(
-                    &crate::hihistory::FetchCommitFiles {
-                        history,
-                        folder: folder.clone(),
-                        commit: id.clone(),
-                    },
-                    app,
+                crate::hihistory::History::ask(
                     store,
-                    window,
-                    fx,
+                    history,
+                    crate::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
                 );
             }
         }

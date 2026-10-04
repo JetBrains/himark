@@ -232,7 +232,9 @@ impl DynamicCommand for SyncWatches {
     ) {
         if let Some(family) = crate::Windows::session_family(store, window) {
             crate::watch::sync_document_watches(store, family.documents(), fx);
-            crate::diffs::sync_stripe_bases(store, family.documents(), &app.ui_ctx(), fx);
+            fx.scope(crate::AppCommand::Verb, |fx| {
+                crate::diffs::sync_stripe_bases(store, family.documents(), &app.ui_ctx(), fx)
+            });
         }
     }
 }

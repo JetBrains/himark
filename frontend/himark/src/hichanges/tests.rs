@@ -598,7 +598,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
 
     let mut store = imba::store::Store::new();
     let ui = imba::UiCtx::dont_use_too_slow();
-    let window = crate::WindowId::from_raw(7);
+    let _window = crate::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
     let history_wire: imba::store::Id<crate::drivers::history::HistoryWire> =
         imba::store::Id::mint();
@@ -619,7 +619,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
         },
     );
     crate::hichanges::Changes::ensure_working_set(&mut store, changes_id(), &folder());
-    let launches = |batch: imba::effect::Batch<crate::AppCommand>| {
+    let launches = |batch: imba::effect::Batch<imba::command::Verb>| {
         batch
             .drain()
             .into_iter()
@@ -632,7 +632,6 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     apply_snapshot(
         &mut store,
         &ui,
-        window,
         wire_id,
         &folder(),
         Ok(digest_state(&FileUris, &folder(), &ready(vec![]))),
@@ -646,7 +645,6 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     apply_snapshot(
         &mut store,
         &ui,
-        window,
         wire_id,
         &folder(),
         Ok(digest_state(&FileUris, &folder(), &ready(vec![]))),
@@ -659,7 +657,6 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     apply_poll(
         &mut store,
         &ui,
-        window,
         wire_id,
         &folder(),
         1,
@@ -689,7 +686,6 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     apply_poll(
         &mut store,
         &ui,
-        window,
         wire_id,
         &folder(),
         2,
