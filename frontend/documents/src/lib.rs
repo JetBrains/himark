@@ -568,7 +568,17 @@ impl Default for PendingSweeps {
 pub(crate) struct DocumentMint(u64);
 
 #[derive(Clone, Default)]
-struct DocumentHooks(rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>);
+struct DocumentHooks {
+    global: rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>,
+
+    /// Hooks WIRED to one collection — installed by the family
+    /// ceremony with their sibling ids in hand (docs/entities.md
+    /// law 4), retired with the collection.
+    scoped: rpds::HashTrieMapSync<
+        imba::store::Id<OpenDocuments>,
+        rpds::VectorSync<std::sync::Arc<dyn DocumentHook>>,
+    >,
+}
 
 impl OpenDocuments {
     pub fn register(
@@ -627,7 +637,7 @@ impl OpenDocuments {
             },
         );
         self.note_write(id);
-        for hook in Self::hooks(store).iter() {
+        for hook in Self::hooks(store, documents) {
             hook.opened(store, documents, id, hook_location.as_ref());
         }
         id
@@ -635,15 +645,47 @@ impl OpenDocuments {
 
     pub fn install_hook(store: &mut Store, hook: std::sync::Arc<dyn DocumentHook>) {
         let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
-        hooks.0.push_back_mut(hook);
+        hooks.global.push_back_mut(hook);
         store.put(hooks);
     }
 
-    fn hooks(store: &Store) -> rpds::VectorSync<std::sync::Arc<dyn DocumentHook>> {
-        store
-            .get::<DocumentHooks>()
-            .map(|hooks| hooks.0.clone())
-            .unwrap_or_default()
+    pub fn install_scoped_hook(
+        store: &mut Store,
+        scope: imba::store::Id<OpenDocuments>,
+        hook: std::sync::Arc<dyn DocumentHook>,
+    ) {
+        let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
+        let mut entries = hooks.scoped.get(&scope).cloned().unwrap_or_default();
+        entries.push_back_mut(hook);
+        hooks.scoped.insert_mut(scope, entries);
+        store.put(hooks);
+    }
+
+    /// Retire everything the ceremony wired to this collection: its
+    /// scoped hooks and scoped commands. The owner calls this from
+    /// its `destroy` — teardown cascades by ownership (law 6).
+    pub fn retire_scope(store: &mut Store, scope: imba::store::Id<OpenDocuments>) {
+        let mut hooks = store.get::<DocumentHooks>().cloned().unwrap_or_default();
+        hooks.scoped.remove_mut(&scope);
+        store.put(hooks);
+        crate::DocumentCommands::retire_scope(store, scope);
+    }
+
+    fn hooks(
+        store: &Store,
+        scope: imba::store::Id<OpenDocuments>,
+    ) -> Vec<std::sync::Arc<dyn DocumentHook>> {
+        let Some(hooks) = store.get::<DocumentHooks>() else {
+            return Vec::new();
+        };
+        hooks
+            .scoped
+            .get(&scope)
+            .into_iter()
+            .flat_map(|entries| entries.iter())
+            .chain(hooks.global.iter())
+            .cloned()
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1223,7 +1265,7 @@ impl OpenDocuments {
             document.release_enrichment(store);
         }
 
-        for hook in Self::hooks(store).iter() {
+        for hook in Self::hooks(store, documents) {
             hook.closing(
                 store,
                 documents,

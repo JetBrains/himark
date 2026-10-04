@@ -99,8 +99,6 @@ pub enum AppCommand {
 
     Landing(WindowId, Box<dyn crate::LandingCommand>),
 
-    InSession(crate::SessionId, Box<AppCommand>),
-
     Register(std::sync::Arc<dyn crate::DynamicCommand>),
     Stats(StatsCommand),
 
@@ -234,14 +232,6 @@ impl AppCommand {
     /// every landing re-wrap goes through here.
     pub fn at<T: AppEntity>(id: imba::store::Id<T>, command: T::Command) -> AppCommand {
         AppCommand::At(Addressed(Box::new(AtCommand { id, command })))
-    }
-
-    pub fn dynamic_in(
-        session: crate::SessionId,
-        window: WindowId,
-        command: std::sync::Arc<dyn crate::DynamicCommand>,
-    ) -> AppCommand {
-        AppCommand::InSession(session, Box::new(AppCommand::Dynamic(window, command)))
     }
 }
 
@@ -545,6 +535,10 @@ impl Application {
             store.update::<crate::higent::Hosts>(|hosts| {
                 hosts.rekey_local_families(previous, host);
             });
+            // Families minted under the LOCAL placeholder carried no
+            // uri map; now that they live under the real host, stamp
+            // its map onto them (docs/entities.md law 4).
+            crate::higent::Hosts::stamp_families_uris(store, host);
         });
         self.state.windows.adopt_local_host_all(host);
         self.refresh_committed();
@@ -555,10 +549,6 @@ impl Application {
         store: &Store,
         command: &AppCommand,
     ) -> (Option<WindowId>, Option<crate::SessionId>) {
-        if let AppCommand::InSession(session, inner) = command {
-            let (window, _) = self.command_scope(store, inner);
-            return (window, Some(session.clone()));
-        }
         let window = match command {
             AppCommand::Content(window, _)
             | AppCommand::Dynamic(window, _)
@@ -1243,7 +1233,6 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         AppCommand::Content(_, crate::WindowCommand::Focus(_)) => "focus",
         AppCommand::Dynamic(..) => "dynamic",
         AppCommand::Landing(..) => "landing",
-        AppCommand::InSession(..) => "landing",
         AppCommand::Register(_) => "register",
         AppCommand::OpenAsync { .. } => "open async",
         AppCommand::OpenPanel(..) => "open panel",
@@ -1504,7 +1493,6 @@ impl Application {
             }
             AppCommand::Landing(window, command) => command.perform(self, store, window, fx),
 
-            AppCommand::InSession(_, command) => self.perform(store, ui, *command, fx),
             AppCommand::Register(command) => {
                 crate::commands::Commands::register(store, command);
             }

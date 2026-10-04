@@ -78,6 +78,11 @@ pub struct Comments {
     /// (docs/entities.md law 4).
     documents: imba::store::Id<crate::OpenDocuments>,
 
+    /// The host's location↔uri translation, stamped by the ceremony
+    /// (mint, or the heal after a placeholder rekey) — read from the
+    /// own record instead of routing through `Hosts` (law 3).
+    uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+
     records: rpds::HashTrieMapSync<AnnotationId, CommentRecord>,
 
     cards: rpds::HashTrieMapSync<AnnotationId, (DocumentId, InlayKey)>,
@@ -218,9 +223,12 @@ impl imba::store::Entity for Comments {
         }
     }
 
-    fn destroy(&mut self, _store: &mut Store) {
+    fn destroy(&mut self, store: &mut Store) {
         // Records and cards are the collection's PRIVATE schema —
-        // nothing to retract; the feed dies with the drop.
+        // nothing to retract; the feed dies with the drop. The hook
+        // and the gesture command the ceremony wired to this
+        // collection die with it (law 6 symmetry).
+        crate::OpenDocuments::retire_scope(store, self.documents);
     }
 }
 
@@ -261,15 +269,29 @@ impl Comments {
 
     /// A collection wired to the documents its cards live in — minted
     /// by the family ceremony.
-    pub fn wired(documents: imba::store::Id<crate::OpenDocuments>) -> Self {
+    pub fn wired(
+        documents: imba::store::Id<crate::OpenDocuments>,
+        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
+    ) -> Self {
         Self {
             documents,
+            uris,
             records: rpds::HashTrieMapSync::new_sync(),
             cards: rpds::HashTrieMapSync::new_sync(),
             channel: None,
             generation: 0,
             minted: 0,
         }
+    }
+
+    /// The ceremony's heal for a uri map that arrived after the mint
+    /// (the local placeholder rekeyed to the real host).
+    pub(crate) fn stamp_uris(
+        store: &mut Store,
+        comments: imba::store::Id<Comments>,
+        uris: &Arc<dyn crate::higent::ResourceUriMap>,
+    ) {
+        Self::update(store, comments, |row| row.uris = Some(Arc::clone(uris)));
     }
 
     pub fn documents(&self) -> imba::store::Id<crate::OpenDocuments> {
@@ -368,7 +390,7 @@ impl Comments {
     /// map — an existing record keeps the location it had.
     fn place(
         &self,
-        store: &Store,
+        _store: &Store,
         session: &Uri,
         annotation: &Annotation,
     ) -> Option<ResourceLocation> {
@@ -376,7 +398,7 @@ impl Comments {
             return Some(held.location.clone());
         }
         let server = self.channel_for(session)?.server;
-        let uris = crate::higent::Hosts::uris(store, server)?;
+        let uris = self.uris.clone()?;
         let authority = crate::higent::seat::route_authority(server, session);
         uris.location_of(
             &crate::higent::ResourceUri::new(annotation.resource.clone()),
@@ -603,12 +625,14 @@ impl Comments {
         let mut record = record;
         record.turn_id = stamp;
 
-        let feed = Self::of(store, comments)
+        let row = Self::of(store, comments);
+        let uris = row.and_then(|comments| comments.uris.clone());
+        let feed = row
             .and_then(|comments| comments.channel_for(&record.session).cloned())
             .filter(|feed| feed.live);
-        if let Some(feed) = &feed {
+        if let (Some(feed), Some(uris)) = (&feed, &uris) {
             record.synced = true;
-            dispatch_set(store, &feed.seat, &id, &record);
+            dispatch_set(uris, &feed.seat, &id, &record);
         }
         Self::update(store, comments, |comments| {
             comments.records.insert_mut(id.clone(), record.clone());
@@ -840,13 +864,14 @@ fn settle_cards(
         return;
     };
     let session = feed.session.clone();
+    let uris = Comments::of(store, comments).and_then(|comments| comments.uris.clone());
     let records: Vec<(AnnotationId, CommentRecord)> = Comments::records(store, comments)
         .into_iter()
         .filter(|(_, record)| record.session == session)
         .collect();
     for (id, record) in records {
-        if !record.synced && feed.live {
-            dispatch_set(store, &feed.seat, &id, &record);
+        if let Some(uris) = uris.as_ref().filter(|_| !record.synced && feed.live) {
+            dispatch_set(uris, &feed.seat, &id, &record);
             Comments::update_record(store, comments, &id, |record| record.synced = true);
         }
         match Comments::card(store, comments, &id) {
@@ -939,26 +964,28 @@ fn remove_card(
     crate::OpenDocuments::put_document(store, documents, document, doc);
 }
 
-pub struct CommentsHook;
+/// The document observer, WIRED: minted by the family ceremony with
+/// the cards' collection in hand, installed SCOPED to the family's
+/// documents — it fires only for its own collection and dies with it
+/// (docs/entities.md law 4).
+pub struct CommentsHook {
+    pub comments: imba::store::Id<Comments>,
+}
 
 impl crate::DocumentHook for CommentsHook {
     fn opened(
         &self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<crate::OpenDocuments>,
         document: DocumentId,
         location: Option<&crate::ResourceLocation>,
     ) {
         let Some(location) = location else {
             return;
         };
-        // The hook holds a documents id; the cards' collection is the
-        // sibling next to it.
-        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
-            .map(|family| family.comments())
-        else {
-            return;
-        };
+        // Scoped install: this hook fires only for its own family's
+        // documents, and the cards' collection is its own record.
+        let comments = self.comments;
         let owes = Comments::of(store, comments).is_some_and(|comments| {
             comments.records.iter().any(|(id, record)| {
                 record.location == *location && !comments.cards.contains_key(id)
@@ -972,16 +999,12 @@ impl crate::DocumentHook for CommentsHook {
     fn closing(
         &self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<crate::OpenDocuments>,
         document: DocumentId,
         _location: Option<&crate::ResourceLocation>,
         doc: &crate::Document,
     ) {
-        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
-            .map(|family| family.comments())
-        else {
-            return;
-        };
+        let comments = self.comments;
         let cards: Vec<(AnnotationId, InlayKey)> = Comments::of(store, comments)
             .map(|comments| {
                 comments
@@ -1188,14 +1211,12 @@ fn refresh_card(
 }
 
 fn dispatch_set(
-    store: &Store,
+    uris: &Arc<dyn crate::higent::ResourceUriMap>,
     seat: &Arc<dyn crate::higent::AhpServer>,
     id: &AnnotationId,
     record: &CommentRecord,
 ) {
-    let Some(uri) = uri_of(store, record.server, &record.location) else {
-        return;
-    };
+    let uri = uris.uri_of(&record.location).into_string();
     seat.dispatch_annotations(
         &record.session,
         StateAction::AnnotationsSet(AnnotationsSetAction {
@@ -1224,18 +1245,6 @@ fn dispatch_set(
             },
         }),
     );
-}
-
-fn uri_of(
-    store: &Store,
-    server: crate::higent::HostId,
-    location: &ResourceLocation,
-) -> Option<String> {
-    Some(
-        crate::higent::Hosts::uris(store, server)?
-            .uri_of(location)
-            .into_string(),
-    )
 }
 
 fn author_meta(author: &str) -> Option<serde_json::Map<String, serde_json::Value>> {

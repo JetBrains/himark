@@ -45,7 +45,8 @@ impl crate::DynamicEditorCommand for SelectRange {
 fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_syntax_languages(himarkdown::markdown_languages(crate::SyntaxLanguages::new()));
-    app.register_document_command(std::sync::Arc::new(AddComment));
+    // `comments.add` arrives via the family ceremony (a scoped,
+    // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
     let window = app.add_window();
     assert!(app.perform_command(AppCommand::Opened(

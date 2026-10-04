@@ -315,10 +315,6 @@ mod app {
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
             himark::hicomments::Comments::install(&mut state.store_mut());
-            himark::OpenDocuments::install_hook(
-                &mut state.store_mut(),
-                std::sync::Arc::new(himark::hicomments::CommentsHook),
-            );
             state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
             state.register_toolbar_button(himark::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::higent::ToggleAgentsView));

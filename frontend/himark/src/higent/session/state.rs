@@ -215,6 +215,28 @@ impl Hosts {
         map: Arc<dyn crate::higent::ResourceUriMap>,
     ) {
         Self::update(store, id, |host| host.uris = Some(Arc::clone(&map)));
+        // Families minted before the map arrived read their own
+        // stamp — heal them now (docs/entities.md law 4).
+        Self::stamp_families_uris(store, id);
+    }
+
+    /// Stamp the host's uri map onto every family it holds: the mint
+    /// stamps, and the two moves that outrun it — a map installed
+    /// after a mint, the local placeholder rekeyed to the real
+    /// host — heal here.
+    pub(crate) fn stamp_families_uris(store: &mut Store, id: HostId) {
+        let Some(map) = Self::uris(store, id) else {
+            return;
+        };
+        let families: Vec<SessionState> = store
+            .get::<Hosts>()
+            .and_then(|hosts| hosts.entries.get(&id))
+            .map(|host| host.families.values().cloned().collect())
+            .unwrap_or_default();
+        for family in families {
+            crate::hichanges::Changes::stamp_uris(store, family.changes, &map);
+            crate::hicomments::Comments::stamp_uris(store, family.comments, &map);
+        }
     }
 
     pub fn uris(store: &Store, id: HostId) -> Option<Arc<dyn crate::higent::ResourceUriMap>> {
@@ -357,10 +379,13 @@ impl Hosts {
         let family = SessionState::mint();
         let minted = family.clone();
         // The collections that hold SIBLING ids are put wired, here,
-        // the one place that knows the whole wiring (law 4).
+        // the one place that knows the whole wiring (law 4) — the
+        // host's uri map rides in with them (a placeholder host has
+        // none yet; the designate/rekey heal stamps it after).
+        let uris = Self::uris(store, session.host);
         store.put_entity(
             family.changes,
-            crate::hichanges::ChangeSets::wired(family.documents, family.history),
+            crate::hichanges::ChangeSets::wired(family.documents, family.history, uris.clone()),
         );
         store.put_entity(
             family.history,
@@ -368,7 +393,25 @@ impl Hosts {
         );
         store.put_entity(
             family.comments,
-            crate::hicomments::Comments::wired(family.documents),
+            crate::hicomments::Comments::wired(family.documents, uris),
+        );
+        // The documents→comments borders (the document hooks, the
+        // comment gesture) get INSTANCES wired with the sibling id,
+        // scoped to this family's documents — retired by the
+        // collection's `destroy`.
+        crate::OpenDocuments::install_scoped_hook(
+            store,
+            family.documents,
+            std::sync::Arc::new(crate::hicomments::CommentsHook {
+                comments: family.comments,
+            }),
+        );
+        crate::DocumentCommands::register_scoped(
+            store,
+            family.documents,
+            std::sync::Arc::new(crate::hicomments::AddComment {
+                comments: family.comments,
+            }),
         );
         store.put_entity(family.chats, crate::higent::Chats::wired(family.recents));
         store.update::<Hosts>(|hosts| {
@@ -452,6 +495,11 @@ impl Hosts {
             hosts.entries.insert_mut(to.host, target);
             hosts.generation += 1;
         });
+        if from.host != to.host {
+            // Crossed hosts: the family's stamped uri map is the old
+            // host's — re-stamp with the new one's.
+            Self::stamp_families_uris(store, to.host);
+        }
     }
 
     // No typed per-family doors here, deliberately: Hosts answers one

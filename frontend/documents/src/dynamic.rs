@@ -39,7 +39,15 @@ pub trait DocumentCommand: Send + Sync + 'static {
 }
 
 #[derive(Clone, Default)]
-pub struct DocumentCommands(Vec<Arc<dyn DocumentCommand>>);
+pub struct DocumentCommands {
+    global: Vec<Arc<dyn DocumentCommand>>,
+
+    /// Commands WIRED to one collection's panes — installed by the
+    /// family ceremony with their sibling ids in hand (docs/entities.md
+    /// law 4), retired with the collection. The scope key is this
+    /// crate's own id, so the registry stays layering-clean.
+    scoped: rpds::HashTrieMapSync<imba::store::Id<OpenDocuments>, Vec<Arc<dyn DocumentCommand>>>,
+}
 
 impl DocumentCommands {
     pub fn of(store: &Store) -> DocumentCommands {
@@ -47,14 +55,43 @@ impl DocumentCommands {
     }
 
     pub fn register(store: &mut Store, command: Arc<dyn DocumentCommand>) {
-        store.update::<DocumentCommands>(|commands| commands.0.push(command));
+        store.update::<DocumentCommands>(|commands| commands.global.push(command));
     }
 
-    pub fn find(&self, id: &str) -> Option<&Arc<dyn DocumentCommand>> {
-        self.0.iter().find(|command| command.id() == id)
+    pub fn register_scoped(
+        store: &mut Store,
+        scope: imba::store::Id<OpenDocuments>,
+        command: Arc<dyn DocumentCommand>,
+    ) {
+        store.update::<DocumentCommands>(|commands| {
+            let mut entries = commands.scoped.get(&scope).cloned().unwrap_or_default();
+            entries.push(command);
+            commands.scoped.insert_mut(scope, entries);
+        });
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Arc<dyn DocumentCommand>> {
-        self.0.iter()
+    pub(crate) fn retire_scope(store: &mut Store, scope: imba::store::Id<OpenDocuments>) {
+        store.update::<DocumentCommands>(|commands| {
+            commands.scoped.remove_mut(&scope);
+        });
+    }
+
+    pub fn find(
+        &self,
+        scope: imba::store::Id<OpenDocuments>,
+        id: &str,
+    ) -> Option<&Arc<dyn DocumentCommand>> {
+        self.iter(scope).find(|command| command.id() == id)
+    }
+
+    pub fn iter(
+        &self,
+        scope: imba::store::Id<OpenDocuments>,
+    ) -> impl Iterator<Item = &Arc<dyn DocumentCommand>> {
+        self.scoped
+            .get(&scope)
+            .into_iter()
+            .flatten()
+            .chain(self.global.iter())
     }
 }

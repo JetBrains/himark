@@ -115,7 +115,10 @@ impl View for EditorIdView {
         // Collection-scoped dynamic commands dispatch HERE, where the
         // pane's ids are in hand — never through an owner lookup.
         if let EditorCommand::Dynamic { id, .. } = &command {
-            if let Some(entry) = crate::DocumentCommands::of(store).find(id).cloned() {
+            if let Some(entry) = crate::DocumentCommands::of(store)
+                .find(self.documents, id)
+                .cloned()
+            {
                 let EditorCommand::Dynamic { payload, .. } = command else {
                     unreachable!("matched above");
                 };
@@ -174,7 +177,7 @@ impl View for EditorIdView {
             None => (Vec::new(), None, None),
         };
         if let Some(at) = crate::OpenDocuments::location(store, self.documents, self.document) {
-            for entry in crate::DocumentCommands::of(store).iter() {
+            for entry in crate::DocumentCommands::of(store).iter(self.documents) {
                 if entry.offers_at(&at) {
                     commands.push(imba::PresentableCommand::new(
                         entry.id(),

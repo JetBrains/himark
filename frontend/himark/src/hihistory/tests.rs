@@ -215,8 +215,11 @@ fn history_mirror() -> (imba::store::Store, ResourceLocation) {
         },
     );
     store.put_entity(history_id(), history);
-    let mut changes = crate::hichanges::Changes::wired(imba::store::Id::mint(), history_id());
-    changes.uris = Some(Arc::new(FileUris));
+    let changes = crate::hichanges::Changes::wired(
+        imba::store::Id::mint(),
+        history_id(),
+        Some(Arc::new(FileUris)),
+    );
     store.put_entity(changes_id(), changes);
     (store, folder)
 }

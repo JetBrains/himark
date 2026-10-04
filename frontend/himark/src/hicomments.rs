@@ -32,11 +32,14 @@ mod tests;
 
 pub(crate) const FALLBACK_WIDTH: f32 = 600.0;
 
-pub struct AddComment;
+/// The gesture command, WIRED: the family ceremony mints one per
+/// session with the cards' collection in hand and registers it scoped
+/// to the family's documents (docs/entities.md law 4) — the sibling
+/// id is the instance's own record, never resolved back.
+pub struct AddComment {
+    pub comments: imba::store::Id<sync::Comments>,
+}
 
-/// The command closes over the pane's ids (docs/entities.md law 3):
-/// the documents collection and the document the card goes into; the
-/// comments collection is the sibling next to those documents.
 impl documents::DocumentCommand for AddComment {
     fn id(&self) -> &'static str {
         "comments.add"
@@ -48,7 +51,7 @@ impl documents::DocumentCommand for AddComment {
         &self,
         store: &mut Store,
         ui: &imba::UiCtx,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        _documents: imba::store::Id<crate::OpenDocuments>,
         document_id: crate::DocumentId,
         document: &mut Document,
         editor: crate::EditorId,
@@ -60,11 +63,7 @@ impl documents::DocumentCommand for AddComment {
         if selection.is_empty() {
             return;
         }
-        let Some(comments) = crate::higent::Hosts::family_of_documents(store, documents)
-            .map(|family| family.comments())
-        else {
-            return;
-        };
+        let comments = self.comments;
         let fonts = crate::env::Fonts::of(store)();
         let theme = crate::env::Themes::of(store);
         let width = match document.layout_width(editor) {

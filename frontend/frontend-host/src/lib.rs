@@ -411,8 +411,6 @@ impl HimarkEngine {
         app.register_command(Arc::new(demo::OpenMonsterDemo));
         app.register_command(Arc::new(demo::OpenWallOfTextDemo));
 
-        app.register_document_command(Arc::new(himark::hicomments::AddComment));
-
         himarkdown::register_handlers(&mut app);
         app.register_editor_command(Arc::new(himarkdown::InsertTable));
 
@@ -420,11 +418,10 @@ impl HimarkEngine {
         hiahp::open::install_build_handler(&mut app, languages, diff_policy);
 
         let resource_uris: Arc<dyn himark::higent::ResourceUriMap> = Arc::new(uris::FileUris);
+        // The comments hook and the comment gesture are no longer
+        // boot-global: the family ceremony installs them per session,
+        // wired with their sibling ids (docs/entities.md law 4).
         himark::hicomments::Comments::install(&mut app.store_mut());
-        himark::OpenDocuments::install_hook(
-            &mut app.store_mut(),
-            Arc::new(himark::hicomments::CommentsHook),
-        );
         app.register_command(Arc::new(himark::hicomments::ToggleCommentsView));
         app.register_toolbar_button(himark::hicomments::toolbar_button());
 

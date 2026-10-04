@@ -86,7 +86,7 @@ fn changes_id() -> imba::store::Id<Changes> {
 }
 
 fn wired() -> Changes {
-    Changes::wired(imba::store::Id::mint(), imba::store::Id::mint())
+    Changes::wired(imba::store::Id::mint(), imba::store::Id::mint(), None)
 }
 
 fn folder() -> ResourceLocation {

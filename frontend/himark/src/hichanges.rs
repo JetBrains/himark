@@ -638,15 +638,16 @@ impl Changes {
     pub fn wired(
         documents: imba::store::Id<crate::OpenDocuments>,
         history: imba::store::Id<crate::hihistory::History>,
+        uris: Option<Arc<dyn crate::higent::ResourceUriMap>>,
     ) -> Self {
         Self {
             documents,
             history,
+            uris,
             sets: rpds::HashTrieMapSync::new_sync(),
             by_source: rpds::HashTrieMapSync::new_sync(),
             polls: rpds::HashTrieMapSync::new_sync(),
             session: None,
-            uris: None,
             views: rpds::HashTrieMapSync::new_sync(),
             viewers: rpds::HashTrieMapSync::new_sync(),
             stale: rpds::HashTrieSetSync::new_sync(),
@@ -659,6 +660,16 @@ impl Changes {
 
     pub fn history(&self) -> imba::store::Id<crate::hihistory::History> {
         self.history
+    }
+
+    /// The ceremony's heal for a uri map that arrived after the mint
+    /// (the local placeholder rekeyed to the real host).
+    pub(crate) fn stamp_uris(
+        store: &mut Store,
+        changes: imba::store::Id<ChangeSets>,
+        uris: &Arc<dyn crate::higent::ResourceUriMap>,
+    ) {
+        Self::update(store, changes, |row| row.uris = Some(Arc::clone(uris)));
     }
 
     /// The collection by its id — `None` is gone (docs/entities.md).
@@ -1164,10 +1175,13 @@ impl Changes {
                     folder: folder.clone(),
                 })
         });
-        let Some(uris) = crate::higent::Hosts::uris(store, host) else {
+        // The map is the ceremony's stamp (mint, or the heal after a
+        // placeholder rekey) — the collection's own record, no Hosts
+        // routing (docs/entities.md law 3).
+        let Some(uris) = Self::of(store, changes).and_then(|held| held.uris.clone()) else {
+            eprintln!("[hichanges] folder NOT attached: no uri map stamped on the collection");
             return;
         };
-        Self::update(store, changes, |changes| changes.uris = Some(uris.clone()));
         Self::update(store, changes, |changes| {
             if detached {
                 // The canvas opened this set before the feeds routed:
@@ -1240,8 +1254,7 @@ impl Changes {
             fx.push(
                 AnyEffect::new(crate::higent::SubscribeSessionEffect { seat, session }).map(
                     move |result| {
-                        AppCommand::dynamic_in(
-                            scope.clone(),
+                        AppCommand::Dynamic(
                             window,
                             Arc::new(SessionLanded {
                                 home: landing.clone(),
@@ -1680,15 +1693,13 @@ fn relaunch_session_poll(
         return;
     };
     let landing = home.clone();
-    let scope = home.clone();
     fx.push(
         AnyEffect::new(crate::higent::PollSessionEffect {
             seat: feed.seat,
             session: home.session.clone(),
         })
         .map(move |actions| {
-            AppCommand::dynamic_in(
-                scope.clone(),
+            AppCommand::Dynamic(
                 window,
                 Arc::new(SessionPolled {
                     home: landing.clone(),
