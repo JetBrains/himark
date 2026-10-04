@@ -5,7 +5,7 @@
 //! and its pump — the ask's landing, the subscribe → poll loop, the
 //! stop and dispose teardowns — and folds RESOLVED batches through
 //! the `LocationLists` collection's doors. The model holds results,
-//! the dock front and the washes; seats, channels and poll tokens
+//! the dock front and the washes; clients, channels and poll tokens
 //! live here, in the family's wire row.
 
 use std::sync::Arc;
@@ -136,7 +136,7 @@ impl imba::command::DynamicCommand for AttachFeedStream {
                 let (wire, feed) = (self.wire, self.feed);
                 let _ = fx.push(
                     AnyEffect::new(crate::higent::SubscribeLocationsEffect {
-                        seat: channel.seat,
+                        client: channel.client,
                         channel: channel.channel,
                     })
                     .map(move |outcome| {
@@ -191,7 +191,7 @@ impl imba::command::DynamicOnceCommand for FeedBatch {
         let poll = running.then(|| {
             fx.push(
                 AnyEffect::new(crate::higent::PollLocationsEffect {
-                    seat: Arc::clone(&held.channel.seat),
+                    client: Arc::clone(&held.channel.client),
                     channel: held.channel.channel.clone(),
                 })
                 .map(move |batches| {
@@ -295,7 +295,7 @@ fn dispose(
 fn unsubscribe(channel: crate::LocationsChannel, fx: &mut imba::command::Fx<'_>) {
     let _ = fx.push(
         AnyEffect::new(crate::higent::UnsubscribeLocationsEffect {
-            seat: channel.seat,
+            client: channel.client,
             channel: channel.channel,
         })
         .map(move |()| imba::command::Verb::Once(Box::new(NothingLanded))),

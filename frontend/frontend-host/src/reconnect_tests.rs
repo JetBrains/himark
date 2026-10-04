@@ -23,9 +23,11 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use himark::higent::ahp_types::actions::StateAction;
-use himark::higent::seat::ResourceUri;
+use himark::higent::client::ResourceUri;
 use himark::higent::{
-    AhpServer, ChannelUri, ChatUri, SeatFuture, ServerEvent, SessionOptions, SessionUri,
+    ChannelUri, ChatClient as _, ChatUri, ClientFuture, ServerEvent, AnnotationsClient as _, ChangesClient as _, DocumentsClient as _, ResourceClient as _,
+    SessionClient as _, TerminalClient as _, LocationsClient as _, LspClient as _,
+    SessionOptions, SessionUri,
 };
 
 use crate::findroute_tests::{bind_backend, block_on};
@@ -260,7 +262,7 @@ fn ids(actions: &[StateAction]) -> Vec<String> {
 
 /// Drive a future on this thread with no deadline — for the poller
 /// threads, which park for as long as the test runs.
-fn drive<T>(mut future: SeatFuture<T>) -> T {
+fn drive<T>(mut future: ClientFuture<T>) -> T {
     use std::task::{Context, Poll, Wake, Waker};
     struct Unpark(std::thread::Thread);
     impl Wake for Unpark {
@@ -287,7 +289,7 @@ struct Poller {
 }
 
 impl Poller {
-    fn on(poll: impl Fn() -> SeatFuture<Vec<StateAction>> + Send + 'static) -> Self {
+    fn on(poll: impl Fn() -> ClientFuture<Vec<StateAction>> + Send + 'static) -> Self {
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || loop {
             let batch = drive(poll());
@@ -562,7 +564,7 @@ fn a_dropped_poll_leaves_the_next_batch_to_its_replacement() {
     let (a, session) = (&bench.a, local());
     block_on(a.subscribe_annotations(session.clone())).expect("the annotations feed");
 
-    let mut dropped: Vec<SeatFuture<Vec<StateAction>>> = Vec::new();
+    let mut dropped: Vec<ClientFuture<Vec<StateAction>>> = Vec::new();
     for _ in 0..4 {
         let mut poll = a.poll_annotations(session.clone());
         // Armed — polled once, parked on the feed — then let go.

@@ -29,7 +29,7 @@ pub struct Application {
 
     committed: Store,
 
-    seats: crate::higent::Servers,
+    clients: crate::higent::Servers,
 
     pub(crate) ui: std::rc::Rc<UiCtx>,
 
@@ -376,7 +376,7 @@ impl Application {
         let application = Self {
             state,
             committed,
-            seats: crate::higent::Servers::default(),
+            clients: crate::higent::Servers::default(),
             ui,
             stats: Stats::new(overlay_font),
             #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
@@ -401,15 +401,15 @@ impl Application {
     fn refresh_committed(&mut self) {
         let window = self.state.windows.primary();
         let scope = window.and_then(|id| self.state.windows.session_of(id));
-        self.committed = self.state.gather(window, scope.as_ref(), &self.seats);
+        self.committed = self.state.gather(window, scope.as_ref(), &self.clients);
         self.committed_scope = scope;
     }
 
-    pub fn register_seat(
+    pub fn register_client(
         &mut self,
-        seat: std::sync::Arc<dyn crate::higent::AhpServer>,
+        client: crate::higent::Client,
     ) -> crate::higent::HostId {
-        let minted = self.seats.mint(seat);
+        let minted = self.clients.mint(client);
         self.refresh_committed();
         minted
     }
@@ -427,7 +427,7 @@ impl Application {
 
     pub fn window_store(&self, window: WindowId) -> Store {
         let scope = self.state.windows.session_of(window);
-        self.state.gather(Some(window), scope.as_ref(), &self.seats)
+        self.state.gather(Some(window), scope.as_ref(), &self.clients)
     }
 
     /// The frame's store: the window store plus the FOCUSED SEAT
@@ -436,23 +436,23 @@ impl Application {
     /// viewport build per frame, no focused upgrade at paint.
     pub(crate) fn frame_store(&self, window: WindowId) -> imba::store::Store {
         let mut store = self.window_store(window);
-        let seat = crate::focus::window_focus_data(&store, self.ui.as_ref(), window)
+        let client = crate::focus::window_focus_data(&store, self.ui.as_ref(), window)
             .and_then(|mut data| data.seat.take());
-        if let Some(seat) = seat {
-            ::editor::env::FrameFocus::set(&mut store, seat);
+        if let Some(client) = client {
+            ::editor::env::FrameFocus::set(&mut store, client);
         }
         store
     }
 
     fn setup(&mut self, mutate: impl FnOnce(&mut Store)) {
-        let mut store = self.state.gather(None, None, &self.seats);
+        let mut store = self.state.gather(None, None, &self.clients);
         mutate(&mut store);
         self.commit(store, None);
     }
 
     fn window_txn(&mut self, window: WindowId, mutate: impl FnOnce(&mut Store)) {
         let scope = self.state.windows.session_of(window);
-        let mut store = self.state.gather(Some(window), scope.as_ref(), &self.seats);
+        let mut store = self.state.gather(Some(window), scope.as_ref(), &self.clients);
         mutate(&mut store);
         self.commit(store, scope.as_ref());
     }
@@ -519,7 +519,7 @@ impl Application {
 
     pub fn add_window(&mut self) -> WindowId {
         let workspace = crate::SessionId::local_default(&self.state.gather_seatless(None));
-        let mut store = self.state.gather(None, Some(&workspace), &self.seats);
+        let mut store = self.state.gather(None, Some(&workspace), &self.clients);
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
@@ -873,14 +873,14 @@ impl Application {
         let mut batch = AppEffects::new();
 
         let mut scope: (Option<WindowId>, Option<crate::SessionId>) = (None, None);
-        let mut store = self.state.gather(scope.0, scope.1.as_ref(), &self.seats);
+        let mut store = self.state.gather(scope.0, scope.1.as_ref(), &self.clients);
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         while let Some(command) = queue.pop_front() {
             let next = self.command_scope(&store, &command);
             if next != scope {
                 self.state.scatter(store, scope.1.as_ref());
                 scope = next;
-                store = self.state.gather(scope.0, scope.1.as_ref(), &self.seats);
+                store = self.state.gather(scope.0, scope.1.as_ref(), &self.clients);
             }
             let mut fx = batch.effects();
             self.perform(&mut store, &ui, command, &mut fx);
@@ -989,7 +989,7 @@ impl Application {
                 validate_panes(&label, &store, &window.workbench().root);
 
                 for (session, stashed) in window.stashed_workbenches() {
-                    let store = self.state.gather(Some(id), Some(session), &self.seats);
+                    let store = self.state.gather(Some(id), Some(session), &self.clients);
                     validate_panes(&label, &store, &stashed.root);
                 }
             }

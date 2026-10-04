@@ -5,24 +5,24 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use crate::higent::{AhpServer, HostId, WatchHandle};
+use crate::higent::{Client, HostId, ResourceClient, WatchHandle};
 
 const SUBSCRIPTION_BASE: u64 = 1 << 48;
 
-pub struct SeatDirectory {
-    seats: Mutex<HashMap<HostId, Arc<dyn AhpServer>>>,
+pub struct ClientDirectory {
+    clients: Mutex<HashMap<HostId, Client>>,
 
     local: Mutex<Option<HostId>>,
-    watches: Mutex<HashMap<u64, (Arc<dyn AhpServer>, WatchHandle)>>,
+    watches: Mutex<HashMap<u64, (Arc<dyn ResourceClient>, WatchHandle)>>,
     next: AtomicU64,
 
     deliver: Arc<dyn Fn(u64) + Send + Sync>,
 }
 
-impl SeatDirectory {
+impl ClientDirectory {
     pub fn new(deliver: Arc<dyn Fn(u64) + Send + Sync>) -> Self {
         Self {
-            seats: Mutex::new(HashMap::new()),
+            clients: Mutex::new(HashMap::new()),
             local: Mutex::new(None),
             watches: Mutex::new(HashMap::new()),
             next: AtomicU64::new(SUBSCRIPTION_BASE),
@@ -31,43 +31,43 @@ impl SeatDirectory {
     }
 
     pub fn set_local(&self, server: HostId) {
-        *self.local.lock().expect("seat directory") = Some(server);
+        *self.local.lock().expect("client directory") = Some(server);
     }
 
-    pub fn local_seat(&self) -> Option<(Arc<dyn AhpServer>, crate::higent::SessionUri)> {
-        let server = (*self.local.lock().expect("seat directory"))?;
-        let seat = self.seat(server)?;
+    pub fn local_client(&self) -> Option<(Client, crate::higent::SessionUri)> {
+        let server = (*self.local.lock().expect("client directory"))?;
+        let client = self.client(server)?;
         Some((
-            seat,
+            client,
             crate::higent::SessionUri::new(crate::higent::LOCAL_FS_SESSION),
         ))
     }
 
-    pub fn record(&self, server: HostId, seat: Arc<dyn AhpServer>) {
-        self.seats
+    pub fn record(&self, server: HostId, client: Client) {
+        self.clients
             .lock()
-            .expect("seat directory")
-            .insert(server, seat);
+            .expect("client directory")
+            .insert(server, client);
     }
 
-    pub fn seat(&self, server: HostId) -> Option<Arc<dyn AhpServer>> {
-        self.seats
+    pub fn client(&self, server: HostId) -> Option<Client> {
+        self.clients
             .lock()
-            .expect("seat directory")
+            .expect("client directory")
             .get(&server)
             .cloned()
     }
 
-    pub fn adopt_watch(&self, seat: Arc<dyn AhpServer>, handle: WatchHandle) -> u64 {
+    pub fn adopt_watch(&self, client: Arc<dyn ResourceClient>, handle: WatchHandle) -> u64 {
         let id = self.next.fetch_add(1, Ordering::Relaxed);
         self.watches
             .lock()
             .expect("watch table")
-            .insert(id, (seat, handle));
+            .insert(id, (client, handle));
         id
     }
 
-    pub fn release_watch(&self, subscription: u64) -> Option<(Arc<dyn AhpServer>, WatchHandle)> {
+    pub fn release_watch(&self, subscription: u64) -> Option<(Arc<dyn ResourceClient>, WatchHandle)> {
         self.watches
             .lock()
             .expect("watch table")

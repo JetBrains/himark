@@ -21,7 +21,7 @@ use crate::higent::ahp_types::state::{
     Annotation, AnnotationEntry, MessageAnnotationsAttachment, MessageAttachment, TextPosition,
     TextRange,
 };
-use crate::higent::AhpServer;
+
 use crate::higent::SessionUri as Uri;
 use comments::{
     AnnotationId, Announce, CommentDelta, CommentRecord, CommentSeed, Comments, EntryRecord,
@@ -35,7 +35,7 @@ use imba::{effect::AnyEffect, store::Store};
 struct ChannelWire {
     server: crate::higent::HostId,
     session: Uri,
-    seat: Arc<dyn AhpServer>,
+    client: crate::higent::Client,
     live: bool,
 }
 
@@ -97,7 +97,7 @@ fn update(
 }
 
 /// Attach the annotations feed of the wire that serves a folder —
-/// the seat and AHP session come off the folder's authority.
+/// the client and AHP session come off the folder's authority.
 pub fn ensure(
     store: &mut Store,
     wire: imba::store::Id<CommentsWire>,
@@ -112,8 +112,8 @@ pub fn ensure(
             Comments::adopt_folder(store, comments, location);
         }
     }
-    let Some((server, seat, session)) =
-        crate::higent::seat::route_seat(store, location.authority().as_str())
+    let Some((server, client, session)) =
+        crate::higent::client::route_client(store, location.authority().as_str())
     else {
         return;
     };
@@ -127,13 +127,13 @@ pub fn ensure(
         row.channel = Some(ChannelWire {
             server,
             session: session.clone(),
-            seat: seat.clone(),
+            client: client.clone(),
             live: false,
         });
     });
     fx.push(
         AnyEffect::new(crate::higent::SubscribeAnnotationsEffect {
-            seat,
+            client: client.annotations.clone(),
             session: session.clone(),
         })
         .map(move |result| {
@@ -172,7 +172,7 @@ fn seed_of(row: &CommentsWire, session: &Uri, annotation: &Annotation) -> Option
 fn place(row: &CommentsWire, session: &Uri, annotation: &Annotation) -> Option<ResourceLocation> {
     let server = row.channel.as_ref()?.server;
     let uris = row.uris.clone()?;
-    let authority = crate::higent::seat::route_authority(server, session);
+    let authority = crate::higent::client::route_authority(server, session);
     uris.location_of(
         &crate::higent::ResourceUri::new(annotation.resource.clone()),
         editor::ResourceType::document(),
@@ -303,7 +303,7 @@ fn relaunch_poll(store: &Store, wire: imba::store::Id<CommentsWire>, fx: &mut Fx
     let session = held.session.clone();
     fx.push(
         AnyEffect::new(crate::higent::PollAnnotationsEffect {
-            seat: held.seat,
+            client: held.client.annotations.clone(),
             session: session.clone(),
         })
         .map(move |actions| {
@@ -362,7 +362,7 @@ pub fn sync(
                         }
                     }
                     if let Some(record) = Comments::record(store, comments, &id) {
-                        dispatch_set(uris, &held.seat, &held.session, &id, &record);
+                        dispatch_set(uris, &held.client, &held.session, &id, &record);
                         Comments::update_record(store, comments, &id, |record| {
                             record.synced = true;
                         });
@@ -377,7 +377,7 @@ pub fn sync(
                             .cloned()
                     });
                     if let Some(entry) = entry {
-                        held.seat.dispatch_annotations(
+                        held.client.annotations.dispatch_annotations(
                             &held.session,
                             StateAction::AnnotationsEntrySet(AnnotationsEntrySetAction {
                                 annotation_id: id.clone(),
@@ -394,7 +394,7 @@ pub fn sync(
                 }
                 Announce::Meta(id) => {
                     if let Some(record) = Comments::record(store, comments, &id) {
-                        held.seat.dispatch_annotations(
+                        held.client.annotations.dispatch_annotations(
                             &held.session,
                             StateAction::AnnotationsUpdated(AnnotationsUpdatedAction {
                                 annotation_id: id.clone(),
@@ -407,7 +407,7 @@ pub fn sync(
                     }
                 }
                 Announce::Removed(id) => {
-                    held.seat.dispatch_annotations(
+                    held.client.annotations.dispatch_annotations(
                         &held.session,
                         StateAction::AnnotationsRemoved(AnnotationsRemovedAction {
                             annotation_id: id,
@@ -494,7 +494,7 @@ pub fn send_to_agent(
     let sent = group.clone();
     fx.push(
         AnyEffect::new(crate::higent::StartTurnEffect {
-            seat: held.seat.clone(),
+            client: held.client.chat.clone(),
             chat,
             text: format!("Please address the attached review {noun}."),
             attachments: Some(vec![attachment]),
@@ -552,13 +552,13 @@ pub(crate) fn latest_turn(store: &Store, wire: imba::store::Id<CommentsWire>) ->
 
 fn dispatch_set(
     uris: &Arc<dyn crate::higent::ResourceUriMap>,
-    seat: &Arc<dyn AhpServer>,
+    client: &crate::higent::Client,
     session: &Uri,
     id: &AnnotationId,
     record: &CommentRecord,
 ) {
     let uri = uris.uri_of(&record.location).into_string();
-    seat.dispatch_annotations(
+    client.annotations.dispatch_annotations(
         session,
         StateAction::AnnotationsSet(AnnotationsSetAction {
             annotation: Annotation {

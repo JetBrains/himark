@@ -71,7 +71,7 @@ pub enum CellCommand {
 
     /// The diff header's OPEN: navigate to the WORKING COPY of the
     /// edited file. The uri is the wire's (`file:///…`); the panel
-    /// resolves it against the session's seat and opens the location.
+    /// resolves it against the session's client and opens the location.
     OpenFile(ahp_types::common::Uri),
 }
 
@@ -841,7 +841,7 @@ impl View for Cell {
                 group.perform_keyed(store, ui, key, command, fx);
             }
             // Navigation — the header's click bubbles UP to the panel,
-            // which owns the seat; nothing lands back on the cell.
+            // which owns the client; nothing lands back on the cell.
             CellCommand::OpenFile(_) => {}
         }
     }

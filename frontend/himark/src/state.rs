@@ -28,14 +28,14 @@ impl AppState {
         &self,
         window: Option<crate::WindowId>,
         scope: Option<&crate::SessionId>,
-        seats: &crate::higent::Servers,
+        clients: &crate::higent::Servers,
     ) -> Store {
         let mut store = self.globals.clone();
         store.put(self.hosts.clone());
 
         store.put(self.windows.project(window));
 
-        store.put(seats.clone());
+        store.put(clients.clone());
         store
     }
 

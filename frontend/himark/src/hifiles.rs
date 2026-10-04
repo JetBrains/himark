@@ -69,13 +69,13 @@ fn remove_from_session(
     workspace: crate::SessionId,
 ) -> Arc<dyn Fn(&Store, ResourceLocation) -> Option<AnyEffect<TreeCommand>> + Send + Sync> {
     Arc::new(move |store, target| {
-        let seat = crate::higent::Servers::seat(store, workspace.host)?;
+        let client = crate::higent::Servers::client(store, workspace.host)?;
         let uris = crate::higent::Hosts::uris(store, workspace.host)?;
         use crate::higent::ahp_types::actions as wire;
         let directory = uris.uri_of(&target).as_str().to_owned();
         Some(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
-                seat,
+                client: client.session.clone(),
                 channel: workspace.session.as_channel(),
                 action: wire::StateAction::SessionWorkingDirectoryRemoved(
                     wire::SessionWorkingDirectoryRemovedAction { directory },

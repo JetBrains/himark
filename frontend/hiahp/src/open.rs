@@ -41,7 +41,7 @@ pub fn document_for(
 }
 
 /// The chat's diff cell, built off the UI thread: fetch both sides over
-/// the seat, then run the seeded pair recipe (two parses, the diff, the
+/// the client, then run the seeded pair recipe (two parses, the diff, the
 /// marks) in the workshop. The cell only lays the editors.
 pub struct BuildFileEditHandler {
     pub caller: imba::effect::EffectCaller,
@@ -58,7 +58,7 @@ impl EffectHandler<crate::higent::BuildFileEditEffect> for BuildFileEditHandler 
         let contents = self
             .caller
             .call(crate::higent::FetchFileEditEffect {
-                seat: effect.seat,
+                client: effect.client,
                 before: effect.before,
                 after: effect.after,
             })

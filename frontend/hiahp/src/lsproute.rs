@@ -7,23 +7,23 @@ use documents::LineCol;
 use imba::effect::EffectHandler;
 use serde_json::json;
 
-use crate::fs::SeatDirectory;
+use crate::fs::ClientDirectory;
 
 pub struct CompletionRoute {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<crate::LspCompletionEffect> for CompletionRoute {
     async fn handle(&self, effect: crate::LspCompletionEffect) -> Option<crate::LspAnswer> {
-        let (seat, session) = crate::fsroute::seat_of(&self.directory, &effect.location)?;
+        let (client, session) = crate::fsroute::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },
             "position": { "line": effect.position.line, "character": effect.position.col },
         });
-        let result = seat
-            .lsp(session, "textDocument/completion".to_owned(), params)
+        let result = client
+            .lsp.lsp(session, "textDocument/completion".to_owned(), params)
             .await
             .ok()?;
         Some(parse_completion(&result))
@@ -86,7 +86,7 @@ pub fn parse_completion(result: &serde_json::Value) -> crate::LspAnswer {
 }
 
 pub struct HoverRoute {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
@@ -95,14 +95,14 @@ impl EffectHandler<documents::hover::LspHoverEffect> for HoverRoute {
         &self,
         effect: documents::hover::LspHoverEffect,
     ) -> Option<documents::hover::HoverInfo> {
-        let (seat, session) = crate::fsroute::seat_of(&self.directory, &effect.location)?;
+        let (client, session) = crate::fsroute::client_of(&self.directory, &effect.location)?;
         let uri = self.uris.uri_of(&effect.location).into_string();
         let params = json!({
             "textDocument": { "uri": uri },
             "position": { "line": effect.position.line, "character": effect.position.col },
         });
-        let result = seat
-            .lsp(session, "textDocument/hover".to_owned(), params)
+        let result = client
+            .lsp.lsp(session, "textDocument/hover".to_owned(), params)
             .await
             .ok()?;
         let info = parse_hover(&result);

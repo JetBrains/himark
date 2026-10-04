@@ -4,7 +4,7 @@
 //! The changes WIRE driver: owns the changeset subscribe/poll
 //! chains and the session-catalog feed for one family, and applies
 //! every landing through the `Changes` collection's public mutation
-//! doors. The collection holds NO seat, channel, session or poll
+//! doors. The collection holds NO client, channel, session or poll
 //! state — that is all here, in the driver's own row, minted by the
 //! family ceremony beside the collection it drives.
 
@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
-use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
+use crate::higent::{PollChangesetEffect, SubscribeChangesetEffect};
 use changesview::hichanges::{
     before_ref_location, ChangeAction, ChangeEntry, ChangeSets, Changes, ChangesStatus,
     DigestedChangeset,
@@ -22,13 +22,13 @@ use himark_ahp_ext_types::history as history_wire;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
-/// One folder's wire: the seat and AHP session its changeset rides,
+/// One folder's wire: the client and AHP session its changeset rides,
 /// the claimed channel once the catalog answers, and the poll-loop
 /// serial (only the CURRENT loop's landing re-arms — a superseding
 /// subscribe bumps it; docs/perf-issue.md §4 measure 5).
 #[derive(Clone)]
 pub struct FolderWire {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: crate::higent::Client,
     pub session: crate::higent::SessionUri,
     pub channel: Option<crate::higent::ChannelUri>,
     pub serial: u64,
@@ -37,7 +37,7 @@ pub struct FolderWire {
 #[derive(Clone)]
 struct SessionWire {
     uri: crate::higent::SessionUri,
-    seat: Arc<dyn AhpServer>,
+    client: crate::higent::Client,
 }
 
 /// The driver's row — wire state only, keyed beside the collection
@@ -145,9 +145,9 @@ pub fn ensure_folder(
     fx: &mut Fx<'_>,
 ) {
     // The folder's own authority names the WIRE that serves it: the
-    // seat and the AHP session the feeds subscribe through.
-    let Some((host, seat, session)) =
-        crate::higent::seat::route_seat(store, folder.authority().as_str())
+    // client and the AHP session the feeds subscribe through.
+    let Some((host, client, session)) =
+        crate::higent::client::route_client(store, folder.authority().as_str())
     else {
         return;
     };
@@ -170,7 +170,7 @@ pub fn ensure_folder(
         row.folders.insert_mut(
             folder.clone(),
             FolderWire {
-                seat: seat.clone(),
+                client: client.clone(),
                 session: session.clone(),
                 channel: None,
                 serial: 0,
@@ -180,13 +180,13 @@ pub fn ensure_folder(
     // The MODEL half: the set exists (a canvas may have opened it
     // detached already — the door is idempotent and keeps it).
     Changes::ensure_working_set(store, changes, &folder);
-    crate::drivers::history::ensure_folder(store, history_wire, &scope, &folder, &seat);
+    crate::drivers::history::ensure_folder(store, history_wire, &scope, &folder, &client);
     Changes::nudge_folder(store, changes, &folder);
 
     let directory = uris.uri_of(&folder).into_string();
     fx.push(
         AnyEffect::new(crate::higent::DispatchChatActionEffect {
-            seat: seat.clone(),
+            client: client.session.clone(),
             channel: session.as_channel(),
             action: StateAction::SessionWorkingDirectorySet(
                 crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction { directory },
@@ -201,12 +201,16 @@ pub fn ensure_folder(
         update(store, wire, |row| {
             row.session = Some(SessionWire {
                 uri: session.clone(),
-                seat: seat.clone(),
+                client: client.clone(),
             });
         });
         let landing = scope.clone();
         fx.push(
-            AnyEffect::new(crate::higent::SubscribeSessionEffect { seat, session }).map(
+            AnyEffect::new(crate::higent::SubscribeSessionEffect {
+                client: client.session.clone(),
+                session,
+            })
+            .map(
                 move |result| {
                     Verb::Dynamic(Arc::new(SessionLanded {
                         home: landing.clone(),
@@ -234,14 +238,14 @@ pub fn refetch(
     let changes = row.changes;
     let riding: Vec<(
         ResourceLocation,
-        Arc<dyn AhpServer>,
+        crate::higent::Client,
         crate::higent::ChannelUri,
     )> = row
         .folders
         .iter()
         .filter(|(folder, _)| only.is_none_or(|only| *folder == only))
         .filter_map(|(folder, held)| {
-            Some((folder.clone(), held.seat.clone(), held.channel.clone()?))
+            Some((folder.clone(), held.client.clone(), held.channel.clone()?))
         })
         .collect();
     let Some(uris) = row.uris.clone() else {
@@ -254,8 +258,8 @@ pub fn refetch(
         Changes::mark_folder_computing(store, changes, folder);
         Changes::nudge_folder(store, changes, folder);
     }
-    for (folder, seat, channel) in riding {
-        fx.push(subscribe_set(wire, folder, seat, channel, uris.clone()));
+    for (folder, client, channel) in riding {
+        fx.push(subscribe_set(wire, folder, client, channel, uris.clone()));
     }
 }
 
@@ -281,7 +285,7 @@ pub fn claim_channels(
     entries: &[CatalogEntry],
 ) -> Vec<(
     ResourceLocation,
-    Arc<dyn AhpServer>,
+    crate::higent::Client,
     crate::higent::ChannelUri,
 )> {
     let changesets: Vec<&CatalogEntry> = entries
@@ -301,7 +305,7 @@ pub fn claim_channels(
                 .iter()
                 .find(|candidate| entry_serves(folder, candidate))
                 .or_else(|| (lone_folder && changesets.len() == 1).then(|| &changesets[0]))
-                .map(|matched| (folder.clone(), held.seat.clone(), matched.uri.clone()))
+                .map(|matched| (folder.clone(), held.client.clone(), matched.uri.clone()))
         })
         .collect()
 }
@@ -336,8 +340,8 @@ fn subscribe_fresh(
     let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
         return;
     };
-    for (folder, seat, channel) in fresh {
-        fx.push(subscribe_set(wire, folder, seat, channel, uris.clone()));
+    for (folder, client, channel) in fresh {
+        fx.push(subscribe_set(wire, folder, client, channel, uris.clone()));
     }
 }
 
@@ -348,11 +352,15 @@ fn subscribe_fresh(
 fn subscribe_set(
     wire: imba::store::Id<ChangesWire>,
     folder: ResourceLocation,
-    seat: Arc<dyn AhpServer>,
+    client: crate::higent::Client,
     channel: crate::higent::ChannelUri,
     uris: Arc<dyn crate::higent::ResourceUriMap>,
 ) -> imba::effect::AnyEffect<Verb> {
-    AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
+    AnyEffect::new(SubscribeChangesetEffect {
+        client: client.changes.clone(),
+        channel,
+    })
+    .map(move |result| {
         Verb::Dynamic(Arc::new(SnapshotLanded {
             wire,
             result: result.map(|state| digest_state(&*uris, &folder, &state)),
@@ -383,7 +391,7 @@ fn relaunch_poll(
     let Some(channel) = held.channel.clone() else {
         return;
     };
-    let seat = held.seat.clone();
+    let client = held.client.clone();
     let serial = held.serial + 1;
     update(store, wire, |row| {
         if let Some(mut held) = row.folders.get(folder).cloned() {
@@ -393,7 +401,11 @@ fn relaunch_poll(
     });
     let landing = folder.clone();
     fx.push(
-        AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
+        AnyEffect::new(PollChangesetEffect {
+            client: client.changes.clone(),
+            channel,
+        })
+        .map(move |actions| {
             Verb::Dynamic(Arc::new(PollDrained {
                 wire,
                 serial,
@@ -419,7 +431,7 @@ fn relaunch_session_poll(
     let landing = home.clone();
     fx.push(
         AnyEffect::new(crate::higent::PollSessionEffect {
-            seat: feed.seat,
+            client: feed.client.session.clone(),
             session: home.session.clone(),
         })
         .map(move |actions| {

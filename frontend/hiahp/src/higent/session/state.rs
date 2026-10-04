@@ -367,7 +367,7 @@ impl Hosts {
     /// That is the point: state reached this way cannot be filed into
     /// the family a batch happened to be gathered for, and cannot be
     /// dropped by a scopeless scatter.
-    /// `HostId::LOCAL` is a PLACEHOLDER until the local seat registers
+    /// `HostId::LOCAL` is a PLACEHOLDER until the local client registers
     /// and `rekey_local_families` moves the family to the real id — and
     /// it moves the family, not the ids panes and landings already hold.
     /// So an address naming the placeholder resolves to the live local

@@ -3,14 +3,14 @@
 
 use std::sync::Arc;
 
-use crate::hiahp::fs::SeatDirectory;
+use crate::hiahp::fs::ClientDirectory;
 use hicode::{CodeTarget, FindDefinitionEffect};
 use himark::{LineCol, ResourceLocation};
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
 
 pub(crate) struct DefinitionRoute {
-    pub(crate) directory: Arc<SeatDirectory>,
+    pub(crate) directory: Arc<ClientDirectory>,
     pub(crate) uris: Arc<dyn himark::higent::ResourceUriMap>,
 }
 
@@ -28,19 +28,19 @@ impl EffectHandler<FindDefinitionEffect> for DefinitionRoute {
 }
 
 async fn locate(
-    directory: &SeatDirectory,
+    directory: &ClientDirectory,
     uris: &dyn himark::higent::ResourceUriMap,
     location: &ResourceLocation,
     position: LineCol,
     method: &str,
 ) -> Option<Vec<CodeTarget>> {
-    let (seat, session) = crate::fsroute::seat_of(directory, location)?;
+    let (client, session) = crate::fsroute::client_of(directory, location)?;
     let uri = uris.uri_of(location).into_string();
     let params = json!({
         "textDocument": { "uri": uri },
         "position": { "line": position.line, "character": position.col },
     });
-    let result = seat.lsp(session, method.to_owned(), params).await.ok()?;
+    let result = client.lsp.lsp(session, method.to_owned(), params).await.ok()?;
     Some(parse_targets(&result, uris, location))
 }
 
@@ -81,7 +81,7 @@ fn target_of(
     };
     Some(CodeTarget {
         location: uris.location_of(
-            &himark::higent::seat::ResourceUri::new(uri.as_str()?),
+            &himark::higent::client::ResourceUri::new(uri.as_str()?),
             himark::ResourceType::document(),
             asked.authority(),
         )?,

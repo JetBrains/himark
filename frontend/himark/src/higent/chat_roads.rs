@@ -45,7 +45,7 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
 }
 
 /// Open the working copy behind a chat diff: resolve the wire uri
-/// against the session's seat authority and open the location —
+/// against the session's client authority and open the location —
 /// the same road a search hit or a changes row takes.
 pub(crate) struct OpenEditedFile {
     server: crate::higent::HostId,
@@ -73,7 +73,7 @@ impl crate::DynamicCommand for OpenEditedFile {
             return;
         };
         let authority =
-            editor::Authority::new(crate::higent::seat::authority(self.server, &self.session));
+            editor::Authority::new(crate::higent::client::authority(self.server, &self.session));
         let Some(location) = uris.location_of(
             &crate::higent::ResourceUri::new(self.uri.as_str()),
             editor::ResourceType::document(),

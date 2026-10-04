@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! The protocol crate: the AHP adapter (transport, session wire,
-//! fs/doc/LSP routes, docsync), the HIGENT catalog (hosts, seats,
+//! fs/doc/LSP routes, docsync), the HIGENT catalog (hosts, clients,
 //! sessions, the chat) and the DRIVERS — every coroutine between a
 //! himark shell and its agent hosts, with no window anywhere.
 
@@ -63,7 +63,7 @@ pub struct SessionId {
 }
 
 impl SessionId {
-    /// Which session OWNS a location: the one whose seat routes its
+    /// Which session OWNS a location: the one whose client routes its
     /// authority, else the local workspace — the address-derived
     /// owner, never an ambient scope. A plain file's state belongs to
     /// the local session, not to nothing.
@@ -72,7 +72,7 @@ impl SessionId {
         location: &editor::ResourceLocation,
     ) -> SessionId {
         if let Some((host, session)) =
-            crate::higent::seat::route(store, location.authority().as_str())
+            crate::higent::client::route(store, location.authority().as_str())
         {
             return SessionId { host, session };
         }
@@ -126,12 +126,12 @@ impl imba::effect::Effect for FindEffect {
 }
 
 /// A live `ahp-locations:/…` result stream, as the ask effects
-/// answer it: the seat and channel to subscribe/poll/unsubscribe
+/// answer it: the client and channel to subscribe/poll/unsubscribe
 /// (docs/ahp/ahp-locations.md), plus the route's way back from the
 /// stream's resource URIs to locations — the shell never parses URIs.
 #[derive(Clone)]
 pub struct LocationsChannel {
-    pub seat: std::sync::Arc<dyn crate::higent::AhpServer>,
+    pub client: std::sync::Arc<dyn crate::higent::LocationsClient>,
     pub channel: crate::higent::ChannelUri,
     pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<editor::ResourceLocation> + Send + Sync>,
 }

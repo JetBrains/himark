@@ -31,7 +31,7 @@ impl HostId {
     }
 }
 
-pub type SeatFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
+pub type ClientFuture<T> = Pin<Box<dyn Future<Output = T> + Send + 'static>>;
 
 #[derive(Clone, Debug)]
 pub enum ServerEvent {
@@ -63,42 +63,56 @@ pub struct SessionOptions {
     pub model: Option<ahp_types::state::ModelSelection>,
 }
 
-pub trait AhpServer: Send + Sync + 'static {
-    fn connect(&self) -> SeatFuture<Result<RootInfo, String>>;
-    fn list_sessions(&self, cursor: Option<String>) -> SeatFuture<Result<SessionsPage, String>>;
+/// The session facet: connection, catalog and session lifecycle,
+/// the session channel, and channel-action dispatch. The old
+/// all-knowing `AhpServer` trait is burned — a caller holds the
+/// facet it drives, never the entire family.
+pub trait SessionClient: Send + Sync + 'static {
+    fn connect(&self) -> ClientFuture<Result<RootInfo, String>>;
+    fn list_sessions(&self, cursor: Option<String>) -> ClientFuture<Result<SessionsPage, String>>;
 
-    fn poll_root(&self) -> SeatFuture<Vec<ServerEvent>>;
+    fn poll_root(&self) -> ClientFuture<Vec<ServerEvent>>;
 
     fn create_session(
         &self,
         working_directories: Vec<Uri>,
         options: SessionOptions,
-    ) -> SeatFuture<Result<SessionUri, String>>;
+    ) -> ClientFuture<Result<SessionUri, String>>;
 
     fn resolve_session_config(
         &self,
         working_directory: Option<Uri>,
         config: Option<serde_json::Map<String, serde_json::Value>>,
-    ) -> SeatFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
-    fn dispose_session(&self, session: SessionUri) -> SeatFuture<Result<(), String>>;
+    ) -> ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
+    fn dispose_session(&self, session: SessionUri) -> ClientFuture<Result<(), String>>;
 
-    fn http_serve(&self) -> SeatFuture<Result<String, String>> {
+    fn http_serve(&self) -> ClientFuture<Result<String, String>> {
         Box::pin(std::future::ready(Err(
             "this host cannot serve over http".to_owned()
         )))
     }
 
-    fn subscribe_session(&self, session: SessionUri) -> SeatFuture<Result<SessionState, String>>;
-    fn poll_session(&self, session: SessionUri) -> SeatFuture<Vec<StateAction>>;
+    fn subscribe_session(&self, session: SessionUri) -> ClientFuture<Result<SessionState, String>>;
+    fn poll_session(&self, session: SessionUri) -> ClientFuture<Vec<StateAction>>;
 
-    fn create_chat(&self, session: SessionUri) -> SeatFuture<Result<ChatUri, String>>;
+    fn dispatch_action(
+        &self,
+        channel: ChannelUri,
+        action: StateAction,
+    ) -> ClientFuture<Result<(), String>>;
+}
 
-    fn subscribe_chat(&self, chat: ChatUri) -> SeatFuture<Result<ChatState, String>>;
+/// The chat facet: chats, turns, and the file-edit reads a chat's
+/// diff cells are built from.
+pub trait ChatClient: Send + Sync + 'static {
+    fn create_chat(&self, session: SessionUri) -> ClientFuture<Result<ChatUri, String>>;
+
+    fn subscribe_chat(&self, chat: ChatUri) -> ClientFuture<Result<ChatState, String>>;
     fn fetch_turns(
         &self,
         chat: ChatUri,
         cursor: Option<String>,
-    ) -> SeatFuture<Result<TurnsPage, String>>;
+    ) -> ClientFuture<Result<TurnsPage, String>>;
 
     fn start_turn(
         &self,
@@ -106,28 +120,27 @@ pub trait AhpServer: Send + Sync + 'static {
         text: String,
         attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
         model: Option<ahp_types::state::ModelSelection>,
-    ) -> SeatFuture<Result<(), String>>;
-    fn poll_chat(&self, chat: ChatUri) -> SeatFuture<Vec<StateAction>>;
-    fn cancel_turn(&self, chat: ChatUri, turn_id: TurnId) -> SeatFuture<()>;
+    ) -> ClientFuture<Result<(), String>>;
+    fn poll_chat(&self, chat: ChatUri) -> ClientFuture<Vec<StateAction>>;
+    fn cancel_turn(&self, chat: ChatUri, turn_id: TurnId) -> ClientFuture<()>;
 
-    fn dispatch_action(
-        &self,
-        channel: ChannelUri,
-        action: StateAction,
-    ) -> SeatFuture<Result<(), String>>;
     fn read_file_edit(
         &self,
         before: Option<Uri>,
         after: Option<Uri>,
-    ) -> SeatFuture<Result<FileEditContents, String>>;
+    ) -> ClientFuture<Result<FileEditContents, String>>;
+}
 
-    fn resource_read(&self, session: SessionUri, uri: ResourceUri) -> SeatFuture<Option<String>>;
+/// The resource facet: the session's filesystem — reads, writes,
+/// listings, watches, and the quick-open path find.
+pub trait ResourceClient: Send + Sync + 'static {
+    fn resource_read(&self, session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<String>>;
 
     fn resource_read_bytes(
         &self,
         session: SessionUri,
         uri: ResourceUri,
-    ) -> SeatFuture<Option<Vec<u8>>> {
+    ) -> ClientFuture<Option<Vec<u8>>> {
         let _ = (session, uri);
         Box::pin(std::future::ready(None))
     }
@@ -137,11 +150,11 @@ pub trait AhpServer: Send + Sync + 'static {
         session: SessionUri,
         uri: ResourceUri,
         text: String,
-    ) -> SeatFuture<bool>;
+    ) -> ClientFuture<bool>;
 
     /// Creates an empty file; never overwrites — false when the
     /// resource already exists.
-    fn resource_create(&self, session: SessionUri, uri: ResourceUri) -> SeatFuture<bool> {
+    fn resource_create(&self, session: SessionUri, uri: ResourceUri) -> ClientFuture<bool> {
         let _ = (session, uri);
         Box::pin(std::future::ready(false))
     }
@@ -151,7 +164,7 @@ pub trait AhpServer: Send + Sync + 'static {
         session: SessionUri,
         uri: ResourceUri,
         recursive: bool,
-    ) -> SeatFuture<bool> {
+    ) -> ClientFuture<bool> {
         let _ = (session, uri, recursive);
         Box::pin(std::future::ready(false))
     }
@@ -162,7 +175,7 @@ pub trait AhpServer: Send + Sync + 'static {
         session: SessionUri,
         from: ResourceUri,
         to: ResourceUri,
-    ) -> SeatFuture<bool> {
+    ) -> ClientFuture<bool> {
         let _ = (session, from, to);
         Box::pin(std::future::ready(false))
     }
@@ -171,19 +184,23 @@ pub trait AhpServer: Send + Sync + 'static {
         &self,
         session: SessionUri,
         uri: ResourceUri,
-    ) -> SeatFuture<Option<Vec<(String, bool)>>>;
+    ) -> ClientFuture<Option<Vec<(String, bool)>>>;
 
     fn resource_watch(
         &self,
         session: SessionUri,
         uri: ResourceUri,
         events: std::sync::Arc<dyn Fn() + Send + Sync>,
-    ) -> SeatFuture<Option<WatchHandle>>;
+    ) -> ClientFuture<Option<WatchHandle>>;
 
-    fn resource_unwatch(&self, handle: WatchHandle) -> SeatFuture<()>;
+    fn resource_unwatch(&self, handle: WatchHandle) -> ClientFuture<()>;
 
-    fn search(&self, session: SessionUri, ask: SearchAsk) -> SeatFuture<Option<SearchResult>>;
+    fn search(&self, session: SessionUri, ask: SearchAsk) -> ClientFuture<Option<SearchResult>>;
+}
 
+/// The locations facet: the streaming `ahp-locations:/…` channels —
+/// content search and the location-answering LSP asks.
+pub trait LocationsClient: Send + Sync + 'static {
     /// locations@1 `searchLocations`: answers the minted
     /// `ahp-locations:/…` channel; results stream as channel actions;
     /// unsubscribing cancels the walk (docs/ahp/ahp-locations.md).
@@ -191,7 +208,7 @@ pub trait AhpServer: Send + Sync + 'static {
         &self,
         session: SessionUri,
         ask: LocationsAsk,
-    ) -> SeatFuture<Result<ChannelUri, String>> {
+    ) -> ClientFuture<Result<ChannelUri, String>> {
         let _ = (session, ask);
         Box::pin(std::future::ready(Err(
             "locations@1 searchLocations not served".to_owned(),
@@ -205,7 +222,7 @@ pub trait AhpServer: Send + Sync + 'static {
         session: SessionUri,
         method: String,
         params: serde_json::Value,
-    ) -> SeatFuture<Result<ChannelUri, String>> {
+    ) -> ClientFuture<Result<ChannelUri, String>> {
         let _ = (session, method, params);
         Box::pin(std::future::ready(Err(
             "locations@1 lsp/locations not served".to_owned(),
@@ -215,18 +232,18 @@ pub trait AhpServer: Send + Sync + 'static {
     fn subscribe_locations(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let _ = channel;
         Box::pin(std::future::ready(Err("locations@1 not served".to_owned())))
     }
 
     /// Typed poll: only `locations/extend` bodies come back, in
-    /// arrival order. A seat that never served the subscribe is
+    /// arrival order. A client that never served the subscribe is
     /// never polled.
     fn poll_locations(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let _ = channel;
         Box::pin(std::future::pending())
     }
@@ -236,7 +253,10 @@ pub trait AhpServer: Send + Sync + 'static {
     fn unsubscribe_locations(&self, channel: &ChannelUri) {
         let _ = channel;
     }
+}
 
+/// The terminal facet: PTY channels and their event pumps.
+pub trait TerminalClient: Send + Sync + 'static {
     fn terminal_open(
         &self,
         session: SessionUri,
@@ -245,58 +265,71 @@ pub trait AhpServer: Send + Sync + 'static {
         cols: u16,
         rows: u16,
         events: Arc<dyn Fn(TerminalEvent) + Send + Sync>,
-    ) -> SeatFuture<Option<TerminalHandle>>;
+    ) -> ClientFuture<Option<TerminalHandle>>;
 
     fn terminal_input(&self, channel: &ChannelUri, data: String);
 
     fn terminal_resize(&self, channel: &ChannelUri, cols: u16, rows: u16);
 
     fn terminal_dispose(&self, channel: &ChannelUri);
+}
 
+/// The changes facet: the changeset channel.
+pub trait ChangesClient: Send + Sync + 'static {
     fn subscribe_changeset(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Result<ahp_types::state::ChangesetState, String>>;
+    ) -> ClientFuture<Result<ahp_types::state::ChangesetState, String>>;
 
-    fn poll_changeset(&self, channel: ChannelUri) -> SeatFuture<Vec<StateAction>>;
+    fn poll_changeset(&self, channel: ChannelUri) -> ClientFuture<Vec<StateAction>>;
 
     fn unsubscribe_changeset(&self, channel: &ChannelUri);
+}
 
+/// The history facet: the commit-history channel (history@1).
+pub trait HistoryClient: Send + Sync + 'static {
     fn subscribe_history(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
         let _ = channel;
         Box::pin(async { Err("history@1 not served".to_owned()) })
     }
+}
 
+/// The annotations facet: the comments channel.
+pub trait AnnotationsClient: Send + Sync + 'static {
     fn subscribe_annotations(
         &self,
         session: SessionUri,
-    ) -> SeatFuture<Result<ahp_types::state::AnnotationsState, String>>;
+    ) -> ClientFuture<Result<ahp_types::state::AnnotationsState, String>>;
 
-    fn poll_annotations(&self, session: SessionUri) -> SeatFuture<Vec<StateAction>>;
+    fn poll_annotations(&self, session: SessionUri) -> ClientFuture<Vec<StateAction>>;
 
     fn dispatch_annotations(&self, session: &SessionUri, action: StateAction);
 
     fn unsubscribe_annotations(&self, session: &SessionUri);
+}
 
+/// The docsync facet: documents@1 — mirrored documents and their
+/// operation channels.
+pub trait DocumentsClient: Send + Sync + 'static {
     fn open_document(
         &self,
         session: SessionUri,
         uri: Option<ResourceUri>,
         text: Option<String>,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>>;
+    ) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>>;
 
     fn subscribe_document(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
+    ) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
 
     fn poll_document(
         &self,
         channel: ChannelUri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
 
     fn dispatch_document(
         &self,
@@ -310,7 +343,7 @@ pub trait AhpServer: Send + Sync + 'static {
         &self,
         channel: ChannelUri,
         uri: ResourceUri,
-    ) -> SeatFuture<Result<(), String>> {
+    ) -> ClientFuture<Result<(), String>> {
         let _ = (channel, uri);
         Box::pin(std::future::ready(Err(
             "documents@1 storeDocument not served".to_owned(),
@@ -320,14 +353,65 @@ pub trait AhpServer: Send + Sync + 'static {
     /// Resolves once the host has dropped the subscription (or the
     /// connection is dead, which drops it with the connection) — the
     /// caller can order a fresh subscribe strictly AFTER it.
-    fn unsubscribe_document(&self, channel: &ChannelUri) -> SeatFuture<()>;
+    fn unsubscribe_document(&self, channel: &ChannelUri) -> ClientFuture<()>;
+}
 
+/// The LSP facet: the raw lsp@1 pass-through.
+pub trait LspClient: Send + Sync + 'static {
     fn lsp(
         &self,
         session: SessionUri,
         method: String,
         params: serde_json::Value,
-    ) -> SeatFuture<Result<serde_json::Value, String>>;
+    ) -> ClientFuture<Result<serde_json::Value, String>>;
+}
+
+/// One host's client, faceted: every protocol domain holds only its
+/// slice. The bundle is ten `Arc`s onto (usually) one implementation;
+/// cloning it is pointer bumps.
+#[derive(Clone)]
+pub struct Client {
+    pub session: Arc<dyn SessionClient>,
+    pub resources: Arc<dyn ResourceClient>,
+    pub terminals: Arc<dyn TerminalClient>,
+    pub changes: Arc<dyn ChangesClient>,
+    pub history: Arc<dyn HistoryClient>,
+    pub annotations: Arc<dyn AnnotationsClient>,
+    pub locations: Arc<dyn LocationsClient>,
+    pub documents: Arc<dyn DocumentsClient>,
+    pub lsp: Arc<dyn LspClient>,
+    pub chat: Arc<dyn ChatClient>,
+}
+
+impl Client {
+    /// The whole-protocol client: one implementation (the wire, a full
+    /// test host) serving every facet.
+    pub fn of<T>(client: Arc<T>) -> Self
+    where
+        T: SessionClient
+            + ResourceClient
+            + TerminalClient
+            + ChangesClient
+            + HistoryClient
+            + AnnotationsClient
+            + LocationsClient
+            + DocumentsClient
+            + LspClient
+            + ChatClient,
+    {
+        Client {
+            session: Arc::clone(&client) as Arc<dyn SessionClient>,
+            resources: Arc::clone(&client) as Arc<dyn ResourceClient>,
+            terminals: Arc::clone(&client) as Arc<dyn TerminalClient>,
+            changes: Arc::clone(&client) as Arc<dyn ChangesClient>,
+            history: Arc::clone(&client) as Arc<dyn HistoryClient>,
+            annotations: Arc::clone(&client) as Arc<dyn AnnotationsClient>,
+            locations: Arc::clone(&client) as Arc<dyn LocationsClient>,
+            documents: Arc::clone(&client) as Arc<dyn DocumentsClient>,
+            lsp: Arc::clone(&client) as Arc<dyn LspClient>,
+            chat: client,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -364,22 +448,22 @@ pub struct LocationsAsk {
 
 #[derive(Clone, Default)]
 pub struct Servers {
-    seats: rpds::HashTrieMapSync<HostId, Arc<dyn AhpServer>>,
+    clients: rpds::HashTrieMapSync<HostId, Client>,
     order: rpds::VectorSync<HostId>,
     next: u64,
 }
 
 impl Servers {
-    pub fn mint(&mut self, seat: Arc<dyn AhpServer>) -> HostId {
+    pub fn mint(&mut self, client: Client) -> HostId {
         self.next += 1;
         let minted = HostId(self.next);
-        self.seats.insert_mut(minted, seat);
+        self.clients.insert_mut(minted, client);
         self.order.push_back_mut(minted);
         minted
     }
 
-    pub fn seat(store: &Store, id: HostId) -> Option<Arc<dyn AhpServer>> {
-        store.get::<Servers>()?.seats.get(&id).cloned()
+    pub fn client(store: &Store, id: HostId) -> Option<Client> {
+        store.get::<Servers>()?.clients.get(&id).cloned()
     }
 
     pub fn list(store: &Store) -> Vec<HostId> {
@@ -423,13 +507,10 @@ pub fn route(store: &Store, authority: &str) -> Option<(HostId, SessionUri)> {
     None
 }
 
-pub fn route_seat(
-    store: &Store,
-    authority: &str,
-) -> Option<(HostId, Arc<dyn AhpServer>, SessionUri)> {
+pub fn route_client(store: &Store, authority: &str) -> Option<(HostId, Client, SessionUri)> {
     let (host, session) = route(store, authority)?;
-    let seat = Servers::seat(store, host)?;
-    Some((host, seat, session))
+    let client = Servers::client(store, host)?;
+    Some((host, client, session))
 }
 
 pub fn route_authority(host: HostId, session: &SessionUri) -> editor::Authority {
@@ -654,6 +735,120 @@ pub trait ResourceUriMap: Send + Sync + 'static {
         kind: editor::ResourceType,
         authority: &editor::Authority,
     ) -> Option<editor::ResourceLocation>;
+}
+
+/// The client mirror tests mint hosts with: every facet answers
+/// `unreachable!`. A test scripting one domain overrides that facet
+/// alone — `Client { chat: scripted, ..client::inert() }` — instead of
+/// mocking the entire protocol.
+#[cfg(any(test, feature = "test-support"))]
+pub fn inert() -> Client {
+    pub struct Inert;
+
+    macro_rules! unreached {
+        ($($name:ident($($arg:ident: $ty:ty),*) -> $out:ty;)*) => {
+            $(fn $name(&self, $($arg: $ty),*) -> $out {
+                $(let _ = $arg;)*
+                unreachable!("the inert client is never reached")
+            })*
+        };
+    }
+
+    impl SessionClient for Inert {
+        unreached! {
+            connect() -> ClientFuture<Result<RootInfo, String>>;
+            list_sessions(cursor: Option<String>) -> ClientFuture<Result<SessionsPage, String>>;
+            poll_root() -> ClientFuture<Vec<ServerEvent>>;
+            create_session(dirs: Vec<Uri>, options: SessionOptions) -> ClientFuture<Result<SessionUri, String>>;
+            resolve_session_config(working_directory: Option<Uri>, config: Option<serde_json::Map<String, serde_json::Value>>) -> ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>>;
+            dispose_session(session: SessionUri) -> ClientFuture<Result<(), String>>;
+            subscribe_session(session: SessionUri) -> ClientFuture<Result<SessionState, String>>;
+            poll_session(session: SessionUri) -> ClientFuture<Vec<StateAction>>;
+            dispatch_action(channel: ChannelUri, action: StateAction) -> ClientFuture<Result<(), String>>;
+        }
+    }
+
+    impl ChatClient for Inert {
+        unreached! {
+            create_chat(session: SessionUri) -> ClientFuture<Result<ChatUri, String>>;
+            subscribe_chat(chat: ChatUri) -> ClientFuture<Result<ChatState, String>>;
+            fetch_turns(chat: ChatUri, cursor: Option<String>) -> ClientFuture<Result<TurnsPage, String>>;
+            start_turn(chat: ChatUri, text: String, attachments: Option<Vec<ahp_types::state::MessageAttachment>>, model: Option<ahp_types::state::ModelSelection>) -> ClientFuture<Result<(), String>>;
+            poll_chat(chat: ChatUri) -> ClientFuture<Vec<StateAction>>;
+            cancel_turn(chat: ChatUri, turn_id: TurnId) -> ClientFuture<()>;
+            read_file_edit(before: Option<Uri>, after: Option<Uri>) -> ClientFuture<Result<FileEditContents, String>>;
+        }
+    }
+
+    impl ResourceClient for Inert {
+        unreached! {
+            resource_read(session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<String>>;
+            resource_write(session: SessionUri, uri: ResourceUri, text: String) -> ClientFuture<bool>;
+            resource_list(session: SessionUri, uri: ResourceUri) -> ClientFuture<Option<Vec<(String, bool)>>>;
+            resource_watch(session: SessionUri, uri: ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> ClientFuture<Option<WatchHandle>>;
+            resource_unwatch(handle: WatchHandle) -> ClientFuture<()>;
+            search(session: SessionUri, ask: SearchAsk) -> ClientFuture<Option<SearchResult>>;
+        }
+    }
+
+    impl LocationsClient for Inert {}
+
+    impl TerminalClient for Inert {
+        unreached! {
+            terminal_input(channel: &ChannelUri, data: String) -> ();
+            terminal_resize(channel: &ChannelUri, cols: u16, rows: u16) -> ();
+            terminal_dispose(channel: &ChannelUri) -> ();
+        }
+
+        fn terminal_open(
+            &self,
+            _session: SessionUri,
+            _channel: ChannelUri,
+            _cwd: Option<Uri>,
+            _cols: u16,
+            _rows: u16,
+            _events: Arc<dyn Fn(TerminalEvent) + Send + Sync>,
+        ) -> ClientFuture<Option<TerminalHandle>> {
+            unreachable!("the inert client is never reached")
+        }
+    }
+
+    impl ChangesClient for Inert {
+        unreached! {
+            subscribe_changeset(channel: ChannelUri) -> ClientFuture<Result<ahp_types::state::ChangesetState, String>>;
+            poll_changeset(channel: ChannelUri) -> ClientFuture<Vec<StateAction>>;
+            unsubscribe_changeset(channel: &ChannelUri) -> ();
+        }
+    }
+
+    impl HistoryClient for Inert {}
+
+    impl AnnotationsClient for Inert {
+        unreached! {
+            subscribe_annotations(session: SessionUri) -> ClientFuture<Result<ahp_types::state::AnnotationsState, String>>;
+            poll_annotations(session: SessionUri) -> ClientFuture<Vec<StateAction>>;
+            dispatch_annotations(session: &SessionUri, action: StateAction) -> ();
+            unsubscribe_annotations(session: &SessionUri) -> ();
+        }
+    }
+
+    impl DocumentsClient for Inert {
+        unreached! {
+            open_document(session: SessionUri, uri: Option<ResourceUri>, text: Option<String>) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>>;
+            subscribe_document(channel: ChannelUri) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
+            poll_document(channel: ChannelUri) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
+            dispatch_document(channel: &ChannelUri, action: himark_ahp_ext_types::DocumentApplied) -> ();
+            unsubscribe_document(channel: &ChannelUri) -> ClientFuture<()>;
+        }
+    }
+
+    impl LspClient for Inert {
+        unreached! {
+            lsp(session: SessionUri, method: String, params: serde_json::Value) -> ClientFuture<Result<serde_json::Value, String>>;
+        }
+    }
+
+    Client::of(Arc::new(Inert))
 }
 
 #[cfg(test)]

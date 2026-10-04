@@ -3,14 +3,14 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
+use crate::fs::ClientDirectory;
 use crate::higent::{LocationsAsk, ResourceUriMap, SearchKind};
 use crate::{LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect};
 use editor::{Authority, ResourceLocation, ResourceType};
 use imba::effect::EffectHandler;
 
 pub struct RouteSearchLocations {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
 }
 
 impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
@@ -18,10 +18,10 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
         let Some(first) = effect.folders.first() else {
             return Err("no folders to search".to_owned());
         };
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, first) else {
-            return Err(format!("no seat serves {}", first.authority().as_str()));
+        let Some((client, session)) = crate::fsroute::client_of(&self.directory, first) else {
+            return Err(format!("no client serves {}", first.authority().as_str()));
         };
-        // A session's folders live on one seat; a stray foreign
+        // A session's folders live on one client; a stray foreign
         // authority in the list is skipped, not multiplexed.
         let authority = first.authority().clone();
         let folders: Vec<String> = effect
@@ -40,9 +40,9 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
             case_sensitive: effect.case_sensitive,
             limit: effect.limit,
         };
-        let channel = seat.search_locations(session, ask).await?;
+        let channel = client.locations.search_locations(session, ask).await?;
         Ok(LocationsChannel {
-            seat,
+            client: std::sync::Arc::clone(&client.locations),
             channel,
             resolve: resolver(authority),
         })
@@ -50,17 +50,17 @@ impl EffectHandler<SearchLocationsEffect> for RouteSearchLocations {
 }
 
 pub struct RouteLspLocations {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn ResourceUriMap>,
 }
 
 impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
     async fn handle(&self, effect: LspLocationsEffect) -> Result<LocationsChannel, String> {
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, &effect.location)
+        let Some((client, session)) = crate::fsroute::client_of(&self.directory, &effect.location)
         else {
             let authority = effect.location.authority().as_str();
-            tracing::warn!(target: "ahp_wire", %authority, "lsp/locations: no seat serves the asked document");
-            return Err(format!("no seat serves {authority}"));
+            tracing::warn!(target: "ahp_wire", %authority, "lsp/locations: no client serves the asked document");
+            return Err(format!("no client serves {authority}"));
         };
         let uri = self.uris.uri_of(&effect.location).into_string();
         let mut params = serde_json::json!({
@@ -74,7 +74,7 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
             }
             LspLocationsKind::Implementations => "textDocument/implementation",
         };
-        let channel = match seat.lsp_locations(session, method.to_owned(), params).await {
+        let channel = match client.locations.lsp_locations(session, method.to_owned(), params).await {
             Ok(channel) => channel,
             Err(error) => {
                 tracing::warn!(target: "ahp_wire", %method, %error, "lsp/locations ask failed");
@@ -82,7 +82,7 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
             }
         };
         Ok(LocationsChannel {
-            seat,
+            client: std::sync::Arc::clone(&client.locations),
             channel,
             resolve: resolver(effect.location.authority().clone()),
         })
@@ -90,13 +90,13 @@ impl EffectHandler<LspLocationsEffect> for RouteLspLocations {
 }
 
 /// The way back from a stream's resource URIs to locations — the
-/// asked location's authority is reused, so remote-seat results stay
+/// asked location's authority is reused, so remote-client results stay
 /// on the remote authority (the lsproute precedent).
 fn resolver(authority: Authority) -> Arc<dyn Fn(&str) -> Option<ResourceLocation> + Send + Sync> {
     Arc::new(move |uri| {
         ResourceUriMap::location_of(
             &crate::uris::FileUris,
-            &crate::higent::seat::ResourceUri::new(uri),
+            &crate::higent::client::ResourceUri::new(uri),
             ResourceType::document(),
             &authority,
         )

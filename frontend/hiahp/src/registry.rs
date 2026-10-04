@@ -17,7 +17,7 @@ pub struct HandleConnectServer;
 
 impl EffectHandler<ConnectServerEffect> for HandleConnectServer {
     async fn handle(&self, effect: ConnectServerEffect) -> Result<RootInfo, String> {
-        effect.seat.connect().await
+        effect.client.connect().await
     }
 }
 
@@ -25,7 +25,7 @@ pub struct HandleListSessions;
 
 impl EffectHandler<ListSessionsEffect> for HandleListSessions {
     async fn handle(&self, effect: ListSessionsEffect) -> Result<SessionsPage, String> {
-        effect.seat.list_sessions(effect.cursor).await
+        effect.client.list_sessions(effect.cursor).await
     }
 }
 
@@ -33,7 +33,7 @@ pub struct HandlePollServer;
 
 impl EffectHandler<PollServerEffect> for HandlePollServer {
     async fn handle(&self, effect: PollServerEffect) -> Vec<ServerEvent> {
-        effect.seat.poll_root().await
+        effect.client.poll_root().await
     }
 }
 
@@ -45,7 +45,7 @@ impl EffectHandler<CreateSessionEffect> for HandleCreateSession {
         effect: CreateSessionEffect,
     ) -> Result<crate::higent::SessionUri, String> {
         effect
-            .seat
+            .client
             .create_session(effect.working_directories, effect.options)
             .await
     }
@@ -59,7 +59,7 @@ impl EffectHandler<crate::higent::ResolveSessionConfigEffect> for HandleResolveS
         effect: crate::higent::ResolveSessionConfigEffect,
     ) -> Result<ahp_types::commands::ResolveSessionConfigResult, String> {
         effect
-            .seat
+            .client
             .resolve_session_config(effect.working_directory, effect.config)
             .await
     }
@@ -69,7 +69,7 @@ pub struct HandleDisposeSession;
 
 impl EffectHandler<DisposeSessionEffect> for HandleDisposeSession {
     async fn handle(&self, effect: DisposeSessionEffect) -> Result<(), String> {
-        effect.seat.dispose_session(effect.session).await
+        effect.client.dispose_session(effect.session).await
     }
 }
 
@@ -77,7 +77,7 @@ pub struct HandleSubscribeSession;
 
 impl EffectHandler<SubscribeSessionEffect> for HandleSubscribeSession {
     async fn handle(&self, effect: SubscribeSessionEffect) -> Result<SessionState, String> {
-        effect.seat.subscribe_session(effect.session).await
+        effect.client.subscribe_session(effect.session).await
     }
 }
 
@@ -85,7 +85,7 @@ pub struct HandlePollSession;
 
 impl EffectHandler<PollSessionEffect> for HandlePollSession {
     async fn handle(&self, effect: PollSessionEffect) -> Vec<StateAction> {
-        effect.seat.poll_session(effect.session).await
+        effect.client.poll_session(effect.session).await
     }
 }
 
@@ -93,7 +93,7 @@ pub struct HandleCreateChat;
 
 impl EffectHandler<CreateChatEffect> for HandleCreateChat {
     async fn handle(&self, effect: CreateChatEffect) -> Result<crate::higent::ChatUri, String> {
-        effect.seat.create_chat(effect.session).await
+        effect.client.create_chat(effect.session).await
     }
 }
 
@@ -101,7 +101,7 @@ pub struct HandleSubscribeChat;
 
 impl EffectHandler<SubscribeChatEffect> for HandleSubscribeChat {
     async fn handle(&self, effect: SubscribeChatEffect) -> Result<ChatState, String> {
-        effect.seat.subscribe_chat(effect.chat).await
+        effect.client.subscribe_chat(effect.chat).await
     }
 }
 
@@ -109,7 +109,7 @@ pub struct HandleFetchTurns;
 
 impl EffectHandler<FetchTurnsEffect> for HandleFetchTurns {
     async fn handle(&self, effect: FetchTurnsEffect) -> Result<TurnsPage, String> {
-        effect.seat.fetch_turns(effect.chat, effect.cursor).await
+        effect.client.fetch_turns(effect.chat, effect.cursor).await
     }
 }
 
@@ -118,7 +118,7 @@ pub struct HandleStartTurn;
 impl EffectHandler<StartTurnEffect> for HandleStartTurn {
     async fn handle(&self, effect: StartTurnEffect) -> Result<(), String> {
         effect
-            .seat
+            .client
             .start_turn(effect.chat, effect.text, effect.attachments, effect.model)
             .await
     }
@@ -131,7 +131,7 @@ impl EffectHandler<crate::higent::SubscribeChangesetEffect> for HandleSubscribeC
         &self,
         effect: crate::higent::SubscribeChangesetEffect,
     ) -> Result<ahp_types::state::ChangesetState, String> {
-        effect.seat.subscribe_changeset(effect.channel).await
+        effect.client.subscribe_changeset(effect.channel).await
     }
 }
 
@@ -142,7 +142,7 @@ impl EffectHandler<crate::higent::SubscribeLocationsEffect> for HandleSubscribeL
         &self,
         effect: crate::higent::SubscribeLocationsEffect,
     ) -> Result<himark_ahp_ext_types::LocationList, String> {
-        effect.seat.subscribe_locations(effect.channel).await
+        effect.client.subscribe_locations(effect.channel).await
     }
 }
 
@@ -153,7 +153,7 @@ impl EffectHandler<crate::higent::PollLocationsEffect> for HandlePollLocations {
         &self,
         effect: crate::higent::PollLocationsEffect,
     ) -> Vec<himark_ahp_ext_types::LocationList> {
-        effect.seat.poll_locations(effect.channel).await
+        effect.client.poll_locations(effect.channel).await
     }
 }
 
@@ -161,7 +161,7 @@ pub struct HandleUnsubscribeLocations;
 
 impl EffectHandler<crate::higent::UnsubscribeLocationsEffect> for HandleUnsubscribeLocations {
     async fn handle(&self, effect: crate::higent::UnsubscribeLocationsEffect) {
-        effect.seat.unsubscribe_locations(&effect.channel);
+        effect.client.unsubscribe_locations(&effect.channel);
     }
 }
 
@@ -172,7 +172,7 @@ impl EffectHandler<crate::higent::SubscribeHistoryEffect> for HandleSubscribeHis
         &self,
         effect: crate::higent::SubscribeHistoryEffect,
     ) -> Result<himark_ahp_ext_types::history::HistoryState, String> {
-        effect.seat.subscribe_history(effect.channel).await
+        effect.client.subscribe_history(effect.channel).await
     }
 }
 
@@ -183,7 +183,7 @@ impl EffectHandler<crate::higent::PollChangesetEffect> for HandlePollChangeset {
         &self,
         effect: crate::higent::PollChangesetEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
-        effect.seat.poll_changeset(effect.channel).await
+        effect.client.poll_changeset(effect.channel).await
     }
 }
 
@@ -194,7 +194,7 @@ impl EffectHandler<crate::higent::SubscribeAnnotationsEffect> for HandleSubscrib
         &self,
         effect: crate::higent::SubscribeAnnotationsEffect,
     ) -> Result<ahp_types::state::AnnotationsState, String> {
-        effect.seat.subscribe_annotations(effect.session).await
+        effect.client.subscribe_annotations(effect.session).await
     }
 }
 
@@ -205,7 +205,7 @@ impl EffectHandler<crate::higent::PollAnnotationsEffect> for HandlePollAnnotatio
         &self,
         effect: crate::higent::PollAnnotationsEffect,
     ) -> Vec<ahp_types::actions::StateAction> {
-        effect.seat.poll_annotations(effect.session).await
+        effect.client.poll_annotations(effect.session).await
     }
 }
 
@@ -213,7 +213,7 @@ pub struct HandlePollChatActions;
 
 impl EffectHandler<PollChatActionsEffect> for HandlePollChatActions {
     async fn handle(&self, effect: PollChatActionsEffect) -> Vec<StateAction> {
-        effect.seat.poll_chat(effect.chat).await
+        effect.client.poll_chat(effect.chat).await
     }
 }
 
@@ -221,7 +221,7 @@ pub struct HandleCancelTurn;
 
 impl EffectHandler<CancelTurnEffect> for HandleCancelTurn {
     async fn handle(&self, effect: CancelTurnEffect) {
-        effect.seat.cancel_turn(effect.chat, effect.turn_id).await;
+        effect.client.cancel_turn(effect.chat, effect.turn_id).await;
     }
 }
 
@@ -230,7 +230,7 @@ pub struct HandleDispatchChatAction;
 impl EffectHandler<DispatchChatActionEffect> for HandleDispatchChatAction {
     async fn handle(&self, effect: DispatchChatActionEffect) -> Result<(), String> {
         effect
-            .seat
+            .client
             .dispatch_action(effect.channel, effect.action)
             .await
     }
@@ -241,7 +241,7 @@ pub struct HandleFetchFileEdit;
 impl EffectHandler<FetchFileEditEffect> for HandleFetchFileEdit {
     async fn handle(&self, effect: FetchFileEditEffect) -> Result<FileEditContents, String> {
         effect
-            .seat
+            .client
             .read_file_edit(effect.before, effect.after)
             .await
     }

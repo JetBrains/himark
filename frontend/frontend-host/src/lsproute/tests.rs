@@ -5,7 +5,7 @@ use super::*;
 use hicode::FindDefinitionEffect;
 use himark::ResourceType;
 
-fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) {
+fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("backend home");
     let socket = dir.path().join("backend.sock");
     let serving = socket.clone();
@@ -43,12 +43,13 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
     let root = dir.path().join("code").canonicalize().expect("canonical");
     std::fs::write(root.join("lib.rs"), "fn answer() -> u32 { 42 }\n").unwrap();
 
-    let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let seat= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
     ));
 
+    use himark::higent::SessionClient as _;
     block_on(seat.dispatch_action(
         himark::higent::ChannelUri::new(host_discovery::LOCAL_FS_SESSION),
         himark::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
@@ -59,21 +60,21 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<SeatDirectory>, std::path::PathBuf) 
     ))
     .expect("the directory dispatches");
 
-    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
-    let (server, _) = himark::higent::seat::parse(&himark::higent::seat::authority(
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
+    let (server, _) = himark::higent::client::parse(&himark::higent::client::authority(
         {
-            let (server, _) = himark::higent::seat::parse("ahp:1:x").expect("id");
+            let (server, _) = himark::higent::client::parse("ahp:1:x").expect("id");
             server
         },
         &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
-    directory.record(server, seat);
+    directory.record(server, himark::higent::Client::of(seat));
     directory.set_local(server);
     (dir, directory, root)
 }
 
-fn block_on<T>(mut future: himark::higent::SeatFuture<T>) -> T {
+fn block_on<T>(mut future: himark::higent::ClientFuture<T>) -> T {
     use std::task::{Context, Poll, Wake, Waker};
     struct Unpark(std::thread::Thread);
     impl Wake for Unpark {

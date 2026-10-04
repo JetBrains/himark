@@ -55,15 +55,15 @@ fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
 #[test]
 fn a_chat_is_reached_by_its_own_session() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &seats);
+    let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:1");
     state.scatter(store, Some(&home));
 
     // The next batch is gathered for a DIFFERENT session.
-    let store = state.gather(None, Some(&session("s-b")), &seats);
+    let store = state.gather(None, Some(&session("s-b")), &clients);
     assert!(
         chat_in(&store, &home, &uri),
         "the record is found by its own address"
@@ -73,35 +73,35 @@ fn a_chat_is_reached_by_its_own_session() {
 #[test]
 fn a_chat_survives_a_scopeless_batch() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &seats);
+    let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:2");
     state.scatter(store, Some(&home));
 
     // A batch with NO session scope: it writes other things, and
     // the chats must not be dragged out of their family with them.
-    let mut store = state.gather(None, None, &seats);
+    let mut store = state.gather(None, None, &clients);
     state.scatter(std::mem::replace(&mut store, Store::new()), None);
 
-    let store = state.gather(None, Some(&home), &seats);
+    let store = state.gather(None, Some(&home), &clients);
     assert!(chat_in(&store, &home, &uri));
 }
 
 #[test]
 fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let home = session("s-a");
     let elsewhere = session("s-b");
 
     // The batch is gathered for s-b; the chat belongs to s-a.
-    let mut store = state.gather(None, Some(&elsewhere), &seats);
+    let mut store = state.gather(None, Some(&elsewhere), &clients);
     let uri = put(&mut store, &home, "chat:3");
     state.scatter(store, Some(&home));
 
-    let store = state.gather(None, Some(&home), &seats);
+    let store = state.gather(None, Some(&home), &clients);
     assert!(
         chat_in(&store, &home, &uri),
         "filed by the panel's session, not the gather's"
@@ -112,16 +112,16 @@ fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
 #[test]
 fn a_sessions_chats_are_its_own() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let a = session("s-a");
     let b = session("s-b");
 
-    let mut store = state.gather(None, Some(&a), &seats);
+    let mut store = state.gather(None, Some(&a), &clients);
     let mine = put(&mut store, &a, "chat:a");
     let theirs = put(&mut store, &b, "chat:b");
     state.scatter(store, Some(&a));
 
-    let store = state.gather(None, Some(&a), &seats);
+    let store = state.gather(None, Some(&a), &clients);
     assert_eq!(list_in(&store, &a), vec![mine]);
     assert_eq!(list_in(&store, &b), vec![theirs]);
 }
@@ -130,15 +130,15 @@ fn a_sessions_chats_are_its_own() {
 #[test]
 fn letting_a_session_go_takes_its_chats() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &seats);
+    let mut store = state.gather(None, Some(&home), &clients);
     let uri = put(&mut store, &home, "chat:1");
     Hosts::dispose_family(&mut store, &home);
     state.scatter(store, Some(&home));
 
-    let store = state.gather(None, Some(&home), &seats);
+    let store = state.gather(None, Some(&home), &clients);
     assert!(!chat_in(&store, &home, &uri));
     assert!(list_in(&store, &home).is_empty());
 }
@@ -150,10 +150,10 @@ fn letting_a_session_go_takes_its_chats() {
 #[test]
 fn disposal_retracts_every_family_entity() {
     let mut state = crate::AppState::default();
-    let seats = crate::higent::Servers::default();
+    let clients = crate::higent::Servers::default();
     let home = session("s-a");
 
-    let mut store = state.gather(None, Some(&home), &seats);
+    let mut store = state.gather(None, Some(&home), &clients);
     put(&mut store, &home, "chat:1");
     let family = Hosts::ensure_family(&mut store, &home);
     store.update_entity(
@@ -164,7 +164,7 @@ fn disposal_retracts_every_family_entity() {
     store.update_entity(family.terminals, |_terminals| {});
     state.scatter(store, Some(&home));
 
-    let mut store = state.gather(None, Some(&home), &seats);
+    let mut store = state.gather(None, Some(&home), &clients);
     assert!(Hosts::family(&store, &home).is_some(), "the row is live");
     Hosts::dispose_family(&mut store, &home);
 
@@ -181,6 +181,6 @@ fn disposal_retracts_every_family_entity() {
     state.scatter(store, Some(&home));
 
     // And scatter resurrects nothing from the scaffolding.
-    let store = state.gather(None, Some(&home), &seats);
+    let store = state.gather(None, Some(&home), &clients);
     assert!(Hosts::family(&store, &home).is_none());
 }

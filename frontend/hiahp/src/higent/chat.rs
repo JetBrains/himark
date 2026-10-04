@@ -808,8 +808,8 @@ impl ChatPanel {
         self.conversation.is_running()
     }
 
-    fn seat(&self, store: &Store) -> Option<std::sync::Arc<dyn crate::higent::AhpServer>> {
-        crate::higent::Servers::seat(store, self.server)
+    fn client(&self, store: &Store) -> Option<crate::higent::Client> {
+        crate::higent::Servers::client(store, self.server)
     }
 
     // ------------------------------------------------------------------
@@ -833,7 +833,7 @@ impl ChatPanel {
             self.chat,
             self.conversation.len()
         );
-        let seat = self.seat(store);
+        let client = self.client(store);
         let mut view = ChatView::new(store, ui);
         fx.scope(
             move |command| ChatPanelCommand::InView(id, Box::new(command)),
@@ -842,7 +842,7 @@ impl ChatPanel {
                 let slice = view.build_page(
                     store,
                     ui,
-                    &seat,
+                    &client,
                     self.conversation.turns(),
                     lead_loader,
                     EAGER_TAIL,
@@ -938,7 +938,7 @@ impl ChatPanel {
         if ops.is_empty() {
             return;
         }
-        let seat = self.seat(store);
+        let client = self.client(store);
         let ids: Vec<ChatViewId> = self.views.keys().copied().collect();
         for id in ids {
             let Some(mut view) = self.views.get(&id).cloned() else {
@@ -949,7 +949,7 @@ impl ChatPanel {
                 move |command| ChatPanelCommand::InView(id, Box::new(command)),
                 |fx| {
                     for op in ops {
-                        view.apply(store, ui, &seat, op, fx);
+                        view.apply(store, ui, &client, op, fx);
                     }
                 },
             );
@@ -975,14 +975,14 @@ impl ChatPanel {
         let Some(cursor) = self.conversation.older().cloned() else {
             return;
         };
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return;
         };
         self.roll(store, ui, &[ViewOp::Loader { armed: false }], fx);
         self.fetch_token = Some(
             fx.push(
                 AnyEffect::new(FetchTurnsEffect {
-                    seat,
+                    client: client.chat.clone(),
                     chat: self.chat.clone(),
                     cursor: Some(cursor),
                 })
@@ -1100,12 +1100,12 @@ impl ChatPanel {
         undo_queue: Option<String>,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return;
         };
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
-                seat,
+                client: client.session.clone(),
                 channel: self.chat.as_channel(),
                 action,
             })
@@ -1119,12 +1119,12 @@ impl ChatPanel {
     /// The panel is showing the session's latest state — tell the server so
     /// the session list drops its unread mark.
     fn mark_read(&self, store: &Store, fx: &mut Effects<'_, ChatPanelCommand>) {
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return;
         };
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
-                seat,
+                client: client.session.clone(),
                 channel: self.session.as_channel(),
                 action: StateAction::SessionIsReadChanged(
                     ahp_types::actions::SessionIsReadChangedAction { is_read: true },
@@ -1177,11 +1177,11 @@ impl ChatPanel {
         let Some(turn_id) = self.cancel_target() else {
             return;
         };
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return;
         };
         fx.notify(CancelTurnEffect {
-            seat,
+            client: client.chat.clone(),
             chat: self.chat.clone(),
             turn_id,
         });
@@ -1191,7 +1191,7 @@ impl ChatPanel {
         if !matches!(self.state, Link::Ready) {
             return;
         }
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return;
         };
         if let Some(token) = self.poll_token.take() {
@@ -1200,7 +1200,7 @@ impl ChatPanel {
         self.poll_token = Some(
             fx.push(
                 AnyEffect::new(PollChatActionsEffect {
-                    seat,
+                    client: client.chat.clone(),
                     chat: self.chat.clone(),
                 })
                 .map(ChatPanelCommand::Actions),
@@ -1394,7 +1394,7 @@ impl ChatPanel {
         if !matches!(self.state, Link::Ready) {
             return false;
         }
-        let Some(seat) = self.seat(store) else {
+        let Some(client) = self.client(store) else {
             return false;
         };
         if text.is_empty() {
@@ -1453,7 +1453,7 @@ impl ChatPanel {
         let failed = turn.clone();
         fx.push(
             AnyEffect::new(DispatchChatActionEffect {
-                seat,
+                client: client.session.clone(),
                 channel: chat.as_channel(),
                 action,
             })
@@ -1501,7 +1501,7 @@ impl ChatPanel {
     }
 
     /// The diff header's OPEN: hand the wire uri to the app, which
-    /// resolves it against this session's seat and opens the WORKING
+    /// resolves it against this session's client and opens the WORKING
     /// COPY — the live file, not the snapshots the diff was built from.
     fn open_edited_file(&self, store: &mut Store, uri: String) {
         let Some(road) = store.get::<OpenEditedRoad>().map(|road| road.0.clone()) else {
@@ -1612,7 +1612,7 @@ impl ChatPanel {
                     self.load_older(store, ui, fx);
                     return;
                 }
-                // A diff header's OPEN is MODEL work — the seat lives
+                // A diff header's OPEN is MODEL work — the client lives
                 // on the panel — so it is consumed before the command
                 // reaches the mount's furniture.
                 if let Some(uri) = peeled_open_file(&command) {
@@ -1620,13 +1620,13 @@ impl ChatPanel {
                     return;
                 }
                 if let Some(index) = peeled_wake(&command) {
-                    let seat = self.seat(store);
+                    let client = self.client(store);
                     let Some(mut view) = self.views.get(&id).cloned() else {
                         return;
                     };
                     fx.scope(
                         move |command| ChatPanelCommand::InView(id, Box::new(command)),
-                        |fx| view.wake_row(store, ui, &seat, index, fx),
+                        |fx| view.wake_row(store, ui, &client, index, fx),
                     );
                     self.views.insert_mut(id, view);
                     return;
@@ -1784,12 +1784,12 @@ impl ChatPanel {
                 self.views.insert_mut(id, view);
                 match ask {
                     super::ToolbarAsk::Edits(mode) => {
-                        if let Some(seat) = self.seat(store) {
+                        if let Some(client) = self.client(store) {
                             let mut config = serde_json::Map::new();
                             config.insert("permissionMode".to_owned(), serde_json::json!(mode));
                             fx.push(
                                 AnyEffect::new(DispatchChatActionEffect {
-                                    seat,
+                                    client: client.session.clone(),
                                     channel: self.session.as_channel(),
                                     action: StateAction::SessionConfigChanged(
                                         ahp_types::actions::SessionConfigChangedAction {
@@ -2192,7 +2192,7 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         turn: &crate::higent::TurnId,
         key: &crate::higent::turn::CellKey,
         spec: CellSpec,
@@ -2228,12 +2228,12 @@ impl ChatView {
             // `BuildFileEditEffect` fetches both sides and builds the
             // pair off-thread — the landing only lays the editors.
             CellSpec::Diff(spec) => {
-                let Some(seat) = seat.clone() else {
+                let Some(client) = client.clone() else {
                     return Cell::pending_diff(store, spec.header, content_width);
                 };
                 fx.push(
                     AnyEffect::new(crate::higent::BuildFileEditEffect {
-                        seat,
+                        client: client.chat.clone(),
                         before: spec.before,
                         after: spec.after,
                         name: spec.header.title.clone(),
@@ -2253,7 +2253,7 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         turn: &model::Turn,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> (TurnView, f32) {
@@ -2262,7 +2262,7 @@ impl ChatView {
         let mut total = 0.0;
         for (key, spec) in crate::higent::turn::dress(turn).iter().cloned() {
             let (cell, height) =
-                self.build_cell(store, ui, seat, &turn.id, &key, spec, content_width, fx);
+                self.build_cell(store, ui, client, &turn.id, &key, spec, content_width, fx);
             total += height;
             cells.push_keyed_sized(key, cell, height);
         }
@@ -2276,7 +2276,7 @@ impl ChatView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         turns: impl IntoIterator<Item = &'t model::Turn>,
         lead_loader: bool,
         eager: usize,
@@ -2298,7 +2298,7 @@ impl ChatView {
                 );
                 continue;
             }
-            let (view, height) = self.build_turn(store, ui, seat, record, fx);
+            let (view, height) = self.build_turn(store, ui, client, record, fx);
             slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
         }
         slice
@@ -2310,14 +2310,14 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         index: usize,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
         let Some(ChatRow::Sleeping(record)) = self.rows.content().view_at(index) else {
             return;
         };
-        let (view, height) = self.build_turn(store, ui, seat, &record, fx);
+        let (view, height) = self.build_turn(store, ui, client, &record, fx);
         let mut slice = ListSlice::new();
         slice.push_keyed_sized(record.id.clone(), ChatRow::Turn(view), height);
         self.rows
@@ -2344,7 +2344,7 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         turn: &crate::higent::TurnId,
         key: &crate::higent::turn::CellKey,
         spec: CellSpec,
@@ -2363,7 +2363,7 @@ impl ChatView {
             return;
         }
         let content_width = TurnView::content_width(self.panel_width());
-        let (cell, height) = self.build_cell(store, ui, seat, turn, key, spec, content_width, fx);
+        let (cell, height) = self.build_cell(store, ui, client, turn, key, spec, content_width, fx);
         fx.scope(ChatPanelCommand::Rows, |fx| {
             self.rows.perform(
                 store,
@@ -2575,13 +2575,13 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        seat: &Option<std::sync::Arc<dyn crate::higent::AhpServer>>,
+        client: &Option<crate::higent::Client>,
         op: &ViewOp,
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) {
         match op {
             ViewOp::Reset { turns, has_more } => {
-                let slice = self.build_page(store, ui, seat, turns, *has_more, EAGER_TAIL, fx);
+                let slice = self.build_page(store, ui, client, turns, *has_more, EAGER_TAIL, fx);
                 let len = self.rows.content().len();
                 self.rows.content_mut().splice_slice(0..len, slice);
                 self.has_loader = *has_more;
@@ -2589,7 +2589,7 @@ impl ChatView {
             ViewOp::Prepend { turns, has_more } => {
                 // The page lands above the viewport: every turn
                 // sleeps; scrolling up wakes them one paint at a time.
-                let slice = self.build_page(store, ui, seat, turns, *has_more, 0, fx);
+                let slice = self.build_page(store, ui, client, turns, *has_more, 0, fx);
                 let end = usize::from(self.has_loader);
                 self.rows.content_mut().splice_slice(0..end, slice);
                 self.has_loader = *has_more;
@@ -2599,7 +2599,7 @@ impl ChatView {
                 // A turn we hold is replaced where it stands; one we do
                 // not joins the tail. The key is the turn id, so this is
                 // the same op either way.
-                let (view, height) = self.build_turn(store, ui, seat, turn, fx);
+                let (view, height) = self.build_turn(store, ui, client, turn, fx);
                 let mut slice = ListSlice::new();
                 slice.push_keyed_sized(turn.id.clone(), ChatRow::Turn(view), height);
                 let range = self.rows.content().row_range(&turn.id);
@@ -2609,11 +2609,11 @@ impl ChatView {
                     .splice_slice(range.unwrap_or(len..len), slice);
             }
             ViewOp::Cell { turn, key, spec } => {
-                self.place_cell(store, ui, seat, turn, key, spec.clone(), fx);
+                self.place_cell(store, ui, client, turn, key, spec.clone(), fx);
             }
             ViewOp::Tail { turn, cells } => {
                 for (key, spec) in cells.iter().cloned() {
-                    self.place_cell(store, ui, seat, turn, &key, spec, fx);
+                    self.place_cell(store, ui, client, turn, &key, spec, fx);
                 }
             }
             ViewOp::Grew { turn, part, text } => {

@@ -75,9 +75,9 @@ impl crate::DynamicCommand for SessionFoldersPicked {
         window: crate::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(seat) = crate::higent::Servers::seat(store, self.server) else {
+        let Some(client) = crate::higent::Servers::client(store, self.server) else {
             eprintln!(
-                "[higent] folder grant DROPPED: no seat for {:?} ({})",
+                "[higent] folder grant DROPPED: no client for {:?} ({})",
                 self.server,
                 self.session.as_str()
             );
@@ -97,7 +97,7 @@ impl crate::DynamicCommand for SessionFoldersPicked {
             eprintln!("[higent] granting folder {directory} to {channel}");
             fx.push(
                 AnyEffect::new(crate::higent::DispatchChatActionEffect {
-                    seat: seat.clone(),
+                    client: client.session.clone(),
                     channel,
                     action: StateAction::SessionWorkingDirectorySet(
                         SessionWorkingDirectorySetAction { directory },

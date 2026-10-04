@@ -30,7 +30,7 @@ impl Application {
         f: impl FnOnce(&mut dyn ImeClient) -> R,
     ) -> Option<R> {
         // Two asks, one source of truth: the SEMANTIC walk names the
-        // focused seat, and the layout fold answers by RECOGNIZING
+        // focused client, and the layout fold answers by RECOGNIZING
         // that key — it never re-decides focus. This is the only
         // remaining build-to-ask, and it fires only while composing.
         let size = self.window_viewport(window)?;
@@ -55,11 +55,11 @@ impl Application {
             let performed = imba::Widget::layout_data(&mut widget, target)
                 .ime
                 .take()
-                .map(|mut seat| {
+                .map(|mut client| {
                     if std::env::var("HIMARK_TRACE_IME").is_ok() {
-                        eprintln!("[ime] seat origin = {:?}", seat.origin);
+                        eprintln!("[ime] client origin = {:?}", client.origin);
                     }
-                    (seat.ask)(seat.origin, seat.clip, &mut |client| {
+                    (client.ask)(client.origin, client.clip, &mut |client| {
                         if let Some(f) = f.take() {
                             answer = Some(f(client));
                         }
@@ -87,8 +87,8 @@ impl Application {
         let mut answer = None;
         let performed = {
             let mut data = window_focus_data(&store, ui.as_ref(), window)?;
-            data.clipboard.as_mut().map(|seat| {
-                seat(&mut |client| {
+            data.clipboard.as_mut().map(|client| {
+                client(&mut |client| {
                     if let Some(f) = f.take() {
                         answer = Some(f(client));
                     }

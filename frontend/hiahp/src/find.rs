@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
+use crate::fs::ClientDirectory;
 use crate::higent::{SearchAsk, SearchKind, SearchTarget};
 use crate::FindEffect;
 use editor::{ResourceLocation, ResourceType};
@@ -12,7 +12,7 @@ use imba::effect::EffectHandler;
 const PATH_CAP: usize = 128;
 
 pub struct NativeFindHandler {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
 }
 
 impl EffectHandler<FindEffect> for NativeFindHandler {
@@ -29,7 +29,7 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
             if remaining == 0 {
                 break;
             }
-            let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, folder) else {
+            let Some((client, session)) = crate::fsroute::client_of(&self.directory, folder) else {
                 continue;
             };
             let ask = SearchAsk {
@@ -44,7 +44,7 @@ impl EffectHandler<FindEffect> for NativeFindHandler {
                 target,
                 limit: remaining,
             };
-            let Some(answer) = seat.search(session, ask).await else {
+            let Some(answer) = client.resources.search(session, ask).await else {
                 continue;
             };
             for uri in answer.hits {

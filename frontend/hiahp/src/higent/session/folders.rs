@@ -50,14 +50,14 @@ pub fn all_session_folders(store: &Store) -> Vec<editor::ResourceLocation> {
 }
 
 fn folder_location(
-    uris: &dyn crate::higent::seat::ResourceUriMap,
+    uris: &dyn crate::higent::client::ResourceUriMap,
     key: &SessionId,
     uri: &str,
 ) -> Option<editor::ResourceLocation> {
     uris.location_of(
-        &crate::higent::seat::ResourceUri::new(uri),
+        &crate::higent::client::ResourceUri::new(uri),
         editor::ResourceType::directory(),
-        &editor::Authority::new(crate::higent::seat::authority(key.host, &key.session)),
+        &editor::Authority::new(crate::higent::client::authority(key.host, &key.session)),
     )
     .filter(|location| !location.path().is_empty())
 }

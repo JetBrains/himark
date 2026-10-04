@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use crate::fs::SeatDirectory;
-use crate::higent::seat as fs;
+use crate::fs::ClientDirectory;
+use crate::higent::client as fs;
 use documents::watch::{SubscribeEffect, Subscription, UnsubscribeEffect};
 use documents::{
     CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
@@ -15,26 +15,26 @@ use imba::effect::EffectHandler;
 
 const LOCAL_AUTHORITY: &str = "local";
 
-pub fn seat_of_authority(
-    directory: &SeatDirectory,
+pub fn client_of_authority(
+    directory: &ClientDirectory,
     authority: &str,
-) -> Option<(Arc<dyn crate::higent::AhpServer>, crate::higent::SessionUri)> {
+) -> Option<(crate::higent::Client, crate::higent::SessionUri)> {
     if fs::scoped(authority) {
         let (server, session) = fs::parse(authority)?;
-        let seat = directory.seat(server)?;
-        return Some((seat, session));
+        let client = directory.client(server)?;
+        return Some((client, session));
     }
     if authority == LOCAL_AUTHORITY {
-        return directory.local_seat();
+        return directory.local_client();
     }
     None
 }
 
-pub fn seat_of(
-    directory: &SeatDirectory,
+pub fn client_of(
+    directory: &ClientDirectory,
     location: &ResourceLocation,
-) -> Option<(Arc<dyn crate::higent::AhpServer>, crate::higent::SessionUri)> {
-    seat_of_authority(directory, location.authority().as_str())
+) -> Option<(crate::higent::Client, crate::higent::SessionUri)> {
+    client_of_authority(directory, location.authority().as_str())
 }
 
 pub fn served(location: &ResourceLocation) -> bool {
@@ -43,46 +43,46 @@ pub fn served(location: &ResourceLocation) -> bool {
 }
 
 pub struct RouteFetch {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<FetchDocumentEffect> for RouteFetch {
     async fn handle(&self, effect: FetchDocumentEffect) -> Option<String> {
         if let Some((origin, raw)) = changesview::hichanges::raw_ref(&effect.location) {
-            let (seat, session) = seat_of_authority(&self.directory, &origin)?;
-            return seat
-                .resource_read(session, crate::higent::seat::ResourceUri::new(raw))
+            let (client, session) = client_of_authority(&self.directory, &origin)?;
+            return client
+                .resources.resource_read(session, crate::higent::client::ResourceUri::new(raw))
                 .await;
         }
-        let (seat, session) = seat_of(&self.directory, &effect.location)?;
+        let (client, session) = client_of(&self.directory, &effect.location)?;
         // NO channel side effects here: document channels ride
         // REGISTRATION (`DocsyncHook::opened`), never bare fetches —
         // a fetch for a not-yet-registered document (a diff side
         // being built) must not open a channel that adoption then
         // orphans (the 2026-09-15 double-subscription).
-        seat.resource_read(session, self.uris.uri_of(&effect.location))
+        client.resources.resource_read(session, self.uris.uri_of(&effect.location))
             .await
     }
 }
 
 pub struct RouteFetchBytes {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<documents::FetchResourceBytesEffect> for RouteFetchBytes {
     async fn handle(&self, effect: documents::FetchResourceBytesEffect) -> Option<Vec<u8>> {
-        let (seat, session) = seat_of(&self.directory, &effect.origin)?;
+        let (client, session) = client_of(&self.directory, &effect.origin)?;
 
         let uri = match absolute(&effect.reference) {
-            true => crate::higent::seat::ResourceUri::new(effect.reference),
+            true => crate::higent::client::ResourceUri::new(effect.reference),
             false => {
                 let location = relative_to(&effect.origin, &effect.reference)?;
                 self.uris.uri_of(&location)
             }
         };
-        seat.resource_read_bytes(session, uri).await
+        client.resources.resource_read_bytes(session, uri).await
     }
 }
 
@@ -117,7 +117,7 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
 }
 
 pub struct RouteStore {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
     pub channels: Arc<crate::docsync::DocumentChannels>,
 }
@@ -133,24 +133,24 @@ impl EffectHandler<StoreDocumentEffect> for RouteStore {
             return handle.store(self.uris.uri_of(&effect.location)).await;
         }
         // Mode two: no document channel — the resource is the truth.
-        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+        let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        seat.resource_write(session, self.uris.uri_of(&effect.location), effect.text)
+        client.resources.resource_write(session, self.uris.uri_of(&effect.location), effect.text)
             .await
     }
 }
 
 pub struct RouteList {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<ListDirectoryEffect> for RouteList {
     async fn handle(&self, effect: ListDirectoryEffect) -> Option<Vec<ResourceLocation>> {
-        let (seat, session) = seat_of(&self.directory, &effect.location)?;
-        let entries = seat
-            .resource_list(session, self.uris.uri_of(&effect.location))
+        let (client, session) = client_of(&self.directory, &effect.location)?;
+        let entries = client
+            .resources.resource_list(session, self.uris.uri_of(&effect.location))
             .await?;
         Some(
             entries
@@ -168,31 +168,31 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
 }
 
 pub struct RouteCreate {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<CreateDocumentEffect> for RouteCreate {
     async fn handle(&self, effect: CreateDocumentEffect) -> bool {
-        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+        let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        seat.resource_create(session, self.uris.uri_of(&effect.location))
+        client.resources.resource_create(session, self.uris.uri_of(&effect.location))
             .await
     }
 }
 
 pub struct RouteDelete {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<DeleteResourceEffect> for RouteDelete {
     async fn handle(&self, effect: DeleteResourceEffect) -> bool {
-        let Some((seat, session)) = seat_of(&self.directory, &effect.location) else {
+        let Some((client, session)) = client_of(&self.directory, &effect.location) else {
             return false;
         };
-        seat.resource_delete(
+        client.resources.resource_delete(
             session,
             self.uris.uri_of(&effect.location),
             effect.recursive,
@@ -202,17 +202,17 @@ impl EffectHandler<DeleteResourceEffect> for RouteDelete {
 }
 
 pub struct RouteMove {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<MoveResourceEffect> for RouteMove {
     async fn handle(&self, effect: MoveResourceEffect) -> bool {
-        // One seat serves both ends: a move never crosses authorities.
-        let Some((seat, session)) = seat_of(&self.directory, &effect.from) else {
+        // One client serves both ends: a move never crosses authorities.
+        let Some((client, session)) = client_of(&self.directory, &effect.from) else {
             return false;
         };
-        seat.resource_move(
+        client.resources.resource_move(
             session,
             self.uris.uri_of(&effect.from),
             self.uris.uri_of(&effect.to),
@@ -222,13 +222,13 @@ impl EffectHandler<MoveResourceEffect> for RouteMove {
 }
 
 pub struct RouteSubscribe {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
     pub uris: Arc<dyn crate::higent::ResourceUriMap>,
 }
 
 impl EffectHandler<SubscribeEffect> for RouteSubscribe {
     async fn handle(&self, effect: SubscribeEffect) -> Option<Subscription> {
-        let (seat, session) = seat_of(&self.directory, &effect.location)?;
+        let (client, session) = client_of(&self.directory, &effect.location)?;
 
         let slot = Arc::new(std::sync::OnceLock::new());
         let deliver = self.directory.deliver();
@@ -240,11 +240,11 @@ impl EffectHandler<SubscribeEffect> for RouteSubscribe {
                 }
             }) as Arc<dyn Fn() + Send + Sync>
         };
-        let handle = seat
-            .clone()
+        let resources = std::sync::Arc::clone(&client.resources);
+        let handle = resources
             .resource_watch(session, self.uris.uri_of(&effect.location), events)
             .await?;
-        let id = self.directory.adopt_watch(seat, handle);
+        let id = self.directory.adopt_watch(resources, handle);
         let _ = slot.set(id);
         Some(Subscription(id))
     }
@@ -275,13 +275,13 @@ pub fn resolve_base(
 }
 
 pub struct RouteUnsubscribe {
-    pub directory: Arc<SeatDirectory>,
+    pub directory: Arc<ClientDirectory>,
 }
 
 impl EffectHandler<UnsubscribeEffect> for RouteUnsubscribe {
     async fn handle(&self, effect: UnsubscribeEffect) {
-        if let Some((seat, handle)) = self.directory.release_watch(effect.subscription.0) {
-            seat.resource_unwatch(handle).await;
+        if let Some((client, handle)) = self.directory.release_watch(effect.subscription.0) {
+            client.resource_unwatch(handle).await;
         }
     }
 }

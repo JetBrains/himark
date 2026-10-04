@@ -292,8 +292,8 @@ impl View for Layers {
             try_text(base, text)
         }) as imba::focus::TextHandler<'w, WindowCommand>);
 
-        fn first<T>(seats: Vec<Option<T>>) -> Option<T> {
-            seats.into_iter().flatten().next()
+        fn first<T>(clients: Vec<Option<T>>) -> Option<T> {
+            clients.into_iter().flatten().next()
         }
         let (clipboard, location, seat) = {
             let t = (
@@ -330,7 +330,7 @@ impl View for Layers {
                             false => first(vec![m.$slot, t.$slot]),
                         }
                     } else {
-                        let banded = |gate: bool, seat| if gate { seat } else { None };
+                        let banded = |gate: bool, client| if gate { client } else { None };
                         let dock_seat = banded(focus == LayerFocus::Dock, d.$slot);
                         match toolbar_first {
                             true => first(vec![t.$slot, sd.$slot, dock_seat, ba.$slot]),
@@ -504,7 +504,7 @@ impl<'a> Widget<'a, WindowCommand> for RealizedLayers<'a> {
         'a: 'w,
     {
         // A DUMB fold: no copy of the region priority lives here.
-        // The target key names the seat; exactly one region
+        // The target key names the client; exactly one region
         // contains it.
         let mut folded = self.base.layout_data(target).map(WindowCommand::Base);
         folded = self

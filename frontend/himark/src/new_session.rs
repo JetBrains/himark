@@ -1578,7 +1578,7 @@ impl crate::DynamicCommand for StartComposedSession {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(seat) = Servers::seat(store, self.server) else {
+        let Some(client) = Servers::client(store, self.server) else {
             eprintln!("[new-session] start: unregistered host {:?}", self.server);
             return;
         };
@@ -1612,7 +1612,7 @@ impl crate::DynamicCommand for StartComposedSession {
                 if !applied.contains(directory) {
                     fx.push(
                         AnyEffect::new(crate::higent::DispatchChatActionEffect {
-                            seat: Arc::clone(&seat),
+                            client: client.session.clone(),
                             channel: session.as_channel(),
                             action: crate::higent::ahp_types::actions::StateAction::SessionWorkingDirectorySet(
                                 crate::higent::ahp_types::actions::SessionWorkingDirectorySetAction {
@@ -1647,7 +1647,7 @@ impl crate::DynamicCommand for StartComposedSession {
             if !config.is_empty() {
                 fx.push(
                     AnyEffect::new(crate::higent::DispatchChatActionEffect {
-                        seat,
+                        client: client.session.clone(),
                         channel: session.as_channel(),
                         action:
                             crate::higent::ahp_types::actions::StateAction::SessionConfigChanged(
@@ -1681,7 +1681,7 @@ impl crate::DynamicCommand for StartComposedSession {
         }
         fx.push(
             AnyEffect::new(crate::higent::CreateSessionEffect {
-                seat,
+                client: client.session.clone(),
                 working_directories: self.working_directories.clone(),
                 options: self.options.clone(),
             })
@@ -1724,7 +1724,7 @@ impl crate::DynamicCommand for ComposerAsk {
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let host = self.host;
-        let Some(seat) = Servers::seat(store, host) else {
+        let Some(client) = Servers::client(store, host) else {
             return;
         };
 
@@ -1735,7 +1735,7 @@ impl crate::DynamicCommand for ComposerAsk {
             crate::higent::Agents::set_status(store, host, HostStatus::Connecting);
             fx.push(
                 AnyEffect::new(ConnectServerEffect {
-                    seat: Arc::clone(&seat),
+                    client: client.session.clone(),
                 })
                 .map(move |result| {
                     crate::app::AppCommand::Dynamic(window, Arc::new(HostReady { host, result }))
@@ -1756,7 +1756,7 @@ impl crate::DynamicCommand for ComposerAsk {
             .wrapping_add(1);
         let token = fx.push(
             AnyEffect::new(ResolveSessionConfigEffect {
-                seat,
+                client: client.session.clone(),
                 working_directory: self.working_directory.clone(),
                 config: Some(self.config.clone()),
             })
@@ -1830,11 +1830,11 @@ fn list_sessions(
     cursor: Option<String>,
     fx: &mut crate::app::AppFx<'_>,
 ) {
-    let Some(seat) = Servers::seat(store, host) else {
+    let Some(client) = Servers::client(store, host) else {
         return;
     };
     fx.push(
-        AnyEffect::new(ListSessionsEffect { seat, cursor }).map(move |result| {
+        AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(move |result| {
             crate::app::AppCommand::Dynamic(window, Arc::new(SessionsListed { host, result }))
         }),
     );
@@ -1946,11 +1946,11 @@ fn dispose_placeholder(
         eprintln!("[new-session] NOT disposing {session}: a window lives in it");
         return;
     }
-    let Some(seat) = Servers::seat(store, host) else {
+    let Some(client) = Servers::client(store, host) else {
         return;
     };
     fx.push(
-        AnyEffect::new(crate::higent::DisposeSessionEffect { seat, session }).map(move |result| {
+        AnyEffect::new(crate::higent::DisposeSessionEffect { client: client.session.clone(), session }).map(move |result| {
             crate::app::AppCommand::Dynamic(
                 window,
                 Arc::new(PlaceholderDispatched {
@@ -2066,7 +2066,7 @@ fn create_placeholder(
     working_directory: Option<String>,
     fx: &mut crate::app::AppFx<'_>,
 ) {
-    let Some(seat) = Servers::seat(store, host) else {
+    let Some(client) = Servers::client(store, host) else {
         return;
     };
     store.update::<Placeholders>(|rows| {
@@ -2085,7 +2085,7 @@ fn create_placeholder(
     config.insert("unlisted".to_owned(), serde_json::json!(true));
     fx.push(
         AnyEffect::new(crate::higent::CreateSessionEffect {
-            seat,
+            client: client.session.clone(),
             working_directories: Vec::new(),
             options: SessionOptions {
                 provider: Some(provider.clone()),
@@ -2113,7 +2113,7 @@ fn grant_folder(
     session: crate::higent::SessionUri,
     directory: String,
 ) {
-    let Some(seat) = Servers::seat(store, host) else {
+    let Some(client) = Servers::client(store, host) else {
         return;
     };
     store.update::<Placeholders>(|rows| {
@@ -2128,7 +2128,7 @@ fn grant_folder(
         store,
         Arc::new(GrantPlaceholderFolder {
             host,
-            seat,
+            client,
             session,
             directory,
             revoke: false,
@@ -2143,7 +2143,7 @@ fn revoke_folder(
     session: crate::higent::SessionUri,
     directory: String,
 ) {
-    let Some(seat) = Servers::seat(store, host) else {
+    let Some(client) = Servers::client(store, host) else {
         return;
     };
     store.update::<Placeholders>(|rows| {
@@ -2161,7 +2161,7 @@ fn revoke_folder(
         store,
         Arc::new(GrantPlaceholderFolder {
             host,
-            seat,
+            client,
             session,
             directory,
             revoke: true,
@@ -2171,7 +2171,7 @@ fn revoke_folder(
 
 struct GrantPlaceholderFolder {
     host: HostId,
-    seat: Arc<dyn crate::higent::AhpServer>,
+    client: crate::higent::Client,
     session: crate::higent::SessionUri,
     directory: String,
     revoke: bool,
@@ -2214,7 +2214,7 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
         };
         fx.push(
             AnyEffect::new(crate::higent::DispatchChatActionEffect {
-                seat: Arc::clone(&self.seat),
+                client: self.client.session.clone(),
                 channel: self.session.as_channel(),
                 action,
             })

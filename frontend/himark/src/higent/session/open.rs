@@ -32,13 +32,13 @@ pub fn open_session_with(
     initial_prompt: Option<String>,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(seat) = crate::higent::Servers::seat(store, server) else {
+    let Some(client) = crate::higent::Servers::client(store, server) else {
         eprintln!("[higent] open-session: unregistered server {server:?}");
         return;
     };
     let landing = session.clone();
     fx.push(
-        AnyEffect::new(SubscribeSessionEffect { seat, session }).map(move |result| {
+        AnyEffect::new(SubscribeSessionEffect { client: client.session.clone(), session }).map(move |result| {
             AppCommand::Dynamic(
                 window,
                 Arc::new(OpenSubscribedSession {
@@ -203,12 +203,12 @@ fn relaunch_session_poll(
     session: SessionUri,
     fx: &mut crate::AppFx<'_>,
 ) {
-    let Some(seat) = crate::higent::Servers::seat(store, server) else {
+    let Some(client) = crate::higent::Servers::client(store, server) else {
         return;
     };
     let landing = session.clone();
     fx.push(
-        AnyEffect::new(PollSessionEffect { seat, session }).map(move |actions| {
+        AnyEffect::new(PollSessionEffect { client: client.session.clone(), session }).map(move |actions| {
             AppCommand::Dynamic(
                 window,
                 Arc::new(ApplySessionActions {

@@ -5,7 +5,7 @@
 //! subscribe/poll chains, the commit-changeset fetches, and the
 //! grow/commit dispatch asks — and applies every landing through
 //! the `History` collection's public mutation doors, in the
-//! collection's own MIRROR types. The wire vocabulary (seats,
+//! collection's own MIRROR types. The wire vocabulary (clients,
 //! channels, `history_wire` payloads) lives here and never in the
 //! model.
 
@@ -14,7 +14,7 @@ use std::sync::Arc;
 use crate::drivers::changes::{digest_actions, digest_state, entry_serves, CatalogEntry};
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::{
-    AhpServer, DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
+    DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
     SubscribeHistoryEffect,
 };
 use changesview::hichanges::Changes;
@@ -26,13 +26,13 @@ use himark_ahp_ext_types::history as history_wire;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
-/// One folder's wire: the seat and AHP session its history rides,
+/// One folder's wire: the client and AHP session its history rides,
 /// the claimed channel once the catalog answers, and the commit →
 /// changeset-channel map harvested from the landed commits (the
 /// model's rows never carry wire uris).
 #[derive(Clone)]
 struct FolderWire {
-    seat: Arc<dyn AhpServer>,
+    client: crate::higent::Client,
     session: crate::higent::SessionUri,
     channel: Option<crate::higent::ChannelUri>,
     commit_channels: rpds::HashTrieMapSync<String, crate::higent::ChannelUri>,
@@ -100,7 +100,7 @@ pub(crate) fn ensure_folder(
     wire: imba::store::Id<HistoryWire>,
     scope: &crate::SessionId,
     folder: &ResourceLocation,
-    seat: &Arc<dyn AhpServer>,
+    client: &crate::higent::Client,
 ) {
     let Some(row) = of(store, wire) else {
         return;
@@ -109,12 +109,12 @@ pub(crate) fn ensure_folder(
         return;
     }
     let (history, changes) = (row.history, row.changes);
-    let (seat, session) = (seat.clone(), scope.session.clone());
+    let (client, session) = (client.clone(), scope.session.clone());
     update(store, wire, |row| {
         row.folders.insert_mut(
             folder.clone(),
             FolderWire {
-                seat,
+                client,
                 session,
                 channel: None,
                 commit_channels: rpds::HashTrieMapSync::new_sync(),
@@ -147,7 +147,7 @@ pub(crate) fn subscribe_fresh(
     }
     let fresh: Vec<(
         ResourceLocation,
-        Arc<dyn AhpServer>,
+        crate::higent::Client,
         crate::higent::ChannelUri,
     )> = row
         .folders
@@ -157,7 +157,7 @@ pub(crate) fn subscribe_fresh(
             histories
                 .iter()
                 .find(|candidate| entry_serves(folder, candidate))
-                .map(|matched| (folder.clone(), held.seat.clone(), matched.uri.clone()))
+                .map(|matched| (folder.clone(), held.client.clone(), matched.uri.clone()))
         })
         .collect();
     update(store, wire, |row| {
@@ -169,10 +169,10 @@ pub(crate) fn subscribe_fresh(
         }
     });
     Changes::nudge_all_in(store, changes);
-    for (folder, seat, channel) in fresh {
+    for (folder, client, channel) in fresh {
         let landing = folder.clone();
         fx.push(
-            AnyEffect::new(SubscribeHistoryEffect { seat, channel }).map(move |result| {
+            AnyEffect::new(SubscribeHistoryEffect { client: client.history.clone(), channel }).map(move |result| {
                 Verb::Dynamic(Arc::new(SnapshotLanded {
                     wire,
                     folder: landing.clone(),
@@ -345,9 +345,9 @@ fn relaunch_poll(
     let Some(channel) = held.channel.clone() else {
         return;
     };
-    let (seat, landing) = (held.seat.clone(), folder.clone());
+    let (client, landing) = (held.client.clone(), folder.clone());
     fx.push(
-        AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
+        AnyEffect::new(PollChangesetEffect { client: client.changes.clone(), channel }).map(move |actions| {
             let (deltas, harvest) = digest_deltas(&actions);
             Verb::Dynamic(Arc::new(Polled {
                 wire,
@@ -445,12 +445,12 @@ pub(crate) fn fetch_commit_files(
     let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
         return;
     };
-    let seat = held.seat.clone();
+    let client = held.client.clone();
     // Mark the SET computing (it exists from the row's birth).
     Changes::mark_commit_computing(store, changes, folder, commit);
     let (landing, commit_id) = (folder.clone(), commit.to_owned());
     fx.push(
-        AnyEffect::new(SubscribeChangesetEffect { seat, channel }).map(move |result| {
+        AnyEffect::new(SubscribeChangesetEffect { client: client.changes.clone(), channel }).map(move |result| {
             Verb::Dynamic(Arc::new(CommitFilesLanded {
                 wire,
                 folder: landing.clone(),
@@ -539,17 +539,17 @@ fn settle_commit_fetch(
     let Some(uris) = of(store, wire).and_then(|row| row.uris.clone()) else {
         return;
     };
-    let seat = of(store, wire)
+    let client = of(store, wire)
         .and_then(|row| row.folders.get(folder))
-        .map(|held| held.seat.clone());
-    let Some(seat) = seat else {
+        .map(|held| held.client.clone());
+    let Some(client) = client else {
         return;
     };
     match set.status {
         changesview::hichanges::ChangesStatus::Computing => {
             let (landing, commit_id) = (folder.clone(), commit.to_owned());
             fx.push(
-                AnyEffect::new(PollChangesetEffect { seat, channel }).map(move |actions| {
+                AnyEffect::new(PollChangesetEffect { client: client.changes.clone(), channel }).map(move |actions| {
                     Verb::Dynamic(Arc::new(CommitFilesPolled {
                         wire,
                         folder: landing.clone(),
@@ -559,7 +559,7 @@ fn settle_commit_fetch(
                 }),
             );
         }
-        _ => seat.unsubscribe_changeset(&channel),
+        _ => client.changes.unsubscribe_changeset(&channel),
     }
 }
 
@@ -585,7 +585,7 @@ pub(crate) fn grow(
     };
     fx.push(
         AnyEffect::new(DispatchChatActionEffect {
-            seat: held.seat.clone(),
+            client: held.client.session.clone(),
             channel,
             action: StateAction::Unknown(history_wire::action_value(
                 history_wire::HISTORY_GROW,
@@ -615,7 +615,7 @@ pub(crate) fn commit(
     };
     fx.push(
         AnyEffect::new(DispatchChatActionEffect {
-            seat: held.seat.clone(),
+            client: held.client.session.clone(),
             channel,
             action: StateAction::Unknown(history_wire::action_value(
                 history_wire::HISTORY_COMMIT,

@@ -8,12 +8,13 @@ use ahp_types::common::Uri;
 use ahp_types::state::{ChatState, SessionState, Turn};
 use imba::effect::Effect;
 
-use crate::higent::seat::{
-    AhpServer, ChannelUri, ChatUri, RootInfo, ServerEvent, SessionUri, SessionsPage, TurnId,
+use crate::higent::client::{
+    AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, HistoryClient,
+    LocationsClient, RootInfo, ServerEvent, SessionClient, SessionUri, SessionsPage, TurnId,
 };
 
 pub struct ConnectServerEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
 }
 
 impl std::fmt::Display for ConnectServerEffect {
@@ -27,7 +28,7 @@ impl Effect for ConnectServerEffect {
 }
 
 pub struct ShareHostEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
 }
 
 impl std::fmt::Display for ShareHostEffect {
@@ -41,7 +42,7 @@ impl Effect for ShareHostEffect {
 }
 
 pub struct ListSessionsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub cursor: Option<String>,
 }
 
@@ -56,7 +57,7 @@ impl Effect for ListSessionsEffect {
 }
 
 pub struct PollServerEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
 }
 
 impl std::fmt::Display for PollServerEffect {
@@ -70,7 +71,7 @@ impl Effect for PollServerEffect {
 }
 
 pub struct CreateSessionEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub working_directories: Vec<Uri>,
     pub options: crate::higent::SessionOptions,
 }
@@ -86,7 +87,7 @@ impl Effect for CreateSessionEffect {
 }
 
 pub struct ResolveSessionConfigEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub working_directory: Option<Uri>,
     pub config: Option<serde_json::Map<String, serde_json::Value>>,
 }
@@ -102,7 +103,7 @@ impl Effect for ResolveSessionConfigEffect {
 }
 
 pub struct DisposeSessionEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub session: SessionUri,
 }
 
@@ -117,7 +118,7 @@ impl Effect for DisposeSessionEffect {
 }
 
 pub struct SubscribeSessionEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub session: SessionUri,
 }
 
@@ -132,7 +133,7 @@ impl Effect for SubscribeSessionEffect {
 }
 
 pub struct PollSessionEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub session: SessionUri,
 }
 
@@ -147,7 +148,7 @@ impl Effect for PollSessionEffect {
 }
 
 pub struct CreateChatEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub session: SessionUri,
 }
 
@@ -162,7 +163,7 @@ impl Effect for CreateChatEffect {
 }
 
 pub struct SubscribeChatEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub chat: ChatUri,
 }
 
@@ -184,7 +185,7 @@ pub struct TurnsPage {
 }
 
 pub struct FetchTurnsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub chat: ChatUri,
 
     pub cursor: Option<String>,
@@ -201,7 +202,7 @@ impl Effect for FetchTurnsEffect {
 }
 
 pub struct StartTurnEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub chat: ChatUri,
     pub text: String,
 
@@ -221,12 +222,12 @@ impl Effect for StartTurnEffect {
 }
 
 pub struct PollChatActionsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub chat: ChatUri,
 }
 
 pub struct SubscribeChangesetEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChangesClient>,
     pub channel: ChannelUri,
 }
 
@@ -241,7 +242,7 @@ impl Effect for SubscribeChangesetEffect {
 }
 
 pub struct SubscribeHistoryEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn HistoryClient>,
     pub channel: ChannelUri,
 }
 
@@ -256,7 +257,7 @@ impl Effect for SubscribeHistoryEffect {
 }
 
 pub struct PollChangesetEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChangesClient>,
     pub channel: ChannelUri,
 }
 
@@ -281,7 +282,7 @@ impl Effect for PollChatActionsEffect {
 }
 
 pub struct SubscribeLocationsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn LocationsClient>,
     pub channel: ChannelUri,
 }
 
@@ -296,7 +297,7 @@ impl Effect for SubscribeLocationsEffect {
 }
 
 pub struct PollLocationsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn LocationsClient>,
     pub channel: ChannelUri,
 }
 
@@ -313,7 +314,7 @@ impl Effect for PollLocationsEffect {
 /// The cancel: the last unsubscribe disposes the channel and stops
 /// its producer host-side.
 pub struct UnsubscribeLocationsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn LocationsClient>,
     pub channel: ChannelUri,
 }
 
@@ -328,7 +329,7 @@ impl Effect for UnsubscribeLocationsEffect {
 }
 
 pub struct SubscribeAnnotationsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn AnnotationsClient>,
     pub session: SessionUri,
 }
 
@@ -343,7 +344,7 @@ impl Effect for SubscribeAnnotationsEffect {
 }
 
 pub struct PollAnnotationsEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn AnnotationsClient>,
     pub session: SessionUri,
 }
 
@@ -358,7 +359,7 @@ impl Effect for PollAnnotationsEffect {
 }
 
 pub struct CancelTurnEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub chat: ChatUri,
     pub turn_id: TurnId,
 }
@@ -374,7 +375,7 @@ impl Effect for CancelTurnEffect {
 }
 
 pub struct DispatchChatActionEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn SessionClient>,
     pub channel: ChannelUri,
     pub action: StateAction,
 }
@@ -390,7 +391,7 @@ impl Effect for DispatchChatActionEffect {
 }
 
 pub struct FetchFileEditEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub before: Option<Uri>,
     pub after: Option<Uri>,
 }
@@ -416,7 +417,7 @@ impl Effect for FetchFileEditEffect {
 /// diff cell only mounts the result. A coding turn brings hundreds of
 /// edits; none of this is frame work.
 pub struct BuildFileEditEffect {
-    pub seat: Arc<dyn AhpServer>,
+    pub client: Arc<dyn ChatClient>,
     pub before: Option<Uri>,
     pub after: Option<Uri>,
     /// The edited file's name — it names the language.

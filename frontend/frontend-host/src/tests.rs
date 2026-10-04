@@ -4,6 +4,13 @@
 use super::*;
 use std::ptr::{null, null_mut};
 
+#[allow(unused_imports)]
+use himark::higent::{
+    AnnotationsClient as _, ChangesClient as _, ChatClient as _, DocumentsClient as _,
+    HistoryClient as _, LocationsClient as _, LspClient as _, ResourceClient as _,
+    SessionClient as _, TerminalClient as _,
+};
+
 mod fake_host {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::sync::{Arc, Mutex};
@@ -261,12 +268,12 @@ fn hosted_engine_with_language_servers(
     }
     let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
     let window = engine.add_window();
-    let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let seat= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
     ));
-    let local = engine.register_agent_server("Local Backend", seat);
+    let local = engine.register_agent_server("Local Backend", himark::higent::Client::of(seat));
     engine.set_local_backend(local);
     engine.set_host(HimarkHostCallbacks {
         ctx: picker.ctx(),
@@ -3007,14 +3014,14 @@ impl himark::DynamicCommand for StubNewSession {
         window: himark::WindowId,
         fx: &mut himark::AppFx<'_>,
     ) {
-        let Some(seat) = himark::higent::Servers::seat(store, self.server) else {
+        let Some(seat) = himark::higent::Servers::client(store, self.server) else {
             return;
         };
         let server = self.server;
         let _ = fx.push(
             imba::effect::AnyEffect::new(himark::higent::CreateSessionEffect {
                 options: himark::higent::SessionOptions::default(),
-                seat,
+                client: seat.session.clone(),
                 working_directories: vec![self.directory.clone()],
             })
             .map(move |result| {
@@ -3178,7 +3185,7 @@ fn pick_drawer_row(engine: &mut HimarkEngine, index: usize) {
     );
 }
 
-fn block_on_seat<T>(mut future: himark::higent::SeatFuture<T>) -> T {
+fn block_on_seat<T>(mut future: himark::higent::ClientFuture<T>) -> T {
     use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
     fn noop_raw() -> RawWaker {
         fn clone(_: *const ()) -> RawWaker {
@@ -3315,7 +3322,7 @@ fn the_wire_serves_a_session_filesystem() {
     std::fs::create_dir_all(root).expect("probe dir");
     std::fs::write(format!("{root}/seeded.txt"), "seeded on disk\n").expect("seed");
 
-    let wire: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let wire=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::new(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
@@ -3490,7 +3497,7 @@ fn spawn_host_inner(
     SpawnedHost { child, socket }
 }
 
-fn drive<T>(mut future: himark::higent::SeatFuture<T>) -> T {
+fn drive<T>(mut future: himark::higent::ClientFuture<T>) -> T {
     use std::task::{Context, Poll};
     let waker = std::task::Waker::noop();
     let mut ctx = Context::from_waker(waker);
@@ -3562,7 +3569,7 @@ fn a_host_added_by_url_connects_over_the_http_face() {
 
 #[test]
 fn the_seat_speaks_ahp_over_the_http_face() {
-    use himark::higent::AhpServer;
+    use himark::higent::{ChatClient as _, DocumentsClient as _, ResourceClient as _, SessionClient as _};
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3614,7 +3621,7 @@ fn reconnect_seat(dir: &std::path::Path, socket: &std::path::Path) -> crate::hia
 
 #[test]
 fn the_seat_reconnects_after_a_host_restart() {
-    use himark::higent::AhpServer;
+    use himark::higent::{ChatClient as _, DocumentsClient as _, ResourceClient as _, SessionClient as _};
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3711,7 +3718,7 @@ fn the_seat_reconnects_after_a_host_restart() {
 
 #[test]
 fn the_seat_replays_the_gap_after_a_connection_drop() {
-    use himark::higent::AhpServer;
+    use himark::higent::{ChatClient as _, DocumentsClient as _, ResourceClient as _, SessionClient as _};
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -3772,7 +3779,7 @@ fn the_seat_replays_the_gap_after_a_connection_drop() {
 #[test]
 fn a_document_channel_survives_reconnects() {
     use documents::sync::{SyncEdit, SyncState};
-    use himark::higent::AhpServer;
+    use himark::higent::{ChatClient as _, DocumentsClient as _, ResourceClient as _, SessionClient as _};
     use rebase::RebaseLog;
 
     let host = HOSTED
@@ -3785,12 +3792,12 @@ fn a_document_channel_survives_reconnects() {
     // Bob talks straight to the host; alice rides a severable proxy.
     let proxy_path = dir.path().join("proxy.sock");
     let mut proxy = SeverableProxy::start(&proxy_path, &socket);
-    let alice_seat: Arc<dyn AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let alice_seat= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", proxy_path.display()),
     ));
-    let bob_seat: Arc<dyn AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let bob_seat= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
@@ -3889,7 +3896,7 @@ fn a_document_channel_survives_reconnects() {
     // A bounded drain that never hangs on an empty feed — the
     // straggler-duplicate probe.
     let blk_try =
-        |future: himark::higent::SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>>,
+        |future: himark::higent::ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>>,
          millis: u64| {
             crate::hiahp::wire::test_runtime()
                 .block_on(async move {
@@ -3902,7 +3909,7 @@ fn a_document_channel_survives_reconnects() {
     // second, bounded poll is the duplicate detector: a leaked or
     // doubled subscription would enqueue a straggler here.
     let mut nonce = 0u128;
-    let mut bob_types_and_alice_hears = |alice_seat: &Arc<dyn AhpServer>,
+    let mut bob_types_and_alice_hears = |alice_seat: &Arc<crate::hiahp::wire::WireHost>,
                                          alice: &mut RebaseLog<_, _>,
                                          bob: &mut RebaseLog<_, _>,
                                          at: usize,
@@ -4028,7 +4035,7 @@ fn a_document_channel_survives_reconnects() {
 
 #[test]
 fn the_keepalive_detects_a_deaf_host_and_recovers() {
-    use himark::higent::AhpServer;
+    use himark::higent::{ChatClient as _, DocumentsClient as _, ResourceClient as _, SessionClient as _};
     let host = HOSTED
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -4191,13 +4198,13 @@ fn the_drawer_connects_to_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
         std::sync::Arc::new(move |server| {
@@ -4242,13 +4249,13 @@ fn dump_chat_pane_snapshot() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = dir.path().to_owned();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -4391,13 +4398,13 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
     }
     engine.app.register_handler::<himark::FindEffect>(NoFind);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = dir.path().to_owned();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -4587,13 +4594,13 @@ fn the_chat_runs_through_the_himark_host() {
     }
     engine.app.register_handler::<himark::FindEffect>(NoFind);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = dir.path().to_owned();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -4763,7 +4770,7 @@ fn the_chat_runs_through_the_himark_host() {
             let chat = himark::higent::Agents::channel(store, &key)
                 .and_then(|channel| channel.default_chat)
                 .expect("the session names its default chat");
-            let seat = himark::higent::Servers::seat(store, key.host).expect("the seat");
+            let seat = himark::higent::Servers::client(store, key.host).expect("the seat");
             struct DropLanding;
             impl himark::DynamicCommand for DropLanding {
                 fn id(&self) -> &'static str {
@@ -4783,7 +4790,7 @@ fn the_chat_runs_through_the_himark_host() {
             }
             fx.push(
                 imba::effect::AnyEffect::new(himark::higent::StartTurnEffect {
-                    seat,
+                    client: seat.chat.clone(),
                     chat,
                     text: self.0.to_owned(),
                     attachments: None,
@@ -4834,8 +4841,8 @@ fn the_chat_runs_through_the_himark_host() {
         let chat = himark::higent::Agents::channel(engine.app.store(), &key)
             .and_then(|channel| channel.default_chat)
             .expect("the default chat");
-        let seat = himark::higent::Servers::seat(engine.app.store(), key.host).expect("the seat");
-        fn block_on<T>(future: himark::higent::SeatFuture<T>) -> T {
+        let seat = himark::higent::Servers::client(engine.app.store(), key.host).expect("the seat");
+        fn block_on<T>(future: himark::higent::ClientFuture<T>) -> T {
             use std::task::{Context, Poll, Wake, Waker};
             struct Unpark(std::thread::Thread);
             impl Wake for Unpark {
@@ -4857,7 +4864,7 @@ fn the_chat_runs_through_the_himark_host() {
         }
         let mut waited = 0;
         loop {
-            let snapshot = block_on(seat.subscribe_chat(chat.clone()));
+            let snapshot = block_on(seat.chat.subscribe_chat(chat.clone()));
             if let Ok(state) = &snapshot {
                 if state
                     .turns
@@ -4932,13 +4939,13 @@ fn real_claude_answers_through_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = dir.path().to_owned();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -5036,13 +5043,13 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 900.0, 700.0, 1.0);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = work.clone();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -5096,9 +5103,9 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
 
     {
         let (server, session) =
-            himark::higent::seat::parse(folders[0].authority().as_str()).expect("an ahp authority");
-        let seat = himark::higent::Servers::seat(engine.app.store(), server).expect("the seat");
-        let listed = block_on_seat(seat.resource_list(
+            himark::higent::client::parse(folders[0].authority().as_str()).expect("an ahp authority");
+        let seat = himark::higent::Servers::client(engine.app.store(), server).expect("the seat");
+        let listed = block_on_seat(seat.resources.resource_list(
             session,
             himark::higent::ResourceUri::new(format!("file://{}", work.display())),
         ))
@@ -5251,7 +5258,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     settle_until(
         &mut engine,
         "the served open seated its sync loop",
-        |engine| himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 1,
+        |engine| himark::hiahp::docsync::SyncClients::count(engine.app.store()) == 1,
     );
     assert!(engine.perform_command(window, "workbench.close"));
     // The drain is a cross-process round trip: the stopped life
@@ -5259,7 +5266,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     settle_until(
         &mut engine,
         "the closed document took its loop with it",
-        |engine| himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 0,
+        |engine| himark::hiahp::docsync::SyncClients::count(engine.app.store()) == 0,
     );
 }
 
@@ -5300,7 +5307,7 @@ fn two_wire_clients_converge_on_one_document() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    fn block_on<T>(future: himark::higent::SeatFuture<T>) -> T {
+    fn block_on<T>(future: himark::higent::ClientFuture<T>) -> T {
         use std::task::{Context, Poll, Wake, Waker};
         struct Unpark(std::thread::Thread);
         impl Wake for Unpark {
@@ -5333,13 +5340,13 @@ fn two_wire_clients_converge_on_one_document() {
         file.canonicalize().expect("canonical").display()
     ));
 
-    let alice_seat: Arc<dyn himark::higent::AhpServer> =
+    let alice_seat=
         Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let bob_seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let bob_seat= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
@@ -5532,7 +5539,7 @@ fn two_wire_clients_share_annotations() {
         assert!(waited < 500, "the backend never bound its socket");
     }
 
-    fn block_on<T>(future: himark::higent::SeatFuture<T>) -> T {
+    fn block_on<T>(future: himark::higent::ClientFuture<T>) -> T {
         use std::task::{Context, Poll, Wake, Waker};
         struct Unpark(std::thread::Thread);
         impl Wake for Unpark {
@@ -5559,12 +5566,12 @@ fn two_wire_clients_share_annotations() {
     }
 
     let session = himark::higent::SessionUri::new("hihost-fs:/local");
-    let alice: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let alice= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
     ));
-    let bob: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let bob= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
@@ -5625,7 +5632,7 @@ fn two_wire_clients_share_annotations() {
         .iter()
         .any(|action| matches!(action, wire::StateAction::AnnotationsSet(_))));
 
-    let carol: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+    let carol= Arc::new(crate::hiahp::wire::WireHost::at(
         crate::hiahp::wire::test_runtime(),
         crate::test_connector(),
         format!("unix:{}", socket.display()),
@@ -5690,12 +5697,12 @@ fn two_engines_sync_a_live_document() {
     let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
         let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
-        let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+        let seat= Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-        let local = engine.register_agent_server(name, seat);
+        let local = engine.register_agent_server(name, himark::higent::Client::of(seat));
         engine.set_local_backend(local);
         let host_seat = fake_host::Seat::new();
         engine.set_host(HimarkHostCallbacks {
@@ -5855,12 +5862,12 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
     let engine_at = |name: &str| -> (HimarkEngine, u64, std::sync::Arc<fake_host::Seat>) {
         let mut engine = HimarkEngine::with_fonts(AppFonts::embedded());
         let window = engine.add_window();
-        let seat: Arc<dyn himark::higent::AhpServer> = Arc::new(crate::hiahp::wire::WireHost::at(
+        let seat= Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-        let local = engine.register_agent_server(name, seat);
+        let local = engine.register_agent_server(name, himark::higent::Client::of(seat));
         engine.set_local_backend(local);
         let host_seat = fake_host::Seat::new();
         engine.set_host(HimarkHostCallbacks {
@@ -6045,13 +6052,13 @@ fn the_new_session_composer_starts_the_session_with_the_prompt() {
 
     engine.compose_new_windows = true;
     let window = engine.add_window();
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let local = engine.register_agent_server("Local Backend", seat);
+    let local = engine.register_agent_server("Local Backend", himark::higent::Client::of(seat));
     engine.set_local_backend(local);
     let host_seat = fake_host::Seat::new();
     engine.set_host(HimarkHostCallbacks {
@@ -6569,13 +6576,13 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
 
     engine.compose_new_windows = true;
     let window = engine.add_window();
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let local = engine.register_agent_server("Local Backend", seat);
+    let local = engine.register_agent_server("Local Backend", himark::higent::Client::of(seat));
     engine.set_local_backend(local);
     let host_seat = fake_host::Seat::new();
     engine.set_host(HimarkHostCallbacks {
@@ -6773,13 +6780,13 @@ fn an_existing_session_row_pick_switches_and_remounts_the_chat() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((1100, 800)).expect("surface");
     let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
 
-    let seat: std::sync::Arc<dyn himark::higent::AhpServer> =
+    let seat=
         std::sync::Arc::new(crate::hiahp::wire::WireHost::at(
             crate::hiahp::wire::test_runtime(),
             crate::test_connector(),
             format!("unix:{}", socket.display()),
         ));
-    let _ours = engine.register_agent_server("himark Host", seat);
+    let _ours = engine.register_agent_server("himark Host", himark::higent::Client::of(seat));
     let workdir = dir.path().to_owned();
     himark::higent::AgentFlows::install_new_session(
         &mut engine.app.store_mut(),
@@ -7898,13 +7905,13 @@ fn a_reopened_document_types_exactly_once() {
             live(engine).is_some()
         });
         assert_eq!(
-            himark::hiahp::docsync::SyncSeats::count(engine.app.store()),
+            himark::hiahp::docsync::SyncClients::count(engine.app.store()),
             1,
             "one open, one sync loop"
         );
         assert!(engine.perform_command(window, "workbench.close"));
         settle_until(&mut engine, "the close took the sync loop", |engine| {
-            himark::hiahp::docsync::SyncSeats::count(engine.app.store()) == 0
+            himark::hiahp::docsync::SyncClients::count(engine.app.store()) == 0
         });
     }
 
@@ -7955,7 +7962,7 @@ fn a_reopened_document_types_exactly_once() {
         });
     }
     assert_eq!(
-        himark::hiahp::docsync::SyncSeats::count(engine.app.store()),
+        himark::hiahp::docsync::SyncClients::count(engine.app.store()),
         1,
         "one document, one sync loop"
     );

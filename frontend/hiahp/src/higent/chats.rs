@@ -211,7 +211,7 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
         let Some(mut panel) = Chats::chat(store, chats, &self.chat) else {
             return;
         };
-        let Some(seat) = crate::higent::Servers::seat(store, panel.server()) else {
+        let Some(client) = crate::higent::Servers::client(store, panel.server()) else {
             panel.mark_failed("unregistered server".to_owned());
             Chats::put(store, chats, self.chat.clone(), panel);
             return;
@@ -221,7 +221,7 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
         let chat = self.chat.clone();
         let landing = self.chat.clone();
         fx.push(
-            AnyEffect::new(crate::higent::SubscribeChatEffect { seat, chat }).map(move |result| {
+            AnyEffect::new(crate::higent::SubscribeChatEffect { client: client.chat.clone(), chat }).map(move |result| {
                 imba::command::Verb::at(
                     chats,
                     ChatsCommand::Panel(landing.clone(), ChatPanelCommand::Snapshot(result)),

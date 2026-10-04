@@ -28,7 +28,7 @@ pub struct ScriptCapture {
 }
 
 pub struct ScriptAgent {
-    pub seat: Arc<dyn himark::higent::AhpServer>,
+    pub client: Arc<dyn himark::higent::ChatClient>,
 
     pub session: himark::higent::SessionUri,
 }
@@ -37,23 +37,23 @@ async fn drive_turn(agent: &ScriptAgent, prompt: String) -> Result<String, Strin
     use himark::higent::ahp_types::actions::StateAction;
     use himark::higent::ahp_types::state::ResponsePart;
     let chat = agent
-        .seat
+        .client
         .create_chat(agent.session.clone())
         .await
         .map_err(|error| format!("createChat: {error}"))?;
     agent
-        .seat
+        .client
         .subscribe_chat(chat.clone())
         .await
         .map_err(|error| format!("subscribeChat: {error}"))?;
     agent
-        .seat
+        .client
         .start_turn(chat.clone(), prompt, None, None)
         .await
         .map_err(|error| format!("startTurn: {error}"))?;
     let mut parts: Vec<(String, String)> = Vec::new();
     loop {
-        for action in agent.seat.poll_chat(chat.clone()).await {
+        for action in agent.client.poll_chat(chat.clone()).await {
             match action {
                 StateAction::ChatResponsePart(part) => {
                     if let ResponsePart::Markdown(markdown) = part.part {
@@ -405,9 +405,9 @@ impl himark::DynamicEditorCommand for RunScript {
                 if !session.names_session() {
                     return None;
                 }
-                let seat = himark::higent::Servers::seat(store, session.host)?;
+                let client = himark::higent::Servers::client(store, session.host)?;
                 Some(ScriptAgent {
-                    seat,
+                    client: client.chat,
                     session: session.session,
                 })
             });

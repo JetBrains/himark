@@ -63,7 +63,7 @@ pub struct HimarkEngine {
 
     agent_host_filesystem: AgentHostFilesystemCapabilities,
 
-    seats: Arc<himark::hiahp::fs::SeatDirectory>,
+    clients: Arc<himark::hiahp::fs::ClientDirectory>,
 
     shared: Arc<Shared>,
 
@@ -120,15 +120,15 @@ impl ClickCounter {
 
 fn register_agent_server(
     app: &mut Application,
-    seats: &himark::hiahp::fs::SeatDirectory,
+    clients: &himark::hiahp::fs::ClientDirectory,
     name: &str,
-    seat: Arc<dyn himark::higent::AhpServer>,
+    client: himark::higent::Client,
 ) -> himark::higent::HostId {
-    let id = app.register_seat(Arc::clone(&seat));
+    let id = app.register_client(client.clone());
     himark::higent::Agents::seed(&mut app.store_mut(), id, name);
 
     himark::higent::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
-    seats.record(id, seat);
+    clients.record(id, client);
     id
 }
 
@@ -500,7 +500,7 @@ impl HimarkEngine {
             Arc::clone(&resource_uris),
         );
 
-        // The docsync hook installs after the seat directory exists (below).
+        // The docsync hook installs after the client directory exists (below).
 
         let scheduler = {
             let effect_wake = effect_wake.clone();
@@ -508,7 +508,7 @@ impl HimarkEngine {
         };
         let runner = app.attach_host(dispatcher, scheduler);
 
-        let seats = Arc::new(himark::hiahp::fs::SeatDirectory::new({
+        let clients = Arc::new(himark::hiahp::fs::ClientDirectory::new({
             let inbox = inbox.clone();
             let wake = wake.clone();
             Arc::new(move |subscription| {
@@ -526,44 +526,45 @@ impl HimarkEngine {
 
         register_agent_server(
             &mut app,
-            &seats,
+            &clients,
             "VS Code Agent Host",
-            Arc::new(himark::hiahp::wire::WireHost::new(
+            himark::higent::Client::of(Arc::new(himark::hiahp::wire::WireHost::new(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
-            )),
+            ))),
         );
 
         let local_backend = register_agent_server(
             &mut app,
-            &seats,
+            &clients,
             "himark Agent Host",
-            Arc::new(himark::hiahp::wire::WireHost::discovered(
+            himark::higent::Client::of(Arc::new(himark::hiahp::wire::WireHost::discovered(
                 runtime.handle().clone(),
                 Arc::clone(&connector),
                 himark_host_resolver(),
-            )),
+            ))),
         );
-        seats.set_local(local_backend);
+        clients.set_local(local_backend);
         app.designate_local_host(local_backend);
 
         {
-            let seats = seats.clone();
+            let clients = clients.clone();
             let handle = runtime.handle().clone();
             let connector = Arc::clone(&connector);
             himark::higent::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 Arc::new(move |app, store, url| {
-                    let seat: Arc<dyn himark::higent::AhpServer> =
-                        Arc::new(himark::hiahp::wire::WireHost::at(
+                    let client = himark::higent::Client::of(Arc::new(
+                        himark::hiahp::wire::WireHost::at(
                             handle.clone(),
                             Arc::clone(&connector),
                             url.to_owned(),
-                        ));
-                    let id = app.register_seat(Arc::clone(&seat));
+                        ),
+                    ));
+                    let id = app.register_client(client.clone());
                     himark::higent::Agents::seed(store, id, url.trim());
                     himark::higent::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
-                    seats.record(id, seat);
+                    clients.record(id, client);
                     Some(id)
                 }),
             );
@@ -588,44 +589,44 @@ impl HimarkEngine {
             &mut app.store_mut(),
             Arc::new(docsync::DocsyncHook {
                 channels: Arc::clone(&document_channels),
-                directory: Arc::clone(&seats),
+                directory: Arc::clone(&clients),
             }),
         );
         app.register_handler::<himark::FetchDocumentEffect>(fsroute::RouteFetch {
             uris: Arc::clone(&resource_uris),
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
         });
         app.register_handler::<himark::FetchResourceBytesEffect>(fsroute::RouteFetchBytes {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::StoreDocumentEffect>(fsroute::RouteStore {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
             channels: Arc::clone(&document_channels),
         });
         app.register_handler::<himark::ListDirectoryEffect>(fsroute::RouteList {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::CreateDocumentEffect>(fsroute::RouteCreate {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::DeleteResourceEffect>(fsroute::RouteDelete {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::MoveResourceEffect>(fsroute::RouteMove {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::SubscribeEffect>(fsroute::RouteSubscribe {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
         app.register_handler::<himark::UnsubscribeEffect>(fsroute::RouteUnsubscribe {
-            directory: Arc::clone(&seats),
+            directory: Arc::clone(&clients),
         });
         app.observe_file_changes();
 
@@ -639,7 +640,7 @@ impl HimarkEngine {
             pending_cut: None,
             host: None,
             agent_host_filesystem: AgentHostFilesystemCapabilities::default(),
-            seats,
+            clients,
             _document_channels: document_channels,
             resource_uris,
             shared: Arc::new(Shared {
@@ -1069,24 +1070,24 @@ impl HimarkEngine {
                 .register_toolbar_button(himark::hihistory::toolbar_button());
             self.app
                 .register_handler::<hicode::FindDefinitionEffect>(lsproute::DefinitionRoute {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 });
             self.app.register_handler::<himark::LspCompletionEffect>(
                 himark::hiahp::lsproute::CompletionRoute {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::hover::LspHoverEffect>(
                 himark::hiahp::lsproute::HoverRoute {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
             self.app.register_handler::<himark::LspLocationsEffect>(
                 himark::hiahp::locations::RouteLspLocations {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
@@ -1127,11 +1128,11 @@ impl HimarkEngine {
         if capabilities.list_directory && !installed.list_directory {
             self.app
                 .register_handler::<himark::FindEffect>(find::NativeFindHandler {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                 });
             self.app.register_handler::<himark::SearchLocationsEffect>(
                 himark::hiahp::locations::RouteSearchLocations {
-                    directory: Arc::clone(&self.seats),
+                    directory: Arc::clone(&self.clients),
                 },
             );
             self.app
@@ -1446,13 +1447,13 @@ impl HimarkEngine {
     pub fn register_agent_server(
         &mut self,
         name: &str,
-        seat: Arc<dyn himark::higent::AhpServer>,
+        client: himark::higent::Client,
     ) -> himark::higent::HostId {
-        register_agent_server(&mut self.app, &self.seats, name, seat)
+        register_agent_server(&mut self.app, &self.clients, name, client)
     }
 
     pub fn set_local_backend(&mut self, server: himark::higent::HostId) {
-        self.seats.set_local(server);
+        self.clients.set_local(server);
         self.app.designate_local_host(server);
     }
 

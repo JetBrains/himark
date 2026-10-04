@@ -37,13 +37,13 @@ impl DynamicCommand for NewChat {
         let Some(key) = Agents::live_session(store, &workspace) else {
             return;
         };
-        let Some(seat) = crate::higent::Servers::seat(store, key.host) else {
+        let Some(client) = crate::higent::Servers::client(store, key.host) else {
             return;
         };
         let server = key.host;
         fx.push(
             AnyEffect::new(CreateChatEffect {
-                seat,
+                client: client.chat.clone(),
                 session: key.session.clone(),
             })
             .map(move |created| {

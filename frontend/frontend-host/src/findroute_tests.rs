@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::hiahp::find::NativeFindHandler;
-use crate::hiahp::fs::SeatDirectory;
-use himark::higent::seat as ahp;
+use crate::hiahp::fs::ClientDirectory;
+use himark::higent::client as ahp;
 use himark::ResourceType;
 use himark::{FindEffect, ResourceLocation};
 use imba::effect::EffectHandler;
 use std::sync::Arc;
 
-fn wire_backend() -> (tempfile::TempDir, Arc<dyn himark::higent::AhpServer>) {
+fn wire_backend() -> (tempfile::TempDir, himark::higent::Client) {
     let (dir, wire) = wire_backend_host();
-    (dir, wire)
+    (dir, himark::higent::Client::of(wire))
 }
 
 /// A real backend on a socket and a real `WireHost` dialed into it —
@@ -105,7 +105,7 @@ fn located(authority: &str, path: &std::path::Path) -> ResourceLocation {
 }
 
 fn find(
-    directory: &Arc<SeatDirectory>,
+    directory: &Arc<ClientDirectory>,
     folders: Vec<ResourceLocation>,
     term: &str,
 ) -> Vec<ResourceLocation> {
@@ -128,7 +128,7 @@ fn session_folders_ask_their_seat() {
     std::fs::write(files.join("README.md"), "conflation is delivery\n").expect("write");
     std::fs::write(dir.path().join("loose.md"), "conflation outside\n").expect("write");
 
-    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
     let encoded = ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -137,7 +137,7 @@ fn session_folders_ask_their_seat() {
         &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     );
     let (server, _) = ahp::parse(&encoded).expect("round-trips");
-    directory.record(server, Arc::clone(&seat));
+    directory.record(server, seat.clone());
 
     let base = located(&encoded, &files);
     let hits = find(&directory, vec![base.clone()], "readme");
@@ -154,7 +154,7 @@ fn local_folders_ask_the_designated_backend() {
     let files = dir.path().join("notes").canonicalize().expect("canonical");
     std::fs::write(files.join("a.md"), "conflation is delivery\n").expect("write");
 
-    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
     let (server, _) = ahp::parse(&ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -163,7 +163,7 @@ fn local_folders_ask_the_designated_backend() {
         &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
-    directory.record(server, Arc::clone(&seat));
+    directory.record(server, seat.clone());
     directory.set_local(server);
 
     let base = located("local", &files);
@@ -184,7 +184,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
     std::fs::write(files.join("a.md"), "plain\nconflation is delivery\n").expect("write");
     std::fs::write(files.join("b.md"), "conflation twice, conflation\n").expect("write");
 
-    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
     let (server, _) = ahp::parse(&ahp::authority(
         {
             let (server, _) = ahp::parse("ahp:1:x").expect("id");
@@ -193,7 +193,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
         &himark::higent::SessionUri::new(host_discovery::LOCAL_FS_SESSION),
     ))
     .expect("parses");
-    directory.record(server, Arc::clone(&seat));
+    directory.record(server, seat.clone());
     directory.set_local(server);
 
     let handler = crate::hiahp::locations::RouteSearchLocations {
@@ -209,7 +209,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
     let channel = block_on(Box::pin(async move { handler.handle(effect).await })).expect("channel");
 
     let mut state = {
-        let seat = Arc::clone(&channel.seat);
+        let seat = Arc::clone(&channel.client);
         let subscribed = channel.channel.clone();
         block_on(Box::pin(async move {
             seat.subscribe_locations(subscribed).await
@@ -217,7 +217,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
         .expect("snapshot")
     };
     while !state.done {
-        let seat = Arc::clone(&channel.seat);
+        let seat = Arc::clone(&channel.client);
         let polled = channel.channel.clone();
         let batches = block_on(Box::pin(async move { seat.poll_locations(polled).await }));
         for batch in batches {
@@ -238,9 +238,9 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
 
     // The cancel: dropping the one subscription disposes the channel —
     // a fresh subscribe finds nothing behind the URI.
-    channel.seat.unsubscribe_locations(&channel.channel);
+    channel.client.unsubscribe_locations(&channel.channel);
     let refused = {
-        let seat = Arc::clone(&channel.seat);
+        let seat = Arc::clone(&channel.client);
         let gone = channel.channel.clone();
         block_on(Box::pin(async move {
             let mut waited = 0;
@@ -267,7 +267,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
 
 #[test]
 fn undesignated_and_foreign_folders_answer_nothing() {
-    let directory = Arc::new(SeatDirectory::new(Arc::new(|_| {})));
+    let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
     let local = ResourceLocation::new(
         ResourceType::directory(),
         himark::Authority::new("local"),

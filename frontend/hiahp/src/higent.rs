@@ -11,7 +11,7 @@ mod composer;
 mod effects;
 pub mod file_completion;
 mod file_edit;
-pub mod seat;
+pub mod client;
 pub mod session;
 pub mod session_toolbar;
 mod stack;
@@ -27,10 +27,12 @@ pub use effects::*;
 pub use file_edit::{
     build_file_edit, snapshot, BuiltFileEdit, DiffCounts, FileEditRefs, FileSnapshotRef,
 };
-pub use seat::{
-    AhpServer, ChannelUri, ChatUri, HostId, LocalHost, LocationsAsk, ResourceUri, ResourceUriMap,
-    RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, SeatFuture, ServerEvent, Servers,
-    SessionOptions, SessionUri, SessionsPage, TerminalEvent, TerminalHandle, TurnId, WatchHandle,
+pub use client::{
+    AnnotationsClient, ChangesClient, ChannelUri, ChatClient, ChatUri, DocumentsClient, HistoryClient,
+    HostId, LocalHost, LocationsAsk, LocationsClient, LspClient, ResourceClient, ResourceUri,
+    ResourceUriMap, RootInfo, SearchAsk, SearchKind, SearchResult, SearchTarget, Client, ClientFuture,
+    ServerEvent, Servers, SessionOptions, SessionClient, SessionUri, SessionsPage, TerminalEvent,
+    TerminalHandle, TerminalClient, TurnId, WatchHandle,
 };
 pub use session::{
     all_session_folders, session_folders, Agents, ChannelActionsRoad, Host, HostStatus, Hosts,

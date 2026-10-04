@@ -123,11 +123,11 @@ macro_rules! unreached {
     };
 }
 
-impl himark::higent::AhpServer for ScriptedSeat {
+impl himark::higent::SessionClient for ScriptedSeat {
     fn subscribe_session(
         &self,
         session: SessionUri,
-    ) -> himark::higent::SeatFuture<Result<SessionState, String>> {
+    ) -> himark::higent::ClientFuture<Result<SessionState, String>> {
         assert_eq!(session, self.script.session);
         let chat = self.script.chat.as_str().to_owned();
         Box::pin(std::future::ready(Ok(SessionState {
@@ -162,14 +162,42 @@ impl himark::higent::AhpServer for ScriptedSeat {
         })))
     }
 
-    fn poll_session(&self, _session: SessionUri) -> himark::higent::SeatFuture<Vec<StateAction>> {
+    fn poll_session(&self, _session: SessionUri) -> himark::higent::ClientFuture<Vec<StateAction>> {
         Box::pin(std::future::pending())
     }
 
+    /// The SEND road: the client mints the turn and dispatches its own
+    /// `chat/turnStarted`. The host records the prompt it was handed.
+    fn dispatch_action(
+        &self,
+        _channel: ChannelUri,
+        action: StateAction,
+    ) -> himark::higent::ClientFuture<Result<(), String>> {
+        if let StateAction::ChatTurnStarted(started) = &action {
+            self.script
+                .sent
+                .lock()
+                .expect("sent")
+                .push((started.turn_id.clone(), started.message.text.clone()));
+        }
+        Box::pin(std::future::ready(Ok(())))
+    }
+
+    unreached! {
+        connect() -> himark::higent::ClientFuture<Result<himark::higent::RootInfo, String>>;
+        list_sessions(cursor: Option<String>) -> himark::higent::ClientFuture<Result<himark::higent::SessionsPage, String>>;
+        poll_root() -> himark::higent::ClientFuture<Vec<himark::higent::ServerEvent>>;
+        create_session(dirs: Vec<String>, options: himark::higent::SessionOptions) -> himark::higent::ClientFuture<Result<SessionUri, String>>;
+        resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> himark::higent::ClientFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
+        dispose_session(session: SessionUri) -> himark::higent::ClientFuture<Result<(), String>>;
+    }
+}
+
+impl himark::higent::ChatClient for ScriptedSeat {
     fn subscribe_chat(
         &self,
         chat: ChatUri,
-    ) -> himark::higent::SeatFuture<Result<ChatState, String>> {
+    ) -> himark::higent::ClientFuture<Result<ChatState, String>> {
         assert_eq!(chat, self.script.chat);
         let script = self.script.clone();
         Box::pin(std::future::poll_fn(move |cx| {
@@ -186,7 +214,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
         }))
     }
 
-    fn poll_chat(&self, chat: ChatUri) -> himark::higent::SeatFuture<Vec<StateAction>> {
+    fn poll_chat(&self, chat: ChatUri) -> himark::higent::ClientFuture<Vec<StateAction>> {
         assert_eq!(chat, self.script.chat);
         let batches = Arc::clone(&self.script.batches);
         let parked = Arc::clone(&self.script.parked);
@@ -205,7 +233,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
         &self,
         chat: ChatUri,
         cursor: Option<String>,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::TurnsPage, String>> {
+    ) -> himark::higent::ClientFuture<Result<himark::higent::TurnsPage, String>> {
         assert_eq!(chat, self.script.chat);
         let cursor = cursor.unwrap_or_default();
         let page = self.script.older.lock().expect("older").remove(&cursor);
@@ -220,29 +248,12 @@ impl himark::higent::AhpServer for ScriptedSeat {
         _text: String,
         _attachments: Option<Vec<himark::higent::ahp_types::state::MessageAttachment>>,
         _model: Option<himark::higent::ahp_types::state::ModelSelection>,
-    ) -> himark::higent::SeatFuture<Result<(), String>> {
+    ) -> himark::higent::ClientFuture<Result<(), String>> {
         unreachable!("sending is write-ahead: the client dispatches chat/turnStarted")
     }
 
-    fn cancel_turn(&self, _chat: ChatUri, _turn: TurnId) -> himark::higent::SeatFuture<()> {
+    fn cancel_turn(&self, _chat: ChatUri, _turn: TurnId) -> himark::higent::ClientFuture<()> {
         Box::pin(std::future::ready(()))
-    }
-
-    /// The SEND road: the client mints the turn and dispatches its own
-    /// `chat/turnStarted`. The host records the prompt it was handed.
-    fn dispatch_action(
-        &self,
-        _channel: ChannelUri,
-        action: StateAction,
-    ) -> himark::higent::SeatFuture<Result<(), String>> {
-        if let StateAction::ChatTurnStarted(started) = &action {
-            self.script
-                .sent
-                .lock()
-                .expect("sent")
-                .push((started.turn_id.clone(), started.message.text.clone()));
-        }
-        Box::pin(std::future::ready(Ok(())))
     }
 
     /// The content road behind a file edit: both sides of the edit,
@@ -251,7 +262,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
         &self,
         before: Option<String>,
         after: Option<String>,
-    ) -> himark::higent::SeatFuture<Result<himark::higent::FileEditContents, String>> {
+    ) -> himark::higent::ClientFuture<Result<himark::higent::FileEditContents, String>> {
         let contents = Arc::clone(&self.script.contents);
         let side = move |uri: Option<String>| -> Option<String> {
             let uri = uri?;
@@ -264,47 +275,7 @@ impl himark::higent::AhpServer for ScriptedSeat {
     }
 
     unreached! {
-        connect() -> himark::higent::SeatFuture<Result<himark::higent::RootInfo, String>>;
-        list_sessions(cursor: Option<String>) -> himark::higent::SeatFuture<Result<himark::higent::SessionsPage, String>>;
-        poll_root() -> himark::higent::SeatFuture<Vec<himark::higent::ServerEvent>>;
-        create_session(dirs: Vec<String>, options: himark::higent::SessionOptions) -> himark::higent::SeatFuture<Result<SessionUri, String>>;
-        resolve_session_config(working_directory: Option<String>, config: Option<serde_json::Map<String, serde_json::Value>>) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::commands::ResolveSessionConfigResult, String>>;
-        dispose_session(session: SessionUri) -> himark::higent::SeatFuture<Result<(), String>>;
-        create_chat(session: SessionUri) -> himark::higent::SeatFuture<Result<ChatUri, String>>;
-        resource_read(session: SessionUri, uri: himark::higent::ResourceUri) -> himark::higent::SeatFuture<Option<String>>;
-        resource_write(session: SessionUri, uri: himark::higent::ResourceUri, text: String) -> himark::higent::SeatFuture<bool>;
-        resource_list(session: SessionUri, uri: himark::higent::ResourceUri) -> himark::higent::SeatFuture<Option<Vec<(String, bool)>>>;
-        resource_watch(session: SessionUri, uri: himark::higent::ResourceUri, events: Arc<dyn Fn() + Send + Sync>) -> himark::higent::SeatFuture<Option<himark::higent::WatchHandle>>;
-        resource_unwatch(handle: himark::higent::WatchHandle) -> himark::higent::SeatFuture<()>;
-        search(session: SessionUri, ask: himark::higent::SearchAsk) -> himark::higent::SeatFuture<Option<himark::higent::SearchResult>>;
-        terminal_input(channel: &ChannelUri, data: String) -> ();
-        terminal_resize(channel: &ChannelUri, cols: u16, rows: u16) -> ();
-        terminal_dispose(channel: &ChannelUri) -> ();
-        subscribe_changeset(channel: ChannelUri) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::ChangesetState, String>>;
-        poll_changeset(channel: ChannelUri) -> himark::higent::SeatFuture<Vec<StateAction>>;
-        unsubscribe_changeset(channel: &ChannelUri) -> ();
-        subscribe_annotations(session: SessionUri) -> himark::higent::SeatFuture<Result<himark::higent::ahp_types::state::AnnotationsState, String>>;
-        poll_annotations(session: SessionUri) -> himark::higent::SeatFuture<Vec<StateAction>>;
-        dispatch_annotations(session: &SessionUri, action: StateAction) -> ();
-        unsubscribe_annotations(session: &SessionUri) -> ();
-        open_document(session: SessionUri, uri: Option<himark::higent::ResourceUri>, text: Option<String>) -> himark::higent::SeatFuture<Result<himark::higent::seat::OpenDocumentResult, String>>;
-        subscribe_document(channel: ChannelUri) -> himark::higent::SeatFuture<Result<himark::higent::seat::DocumentState, String>>;
-        poll_document(channel: ChannelUri) -> himark::higent::SeatFuture<Vec<himark::higent::seat::DocumentApplied>>;
-        dispatch_document(channel: &ChannelUri, action: himark::higent::seat::DocumentApplied) -> ();
-        unsubscribe_document(channel: &ChannelUri) -> himark::higent::SeatFuture<()>;
-        lsp(session: SessionUri, method: String, params: serde_json::Value) -> himark::higent::SeatFuture<Result<serde_json::Value, String>>;
-    }
-
-    fn terminal_open(
-        &self,
-        _session: SessionUri,
-        _channel: ChannelUri,
-        _cwd: Option<String>,
-        _cols: u16,
-        _rows: u16,
-        _events: Arc<dyn Fn(himark::higent::TerminalEvent) + Send + Sync>,
-    ) -> himark::higent::SeatFuture<Option<himark::higent::TerminalHandle>> {
-        unreachable!("the chat flow never opens a terminal")
+        create_chat(session: SessionUri) -> himark::higent::ClientFuture<Result<ChatUri, String>>;
     }
 }
 
@@ -530,11 +501,16 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
     let window = engine.add_window();
     let expected_turns = snapshot.turns.len();
     let script = Script::new(CHAT, SESSION, snapshot);
+    let scripted = Arc::new(ScriptedSeat {
+        script: script.clone(),
+    });
     let host = engine.register_agent_server(
         "scripted",
-        Arc::new(ScriptedSeat {
-            script: script.clone(),
-        }),
+        himark::higent::Client {
+            session: scripted.clone(),
+            chat: scripted,
+            ..himark::higent::client::inert()
+        },
     );
     assert!(engine.app.perform_batch(vec![himark::AppCommand::Dynamic(
         himark::WindowId::from_raw(window),

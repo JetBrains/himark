@@ -13,12 +13,12 @@
 //!                         Drained ──reopen queued?──▶ Connecting …
 //! ```
 //!
-//! The store's `SyncSeats` holds the per-location state; the spawned
+//! The store's `SyncClients` holds the per-location state; the spawned
 //! life task (`channel_life`) owns the wire: open → subscribe →
 //! adopt → pumps → poll. Shutdown is COOPERATIVE (a stop signal,
 //! never an abort): every exit past the subscribe UNSUBSCRIBES the
 //! channel, awaited, and then posts `Drained` — so a reopen queued
-//! on a draining seat connects strictly AFTER the old subscription
+//! on a draining client connects strictly AFTER the old subscription
 //! is gone. One location, one subscription, ever.
 
 mod codec;
@@ -26,7 +26,7 @@ mod rules;
 
 use std::sync::Arc;
 
-use crate::higent::AhpServer;
+use crate::higent::DocumentsClient;
 use editor::ResourceLocation;
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::command::Verb;
@@ -41,7 +41,7 @@ use editor::EditIdentity;
 pub use codec::{resolve_wire, wire_operation};
 
 #[derive(Clone)]
-struct Seat {
+struct Client {
     edits: mpsc::UnboundedSender<Local<SyncEdit>>,
 
     stop: mpsc::UnboundedSender<()>,
@@ -53,21 +53,21 @@ struct Seat {
     applied: Option<EditIdentity>,
 }
 
-/// A seat waiting to connect again once the draining life is gone.
+/// A client waiting to connect again once the draining life is gone.
 #[derive(Clone)]
 struct Reopen {
-    seat: Arc<dyn AhpServer>,
+    client: Arc<dyn DocumentsClient>,
     session: String,
 }
 
 #[derive(Clone)]
-enum SeatState {
+enum ClientState {
     Connecting {
         stop: mpsc::UnboundedSender<()>,
 
         since: u64,
     },
-    Live(Seat),
+    Live(Client),
     /// The life was told to stop and is unsubscribing; `Drained`
     /// retires the entry. An open arriving meanwhile parks here and
     /// connects from `Drained` — never beside the dying life.
@@ -76,7 +76,7 @@ enum SeatState {
     },
 }
 
-impl SeatState {
+impl ClientState {
     /// COOPERATIVE shutdown, never an abort: the life task owns the
     /// channel subscription and must live long enough to unsubscribe
     /// it — an aborted task cannot, and a leaked subscription doubles
@@ -86,8 +86,8 @@ impl SeatState {
             Self::Connecting { stop, .. } => {
                 let _ = stop.send(());
             }
-            Self::Live(seat) => {
-                let _ = seat.stop.send(());
+            Self::Live(client) => {
+                let _ = client.stop.send(());
             }
             Self::Draining { .. } => {}
         }
@@ -95,22 +95,22 @@ impl SeatState {
 }
 
 #[derive(Clone, Default)]
-pub struct SyncSeats {
-    seats: rpds::HashTrieMapSync<ResourceLocation, SeatState>,
+pub struct SyncClients {
+    clients: rpds::HashTrieMapSync<ResourceLocation, ClientState>,
 }
 
-impl SyncSeats {
+impl SyncClients {
     fn of(store: &Store) -> Self {
         store
-            .get::<SyncSeats>()
-            .map(|seats| seats.clone())
+            .get::<SyncClients>()
+            .map(|clients| clients.clone())
             .unwrap_or_default()
     }
 
-    fn seat(store: &Store, location: &ResourceLocation) -> Option<Seat> {
-        match store.get::<SyncSeats>()?.seats.get(location)? {
-            SeatState::Live(seat) => Some(seat.clone()),
-            SeatState::Connecting { .. } | SeatState::Draining { .. } => None,
+    fn client(store: &Store, location: &ResourceLocation) -> Option<Client> {
+        match store.get::<SyncClients>()?.clients.get(location)? {
+            ClientState::Live(client) => Some(client.clone()),
+            ClientState::Connecting { .. } | ClientState::Draining { .. } => None,
         }
     }
 
@@ -118,54 +118,54 @@ impl SyncSeats {
         store: &Store,
         location: &ResourceLocation,
     ) -> Option<(mpsc::UnboundedSender<()>, u64)> {
-        match store.get::<SyncSeats>()?.seats.get(location)? {
-            SeatState::Connecting { stop, since } => Some((stop.clone(), *since)),
-            SeatState::Live(_) | SeatState::Draining { .. } => None,
+        match store.get::<SyncClients>()?.clients.get(location)? {
+            ClientState::Connecting { stop, since } => Some((stop.clone(), *since)),
+            ClientState::Live(_) | ClientState::Draining { .. } => None,
         }
     }
 
     fn known(store: &Store, location: &ResourceLocation) -> bool {
         store
-            .get::<SyncSeats>()
-            .is_some_and(|seats| seats.seats.contains_key(location))
+            .get::<SyncClients>()
+            .is_some_and(|clients| clients.clients.contains_key(location))
     }
 
     fn draining(store: &Store, location: &ResourceLocation) -> bool {
-        store.get::<SyncSeats>().is_some_and(|seats| {
-            matches!(seats.seats.get(location), Some(SeatState::Draining { .. }))
+        store.get::<SyncClients>().is_some_and(|clients| {
+            matches!(clients.clients.get(location), Some(ClientState::Draining { .. }))
         })
     }
 
-    fn put(store: &mut Store, location: ResourceLocation, state: SeatState) {
-        let mut seats = Self::of(store);
-        seats.seats.insert_mut(location, state);
-        store.put(seats);
+    fn put(store: &mut Store, location: ResourceLocation, state: ClientState) {
+        let mut clients = Self::of(store);
+        clients.clients.insert_mut(location, state);
+        store.put(clients);
     }
 
     fn expect(store: &mut Store, location: &ResourceLocation, identity: EditIdentity) {
-        let Some(seat) = Self::seat(store, location) else {
+        let Some(client) = Self::client(store, location) else {
             return;
         };
         Self::put(
             store,
             location.clone(),
-            SeatState::Live(Seat {
+            ClientState::Live(Client {
                 applied: Some(identity),
-                ..seat
+                ..client
             }),
         );
     }
 
     fn took(store: &mut Store, location: &ResourceLocation) {
-        let Some(seat) = Self::seat(store, location) else {
+        let Some(client) = Self::client(store, location) else {
             return;
         };
         Self::put(
             store,
             location.clone(),
-            SeatState::Live(Seat {
-                taken: seat.taken + 1,
-                ..seat
+            ClientState::Live(Client {
+                taken: client.taken + 1,
+                ..client
             }),
         );
     }
@@ -176,8 +176,8 @@ impl SyncSeats {
     /// document that wanted back in is itself gone.
     fn detach(store: &mut Store, location: &ResourceLocation) {
         let Some(state) = store
-            .get::<SyncSeats>()
-            .and_then(|seats| seats.seats.get(location))
+            .get::<SyncClients>()
+            .and_then(|clients| clients.clients.get(location))
         else {
             return;
         };
@@ -185,7 +185,7 @@ impl SyncSeats {
         Self::put(
             store,
             location.clone(),
-            SeatState::Draining { reopen: None },
+            ClientState::Draining { reopen: None },
         );
     }
 
@@ -194,24 +194,24 @@ impl SyncSeats {
             Self::put(
                 store,
                 location.clone(),
-                SeatState::Draining {
+                ClientState::Draining {
                     reopen: Some(reopen),
                 },
             );
         }
     }
 
-    fn retire(store: &mut Store, location: &ResourceLocation) -> Option<SeatState> {
-        let mut seats = Self::of(store);
-        let retired = seats.seats.get(location).cloned();
-        seats.seats.remove_mut(location);
-        store.put(seats);
+    fn retire(store: &mut Store, location: &ResourceLocation) -> Option<ClientState> {
+        let mut clients = Self::of(store);
+        let retired = clients.clients.get(location).cloned();
+        clients.clients.remove_mut(location);
+        store.put(clients);
         retired
     }
 
     #[doc(hidden)]
     pub fn count(store: &Store) -> usize {
-        Self::of(store).seats.size()
+        Self::of(store).clients.size()
     }
 }
 
@@ -221,12 +221,12 @@ impl SyncSeats {
 #[derive(Clone)]
 pub struct StoreHandle {
     edits: mpsc::UnboundedSender<Local<SyncEdit>>,
-    server: Arc<dyn AhpServer>,
+    server: Arc<dyn DocumentsClient>,
     channel: himark_ahp_ext_types::Uri,
 }
 
 impl StoreHandle {
-    pub async fn store(self, uri: crate::higent::seat::ResourceUri) -> bool {
+    pub async fn store(self, uri: crate::higent::client::ResourceUri) -> bool {
         let (done, landed) = oneshot::channel();
         if self.edits.send(Local::Flush(done)).is_err() {
             return false;
@@ -354,14 +354,14 @@ impl DocumentChannels {
         self: &Arc<Self>,
         documents: imba::store::Id<documents::OpenDocuments>,
         location: ResourceLocation,
-        seat: Arc<dyn AhpServer>,
+        client: Arc<dyn DocumentsClient>,
         session: String,
     ) {
         self.post(EnsureSync {
             channels: Arc::clone(self),
             documents,
             location,
-            seat,
+            client,
             session,
         });
     }
@@ -379,7 +379,7 @@ fn connect(
     store: &mut Store,
     documents: imba::store::Id<documents::OpenDocuments>,
     location: &ResourceLocation,
-    seat: &Arc<dyn AhpServer>,
+    client: &Arc<dyn DocumentsClient>,
     session: &str,
 ) {
     channels.store_connecting(location);
@@ -395,14 +395,14 @@ fn connect(
         Arc::clone(channels),
         documents,
         location.clone(),
-        Arc::clone(seat),
+        Arc::clone(client),
         session.to_owned(),
         stopped,
     ));
-    SyncSeats::put(
+    SyncClients::put(
         store,
         location.clone(),
-        SeatState::Connecting { stop, since },
+        ClientState::Connecting { stop, since },
     );
 }
 
@@ -412,7 +412,7 @@ async fn channel_life(
     channels: Arc<DocumentChannels>,
     documents: imba::store::Id<documents::OpenDocuments>,
     location: ResourceLocation,
-    server: Arc<dyn AhpServer>,
+    server: Arc<dyn DocumentsClient>,
     session: String,
     mut stopped: mpsc::UnboundedReceiver<()>,
 ) {
@@ -438,7 +438,7 @@ async fn life(
     channels: &Arc<DocumentChannels>,
     documents: imba::store::Id<documents::OpenDocuments>,
     location: &ResourceLocation,
-    server: Arc<dyn AhpServer>,
+    server: Arc<dyn DocumentsClient>,
     session: String,
     stopped: &mut mpsc::UnboundedReceiver<()>,
 ) {
@@ -597,7 +597,7 @@ struct EnsureSync {
     channels: Arc<DocumentChannels>,
     documents: imba::store::Id<documents::OpenDocuments>,
     location: ResourceLocation,
-    seat: Arc<dyn AhpServer>,
+    client: Arc<dyn DocumentsClient>,
     session: String,
 }
 
@@ -609,18 +609,18 @@ impl imba::command::DynamicCommand for EnsureSync {
         "Sync Document".to_owned()
     }
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
-        if SyncSeats::draining(store, &self.location) {
-            SyncSeats::queue_reopen(
+        if SyncClients::draining(store, &self.location) {
+            SyncClients::queue_reopen(
                 store,
                 &self.location,
                 Reopen {
-                    seat: Arc::clone(&self.seat),
+                    client: Arc::clone(&self.client),
                     session: self.session.clone(),
                 },
             );
             return;
         }
-        if SyncSeats::known(store, &self.location) {
+        if SyncClients::known(store, &self.location) {
             return;
         }
         connect(
@@ -628,13 +628,13 @@ impl imba::command::DynamicCommand for EnsureSync {
             store,
             self.documents,
             &self.location,
-            &self.seat,
+            &self.client,
             &self.session,
         );
     }
 }
 
-/// A life ended and its subscription is gone. Retire the seat entry;
+/// A life ended and its subscription is gone. Retire the client entry;
 /// a reopen that queued behind the drain connects HERE — strictly
 /// after the old unsubscribe.
 struct Drained {
@@ -651,8 +651,8 @@ impl imba::command::DynamicCommand for Drained {
         "Retire Document Channel".to_owned()
     }
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        match SyncSeats::retire(store, &self.location) {
-            Some(SeatState::Draining {
+        match SyncClients::retire(store, &self.location) {
+            Some(ClientState::Draining {
                 reopen: Some(reopen),
             }) => {
                 connect(
@@ -660,11 +660,11 @@ impl imba::command::DynamicCommand for Drained {
                     store,
                     self.documents,
                     &self.location,
-                    &reopen.seat,
+                    &reopen.client,
                     &reopen.session,
                 );
             }
-            Some(SeatState::Live(_)) => {
+            Some(ClientState::Live(_)) => {
                 // The life died on its own (the wire went away): fall
                 // back to mode two — the client watches and reloads
                 // the resource itself.
@@ -692,7 +692,7 @@ impl imba::command::DynamicCommand for Drained {
 struct AdoptSnapshot {
     channels: Arc<DocumentChannels>,
     documents: imba::store::Id<documents::OpenDocuments>,
-    server: Arc<dyn AhpServer>,
+    server: Arc<dyn DocumentsClient>,
     document: himark_ahp_ext_types::Uri,
     location: ResourceLocation,
     snapshot: String,
@@ -708,21 +708,21 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
         "Adopt Document Channel".to_owned()
     }
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        let Some((stop, since)) = SyncSeats::connecting(store, &self.location) else {
+        let Some((stop, since)) = SyncClients::connecting(store, &self.location) else {
             return;
         };
         let documents = self.documents;
         let Some(document_id) =
             documents::OpenDocuments::by_location(store, documents, &self.location)
         else {
-            SyncSeats::detach(store, &self.location);
+            SyncClients::detach(store, &self.location);
             self.channels.forget_store(&self.location);
             return;
         };
         let Some(document) =
             documents::OpenDocuments::document_ref(store, documents, document_id).cloned()
         else {
-            SyncSeats::detach(store, &self.location);
+            SyncClients::detach(store, &self.location);
             self.channels.forget_store(&self.location);
             return;
         };
@@ -753,10 +753,10 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
                 identity,
             )));
         }
-        SyncSeats::put(
+        SyncClients::put(
             store,
             self.location.clone(),
-            SeatState::Live(Seat {
+            ClientState::Live(Client {
                 edits: edits.clone(),
                 stop,
                 attached_at: since,
@@ -786,7 +786,7 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
                 .filter(|slice| !rules::is_identity(slice) && slice.old_len() == shown)
                 .and_then(|slice| Some((committed.log.head()?, slice)));
             if let Some((identity, slice)) = landing {
-                SyncSeats::expect(store, &self.location, identity);
+                SyncClients::expect(store, &self.location, identity);
                 let applied = fx.scope(
                     move |command| {
                         Verb::at(
@@ -808,7 +808,7 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
                     },
                 );
                 if applied {
-                    SyncSeats::took(store, &self.location);
+                    SyncClients::took(store, &self.location);
                 }
             }
         }
@@ -831,8 +831,8 @@ impl imba::command::DynamicCommand for GiveUp {
         "Release Document Channel".to_owned()
     }
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        if SyncSeats::connecting(store, &self.location).is_some() {
-            SyncSeats::detach(store, &self.location);
+        if SyncClients::connecting(store, &self.location).is_some() {
+            SyncClients::detach(store, &self.location);
         }
         self.channels.forget_store(&self.location);
         // Mode two: no document channel — this client subscribes to
@@ -864,7 +864,7 @@ impl imba::command::DynamicCommand for ApplyOffer {
         "Apply Document Offer".to_owned()
     }
     fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
-        let Some(seat) = SyncSeats::seat(store, &self.location) else {
+        let Some(client) = SyncClients::client(store, &self.location) else {
             return;
         };
         let documents = self.documents;
@@ -878,18 +878,18 @@ impl imba::command::DynamicCommand for ApplyOffer {
             return;
         };
         let shown = document.text().byte_count().min(u32::MAX as usize) as u32;
-        if self.offer.seen_local != rules::sent(document.revision(), seat.attached_at, seat.taken) {
+        if self.offer.seen_local != rules::sent(document.revision(), client.attached_at, client.taken) {
             return;
         }
 
-        let _ = seat.edits.send(Local::Took {
+        let _ = client.edits.send(Local::Took {
             seen_local: self.offer.seen_local,
         });
         let Some((identity, slice)) = rules::offer_landing(
             document.log(),
             document.revision(),
-            seat.attached_at,
-            seat.taken,
+            client.attached_at,
+            client.taken,
             shown,
             &self.offer,
         ) else {
@@ -897,7 +897,7 @@ impl imba::command::DynamicCommand for ApplyOffer {
         };
         let base_revision = document.revision();
 
-        SyncSeats::expect(store, &self.location, identity);
+        SyncClients::expect(store, &self.location, identity);
         let applied = fx.scope(
             move |command| {
                 Verb::at(
@@ -919,7 +919,7 @@ impl imba::command::DynamicCommand for ApplyOffer {
             },
         );
         if applied {
-            SyncSeats::took(store, &self.location);
+            SyncClients::took(store, &self.location);
         }
     }
 }
@@ -936,19 +936,19 @@ impl editor::ChangeSink for SyncSink {
         _text_before: &editor::Text,
         _fx: &mut editor::EditorEffects<'_>,
     ) {
-        let Some(seat) = SyncSeats::seat(store, location) else {
+        let Some(client) = SyncClients::client(store, location) else {
             return;
         };
-        let Some(edit) = rules::seam_edit(document.log(), base_revision, seat.applied) else {
+        let Some(edit) = rules::seam_edit(document.log(), base_revision, client.applied) else {
             return;
         };
-        let _ = seat.edits.send(Local::Edit(edit));
+        let _ = client.edits.send(Local::Edit(edit));
     }
 }
 
 pub struct DocsyncHook {
     pub channels: Arc<DocumentChannels>,
-    pub directory: Arc<crate::fs::SeatDirectory>,
+    pub directory: Arc<crate::fs::ClientDirectory>,
 }
 
 impl documents::DocumentHook for DocsyncHook {
@@ -968,14 +968,14 @@ impl documents::DocumentHook for DocsyncHook {
         if documents::is_synthetic(location) || !location.kind().is_document() {
             return;
         }
-        let Some((seat, session)) = crate::fsroute::seat_of(&self.directory, location) else {
+        let Some((client, session)) = crate::fsroute::client_of(&self.directory, location) else {
             return;
         };
         DocumentChannels::ensure(
             &self.channels,
             documents,
             location.clone(),
-            seat,
+            client.documents,
             session.into_string(),
         );
     }
@@ -992,7 +992,7 @@ impl documents::DocumentHook for DocsyncHook {
         // flag writes back into it; the release already unsubscribes
         // its watch.
         if let Some(location) = location {
-            SyncSeats::detach(store, location);
+            SyncClients::detach(store, location);
             self.channels.forget_store(location);
         }
     }

@@ -8,7 +8,7 @@ pub struct UnixTransport {
     lines: tokio::io::Lines<tokio::io::BufReader<tokio::net::unix::OwnedReadHalf>>,
     write: tokio::net::unix::OwnedWriteHalf,
 
-    seat: String,
+    client: String,
 
     dead: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -16,14 +16,14 @@ pub struct UnixTransport {
 impl UnixTransport {
     pub async fn connect(
         path: &str,
-        seat: String,
+        client: String,
         dead: Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Self, String> {
-        tracing::info!(target: "ahp_wire", seat = %seat, path, "unix connect");
+        tracing::info!(target: "ahp_wire", client = %client, path, "unix connect");
         let stream = match tokio::net::UnixStream::connect(path).await {
             Ok(stream) => stream,
             Err(error) => {
-                tracing::error!(target: "ahp_wire", seat = %seat, path, %error, "unix connect failed");
+                tracing::error!(target: "ahp_wire", client = %client, path, %error, "unix connect failed");
                 return Err(format!("agent host unreachable at unix:{path}: {error}"));
             }
         };
@@ -31,7 +31,7 @@ impl UnixTransport {
         Ok(Self {
             lines: tokio::io::AsyncBufReadExt::lines(tokio::io::BufReader::new(read)),
             write,
-            seat,
+            client,
             dead,
         })
     }
@@ -51,10 +51,10 @@ impl ahp::Transport for UnixTransport {
             TransportMessage::Binary(bytes) => String::from_utf8(bytes)
                 .map_err(|error| ahp::TransportError::Protocol(error.to_string()))?,
         };
-        tracing::info!(target: "ahp_wire", seat = %self.seat, line = %host_discovery::logging::brief(&text), "->");
+        tracing::info!(target: "ahp_wire", client = %self.client, line = %host_discovery::logging::brief(&text), "->");
         let dead = |error: std::io::Error| {
             self.dead.store(true, Ordering::Relaxed);
-            tracing::error!(target: "ahp_wire", seat = %self.seat, %error, "write error");
+            tracing::error!(target: "ahp_wire", client = %self.client, %error, "write error");
             ahp::TransportError::Io(error.to_string())
         };
         self.write.write_all(text.as_bytes()).await.map_err(dead)?;
@@ -67,17 +67,17 @@ impl ahp::Transport for UnixTransport {
     ) -> Result<Option<ahp::transport::TransportMessage>, ahp::TransportError> {
         match self.lines.next_line().await {
             Ok(Some(line)) => {
-                tracing::info!(target: "ahp_wire", seat = %self.seat, line = %host_discovery::logging::brief(&line), "<-");
+                tracing::info!(target: "ahp_wire", client = %self.client, line = %host_discovery::logging::brief(&line), "<-");
                 Ok(Some(ahp::transport::TransportMessage::Text(line)))
             }
             Ok(None) => {
                 self.dead.store(true, Ordering::Relaxed);
-                tracing::warn!(target: "ahp_wire", seat = %self.seat, "EOF — the host closed the connection");
+                tracing::warn!(target: "ahp_wire", client = %self.client, "EOF — the host closed the connection");
                 Ok(None)
             }
             Err(error) => {
                 self.dead.store(true, Ordering::Relaxed);
-                tracing::error!(target: "ahp_wire", seat = %self.seat, %error, "read error");
+                tracing::error!(target: "ahp_wire", client = %self.client, %error, "read error");
                 Err(ahp::TransportError::Io(error.to_string()))
             }
         }

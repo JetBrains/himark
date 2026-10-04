@@ -21,7 +21,10 @@ use ahp_types::state::{
     SnapshotState,
 };
 
-use crate::higent::{AhpServer, RootInfo, SeatFuture, ServerEvent, SessionsPage};
+use crate::higent::{
+    AnnotationsClient, ChangesClient, ChatClient, DocumentsClient, HistoryClient, LocationsClient, LspClient,
+    ResourceClient, RootInfo, ClientFuture, ServerEvent, SessionClient, SessionsPage, TerminalClient,
+};
 use crate::higent::{FileEditContents, TurnsPage};
 
 const ROOT: &str = "ahp-root://";
@@ -181,9 +184,9 @@ impl WireHost {
         runtime: tokio::runtime::Handle,
         connector: Arc<dyn crate::transport::Connector>,
     ) -> Self {
-        static SEAT: AtomicU64 = AtomicU64::new(1);
-        let tag = format!("seat#{}", SEAT.fetch_add(1, Ordering::Relaxed));
-        tracing::info!(target: "ahp_wire", seat = %tag, ?discovery, "seat opened");
+        static CLIENT: AtomicU64 = AtomicU64::new(1);
+        let tag = format!("client#{}", CLIENT.fetch_add(1, Ordering::Relaxed));
+        tracing::info!(target: "ahp_wire", client = %tag, ?discovery, "client opened");
         Self {
             active: Arc::new(Mutex::new(None)),
             reconnecting: Mutex::new(()),
@@ -256,7 +259,7 @@ impl WireHost {
         self.runtime.spawn(async move {
             let outcome = work(active).await;
             if let Err(error) = &outcome {
-                tracing::warn!(target: "ahp_wire", seat = %tag, %error, "seat call failed");
+                tracing::warn!(target: "ahp_wire", client = %tag, %error, "client call failed");
             }
             filler.fill(outcome);
         });
@@ -274,7 +277,7 @@ impl WireHost {
             tokio::select! {
                 outcome = work(active) => outcome,
                 () = died => {
-                    tracing::warn!(target: "ahp_wire", seat = %tag, "ask abandoned: the connection died under it");
+                    tracing::warn!(target: "ahp_wire", client = %tag, "ask abandoned: the connection died under it");
                     Err("the agent host connection died".to_owned())
                 }
             }
@@ -304,7 +307,7 @@ impl WireHost {
                 outcome = work(active) => return outcome,
                 () = died => Err("the agent host connection died".to_owned()),
             };
-            tracing::warn!(target: "ahp_wire", seat = %tag, "subscribe died under a reconnect: asking again on the next connection");
+            tracing::warn!(target: "ahp_wire", client = %tag, "subscribe died under a reconnect: asking again on the next connection");
             let up = connected.notified();
             tokio::pin!(up);
             up.as_mut().enable();
@@ -362,7 +365,7 @@ impl WireHost {
             drop(attempts);
             match held.take() {
                 Some(active) => {
-                    tracing::warn!(target: "ahp_wire", seat = %self.tag, "connection DEAD — reconnecting");
+                    tracing::warn!(target: "ahp_wire", client = %self.tag, "connection DEAD — reconnecting");
                     Some(active)
                 }
                 None => None,
@@ -395,7 +398,7 @@ impl WireHost {
     /// (some ask reconnected) or for the backoff, then answer EMPTY so
     /// the re-arm dials. Parked for good, the channel would stay
     /// frozen after the host came back.
-    fn poll_unconnected<T: Send + 'static>(&self) -> SeatFuture<Vec<T>> {
+    fn poll_unconnected<T: Send + 'static>(&self) -> ClientFuture<Vec<T>> {
         let connected = Arc::clone(&self.connected);
         let backoff = self
             .runtime
@@ -444,7 +447,7 @@ impl WireHost {
                 .await
                 .map_err(|error| format!("unsubscribe {channel}: {error}"));
             if let Err(error) = &outcome {
-                tracing::warn!(target: "ahp_wire", seat = %tag, %error, "unsubscribe failed");
+                tracing::warn!(target: "ahp_wire", client = %tag, %error, "unsubscribe failed");
             }
             filler.fill(outcome);
         });
@@ -464,7 +467,7 @@ impl WireHost {
         let tag = self.tag.clone();
         self.runtime.spawn(async move {
             previous.client.shutdown().await;
-            tracing::info!(target: "ahp_wire", seat = %tag, "dead connection closed");
+            tracing::info!(target: "ahp_wire", client = %tag, "dead connection closed");
         });
     }
 
@@ -481,14 +484,14 @@ impl WireHost {
         let url = match self.discover_url() {
             Ok(url) => url,
             Err(error) => {
-                tracing::error!(target: "ahp_wire", seat = %self.tag, %error, "discover failed");
+                tracing::error!(target: "ahp_wire", client = %self.tag, %error, "discover failed");
                 return Err(error);
             }
         };
-        tracing::info!(target: "ahp_wire", seat = %self.tag, %url, "connecting");
+        tracing::info!(target: "ahp_wire", client = %self.tag, %url, "connecting");
 
         if tokio::runtime::Handle::try_current().is_ok() {
-            tracing::error!(target: "ahp_wire", seat = %self.tag, "connect refused: requested from the runtime itself");
+            tracing::error!(target: "ahp_wire", client = %self.tag, "connect refused: requested from the runtime itself");
             return Err("wire connect requested from the runtime itself".to_owned());
         }
 
@@ -530,7 +533,7 @@ impl WireHost {
                 if initialized.server_seq < behind {
                     tracing::warn!(
                         target: "ahp_wire",
-                        seat = %dial_tag,
+                        client = %dial_tag,
                         host_seq = initialized.server_seq,
                         last_seen = behind,
                         "the host counts from before this client's cursor — a restart; following it"
@@ -563,7 +566,7 @@ impl WireHost {
             Err(_) => {
                 tracing::error!(
                     target: "ahp_wire",
-                    seat = %self.tag,
+                    client = %self.tag,
                     deadline = ?connect_deadline,
                     "connect TIMED OUT — the host is deaf"
                 );
@@ -603,7 +606,7 @@ impl WireHost {
                 Err(_) => {
                     tracing::error!(
                         target: "ahp_wire",
-                        seat = %self.tag,
+                        client = %self.tag,
                         deadline = ?connect_deadline,
                         "resume TIMED OUT"
                     );
@@ -617,7 +620,7 @@ impl WireHost {
         self.watch_death(&active);
         tracing::info!(
             target: "ahp_wire",
-            seat = %self.tag,
+            client = %self.tag,
             channels = active.feeds.lock().expect("wire feeds").len(),
             "connection ACTIVE"
         );
@@ -692,7 +695,7 @@ impl WireHost {
         let last_seen = self.last_seen.load(std::sync::atomic::Ordering::Relaxed);
         tracing::info!(
             target: "ahp_wire",
-            seat = %self.tag,
+            client = %self.tag,
             subscriptions = subscriptions.len(),
             last_seen,
             "reconnecting subscriptions"
@@ -706,7 +709,7 @@ impl WireHost {
             ahp_types::commands::ReconnectResult::Replay(replay) => {
                 tracing::info!(
                     target: "ahp_wire",
-                    seat = %self.tag,
+                    client = %self.tag,
                     actions = replay.actions.len(),
                     missing = replay.missing.len(),
                     "reconnect replay"
@@ -738,7 +741,7 @@ impl WireHost {
                 for channel in replay.missing {
                     tracing::warn!(
                         target: "ahp_wire",
-                        seat = %self.tag,
+                        client = %self.tag,
                         %channel,
                         "channel is GONE on the host — dropping its feed"
                     );
@@ -748,7 +751,7 @@ impl WireHost {
             ahp_types::commands::ReconnectResult::Snapshot(snapshot) => {
                 tracing::warn!(
                     target: "ahp_wire",
-                    seat = %self.tag,
+                    client = %self.tag,
                     snapshots = snapshot.snapshots.len(),
                     "reconnect replay TOO OLD — fresh snapshots, the gap is lost"
                 );
@@ -799,12 +802,12 @@ impl WireHost {
                 match answered {
                     Ok(Ok(())) => {}
                     Ok(Err(error)) => {
-                        tracing::error!(target: "ahp_wire", seat = %tag, %error, "keepalive ping failed — marking dead");
+                        tracing::error!(target: "ahp_wire", client = %tag, %error, "keepalive ping failed — marking dead");
                         active.die();
                         break;
                     }
                     Err(_) => {
-                        tracing::error!(target: "ahp_wire", seat = %tag, "keepalive ping TIMED OUT — the host is DEAF; marking dead");
+                        tracing::error!(target: "ahp_wire", client = %tag, "keepalive ping TIMED OUT — the host is DEAF; marking dead");
                         active.die();
                         break;
                     }
@@ -846,7 +849,7 @@ impl WireHost {
         active: &Arc<Active>,
         channel: Uri,
         last_seen: Arc<std::sync::atomic::AtomicI64>,
-        seat: String,
+        client: String,
     ) -> Result<serde_json::Value, String> {
         let sub = active.client.attach_subscription(&channel).await;
         let feed = Arc::clone(
@@ -857,7 +860,7 @@ impl WireHost {
                 .entry(channel.clone())
                 .or_default(),
         );
-        pump_channel(sub, feed, last_seen, seat, Arc::clone(&active.dead));
+        pump_channel(sub, feed, last_seen, client, Arc::clone(&active.dead));
         let result: serde_json::Value = active
             .client
             .request("subscribe", serde_json::json!({ "channel": channel }))
@@ -873,7 +876,7 @@ impl WireHost {
         active: &Arc<Active>,
         channel: Uri,
         last_seen: Arc<std::sync::atomic::AtomicI64>,
-        seat: String,
+        client: String,
     ) -> Result<SubscribeResult, String> {
         let (result, sub) = active
             .client
@@ -902,7 +905,7 @@ impl WireHost {
                 .entry(channel)
                 .or_default(),
         );
-        pump_channel(sub, feed, last_seen, seat, Arc::clone(&active.dead));
+        pump_channel(sub, feed, last_seen, client, Arc::clone(&active.dead));
         Ok(result)
     }
 }
@@ -916,7 +919,7 @@ fn pump_channel(
     mut sub: ahp::SessionSubscription,
     feed: Arc<Feed>,
     last_seen: Arc<std::sync::atomic::AtomicI64>,
-    seat: String,
+    client: String,
     dead: Arc<std::sync::atomic::AtomicBool>,
 ) {
     let channel = sub.uri().to_owned();
@@ -930,7 +933,7 @@ fn pump_channel(
                 break;
             }
         }
-        tracing::info!(target: "ahp_wire", seat = %seat, %channel, "pump ended");
+        tracing::info!(target: "ahp_wire", client = %client, %channel, "pump ended");
     });
 }
 
@@ -938,7 +941,7 @@ fn pump_root(
     mut sub: ahp::SessionSubscription,
     feed: Arc<RootFeed>,
     last_seen: Arc<std::sync::atomic::AtomicI64>,
-    seat: String,
+    client: String,
     dead: Arc<std::sync::atomic::AtomicBool>,
 ) {
     tokio::spawn(async move {
@@ -973,7 +976,7 @@ fn pump_root(
                 _ => {}
             }
         }
-        tracing::info!(target: "ahp_wire", seat = %seat, channel = ROOT, "pump ended");
+        tracing::info!(target: "ahp_wire", client = %client, channel = ROOT, "pump ended");
     });
 }
 
@@ -991,8 +994,8 @@ fn chat_state(result: SubscribeResult) -> Result<ChatState, String> {
     }
 }
 
-impl AhpServer for WireHost {
-    fn connect(&self) -> SeatFuture<Result<RootInfo, String>> {
+impl SessionClient for WireHost {
+    fn connect(&self) -> ClientFuture<Result<RootInfo, String>> {
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
         Box::pin(self.run_ask(|active| async move {
@@ -1021,7 +1024,7 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn list_sessions(&self, cursor: Option<String>) -> SeatFuture<Result<SessionsPage, String>> {
+    fn list_sessions(&self, cursor: Option<String>) -> ClientFuture<Result<SessionsPage, String>> {
         Box::pin(self.run_ask(|active| async move {
             let result: ListSessionsResult = active
                 .client
@@ -1043,13 +1046,13 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_root(&self) -> SeatFuture<Vec<ServerEvent>> {
+    fn poll_root(&self) -> ClientFuture<Vec<ServerEvent>> {
         let found = self.ensure_active().ok().and_then(|active| {
             let feed = active.root.lock().expect("wire root").clone()?;
             Some((active, feed))
         });
         let Some((active, feed)) = found else {
-            tracing::info!(target: "ahp_wire", seat = %self.tag, "root poll waiting: not connected");
+            tracing::info!(target: "ahp_wire", client = %self.tag, "root poll waiting: not connected");
             return self.poll_unconnected();
         };
         // As `poll_channel`: released empty when the connection dies,
@@ -1059,7 +1062,7 @@ impl AhpServer for WireHost {
             tokio::select! {
                 events = PollRootFeed { feed } => events,
                 () = active.died() => {
-                    tracing::warn!(target: "ahp_wire", seat = %tag, "root poll released: the connection died under it");
+                    tracing::warn!(target: "ahp_wire", client = %tag, "root poll released: the connection died under it");
                     Vec::new()
                 }
             }
@@ -1070,7 +1073,7 @@ impl AhpServer for WireHost {
         &self,
         working_directories: Vec<Uri>,
         options: crate::higent::SessionOptions,
-    ) -> SeatFuture<Result<crate::higent::SessionUri, String>> {
+    ) -> ClientFuture<Result<crate::higent::SessionUri, String>> {
         let vscode = matches!(self.discovery, Discovery::VsCode);
         Box::pin(self.run_ask(move |active| async move {
             let uuid = uuid_v4();
@@ -1134,7 +1137,7 @@ impl AhpServer for WireHost {
         &self,
         working_directory: Option<Uri>,
         config: Option<serde_json::Map<String, serde_json::Value>>,
-    ) -> SeatFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>> {
+    ) -> ClientFuture<Result<ahp_types::commands::ResolveSessionConfigResult, String>> {
         Box::pin(self.run_ask(move |active| async move {
             #[derive(serde::Serialize)]
             #[serde(rename_all = "camelCase")]
@@ -1166,7 +1169,7 @@ impl AhpServer for WireHost {
     fn dispose_session(
         &self,
         session: crate::higent::SessionUri,
-    ) -> SeatFuture<Result<(), String>> {
+    ) -> ClientFuture<Result<(), String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -1187,7 +1190,7 @@ impl AhpServer for WireHost {
     fn subscribe_session(
         &self,
         session: crate::higent::SessionUri,
-    ) -> SeatFuture<Result<SessionState, String>> {
+    ) -> ClientFuture<Result<SessionState, String>> {
         let session = session.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1200,15 +1203,48 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_session(&self, session: crate::higent::SessionUri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_session(&self, session: crate::higent::SessionUri) -> ClientFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(session)
     }
 
+    fn http_serve(&self) -> ClientFuture<Result<String, String>> {
+        Box::pin(self.run_ask(move |active| async move {
+            let answer: serde_json::Value = active
+                .client
+                .request("httpServe", serde_json::json!({ "enabled": true }))
+                .await
+                .map_err(|error| format!("httpServe: {error}"))?;
+            answer
+                .get("url")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned)
+                .ok_or_else(|| "httpServe answered no url".to_owned())
+        }))
+    }
+
+    fn dispatch_action(
+        &self,
+        channel: crate::higent::ChannelUri,
+        action: StateAction,
+    ) -> ClientFuture<Result<(), String>> {
+        let channel = channel.into_string();
+        Box::pin(self.run_ask(move |active| async move {
+            let _ = active
+                .client
+                .dispatch(channel, action)
+                .await
+                .map_err(|error| format!("dispatch: {error}"))?;
+            Ok(())
+        }))
+    }
+}
+
+impl ChatClient for WireHost {
     fn create_chat(
         &self,
         session: crate::higent::SessionUri,
-    ) -> SeatFuture<Result<crate::higent::ChatUri, String>> {
+    ) -> ClientFuture<Result<crate::higent::ChatUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let chat = format!("ahp-chat:/{}", uuid_v4());
@@ -1234,7 +1270,7 @@ impl AhpServer for WireHost {
     fn subscribe_chat(
         &self,
         chat: crate::higent::ChatUri,
-    ) -> SeatFuture<Result<ChatState, String>> {
+    ) -> ClientFuture<Result<ChatState, String>> {
         let chat = chat.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1251,7 +1287,7 @@ impl AhpServer for WireHost {
         &self,
         chat: crate::higent::ChatUri,
         cursor: Option<String>,
-    ) -> SeatFuture<Result<TurnsPage, String>> {
+    ) -> ClientFuture<Result<TurnsPage, String>> {
         let chat = chat.into_string();
         let feed = self.ensure_active().and_then(|active| {
             active
@@ -1291,7 +1327,7 @@ impl AhpServer for WireHost {
         text: String,
         attachments: Option<Vec<ahp_types::state::MessageAttachment>>,
         model: Option<ModelSelection>,
-    ) -> SeatFuture<Result<(), String>> {
+    ) -> ClientFuture<Result<(), String>> {
         let chat = chat.into_string();
         let turn_id = format!("himark-{}", self.next_turn.fetch_add(1, Ordering::Relaxed));
         Box::pin(self.run_ask(move |active| async move {
@@ -1327,15 +1363,81 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_chat(&self, chat: crate::higent::ChatUri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_chat(&self, chat: crate::higent::ChatUri) -> ClientFuture<Vec<StateAction>> {
         let chat = chat.into_string();
         self.poll_channel(chat)
     }
 
+    fn cancel_turn(
+        &self,
+        chat: crate::higent::ChatUri,
+        turn_id: crate::higent::TurnId,
+    ) -> ClientFuture<()> {
+        let chat = chat.into_string();
+        let turn_id = turn_id.into_string();
+        let dispatched = self.run_ask(move |active| async move {
+            active
+                .client
+                .dispatch(
+                    chat,
+                    StateAction::ChatTurnCancelled(ahp_types::actions::ChatTurnCancelledAction {
+                        turn_id,
+                        duration: 0,
+                        meta: None,
+                    }),
+                )
+                .await
+                .map_err(|error| format!("dispatch turnCancelled: {error}"))
+        });
+        Box::pin(async move {
+            if let Err(error) = dispatched.await {
+                eprintln!("[hiahp] cancel: {error}");
+            }
+        })
+    }
+
+    fn read_file_edit(
+        &self,
+        before: Option<Uri>,
+        after: Option<Uri>,
+    ) -> ClientFuture<Result<FileEditContents, String>> {
+        Box::pin(self.run_ask(move |active| async move {
+            let read = |uri: Option<Uri>| {
+                let client = active.client.clone();
+                async move {
+                    let Some(uri) = uri else {
+                        return Ok::<Option<String>, String>(None);
+                    };
+                    let result = client
+                        .resource_read(ResourceReadParams {
+                            meta: None,
+                            channel: String::new(),
+                            uri: uri.as_str().to_owned(),
+                            encoding: None,
+                        })
+                        .await
+                        .map_err(|error| format!("resourceRead {uri}: {error}"))?;
+                    match result.encoding {
+                        ahp_types::commands::ContentEncoding::Utf8 => Ok(Some(result.data)),
+                        ahp_types::commands::ContentEncoding::Base64 => {
+                            Err(format!("binary content not supported yet: {uri}"))
+                        }
+                    }
+                }
+            };
+            Ok(FileEditContents {
+                before: read(before).await?,
+                after: read(after).await?,
+            })
+        }))
+    }
+}
+
+impl ChangesClient for WireHost {
     fn subscribe_changeset(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Result<ahp_types::state::ChangesetState, String>> {
+    ) -> ClientFuture<Result<ahp_types::state::ChangesetState, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1351,7 +1453,7 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_changeset(&self, channel: crate::higent::ChannelUri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_changeset(&self, channel: crate::higent::ChannelUri) -> ClientFuture<Vec<StateAction>> {
         let channel = channel.into_string();
         self.poll_channel(channel)
     }
@@ -1359,11 +1461,13 @@ impl AhpServer for WireHost {
     fn unsubscribe_changeset(&self, channel: &crate::higent::ChannelUri) {
         let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
+}
 
+impl HistoryClient for WireHost {
     fn subscribe_history(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::history::HistoryState, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1376,11 +1480,13 @@ impl AhpServer for WireHost {
             }
         }))
     }
+}
 
+impl AnnotationsClient for WireHost {
     fn subscribe_annotations(
         &self,
         session: crate::higent::SessionUri,
-    ) -> SeatFuture<Result<ahp_types::state::AnnotationsState, String>> {
+    ) -> ClientFuture<Result<ahp_types::state::AnnotationsState, String>> {
         let channel = annotations_channel(&session.into_string());
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1396,7 +1502,7 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn poll_annotations(&self, session: crate::higent::SessionUri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_annotations(&self, session: crate::higent::SessionUri) -> ClientFuture<Vec<StateAction>> {
         let session = session.into_string();
         self.poll_channel(annotations_channel(&session))
     }
@@ -1416,15 +1522,17 @@ impl AhpServer for WireHost {
     fn unsubscribe_annotations(&self, session: &crate::higent::SessionUri) {
         let _ = self.unsubscribe_channel(annotations_channel(session.as_str()));
     }
+}
 
+impl DocumentsClient for WireHost {
     fn open_document(
         &self,
         session: crate::higent::SessionUri,
-        uri: Option<crate::higent::seat::ResourceUri>,
+        uri: Option<crate::higent::client::ResourceUri>,
         text: Option<String>,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
         let session = session.into_string();
-        let uri = uri.map(crate::higent::seat::ResourceUri::into_string);
+        let uri = uri.map(crate::higent::client::ResourceUri::into_string);
         Box::pin(self.run_ask(move |active| async move {
             active
                 .client
@@ -1444,7 +1552,7 @@ impl AhpServer for WireHost {
     fn subscribe_document(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
         let channel = channel.into_string();
         // The pump MUST advance `last_seen` (via `pump_channel`, like
         // every other channel) — a bespoke pump that ignored it left
@@ -1467,7 +1575,7 @@ impl AhpServer for WireHost {
     fn poll_document(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
         let channel = channel.into_string();
         let poll = self.poll_channel(channel);
         Box::pin(async move {
@@ -1507,8 +1615,8 @@ impl AhpServer for WireHost {
     fn store_document(
         &self,
         channel: crate::higent::ChannelUri,
-        uri: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<Result<(), String>> {
+        uri: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<Result<(), String>> {
         let channel = channel.into_string();
         let uri = uri.into_string();
         Box::pin(self.run_ask(move |active| async move {
@@ -1524,19 +1632,21 @@ impl AhpServer for WireHost {
         }))
     }
 
-    fn unsubscribe_document(&self, channel: &crate::higent::ChannelUri) -> SeatFuture<()> {
+    fn unsubscribe_document(&self, channel: &crate::higent::ChannelUri) -> ClientFuture<()> {
         let ask = self.unsubscribe_channel(channel.as_str().to_owned());
         Box::pin(async move {
             let _ = ask.await;
         })
     }
+}
 
+impl LspClient for WireHost {
     fn lsp(
         &self,
         session: crate::higent::SessionUri,
         method: String,
         params: serde_json::Value,
-    ) -> SeatFuture<Result<serde_json::Value, String>> {
+    ) -> ClientFuture<Result<serde_json::Value, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             active
@@ -1549,71 +1659,14 @@ impl AhpServer for WireHost {
                 .map_err(|error| format!("lsp/{method}: {error}"))
         }))
     }
+}
 
-    fn http_serve(&self) -> SeatFuture<Result<String, String>> {
-        Box::pin(self.run_ask(move |active| async move {
-            let answer: serde_json::Value = active
-                .client
-                .request("httpServe", serde_json::json!({ "enabled": true }))
-                .await
-                .map_err(|error| format!("httpServe: {error}"))?;
-            answer
-                .get("url")
-                .and_then(serde_json::Value::as_str)
-                .map(str::to_owned)
-                .ok_or_else(|| "httpServe answered no url".to_owned())
-        }))
-    }
-
-    fn dispatch_action(
-        &self,
-        channel: crate::higent::ChannelUri,
-        action: StateAction,
-    ) -> SeatFuture<Result<(), String>> {
-        let channel = channel.into_string();
-        Box::pin(self.run_ask(move |active| async move {
-            let _ = active
-                .client
-                .dispatch(channel, action)
-                .await
-                .map_err(|error| format!("dispatch: {error}"))?;
-            Ok(())
-        }))
-    }
-
-    fn cancel_turn(
-        &self,
-        chat: crate::higent::ChatUri,
-        turn_id: crate::higent::TurnId,
-    ) -> SeatFuture<()> {
-        let chat = chat.into_string();
-        let turn_id = turn_id.into_string();
-        let dispatched = self.run_ask(move |active| async move {
-            active
-                .client
-                .dispatch(
-                    chat,
-                    StateAction::ChatTurnCancelled(ahp_types::actions::ChatTurnCancelledAction {
-                        turn_id,
-                        duration: 0,
-                        meta: None,
-                    }),
-                )
-                .await
-                .map_err(|error| format!("dispatch turnCancelled: {error}"))
-        });
-        Box::pin(async move {
-            if let Err(error) = dispatched.await {
-                eprintln!("[hiahp] cancel: {error}");
-            }
-        })
-    }
-
+impl ResourceClient for WireHost {
     fn resource_read(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<Option<String>> {
+        uri: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<Option<String>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let result = active
@@ -1642,8 +1695,8 @@ impl AhpServer for WireHost {
     fn resource_read_bytes(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<Option<Vec<u8>>> {
+        uri: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<Option<Vec<u8>>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let result = active
@@ -1678,9 +1731,9 @@ impl AhpServer for WireHost {
     fn resource_write(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
+        uri: crate::higent::client::ResourceUri,
         text: String,
-    ) -> SeatFuture<bool> {
+    ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -1715,8 +1768,8 @@ impl AhpServer for WireHost {
     fn resource_create(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<bool> {
+        uri: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -1751,9 +1804,9 @@ impl AhpServer for WireHost {
     fn resource_delete(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
+        uri: crate::higent::client::ResourceUri,
         recursive: bool,
-    ) -> SeatFuture<bool> {
+    ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -1782,9 +1835,9 @@ impl AhpServer for WireHost {
     fn resource_move(
         &self,
         session: crate::higent::SessionUri,
-        from: crate::higent::seat::ResourceUri,
-        to: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<bool> {
+        from: crate::higent::client::ResourceUri,
+        to: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<bool> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -1814,8 +1867,8 @@ impl AhpServer for WireHost {
     fn resource_list(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
-    ) -> SeatFuture<Option<Vec<(String, bool)>>> {
+        uri: crate::higent::client::ResourceUri,
+    ) -> ClientFuture<Option<Vec<(String, bool)>>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let result: ResourceListResult = active
@@ -1852,9 +1905,9 @@ impl AhpServer for WireHost {
     fn resource_watch(
         &self,
         session: crate::higent::SessionUri,
-        uri: crate::higent::seat::ResourceUri,
+        uri: crate::higent::client::ResourceUri,
         events: Arc<dyn Fn() + Send + Sync>,
-    ) -> SeatFuture<Option<crate::higent::WatchHandle>> {
+    ) -> ClientFuture<Option<crate::higent::WatchHandle>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let result: CreateResourceWatchResult = active
@@ -1899,11 +1952,26 @@ impl AhpServer for WireHost {
         })
     }
 
+    fn resource_unwatch(&self, handle: crate::higent::WatchHandle) -> ClientFuture<()> {
+        let asked = self.run_ask(move |active| async move {
+            active
+                .client
+                .unsubscribe(handle.channel.clone().into_string())
+                .await
+                .map_err(|error| format!("unsubscribe {}: {error}", handle.channel))
+        });
+        Box::pin(async move {
+            if let Err(error) = asked.await {
+                eprintln!("[hiahp] {error}");
+            }
+        })
+    }
+
     fn search(
         &self,
         session: crate::higent::SessionUri,
         ask: crate::higent::SearchAsk,
-    ) -> SeatFuture<Option<crate::higent::SearchResult>> {
+    ) -> ClientFuture<Option<crate::higent::SearchResult>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::SearchParams {
@@ -1924,12 +1992,14 @@ impl AhpServer for WireHost {
         });
         Box::pin(async move { asked.await.ok() })
     }
+}
 
+impl LocationsClient for WireHost {
     fn search_locations(
         &self,
         session: crate::higent::SessionUri,
         ask: crate::higent::LocationsAsk,
-    ) -> SeatFuture<Result<crate::higent::ChannelUri, String>> {
+    ) -> ClientFuture<Result<crate::higent::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::SearchLocationsParams {
@@ -1954,7 +2024,7 @@ impl AhpServer for WireHost {
         session: crate::higent::SessionUri,
         method: String,
         params: serde_json::Value,
-    ) -> SeatFuture<Result<crate::higent::ChannelUri, String>> {
+    ) -> ClientFuture<Result<crate::higent::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
             let params = himark_ahp_ext_types::LspLocationsParams {
@@ -1974,7 +2044,7 @@ impl AhpServer for WireHost {
     fn subscribe_locations(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -1991,7 +2061,7 @@ impl AhpServer for WireHost {
     fn poll_locations(
         &self,
         channel: crate::higent::ChannelUri,
-    ) -> SeatFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::LocationList>> {
         let channel = channel.into_string();
         let polled = self.poll_channel(channel);
         Box::pin(async move {
@@ -2013,7 +2083,9 @@ impl AhpServer for WireHost {
     fn unsubscribe_locations(&self, channel: &crate::higent::ChannelUri) {
         let _ = self.unsubscribe_channel(channel.as_str().to_owned());
     }
+}
 
+impl TerminalClient for WireHost {
     fn terminal_open(
         &self,
         _session: crate::higent::SessionUri,
@@ -2022,7 +2094,7 @@ impl AhpServer for WireHost {
         cols: u16,
         rows: u16,
         events: Arc<dyn Fn(crate::higent::TerminalEvent) + Send + Sync>,
-    ) -> SeatFuture<Option<crate::higent::TerminalHandle>> {
+    ) -> ClientFuture<Option<crate::higent::TerminalHandle>> {
         let channel = channel.into_string();
         let asked = self.run_ask(move |active| async move {
             let _: serde_json::Value = active
@@ -2151,57 +2223,6 @@ impl AhpServer for WireHost {
             Ok(())
         });
     }
-
-    fn resource_unwatch(&self, handle: crate::higent::WatchHandle) -> SeatFuture<()> {
-        let asked = self.run_ask(move |active| async move {
-            active
-                .client
-                .unsubscribe(handle.channel.clone().into_string())
-                .await
-                .map_err(|error| format!("unsubscribe {}: {error}", handle.channel))
-        });
-        Box::pin(async move {
-            if let Err(error) = asked.await {
-                eprintln!("[hiahp] {error}");
-            }
-        })
-    }
-
-    fn read_file_edit(
-        &self,
-        before: Option<Uri>,
-        after: Option<Uri>,
-    ) -> SeatFuture<Result<FileEditContents, String>> {
-        Box::pin(self.run_ask(move |active| async move {
-            let read = |uri: Option<Uri>| {
-                let client = active.client.clone();
-                async move {
-                    let Some(uri) = uri else {
-                        return Ok::<Option<String>, String>(None);
-                    };
-                    let result = client
-                        .resource_read(ResourceReadParams {
-                            meta: None,
-                            channel: String::new(),
-                            uri: uri.as_str().to_owned(),
-                            encoding: None,
-                        })
-                        .await
-                        .map_err(|error| format!("resourceRead {uri}: {error}"))?;
-                    match result.encoding {
-                        ahp_types::commands::ContentEncoding::Utf8 => Ok(Some(result.data)),
-                        ahp_types::commands::ContentEncoding::Base64 => {
-                            Err(format!("binary content not supported yet: {uri}"))
-                        }
-                    }
-                }
-            };
-            Ok(FileEditContents {
-                before: read(before).await?,
-                after: read(after).await?,
-            })
-        }))
-    }
 }
 
 impl WireHost {
@@ -2217,7 +2238,7 @@ impl WireHost {
     /// runtime's: callers cancel a poll and arm another (every
     /// relaunch does), and a task parked on the feed would go on to
     /// take the next batch for nobody.
-    fn poll_channel(&self, channel: Uri) -> SeatFuture<Vec<StateAction>> {
+    fn poll_channel(&self, channel: Uri) -> ClientFuture<Vec<StateAction>> {
         let Ok(active) = self.ensure_active() else {
             return self.poll_unconnected();
         };
@@ -2259,7 +2280,7 @@ impl WireHost {
             tokio::select! {
                 batch = batch => batch,
                 () = died => {
-                    tracing::warn!(target: "ahp_wire", seat = %tag, "poll released: the connection died under it");
+                    tracing::warn!(target: "ahp_wire", client = %tag, "poll released: the connection died under it");
                     Vec::new()
                 }
             }
@@ -2591,7 +2612,7 @@ mod tests {
     }
 
     #[test]
-    fn discovery_is_per_seat_and_the_env_override_reaches_vscode() {
+    fn discovery_is_per_client_and_the_env_override_reaches_vscode() {
         std::env::set_var("HIMARK_AHP_URL", "ws://127.0.0.1:9999/?tkn=t");
         assert_eq!(
             WireHost::new(test_runtime(), Arc::new(Nowhere))

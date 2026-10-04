@@ -524,7 +524,7 @@ impl PaneSlot {
         let panel = self.panel.focus_data(store, ui);
         match &self.find {
             // A focused find bar filters the keyboard before the
-            // panel content; its input editor supplies the text seat.
+            // panel content; its input editor supplies the text client.
             Some(find) if find.focused => find
                 .focus_data(store, ui)
                 .map(PanelCommand::Find)

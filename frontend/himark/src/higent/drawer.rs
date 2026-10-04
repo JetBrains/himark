@@ -371,13 +371,13 @@ impl AgentsPanel {
     }
 
     fn connect(&mut self, store: &mut Store, server: HostId, fx: &mut Effects<'_, AgentsCommand>) {
-        let Some(seat) = crate::higent::Servers::seat(store, server) else {
+        let Some(client) = crate::higent::Servers::client(store, server) else {
             Agents::set_status(store, server, HostStatus::Failed("unregistered".to_owned()));
             return;
         };
         Agents::set_status(store, server, HostStatus::Connecting);
         fx.push(
-            AnyEffect::new(ConnectServerEffect { seat })
+            AnyEffect::new(ConnectServerEffect { client: client.session.clone() })
                 .map(move |result| AgentsCommand::Connected(server, result)),
         );
     }
@@ -389,12 +389,12 @@ impl AgentsPanel {
         cursor: Option<String>,
         fx: &mut Effects<'_, AgentsCommand>,
     ) {
-        let Some(seat) = crate::higent::Servers::seat(store, server) else {
+        let Some(client) = crate::higent::Servers::client(store, server) else {
             return;
         };
         let first = cursor.is_none();
         fx.push(
-            AnyEffect::new(ListSessionsEffect { seat, cursor }).map(move |result| {
+            AnyEffect::new(ListSessionsEffect { client: client.session.clone(), cursor }).map(move |result| {
                 AgentsCommand::Listed {
                     server,
                     first,
@@ -410,14 +410,14 @@ impl AgentsPanel {
         server: HostId,
         fx: &mut Effects<'_, AgentsCommand>,
     ) {
-        let Some(seat) = crate::higent::Servers::seat(store, server) else {
+        let Some(client) = crate::higent::Servers::client(store, server) else {
             return;
         };
         if let Some(token) = self.polls.get(&server).copied() {
             fx.cancel(token);
         }
         let token = fx.push(
-            AnyEffect::new(PollServerEffect { seat })
+            AnyEffect::new(PollServerEffect { client: client.session.clone() })
                 .map(move |events| AgentsCommand::Events(server, events)),
         );
         self.polls.insert_mut(server, token);
@@ -1094,16 +1094,16 @@ impl crate::DynamicCommand for ShareHost {
         window: crate::WindowId,
         fx: &mut crate::AppFx<'_>,
     ) {
-        let seat = store
+        let client = store
             .get::<crate::higent::LocalHost>()
             .and_then(|local| local.0)
-            .and_then(|host| crate::higent::Servers::seat(store, host));
-        let Some(seat) = seat else {
+            .and_then(|host| crate::higent::Servers::client(store, host));
+        let Some(client) = client else {
             eprintln!("[himark] share: no local host designated");
             return;
         };
         fx.push(
-            imba::effect::AnyEffect::new(crate::higent::ShareHostEffect { seat })
+            imba::effect::AnyEffect::new(crate::higent::ShareHostEffect { client: client.session.clone() })
                 .map(move |result| AppCommand::Dynamic(window, Arc::new(SharedHost { result }))),
         );
     }

@@ -633,7 +633,7 @@ impl DynamicCommand for AddFolder {
             return;
         };
         let current = entity.current_session();
-        if crate::higent::Servers::seat(store, current.host).is_none() {
+        if crate::higent::Servers::client(store, current.host).is_none() {
             return;
         }
         crate::higent::AddSessionFolders {
