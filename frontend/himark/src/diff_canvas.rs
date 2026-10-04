@@ -1,20 +1,21 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The shell half of the diff canvas: the two window commands (open
 //! a canvas, open a row's file in a full pane). The canvas itself —
 //! rows, header, panel face, router — lives in the `canvas` crate.
 
+
+use changesview::hichanges::CanvasSource;
+use ::canvas::canvas;
+use ::canvas::diff_canvas::*;
+
 use imba::store::Store;
 
-use crate::{WindowId};
+use crate::window::WindowId;
 use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
 
-pub use changesview::hichanges::CanvasSource;
 
-pub use ::canvas::canvas;
-pub use ::canvas::diff_canvas::*;
 
 /// Open the canvas for a source — or REUSE the one already open (the
 /// canvas is found by source in the store; a fresh view of it costs
@@ -26,7 +27,7 @@ pub struct OpenDiffCanvas {
     pub reveal: Option<ResourceLocation>,
 }
 
-impl crate::DynamicCommand for OpenDiffCanvas {
+impl crate::commands::DynamicCommand for OpenDiffCanvas {
     fn id(&self) -> &'static str {
         "diff.open-canvas"
     }
@@ -35,24 +36,24 @@ impl crate::DynamicCommand for OpenDiffCanvas {
     }
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
         window: WindowId,
-        fx: &mut crate::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         // A commit canvas needs its changeset — the same fetch the
         // tree's expansion runs; the pending set dedups a double ask.
         if let CanvasSource::Commit { folder, id } = &self.source {
             if let Some(history) = Changes::of(store, self.changes).map(|held| held.history()) {
-                crate::hihistory::History::ask(
+                changesview::hihistory::History::ask(
                     store,
                     history,
-                    crate::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
+                    changesview::hihistory::HistoryAsk::CommitFiles(folder.clone(), id.clone()),
                 );
             }
         }
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         let place = CanvasPlace {
@@ -64,12 +65,12 @@ impl crate::DynamicCommand for OpenDiffCanvas {
             store,
             ui,
             window,
-            &crate::NavigationLocation::new(place),
+            &hikit::navigation::NavigationLocation::new(place),
             fx,
         ) {
             eprintln!("[himark] no canvas navigator registered");
         }
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
@@ -80,10 +81,10 @@ pub struct OpenCanvasFile {
     /// The caret to land on — carried from the row's diff editor so
     /// cmd-enter opens at the position being read, matching the
     /// standalone split-diff pane (docs/editor/diff-canvas.md §6).
-    pub target: Option<std::ops::Range<crate::LineCol>>,
+    pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 }
 
-impl crate::DynamicCommand for OpenCanvasFile {
+impl crate::commands::DynamicCommand for OpenCanvasFile {
     fn id(&self) -> &'static str {
         "diff.open-file"
     }
@@ -92,10 +93,10 @@ impl crate::DynamicCommand for OpenCanvasFile {
     }
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
         window: WindowId,
-        fx: &mut crate::AppFx<'_>,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let Some(target) = self.target.clone() else {
@@ -107,18 +108,18 @@ impl crate::DynamicCommand for OpenCanvasFile {
         // Honor the caret: the canvas row's document is registered
         // (docs/editor/diff-canvas.md §7), so this is a show at target;
         // fall back to a targeted fetch if it somehow is not.
-        let documents = crate::Windows::session_state(store, window)
+        let documents = crate::window::Windows::session_state(store, window)
             .expect("canvas navigation runs in a window with a session")
             .documents();
-        match crate::OpenDocuments::by_location(store, documents, &self.location) {
+        match documents::OpenDocuments::by_location(store, documents, &self.location) {
             Some(document_id) => {
-                if let Some(mut entity) = crate::Windows::window(store, window) {
+                if let Some(mut entity) = crate::window::Windows::window(store, window) {
                     entity.show_document(store, ui, window, document_id, Some(target), false, fx);
-                    crate::Windows::put(store, window, entity);
+                    crate::window::Windows::put(store, window, entity);
                 }
             }
             None => {
-                fx.push(crate::open_by_location_effect(
+                fx.push(crate::workspace::open_by_location_effect(
                     window,
                     documents,
                     self.location.clone(),

@@ -8,7 +8,7 @@ use imba::effect::AnyEffect;
 use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult, Key}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
-use crate::DocumentId;
+use documents::DocumentId;
 
 const MAX_MATCHES: usize = 20_000;
 
@@ -39,7 +39,7 @@ impl std::fmt::Display for FindCommand {
 #[derive(Clone)]
 pub struct Scan {
     serial: u64,
-    document: crate::DocumentId,
+    document: documents::DocumentId,
     revision: u64,
     query: String,
     matches: Vec<Range<u32>>,
@@ -49,7 +49,7 @@ pub struct FindScanEffect {
     text: text::text::Text,
     query: String,
     serial: u64,
-    document: crate::DocumentId,
+    document: documents::DocumentId,
     revision: u64,
 }
 
@@ -122,7 +122,7 @@ impl FindBar {
     }
 
     pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
-        let mut input = EditorView::input(600.0, store, ui, crate::fonts::source());
+        let mut input = EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
         Self {
             input,
@@ -147,7 +147,7 @@ impl FindBar {
             600.0,
             store,
             ui,
-            &crate::fonts::source()(),
+            &hikit::fonts::source()(),
             &editor::theme::Theme::embedded(),
         );
         input.focus_text();
@@ -198,7 +198,7 @@ impl FindBar {
     pub fn sync(
         &mut self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        documents: imba::store::Id<documents::OpenDocuments>,
         target: Option<(DocumentId, EditorId)>,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
@@ -232,7 +232,7 @@ impl FindBar {
     pub(crate) fn launch<R: 'static>(
         &mut self,
         store: &Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        documents: imba::store::Id<documents::OpenDocuments>,
         target: Option<(DocumentId, EditorId)>,
         fx: &mut Effects<'_, R>,
         wrap: impl Fn(Scan) -> R + Send + Sync + 'static,
@@ -240,7 +240,7 @@ impl FindBar {
         let Some((document_id, _)) = target else {
             return;
         };
-        let Some(document) = crate::OpenDocuments::document_ref(store, documents, document_id)
+        let Some(document) = documents::OpenDocuments::document_ref(store, documents, document_id)
         else {
             return;
         };
@@ -267,7 +267,7 @@ impl FindBar {
     pub(crate) fn adopt(
         &mut self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        documents: imba::store::Id<documents::OpenDocuments>,
         target: Option<(DocumentId, EditorId)>,
         landed: &Scan,
         ui: &imba::ui::UiCtx,
@@ -284,7 +284,7 @@ impl FindBar {
         if document_id != landed.document || self.query() != landed.query {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
         };
@@ -311,13 +311,13 @@ impl FindBar {
 
         self.current = self.current.min(matches.len().saturating_sub(1));
         self.matches = matches;
-        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub fn step(
         &mut self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        documents: imba::store::Id<documents::OpenDocuments>,
         forward: bool,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
@@ -342,18 +342,18 @@ impl FindBar {
             self.stepped = true;
         }
         let found = self.matches[self.current].clone();
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
         };
         document.reveal_selecting(editor, found, store, ui, fonts, theme, fx);
-        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub fn uninstall(
         &mut self,
         store: &mut Store,
-        documents: imba::store::Id<crate::OpenDocuments>,
+        documents: imba::store::Id<documents::OpenDocuments>,
         ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
@@ -362,12 +362,12 @@ impl FindBar {
         let Some((document_id, _, markup)) = self.installed.take() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
         };
         document.remove_markup(markup, &self.matches, store, ui, fonts, theme, fx);
-        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        documents::OpenDocuments::put_document(store, documents, document_id, document);
     }
 
     pub(crate) fn perform_input(
@@ -449,7 +449,7 @@ impl FindBar {
         );
 
         let status = self.status();
-        let font = crate::fonts::ui_text_font(ui, 22.0);
+        let font = hikit::fonts::ui_text_font(ui, 22.0);
         let label_x = width - pad - status_width;
         let label = imba::leaf::leaf::<FindCommand>(status_width, height).paint_instead(
             move |_arena, canvas, rect| {

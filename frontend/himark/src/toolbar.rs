@@ -119,7 +119,7 @@ pub(crate) fn dock_cluster_width(store: &Store) -> f32 {
 
 #[derive(Clone, Default)]
 pub struct Toolbar {
-    request: crate::modal::RequestSlot<ToolbarRequest>,
+    request: hikit::modal::RequestSlot<ToolbarRequest>,
 }
 
 impl Toolbar {
@@ -292,7 +292,7 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
 ) -> imba::ThunkBox<'a, Command> {
     let chrome = ::editor::env::Themes::of(store).ui().toolbar.clone();
     let size = Size::new(width.max(1.0), chrome.height);
-    let title_font = crate::fonts::ui_text_font(ui, chrome.title_size);
+    let title_font = hikit::fonts::ui_text_font(ui, chrome.title_size);
 
     // A long path DEGRADES gracefully: drop leading segments behind
     // an ellipsis until the title fits what the buttons leave it.
@@ -347,11 +347,11 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
 
 /// The chat bubble in the global cluster — `chat.composer` (⌘I):
 /// front the session's chat.
-pub fn composer_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn composer_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "chat.composer",
         order: 0.0,
-        side: crate::ToolbarSide::Well,
+        side: crate::toolbar::ToolbarSide::Well,
         glyph: std::sync::Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

@@ -281,7 +281,7 @@ impl Engine {
         });
     }
 
-    pub(crate) fn feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::TextOperation) {
+    pub(crate) fn feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::documents::TextOperation) {
         let Some(fsp_uri) = fsp_uri(uri) else { return };
         // Non-utf-8 servers get whole-text sync: incremental ranges in
         // byte columns would land wrong (docs/file-search.md §5).
@@ -656,7 +656,7 @@ impl Connection {
         &self,
         fsp_uri: &str,
         version: i64,
-        operation: &himark_ahp_ext_types::TextOperation,
+        operation: &himark_ahp_ext_types::documents::TextOperation,
     ) {
         // Replacements in reverse order: each LSP-style change addresses
         // text untouched by the changes before it (the lsp.rs recipe).

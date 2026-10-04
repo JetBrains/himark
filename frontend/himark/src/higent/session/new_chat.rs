@@ -3,14 +3,17 @@
 
 use std::sync::Arc;
 
-use ahp_session::session::Agents;
+use ahp_session::session::agents::Agents;
 use ahp_wire::effects::CreateChatEffect;
 use ahp_wire::client::HostId;
-use crate::{AppCommand, DynamicCommand, SessionId, Windows};
+use crate::app::AppCommand;
+use crate::commands::DynamicCommand;
+use ahp_wire::SessionId;
+use crate::window::Windows;
 use imba::effect::AnyEffect;
 use imba::store::Store;
 
-fn current_session(store: &Store, window: crate::WindowId) -> Option<SessionId> {
+fn current_session(store: &Store, window: crate::window::WindowId) -> Option<SessionId> {
     Some(Windows::window_ref(store, window)?.current_session())
 }
 
@@ -27,10 +30,10 @@ impl DynamicCommand for NewChat {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(workspace) = current_session(store, window) else {
             return;
@@ -70,10 +73,10 @@ impl DynamicCommand for OpenCreatedChat {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let chat = match &self.created {

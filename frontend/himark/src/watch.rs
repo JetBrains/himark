@@ -1,20 +1,22 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::store::Store;
-
-use crate::{AppCommand, AppFx};
-
-pub use documents::watch::{
+use documents::watch::{
     FileChanged, FilesChanged, RefetchDiffEffect, RefetchDiffHandler, SubscribeEffect,
     Subscription, UnsubscribeEffect, Watching,
 };
 
-use crate::app::DocumentsCommand;
+use imba::store::Store;
+
+use crate::app::AppCommand;
+use crate::app::AppFx;
+
+
+use documents::DocumentsCommand;
 
 pub fn sync_document_watches(
     store: &mut Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
+    documents: imba::store::Id<documents::OpenDocuments>,
     fx: &mut AppFx<'_>,
 ) {
     documents::watch::sync_document_watches(store, documents, fx, move |document, subscription| {
@@ -24,7 +26,7 @@ pub fn sync_document_watches(
 
 pub(crate) fn refetch_watched(
     store: &mut Store,
-    documents: imba::store::Id<crate::OpenDocuments>,
+    documents: imba::store::Id<documents::OpenDocuments>,
     subscription: Subscription,
     fx: &mut AppFx<'_>,
 ) {
@@ -48,19 +50,19 @@ pub(crate) fn refetch_watched(
 
 pub fn refetch_document(
     store: &mut Store,
-    documents_id: imba::store::Id<crate::OpenDocuments>,
-    document: crate::DocumentId,
+    documents_id: imba::store::Id<documents::OpenDocuments>,
+    document: documents::DocumentId,
     fx: &mut AppFx<'_>,
 ) {
     let Some(location) = documents::OpenDocuments::location(store, documents_id, document) else {
         return;
     };
-    if crate::is_synthetic(&location) {
+    if documents::is_synthetic(&location) {
         return;
     }
     let serial = documents::OpenDocuments::stamp_refetch(store, documents_id, document);
     let _ = fx.push(
-        imba::effect::AnyEffect::new(crate::FetchDocumentEffect { location }).map(move |text| {
+        imba::effect::AnyEffect::new(documents::FetchDocumentEffect { location }).map(move |text| {
             AppCommand::at(
                 documents_id,
                 DocumentsCommand::Refetched {
@@ -75,7 +77,7 @@ pub fn refetch_document(
 
 pub struct ReloadDocument;
 
-impl crate::DynamicCommand for ReloadDocument {
+impl crate::commands::DynamicCommand for ReloadDocument {
     fn id(&self) -> &'static str {
         "file.reload"
     }
@@ -86,17 +88,17 @@ impl crate::DynamicCommand for ReloadDocument {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
-        let Some(document) = crate::Windows::window_ref(store, window)
+        let Some(document) = crate::window::Windows::window_ref(store, window)
             .and_then(|entity| entity.focused_document_id())
         else {
             return;
         };
-        let Some(state) = crate::Windows::session_state(store, window) else {
+        let Some(state) = crate::window::Windows::session_state(store, window) else {
             return;
         };
         refetch_document(store, state.documents(), document, fx);

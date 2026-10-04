@@ -5,19 +5,19 @@
 //! and the windowed jump — the views are the `toc` crate's (the UI
 //! lives with its machinery, docs/entities.md).
 
-use imba::store::Store;
-use skia_safe::Paint;
-
-pub use ::toc::{
+use ::toc::{
     OutlineCommand, OutlineEffect, OutlineHandler, OutlineKey, OutlineRows, OutlineView,
     TocCommand, TocView,
 };
 
+use imba::store::Store;
+use skia_safe::Paint;
+
 pub struct NavigateToPlace {
-    pub place: crate::EditorPlace,
+    pub place: hikit::navigation::EditorPlace,
 }
 
-impl crate::DynamicCommand for NavigateToPlace {
+impl crate::commands::DynamicCommand for NavigateToPlace {
     fn id(&self) -> &'static str {
         "toc.jump"
     }
@@ -26,31 +26,31 @@ impl crate::DynamicCommand for NavigateToPlace {
     }
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         let _ = entity.navigate(
             store,
             ui,
             window,
-            &crate::NavigationLocation::new(self.place.clone()),
+            &hikit::navigation::NavigationLocation::new(self.place.clone()),
             fx,
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "toc.toggle",
         order: 2.0,
-        side: crate::ToolbarSide::Left,
+        side: crate::toolbar::ToolbarSide::Left,
         glyph: std::sync::Arc::new(|canvas, rect, color| {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -76,7 +76,7 @@ pub fn toolbar_button() -> crate::ToolbarButton {
 
 pub struct ToggleToc;
 
-impl crate::DynamicCommand for ToggleToc {
+impl crate::commands::DynamicCommand for ToggleToc {
     fn id(&self) -> &'static str {
         "toc.toggle"
     }
@@ -85,19 +85,19 @@ impl crate::DynamicCommand for ToggleToc {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         if entity.side_panel().is_some_and(|panel| {
             panel.as_any().is::<TocView>() || panel.as_any().is::<OutlineView>()
         }) {
             entity.roll_away_side_panel();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
         let Some(panel) =
@@ -107,17 +107,17 @@ impl crate::DynamicCommand for ToggleToc {
                 .focused_pane()
                 .drawer_view(store, &_app.ui_ctx(), window)
         else {
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         };
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, panel, fx),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }

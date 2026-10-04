@@ -232,7 +232,7 @@ pub fn resolve_base(
     }
     // The ask names its documents collection; the bases live in the
     // change sets next to it.
-    let changes = crate::session::Hosts::owner_of_documents(store, documents)?.changes();
+    let changes = crate::session::state::Hosts::owner_of_documents(store, documents)?.changes();
     let before = changesview::hichanges::Changes::base_ref(
         store,
         changes,

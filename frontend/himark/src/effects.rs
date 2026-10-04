@@ -1,6 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use imba::effect::EffectHandler;
+
 use std::sync::Arc;
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
 use std::sync::{
@@ -10,11 +12,10 @@ use std::sync::{
 
 use imba::effect::{CancellationToken, Effect, EffectFuture, EffectPayload};
 
-use crate::AppCommand;
+use crate::app::AppCommand;
 #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
-use crate::AppEffects;
+use crate::app::AppEffects;
 
-pub use imba::effect::EffectHandler;
 pub type EffectDispatcher = Arc<dyn Fn(AppCommand) + Send + Sync>;
 
 pub type AppEffect = imba::effect::AnyEffect<AppCommand>;
@@ -123,16 +124,16 @@ pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::edito
     handlers.register::<::editor::scroll_stripe::ScrollStripeEffect>(
         ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(workshop)),
     );
-    handlers.register::<crate::diffs::DiffNormalizeEffect>(crate::diffs::DiffNormalizeHandler);
-    handlers.register::<crate::toc::OutlineEffect>(crate::toc::OutlineHandler);
+    handlers.register::<documents::diffs::DiffNormalizeEffect>(documents::diffs::DiffNormalizeHandler);
+    handlers.register::<toc::OutlineEffect>(toc::OutlineHandler);
     handlers.register::<crate::find::FindScanEffect>(crate::find::FindScanHandler);
-    handlers.register::<crate::list_keyboard::SpeedSearchEffect>(
-        crate::list_keyboard::SpeedSearchHandler,
+    handlers.register::<hikit::list_keyboard::SpeedSearchEffect>(
+        hikit::list_keyboard::SpeedSearchHandler,
     );
-    handlers.register::<crate::list_keyboard::AnnounceSelect>(
-        crate::list_keyboard::AnnounceSelectHandler,
+    handlers.register::<hikit::list_keyboard::AnnounceSelect>(
+        hikit::list_keyboard::AnnounceSelectHandler,
     );
-    handlers.register::<crate::watch::RefetchDiffEffect>(crate::watch::RefetchDiffHandler);
+    handlers.register::<documents::watch::RefetchDiffEffect>(documents::watch::RefetchDiffHandler);
     handlers.register::<crate::app::OpenEffect>(crate::app::OpenHandler(Arc::clone(workshop)));
 }
 

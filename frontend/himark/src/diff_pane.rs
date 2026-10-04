@@ -1,14 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The shell half of the split-diff pane: the palette's "diff two
 //! recent documents" command. The faces live in the `canvas` crate.
 
+
+use ::canvas::diff_pane::*;
+
 use imba::store::Store;
 
-use crate::{Application, OpenDocuments};
+use crate::app::Application;
+use documents::OpenDocuments;
 
-pub use ::canvas::diff_pane::*;
 
 /// Resolve one opened side to a registered `DocumentId`: reuse the open
 /// one, or REGISTER the freshly-built one (register-at-display — a
@@ -19,19 +21,19 @@ pub use ::canvas::diff_pane::*;
 pub fn open_opened_diff_pane(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     documents: imba::store::Id<OpenDocuments>,
     pair: documents::diff_views::OpenedDiffPair,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut crate::app::AppFx<'_>,
 ) -> bool {
     let Some(id) = documents::diff_views::install_opened_pair(store, documents, ui, pair, false)
     else {
         return false;
     };
     let panel = DiffPanelView::over(documents, id);
-    let mut entity = crate::Windows::window(store, window).expect("the window entity");
+    let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
-    crate::Windows::put(store, window, entity);
+    crate::window::Windows::put(store, window, entity);
     opened
 }
 
@@ -39,17 +41,17 @@ pub fn open_diff_documents(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     ui: &imba::ui::UiCtx,
-    window: crate::WindowId,
-    left: crate::DocumentId,
-    right: crate::DocumentId,
-    fx: &mut crate::AppFx<'_>,
+    window: crate::window::WindowId,
+    left: documents::DocumentId,
+    right: documents::DocumentId,
+    fx: &mut crate::app::AppFx<'_>,
 ) -> bool {
     let Some(panel) = diff_panel(store, documents, ui, left, right) else {
         return false;
     };
-    let mut entity = crate::Windows::window(store, window).expect("the window entity");
+    let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
     let opened = entity.open_panel(store, ui, Box::new(panel), fx);
-    crate::Windows::put(store, window, entity);
+    crate::window::Windows::put(store, window, entity);
     opened
 }
 
@@ -59,7 +61,7 @@ pub fn open_diff_documents(
 
 pub struct OpenDiff;
 
-impl crate::DynamicCommand for OpenDiff {
+impl crate::commands::DynamicCommand for OpenDiff {
     fn id(&self) -> &'static str {
         "diff.open"
     }
@@ -70,11 +72,11 @@ impl crate::DynamicCommand for OpenDiff {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: crate::WindowId,
-        _fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(state) = crate::Windows::session_state(store, window) else {
+        let Some(state) = crate::window::Windows::session_state(store, window) else {
             return;
         };
         let documents = state.documents();

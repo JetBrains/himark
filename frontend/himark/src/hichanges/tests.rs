@@ -11,9 +11,9 @@ use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit}
 use serde_json::json;
 
 use super::*;
-use crate::changes_view::RowItem;
+use changesview::changes_view::RowItem;
 use ahp_changes::changes::{digest_actions, digest_state, CatalogEntry};
-use crate::{ForestNode};
+use hikit::forest::ForestNode;
 use editor::location::Authority;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
@@ -443,14 +443,14 @@ fn activation_pairs_carry_the_exact_locations() {
     // normalized the way activation consumes them.
     let mut store = imba::store::Store::new();
     store.put_entity(changes_id(), changes);
-    let (_, listing) = crate::diff_canvas::canvas_files(
+    let (_, listing) = canvas::diff_canvas::canvas_files(
         &store,
         changes_id(),
-        &crate::diff_canvas::CanvasSource::WorkingCopy {
+        &changesview::hichanges::CanvasSource::WorkingCopy {
             folder: folder.clone(),
         },
     );
-    let crate::diff_canvas::CanvasListing::Ready(files) = listing else {
+    let canvas::diff_canvas::CanvasListing::Ready(files) = listing else {
         panic!("a ready listing");
     };
     let by_key = |name: &str| {
@@ -524,7 +524,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
 
     let mut store = imba::store::Store::new();
     let ui = imba::ui::UiCtx::dont_use_too_slow();
-    let _window = crate::WindowId::from_raw(7);
+    let _window = crate::window::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
     let history_wire: imba::store::Id<ahp_changes::history::HistoryWire> =
         imba::store::Id::mint();
@@ -544,7 +544,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
             serial: 0,
         },
     );
-    crate::hichanges::Changes::ensure_working_set(&mut store, changes_id(), &folder());
+    changesview::hichanges::Changes::ensure_working_set(&mut store, changes_id(), &folder());
     let launches = |batch: imba::effect::Batch<imba::command::Verb>| {
         batch
             .drain()
@@ -597,7 +597,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     );
     assert_eq!(launches(batch), 0, "a stale landing never rearms");
     assert_eq!(
-        crate::hichanges::Changes::of(&store, changes_id())
+        changesview::hichanges::Changes::of(&store, changes_id())
             .unwrap()
             .folder_set(&folder())
             .unwrap()

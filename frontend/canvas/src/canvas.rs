@@ -12,7 +12,7 @@
 //! diff scrolls; collapsing a file folds its diff row away.
 
 use crate::diff_canvas::{
-    canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
+    canvas_files, canvas_generation, CanvasFile, CanvasListing,
 };
 use editor::env;
 use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
@@ -1659,7 +1659,7 @@ impl Canvas {
 
 // ------------------------------------------------------------ canvases
 
-pub use changesview::hichanges::CanvasId;
+use changesview::hichanges::{CanvasId, CanvasSource};
 
 /// Stateless FACADE over the sets' owned canvases
 /// (docs/model-view.md: `ChangeSet.canvases`): at most one canvas per

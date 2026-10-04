@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::tests::*;
+use super::tests::helpers::*;
 use super::*;
 
 fn marked_renders(marker: &str) -> usize {

@@ -350,7 +350,7 @@ impl View for Workbench {
             }
             WorkbenchCommand::RunCommand(id) => {
                 if let Some(command) = crate::commands::Commands::of(store).find(id).cloned() {
-                    crate::AppRequests::push(store, command);
+                    crate::commands::AppRequests::push(store, command);
                 }
             }
             WorkbenchCommand::MaximizeTree => {
@@ -386,7 +386,7 @@ impl View for Workbench {
 fn tree_header_title(workbench: &Workbench, store: &Store) -> String {
     let slot = workbench.root.focused_slot();
     if let (Some(documents), Some((document, _))) = (slot.documents_id(), slot.find_target()) {
-        if let Some(location) = crate::OpenDocuments::location(store, documents, document) {
+        if let Some(location) = documents::OpenDocuments::location(store, documents, document) {
             if !location.path().is_empty() {
                 return location.path().join("/");
             }

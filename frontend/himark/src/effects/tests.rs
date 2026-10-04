@@ -88,7 +88,7 @@ impl EffectHandler<SlowProbe> for External {
 /// so the test lifts into `Register` and the text IS the name.
 struct LiftedText(String);
 
-impl crate::DynamicCommand for LiftedText {
+impl crate::commands::DynamicCommand for LiftedText {
     fn id(&self) -> &'static str {
         "test.lifted-text"
     }
@@ -97,10 +97,10 @@ impl crate::DynamicCommand for LiftedText {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut imba::store::Store,
-        _window: crate::WindowId,
-        _fx: &mut crate::AppFx<'_>,
+        _window: crate::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
     ) {
     }
 }

@@ -23,7 +23,8 @@ use std::sync::Arc;
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
 use editor::location::ResourceLocation;
-use hikit::{list_keyboard::ActivateTrigger, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand};
+use imba::list::ActivateTrigger;
+use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, tree_item::TreeListCommand};
 use imba::list::ListOps;
 use imba::thunk_ext::ThunkExt;
 use imba::tooltip::{TooltipCommand, TooltipView};
@@ -569,7 +570,7 @@ impl<'a, Inner: imba::Widget<'a, ChangesViewCommand>> imba::Widget<'a, ChangesVi
     }
 }
 
-pub use crate::hichanges::ChangesViewId;
+use crate::hichanges::ChangesViewId;
 
 /// The view registry rides the `ChangeSets` collection — the
 /// records themselves, the many-to-many set↔view join, and the

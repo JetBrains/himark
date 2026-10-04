@@ -1,24 +1,25 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The shell half of the changes feature: the dock toggle, the
 //! palette refetch, the diff-for-pair open — everything that holds a
 //! window. The collection and the tree live in the `changesview`
 //! crate.
+
+
+use changesview::hichanges::*;
 
 use std::sync::Arc;
 
 use editor::location::ResourceLocation;
 use imba::{effect::AnyEffect, store::Store};
 
-pub use changesview::hichanges::*;
 
 pub struct OpenDiffForPair {
     pub old: ResourceLocation,
     pub new: ResourceLocation,
 }
 
-impl crate::DynamicCommand for OpenDiffForPair {
+impl crate::commands::DynamicCommand for OpenDiffForPair {
     fn id(&self) -> &'static str {
         "changes.open-diff"
     }
@@ -27,20 +28,20 @@ impl crate::DynamicCommand for OpenDiffForPair {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         // Resolve both sides on the UI thread — an open side hands over
         // its live registry snapshot, so the diff is against the live
         // buffer and rebases if it moves (docs/no-diff-on-ui-thread).
-        let documents = crate::Windows::session_state(store, window)
+        let documents = crate::window::Windows::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
-        let old = crate::DiffSideInput::resolve(store, documents, self.old.clone());
-        let new = crate::DiffSideInput::resolve(store, documents, self.new.clone());
-        let _ = fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
+        let old = documents::diff_views::DiffSideInput::resolve(store, documents, self.old.clone());
+        let new = documents::diff_views::DiffSideInput::resolve(store, documents, self.new.clone());
+        let _ = fx.push(AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
             window,
             documents,
             old,
@@ -51,7 +52,7 @@ impl crate::DynamicCommand for OpenDiffForPair {
 
 pub struct ToggleChangesView;
 
-impl crate::DynamicCommand for ToggleChangesView {
+impl crate::commands::DynamicCommand for ToggleChangesView {
     fn id(&self) -> &'static str {
         "changes.view"
     }
@@ -60,15 +61,15 @@ impl crate::DynamicCommand for ToggleChangesView {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
         // The pane closes over the window's session: its change sets
@@ -76,14 +77,14 @@ impl crate::DynamicCommand for ToggleChangesView {
         let workspace = entity.current_session();
         let changes = entity.state().changes();
         let wire = entity.state().changes_wire();
-        let folders = ahp_session::session::session_folders(store, &workspace);
-        fx.scope(crate::AppCommand::Verb, |fx| {
+        let folders = ahp_session::session::folders::session_folders(store, &workspace);
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
             ahp_changes::changes::ensure(store, wire, folders, fx)
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
-        let open_canvas: crate::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::shell_verb(crate::AppCommand::Dynamic(
+        let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
+            crate::app::shell_verb(crate::app::AppCommand::Dynamic(
                 window,
                 Arc::new(crate::diff_canvas::OpenDiffCanvas {
                     changes,
@@ -94,33 +95,33 @@ impl crate::DynamicCommand for ToggleChangesView {
         });
 
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let view = Changes::mint_view(
             store,
             changes,
-            crate::changes_view::ChangesView::open(
+            changesview::changes_view::ChangesView::open(
                 store,
                 &_app.ui_ctx(),
                 changes,
-                crate::changes_view::ViewSets::WorkingCopies,
+                changesview::changes_view::ViewSets::WorkingCopies,
                 open_canvas,
             ),
         );
         let owner = self.id();
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(crate::changes_view::ChangesPane::new(changes, view)),
+                    Box::new(changesview::changes_view::ChangesPane::new(changes, view)),
                     owner,
                     fx,
                 )
             },
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
@@ -135,7 +136,7 @@ pub struct RefetchChanges {
     pub folder: Option<ResourceLocation>,
 }
 
-impl crate::DynamicCommand for RefetchChanges {
+impl crate::commands::DynamicCommand for RefetchChanges {
     fn id(&self) -> &'static str {
         "changes.refetch"
     }
@@ -144,13 +145,13 @@ impl crate::DynamicCommand for RefetchChanges {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = fx;
-        let Some(changes) = crate::Windows::session_state(store, window)
+        let Some(changes) = crate::window::Windows::session_state(store, window)
             .map(|state| state.changes())
             .or_else(|| {
                 // An addressed refetch (the view's chip) names its
@@ -165,11 +166,11 @@ impl crate::DynamicCommand for RefetchChanges {
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "changes.view",
         order: 1.0,
-        side: crate::ToolbarSide::Right,
+        side: crate::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

@@ -7,7 +7,10 @@ use imba::store::Store;
 
 use super::*;
 use ::editor::test_document::plain_document;
-use crate::{AppFonts, Application, OpenDocuments, OpenedDocument};
+use crate::app::AppFonts;
+use crate::app::Application;
+use documents::OpenDocuments;
+use crate::app::OpenedDocument;
 use editor::document::Document;
 use editor::location::ResourceLocation;
 
@@ -45,10 +48,10 @@ fn text_of_text(text: &text::text::Text) -> String {
 fn apply_refetched(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    id: crate::DocumentId,
+    id: documents::DocumentId,
     serial: u64,
     text: Option<String>,
-    fx: &mut imba::effect::Effects<'_, crate::DocumentsCommand>,
+    fx: &mut imba::effect::Effects<'_, documents::DocumentsCommand>,
 ) {
     let Some(rows) = store.lease(documents) else {
         return;
@@ -79,7 +82,7 @@ fn docs() -> imba::store::Id<OpenDocuments> {
     *DOCS.get_or_init(imba::store::Id::mint)
 }
 
-fn registered(store: &mut Store, source: &str) -> crate::DocumentId {
+fn registered(store: &mut Store, source: &str) -> documents::DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
     OpenDocuments::register(
@@ -251,7 +254,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     );
 }
 
-fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
+fn typed(store: &mut Store, id: documents::DocumentId, at: u32, text: &str) {
     let ui = ::editor::test_document::test_ui();
     let mut document = OpenDocuments::document(store, docs(), id).expect("the document");
     let len = document.text().byte_count().min(u32::MAX as usize) as u32;
@@ -407,7 +410,7 @@ fn typing_racing_the_merge_rediffs_until_it_converges() {
 
     // Round two, the way the app drives it: same serial, fresh
     // baseline/current/revision.
-    let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
+    let mut batch = imba::effect::Batch::<documents::DocumentsCommand>::new();
     {
         let rows = store.lease(docs()).expect("the collection");
         rows.rediff_row(&store, id, serial, fetched, &mut batch.effects());
@@ -521,7 +524,7 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
             }
             rounds += 1;
             assert!(rounds < 4, "the re-diff loop must converge");
-            let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
+            let mut batch = imba::effect::Batch::<documents::DocumentsCommand>::new();
             {
                 let rows = store.lease(docs()).expect("the collection");
                 rows.rediff_row(store, id, serial, fetched, &mut batch.effects());
@@ -726,8 +729,8 @@ fn opens_watch_and_events_refetch() {
         }
     }
     struct StubFetch(Arc<Mutex<String>>);
-    impl imba::effect::EffectHandler<crate::FetchDocumentEffect> for StubFetch {
-        async fn handle(&self, _effect: crate::FetchDocumentEffect) -> Option<String> {
+    impl imba::effect::EffectHandler<documents::FetchDocumentEffect> for StubFetch {
+        async fn handle(&self, _effect: documents::FetchDocumentEffect) -> Option<String> {
             Some(self.0.lock().expect("disk").clone())
         }
     }
@@ -735,7 +738,7 @@ fn opens_watch_and_events_refetch() {
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
     let mut app = Application::new(AppFonts::embedded());
     app.register_handler::<SubscribeEffect>(StubWatch);
-    app.register_handler::<crate::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
+    app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     app.observe_file_changes();
     let window = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
@@ -755,9 +758,9 @@ fn opens_watch_and_events_refetch() {
     };
 
     let documents = app.sole_documents();
-    assert!(crate::AppExt::perform_command(
+    assert!(crate::app_ext::AppExt::perform_command(
         &mut app,
-        crate::AppCommand::Opened(
+        crate::app::AppCommand::Opened(
             window,
             OpenedDocument {
                 documents,
@@ -783,9 +786,9 @@ fn opens_watch_and_events_refetch() {
     );
 
     *disk.lock().expect("disk") = "alpha\nexternal\n".to_owned();
-    assert!(crate::AppExt::perform_command(
+    assert!(crate::app_ext::AppExt::perform_command(
         &mut app,
-        crate::AppCommand::FileChanged(Subscription(7))
+        crate::app::AppCommand::FileChanged(Subscription(7))
     ));
     settle(&mut app);
     let document = OpenDocuments::document_ref(app.store(), app.sole_documents(), entity.0)
@@ -796,15 +799,15 @@ fn opens_watch_and_events_refetch() {
 #[test]
 fn the_palette_reload_follows_the_disk() {
     struct StubFetch(Arc<Mutex<String>>);
-    impl imba::effect::EffectHandler<crate::FetchDocumentEffect> for StubFetch {
-        async fn handle(&self, _effect: crate::FetchDocumentEffect) -> Option<String> {
+    impl imba::effect::EffectHandler<documents::FetchDocumentEffect> for StubFetch {
+        async fn handle(&self, _effect: documents::FetchDocumentEffect) -> Option<String> {
             Some(self.0.lock().expect("disk").clone())
         }
     }
 
     let disk = Arc::new(Mutex::new("alpha\n".to_owned()));
     let mut app = Application::new(AppFonts::embedded());
-    app.register_handler::<crate::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
+    app.register_handler::<documents::FetchDocumentEffect>(StubFetch(Arc::clone(&disk)));
     let window = app.add_window();
     let (posted, arriving) = std::sync::mpsc::channel();
     let runner = app.attach_host(
@@ -823,9 +826,9 @@ fn the_palette_reload_follows_the_disk() {
     };
 
     let documents = app.sole_documents();
-    assert!(crate::AppExt::perform_command(
+    assert!(crate::app_ext::AppExt::perform_command(
         &mut app,
-        crate::AppCommand::Opened(
+        crate::app::AppCommand::Opened(
             window,
             OpenedDocument {
                 documents,
@@ -841,9 +844,9 @@ fn the_palette_reload_follows_the_disk() {
     settle(&mut app);
 
     *disk.lock().expect("disk") = "alpha\nRELOADED\n".to_owned();
-    assert!(crate::AppExt::perform_command(
+    assert!(crate::app_ext::AppExt::perform_command(
         &mut app,
-        crate::AppCommand::Dynamic(window, Arc::new(ReloadDocument)),
+        crate::app::AppCommand::Dynamic(window, Arc::new(ReloadDocument)),
     ));
     settle(&mut app);
 
@@ -1263,7 +1266,7 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     OpenDocuments::set_watch(&mut store, docs(), id, Some(Subscription(7)));
 
     // The channel goes live: the watch is released...
-    let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
+    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
     OpenDocuments::set_host_synced(&mut store, docs(), id, true, &mut batch.effects());
     let released = crate::test_support::surviving_launches(batch);
     assert!(
@@ -1280,7 +1283,7 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     );
 
     // ...the sweep leaves it alone...
-    let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
+    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
     crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
     assert!(
         crate::test_support::surviving_launches(batch).is_empty(),
@@ -1322,7 +1325,7 @@ fn a_host_synced_document_stops_watching_and_absorbing() {
     );
 
     // The channel dies: mode two re-arms the client's own watching.
-    let mut batch: imba::effect::Batch<crate::AppCommand> = imba::effect::Batch::new();
+    let mut batch: imba::effect::Batch<crate::app::AppCommand> = imba::effect::Batch::new();
     OpenDocuments::set_host_synced(&mut store, docs(), id, false, &mut batch.effects());
     crate::watch::sync_document_watches(&mut store, docs(), &mut batch.effects());
     assert!(

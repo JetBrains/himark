@@ -88,7 +88,7 @@ impl Agents {
                 });
                 // The session is the LIFETIME of its session: the row
                 // goes, and every entity it named retracts with it.
-                crate::session::Hosts::dispose_state(
+                crate::session::state::Hosts::dispose_state(
                     store,
                     &ahp_wire::SessionId {
                         host: server,

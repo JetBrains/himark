@@ -17,12 +17,12 @@ use ahp_wire::client::SessionUri;
 /// window grip for the session sweep, the catalog-actions apply, and
 /// the chat's open-working-copy ask. Called once at boot.
 pub(crate) fn install_shell_roads(store: &mut Store) {
-    store.put(ahp_session::session::WindowGrip(Arc::new(|store, scope| {
-        crate::Windows::any_window_holds(store, scope)
+    store.put(ahp_session::session::state::WindowGrip(Arc::new(|store, scope| {
+        crate::window::Windows::any_window_holds(store, scope)
     })));
     store.put(ahp_wire::ChannelActionsRoad(Arc::new(
         |store, home, actions| {
-            crate::AppRequests::push(
+            crate::commands::AppRequests::push(
                 store,
                 Arc::new(ApplyChannelActions {
                     home: home.clone(),
@@ -34,7 +34,7 @@ pub(crate) fn install_shell_roads(store: &mut Store) {
     OpenEditedRoad::install(
         store,
         OpenEditedRoad(Arc::new(|store, server, session, uri| {
-            crate::AppRequests::push(
+            crate::commands::AppRequests::push(
                 store,
                 Arc::new(OpenEditedFile {
                     server,
@@ -55,7 +55,7 @@ pub(crate) struct OpenEditedFile {
     uri: String,
 }
 
-impl crate::DynamicCommand for OpenEditedFile {
+impl crate::commands::DynamicCommand for OpenEditedFile {
     fn id(&self) -> &'static str {
         "chat.open-edited-file"
     }
@@ -66,12 +66,12 @@ impl crate::DynamicCommand for OpenEditedFile {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(uris) = ahp_session::session::Hosts::uris(store, self.server) else {
+        let Some(uris) = ahp_session::session::state::Hosts::uris(store, self.server) else {
             return;
         };
         let authority =
@@ -85,11 +85,11 @@ impl crate::DynamicCommand for OpenEditedFile {
         };
         // The file opens WHERE the user is: the window's own documents.
         let Some(documents) =
-            crate::Windows::session_state(store, window).map(|state| state.documents())
+            crate::window::Windows::session_state(store, window).map(|state| state.documents())
         else {
             return;
         };
-        let _ = fx.push(crate::open_by_location_effect(
+        let _ = fx.push(crate::workspace::open_by_location_effect(
             window, documents, location, true, true, None,
         ));
     }
@@ -98,11 +98,11 @@ impl crate::DynamicCommand for OpenEditedFile {
 /// The catalog batch, applied in whichever window the drain runs —
 /// the session channel's actions open and close against windows.
 struct ApplyChannelActions {
-    home: crate::SessionId,
+    home: ahp_wire::SessionId,
     actions: Vec<ahp_types::actions::StateAction>,
 }
 
-impl crate::DynamicCommand for ApplyChannelActions {
+impl crate::commands::DynamicCommand for ApplyChannelActions {
     fn id(&self) -> &'static str {
         "higent.apply-channel-actions"
     }
@@ -111,11 +111,11 @@ impl crate::DynamicCommand for ApplyChannelActions {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        crate::higent::apply_channel_actions(store, window, &self.home, &self.actions, fx);
+        crate::higent::session::open::apply_channel_actions(store, window, &self.home, &self.actions, fx);
     }
 }

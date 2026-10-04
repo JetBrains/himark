@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-pub(crate) use helpers::*;
+use helpers::*;
 
-mod helpers {
+pub(crate) mod helpers {
     use super::super::*;
 
     pub(crate) fn fonts() -> skia_safe::textlayout::FontCollection {

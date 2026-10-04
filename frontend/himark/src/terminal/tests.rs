@@ -7,8 +7,8 @@
 use std::sync::{Arc, Mutex};
 
 use super::*;
-use crate::AppExt;
-use crate::PanelView;
+use crate::app_ext::AppExt;
+use hikit::panel::PanelView;
 use alacritty_terminal::grid::Dimensions;
 use imba::event::Modifiers;
 use imba::store::Store;
@@ -39,11 +39,11 @@ fn dismantle_hangs_up_exactly_once() {
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
     let mut store = Store::new();
-    let home = crate::SessionId {
+    let home = ahp_wire::SessionId {
         host: ahp_wire::client::HostId::LOCAL,
         session: ahp_wire::client::SessionUri::new("test-session:1"),
     };
-    let terminals = ahp_session::session::Hosts::ensure_state(&mut store, &home).terminals();
+    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut store, terminals, id, session.clone());
     let mut panel = TerminalView::new(terminals, id);
@@ -58,16 +58,16 @@ fn dismantle_hangs_up_exactly_once() {
 
 #[test]
 fn the_panel_reconciles_its_grid_and_routes_focused_input() {
-    let mut app = crate::Application::new(crate::AppFonts::embedded());
+    let mut app = crate::app::Application::new(crate::app::AppFonts::embedded());
     let _ = app.add_window();
     let recorder = Recorder::default();
     let session = Session::new(Box::new(recorder.clone()));
 
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
     assert!(app.new_scratch(app.sole_window()));
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(
@@ -76,8 +76,8 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     ));
     session.output(b"$ echo himark\r\n\x1b[32mhimark\x1b[0m\r\n$ ");
 
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let resizes = recorder.resizes.lock().unwrap().clone();
     assert_eq!(
         resizes.len(),
@@ -113,21 +113,21 @@ fn dump_terminal_screenshot() {
     };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).expect("shot dir");
-    let mut app = crate::Application::new(crate::AppFonts::embedded());
+    let mut app = crate::app::Application::new(crate::app::AppFonts::embedded());
     let _ = app.add_window();
     let session = Session::new(Box::new(Recorder::default()));
     assert!(app.new_scratch(app.sole_window()));
     let mut surface = skia_safe::surfaces::raster_n32_premul((1600, 900)).expect("surface");
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     let id = TerminalId::mint();
     Terminals::put(&mut app.store_mut(), terminals, id, session.clone());
     assert!(app.open_panel(
         app.sole_window(),
         Box::new(TerminalView::new(terminals, id))
     ));
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     session.output(
         b"$ cargo test -p terminal\r\n\
 \x1b[1;32m   Compiling\x1b[0m terminal v0.1.0\r\n\
@@ -135,8 +135,8 @@ fn dump_terminal_screenshot() {
 \x1b[7m inverse \x1b[0m \x1b[33myellow\x1b[0m \x1b[34mblue\x1b[0m \x1b[45m magenta bg \x1b[0m\r\n\
 $ \xf0\x9f\x91\xbb wide \xe6\xbc\xa2\xe5\xad\x97 chars\r\n$ ",
     );
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    let _ = crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    let _ = crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let image = surface.image_snapshot();
     let data = image
         .encode(None, skia_safe::EncodedImageFormat::PNG, None)

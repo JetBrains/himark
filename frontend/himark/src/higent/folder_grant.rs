@@ -12,7 +12,7 @@ use imba::effect::AnyEffect;
 use imba::store::Store;
 
 use ahp_wire::client::HostId;
-use ahp_session::session::Hosts;
+use ahp_session::session::state::Hosts;
 use ahp_wire::client::SessionUri;
 
 pub struct AddSessionFolders {
@@ -20,7 +20,7 @@ pub struct AddSessionFolders {
     pub session: SessionUri,
 }
 
-impl crate::DynamicCommand for AddSessionFolders {
+impl crate::commands::DynamicCommand for AddSessionFolders {
     fn id(&self) -> &'static str {
         "session.add-folder"
     }
@@ -31,9 +31,9 @@ impl crate::DynamicCommand for AddSessionFolders {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let server = self.server;
@@ -61,7 +61,7 @@ struct SessionFoldersPicked {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::DynamicCommand for SessionFoldersPicked {
+impl crate::commands::DynamicCommand for SessionFoldersPicked {
     fn id(&self) -> &'static str {
         "session.folder-granted"
     }
@@ -72,9 +72,9 @@ impl crate::DynamicCommand for SessionFoldersPicked {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let Some(client) = ahp_wire::client::Servers::client(store, self.server) else {
@@ -117,7 +117,7 @@ struct GrantAck {
     result: Result<(), String>,
 }
 
-impl crate::DynamicCommand for GrantAck {
+impl crate::commands::DynamicCommand for GrantAck {
     fn id(&self) -> &'static str {
         "session.folder-grant-ack"
     }
@@ -128,9 +128,9 @@ impl crate::DynamicCommand for GrantAck {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::WindowId,
+        _window: crate::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         // The dispatch is a wire notification: this result is the

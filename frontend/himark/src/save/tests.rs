@@ -7,7 +7,10 @@ use imba::event::{Key, Modifiers};
 
 use super::*;
 use ::editor::test_document::plain_document;
-use crate::{test_driver, AppExt, Application, OpenDocuments};
+use crate::{test_driver};
+use crate::app_ext::AppExt;
+use crate::app::Application;
+use documents::OpenDocuments;
 
 type Writes = Arc<Mutex<Vec<(ResourceLocation, String)>>>;
 
@@ -16,7 +19,7 @@ struct StoreHandler {
     succeeds: bool,
 }
 
-impl crate::EffectHandler<StoreDocumentEffect> for StoreHandler {
+impl imba::effect::EffectHandler<StoreDocumentEffect> for StoreHandler {
     async fn handle(&self, effect: StoreDocumentEffect) -> bool {
         self.writes
             .lock()
@@ -30,11 +33,11 @@ fn setup(
     succeeds: bool,
 ) -> (
     Application,
-    crate::BackgroundRunner,
-    mpsc::Receiver<crate::AppCommand>,
+    crate::effects::BackgroundRunner,
+    mpsc::Receiver<crate::app::AppCommand>,
     Writes,
 ) {
-    let mut app = Application::new(crate::AppFonts::embedded());
+    let mut app = Application::new(crate::app::AppFonts::embedded());
     app.add_window();
     app.register_document_command(Arc::new(SaveDocument::existing_files()));
     let writes = Writes::default();
@@ -50,7 +53,7 @@ fn setup(
         Arc::new(|| {}),
     );
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-    crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    crate::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     (app, runner, arriving, writes)
 }
 
@@ -62,10 +65,10 @@ fn location() -> ResourceLocation {
     )
 }
 
-fn open_file(app: &mut Application) -> crate::DocumentId {
-    app.perform_command(crate::AppCommand::Opened(
+fn open_file(app: &mut Application) -> documents::DocumentId {
+    app.perform_command(crate::app::AppCommand::Opened(
         app.sole_window(),
-        crate::OpenedDocument {
+        crate::app::OpenedDocument {
             documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: plain_document("original"),
@@ -76,11 +79,11 @@ fn open_file(app: &mut Application) -> crate::DocumentId {
         },
     ));
     let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-    crate::Window::draw(app.sole_window(), app, surface.canvas());
+    crate::window::Window::draw(app.sole_window(), app, surface.canvas());
     OpenDocuments::by_location(app.store(), app.sole_documents(), &location()).unwrap()
 }
 
-fn land(app: &mut Application, arriving: &mpsc::Receiver<crate::AppCommand>) {
+fn land(app: &mut Application, arriving: &mpsc::Receiver<crate::app::AppCommand>) {
     for command in arriving.try_iter() {
         app.perform_batch(vec![command]);
     }
@@ -180,10 +183,10 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
             vec![name.to_owned()],
         )
     };
-    let open = |app: &mut Application, name: &str| -> crate::DocumentId {
-        app.perform_command(crate::AppCommand::Opened(
+    let open = |app: &mut Application, name: &str| -> documents::DocumentId {
+        app.perform_command(crate::app::AppCommand::Opened(
             app.sole_window(),
-            crate::OpenedDocument {
+            crate::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document("original"),
@@ -194,11 +197,11 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
             },
         ));
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).unwrap();
-        crate::Window::draw(app.sole_window(), app, surface.canvas());
+        crate::window::Window::draw(app.sole_window(), app, surface.canvas());
         OpenDocuments::by_location(app.store(), app.sole_documents(), &named(name)).unwrap()
     };
     let title = |app: &Application| {
-        crate::Windows::window_ref(app.store(), window)
+        crate::window::Windows::window_ref(app.store(), window)
             .expect("the window")
             .workbench()
             .root

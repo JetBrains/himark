@@ -1,14 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use ::canvas::diff_pane::*;
 use himark::diff_pane::*;
-use himark::AppExt;
-use himark::{AppFonts, Application};
+use himark::app_ext::AppExt;
+use himark::app::AppFonts;
+use himark::app::Application;
 use std::sync::{mpsc, Arc};
 use std::time::Instant;
 
-fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
-    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
         std::sync::OnceLock::new();
     *DOCS.get_or_init(imba::store::Id::mint)
 }
@@ -116,14 +118,14 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
     ));
     let size = skia_safe::Size::new(2000.0, 1200.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..80 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
 
     let mut quiet = 0usize;
@@ -139,7 +141,7 @@ fn idle_pair_probe(left: String, right: String, expect_pairs: bool) {
             app.perform_batch(vec![command]);
         }
         perform_total += perform_started.elapsed();
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         if round % 25 == 0 {
             eprintln!(
                 "[idle] round {round}: {arrived} landings, round {:?}",
@@ -221,7 +223,7 @@ fn probe_pair(left: String, right: String) {
 
     let size = skia_safe::Size::new(1200.0, 900.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((1200, 900)).expect("surface");
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
 
     let started = Instant::now();
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
@@ -230,17 +232,17 @@ fn probe_pair(left: String, right: String) {
     imba::perf::record("diff-open", "open_ms", open.as_secs_f64() * 1000.0);
 
     let started = Instant::now();
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     eprintln!("[probe] first frame: {:?}", started.elapsed());
 
     himark::test_driver::click(&mut app, 900.0, 400.0, 1200.0, 900.0);
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     let mut keystrokes = Vec::new();
     for _ in 0..12 {
         let started = Instant::now();
         let _ = himark::test_driver::type_text(&mut app, "x");
         keystrokes.push(started.elapsed());
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
     keystrokes.sort();
     let p50 = keystrokes[keystrokes.len() / 2];
@@ -255,7 +257,7 @@ fn probe_pair(left: String, right: String) {
     let started = Instant::now();
     for _ in 0..40 {
         let _ = himark::test_driver::scroll(&mut app, 400.0);
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
     eprintln!("[probe] 40 scroll frames: {:?}", started.elapsed());
 
@@ -264,7 +266,7 @@ fn probe_pair(left: String, right: String) {
         let width = 1200.0 - (step as f32 + 1.0) * 20.0;
         let frame_size = skia_safe::Size::new(width, 900.0);
         let started = Instant::now();
-        let _ = himark::Window::draw_with_size(
+        let _ = himark::window::Window::draw_with_size(
             app.sole_window(),
             &mut app,
             surface.canvas(),
@@ -301,24 +303,24 @@ fn probe_pair(left: String, right: String) {
         resize_worst.as_secs_f64() * 1000.0,
     );
 
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
 
     let has_table = right.contains("| Persistent store |");
     if has_table {
         for _ in 0..80 {
             let _ = himark::test_driver::scroll(&mut app, -2000.0);
             let _ =
-                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         }
         let cell_focused = |app: &Application| {
-            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
+            let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open")
                 .0;
             {
                 let document =
-                    himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
+                    documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info)
                         .expect("document");
                 document
                     .editor_ids()
@@ -327,12 +329,12 @@ fn probe_pair(left: String, right: String) {
         };
 
         let table_y = {
-            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
+            let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
                     .expect("document");
             let editor = document.editor_ids().next().expect("an editor");
 
@@ -359,12 +361,12 @@ fn probe_pair(left: String, right: String) {
         };
 
         let viewport_start = |app: &Application| -> f32 {
-            let info = himark::OpenDocuments::list(app.store(), app.sole_documents())
+            let info = documents::OpenDocuments::list(app.store(), app.sole_documents())
                 .into_iter()
                 .find(|(_, info)| info.name() == "right.md")
                 .expect("right open");
             let document =
-                himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
+                documents::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
                     .expect("document");
             let editor = document.editor_ids().next().expect("an editor");
             document
@@ -374,9 +376,9 @@ fn probe_pair(left: String, right: String) {
         };
 
         let _ = himark::test_driver::scroll(&mut app, -1_000_000.0);
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         let _ = himark::test_driver::scroll(&mut app, table_y - 300.0);
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         let _ = viewport_start(&app);
         let mut focused = false;
         'probe: for dy in (-4..=8).map(|step| step * 30) {
@@ -386,7 +388,7 @@ fn probe_pair(left: String, right: String) {
                     continue;
                 }
                 himark::test_driver::click(&mut app, x as f32, y, 1200.0, 900.0);
-                let _ = himark::Window::draw_with_size(
+                let _ = himark::window::Window::draw_with_size(
                     app.sole_window(),
                     &mut app,
                     surface.canvas(),
@@ -406,13 +408,13 @@ fn probe_pair(left: String, right: String) {
         for _ in 0..8 {
             let _ = himark::test_driver::type_text(&mut app, "grow the row substantially ");
             let _ =
-                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
             crate::hidiff_tests::assert_pair_aligned(&app);
         }
         for _ in 0..2 {
             let _ = himark::test_driver::type_text(&mut app, "\n");
             let _ =
-                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
             crate::hidiff_tests::assert_pair_aligned(&app);
         }
     }
@@ -422,7 +424,7 @@ fn probe_pair(left: String, right: String) {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
     crate::hidiff_tests::assert_pair_aligned(&app);
 
@@ -434,7 +436,7 @@ fn probe_pair(left: String, right: String) {
                 app.perform_batch(vec![command]);
             }
             let _ =
-                himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+                himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         }
     }
     crate::hidiff_tests::assert_pair_aligned(&app);
@@ -488,7 +490,7 @@ fn scroll_soak_for_profiling() {
     let ui = &app.ui_ctx();
     let (mut ldoc, lblocks) =
         himarkdown::markdown_document(&left, app.store(), ui, &markdown_fonts, &theme);
-    demo::add_badges(
+    demo::inlay::add_badges(
         &mut ldoc,
         &lblocks,
         app.store(),
@@ -498,7 +500,7 @@ fn scroll_soak_for_profiling() {
     );
     let (mut rdoc, rblocks) =
         himarkdown::markdown_document(&right, app.store(), ui, &markdown_fonts, &theme);
-    demo::add_badges(
+    demo::inlay::add_badges(
         &mut rdoc,
         &rblocks,
         app.store(),
@@ -511,14 +513,14 @@ fn scroll_soak_for_profiling() {
 
     let size = skia_safe::Size::new(2000.0, 1200.0);
     let mut surface = skia_safe::surfaces::raster_n32_premul((2000, 1200)).expect("surface");
-    let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+    let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     assert!(app.perform_registered(app.sole_window(), "diff.open"));
     for _ in 0..60 {
         runner.run();
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
     }
     eprintln!("[soak] converged; scrolling — sample now");
     let mut paints = Vec::new();
@@ -529,7 +531,7 @@ fn scroll_soak_for_profiling() {
             app.perform_batch(vec![command]);
         }
         let started = std::time::Instant::now();
-        let _ = himark::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
+        let _ = himark::window::Window::draw_with_size(app.sole_window(), &mut app, surface.canvas(), size);
         paints.push(started.elapsed());
         if frame % 500 == 499 {
             let mut sorted = paints.clone();

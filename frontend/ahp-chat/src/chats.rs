@@ -58,10 +58,10 @@ pub struct Catalog {
 }
 
 impl Catalog {
-    /// A catalog that answers nothing — the unit tests' stand-in; the
-    /// ceremony always wires the real one.
-    #[cfg(any(test, feature = "test-support"))]
-    pub fn inert() -> Self {
+    /// A catalog that answers nothing — the stand-in wherever no
+    /// ceremony wired the real one (unit tests, a collection minted
+    /// bare).
+    pub fn noop() -> Self {
         Catalog {
             uris: std::sync::Arc::new(|_, _| None),
             agents: std::sync::Arc::new(|_, _| Vec::new()),
@@ -157,7 +157,16 @@ impl Chats {
         let known = Self::chat_ref(store, chats, &chat).is_some();
         if !known {
             eprintln!("[higent] minting a chat record: {chat}");
-            let mut panel = ChatPanel::new(store, ui, server, session.clone(), chats, chat.clone());
+            let catalog = Self::catalog(store, chats).unwrap_or_else(Catalog::noop);
+            let mut panel = ChatPanel::new(
+                store,
+                ui,
+                server,
+                session.clone(),
+                chats,
+                chat.clone(),
+                catalog,
+            );
             if let Some(prompt) = initial_prompt {
                 panel = panel.with_initial_prompt(prompt);
             }

@@ -9,7 +9,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
     let dir = tempfile::tempdir().expect("backend home");
     let socket = dir.path().join("backend.sock");
     let serving = socket.clone();
-    let config = agent_host::HostConfig {
+    let config = agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.path().join("data"),
         claude_binary: "false".to_owned(),
@@ -19,7 +19,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
         shell: "/bin/sh".to_owned(),
         fsp_binary: None,
         fsp_data_dir: dir.path().join("fsp"),
-        language_servers: vec![agent_host::LanguageServer {
+        language_servers: vec![agent_host::server::LanguageServer {
             extensions: vec!["rs".to_owned()],
             command: agent_host::testing::fake_ls_command(dir.path()),
         }],
@@ -30,7 +30,7 @@ fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf
             .enable_all()
             .build()
             .expect("backend runtime");
-        let backend = agent_host::Host::new(config);
+        let backend = agent_host::server::Host::new(config);
         let _ = runtime.block_on(backend.bind(&serving));
     });
     let mut waited = 0;

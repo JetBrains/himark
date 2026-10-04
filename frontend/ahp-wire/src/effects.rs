@@ -287,7 +287,7 @@ impl std::fmt::Display for SubscribeLocationsEffect {
 }
 
 impl Effect for SubscribeLocationsEffect {
-    type Result = Result<himark_ahp_ext_types::LocationList, String>;
+    type Result = Result<himark_ahp_ext_types::locations::LocationList, String>;
 }
 
 pub struct PollLocationsEffect {
@@ -302,7 +302,7 @@ impl std::fmt::Display for PollLocationsEffect {
 }
 
 impl Effect for PollLocationsEffect {
-    type Result = Vec<himark_ahp_ext_types::LocationList>;
+    type Result = Vec<himark_ahp_ext_types::locations::LocationList>;
 }
 
 /// The cancel: the last unsubscribe disposes the channel and stops

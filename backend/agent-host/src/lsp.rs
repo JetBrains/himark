@@ -8,7 +8,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Poll, Waker};
 
-use himark_ahp_ext_types::{TextOperation, Uid};
+use himark_ahp_ext_types::documents::{TextOperation, Uid};
 use serde_json::{json, Value};
 
 const INIT_ID: i64 = 0;

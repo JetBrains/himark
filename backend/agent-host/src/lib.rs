@@ -13,13 +13,13 @@ pub mod lock;
 mod lsp;
 mod pty;
 mod rpc;
-mod server;
+pub mod server;
+use server::{Host, HostConfig};
 mod store;
 pub mod testing;
 mod trace;
 mod uris;
 
-pub use server::{Host, HostConfig, LanguageServer};
 
 pub(crate) fn uuid_v4() -> String {
     let seed = std::time::SystemTime::now()
@@ -60,15 +60,15 @@ pub fn run_with(
     http: Option<&str>,
     web_root: Option<&std::path::Path>,
 ) -> i32 {
-    let Some(dir) = lock::default_dir() else {
+    let Some(dir) = host_discovery::default_dir() else {
         eprintln!("[agent-host] no HOME — nowhere to put the socket");
         return 1;
     };
     let socket = socket
         .map(std::path::Path::to_path_buf)
-        .unwrap_or_else(|| lock::socket_path(&dir));
+        .unwrap_or_else(|| host_discovery::socket_path(&dir));
 
-    if lock::read_live(&dir).is_some() {
+    if host_discovery::read_live(&dir).is_some() {
         eprintln!("[agent-host] a live host already holds {}", dir.display());
         return 0;
     }

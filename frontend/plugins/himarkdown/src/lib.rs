@@ -5,15 +5,11 @@ use std::ops::Range;
 
 mod assist;
 mod checkbox;
-mod fence_embed;
+pub mod fence_embed;
 pub mod image;
-mod table;
+pub mod table;
 
-pub use fence_embed::{EmbedView, FenceEmbedEnricher};
 
-pub use table::{
-    CellAlign, InsertTable, TableCommand, TableEditor, TableRelayoutEffect, TableRelayoutHandler,
-};
 
 use editor::document::Document;
 use editor::markup::Markup;
@@ -997,8 +993,8 @@ fn keep_non_overlapping(tokens: Vec<InlineToken>) -> Vec<InlineToken> {
     kept
 }
 
-pub fn register_handlers(app: &mut himark::Application) {
-    app.register_handler::<TableRelayoutEffect>(TableRelayoutHandler(std::sync::Arc::clone(
+pub fn register_handlers(app: &mut himark::app::Application) {
+    app.register_handler::<table::TableRelayoutEffect>(table::TableRelayoutHandler(std::sync::Arc::clone(
         app.workshop(),
     )));
 }

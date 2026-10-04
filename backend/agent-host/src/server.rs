@@ -103,7 +103,7 @@ impl Default for HostConfig {
     fn default() -> Self {
         Self {
             agents: vec![claude_card(), codex_card()],
-            data_dir: crate::lock::default_dir()
+            data_dir: host_discovery::default_dir()
                 .unwrap_or_else(|| PathBuf::from(".himark-agent-host")),
             claude_binary: crate::claude::discover_binary(),
             codex_binary: crate::codex::discover_binary(),
@@ -127,7 +127,7 @@ impl Default for HostConfig {
                 command: crate::lsp::discover_rust_analyzer(),
             }],
             fsp_binary: crate::fsp::discover_binary(),
-            fsp_data_dir: crate::lock::default_dir()
+            fsp_data_dir: host_discovery::default_dir()
                 .unwrap_or_else(|| PathBuf::from(".himark-agent-host"))
                 .join("fsp"),
         }
@@ -535,7 +535,7 @@ struct LocationsEntry {
     /// The connection that minted the channel — a never-subscribed
     /// channel is reaped when it closes.
     connection: u64,
-    locations: rpds::VectorSync<himark_ahp_ext_types::Location>,
+    locations: rpds::VectorSync<himark_ahp_ext_types::locations::Location>,
     done: bool,
     truncated: bool,
 }
@@ -2669,7 +2669,7 @@ impl Host {
     async fn search(&self, connection: u64, id: u64, params: Value) -> JsonRpcMessage {
         const DEFAULT_LIMIT: usize = 128;
         const LIMIT_CAP: usize = 1024;
-        let params: himark_ahp_ext_types::SearchParams = match serde_json::from_value(params) {
+        let params: himark_ahp_ext_types::search::SearchParams = match serde_json::from_value(params) {
             Ok(params) => params,
             Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
         };
@@ -2691,7 +2691,7 @@ impl Host {
         if query.term.is_empty() || limit == 0 {
             return rpc::success(
                 id,
-                himark_ahp_ext_types::SearchResult {
+                himark_ahp_ext_types::search::SearchResult {
                     hits: Vec::new(),
                     truncated: false,
                 },
@@ -2722,7 +2722,7 @@ impl Host {
             // search does — cut off, nothing collected (§2.6).
             return rpc::success(
                 id,
-                himark_ahp_ext_types::SearchResult {
+                himark_ahp_ext_types::search::SearchResult {
                     hits: Vec::new(),
                     truncated: true,
                 },
@@ -2740,7 +2740,7 @@ impl Host {
         // crash window — this one request falls through while the
         // respawn happens behind it.
         let engine = self.fsp_engine().filter(|_| {
-            use himark_ahp_ext_types::{SearchKind, SearchTarget};
+            use himark_ahp_ext_types::search::{SearchKind, SearchTarget};
             matches!(
                 (query.target, query.kind),
                 (SearchTarget::Path, SearchKind::Fuzzy)
@@ -2752,7 +2752,7 @@ impl Host {
                 // Ranking lives in the FSP server; its score order IS
                 // the answer order (ahp-search.md §2.5) — nobody above
                 // this line re-sorts a fuzzy answer.
-                himark_ahp_ext_types::SearchTarget::Path => engine
+                himark_ahp_ext_types::search::SearchTarget::Path => engine
                     .file_search(
                         &folders,
                         &query.term,
@@ -2761,14 +2761,14 @@ impl Host {
                         Arc::clone(&cancel),
                     )
                     .await
-                    .map(|(paths, truncated)| himark_ahp_ext_types::SearchResult {
+                    .map(|(paths, truncated)| himark_ahp_ext_types::search::SearchResult {
                         hits: paths
                             .iter()
                             .map(|path| crate::uris::file_uri(path))
                             .collect(),
                         truncated,
                     }),
-                himark_ahp_ext_types::SearchTarget::Content => {
+                himark_ahp_ext_types::search::SearchTarget::Content => {
                     let collected = Arc::new(std::sync::Mutex::new(Vec::new()));
                     let sink = {
                         let collected = Arc::clone(&collected);
@@ -2782,7 +2782,7 @@ impl Host {
                         .text_search(
                             &folders,
                             &query.term,
-                            query.kind == himark_ahp_ext_types::SearchKind::Regex,
+                            query.kind == himark_ahp_ext_types::search::SearchKind::Regex,
                             query.case_sensitive,
                             limit,
                             Some(1),
@@ -2838,7 +2838,7 @@ impl Host {
         match scanned {
             Ok(Ok(scan)) => rpc::success(
                 id,
-                himark_ahp_ext_types::SearchResult {
+                himark_ahp_ext_types::search::SearchResult {
                     hits: scan
                         .hits
                         .iter()
@@ -2866,12 +2866,12 @@ impl Host {
     ) -> JsonRpcMessage {
         const DEFAULT_LIMIT: usize = 1024;
         const LIMIT_CAP: usize = 10_000;
-        let params: himark_ahp_ext_types::SearchLocationsParams =
+        let params: himark_ahp_ext_types::locations::SearchLocationsParams =
             match serde_json::from_value(params) {
                 Ok(params) => params,
                 Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
             };
-        if params.kind == himark_ahp_ext_types::SearchKind::Fuzzy {
+        if params.kind == himark_ahp_ext_types::search::SearchKind::Fuzzy {
             return rpc::failure(id, INVALID_PARAMS, "kind must be text or regex");
         }
         let folders = match self.search_folders(id, &params.channel, params.folders.as_ref()) {
@@ -2882,7 +2882,7 @@ impl Host {
             term: params.query,
             kind: params.kind,
             case_sensitive: params.case_sensitive,
-            target: himark_ahp_ext_types::SearchTarget::Content,
+            target: himark_ahp_ext_types::search::SearchTarget::Content,
         };
         if let Err(message) = hifind::validate(&query) {
             return rpc::failure(id, INVALID_PARAMS, message);
@@ -2908,7 +2908,7 @@ impl Host {
                         .await;
                     host.emit_locations(
                         &fan_out,
-                        himark_ahp_ext_types::LocationList {
+                        himark_ahp_ext_types::locations::LocationList {
                             locations: Vec::new(),
                             done: true,
                             truncated,
@@ -2927,7 +2927,7 @@ impl Host {
                         .unwrap_or(true);
                     host.emit_locations(
                         &fan_out,
-                        himark_ahp_ext_types::LocationList {
+                        himark_ahp_ext_types::locations::LocationList {
                             locations: Vec::new(),
                             done: true,
                             truncated,
@@ -2973,7 +2973,7 @@ impl Host {
             .text_search(
                 folders,
                 &query.term,
-                query.kind == himark_ahp_ext_types::SearchKind::Regex,
+                query.kind == himark_ahp_ext_types::search::SearchKind::Regex,
                 query.case_sensitive,
                 limit,
                 None,
@@ -3284,7 +3284,7 @@ impl Host {
 
     fn open_document(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params =
-            match serde_json::from_value::<himark_ahp_ext_types::OpenDocumentParams>(params) {
+            match serde_json::from_value::<himark_ahp_ext_types::documents::OpenDocumentParams>(params) {
                 Ok(params) => params,
                 Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
             };
@@ -3355,7 +3355,7 @@ impl Host {
         }
         rpc::success(
             id,
-            himark_ahp_ext_types::OpenDocumentResult {
+            himark_ahp_ext_types::documents::OpenDocumentResult {
                 document: channel,
                 version,
             },
@@ -3463,7 +3463,7 @@ impl Host {
                     document.version(),
                 );
             }
-            let action = himark_ahp_ext_types::DocumentApplied {
+            let action = himark_ahp_ext_types::documents::DocumentApplied {
                 base: document.version(),
                 operation: himark_ahp_ext_types::text::wire_of(document.text(), &spans),
                 id: crate::documents::mint(seq),
@@ -3483,7 +3483,7 @@ impl Host {
 
             state.server_seq += 1;
             let mut value = serde_json::to_value(&action).expect("a wire action");
-            value["type"] = Value::String(himark_ahp_ext_types::DOCUMENT_APPLIED.to_owned());
+            value["type"] = Value::String(himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned());
             let envelope = ahp_types::actions::ActionEnvelope {
                 channel: channel.clone(),
                 action: StateAction::Unknown(value),
@@ -3555,7 +3555,7 @@ impl Host {
     /// write back as a foreign edit.
     fn store_document(self: &Arc<Self>, id: u64, params: Value) -> JsonRpcMessage {
         let params =
-            match serde_json::from_value::<himark_ahp_ext_types::StoreDocumentParams>(params) {
+            match serde_json::from_value::<himark_ahp_ext_types::documents::StoreDocumentParams>(params) {
                 Ok(params) => params,
                 Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
             };
@@ -3600,15 +3600,15 @@ impl Host {
             state.sessions.insert_mut(owner, session);
         });
         self.changes_touched(&path);
-        rpc::success(id, himark_ahp_ext_types::StoreDocumentResult { version })
+        rpc::success(id, himark_ahp_ext_types::documents::StoreDocumentResult { version })
     }
 
     fn document_dispatch(&self, channel: &Uri, value: Value) {
-        if value["type"] != himark_ahp_ext_types::DOCUMENT_APPLIED {
+        if value["type"] != himark_ahp_ext_types::documents::DOCUMENT_APPLIED {
             return;
         }
         let Ok(action) =
-            serde_json::from_value::<himark_ahp_ext_types::DocumentApplied>(value.clone())
+            serde_json::from_value::<himark_ahp_ext_types::documents::DocumentApplied>(value.clone())
         else {
             return;
         };
@@ -3781,7 +3781,7 @@ impl Host {
         params: Value,
     ) -> JsonRpcMessage {
         const METHODS: &[&str] = &["textDocument/references", "textDocument/implementation"];
-        let params: himark_ahp_ext_types::LspLocationsParams = match serde_json::from_value(params)
+        let params: himark_ahp_ext_types::locations::LspLocationsParams = match serde_json::from_value(params)
         {
             Ok(params) => params,
             Err(error) => return rpc::failure(id, INVALID_PARAMS, error.to_string()),
@@ -3833,7 +3833,7 @@ impl Host {
         let fan_out = channel.clone();
         let method = params.method;
         tokio::spawn(async move {
-            let resolved = |truncated: bool| himark_ahp_ext_types::LocationList {
+            let resolved = |truncated: bool| himark_ahp_ext_types::locations::LocationList {
                 locations: Vec::new(),
                 done: true,
                 truncated,
@@ -3873,7 +3873,7 @@ impl Host {
                 let locations = contextualize(&uri, targets, text.as_deref());
                 host.emit_locations(
                     &fan_out,
-                    himark_ahp_ext_types::LocationList {
+                    himark_ahp_ext_types::locations::LocationList {
                         locations,
                         done: false,
                         truncated: false,
@@ -4025,7 +4025,7 @@ impl Host {
     /// `locations/extend` action. A disposed channel (the audience
     /// left; the producer outran its cancellation check) drops the
     /// batch silently.
-    fn emit_locations(&self, channel: &Uri, batch: himark_ahp_ext_types::LocationList) {
+    fn emit_locations(&self, channel: &Uri, batch: himark_ahp_ext_types::locations::LocationList) {
         self.update(|state| {
             let Some(entry) = state.locations.get(channel) else {
                 return;
@@ -4041,7 +4041,7 @@ impl Host {
             state.locations.insert_mut(channel.clone(), entry);
 
             let action = himark_ahp_ext_types::locations::action_value(
-                himark_ahp_ext_types::LOCATIONS_EXTEND,
+                himark_ahp_ext_types::locations::LOCATIONS_EXTEND,
                 &batch,
             );
             state.server_seq += 1;
@@ -4074,7 +4074,7 @@ impl Host {
     ) -> JsonRpcMessage {
         let snapshot = self.update(|state| {
             let entry = state.locations.get(channel)?;
-            let materialized = himark_ahp_ext_types::LocationList {
+            let materialized = himark_ahp_ext_types::locations::LocationList {
                 locations: entry.locations.iter().cloned().collect(),
                 done: entry.done,
                 truncated: entry.truncated,
@@ -4140,7 +4140,7 @@ impl Host {
         }
     }
 
-    fn fsp_feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::TextOperation) {
+    fn fsp_feed_change(&self, uri: &str, operation: &himark_ahp_ext_types::documents::TextOperation) {
         if let Some(engine) = self.fsp_engine() {
             engine.feed_change(uri, operation);
         }
@@ -4151,7 +4151,7 @@ impl Host {
         dirs: &[String],
         uri: &str,
         text: &str,
-        uid: himark_ahp_ext_types::Uid,
+        uid: himark_ahp_ext_types::documents::Uid,
     ) {
         if let Some((root, command)) = self.lsp_route(dirs, uri) {
             if let Some(server) = self.lsp.ensure(&root, &command) {
@@ -4164,8 +4164,8 @@ impl Host {
         &self,
         dirs: &[String],
         uri: &str,
-        operation: &himark_ahp_ext_types::TextOperation,
-        uid: himark_ahp_ext_types::Uid,
+        operation: &himark_ahp_ext_types::documents::TextOperation,
+        uid: himark_ahp_ext_types::documents::Uid,
     ) {
         if let Some((root, command)) = self.lsp_route(dirs, uri) {
             if let Some(server) = self.lsp.ensure(&root, &command) {
@@ -4893,7 +4893,7 @@ fn contextualize(
     uri: &str,
     targets: Vec<LspRange>,
     text: Option<&str>,
-) -> Vec<himark_ahp_ext_types::Location> {
+) -> Vec<himark_ahp_ext_types::locations::Location> {
     let lines: Option<Vec<&str>> = text.map(|text| text.lines().collect());
     targets
         .into_iter()
@@ -4917,7 +4917,7 @@ fn contextualize(
                 }
                 None => (String::new(), 0, column, 0),
             };
-            himark_ahp_ext_types::Location {
+            himark_ahp_ext_types::locations::Location {
                 uri: uri.to_owned(),
                 line,
                 column,
@@ -5293,7 +5293,7 @@ fn path_ordered(
     paths: Vec<PathBuf>,
     folders: &[PathBuf],
     truncated: bool,
-) -> himark_ahp_ext_types::SearchResult {
+) -> himark_ahp_ext_types::search::SearchResult {
     let mut hits: Vec<(usize, PathBuf, PathBuf)> = paths
         .into_iter()
         .filter_map(|path| {
@@ -5303,7 +5303,7 @@ fn path_ordered(
         })
         .collect();
     hits.sort_by(|a, b| (a.0, &a.1).cmp(&(b.0, &b.1)));
-    himark_ahp_ext_types::SearchResult {
+    himark_ahp_ext_types::search::SearchResult {
         hits: hits
             .iter()
             .map(|(_, _, path)| crate::uris::file_uri(path))
@@ -5317,12 +5317,12 @@ fn path_ordered(
 fn locations_of(
     path: &Path,
     matches: Vec<hifind::LineMatch>,
-) -> himark_ahp_ext_types::LocationList {
+) -> himark_ahp_ext_types::locations::LocationList {
     let uri = crate::uris::file_uri(path);
-    himark_ahp_ext_types::LocationList {
+    himark_ahp_ext_types::locations::LocationList {
         locations: matches
             .into_iter()
-            .map(|found| himark_ahp_ext_types::Location {
+            .map(|found| himark_ahp_ext_types::locations::Location {
                 uri: uri.clone(),
                 line: found.line,
                 column: found.column,

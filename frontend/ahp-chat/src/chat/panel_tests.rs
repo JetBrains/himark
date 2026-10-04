@@ -41,10 +41,18 @@ fn panel(store: &mut Store, chat: &str) -> ChatPanel {
         chats,
         crate::chats::Chats::wired(
             imba::store::Id::mint(),
-            crate::chats::Catalog::inert(),
+            crate::chats::Catalog::noop(),
         ),
     );
-    let mut panel = ChatPanel::new(store, ui(), host, "s", chats, chat);
+    let mut panel = ChatPanel::new(
+        store,
+        ui(),
+        host,
+        "s",
+        chats,
+        chat,
+        crate::chats::Catalog::noop(),
+    );
     panel.state = Link::Ready;
     panel
 }

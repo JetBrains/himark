@@ -202,7 +202,7 @@ impl Engine {
     fn new() -> Self {
         let mut inner = himark_api::HimarkEngine::new();
 
-        inner.set_host(himark_api::HimarkHostCallbacks::agent_host_filesystem());
+        inner.set_host(himark_api::host::HimarkHostCallbacks::agent_host_filesystem());
         let window = inner.add_window();
         Self { inner, window }
     }

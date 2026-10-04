@@ -5,7 +5,8 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use editor::{location::ResourceLocation, location::ResourceType};
-use hikit::{list_keyboard::ActivateTrigger, forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
+use imba::list::ActivateTrigger;
+use hikit::{forest::ForestList, forest::ForestNode, forest::ForestSearcher, list_keyboard::ListKeyCommand, list_keyboard::ListKeyboardController, modal::ModalRequest, modal::ModalView, tree_item::TreeListCommand};
 use imba::list::ListOps;
 use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};

@@ -141,7 +141,7 @@ impl EffectHandler<crate::effects::SubscribeLocationsEffect> for HandleSubscribe
     async fn handle(
         &self,
         effect: crate::effects::SubscribeLocationsEffect,
-    ) -> Result<himark_ahp_ext_types::LocationList, String> {
+    ) -> Result<himark_ahp_ext_types::locations::LocationList, String> {
         effect.client.subscribe_locations(effect.channel).await
     }
 }
@@ -152,7 +152,7 @@ impl EffectHandler<crate::effects::PollLocationsEffect> for HandlePollLocations 
     async fn handle(
         &self,
         effect: crate::effects::PollLocationsEffect,
-    ) -> Vec<himark_ahp_ext_types::LocationList> {
+    ) -> Vec<himark_ahp_ext_types::locations::LocationList> {
         effect.client.poll_locations(effect.channel).await
     }
 }

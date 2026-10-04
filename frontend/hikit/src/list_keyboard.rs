@@ -17,7 +17,7 @@ use skia_safe::{Paint, Rect, Size};
 
 use editor::editor_view::EditorView;
 
-pub use imba::list::ActivateTrigger;
+use imba::list::ActivateTrigger;
 
 pub type ItemSource<K> = Box<dyn FnOnce() -> Vec<(String, K)> + Send + Sync>;
 

@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use ahp_wire::fs::ClientDirectory;
-use ahp_wire::client::{SearchAsk, SearchKind, SearchTarget};
+use ahp_wire::client::SearchAsk;
+use himark_ahp_ext_types::search::{SearchKind, SearchTarget};
 use crate::FindEffect;
 use editor::{location::ResourceLocation, location::ResourceType};
 use imba::effect::EffectHandler;

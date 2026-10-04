@@ -15,7 +15,7 @@ impl Connector for DesktopConnector {
             let transport = match url.strip_prefix("unix:") {
                 #[cfg(unix)]
                 Some(path) => ahp::transport::BoxedTransport::new(DeadLatched {
-                    inner: crate::UnixTransport::connect(path, tag, Arc::clone(&dead)).await?,
+                    inner: crate::unix_transport::UnixTransport::connect(path, tag, Arc::clone(&dead)).await?,
                     dead,
                 }),
                 #[cfg(not(unix))]

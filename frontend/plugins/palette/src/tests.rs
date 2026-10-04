@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::Application;
+use himark::app::Application;
 
 struct DummyCommand;
-impl himark::DynamicCommand for DummyCommand {
+impl himark::commands::DynamicCommand for DummyCommand {
     fn id(&self) -> &'static str {
         "test.dummy"
     }
@@ -16,14 +16,14 @@ impl himark::DynamicCommand for DummyCommand {
         &self,
         _app: &mut Application,
         _store: &mut imba::store::Store,
-        _window: himark::WindowId,
-        _fx: &mut himark::AppFx<'_>,
+        _window: himark::window::WindowId,
+        _fx: &mut himark::app::AppFx<'_>,
     ) {
     }
 }
 fn dummy_command() -> AppCommand {
     AppCommand::Dynamic(
-        himark::WindowId::from_raw(0),
+        himark::window::WindowId::from_raw(0),
         std::sync::Arc::new(DummyCommand),
     )
 }

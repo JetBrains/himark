@@ -10,12 +10,12 @@
 use imba::store::Store;
 
 use ahp_chat::chats::Chats;
-use ahp_session::session::Hosts;
+use ahp_session::session::state::Hosts;
 use ahp_wire::client::{ChatUri, HostId, SessionUri};
 use crate::higent::*;
 
-fn session(uri: &str) -> crate::SessionId {
-    crate::SessionId {
+fn session(uri: &str) -> ahp_wire::SessionId {
+    ahp_wire::SessionId {
         host: HostId::LOCAL,
         session: SessionUri::new(uri),
     }
@@ -23,7 +23,7 @@ fn session(uri: &str) -> crate::SessionId {
 
 /// Mint a chat into ITS session's collection — the mint door is the
 /// one catalog consult; the record carries the collection id after.
-fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
+fn put(store: &mut Store, session: &ahp_wire::SessionId, chat: &str) -> ChatUri {
     let uri = ChatUri::new(chat);
     let chats = Hosts::ensure_state(store, session).chats();
     let panel = ahp_chat::chat::ChatPanel::new(
@@ -33,19 +33,20 @@ fn put(store: &mut Store, session: &crate::SessionId, chat: &str) -> ChatUri {
         session.session.clone(),
         chats,
         uri.clone(),
-    );
+            ahp_chat::chats::Chats::catalog(store, chats).unwrap_or_else(ahp_chat::chats::Catalog::noop),
+        );
     Chats::put(store, chats, uri.clone(), panel);
     uri
 }
 
 /// The cold read a test takes: session → collection → record.
-fn chat_in(store: &Store, session: &crate::SessionId, uri: &ChatUri) -> bool {
+fn chat_in(store: &Store, session: &ahp_wire::SessionId, uri: &ChatUri) -> bool {
     Hosts::state(store, session)
         .and_then(|state| Chats::chat_ref(store, state.chats(), uri))
         .is_some()
 }
 
-fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
+fn list_in(store: &Store, session: &ahp_wire::SessionId) -> Vec<ChatUri> {
     Hosts::state(store, session)
         .map(|state| Chats::list(store, state.chats()))
         .unwrap_or_default()
@@ -56,7 +57,7 @@ fn list_in(store: &Store, session: &crate::SessionId) -> Vec<ChatUri> {
 /// the chat's session — still finds the one record.
 #[test]
 fn a_chat_is_reached_by_its_own_session() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
@@ -74,7 +75,7 @@ fn a_chat_is_reached_by_its_own_session() {
 
 #[test]
 fn a_chat_survives_a_scopeless_batch() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
@@ -93,7 +94,7 @@ fn a_chat_survives_a_scopeless_batch() {
 
 #[test]
 fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
     let elsewhere = session("s-b");
@@ -113,7 +114,7 @@ fn a_write_in_a_foreign_gather_lands_in_the_right_family() {
 
 #[test]
 fn a_sessions_chats_are_its_own() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let a = session("s-a");
     let b = session("s-b");
@@ -131,7 +132,7 @@ fn a_sessions_chats_are_its_own() {
 /// The session is the LIFETIME of its chats.
 #[test]
 fn letting_a_session_go_takes_its_chats() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 
@@ -151,7 +152,7 @@ fn letting_a_session_go_takes_its_chats() {
 /// (docs/entities.md step 2).
 #[test]
 fn disposal_retracts_every_family_entity() {
-    let mut state = crate::AppState::default();
+    let mut state = crate::state::AppState::default();
     let clients = ahp_wire::client::Servers::default();
     let home = session("s-a");
 

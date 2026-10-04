@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::AppExt;
+use himark::app_ext::AppExt;
 use editor::test_document::plain_document;
-use himark::{AppFonts, Application};
+use himark::app::AppFonts;
+use himark::app::Application;
 
 fn boot() -> Application {
     let mut app = Application::new(AppFonts::embedded());
@@ -17,7 +18,7 @@ fn boot() -> Application {
 fn the_peeker_toggles_filters_and_picks_through_the_registry() {
     let mut app = boot();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let located = |name: &str| {
         editor::location::ResourceLocation::new(
             editor::location::ResourceType::document(),
@@ -26,9 +27,9 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         )
     };
     let open = |app: &mut Application, name: &str, text: &str| {
-        assert!(app.perform_command(himark::AppCommand::Opened(
+        assert!(app.perform_command(himark::app::AppCommand::Opened(
             app.sole_window(),
-            himark::OpenedDocument {
+            himark::app::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
                 document: plain_document(text),
@@ -48,7 +49,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         app.perform_registered(app.sole_window(), "peeker.toggle"),
         "the peeker opens"
     );
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let listed = labels(&app).expect("the peeker is the modal");
     assert!(
         listed.iter().any(|label| label == "alpha"),
@@ -68,7 +69,7 @@ fn the_peeker_toggles_filters_and_picks_through_the_registry() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         app.focused_document_text().as_deref(),
@@ -88,8 +89,8 @@ fn a_query_keystroke_cancels_the_in_flight_find() {
     let mut store = Store::new();
     store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
-    let home = himark::SessionId::local_default(&store);
-    let documents = ahp_session::session::Hosts::ensure_state(&mut store, &home).documents();
+    let home = ahp_wire::SessionId::local_default(&store);
+    let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,
@@ -139,8 +140,8 @@ fn the_list_caps_at_two_hundred_rows_and_counts_the_rest() {
     let mut store = Store::new();
     store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
     let ui = ::editor::test_document::test_ui();
-    let home = himark::SessionId::local_default(&store);
-    let documents = ahp_session::session::Hosts::ensure_state(&mut store, &home).documents();
+    let home = ahp_wire::SessionId::local_default(&store);
+    let documents = ahp_session::session::state::Hosts::ensure_state(&mut store, &home).documents();
     let mut peeker = Peeker::open(
         &mut store,
         &ui,

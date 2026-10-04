@@ -3,7 +3,10 @@
 
 use super::*;
 use ::editor::test_document::plain_document;
-use himark::{AppExt, AppFonts, Application, OpenedDocument};
+use himark::app_ext::AppExt;
+use himark::app::AppFonts;
+use himark::app::Application;
+use himark::app::OpenedDocument;
 use editor::location::Authority;
 use editor::location::ResourceType;
 use imba::effect::EffectHandler;
@@ -46,8 +49,8 @@ impl EffectHandler<FetchDocumentEffect> for StubFetch {
 struct StubBuild;
 
 impl EffectHandler<BuildDocumentEffect> for StubBuild {
-    async fn handle(&self, effect: BuildDocumentEffect) -> himark::BuiltDocument {
-        himark::BuiltDocument {
+    async fn handle(&self, effect: BuildDocumentEffect) -> documents::BuiltDocument {
+        documents::BuiltDocument {
             document: plain_document(&effect.text),
         }
     }
@@ -55,9 +58,9 @@ impl EffectHandler<BuildDocumentEffect> for StubBuild {
 
 struct StubOpenByLocation;
 
-impl EffectHandler<himark::OpenByLocationEffect> for StubOpenByLocation {
-    async fn handle(&self, effect: himark::OpenByLocationEffect) -> himark::AppCommand {
-        himark::AppCommand::Opened(
+impl EffectHandler<himark::workspace::OpenByLocationEffect> for StubOpenByLocation {
+    async fn handle(&self, effect: himark::workspace::OpenByLocationEffect) -> himark::app::AppCommand {
+        himark::app::AppCommand::Opened(
             effect.window,
             OpenedDocument {
                 documents: effect.documents,
@@ -74,7 +77,7 @@ impl EffectHandler<himark::OpenByLocationEffect> for StubOpenByLocation {
 
 struct AddFolder;
 
-impl himark::DynamicCommand for AddFolder {
+impl himark::commands::DynamicCommand for AddFolder {
     fn id(&self) -> &'static str {
         "test.add-folder"
     }
@@ -85,11 +88,11 @@ impl himark::DynamicCommand for AddFolder {
         &self,
         _app: &mut Application,
         store: &mut imba::store::Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let id = himark::test_support::seed_session_folders(store, &[folder_location()]);
-        himark::switch_session(store, window, id, fx);
+        himark::app::switch_session(store, window, id, fx);
     }
 }
 
@@ -97,8 +100,8 @@ fn boot(
     fetches: &Arc<AtomicUsize>,
 ) -> (
     Application,
-    mpsc::Receiver<himark::AppCommand>,
-    himark::BackgroundRunner,
+    mpsc::Receiver<himark::app::AppCommand>,
+    himark::effects::BackgroundRunner,
 ) {
     let mut app = Application::new(AppFonts::embedded());
     let _ = app.add_window();
@@ -106,15 +109,15 @@ fn boot(
     app.register_handler::<FindEffect>(StubFind);
     app.register_handler::<FetchDocumentEffect>(StubFetch(Arc::clone(fetches)));
     app.register_handler::<BuildDocumentEffect>(StubBuild);
-    app.register_handler::<himark::OpenByLocationEffect>(StubOpenByLocation);
+    app.register_handler::<himark::workspace::OpenByLocationEffect>(StubOpenByLocation);
 
     struct StubWatch;
-    impl imba::effect::EffectHandler<himark::SubscribeEffect> for StubWatch {
-        async fn handle(&self, _effect: himark::SubscribeEffect) -> Option<himark::Subscription> {
-            Some(himark::Subscription(7))
+    impl imba::effect::EffectHandler<documents::watch::SubscribeEffect> for StubWatch {
+        async fn handle(&self, _effect: documents::watch::SubscribeEffect) -> Option<documents::watch::Subscription> {
+            Some(documents::watch::Subscription(7))
         }
     }
-    app.register_handler::<himark::SubscribeEffect>(StubWatch);
+    app.register_handler::<documents::watch::SubscribeEffect>(StubWatch);
     app.observe_file_changes();
     let (posted, arriving) = mpsc::channel();
     let runner = app.attach_host(
@@ -128,8 +131,8 @@ fn boot(
 
 fn settle(
     app: &mut Application,
-    arriving: &mpsc::Receiver<himark::AppCommand>,
-    runner: &himark::BackgroundRunner,
+    arriving: &mpsc::Receiver<himark::app::AppCommand>,
+    runner: &himark::effects::BackgroundRunner,
 ) {
     for _ in 0..4 {
         runner.run();
@@ -144,21 +147,21 @@ fn found_documents_preview_and_adopt_on_pick() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(app.add_document(
         app.sole_window(),
         plain_document("alpha body"),
         "alpha".to_owned(),
         false
     ));
-    assert!(app.perform_batch(vec![himark::AppCommand::Dynamic(
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
+    let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
 
@@ -176,7 +179,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         "the found row previews like an open document"
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the fetched preview registered at display"
     );
@@ -186,7 +189,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         fetches.load(Ordering::SeqCst),
@@ -198,7 +201,7 @@ fn found_documents_preview_and_adopt_on_pick() {
         Some("workspace notes body"),
         "the adopted document took the pane"
     );
-    let adopted = himark::OpenDocuments::list(app.store(), app.sole_documents())
+    let adopted = documents::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "notes.md")
         .expect("the adopted document is listed");
@@ -207,19 +210,19 @@ fn found_documents_preview_and_adopt_on_pick() {
         Some(doc_location("notes.md"))
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the temp became THE document; the displaced scratch is spared"
     );
 
     settle(&mut app, &arriving, &runner);
-    let adopted = himark::OpenDocuments::list(app.store(), app.sole_documents())
+    let adopted = documents::OpenDocuments::list(app.store(), app.sole_documents())
         .into_iter()
         .find(|(_, entity)| entity.name() == "notes.md")
         .expect("still listed");
     assert_eq!(
         adopted.1.watch(),
-        Some(himark::Subscription(7)),
+        Some(documents::watch::Subscription(7)),
         "the adopted document watches its file"
     );
 }
@@ -229,15 +232,15 @@ fn temps_clean_up_and_early_picks_fall_back() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    assert!(app.perform_batch(vec![himark::AppCommand::Dynamic(
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
+    let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
@@ -246,7 +249,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         "the fetched temp previews while the peeker is up"
     );
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the fetched preview registered at display"
     );
@@ -255,15 +258,15 @@ fn temps_clean_up_and_early_picks_fall_back() {
         imba::event::Key::Escape,
         Default::default()
     ));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs,
         "the close retracted the preview editor — editorless, the document left whole"
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
 
     runner.run();
@@ -276,7 +279,7 @@ fn temps_clean_up_and_early_picks_fall_back() {
         Default::default()
     ));
     settle(&mut app, &arriving, &runner);
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(
         app.focused_document_text().as_deref(),
         Some("fallback body"),
@@ -289,20 +292,20 @@ fn outside_dismissal_releases_glanced_documents() {
     let fetches = Arc::new(AtomicUsize::new(0));
     let (mut app, arriving, runner) = boot(&fetches);
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
-    assert!(app.perform_batch(vec![himark::AppCommand::Dynamic(
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    assert!(app.perform_batch(vec![himark::app::AppCommand::Dynamic(
         app.sole_window(),
         Arc::new(AddFolder)
     )]));
-    let baseline_docs = himark::OpenDocuments::list(app.store(), app.sole_documents()).len();
+    let baseline_docs = documents::OpenDocuments::list(app.store(), app.sole_documents()).len();
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "no"));
     settle(&mut app, &arriving, &runner);
     settle(&mut app, &arriving, &runner);
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs + 1,
         "the glanced preview registered at display"
     );
@@ -310,7 +313,7 @@ fn outside_dismissal_releases_glanced_documents() {
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
     assert!(labels(&app).is_none(), "the toggle dismissed the peeker");
     assert_eq!(
-        himark::OpenDocuments::list(app.store(), app.sole_documents()).len(),
+        documents::OpenDocuments::list(app.store(), app.sole_documents()).len(),
         baseline_docs,
         "the glanced document left the registry with the modal"
     );

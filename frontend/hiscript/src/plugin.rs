@@ -6,7 +6,8 @@ use std::sync::Arc;
 use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
-use himark::{DocumentId, OpenDocuments};
+use documents::DocumentId;
+use documents::OpenDocuments;
 use editor::location::ResourceLocation;
 
 pub struct ScriptSnapshot {
@@ -131,7 +132,7 @@ pub struct ShowDocuments {
     pub locations: Vec<ResourceLocation>,
 }
 
-impl himark::DynamicCommand for ShowDocuments {
+impl himark::commands::DynamicCommand for ShowDocuments {
     fn id(&self) -> &'static str {
         "script.show"
     }
@@ -142,13 +143,13 @@ impl himark::DynamicCommand for ShowDocuments {
 
     fn perform(
         &self,
-        app: &mut himark::Application,
+        app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        himark::open_locations(store, ui, window, &self.locations, fx);
+        himark::workspace::open_locations(store, ui, window, &self.locations, fx);
     }
 }
 
@@ -215,12 +216,12 @@ impl imba::effect::EffectHandler<RunScriptEffect> for RunScriptHandler {
     async fn handle(&self, effect: RunScriptEffect) -> ScriptLanding {
         let capture = effect.capture;
         let snapshots: Arc<Vec<ScriptSnapshot>> = Arc::new(capture.snapshots);
-        let world = crate::ScriptWorld {
+        let world = crate::run::ScriptWorld {
             read: Box::new({
                 let snapshots = Arc::clone(&snapshots);
                 let base = capture.base.clone();
                 let caller = self.caller.clone();
-                move |path: String| -> crate::WorldFuture<Option<String>> {
+                move |path: String| -> crate::run::WorldFuture<Option<String>> {
                     let Some(location) = resolve(&base, &path) else {
                         return Box::pin(std::future::ready(None));
                     };
@@ -235,16 +236,16 @@ impl imba::effect::EffectHandler<RunScriptEffect> for RunScriptHandler {
                     let caller = caller.clone();
                     Box::pin(async move {
                         caller
-                            .call(himark::FetchDocumentEffect { location })
+                            .call(documents::FetchDocumentEffect { location })
                             .await
                             .flatten()
                     })
                 }
             }),
-            ..crate::ScriptWorld::disconnected()
+            ..crate::run::ScriptWorld::disconnected()
         };
         let agent = capture.agent.map(Arc::new);
-        let world = crate::ScriptWorld {
+        let world = crate::run::ScriptWorld {
             ask: Box::new({
                 move |prompt| {
                     let Some(agent) = agent.clone() else {
@@ -261,11 +262,11 @@ impl imba::effect::EffectHandler<RunScriptEffect> for RunScriptHandler {
             }),
             ..world
         };
-        let outcome = crate::run_script(
+        let outcome = crate::run::run_script(
             &capture.name,
             &capture.source,
             world,
-            crate::Limits::default(),
+            crate::run::Limits::default(),
         )
         .await;
 
@@ -355,7 +356,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             };
             if let Ok(stored) = payload.downcast::<ScriptStored>() {
                 match (stored.stored, stored.show) {
-                    (true, Some(location)) => himark::AppRequests::push(
+                    (true, Some(location)) => himark::commands::AppRequests::push(
                         store,
                         Arc::new(ShowDocuments {
                             locations: vec![location],
@@ -374,8 +375,8 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             let end = view.byte_count().min(u32::MAX as usize) as u32;
             view.substring(0..end)
         };
-        let home = himark::SessionId::of_location(store, location);
-        let Some((documents, changes)) = ahp_session::session::Hosts::state(store, &home)
+        let home = ahp_wire::SessionId::of_location(store, location);
+        let Some((documents, changes)) = ahp_session::session::state::Hosts::state(store, &home)
             .map(|state| (state.documents(), state.changes()))
         else {
             return;
@@ -384,7 +385,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             .into_iter()
             .filter_map(|(id, entity)| {
                 let location = entity.location()?.clone();
-                if himark::is_synthetic(&location) {
+                if documents::is_synthetic(&location) {
                     return None;
                 }
                 let document = entity.document();
@@ -397,11 +398,11 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             })
             .collect();
 
-        let agent = himark::Windows::list(store)
+        let agent = himark::window::Windows::list(store)
             .into_iter()
             .next()
             .and_then(|window| {
-                let entity = himark::Windows::window_ref(store, window)?;
+                let entity = himark::window::Windows::window_ref(store, window)?;
                 let session = entity.current_session();
                 if !session.names_session() {
                     return None;
@@ -418,7 +419,7 @@ impl editor::dynamic::DynamicEditorCommand for RunScript {
             source,
             snapshots,
             agent,
-            changes: himark::hichanges::Changes::script_summary(store, changes),
+            changes: changesview::hichanges::Changes::script_summary(store, changes),
         };
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
             editor::editor_view::EditorCommand::Dynamic {
@@ -449,7 +450,7 @@ fn land(
                 base_revision,
                 operation,
             } => {
-                let Some(documents) = ahp_session::session::Hosts::documents_of_document(store, id)
+                let Some(documents) = ahp_session::session::state::Hosts::documents_of_document(store, id)
                 else {
                     continue;
                 };
@@ -484,7 +485,7 @@ fn land(
             ScriptEdit::Store { location, text } => {
                 let show = show_now_or_with_store(&mut shows, &location);
                 let _ = fx.push(
-                    AnyEffect::new(himark::StoreDocumentEffect { location, text }).map(
+                    AnyEffect::new(documents::StoreDocumentEffect { location, text }).map(
                         move |stored| editor::editor_view::EditorCommand::Dynamic {
                             id: "script.run",
                             payload: Some(editor::dynamic::DynPayload::new(ScriptStored { stored, show })),
@@ -495,7 +496,7 @@ fn land(
         }
     }
     if !shows.is_empty() {
-        himark::AppRequests::push(store, Arc::new(ShowDocuments { locations: shows }));
+        himark::commands::AppRequests::push(store, Arc::new(ShowDocuments { locations: shows }));
     }
     if let Some(error) = &landing.error {
         eprintln!("[script] {} failed: {error}", landing.name);

@@ -5,7 +5,12 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
-use himark::{line_col_at, AppFx, Application, DynamicCommand, LineCol, OpenDocuments};
+use documents::text_ext::line_col_at;
+use himark::app::AppFx;
+use himark::app::Application;
+use himark::commands::DynamicCommand;
+use documents::text_ext::LineCol;
+use documents::OpenDocuments;
 use editor::document::Document;
 use editor::location::ResourceLocation;
 use imba::{effect::Effect, store::Store};
@@ -65,7 +70,7 @@ pub struct CodeNavigationHandler {
     pub caller: imba::effect::EffectCaller,
 }
 
-impl himark::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
+impl imba::effect::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
     async fn handle(&self, effect: CodeNavigationEffect) -> NavigationOutcome {
         let targets = self
             .caller
@@ -89,7 +94,7 @@ impl himark::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
             for location in wanted.into_iter().take(MAX_FETCHED_TARGETS) {
                 let Some(text) = self
                     .caller
-                    .call(himark::FetchDocumentEffect {
+                    .call(documents::FetchDocumentEffect {
                         location: location.clone(),
                     })
                     .await
@@ -99,7 +104,7 @@ impl himark::EffectHandler<CodeNavigationEffect> for CodeNavigationHandler {
                 };
                 if let Some(built_document) = self
                     .caller
-                    .call(himark::BuildDocumentEffect {
+                    .call(documents::BuildDocumentEffect {
                         location: location.clone(),
                         text,
                     })
@@ -133,7 +138,7 @@ impl DynamicCommand for ApplyNavigation {
         &self,
         app: &mut Application,
         store: &mut Store,
-        window: himark::WindowId,
+        window: himark::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -153,13 +158,13 @@ impl DynamicCommand for ApplyNavigation {
 fn navigate(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: himark::WindowId,
+    window: himark::window::WindowId,
     target: &CodeTarget,
     built: &[(ResourceLocation, Document)],
     fx: &mut AppFx<'_>,
 ) {
     let Some(documents) =
-        himark::Windows::session_state(store, window).map(|state| state.documents())
+        himark::window::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
@@ -182,7 +187,7 @@ fn navigate(
             )
         }
     };
-    let Some(mut window_entity) = himark::Windows::window(store, window) else {
+    let Some(mut window_entity) = himark::window::Windows::window(store, window) else {
         return;
     };
     window_entity.show_document(
@@ -194,11 +199,11 @@ fn navigate(
         false,
         fx,
     );
-    himark::Windows::put(store, window, window_entity);
+    himark::window::Windows::put(store, window, window_entity);
 
-    himark::sync_document_watches(store, documents, fx);
-    fx.scope(himark::AppCommand::Verb, |fx| {
-        himark::sync_stripe_bases(store, documents, ui, fx)
+    himark::watch::sync_document_watches(store, documents, fx);
+    fx.scope(himark::app::AppCommand::Verb, |fx| {
+        documents::lanes::sync_stripe_bases(store, documents, ui, fx)
     });
 }
 
@@ -206,7 +211,7 @@ pub struct GoDefinition;
 
 /// The navigation commands close over the pane's ids (docs/entities.md
 /// law 3): the open set they hand the ask is the collection they run in.
-impl himark::DocumentCommand for GoDefinition {
+impl documents::dynamic::DocumentCommand for GoDefinition {
     fn id(&self) -> &'static str {
         "code.definition"
     }
@@ -218,7 +223,7 @@ impl himark::DocumentCommand for GoDefinition {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         documents: imba::store::Id<OpenDocuments>,
-        _document_id: himark::DocumentId,
+        _document_id: documents::DocumentId,
         document: &mut Document,
         editor: editor::editor::EditorId,
         location: &ResourceLocation,
@@ -240,7 +245,7 @@ impl himark::DocumentCommand for GoDefinition {
 
 pub struct GoReferences;
 
-impl himark::DocumentCommand for GoReferences {
+impl documents::dynamic::DocumentCommand for GoReferences {
     fn id(&self) -> &'static str {
         "code.references"
     }
@@ -252,7 +257,7 @@ impl himark::DocumentCommand for GoReferences {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<OpenDocuments>,
-        _document_id: himark::DocumentId,
+        _document_id: documents::DocumentId,
         document: &mut Document,
         editor: editor::editor::EditorId,
         location: &ResourceLocation,
@@ -261,7 +266,7 @@ impl himark::DocumentCommand for GoReferences {
     ) {
         let _ = (payload, fx);
         stream_navigation(
-            himark::LspLocationsKind::References,
+            ahp_locations::LspLocationsKind::References,
             store,
             document,
             editor,
@@ -272,7 +277,7 @@ impl himark::DocumentCommand for GoReferences {
 
 pub struct GoImplementations;
 
-impl himark::DocumentCommand for GoImplementations {
+impl documents::dynamic::DocumentCommand for GoImplementations {
     fn id(&self) -> &'static str {
         "code.implementations"
     }
@@ -284,7 +289,7 @@ impl himark::DocumentCommand for GoImplementations {
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<OpenDocuments>,
-        _document_id: himark::DocumentId,
+        _document_id: documents::DocumentId,
         document: &mut Document,
         editor: editor::editor::EditorId,
         location: &ResourceLocation,
@@ -293,7 +298,7 @@ impl himark::DocumentCommand for GoImplementations {
     ) {
         let _ = (payload, fx);
         stream_navigation(
-            himark::LspLocationsKind::Implementations,
+            ahp_locations::LspLocationsKind::Implementations,
             store,
             document,
             editor,
@@ -309,7 +314,7 @@ impl himark::DocumentCommand for GoImplementations {
 /// the feed against its session and stamping the landing with it
 /// (docs/entities.md law 3). No payload re-entry, no second phase.
 fn stream_navigation(
-    kind: himark::LspLocationsKind,
+    kind: ahp_locations::LspLocationsKind,
     store: &mut Store,
     document: &mut Document,
     editor: editor::editor::EditorId,
@@ -320,14 +325,14 @@ fn stream_navigation(
     let position = line_col_at(&mut view, caret);
     let ident = identifier_at(&mut view, caret);
     let title = match (kind, ident.is_empty()) {
-        (himark::LspLocationsKind::References, false) => format!("References to `{ident}`"),
-        (himark::LspLocationsKind::References, true) => "References".to_owned(),
-        (himark::LspLocationsKind::Implementations, false) => {
+        (ahp_locations::LspLocationsKind::References, false) => format!("References to `{ident}`"),
+        (ahp_locations::LspLocationsKind::References, true) => "References".to_owned(),
+        (ahp_locations::LspLocationsKind::Implementations, false) => {
             format!("Implementations of `{ident}`")
         }
-        (himark::LspLocationsKind::Implementations, true) => "Implementations".to_owned(),
+        (ahp_locations::LspLocationsKind::Implementations, true) => "Implementations".to_owned(),
     };
-    himark::AppRequests::push(
+    himark::commands::AppRequests::push(
         store,
         Arc::new(himark::hisearch::OpenLspFeed {
             kind,
@@ -381,11 +386,11 @@ fn navigation(
         return;
     };
 
-    himark::AppRequests::push(store, Arc::new(ApplyNavigation { outcome: *outcome }));
+    himark::commands::AppRequests::push(store, Arc::new(ApplyNavigation { outcome: *outcome }));
 }
 
 fn workspace_folders(store: &Store) -> Vec<ResourceLocation> {
-    ahp_session::session::all_session_folders(store)
+    ahp_session::session::folders::all_session_folders(store)
 }
 
 fn identifier_at(view: &mut TextView, caret: usize) -> String {

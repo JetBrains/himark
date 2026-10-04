@@ -477,6 +477,10 @@ pub struct ChatPanel {
     /// (docs/entities.md law 4).
     chats: imba::store::Id<crate::chats::Chats>,
     chat: ahp_wire::client::ChatUri,
+    /// The ceremony-wired catalog roads, stamped at mint — the panel
+    /// runs under its collection's lease, so it must never read the
+    /// collection back to find them.
+    catalog: crate::chats::Catalog,
     state: Link,
     title: String,
 
@@ -517,6 +521,7 @@ impl Clone for ChatPanel {
             session: self.session.clone(),
             chats: self.chats,
             chat: self.chat.clone(),
+            catalog: self.catalog.clone(),
             state: self.state.clone(),
             title: self.title.clone(),
             conversation: self.conversation.clone(),
@@ -607,12 +612,14 @@ impl ChatPanel {
         session: impl Into<ahp_wire::client::SessionUri>,
         chats: imba::store::Id<crate::chats::Chats>,
         chat: impl Into<ahp_wire::client::ChatUri>,
+        catalog: crate::chats::Catalog,
     ) -> Self {
         Self {
             server,
             session: session.into(),
             chats,
             chat: chat.into(),
+            catalog,
             state: Link::Idle,
             title: "Agent Chat".to_owned(),
             conversation: model::Conversation::default(),
@@ -1059,9 +1066,7 @@ impl ChatPanel {
             .rev()
             .find(|turn| turn.state == ahp_types::state::TurnState::Complete)
         {
-            if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
-                (roads.note_turn)(store, self.server, &self.chat, &turn.id);
-            }
+            (self.catalog.note_turn)(store, self.server, &self.chat, &turn.id);
         }
         self.stack
             .seed_queue(state.queued_messages.iter().flatten().cloned());
@@ -1228,9 +1233,7 @@ impl ChatPanel {
                 self.stack.clear_ask();
                 steer = self.steering.take().or(steer);
                 if let StateAction::ChatTurnComplete(done) = &action {
-                    if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
-                        (roads.note_turn)(store, self.server, &self.chat, &done.turn_id);
-                    }
+                    (self.catalog.note_turn)(store, self.server, &self.chat, &done.turn_id);
                 }
                 self.mark_read(store, fx);
             }
@@ -1675,8 +1678,7 @@ impl ChatPanel {
                         },
                     );
                 }
-                let uris = crate::chats::Chats::catalog(store, self.chats)
-                    .and_then(|roads| (roads.uris)(store, self.server));
+                let uris = (self.catalog.uris)(store, self.server);
                 let attachments = view.completion_attachments(uris, &text);
                 let model = view.toolbar.model_selection();
                 // The view goes BACK before the send: `send_text` rolls
@@ -1704,11 +1706,7 @@ impl ChatPanel {
                 let Some(recents) = store.entity(self.chats).map(|chats| chats.recents()) else {
                     return;
                 };
-                let folders = std::sync::Arc::new(
-                    crate::chats::Chats::catalog(store, self.chats)
-                        .map(|roads| (roads.folders)(store, &session))
-                        .unwrap_or_default(),
-                );
+                let folders = std::sync::Arc::new((self.catalog.folders)(store, &session));
                 fx.scope(
                     move |command| ChatPanelCommand::InView(id, Box::new(command)),
                     |fx| view.composer_command(store, ui, folders, recents, command, fx),
@@ -1753,11 +1751,9 @@ impl ChatPanel {
                 let Some(mut view) = self.views.get(&id).cloned() else {
                     return;
                 };
-                if let Some(roads) = crate::chats::Chats::catalog(store, self.chats) {
-                    if let Some(channel) = (roads.channel)(store, &self.session_id()) {
-                        let agents = (roads.agents)(store, self.server);
-                        view.toolbar.sync(store, ui, &agents, &channel);
-                    }
+                if let Some(channel) = (self.catalog.channel)(store, &self.session_id()) {
+                    let agents = (self.catalog.agents)(store, self.server);
+                    view.toolbar.sync(store, ui, &agents, &channel);
                 }
                 self.views.insert_mut(id, view);
             }
@@ -2132,11 +2128,10 @@ impl ChatPanel {
                     }
                 }
                 let strip_origin = std::sync::Arc::clone(&view.toolbar.strip_origin);
-                let toolbar_stale = crate::chats::Chats::catalog(store, self.chats)
-                    .and_then(|roads| {
-                        let channel = (roads.channel)(store, &self.session_id())?;
-                        let agents = (roads.agents)(store, self.server);
-                        Some(crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel))
+                let toolbar_stale = (self.catalog.channel)(store, &self.session_id())
+                    .map(|channel| {
+                        let agents = (self.catalog.agents)(store, self.server);
+                        crate::session_toolbar::SessionToolbar::fingerprint(&agents, &channel)
                     })
                     .is_some_and(|fingerprint| fingerprint != view.toolbar.synced);
 

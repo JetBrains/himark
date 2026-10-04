@@ -4,7 +4,8 @@
 use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
-use crate::{ModalRequest, ModalView};
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
 
 pub const DOCK_WIDTH: f32 = 600.0;
 
@@ -207,7 +208,7 @@ impl View for Dock {
                 self.content.as_mut().perform_dyn(store, ui, command, fx)
             }),
             DockCommand::HeaderButton(index) => {
-                if let Some(button) = crate::ToolbarButtons::of(store).iter().nth(index) {
+                if let Some(button) = crate::toolbar::ToolbarButtons::of(store).iter().nth(index) {
                     self.command = Some(button.command);
                 }
             }
@@ -255,7 +256,7 @@ impl View for Dock {
             // active owner pressed — the window has no toolbar.
             let bar = theme.ui().toolbar.clone();
             let header_h = bar.height;
-            let buttons = crate::ToolbarButtons::of(store);
+            let buttons = crate::toolbar::ToolbarButtons::of(store);
             let owner = self.owner;
             {
                 let bar = bar.clone();
@@ -285,11 +286,11 @@ impl View for Dock {
                 - bar.button_inset
                 - buttons
                     .iter()
-                    .filter(|button| matches!(button.side, crate::ToolbarSide::Right))
+                    .filter(|button| matches!(button.side, crate::toolbar::ToolbarSide::Right))
                     .count() as f32
                     * bar.button_size;
             for (index, button) in buttons.iter().enumerate() {
-                if !matches!(button.side, crate::ToolbarSide::Right) {
+                if !matches!(button.side, crate::toolbar::ToolbarSide::Right) {
                     continue;
                 }
                 let glyph = button.glyph.clone();
@@ -411,7 +412,7 @@ impl Dock {
 
     pub(crate) fn release_widgets(
         &mut self,
-    ) -> Vec<(crate::WidgetOrigin, Box<dyn crate::DynPanelView>)> {
+    ) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
         self.content.release_widgets()
     }
 }

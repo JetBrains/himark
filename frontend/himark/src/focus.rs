@@ -6,7 +6,7 @@ use imba::focus::FocusData;
 use imba::{clipboard::ClipboardClient, ime::ImeClient};
 
 use crate::app::AppCommand;
-use crate::Application;
+use crate::app::Application;
 
 /// The semantic focus chain of a window — a STATE WALK over the view
 /// tree. No arena, no layout, no realize: focus is state, and the
@@ -14,9 +14,9 @@ use crate::Application;
 pub(crate) fn window_focus_data<'a>(
     store: &'a imba::store::Store,
     ui: &'a imba::ui::UiCtx,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
 ) -> Option<FocusData<'a, AppCommand>> {
-    let entity = crate::Windows::window_ref(store, window)?;
+    let entity = crate::window::Windows::window_ref(store, window)?;
     Some(
         imba::View::focus_data(entity, store, ui)
             .map(move |command| AppCommand::Content(window, command)),
@@ -26,7 +26,7 @@ pub(crate) fn window_focus_data<'a>(
 impl Application {
     pub fn with_ime_client<R>(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         f: impl FnOnce(&mut dyn ImeClient) -> R,
     ) -> Option<R> {
         // Two asks, one source of truth: the SEMANTIC walk names the
@@ -78,7 +78,7 @@ impl Application {
 
     pub fn with_clipboard_client<R>(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         f: impl FnOnce(&mut dyn ClipboardClient) -> R,
     ) -> Option<R> {
         let store = self.window_store(window);

@@ -6,13 +6,13 @@ use std::sync::Arc;
 use serde_json::json;
 
 use super::*;
-use crate::changes_view::RowItem;
+use changesview::changes_view::RowItem;
 use ahp_changes::history::{digest_deltas, digest_snapshot};
-use crate::hichanges::ChangesStatus;
+use changesview::hichanges::ChangesStatus;
 use ahp_types::actions::StateAction;
 use ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use editor::location::Authority;
-use crate::{ForestNode};
+use hikit::forest::ForestNode;
 use editor::location::ResourceLocation;
 use editor::location::ResourceType;
 use himark_ahp_ext_types::history as history_wire;
@@ -111,8 +111,8 @@ fn history_id() -> imba::store::Id<History> {
     *ID.get_or_init(imba::store::Id::mint)
 }
 
-fn changes_id() -> imba::store::Id<crate::hichanges::Changes> {
-    static ID: std::sync::OnceLock<imba::store::Id<crate::hichanges::Changes>> =
+fn changes_id() -> imba::store::Id<changesview::hichanges::Changes> {
+    static ID: std::sync::OnceLock<imba::store::Id<changesview::hichanges::Changes>> =
         std::sync::OnceLock::new();
     *ID.get_or_init(imba::store::Id::mint)
 }
@@ -136,7 +136,7 @@ fn fold(store: &mut imba::store::Store, folder: &ResourceLocation, actions: &[St
 fn history_mirror() -> (imba::store::Store, ResourceLocation) {
     let mut store = imba::store::Store::new();
     store.put_entity(history_id(), History::wired(changes_id()));
-    let changes = crate::hichanges::Changes::wired(imba::store::Id::mint(), history_id());
+    let changes = changesview::hichanges::Changes::wired(imba::store::Id::mint(), history_id());
     store.put_entity(changes_id(), changes);
     let folder = folder();
     History::ensure_folder(&mut store, history_id(), &folder);
@@ -269,7 +269,7 @@ fn the_graph_lists_commits_refs_outgoing_and_paging() {
     assert!(matches!(
         items.get(&commit_key),
         Some(RowItem::Open {
-            source: crate::diff_canvas::CanvasSource::Commit { id, .. },
+            source: changesview::hichanges::CanvasSource::Commit { id, .. },
             reveal: None,
             ..
         }) if id.as_str() == "b"
@@ -303,11 +303,11 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         reviewed: None,
         meta: None,
     };
-    crate::hichanges::Changes::adopt_commit_state(
+    changesview::hichanges::Changes::adopt_commit_state(
         &mut store,
         changes_id(),
         &folder,
-        &crate::hichanges::Revision::new("b"),
+        &changesview::hichanges::Revision::new("b"),
         &Ok(ahp_changes::changes::digest_state(
             &FileUris,
             &folder,
@@ -335,7 +335,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         .child(ResourceType::document(), "lib.rs");
     let Some(RowItem::Open {
         source:
-            crate::diff_canvas::CanvasSource::Commit {
+            changesview::hichanges::CanvasSource::Commit {
                 folder: row_folder,
                 id: commit,
             },
@@ -347,22 +347,22 @@ fn fetched_commit_files_expand_with_pinned_sides() {
     };
     assert_eq!(row_folder, &folder, "the row names its canvas source");
     assert_eq!(commit.as_str(), "b");
-    let (_, new_raw) = crate::hichanges::raw_ref(new).expect("an after ref");
+    let (_, new_raw) = changesview::hichanges::raw_ref(new).expect("an after ref");
     assert_eq!(new_raw, "hihost-git:/a-commit-ref");
 
     // The pinned old side rides the canvas feed now.
-    let (_, listing) = crate::diff_canvas::canvas_files(
+    let (_, listing) = canvas::diff_canvas::canvas_files(
         &store,
         changes_id(),
-        &crate::diff_canvas::CanvasSource::Commit {
+        &changesview::hichanges::CanvasSource::Commit {
             folder: folder.clone(),
-            id: crate::hichanges::Revision::new("b"),
+            id: changesview::hichanges::Revision::new("b"),
         },
     );
-    let crate::diff_canvas::CanvasListing::Ready(files) = listing else {
+    let canvas::diff_canvas::CanvasListing::Ready(files) = listing else {
         panic!("a ready listing");
     };
-    let (_, old_raw) = crate::hichanges::raw_ref(&files[0].old).expect("a before ref");
+    let (_, old_raw) = changesview::hichanges::raw_ref(&files[0].old).expect("a before ref");
     assert_eq!(old_raw, "hihost-git:/a-parent-ref");
 }
 

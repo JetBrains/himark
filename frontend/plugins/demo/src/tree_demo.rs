@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::PanelView;
+use hikit::panel::PanelView;
 use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, PathBuilder, Rect, Size};
 
@@ -104,7 +104,7 @@ impl View for TreeDemoRow {
                     .base()
                     .color
                     .unwrap_or(skia_safe::Color::from_argb(0xFF, 0x80, 0x80, 0x80)),
-                font: himark::fonts::ui_text_font(ui, 13.0),
+                font: hikit::fonts::ui_text_font(ui, 13.0),
                 size: Size::new(constraints.max.width, ROW_HEIGHT),
             })
         })
@@ -290,7 +290,7 @@ impl View for TreeDemoView {
 }
 
 impl PanelView for TreeDemoView {
-    type Place = himark::NoPlace;
+    type Place = hikit::navigation::NoPlace;
 
     fn title(&self, _store: &Store) -> String {
         "Tree Demo".to_owned()
@@ -305,7 +305,7 @@ impl PanelView for TreeDemoView {
 
 pub struct OpenTreeDemo;
 
-impl himark::DynamicCommand for OpenTreeDemo {
+impl himark::commands::DynamicCommand for OpenTreeDemo {
     fn id(&self) -> &'static str {
         "demo.tree"
     }
@@ -314,14 +314,14 @@ impl himark::DynamicCommand for OpenTreeDemo {
     }
     fn perform(
         &self,
-        app: &mut himark::Application,
+        app: &mut himark::app::Application,
         store: &mut Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let mut entity = himark::Windows::window(store, window).expect("the window entity");
+        let mut entity = himark::window::Windows::window(store, window).expect("the window entity");
         let _ = entity.open_panel(store, ui, Box::new(TreeDemoView::new()), fx);
-        himark::Windows::put(store, window, entity);
+        himark::window::Windows::put(store, window, entity);
     }
 }

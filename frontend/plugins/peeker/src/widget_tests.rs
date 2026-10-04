@@ -3,7 +3,9 @@
 
 use super::*;
 use ::editor::test_document::plain_document;
-use himark::{AppExt, AppFonts, Application};
+use himark::app_ext::AppExt;
+use himark::app::AppFonts;
+use himark::app::Application;
 
 #[derive(Clone)]
 struct StubWidget(&'static str);
@@ -32,8 +34,8 @@ impl imba::View for StubWidget {
     }
 }
 
-impl himark::PanelView for StubWidget {
-    type Place = himark::NoPlace;
+impl hikit::panel::PanelView for StubWidget {
+    type Place = hikit::navigation::NoPlace;
     fn title(&self, _store: &Store) -> String {
         self.0.to_owned()
     }
@@ -51,19 +53,19 @@ fn mounted_titles(app: &Application) -> Vec<String> {
 
 /// A PTY-less terminal session: the cheap seedable session row now
 /// that result lists live in the session feed, not a session.
-fn seed_terminal_row(app: &mut Application, title: &str) -> himark::terminal::TerminalId {
+fn seed_terminal_row(app: &mut Application, title: &str) -> terminals::TerminalId {
     struct NullBackend;
-    impl himark::terminal::TerminalBackend for NullBackend {
+    impl terminals::TerminalBackend for NullBackend {
         fn write(&self, _bytes: &[u8]) {}
         fn resize(&self, _cols: u16, _rows: u16, _w: f32, _h: f32) {}
         fn hangup(&self) {}
     }
-    let session = himark::terminal::Session::new(Box::new(NullBackend));
-    let id = himark::terminal::TerminalId::mint();
+    let session = terminals::Session::new(Box::new(NullBackend));
+    let id = terminals::TerminalId::mint();
     let _ = session.output(format!("\x1b]0;{title}\x07").as_bytes());
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
-    himark::terminal::Terminals::put(&mut app.store_mut(), terminals, id, session);
+    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    terminals::Terminals::put(&mut app.store_mut(), terminals, id, session);
     id
 }
 
@@ -72,19 +74,19 @@ fn displaced_handles_drop_and_their_rows_survive() {
     let mut app = Application::new(AppFonts::embedded());
     let _ = app.add_window();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let alpha = seed_terminal_row(&mut app, "alpha results");
     let home = app.sole_window_session();
-    let terminals = ahp_session::session::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
+    let terminals = ahp_session::session::state::Hosts::ensure_state(&mut app.store_mut(), &home).terminals();
     assert!(app.open_panel(
         app.sole_window(),
-        Box::new(himark::terminal::pane::TerminalView::new(terminals, alpha))
+        Box::new(terminals::pane::TerminalView::new(terminals, alpha))
     ));
     assert!(app.open_panel(app.sole_window(), Box::new(StubWidget("beta widget"))));
     assert_eq!(mounted_titles(&app), vec!["beta widget"]);
     assert!(
-        ahp_session::session::Hosts::state(app.store(), &app.sole_window_session())
-            .and_then(|state| himark::terminal::Terminals::session_ref(
+        ahp_session::session::state::Hosts::state(app.store(), &app.sole_window_session())
+            .and_then(|state| terminals::Terminals::session_ref(
                 app.store(),
                 state.terminals(),
                 alpha
@@ -100,7 +102,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(app.add_document(
         app.sole_window(),
         plain_document("alpha body"),
@@ -111,7 +113,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     assert!(app.open_panel(app.sole_window(), Box::new(StubWidget("beta widget"))));
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let listed = labels(&app).expect("the peeker is up");
     assert!(
         listed.contains(&"beta widget".to_owned()) && listed.contains(&"alpha results".to_owned()),
@@ -122,11 +124,11 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         imba::event::Key::Escape,
         Default::default()
     ));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert_eq!(mounted_titles(&app), vec!["beta widget"], "pane restored");
     assert!(
-        ahp_session::session::Hosts::state(app.store(), &app.sole_window_session())
-            .and_then(|state| himark::terminal::Terminals::session_ref(
+        ahp_session::session::state::Hosts::state(app.store(), &app.sole_window_session())
+            .and_then(|state| terminals::Terminals::session_ref(
                 app.store(),
                 state.terminals(),
                 alpha
@@ -136,9 +138,9 @@ fn the_peeker_lists_previews_and_selects_widgets() {
     );
 
     assert!(app.perform_registered(app.sole_window(), "peeker.toggle"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(himark::test_driver::type_text(&mut app, "alpha results"));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     let listed = labels(&app).expect("still up");
     assert_eq!(listed, vec!["alpha results"], "the filter narrowed to it");
     assert_eq!(
@@ -151,7 +153,7 @@ fn the_peeker_lists_previews_and_selects_widgets() {
         imba::event::Key::Enter,
         Default::default()
     ));
-    himark::Window::draw(app.sole_window(), &mut app, surface.canvas());
+    himark::window::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(labels(&app).is_none(), "picking closes the peeker");
     assert_eq!(
         mounted_titles(&app),

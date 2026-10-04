@@ -17,13 +17,16 @@ use editor::location::ResourceLocation;
 use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
-use crate::{AppCommand, AppFx, DynamicCommand, OpenByLocationEffect};
+use crate::app::AppCommand;
+use crate::app::AppFx;
+use crate::commands::DynamicCommand;
+use crate::workspace::OpenByLocationEffect;
 
 /// Building a document from text in hand (Text, layout, syntax) is not a
 /// filesystem capability — the chat's cells build off-thread with no host
 /// in sight. It installs at boot, on its own.
 pub fn install_build_handler(
-    app: &mut crate::Application,
+    app: &mut crate::app::Application,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
@@ -44,7 +47,7 @@ pub fn install_build_handler(
 }
 
 pub fn install_open_handlers(
-    app: &mut crate::Application,
+    app: &mut crate::app::Application,
     languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn editor::diff::DiffPolicy>,
 ) {
@@ -61,7 +64,7 @@ pub fn install_open_handlers(
         workshop,
         languages,
     };
-    app.register_handler::<crate::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
+    app.register_handler::<crate::workspace::OpenDiffByLocationsEffect>(OpenDiffByLocationsHandler(
         shop.clone(),
     ));
     app.register_handler::<documents::diff_views::OpenDiffPairEffect>(
@@ -72,8 +75,8 @@ pub fn install_open_handlers(
 
 struct OpenDiffByLocationsHandler(::ahp_chat::open::DiffOpenShop);
 
-impl EffectHandler<crate::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
-    async fn handle(&self, effect: crate::OpenDiffByLocationsEffect) -> AppCommand {
+impl EffectHandler<crate::workspace::OpenDiffByLocationsEffect> for OpenDiffByLocationsHandler {
+    async fn handle(&self, effect: crate::workspace::OpenDiffByLocationsEffect) -> AppCommand {
         // The pane's editor width is resolved by `install_opened_pair`
         // (non-embedded → OPEN_HALF_WIDTH); the carried width is unused.
         let pair = self.0.open_pair(effect.old, effect.new, 0.0).await;
@@ -111,21 +114,21 @@ impl crate::navigation::WindowedNavigator for DiffNavigator {
         &self,
         store: &mut Store,
         _ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         place: &canvas::diff_pane::DiffPlace,
         fx: &mut AppFx<'_>,
-    ) -> Option<crate::Panel> {
+    ) -> Option<crate::workbench_node::Panel> {
         // Resolve both sides on the UI thread — an open side hands over
         // its live snapshot; the prep runs off-thread and the landing
         // opens the dressed pane. Diffing never runs here.
-        let documents = crate::Windows::session_state(store, window)
+        let documents = crate::window::Windows::session_state(store, window)
             .expect("a diff opens from a window with a session")
             .documents();
         let old =
             documents::diff_views::DiffSideInput::resolve(store, documents, place.old.clone());
         let new =
             documents::diff_views::DiffSideInput::resolve(store, documents, place.new.clone());
-        fx.push(AnyEffect::new(crate::OpenDiffByLocationsEffect {
+        fx.push(AnyEffect::new(crate::workspace::OpenDiffByLocationsEffect {
             window,
             documents,
             old,
@@ -136,7 +139,7 @@ impl crate::navigation::WindowedNavigator for DiffNavigator {
 }
 
 pub struct OpenDiffPair {
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     documents: imba::store::Id<documents::OpenDocuments>,
     pair: documents::diff_views::OpenedDiffPair,
 }
@@ -150,13 +153,13 @@ impl DynamicCommand for OpenDiffPair {
     }
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        _window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let _ = crate::open_opened_diff_pane(
+        let _ = crate::diff_pane::open_opened_diff_pane(
             store,
             ui,
             self.window,
@@ -164,9 +167,9 @@ impl DynamicCommand for OpenDiffPair {
             self.pair.clone(),
             fx,
         );
-        crate::sync_document_watches(store, self.documents, fx);
+        crate::watch::sync_document_watches(store, self.documents, fx);
         fx.scope(AppCommand::Verb, |fx| {
-            crate::diffs::sync_stripe_bases(store, self.documents, ui, fx)
+            documents::lanes::sync_stripe_bases(store, self.documents, ui, fx)
         });
     }
 }
@@ -200,7 +203,7 @@ impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {
                 });
                 AppCommand::Opened(
                     effect.window,
-                    crate::OpenedDocument {
+                    crate::app::OpenedDocument {
                         documents: effect.documents,
                         name: effect.location.name().to_owned(),
                         document,
@@ -235,16 +238,16 @@ impl DynamicCommand for FetchFailed {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::WindowId,
+        _window: crate::window::WindowId,
         _fx: &mut AppFx<'_>,
     ) {
         eprintln!("[himark] fetch failed: {:?}", self.location);
     }
 }
 
-pub fn register_all(app: &mut crate::Application) {
+pub fn register_all(app: &mut crate::app::Application) {
     app.register_handler::<ahp_wire::effects::ConnectServerEffect>(
         ::ahp_wire::registry::HandleConnectServer,
     );

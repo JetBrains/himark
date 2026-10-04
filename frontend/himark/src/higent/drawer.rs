@@ -11,18 +11,26 @@ use ahp_wire::effects::PollServerEffect;
 use ahp_wire::client::RootInfo;
 use ahp_wire::client::ServerEvent;
 use ahp_wire::client::SessionsPage;
-use crate::{ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, TreeLabel, TreeListCommand, TreeRow};
+use imba::list::ActivateTrigger;
+use crate::app::AppCommand;
+use hikit::list_keyboard::ListKeyCommand;
+use hikit::list_keyboard::ListKeyboardController;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use hikit::tree_item::TreeLabel;
+use hikit::tree_item::TreeListCommand;
+use hikit::forest::TreeRow;
 use ahp_types::state::SessionSummary;
 use imba::list::ListOps;
 use imba::{arena::Arena, constraints::Constraints, container::container, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
-use crate::higent::OpenSessionRow;
-use ahp_session::session::Agents;
-use ahp_session::session::HostStatus;
+use crate::higent::session::open::OpenSessionRow;
+use ahp_session::session::agents::Agents;
+use ahp_session::session::state::HostStatus;
 use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
 
-const PANEL_WIDTH: f32 = crate::DRAWER_WIDTH;
+const PANEL_WIDTH: f32 = hikit::rows::DRAWER_WIDTH;
 const PANEL_PAD: f32 = 6.0;
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -47,11 +55,11 @@ type TreeList = ScrollView<ListView<TreeRow, AgentKey>>;
 #[derive(Clone)]
 struct SessionSearcher;
 
-impl crate::Searcher for SessionSearcher {
+impl hikit::list_keyboard::Searcher for SessionSearcher {
     type View = TreeList;
     type Key = AgentKey;
 
-    fn capture(&self, view: &Self::View) -> crate::ItemSource<AgentKey> {
+    fn capture(&self, view: &Self::View) -> hikit::list_keyboard::ItemSource<AgentKey> {
         let keys = view.content().structure_keys().ordered_keys();
         let labels: Vec<String> = view
             .content()
@@ -113,7 +121,7 @@ impl std::fmt::Display for AgentsCommand {
 
 pub struct AgentsPanel {
     list: ListKeyboardController<TreeList, SessionSearcher>,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     booted: bool,
 
     collapsed: rpds::HashTrieSetSync<HostId>,
@@ -142,10 +150,10 @@ impl Clone for AgentsPanel {
 }
 
 impl AgentsPanel {
-    pub fn open(store: &Store, ui: &UiCtx, window: crate::WindowId) -> Self {
+    pub fn open(store: &Store, ui: &UiCtx, window: crate::window::WindowId) -> Self {
         let panel = Self {
             list: ListKeyboardController::searchable(
-                ScrollView::new(ListView::empty().with_selection(crate::selection_style(store))),
+                ScrollView::new(ListView::empty().with_selection(hikit::rows::selection_style(store))),
                 SessionSearcher,
                 store,
                 ui,
@@ -217,7 +225,7 @@ impl AgentsPanel {
             };
             slice.push_keyed(
                 AgentKey::Server(server),
-                crate::TreeItemView::branch(TreeLabel::new(label, false, false), 0, expanded)
+                hikit::tree_item::TreeItemView::branch(TreeLabel::new(label, false, false), 0, expanded)
                     .toggling_on_body(),
                 store,
                 ui,
@@ -229,7 +237,7 @@ impl AgentsPanel {
                 HostStatus::Idle | HostStatus::Connecting => {
                     slice.push_keyed(
                         AgentKey::Note(server),
-                        crate::TreeItemView::leaf(
+                        hikit::tree_item::TreeItemView::leaf(
                             TreeLabel::new("connecting…".to_owned(), false, true),
                             1,
                         ),
@@ -240,7 +248,7 @@ impl AgentsPanel {
                 HostStatus::Failed(error) => {
                     slice.push_keyed(
                         AgentKey::Note(server),
-                        crate::TreeItemView::leaf(
+                        hikit::tree_item::TreeItemView::leaf(
                             TreeLabel::new(format!("failed: {error}"), false, true),
                             1,
                         ),
@@ -283,7 +291,7 @@ impl AgentsPanel {
                                 let expanded = !self.folded.contains(&key);
                                 slice.push_keyed(
                                     AgentKey::Folder(server, folder.clone()),
-                                    crate::TreeItemView::branch(
+                                    hikit::tree_item::TreeItemView::branch(
                                         TreeLabel::new(folders_label(folder), false, false),
                                         1,
                                         expanded,
@@ -305,7 +313,7 @@ impl AgentsPanel {
                                     server,
                                     SessionUri::new(summary.resource.clone()),
                                 ),
-                                crate::TreeItemView::leaf(
+                                hikit::tree_item::TreeItemView::leaf(
                                     TreeLabel::new(session_label(summary), true, false)
                                         .with_badge(session_badge(summary, accent, stop, dim))
                                         .with_trail(age_trail(now, dim, summary)),
@@ -319,7 +327,7 @@ impl AgentsPanel {
                     {
                         slice.push_keyed(
                             AgentKey::NewSession(server),
-                            crate::TreeItemView::leaf(
+                            hikit::tree_item::TreeItemView::leaf(
                                 TreeLabel::new("+ New Session…".to_owned(), true, false),
                                 1,
                             ),
@@ -332,7 +340,7 @@ impl AgentsPanel {
         }
         slice.push_keyed(
             AgentKey::AddHost,
-            crate::TreeItemView::leaf(TreeLabel::new("+ Add Host…".to_owned(), true, false), 0),
+            hikit::tree_item::TreeItemView::leaf(TreeLabel::new("+ Add Host…".to_owned(), true, false), 0),
             store,
             ui,
         );
@@ -354,7 +362,7 @@ impl AgentsPanel {
     /// The row key of the session the panel's window has open, if the
     /// window shows a session at all.
     fn open_session_key(&self, store: &Store) -> Option<AgentKey> {
-        let open = crate::Windows::window_ref(store, self.window)?.current_session();
+        let open = crate::window::Windows::window_ref(store, self.window)?.current_session();
         open.names_session()
             .then(|| AgentKey::Session(open.host, open.session))
     }
@@ -466,7 +474,7 @@ impl AgentsPanel {
             AgentKey::Session(server, session) => {
                 self.list.inner_mut().content_mut().select_only(key.clone());
 
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
                     AppCommand::Dynamic(
                         self.window,
                         Arc::new(OpenSessionRow {
@@ -477,20 +485,20 @@ impl AgentsPanel {
                 )));
             }
             AgentKey::NewSession(server) => {
-                let command: Arc<dyn crate::DynamicCommand> =
-                    match crate::higent::AgentFlows::new_session_flow(store) {
+                let command: Arc<dyn crate::commands::DynamicCommand> =
+                    match crate::higent::flows::AgentFlows::new_session_flow(store) {
                         Some(flow) => flow(*server),
                         None => Arc::new(crate::new_session::OpenNewSession {
                             host: Some(*server),
                         }),
                     };
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
                     AppCommand::Dynamic(self.window, command),
                 )));
             }
             AgentKey::Note(_) => {}
             AgentKey::AddHost => {
-                let mut input = EditorView::input(600.0, store, ui, crate::fonts::source());
+                let mut input = EditorView::input(600.0, store, ui, hikit::fonts::source());
                 input.focus_text();
                 self.adding = Some(input);
             }
@@ -722,7 +730,7 @@ impl View for AgentsPanel {
                         return;
                     }
                     ListKeyCommand::Inner(inner) => {
-                        if let Some(index) = crate::tree_toggle(inner) {
+                        if let Some(index) = hikit::tree_item::tree_toggle(inner) {
                             self.activate(store, ui, index, fx);
                             return;
                         }
@@ -771,7 +779,7 @@ impl View for AgentsPanel {
                     return;
                 }
 
-                self.request = Some(ModalRequest::Perform(crate::shell_verb(
+                self.request = Some(ModalRequest::Perform(crate::app::shell_verb(
                     AppCommand::Dynamic(self.window, Arc::new(AddHost { url })),
                 )));
             }
@@ -794,13 +802,13 @@ impl View for AgentsPanel {
             let theme = ::editor::env::Themes::of(store);
             let ui_theme = theme.ui().clone();
             let header = ui_theme.panel.header_height;
-            let inset = crate::panel_inset(&ui_theme);
-            let title_font = crate::fonts::ui_font(ui, ui_theme.panel.title_size);
+            let inset = hikit::rows::panel_inset(&ui_theme);
+            let title_font = hikit::fonts::ui_font(ui, ui_theme.panel.title_size);
             let mut panel = container(arena, Size::new(PANEL_WIDTH, size.height));
             let shaper = imba::layout::TextShaper::of(ui);
             let backdrop = leaf::<AgentsCommand>(PANEL_WIDTH, size.height)
                 .paint_instead(move |_arena, canvas, rect| {
-                    crate::paint_panel_chrome(
+                    hikit::rows::paint_panel_chrome(
                         &shaper,
                         canvas,
                         rect,
@@ -828,13 +836,13 @@ impl View for AgentsPanel {
             panel.place(inset + 1.0, inset + header + PANEL_PAD, rows);
             if let Some(input) = &self.adding {
                 let search = theme.ui().search.clone();
-                let well_height = input.content_height() + 2.0 * crate::ui::space::S;
+                let well_height = input.content_height() + 2.0 * hikit::ui::space::S;
                 let well_width = (PANEL_WIDTH - inset * 2.0).max(1.0);
                 let well_y = size.height - inset - well_height;
                 let input_fill = search.input_fill;
                 let empty = input.document.text().byte_count() == 0;
                 let peeker = theme.ui().peeker.clone();
-                let placeholder_font = crate::fonts::ui_text_font(ui, peeker.hint_size);
+                let placeholder_font = hikit::fonts::ui_text_font(ui, peeker.hint_size);
                 let placeholder_dim = peeker.dim_text.0;
                 let hint_size = peeker.hint_size;
                 let well = leaf::<AgentsCommand>(well_width, well_height).paint_instead(
@@ -972,7 +980,7 @@ pub struct AddHost {
     pub url: String,
 }
 
-impl crate::DynamicCommand for AddHost {
+impl crate::commands::DynamicCommand for AddHost {
     fn id(&self) -> &'static str {
         "agent.add-host"
     }
@@ -983,12 +991,12 @@ impl crate::DynamicCommand for AddHost {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(flow) = crate::higent::AgentFlows::add_host_flow(store) else {
+        let Some(flow) = crate::higent::flows::AgentFlows::add_host_flow(store) else {
             eprintln!("[higent] no add-host capability installed — url dropped");
             return;
         };
@@ -1001,7 +1009,7 @@ impl crate::DynamicCommand for AddHost {
 
 pub struct ToggleAgentsView;
 
-impl crate::DynamicCommand for ToggleAgentsView {
+impl crate::commands::DynamicCommand for ToggleAgentsView {
     fn id(&self) -> &'static str {
         "agent.toggle-agents"
     }
@@ -1012,35 +1020,35 @@ impl crate::DynamicCommand for ToggleAgentsView {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.has_side_panel() {
             entity.roll_away_side_panel();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = AgentsPanel::open(store, &_app.ui_ctx(), window);
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_side_panel(store, Box::new(panel), fx),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "agent.toggle-agents",
         order: 2.0,
-        side: crate::ToolbarSide::Left,
+        side: crate::toolbar::ToolbarSide::Left,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);
@@ -1067,7 +1075,7 @@ pub fn toolbar_button() -> crate::ToolbarButton {
 
 pub struct ShareHost;
 
-impl crate::DynamicCommand for ShareHost {
+impl crate::commands::DynamicCommand for ShareHost {
     fn id(&self) -> &'static str {
         "host.share"
     }
@@ -1078,10 +1086,10 @@ impl crate::DynamicCommand for ShareHost {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let client = store
             .get::<ahp_wire::client::LocalHost>()
@@ -1102,7 +1110,7 @@ struct SharedHost {
     result: Result<String, String>,
 }
 
-impl crate::DynamicCommand for SharedHost {
+impl crate::commands::DynamicCommand for SharedHost {
     fn id(&self) -> &'static str {
         "host.shared"
     }
@@ -1113,10 +1121,10 @@ impl crate::DynamicCommand for SharedHost {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::WindowId,
-        _fx: &mut crate::AppFx<'_>,
+        _window: crate::window::WindowId,
+        _fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {
             Ok(url) => eprintln!("[himark] sharing at {url} (copied to clipboard)"),

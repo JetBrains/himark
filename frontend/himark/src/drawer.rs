@@ -1,11 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use hikit::rows::DRAWER_WIDTH;
+
 use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
-use crate::{ModalRequest, ModalView};
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
 
-pub use hikit::rows::DRAWER_WIDTH;
 
 const SLIDE_MS: f64 = 160.0;
 
@@ -172,7 +174,7 @@ impl ModalView for Drawer {
         }
     }
 
-    fn release_widgets(&mut self) -> Vec<(crate::WidgetOrigin, Box<dyn crate::DynPanelView>)> {
+    fn release_widgets(&mut self) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
         self.content.release_widgets()
     }
 

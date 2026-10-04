@@ -26,7 +26,7 @@ use ahp_wire::client::SessionUri;
 use ahp_wire::client::TurnId;
 
 use ahp_chat::cell::Cell;
-use himark::AppExt;
+use himark::app_ext::AppExt;
 
 use crate::{AppFonts, HimarkEngine, HIMARK_KEY_ENTER, HIMARK_MOD_COMMAND};
 
@@ -437,7 +437,7 @@ struct OpenScripted {
     session: SessionUri,
 }
 
-impl himark::DynamicCommand for OpenScripted {
+impl himark::commands::DynamicCommand for OpenScripted {
     fn id(&self) -> &'static str {
         "test.open-scripted-session"
     }
@@ -446,12 +446,12 @@ impl himark::DynamicCommand for OpenScripted {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        himark::higent::open_session(store, window, self.host, self.session.clone(), true, fx);
+        himark::higent::session::open::open_session(store, window, self.host, self.session.clone(), true, fx);
     }
 }
 
@@ -460,7 +460,7 @@ impl himark::DynamicCommand for OpenScripted {
 /// session shares the collection).
 fn chats_of_window(engine: &HimarkEngine) -> imba::store::Id<ahp_chat::chats::Chats> {
     let window = *engine.app.window_ids().first().expect("a window");
-    himark::Windows::window_ref(engine.app.store(), window)
+    himark::window::Windows::window_ref(engine.app.store(), window)
         .expect("the window entity")
         .state()
         .chats()
@@ -515,8 +515,8 @@ fn boot(snapshot: ChatState) -> (HimarkEngine, u64, Script) {
             ..ahp_wire::client::inert()
         },
     );
-    assert!(engine.app.perform_batch(vec![himark::AppCommand::Dynamic(
-        himark::WindowId::from_raw(window),
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+        himark::window::WindowId::from_raw(window),
         Arc::new(OpenScripted {
             host,
             session: SessionUri::new(SESSION),
@@ -580,8 +580,8 @@ fn a_scripted_stream_lands_whole() {
 fn two_windows_hold_one_conversation() {
     let (mut engine, window, script) = boot(chat_page(CHAT, Vec::new(), None));
     let second = engine.add_window();
-    assert!(engine.app.perform_batch(vec![himark::AppCommand::Dynamic(
-        himark::WindowId::from_raw(second),
+    assert!(engine.app.perform_batch(vec![himark::app::AppCommand::Dynamic(
+        himark::window::WindowId::from_raw(second),
         Arc::new(OpenScripted {
             host: script_host(&engine),
             session: SessionUri::new(SESSION),
@@ -912,8 +912,8 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     );
 }
 
-fn window_id(window: u64) -> himark::WindowId {
-    himark::WindowId::from_raw(window)
+fn window_id(window: u64) -> himark::window::WindowId {
+    himark::window::WindowId::from_raw(window)
 }
 
 /// HUNDREDS of file edits — the shape a real coding turn takes. Every

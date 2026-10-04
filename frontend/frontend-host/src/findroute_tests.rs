@@ -5,7 +5,7 @@ use ahp_locations::find::NativeFindHandler;
 use ahp_wire::fs::ClientDirectory;
 use ahp_wire::client as ahp;
 use editor::location::ResourceType;
-use himark::{FindEffect};
+use ahp_locations::FindEffect;
 use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 use std::sync::Arc;
@@ -28,12 +28,12 @@ pub(crate) fn wire_backend_host() -> (tempfile::TempDir, Arc<ahp_wire::wire::Wir
     (dir, seat)
 }
 
-/// A real `agent_host::Host` on its own runtime and thread, bound on a
+/// A real `agent_host::server::Host` on its own runtime and thread, bound on a
 /// unix socket under `dir`; answers the url to dial.
 pub(crate) fn bind_backend(dir: &std::path::Path, claude_binary: String) -> String {
     let socket = dir.join("backend.sock");
     let serving = socket.clone();
-    let config = agent_host::HostConfig {
+    let config = agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.join("data"),
         claude_binary,
@@ -51,7 +51,7 @@ pub(crate) fn bind_backend(dir: &std::path::Path, claude_binary: String) -> Stri
             .enable_all()
             .build()
             .expect("backend runtime");
-        let backend = agent_host::Host::new(config);
+        let backend = agent_host::server::Host::new(config);
         let _ = runtime.block_on(backend.bind(&serving));
     });
     let mut waited = 0;
@@ -200,7 +200,7 @@ fn search_locations_route_streams_and_cancels_over_the_wire() {
     let handler = ahp_locations::routes::RouteSearchLocations {
         directory: Arc::clone(&directory),
     };
-    let effect = himark::SearchLocationsEffect {
+    let effect = ahp_locations::SearchLocationsEffect {
         folders: vec![located("local", &files)],
         query: "conflation".to_owned(),
         regex: false,

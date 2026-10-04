@@ -77,7 +77,7 @@ fn take_feed(
 /// whose URI the route cannot place are dropped.
 fn resolve_batch(
     channel: &crate::LocationsChannel,
-    batch: himark_ahp_ext_types::LocationList,
+    batch: himark_ahp_ext_types::locations::LocationList,
 ) -> Vec<FoundLocation> {
     batch
         .locations
@@ -157,7 +157,7 @@ impl imba::command::DynamicCommand for AttachFeedStream {
 struct FeedBatch {
     wire: imba::store::Id<LocationsWire>,
     feed: FeedId,
-    batches: Result<Vec<himark_ahp_ext_types::LocationList>, String>,
+    batches: Result<Vec<himark_ahp_ext_types::locations::LocationList>, String>,
 }
 
 impl imba::command::DynamicOnceCommand for FeedBatch {

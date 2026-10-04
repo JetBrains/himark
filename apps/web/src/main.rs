@@ -19,8 +19,9 @@ mod app {
         os::raw::{c_char, c_double, c_int, c_void},
     };
 
-    use himark::AppExt;
-    use himark::{AppFonts, Application};
+    use himark::app_ext::AppExt;
+    use himark::app::AppFonts;
+    use himark::app::Application;
     use skia_safe::{
         gpu::{
             self, backend_render_targets, direct_contexts, gl, interfaces, surfaces, DirectContext,
@@ -289,11 +290,11 @@ mod app {
         /// Only presses in this canvas can start a selection drag.
         drag_point: Option<skia_safe::Point>,
         /// The one browser canvas is one himark window.
-        window: himark::WindowId,
+        window: himark::window::WindowId,
         context: DirectContext,
 
         #[cfg(target_feature = "atomics")]
-        arriving: std::sync::mpsc::Receiver<himark::AppCommand>,
+        arriving: std::sync::mpsc::Receiver<himark::app::AppCommand>,
         width: i32,
         height: i32,
         logical_width: f32,
@@ -309,17 +310,17 @@ mod app {
             himarkdown::register_handlers(&mut state);
             state.register_command(std::sync::Arc::new(palette::TogglePalette));
             state.register_command(std::sync::Arc::new(peeker::TogglePeeker));
-            state.register_command(std::sync::Arc::new(himark::OpenDiff));
-            state.register_row_minter(himark::pair_row_minter());
-            state.register_navigator(himark::CanvasNavigator);
-            state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
+            state.register_command(std::sync::Arc::new(himark::diff_pane::OpenDiff));
+            state.register_row_minter(canvas::diff_pane::pair_row_minter());
+            state.register_navigator(himark::diff_canvas::canvas::CanvasNavigator);
+            state.register_command(std::sync::Arc::new(demo::tree_demo::OpenTreeDemo));
 
-            himark::hicomments::install(&mut state.store_mut());
+            comments::install(&mut state.store_mut());
             state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
             state.register_toolbar_button(himark::hicomments::toolbar_button());
-            state.register_command(std::sync::Arc::new(himark::higent::ToggleAgentsView));
-            state.register_command(std::sync::Arc::new(himark::higent::NewChat));
-            state.register_toolbar_button(himark::higent::toolbar_button());
+            state.register_command(std::sync::Arc::new(himark::higent::drawer::ToggleAgentsView));
+            state.register_command(std::sync::Arc::new(himark::higent::session::new_chat::NewChat));
+            state.register_toolbar_button(himark::higent::drawer::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::hichanges::ToggleChangesView));
             state.register_command(std::sync::Arc::new(
                 himark::hichanges::RefetchChanges::default(),
@@ -367,8 +368,8 @@ mod app {
                         ),
                     ));
                     let host = state.register_client(client.clone());
-                    ahp_session::session::Agents::seed(&mut state.store_mut(), host, "This Host");
-                    ahp_session::session::Hosts::install_uris(
+                    ahp_session::session::agents::Agents::seed(&mut state.store_mut(), host, "This Host");
+                    ahp_session::session::state::Hosts::install_uris(
                         &mut state.store_mut(),
                         host,
                         std::sync::Arc::new(ahp_wire::uris::FileUris),
@@ -379,8 +380,8 @@ mod app {
                     let clients = Arc::new(ahp_wire::fs::ClientDirectory::new({
                         let posted = posted.clone();
                         Arc::new(move |subscription| {
-                            let _ = posted.send(himark::AppCommand::FileChanged(
-                                himark::Subscription(subscription),
+                            let _ = posted.send(himark::app::AppCommand::FileChanged(
+                                documents::watch::Subscription(subscription),
                             ));
                         })
                     }));
@@ -394,12 +395,12 @@ mod app {
                         Arc::new({
                             let posted = posted.clone();
                             move |verb| {
-                                let _ = posted.send(himark::AppCommand::Verb(verb));
+                                let _ = posted.send(himark::app::AppCommand::Verb(verb));
                             }
                         }),
                         Arc::clone(&resource_uris),
                     );
-                    himark::OpenDocuments::install_hook(
+                    documents::OpenDocuments::install_hook(
                         &mut state.store_mut(),
                         Arc::new(ahp_docsync::DocsyncHook {
                             channels: Arc::clone(&document_channels),
@@ -411,13 +412,13 @@ mod app {
                         &mut state.store_mut(),
                         Arc::new(ahp_docsync::SyncSink),
                     );
-                    state.register_handler::<himark::FetchDocumentEffect>(
+                    state.register_handler::<documents::FetchDocumentEffect>(
                         ahp_session::fsroute::RouteFetch {
                             uris: Arc::clone(&resource_uris),
                             directory: Arc::clone(&clients),
                         },
                     );
-                    state.register_handler::<himark::StoreDocumentEffect>(
+                    state.register_handler::<documents::StoreDocumentEffect>(
                         ahp_session::fsroute::RouteStore {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
@@ -425,41 +426,41 @@ mod app {
                         },
                     );
                     state.register_document_command(Arc::new(
-                        himark::SaveDocument::existing_files(),
+                        himark::save::SaveDocument::existing_files(),
                     ));
-                    state.register_handler::<himark::ListDirectoryEffect>(
+                    state.register_handler::<documents::ListDirectoryEffect>(
                         ahp_session::fsroute::RouteList {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
-                    state.register_handler::<himark::SubscribeEffect>(
+                    state.register_handler::<documents::watch::SubscribeEffect>(
                         ahp_session::fsroute::RouteSubscribe {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
-                    state.register_handler::<himark::UnsubscribeEffect>(
+                    state.register_handler::<documents::watch::UnsubscribeEffect>(
                         ahp_session::fsroute::RouteUnsubscribe {
                             directory: Arc::clone(&clients),
                         },
                     );
                     state.observe_file_changes();
 
-                    state.register_handler::<himark::FindEffect>(
+                    state.register_handler::<ahp_locations::FindEffect>(
                         ahp_locations::find::NativeFindHandler {
                             directory: Arc::clone(&clients),
                         },
                     );
 
-                    state.register_handler::<himark::LspCompletionEffect>(
+                    state.register_handler::<ahp_lsp::LspCompletionEffect>(
                         ahp_lsp::CompletionRoute {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
                         },
                     );
 
-                    state.register_handler::<himark::SearchLocationsEffect>(
+                    state.register_handler::<ahp_locations::SearchLocationsEffect>(
                         ahp_locations::routes::RouteSearchLocations {
                             directory: Arc::clone(&clients),
                         },
@@ -467,7 +468,7 @@ mod app {
                     state.register_command(Arc::new(himark::hisearch::ToggleSearchView));
                     state.register_command(Arc::new(himark::hisearch::FocusSearchView));
                     state.register_toolbar_button(himark::hisearch::toolbar_button());
-                    state.register_handler::<himark::LspLocationsEffect>(
+                    state.register_handler::<ahp_locations::LspLocationsEffect>(
                         ahp_locations::routes::RouteLspLocations {
                             directory: Arc::clone(&clients),
                             uris: Arc::clone(&resource_uris),
@@ -485,7 +486,7 @@ mod app {
             }
             let window = state.add_window();
 
-            state.perform_command(himark::AppCommand::Dynamic(
+            state.perform_command(himark::app::AppCommand::Dynamic(
                 window,
                 std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
             ));
@@ -570,7 +571,7 @@ mod app {
 
             let canvas = surface.canvas();
             canvas.save();
-            himark::Window::draw_with_size(
+            himark::window::Window::draw_with_size(
                 self.window,
                 &mut self.state,
                 canvas,
@@ -604,7 +605,7 @@ mod app {
     }
 
     fn app_fonts() -> AppFonts {
-        AppFonts::new(himark::fonts::source())
+        AppFonts::new(hikit::fonts::source())
     }
 
     unsafe fn install_callbacks(app: *mut c_void) {

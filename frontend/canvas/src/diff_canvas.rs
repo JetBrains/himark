@@ -11,7 +11,7 @@ use imba::store::Store;
 use changesview::hichanges::{empty_side, ChangeEntry, Changes, ChangesStatus};
 use editor::location::ResourceLocation;
 
-pub use changesview::hichanges::CanvasSource;
+use changesview::hichanges::CanvasSource;
 
 /// One canvas item: the pair the diff compares, normalized the way
 /// the tree rows activate today (absent sides become the empty

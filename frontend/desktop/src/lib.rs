@@ -1,16 +1,14 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-mod connector;
+pub mod connector;
 #[cfg(unix)]
-mod unix_transport;
-pub use connector::DesktopConnector;
+pub mod unix_transport;
 #[cfg(unix)]
-pub use unix_transport::UnixTransport;
 
 use std::time::{Duration, Instant};
 
-use himark::AppFonts;
+use himark::app::AppFonts;
 
 pub fn app_fonts() -> AppFonts {
     let started = Instant::now();

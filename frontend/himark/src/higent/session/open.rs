@@ -3,14 +3,17 @@
 
 use std::sync::Arc;
 
-use ahp_session::session::Agents;
+use ahp_session::session::agents::Agents;
 use ahp_wire::client::SessionChannel;
 use ahp_wire::client::ChatUri;
 use ahp_wire::client::SessionUri;
 use ahp_wire::client::HostId;
 use ahp_wire::effects::PollSessionEffect;
 use ahp_wire::effects::SubscribeSessionEffect;
-use crate::{AppCommand, DynamicCommand, SessionId, Windows};
+use crate::app::AppCommand;
+use crate::commands::DynamicCommand;
+use ahp_wire::SessionId;
+use crate::window::Windows;
 use ahp_types::actions::StateAction;
 use ahp_types::state::ChatSummary;
 use imba::effect::AnyEffect;
@@ -18,23 +21,23 @@ use imba::store::Store;
 
 pub fn open_session(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     server: HostId,
     session: SessionUri,
     open_chat: bool,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut crate::app::AppFx<'_>,
 ) {
     open_session_with(store, window, server, session, open_chat, None, fx)
 }
 
 pub fn open_session_with(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     server: HostId,
     session: SessionUri,
     open_chat: bool,
     initial_prompt: Option<String>,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut crate::app::AppFx<'_>,
 ) {
     let Some(client) = ahp_wire::client::Servers::client(store, server) else {
         eprintln!("[higent] open-session: unregistered server {server:?}");
@@ -78,10 +81,10 @@ impl DynamicCommand for OpenSubscribedSession {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let state = match &self.result {
             Ok(state) => state,
@@ -111,7 +114,7 @@ impl DynamicCommand for OpenSubscribedSession {
                 config: state.config.clone().map(Arc::new),
             },
         );
-        crate::switch_session(store, window, key.clone(), fx);
+        crate::app::switch_session(store, window, key.clone(), fx);
 
         fx.follow_up(AppCommand::Dynamic(
             window,
@@ -145,22 +148,22 @@ impl DynamicCommand for EnterSessionWork {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
         let key = SessionId {
             host: self.server,
             session: self.session.clone(),
         };
-        let folders = ahp_session::session::session_folders(store, &key);
+        let folders = ahp_session::session::folders::session_folders(store, &key);
         if let Some(state) = Windows::session_state(store, window) {
-            fx.scope(crate::AppCommand::Verb, |fx| {
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
                 ahp_changes::changes::ensure(store, state.changes_wire(), folders.clone(), fx)
             });
-            fx.scope(crate::AppCommand::Verb, |fx| {
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
                 for folder in folders {
                     ahp_comments::ensure(store, state.comments_wire(), &folder, fx);
                 }
@@ -202,10 +205,10 @@ impl DynamicCommand for EnterSessionWork {
 
 fn relaunch_session_poll(
     store: &Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     server: HostId,
     session: SessionUri,
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut crate::app::AppFx<'_>,
 ) {
     let Some(client) = ahp_wire::client::Servers::client(store, server) else {
         return;
@@ -242,10 +245,10 @@ impl DynamicCommand for ApplySessionActions {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         let key = SessionId {
             host: self.server,
@@ -275,10 +278,10 @@ impl DynamicCommand for ApplySessionActions {
 /// loses the rest of the batch for everyone.
 pub(crate) fn apply_channel_actions(
     store: &mut Store,
-    _window: crate::WindowId,
+    _window: crate::window::WindowId,
     key: &SessionId,
     actions: &[StateAction],
-    fx: &mut crate::AppFx<'_>,
+    fx: &mut crate::app::AppFx<'_>,
 ) {
     let mut channel = Agents::channel(store, key).unwrap_or_default();
     let mut folders_grew = false;
@@ -354,9 +357,9 @@ pub(crate) fn apply_channel_actions(
                 // The session channel's catalog names the session it
                 // serves; its session's DRIVER takes the entries.
                 if let Some(wire) =
-                    ahp_session::session::Hosts::state(store, key).map(|state| state.changes_wire())
+                    ahp_session::session::state::Hosts::state(store, key).map(|state| state.changes_wire())
                 {
-                    fx.scope(crate::AppCommand::Verb, |fx| {
+                    fx.scope(crate::app::AppCommand::Verb, |fx| {
                         ahp_changes::changes::adopt_session_catalog(
                             store, key, wire, changed, fx,
                         )
@@ -374,10 +377,10 @@ pub(crate) fn apply_channel_actions(
         // The channel names the session it serves; the session's
         // collection takes the folder.
         if let Some(wire) =
-            ahp_session::session::Hosts::state(store, key).map(|state| state.comments_wire())
+            ahp_session::session::state::Hosts::state(store, key).map(|state| state.comments_wire())
         {
-            let folders = ahp_session::session::session_folders(store, key);
-            fx.scope(crate::AppCommand::Verb, |fx| {
+            let folders = ahp_session::session::folders::session_folders(store, key);
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
                 for folder in folders {
                     ahp_comments::ensure(store, wire, &folder, fx);
                 }
@@ -425,10 +428,10 @@ impl DynamicCommand for OpenCreatedSession {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {
             Ok(session) => open_session_with(
@@ -461,10 +464,10 @@ impl DynamicCommand for OpenSessionRow {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         open_session(store, window, self.server, self.session.clone(), true, fx);
     }

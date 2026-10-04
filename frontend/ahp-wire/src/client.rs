@@ -9,9 +9,7 @@ use ahp_types::actions::StateAction;
 use ahp_types::common::Uri;
 use ahp_types::notifications::PartialSessionSummary;
 use ahp_types::state::{AgentInfo, ChatState, SessionState, SessionSummary};
-pub use himark_ahp_ext_types::{
-    DocumentApplied, DocumentState, OpenDocumentResult, SearchKind, SearchResult, SearchTarget,
-};
+use himark_ahp_ext_types::search::{SearchKind, SearchResult, SearchTarget};
 use imba::store::Store;
 
 #[derive(Clone, Debug)]
@@ -243,7 +241,7 @@ pub trait LocationsClient: Send + Sync + 'static {
     fn subscribe_locations(
         &self,
         channel: ChannelUri,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::locations::LocationList, String>> {
         let _ = channel;
         Box::pin(std::future::ready(Err("locations@1 not served".to_owned())))
     }
@@ -254,7 +252,7 @@ pub trait LocationsClient: Send + Sync + 'static {
     fn poll_locations(
         &self,
         channel: ChannelUri,
-    ) -> ClientFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::locations::LocationList>> {
         let _ = channel;
         Box::pin(std::future::pending())
     }
@@ -330,22 +328,22 @@ pub trait DocumentsClient: Send + Sync + 'static {
         session: SessionUri,
         uri: Option<ResourceUri>,
         text: Option<String>,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>>;
+    ) -> ClientFuture<Result<himark_ahp_ext_types::documents::OpenDocumentResult, String>>;
 
     fn subscribe_document(
         &self,
         channel: ChannelUri,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
+    ) -> ClientFuture<Result<himark_ahp_ext_types::documents::DocumentState, String>>;
 
     fn poll_document(
         &self,
         channel: ChannelUri,
-    ) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::documents::DocumentApplied>>;
 
     fn dispatch_document(
         &self,
         channel: &ChannelUri,
-        action: himark_ahp_ext_types::DocumentApplied,
+        action: himark_ahp_ext_types::documents::DocumentApplied,
     );
 
     /// documents@1 storeDocument: the host dumps the mirror — its own
@@ -860,10 +858,10 @@ pub fn inert() -> Client {
 
     impl DocumentsClient for Inert {
         unreached! {
-            open_document(session: SessionUri, uri: Option<ResourceUri>, text: Option<String>) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>>;
-            subscribe_document(channel: ChannelUri) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>>;
-            poll_document(channel: ChannelUri) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>>;
-            dispatch_document(channel: &ChannelUri, action: himark_ahp_ext_types::DocumentApplied) -> ();
+            open_document(session: SessionUri, uri: Option<ResourceUri>, text: Option<String>) -> ClientFuture<Result<himark_ahp_ext_types::documents::OpenDocumentResult, String>>;
+            subscribe_document(channel: ChannelUri) -> ClientFuture<Result<himark_ahp_ext_types::documents::DocumentState, String>>;
+            poll_document(channel: ChannelUri) -> ClientFuture<Vec<himark_ahp_ext_types::documents::DocumentApplied>>;
+            dispatch_document(channel: &ChannelUri, action: himark_ahp_ext_types::documents::DocumentApplied) -> ();
             unsubscribe_document(channel: &ChannelUri) -> ClientFuture<()>;
         }
     }

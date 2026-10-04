@@ -3,7 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{SearchKind, Uri};
+use crate::search::SearchKind;
+use crate::Uri;
 
 pub const LOCATIONS_EXTEND: &str = "locations/extend";
 

@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpStream, UnixStream};
 
-fn host_at(dir: &std::path::Path) -> Arc<agent_host::Host> {
-    agent_host::Host::new(agent_host::HostConfig {
+fn host_at(dir: &std::path::Path) -> Arc<agent_host::server::Host> {
+    agent_host::server::Host::new(agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.join("data"),
         claude_binary: agent_host::testing::fake_cli_command(dir),
@@ -23,7 +23,7 @@ fn host_at(dir: &std::path::Path) -> Arc<agent_host::Host> {
     })
 }
 
-async fn unix_request(host: &Arc<agent_host::Host>, method: &str, params: Value) -> Value {
+async fn unix_request(host: &Arc<agent_host::server::Host>, method: &str, params: Value) -> Value {
     let (ours, theirs) = UnixStream::pair().expect("socketpair");
     tokio::spawn(Arc::clone(host).serve_stream(theirs));
     let (read, mut write) = ours.into_split();

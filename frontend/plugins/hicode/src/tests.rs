@@ -4,7 +4,11 @@
 use super::*;
 
 use ::editor::test_document::plain_document;
-use himark::{AppCommand, AppExt, AppFonts, Application, OpenedDocument};
+use himark::app::AppCommand;
+use himark::app_ext::AppExt;
+use himark::app::AppFonts;
+use himark::app::Application;
+use himark::app::OpenedDocument;
 use std::sync::{mpsc, Arc};
 
 fn document_location(name: &str) -> ResourceLocation {
@@ -35,7 +39,7 @@ struct StubNavigation {
     built: Vec<(ResourceLocation, Document)>,
 }
 
-impl himark::EffectHandler<CodeNavigationEffect> for StubNavigation {
+impl imba::effect::EffectHandler<CodeNavigationEffect> for StubNavigation {
     async fn handle(&self, effect: CodeNavigationEffect) -> NavigationOutcome {
         NavigationOutcome {
             title: effect.title,
@@ -45,7 +49,7 @@ impl himark::EffectHandler<CodeNavigationEffect> for StubNavigation {
     }
 }
 
-fn app_with_located_document(source: &str) -> (Application, himark::WindowId) {
+fn app_with_located_document(source: &str) -> (Application, himark::window::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
     app.register_document_command(Arc::new(GoDefinition));
     app.register_document_command(Arc::new(GoReferences));
@@ -65,8 +69,8 @@ fn app_with_located_document(source: &str) -> (Application, himark::WindowId) {
     (app, window)
 }
 
-fn invoke(app: &mut Application, window: himark::WindowId, id: &str) {
-    let command = himark::palette_commands(app.store(), &app.ui_handle(), window)
+fn invoke(app: &mut Application, window: himark::window::WindowId, id: &str) {
+    let command = himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
         .into_iter()
         .find(|presentable| presentable.id == id)
         .expect("the located editor offers the command")
@@ -80,7 +84,7 @@ fn located_editors_offer_the_commands_on_the_focus_path() {
     app.register_document_command(Arc::new(GoDefinition));
     let window = app.add_window();
     let listed = |app: &Application| {
-        himark::palette_commands(app.store(), &app.ui_handle(), window)
+        himark::commands::palette_commands(app.store(), &app.ui_handle(), window)
             .iter()
             .any(|presentable| presentable.id == "code.definition")
     };
@@ -170,14 +174,14 @@ fn a_single_unopened_target_registers_its_prefetched_build() {
 /// canned stream snapshot, poll parks, everything else is
 /// unreachable in these tests.
 struct StreamSeat {
-    snapshot: himark_ahp_ext_types::LocationList,
+    snapshot: himark_ahp_ext_types::locations::LocationList,
 }
 
 impl ahp_wire::client::LocationsClient for StreamSeat {
     fn subscribe_locations(
         &self,
         _channel: ahp_wire::client::ChannelUri,
-    ) -> ahp_wire::client::ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+    ) -> ahp_wire::client::ClientFuture<Result<himark_ahp_ext_types::locations::LocationList, String>> {
         let snapshot = self.snapshot.clone();
         Box::pin(std::future::ready(Ok(snapshot)))
     }
@@ -190,29 +194,29 @@ impl ahp_wire::client::LocationsClient for StreamSeat {
 /// these in production).
 struct SeatSubscribeLocations;
 
-impl himark::EffectHandler<ahp_wire::effects::SubscribeLocationsEffect> for SeatSubscribeLocations {
+impl imba::effect::EffectHandler<ahp_wire::effects::SubscribeLocationsEffect> for SeatSubscribeLocations {
     async fn handle(
         &self,
         effect: ahp_wire::effects::SubscribeLocationsEffect,
-    ) -> Result<himark_ahp_ext_types::LocationList, String> {
+    ) -> Result<himark_ahp_ext_types::locations::LocationList, String> {
         effect.client.subscribe_locations(effect.channel).await
     }
 }
 
 struct SeatPollLocations;
 
-impl himark::EffectHandler<ahp_wire::effects::PollLocationsEffect> for SeatPollLocations {
+impl imba::effect::EffectHandler<ahp_wire::effects::PollLocationsEffect> for SeatPollLocations {
     async fn handle(
         &self,
         effect: ahp_wire::effects::PollLocationsEffect,
-    ) -> Vec<himark_ahp_ext_types::LocationList> {
+    ) -> Vec<himark_ahp_ext_types::locations::LocationList> {
         effect.client.poll_locations(effect.channel).await
     }
 }
 
 struct SeatUnsubscribeLocations;
 
-impl himark::EffectHandler<ahp_wire::effects::UnsubscribeLocationsEffect>
+impl imba::effect::EffectHandler<ahp_wire::effects::UnsubscribeLocationsEffect>
     for SeatUnsubscribeLocations
 {
     async fn handle(&self, effect: ahp_wire::effects::UnsubscribeLocationsEffect) {
@@ -221,15 +225,15 @@ impl himark::EffectHandler<ahp_wire::effects::UnsubscribeLocationsEffect>
 }
 
 struct StubLspLocations {
-    snapshot: himark_ahp_ext_types::LocationList,
+    snapshot: himark_ahp_ext_types::locations::LocationList,
 }
 
-impl himark::EffectHandler<himark::LspLocationsEffect> for StubLspLocations {
+impl imba::effect::EffectHandler<ahp_locations::LspLocationsEffect> for StubLspLocations {
     async fn handle(
         &self,
-        _effect: himark::LspLocationsEffect,
-    ) -> Result<himark::LocationsChannel, String> {
-        Ok(himark::LocationsChannel {
+        _effect: ahp_locations::LspLocationsEffect,
+    ) -> Result<ahp_locations::LocationsChannel, String> {
+        Ok(ahp_locations::LocationsChannel {
             client: Arc::new(StreamSeat {
                 snapshot: self.snapshot.clone(),
             }),
@@ -247,8 +251,8 @@ fn wire_location(
     line: u32,
     column: u32,
     context: &str,
-) -> himark_ahp_ext_types::Location {
-    himark_ahp_ext_types::Location {
+) -> himark_ahp_ext_types::locations::Location {
+    himark_ahp_ext_types::locations::Location {
         uri: uri.to_owned(),
         line,
         column,
@@ -264,8 +268,8 @@ fn references_stream_into_the_search_dock() {
     app.register_handler::<ahp_wire::effects::SubscribeLocationsEffect>(SeatSubscribeLocations);
     app.register_handler::<ahp_wire::effects::PollLocationsEffect>(SeatPollLocations);
     app.register_handler::<ahp_wire::effects::UnsubscribeLocationsEffect>(SeatUnsubscribeLocations);
-    app.register_handler::<himark::LspLocationsEffect>(StubLspLocations {
-        snapshot: himark_ahp_ext_types::LocationList {
+    app.register_handler::<ahp_locations::LspLocationsEffect>(StubLspLocations {
+        snapshot: himark_ahp_ext_types::locations::LocationList {
             locations: vec![
                 wire_location("test:/a.rs", 0, 5, "line one two"),
                 wire_location("test:/a.rs", 20, 5, "line one two"),
@@ -292,20 +296,20 @@ fn references_stream_into_the_search_dock() {
         while let Ok(command) = arriving.try_recv() {
             app.perform_batch(vec![command]);
         }
-        let _ = himark::Window::draw(window, &mut app, surface.canvas());
+        let _ = himark::window::Window::draw(window, &mut app, surface.canvas());
     }
 
-    let entity = himark::Windows::window_ref(app.store(), window).expect("the window");
+    let entity = himark::window::Windows::window_ref(app.store(), window).expect("the window");
     assert_eq!(
         entity.dock_owner(),
         Some(himark::hisearch::OWNER),
         "the Search tab activated"
     );
     let lists = entity.state().lists();
-    let feed = himark::locations::LocationLists::search(app.store(), lists)
+    let feed = locations::LocationLists::search(app.store(), lists)
         .expect("the session fronts the feed");
     let row =
-        himark::locations::LocationLists::row(app.store(), lists, feed).expect("the feed row");
+        locations::LocationLists::row(app.store(), lists, feed).expect("the feed row");
     assert_eq!(row.title, "References to `line`");
     assert!(row.done && !row.truncated);
     assert_eq!(row.locations.len(), 3, "the stream landed, resolved");

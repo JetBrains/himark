@@ -3,27 +3,31 @@
 
 use std::sync::Arc;
 
-use crate::{AppCommand, Application, DynamicCommand, ModalView, OpenedDocument};
+use crate::app::AppCommand;
+use crate::app::Application;
+use crate::commands::DynamicCommand;
+use hikit::modal::ModalView;
+use crate::app::OpenedDocument;
 use editor::document::Document;
 
 pub trait AppExt {
     fn perform_command(&mut self, command: AppCommand) -> bool;
 
-    fn perform_registered(&mut self, window: crate::WindowId, id: &str) -> bool;
+    fn perform_registered(&mut self, window: crate::window::WindowId, id: &str) -> bool;
 
     fn add_document(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         document: Document,
         name: String,
         primary: bool,
     ) -> bool;
 
-    fn new_scratch(&mut self, window: crate::WindowId) -> bool;
+    fn new_scratch(&mut self, window: crate::window::WindowId) -> bool;
 
     fn open_async(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         name: String,
         primary: bool,
         location: Option<editor::location::ResourceLocation>,
@@ -38,11 +42,11 @@ pub trait AppExt {
             + 'static,
     ) -> bool;
 
-    fn open_panel(&mut self, window: crate::WindowId, panel: Box<dyn crate::DynPanelView>) -> bool;
+    fn open_panel(&mut self, window: crate::window::WindowId, panel: Box<dyn hikit::panel::DynPanelView>) -> bool;
 
-    fn open_modal(&mut self, window: crate::WindowId, modal: Box<dyn ModalView>) -> bool;
+    fn open_modal(&mut self, window: crate::window::WindowId, modal: Box<dyn ModalView>) -> bool;
 
-    fn close_modal(&mut self, window: crate::WindowId) -> bool;
+    fn close_modal(&mut self, window: crate::window::WindowId) -> bool;
 
     fn register_command(&mut self, command: Arc<dyn DynamicCommand>) -> bool;
 
@@ -61,7 +65,7 @@ impl AppExt for Application {
         self.perform_batch(vec![command])
     }
 
-    fn perform_registered(&mut self, window: crate::WindowId, id: &str) -> bool {
+    fn perform_registered(&mut self, window: crate::window::WindowId, id: &str) -> bool {
         let store = self.window_store(window);
         let ui = self.ui_handle();
         let Some(command) = crate::commands::palette_commands(&store, &ui, window)
@@ -76,7 +80,7 @@ impl AppExt for Application {
 
     fn add_document(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         document: Document,
         name: String,
         primary: bool,
@@ -85,7 +89,7 @@ impl AppExt for Application {
         // consumes the id and never re-asks the window.
         let documents = {
             let store = self.window_store(window);
-            let Some(state) = crate::Windows::session_state(&store, window) else {
+            let Some(state) = crate::window::Windows::session_state(&store, window) else {
                 return false;
             };
             state.documents()
@@ -104,7 +108,7 @@ impl AppExt for Application {
         ))
     }
 
-    fn new_scratch(&mut self, window: crate::WindowId) -> bool {
+    fn new_scratch(&mut self, window: crate::window::WindowId) -> bool {
         self.add_document(
             window,
             crate::app::markdown_scratch(),
@@ -115,7 +119,7 @@ impl AppExt for Application {
 
     fn open_async(
         &mut self,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         name: String,
         primary: bool,
         location: Option<editor::location::ResourceLocation>,
@@ -138,15 +142,15 @@ impl AppExt for Application {
         })
     }
 
-    fn open_panel(&mut self, window: crate::WindowId, panel: Box<dyn crate::DynPanelView>) -> bool {
+    fn open_panel(&mut self, window: crate::window::WindowId, panel: Box<dyn hikit::panel::DynPanelView>) -> bool {
         self.perform_command(AppCommand::OpenPanel(window, panel))
     }
 
-    fn open_modal(&mut self, window: crate::WindowId, modal: Box<dyn ModalView>) -> bool {
+    fn open_modal(&mut self, window: crate::window::WindowId, modal: Box<dyn ModalView>) -> bool {
         self.perform_command(AppCommand::OpenModal(window, modal))
     }
 
-    fn close_modal(&mut self, window: crate::WindowId) -> bool {
+    fn close_modal(&mut self, window: crate::window::WindowId) -> bool {
         self.perform_command(AppCommand::CloseModal(window))
     }
 

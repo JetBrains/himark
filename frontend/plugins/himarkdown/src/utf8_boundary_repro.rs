@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::{EditorIdView};
+use documents::entity_view::EditorIdView;
 use editor::editor_view::EditorCommand;
 use editor::reparse::ReparseOutcome;
 use editor::reparse::ReparseWork;
 use imba::{store::Store, View};
 
-fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
-    static DOCS: std::sync::OnceLock<imba::store::Id<himark::OpenDocuments>> =
+fn test_docs() -> imba::store::Id<documents::OpenDocuments> {
+    static DOCS: std::sync::OnceLock<imba::store::Id<documents::OpenDocuments>> =
         std::sync::OnceLock::new();
     *DOCS.get_or_init(imba::store::Id::mint)
 }
@@ -85,7 +85,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
-    let document_id = himark::OpenDocuments::register(
+    let document_id = documents::OpenDocuments::register(
         &mut store,
         test_docs(),
         document.clone(),
@@ -149,7 +149,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
             }
             6 => {
                 if let Some(work) = ReparseWork::capture(
-                    himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
+                    documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
                         .expect("document"),
                     test_languages(),
                 ) {
@@ -161,7 +161,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let index = (rand() % pending_reparses.len() as u64) as usize;
                     let outcome = pending_reparses.swap_remove(index);
                     let mut document =
-                        himark::OpenDocuments::document_ref(&store, test_docs(), document_id)
+                        documents::OpenDocuments::document_ref(&store, test_docs(), document_id)
                             .expect("document")
                             .clone();
                     let mut local = imba::effect::Batch::new();
@@ -173,7 +173,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                         &test_theme(),
                         &mut local.effects(),
                     );
-                    himark::OpenDocuments::put_document(
+                    documents::OpenDocuments::put_document(
                         &mut store,
                         test_docs(),
                         document_id,

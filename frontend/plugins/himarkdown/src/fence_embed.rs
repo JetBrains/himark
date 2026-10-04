@@ -3,7 +3,9 @@
 
 use std::ops::Range;
 
-use himark::{EditorIdView, FetchDocumentEffect, OpenDocuments};
+use documents::entity_view::EditorIdView;
+use documents::FetchDocumentEffect;
+use documents::OpenDocuments;
 use editor::document::Document;
 use editor::enrich::EnrichCx;
 use editor::enrich::EnrichFuture;
@@ -79,11 +81,11 @@ pub struct EmbedView {
 }
 
 impl EmbedView {
-    pub fn documents(&self) -> imba::store::Id<himark::OpenDocuments> {
+    pub fn documents(&self) -> imba::store::Id<documents::OpenDocuments> {
         self.view.documents()
     }
 
-    pub fn document(&self) -> himark::DocumentId {
+    pub fn document(&self) -> documents::DocumentId {
         self.view.document()
     }
 
@@ -314,8 +316,8 @@ fn install(
     for (key, range, embed) in pending {
         // The embed's temp documents file under the location's owner
         // (synthetic embed locations fall to the local session).
-        let home = himark::SessionId::of_location(store, &embed.location);
-        let documents = ahp_session::session::Hosts::ensure_state(store, &home).documents();
+        let home = ahp_wire::SessionId::of_location(store, &embed.location);
+        let documents = ahp_session::session::state::Hosts::ensure_state(store, &home).documents();
         let (id, prebuilt, carried_window) =
             match OpenDocuments::by_location(store, documents, &embed.location) {
                 Some(id) => (id, None, None),

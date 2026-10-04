@@ -156,3 +156,23 @@ the AGENT behind it (the scripted CLI — `agent_host::testing`); seat
 handles that a test never calls use an inert stub local to the test.
 A mock host re-implements the protocol contract badly and lets the
 two drift; the real host is cheap to spin.
+
+## No `pub use`
+
+Re-exports are banned. A name lives in exactly one module, and every
+consumer writes that path — `imba::store::Store`, `text::text::Text`,
+`ahp_wire::client::SessionUri` — so a reader can follow any import to
+its declaration without hopping through re-export shims, and a grep
+for the path finds every user. What this replaces:
+
+- "convenience" root re-exports (`pub use module::Item` in lib.rs):
+  make the module `pub` and let callers name it;
+- migration shims (`pub use ::other_crate::*` keeping old paths
+  alive): repoint the consumers instead — the compiler finds them all;
+- re-exporting a private dependency's type: wrap it in a `pub type`
+  alias (see `imba::arena::ArenaBox`) so the dependency stays private
+  without a re-export.
+
+A plain private `use` is fine anywhere, including `use x::*` inside
+tests. `tools/purge_pub_use.py` does the mechanical part of removing
+a crate's re-exports and repointing the workspace.

@@ -1530,7 +1530,7 @@ impl DocumentsClient for WireHost {
         session: crate::client::SessionUri,
         uri: Option<crate::client::ResourceUri>,
         text: Option<String>,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::OpenDocumentResult, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::documents::OpenDocumentResult, String>> {
         let session = session.into_string();
         let uri = uri.map(crate::client::ResourceUri::into_string);
         Box::pin(self.run_ask(move |active| async move {
@@ -1538,7 +1538,7 @@ impl DocumentsClient for WireHost {
                 .client
                 .request(
                     "openDocument",
-                    himark_ahp_ext_types::OpenDocumentParams {
+                    himark_ahp_ext_types::documents::OpenDocumentParams {
                         channel: session,
                         uri,
                         text,
@@ -1552,7 +1552,7 @@ impl DocumentsClient for WireHost {
     fn subscribe_document(
         &self,
         channel: crate::client::ChannelUri,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::DocumentState, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::documents::DocumentState, String>> {
         let channel = channel.into_string();
         // The pump MUST advance `last_seen` (via `pump_channel`, like
         // every other channel) — a bespoke pump that ignored it left
@@ -1575,7 +1575,7 @@ impl DocumentsClient for WireHost {
     fn poll_document(
         &self,
         channel: crate::client::ChannelUri,
-    ) -> ClientFuture<Vec<himark_ahp_ext_types::DocumentApplied>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::documents::DocumentApplied>> {
         let channel = channel.into_string();
         let poll = self.poll_channel(channel);
         Box::pin(async move {
@@ -1583,7 +1583,7 @@ impl DocumentsClient for WireHost {
                 .into_iter()
                 .filter_map(|action| match action {
                     StateAction::Unknown(value)
-                        if value["type"] == himark_ahp_ext_types::DOCUMENT_APPLIED =>
+                        if value["type"] == himark_ahp_ext_types::documents::DOCUMENT_APPLIED =>
                     {
                         serde_json::from_value(value).ok()
                     }
@@ -1596,13 +1596,13 @@ impl DocumentsClient for WireHost {
     fn dispatch_document(
         &self,
         channel: &crate::client::ChannelUri,
-        action: himark_ahp_ext_types::DocumentApplied,
+        action: himark_ahp_ext_types::documents::DocumentApplied,
     ) {
         let channel = channel.as_str().to_owned();
         let _ = self.run_ask(move |active| async move {
             let mut value = serde_json::to_value(&action).expect("an action serializes");
             value["type"] =
-                serde_json::Value::String(himark_ahp_ext_types::DOCUMENT_APPLIED.to_owned());
+                serde_json::Value::String(himark_ahp_ext_types::documents::DOCUMENT_APPLIED.to_owned());
             active
                 .client
                 .dispatch(channel, StateAction::Unknown(value))
@@ -1624,7 +1624,7 @@ impl DocumentsClient for WireHost {
                 .client
                 .request(
                     "storeDocument",
-                    himark_ahp_ext_types::StoreDocumentParams { channel, uri },
+                    himark_ahp_ext_types::documents::StoreDocumentParams { channel, uri },
                 )
                 .await
                 .map_err(|error| format!("storeDocument: {error}"))?;
@@ -1971,10 +1971,10 @@ impl ResourceClient for WireHost {
         &self,
         session: crate::client::SessionUri,
         ask: crate::client::SearchAsk,
-    ) -> ClientFuture<Option<crate::client::SearchResult>> {
+    ) -> ClientFuture<Option<himark_ahp_ext_types::search::SearchResult>> {
         let session = session.into_string();
         let asked = self.run_ask(move |active| async move {
-            let params = himark_ahp_ext_types::SearchParams {
+            let params = himark_ahp_ext_types::search::SearchParams {
                 channel: session,
                 folders: Some(ask.folders),
                 query: ask.query,
@@ -1983,7 +1983,7 @@ impl ResourceClient for WireHost {
                 target: ask.target,
                 limit: Some(ask.limit as u64),
             };
-            let result: crate::client::SearchResult = active
+            let result: himark_ahp_ext_types::search::SearchResult = active
                 .client
                 .request("search", params)
                 .await
@@ -2002,7 +2002,7 @@ impl LocationsClient for WireHost {
     ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
-            let params = himark_ahp_ext_types::SearchLocationsParams {
+            let params = himark_ahp_ext_types::locations::SearchLocationsParams {
                 channel: session,
                 folders: Some(ask.folders),
                 query: ask.query,
@@ -2010,7 +2010,7 @@ impl LocationsClient for WireHost {
                 case_sensitive: ask.case_sensitive,
                 limit: Some(ask.limit as u64),
             };
-            let result: himark_ahp_ext_types::LocationsChannelResult = active
+            let result: himark_ahp_ext_types::locations::LocationsChannelResult = active
                 .client
                 .request("searchLocations", params)
                 .await
@@ -2027,12 +2027,12 @@ impl LocationsClient for WireHost {
     ) -> ClientFuture<Result<crate::client::ChannelUri, String>> {
         let session = session.into_string();
         Box::pin(self.run_ask(move |active| async move {
-            let params = himark_ahp_ext_types::LspLocationsParams {
+            let params = himark_ahp_ext_types::locations::LspLocationsParams {
                 channel: session,
                 method,
                 params,
             };
-            let result: himark_ahp_ext_types::LocationsChannelResult = active
+            let result: himark_ahp_ext_types::locations::LocationsChannelResult = active
                 .client
                 .request("lsp/locations", params)
                 .await
@@ -2044,7 +2044,7 @@ impl LocationsClient for WireHost {
     fn subscribe_locations(
         &self,
         channel: crate::client::ChannelUri,
-    ) -> ClientFuture<Result<himark_ahp_ext_types::LocationList, String>> {
+    ) -> ClientFuture<Result<himark_ahp_ext_types::locations::LocationList, String>> {
         let channel = channel.into_string();
         let last_seen = Arc::clone(&self.last_seen);
         let tag = self.tag.clone();
@@ -2061,7 +2061,7 @@ impl LocationsClient for WireHost {
     fn poll_locations(
         &self,
         channel: crate::client::ChannelUri,
-    ) -> ClientFuture<Vec<himark_ahp_ext_types::LocationList>> {
+    ) -> ClientFuture<Vec<himark_ahp_ext_types::locations::LocationList>> {
         let channel = channel.into_string();
         let polled = self.poll_channel(channel);
         Box::pin(async move {
@@ -2070,7 +2070,7 @@ impl LocationsClient for WireHost {
                 .into_iter()
                 .filter_map(|action| match action {
                     StateAction::Unknown(value)
-                        if value["type"] == himark_ahp_ext_types::LOCATIONS_EXTEND =>
+                        if value["type"] == himark_ahp_ext_types::locations::LOCATIONS_EXTEND =>
                     {
                         serde_json::from_value(value).ok()
                     }

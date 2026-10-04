@@ -1,16 +1,19 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use hikit::combo::ComboProbe;
+use ::ahp_chat::session_toolbar::enum_options;
+
 use std::sync::Arc;
 
 use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key}, leaf::leaf, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
-use crate::combo::{Combo, ComboCommand, ComboItem, ComboOption};
+use hikit::combo::{Combo, ComboCommand, ComboItem, ComboOption};
 use ahp_wire::effects::ConnectServerEffect;
 use ahp_wire::client::HostId;
-use ahp_session::session::HostStatus;
-use ahp_session::session::Hosts;
+use ahp_session::session::state::HostStatus;
+use ahp_session::session::state::Hosts;
 use ahp_wire::effects::ListSessionsEffect;
 use ahp_wire::effects::ResolveSessionConfigEffect;
 use ahp_wire::client::RootInfo;
@@ -105,7 +108,7 @@ impl ComboItem for ModelOption {
 }
 
 pub struct PickFoldersEffect {
-    pub window: crate::WindowId,
+    pub window: crate::window::WindowId,
 }
 
 impl std::fmt::Display for PickFoldersEffect {
@@ -137,14 +140,14 @@ struct Prefill {
 }
 
 impl Prefill {
-    fn of_session(store: &Store, session: &crate::SessionId) -> Self {
+    fn of_session(store: &Store, session: &ahp_wire::SessionId) -> Self {
         let mut prefill = Self::default();
-        if let Some(folder) = ahp_session::session::session_folders(store, session).first() {
+        if let Some(folder) = ahp_session::session::folders::session_folders(store, session).first() {
             if let Some(uris) = Hosts::uris(store, session.host) {
                 prefill.dir = Some(uris.uri_of(folder).as_str().to_owned());
             }
         }
-        let Some(channel) = ahp_session::session::Agents::channel(store, session) else {
+        let Some(channel) = ahp_session::session::agents::Agents::channel(store, session) else {
             return prefill;
         };
         if !channel.provider.is_empty() {
@@ -178,9 +181,9 @@ impl Prefill {
 /// arrival from a superseded or dismantled composer is ignored.
 #[derive(Clone, Default)]
 pub struct ComposerFeed {
-    pub resolving: rpds::HashTrieMapSync<crate::WindowId, (u64, CancellationToken)>,
+    pub resolving: rpds::HashTrieMapSync<crate::window::WindowId, (u64, CancellationToken)>,
     pub resolved: rpds::HashTrieMapSync<
-        crate::WindowId,
+        crate::window::WindowId,
         (
             u64,
             HostId,
@@ -196,7 +199,7 @@ fn store_fingerprint(store: &Store) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
 
-    ahp_session::session::Hosts::generation(store).hash(&mut hasher);
+    ahp_session::session::state::Hosts::generation(store).hash(&mut hasher);
     store
         .get::<ComposerFeed>()
         .map(|feed| feed.generation)
@@ -210,7 +213,6 @@ fn store_fingerprint(store: &Store) -> u64 {
     hasher.finish()
 }
 
-pub use hikit::combo::ComboProbe;
 
 #[doc(hidden)]
 pub struct NewSessionProbe {
@@ -264,7 +266,7 @@ impl std::fmt::Display for NewSessionCommand {
 
 #[derive(Clone)]
 pub struct NewSessionView {
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     input: ScrollView<EditorView>,
     host: Combo,
 
@@ -282,7 +284,7 @@ pub struct NewSessionView {
     synced: u64,
 
     asked: Option<String>,
-    request: Option<crate::PanelRequest>,
+    request: Option<hikit::panel::PanelRequest>,
 
     cell_spans: Arc<Vec<std::sync::atomic::AtomicU64>>,
 }
@@ -293,7 +295,7 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
             editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
             &[],
         );
-    let fonts = crate::fonts::source()();
+    let fonts = hikit::fonts::source()();
     let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("What are you building?", &fonts, &theme);
@@ -304,14 +306,14 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<E
 }
 
 impl NewSessionView {
-    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx, window: crate::WindowId) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx, window: crate::window::WindowId) -> Self {
         Self::for_host(store, ui, window, None)
     }
 
     pub fn for_host(
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         host: Option<HostId>,
     ) -> Self {
         Self::seeded(store, ui, window, host, Prefill::default())
@@ -320,7 +322,7 @@ impl NewSessionView {
     fn seeded(
         store: &imba::store::Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         host: Option<HostId>,
         prefill: Prefill,
     ) -> Self {
@@ -489,7 +491,7 @@ impl NewSessionView {
     fn refresh_models(&mut self, store: &Store, ui: &UiCtx) {
         let options = self
             .picked_host()
-            .and_then(|id| ahp_session::session::Hosts::host_ref(store, id))
+            .and_then(|id| ahp_session::session::state::Hosts::host_ref(store, id))
             .map(|host| {
                 let mut options = Vec::new();
                 for agent in &host.agents {
@@ -700,7 +702,6 @@ impl NewSessionView {
     }
 }
 
-pub(crate) use ::ahp_chat::session_toolbar::enum_options;
 
 fn host_status(combo: &Combo) -> Option<HostStatus> {
     let value = combo.value()?;
@@ -728,8 +729,8 @@ fn host_folders(store: &Store, host: HostId) -> Vec<editor::location::ResourceLo
             sessions.push(session.clone());
         }
         for session in sessions {
-            let key = crate::SessionId { host: id, session };
-            for folder in ahp_session::session::session_folders(store, &key) {
+            let key = ahp_wire::SessionId { host: id, session };
+            for folder in ahp_session::session::folders::session_folders(store, &key) {
                 if seen.insert(folder.clone()) {
                     folders.push(folder);
                 }
@@ -1019,8 +1020,8 @@ impl View for NewSessionView {
             let row_top = size.height - controls_h + 1.0;
             let row_h = controls_h - 1.0;
 
-            let key_font = crate::fonts::ui_text_font(ui, theme.peeker.hint_size * 0.95);
-            let caps_font = crate::fonts::ui_font(ui, theme.combo.label_size * 1.1);
+            let key_font = hikit::fonts::ui_text_font(ui, theme.peeker.hint_size * 0.95);
+            let caps_font = hikit::fonts::ui_font(ui, theme.combo.label_size * 1.1);
             let pad = theme.combo.pad;
             let start_label = "START SESSION";
             let start_width = start_label
@@ -1086,7 +1087,7 @@ impl View for NewSessionView {
             }
             root.place(0.0, row_top, row);
 
-            let hint_font = crate::fonts::ui_text_font(ui, theme.peeker.hint_size);
+            let hint_font = hikit::fonts::ui_text_font(ui, theme.peeker.hint_size);
 
             let ready = self.ready();
             let accent = theme.chat.accent.0;
@@ -1357,16 +1358,16 @@ impl<'a, Inner: Widget<'a, NewSessionCommand>> Widget<'a, NewSessionCommand>
 }
 
 #[derive(Clone, Default)]
-pub struct Composers(rpds::HashTrieMapSync<crate::WindowId, NewSessionView>);
+pub struct Composers(rpds::HashTrieMapSync<crate::window::WindowId, NewSessionView>);
 
 impl Composers {
-    pub fn put(store: &mut Store, window: crate::WindowId, composer: NewSessionView) {
+    pub fn put(store: &mut Store, window: crate::window::WindowId, composer: NewSessionView) {
         store.update::<Composers>(|composers| {
             composers.0.insert_mut(window, composer);
         });
     }
 
-    pub fn take(store: &mut Store, window: crate::WindowId) -> Option<NewSessionView> {
+    pub fn take(store: &mut Store, window: crate::window::WindowId) -> Option<NewSessionView> {
         let composer = store
             .get::<Composers>()
             .and_then(|composers| composers.0.get(&window).cloned());
@@ -1378,13 +1379,13 @@ impl Composers {
         composer
     }
 
-    pub fn composer_ref(store: &Store, window: crate::WindowId) -> Option<&NewSessionView> {
+    pub fn composer_ref(store: &Store, window: crate::window::WindowId) -> Option<&NewSessionView> {
         store
             .get::<Composers>()
             .and_then(|composers| composers.0.get(&window))
     }
 
-    pub fn remove(store: &mut Store, window: crate::WindowId) {
+    pub fn remove(store: &mut Store, window: crate::window::WindowId) {
         store.update::<Composers>(|composers| {
             composers.0.remove_mut(&window);
         });
@@ -1392,13 +1393,13 @@ impl Composers {
 }
 
 pub struct ComposerPane {
-    window: crate::WindowId,
+    window: crate::window::WindowId,
 
-    request: Option<crate::PanelRequest>,
+    request: Option<hikit::panel::PanelRequest>,
 }
 
 impl ComposerPane {
-    pub fn new(window: crate::WindowId) -> Self {
+    pub fn new(window: crate::window::WindowId) -> Self {
         Self {
             window,
             request: None,
@@ -1406,7 +1407,7 @@ impl ComposerPane {
     }
 
     #[doc(hidden)]
-    pub fn window(&self) -> crate::WindowId {
+    pub fn window(&self) -> crate::window::WindowId {
         self.window
     }
 }
@@ -1473,8 +1474,8 @@ impl View for ComposerPane {
     }
 }
 
-impl crate::PanelView for ComposerPane {
-    type Place = crate::NoPlace;
+impl hikit::panel::PanelView for ComposerPane {
+    type Place = hikit::navigation::NoPlace;
 
     fn title(&self, _store: &Store) -> String {
         "New session".to_owned()
@@ -1488,7 +1489,7 @@ impl crate::PanelView for ComposerPane {
         });
     }
 
-    fn take_request(&mut self) -> Option<crate::PanelRequest> {
+    fn take_request(&mut self) -> Option<hikit::panel::PanelRequest> {
         self.request.take()
     }
 
@@ -1503,7 +1504,7 @@ impl crate::PanelView for ComposerPane {
 
 struct PickSessionFolder;
 
-impl crate::DynamicCommand for PickSessionFolder {
+impl crate::commands::DynamicCommand for PickSessionFolder {
     fn id(&self) -> &'static str {
         "session.pick-folder"
     }
@@ -1514,9 +1515,9 @@ impl crate::DynamicCommand for PickSessionFolder {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         fx.push(
@@ -1531,7 +1532,7 @@ struct FoldersPicked {
     locations: Vec<editor::location::ResourceLocation>,
 }
 
-impl crate::DynamicCommand for FoldersPicked {
+impl crate::commands::DynamicCommand for FoldersPicked {
     fn id(&self) -> &'static str {
         "session.folders-picked"
     }
@@ -1542,9 +1543,9 @@ impl crate::DynamicCommand for FoldersPicked {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        _window: crate::WindowId,
+        _window: crate::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         store.put(PendingFolderPick(Arc::new(self.locations.clone())));
@@ -1558,7 +1559,7 @@ struct StartComposedSession {
     prompt: String,
 }
 
-impl crate::DynamicCommand for StartComposedSession {
+impl crate::commands::DynamicCommand for StartComposedSession {
     fn id(&self) -> &'static str {
         "session.start-composed"
     }
@@ -1569,9 +1570,9 @@ impl crate::DynamicCommand for StartComposedSession {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
@@ -1580,9 +1581,9 @@ impl crate::DynamicCommand for StartComposedSession {
             return;
         };
 
-        if let Some(mut entity) = crate::Windows::window(store, window) {
+        if let Some(mut entity) = crate::window::Windows::window(store, window) {
             let _ = entity.close_focused_widget(store, ui, window, fx);
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
         }
         let server = self.server;
         let prompt = self.prompt.clone();
@@ -1665,7 +1666,7 @@ impl crate::DynamicCommand for StartComposedSession {
                     }),
                 );
             }
-            crate::higent::open_session_with(
+            crate::higent::session::open::open_session_with(
                 store,
                 window,
                 server,
@@ -1685,7 +1686,7 @@ impl crate::DynamicCommand for StartComposedSession {
             .map(move |result| {
                 crate::app::AppCommand::Dynamic(
                     window,
-                    Arc::new(crate::higent::OpenCreatedSession {
+                    Arc::new(crate::higent::session::open::OpenCreatedSession {
                         server,
                         open_chat: true,
                         initial_prompt: Some(prompt.clone()),
@@ -1704,7 +1705,7 @@ struct ComposerAsk {
     config: serde_json::Map<String, serde_json::Value>,
 }
 
-impl crate::DynamicCommand for ComposerAsk {
+impl crate::commands::DynamicCommand for ComposerAsk {
     fn id(&self) -> &'static str {
         "session.compose-ask"
     }
@@ -1715,9 +1716,9 @@ impl crate::DynamicCommand for ComposerAsk {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let host = self.host;
@@ -1729,7 +1730,7 @@ impl crate::DynamicCommand for ComposerAsk {
             matches!(entry.status, HostStatus::Connected | HostStatus::Connecting)
         });
         if !settled {
-            ahp_session::session::Agents::set_status(store, host, HostStatus::Connecting);
+            ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Connecting);
             fx.push(
                 AnyEffect::new(ConnectServerEffect {
                     client: client.session.clone(),
@@ -1789,7 +1790,7 @@ struct HostReady {
     result: Result<RootInfo, String>,
 }
 
-impl crate::DynamicCommand for HostReady {
+impl crate::commands::DynamicCommand for HostReady {
     fn id(&self) -> &'static str {
         "session.compose-host-ready"
     }
@@ -1800,20 +1801,20 @@ impl crate::DynamicCommand for HostReady {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let host = self.host;
         match &self.result {
             Ok(info) => {
-                ahp_session::session::Agents::set_agents(store, host, info.agents.clone());
-                ahp_session::session::Agents::set_status(store, host, HostStatus::Connected);
+                ahp_session::session::agents::Agents::set_agents(store, host, info.agents.clone());
+                ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Connected);
                 list_sessions(store, window, host, None, fx);
             }
             Err(error) => {
-                ahp_session::session::Agents::set_status(store, host, HostStatus::Failed(error.clone()));
+                ahp_session::session::agents::Agents::set_status(store, host, HostStatus::Failed(error.clone()));
             }
         }
         bump_feed(store);
@@ -1822,7 +1823,7 @@ impl crate::DynamicCommand for HostReady {
 
 fn list_sessions(
     store: &Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     cursor: Option<String>,
     fx: &mut crate::app::AppFx<'_>,
@@ -1842,7 +1843,7 @@ struct SessionsListed {
     result: Result<SessionsPage, String>,
 }
 
-impl crate::DynamicCommand for SessionsListed {
+impl crate::commands::DynamicCommand for SessionsListed {
     fn id(&self) -> &'static str {
         "session.compose-sessions-listed"
     }
@@ -1853,14 +1854,14 @@ impl crate::DynamicCommand for SessionsListed {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         match &self.result {
             Ok(page) => {
-                ahp_session::session::Agents::add_sessions(
+                ahp_session::session::agents::Agents::add_sessions(
                     store,
                     self.host,
                     page.sessions.clone(),
@@ -1882,7 +1883,7 @@ struct ConfigResolved {
     result: Result<ahp_types::commands::ResolveSessionConfigResult, String>,
 }
 
-impl crate::DynamicCommand for ConfigResolved {
+impl crate::commands::DynamicCommand for ConfigResolved {
     fn id(&self) -> &'static str {
         "session.compose-config-resolved"
     }
@@ -1893,9 +1894,9 @@ impl crate::DynamicCommand for ConfigResolved {
 
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         // A cancellation can lose the race with delivery: a request from a
@@ -1928,13 +1929,13 @@ fn bump_feed(store: &mut Store) {
 /// disposing it kills the host's chats and feeds mid-conversation.
 fn dispose_placeholder(
     store: &Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     session: ahp_wire::client::SessionUri,
     fx: &mut crate::app::AppFx<'_>,
 ) {
-    let live = crate::Windows::list(store).into_iter().any(|id| {
-        crate::Windows::window_ref(store, id).is_some_and(|entity| {
+    let live = crate::window::Windows::list(store).into_iter().any(|id| {
+        crate::window::Windows::window_ref(store, id).is_some_and(|entity| {
             let current = entity.current_session();
             current.host == host && current.session == session
         })
@@ -1960,7 +1961,7 @@ fn dispose_placeholder(
 }
 
 #[derive(Clone, Default)]
-pub struct Placeholders(rpds::HashTrieMapSync<crate::WindowId, Placeholder>);
+pub struct Placeholders(rpds::HashTrieMapSync<crate::window::WindowId, Placeholder>);
 
 #[derive(Clone)]
 struct Placeholder {
@@ -1978,7 +1979,7 @@ impl Placeholders {
     #[doc(hidden)]
     pub fn session_of(
         store: &Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
     ) -> Option<(HostId, String, ahp_wire::client::SessionUri)> {
         let rows = store.get::<Placeholders>()?;
         let row = rows.0.get(&window)?;
@@ -1988,7 +1989,7 @@ impl Placeholders {
 
 fn ensure_placeholder(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     provider: Option<String>,
     working_directory: Option<String>,
@@ -2057,7 +2058,7 @@ fn ensure_placeholder(
 
 fn create_placeholder(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     provider: String,
     working_directory: Option<String>,
@@ -2105,7 +2106,7 @@ fn create_placeholder(
 
 fn grant_folder(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     session: ahp_wire::client::SessionUri,
     directory: String,
@@ -2121,7 +2122,7 @@ fn grant_folder(
         }
     });
 
-    crate::AppRequests::push(
+    crate::commands::AppRequests::push(
         store,
         Arc::new(GrantPlaceholderFolder {
             host,
@@ -2135,7 +2136,7 @@ fn grant_folder(
 
 fn revoke_folder(
     store: &mut Store,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     host: HostId,
     session: ahp_wire::client::SessionUri,
     directory: String,
@@ -2154,7 +2155,7 @@ fn revoke_folder(
         }
     });
 
-    crate::AppRequests::push(
+    crate::commands::AppRequests::push(
         store,
         Arc::new(GrantPlaceholderFolder {
             host,
@@ -2174,7 +2175,7 @@ struct GrantPlaceholderFolder {
     revoke: bool,
 }
 
-impl crate::DynamicCommand for GrantPlaceholderFolder {
+impl crate::commands::DynamicCommand for GrantPlaceholderFolder {
     fn id(&self) -> &'static str {
         "session.placeholder-grant"
     }
@@ -2183,9 +2184,9 @@ impl crate::DynamicCommand for GrantPlaceholderFolder {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let _ = self.host;
@@ -2231,7 +2232,7 @@ struct PlaceholderCreated {
     result: Result<ahp_wire::client::SessionUri, String>,
 }
 
-impl crate::DynamicCommand for PlaceholderCreated {
+impl crate::commands::DynamicCommand for PlaceholderCreated {
     fn id(&self) -> &'static str {
         "session.placeholder-created"
     }
@@ -2240,9 +2241,9 @@ impl crate::DynamicCommand for PlaceholderCreated {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let session = match &self.result {
@@ -2277,24 +2278,24 @@ impl crate::DynamicCommand for PlaceholderCreated {
                 rows.0.insert_mut(window, row);
             }
         });
-        let key = crate::SessionId {
+        let key = ahp_wire::SessionId {
             host: self.host,
             session: session.clone(),
         };
-        if let Some(mut entity) = crate::Windows::window(store, window) {
+        if let Some(mut entity) = crate::window::Windows::window(store, window) {
             let previous = entity.current_session();
             if entity.rekey_current(key.clone()) {
                 // The name changed, the ids did not: the window keeps
                 // its bundle and the catalog row moves under the new key.
-                ahp_session::session::Hosts::rekey_state(store, &previous, &key);
-                crate::Windows::put(store, window, entity);
+                ahp_session::session::state::Hosts::rekey_state(store, &previous, &key);
+                crate::window::Windows::put(store, window, entity);
             } else {
-                crate::Windows::put(store, window, entity);
-                crate::switch_session(store, window, key, fx);
+                crate::window::Windows::put(store, window, entity);
+                crate::app::switch_session(store, window, key, fx);
             }
         }
 
-        crate::higent::open_session(store, window, self.host, session, false, fx);
+        crate::higent::session::open::open_session(store, window, self.host, session, false, fx);
         if let Some(directory) = row.pending {
             let host = self.host;
             ensure_placeholder(
@@ -2314,7 +2315,7 @@ struct PlaceholderDispatched {
     result: Result<(), String>,
 }
 
-impl crate::DynamicCommand for PlaceholderDispatched {
+impl crate::commands::DynamicCommand for PlaceholderDispatched {
     fn id(&self) -> &'static str {
         "session.placeholder-dispatched"
     }
@@ -2323,9 +2324,9 @@ impl crate::DynamicCommand for PlaceholderDispatched {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         _store: &mut Store,
-        _window: crate::WindowId,
+        _window: crate::window::WindowId,
         _fx: &mut crate::app::AppFx<'_>,
     ) {
         if let Err(error) = &self.result {
@@ -2338,7 +2339,7 @@ pub struct OpenNewSession {
     pub host: Option<HostId>,
 }
 
-impl crate::DynamicCommand for OpenNewSession {
+impl crate::commands::DynamicCommand for OpenNewSession {
     fn id(&self) -> &'static str {
         "session.new"
     }
@@ -2349,13 +2350,13 @@ impl crate::DynamicCommand for OpenNewSession {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(entity) = crate::Windows::window_ref(store, window) else {
+        let Some(entity) = crate::window::Windows::window_ref(store, window) else {
             return;
         };
         let current = entity.current_session();
@@ -2381,22 +2382,22 @@ impl crate::DynamicCommand for OpenNewSession {
             NewSessionView::seeded(store, ui, window, host, prefill),
         );
         if current.names_session() {
-            let scratch = crate::SessionId::mint_scratch(store);
-            crate::switch_session(store, window, scratch, fx);
-            fx.follow_up(crate::AppCommand::Dynamic(window, Arc::new(MountComposer)));
+            let scratch = ahp_wire::SessionId::mint_scratch(store);
+            crate::app::switch_session(store, window, scratch, fx);
+            fx.follow_up(crate::app::AppCommand::Dynamic(window, Arc::new(MountComposer)));
             return;
         }
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         let _ = entity.open_panel(store, ui, Box::new(ComposerPane::new(window)), fx);
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
 struct MountComposer;
 
-impl crate::DynamicCommand for MountComposer {
+impl crate::commands::DynamicCommand for MountComposer {
     fn id(&self) -> &'static str {
         "session.mount-composer"
     }
@@ -2407,17 +2408,17 @@ impl crate::DynamicCommand for MountComposer {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut crate::app::AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         let _ = entity.open_panel(store, ui, Box::new(ComposerPane::new(window)), fx);
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
@@ -2448,12 +2449,12 @@ impl<'a> imba::layout::Layout<'a, std::convert::Infallible> for ModelOptionRow<'
             option.label.clone()
         };
         let font = if heading {
-            crate::fonts::ui_font(ui, chrome.label_size)
+            hikit::fonts::ui_font(ui, chrome.label_size)
         } else {
-            crate::fonts::ui_text_font(ui, chrome.menu_row_size)
+            hikit::fonts::ui_text_font(ui, chrome.menu_row_size)
         };
         let text_width = if heading {
-            crate::combo::tracked_width(ui, &font, &label)
+            hikit::combo::tracked_width(ui, &font, &label)
         } else {
             imba::layout::text_advance(ui, &font, &label)
         };

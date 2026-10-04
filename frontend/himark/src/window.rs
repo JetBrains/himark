@@ -6,8 +6,15 @@ use skia_safe::Size;
 
 use imba::scroll::ScrollView;
 
-use crate::{app::{panel_width, AppFx}, Application};
-use crate::{EditorIdView, ModalRequest, ModalView, Panel, Workbench, WorkbenchCommand, WorkbenchNode};
+use crate::{app::{panel_width, AppFx}};
+use crate::app::Application;
+use documents::entity_view::EditorIdView;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use crate::workbench_node::Panel;
+use crate::workbench::Workbench;
+use crate::workbench::WorkbenchCommand;
+use crate::workbench_node::WorkbenchNode;
 
 #[derive(Clone)]
 pub enum WindowCommand {
@@ -754,8 +761,8 @@ impl Windows {
     /// (placeholder and local-host rekeys move the key, never the ids).
     pub fn session_state(
         store: &Store,
-        window: crate::WindowId,
-    ) -> Option<ahp_session::session::SessionState> {
+        window: crate::window::WindowId,
+    ) -> Option<ahp_session::session::state::SessionState> {
         Some(Self::window_ref(store, window)?.state().clone())
     }
 
@@ -776,7 +783,7 @@ impl Windows {
         store.get::<Windows>()?.entries.get(&id)
     }
 
-    pub(crate) fn any_window_holds(store: &imba::store::Store, session: &crate::SessionId) -> bool {
+    pub(crate) fn any_window_holds(store: &imba::store::Store, session: &ahp_wire::SessionId) -> bool {
         store.get::<Windows>().is_some_and(|windows| {
             windows
                 .entries
@@ -802,7 +809,7 @@ impl Windows {
         self.entries.keys().min_by_key(|id| id.0).copied()
     }
 
-    pub(crate) fn session_of(&self, id: WindowId) -> Option<crate::SessionId> {
+    pub(crate) fn session_of(&self, id: WindowId) -> Option<ahp_wire::SessionId> {
         self.entries.get(&id).map(|window| window.current_session())
     }
 
@@ -853,16 +860,16 @@ pub struct Window {
 
     viewport_size: Size,
 
-    current_session: crate::SessionId,
+    current_session: ahp_wire::SessionId,
 
     /// The id bundle of `current_session`'s collections, wired at
     /// session ENTRY (creation and switch). Rekeys change the
     /// `SessionId`, never this: the ids are the stable currency.
-    state: ahp_session::session::SessionState,
+    state: ahp_session::session::state::SessionState,
 
     dock_width: f32,
 
-    workbenches: rpds::HashTrieMapSync<crate::SessionId, Workbench>,
+    workbenches: rpds::HashTrieMapSync<ahp_wire::SessionId, Workbench>,
 
     focused_location: Option<editor::location::ResourceLocation>,
     focus_generation: u64,
@@ -886,8 +893,8 @@ impl Window {
 
     pub(crate) fn new(
         root: WorkbenchNode,
-        workspace: crate::SessionId,
-        state: ahp_session::session::SessionState,
+        workspace: ahp_wire::SessionId,
+        state: ahp_session::session::state::SessionState,
     ) -> Self {
         Self {
             content: Layers {
@@ -907,27 +914,27 @@ impl Window {
         }
     }
 
-    pub fn current_session(&self) -> crate::SessionId {
+    pub fn current_session(&self) -> ahp_wire::SessionId {
         self.current_session.clone()
     }
 
     /// The window holds a session while it shows it or keeps its
     /// stashed workbench — the grip that spares the session from the
     /// all-empty sweep.
-    pub(crate) fn holds_session(&self, session: &crate::SessionId) -> bool {
+    pub(crate) fn holds_session(&self, session: &ahp_wire::SessionId) -> bool {
         self.current_session == *session || self.workbenches.get(session).is_some()
     }
 
-    pub fn state(&self) -> &ahp_session::session::SessionState {
+    pub fn state(&self) -> &ahp_session::session::state::SessionState {
         &self.state
     }
 
     #[must_use]
     pub(crate) fn switch_to(
         &mut self,
-        workspace: crate::SessionId,
-        state: ahp_session::session::SessionState,
-    ) -> Option<crate::SessionId> {
+        workspace: ahp_wire::SessionId,
+        state: ahp_session::session::state::SessionState,
+    ) -> Option<ahp_wire::SessionId> {
         if workspace == self.current_session {
             return None;
         }
@@ -951,7 +958,7 @@ impl Window {
 
     /// A rekey changes the session's NAME, not its identity: the
     /// session bundle stays — the caller moves the catalog row with it.
-    pub(crate) fn rekey_current(&mut self, workspace: crate::SessionId) -> bool {
+    pub(crate) fn rekey_current(&mut self, workspace: ahp_wire::SessionId) -> bool {
         if workspace == self.current_session {
             return true;
         }
@@ -962,13 +969,13 @@ impl Window {
         true
     }
 
-    pub(crate) fn install_fresh(&mut self, previous: crate::SessionId, fresh: Workbench) {
+    pub(crate) fn install_fresh(&mut self, previous: ahp_wire::SessionId, fresh: Workbench) {
         let stashed = std::mem::replace(&mut self.content.workbench, fresh);
         self.workbenches.insert_mut(previous, stashed);
     }
 
     pub(crate) fn adopt_local_host(&mut self, host: ahp_wire::client::HostId) -> bool {
-        let is_stale_local = |id: &crate::SessionId| {
+        let is_stale_local = |id: &ahp_wire::SessionId| {
             id.session.as_str() == host_discovery::LOCAL_FS_SESSION && id.host != host
         };
         let mut changed = false;
@@ -976,7 +983,7 @@ impl Window {
             self.current_session.host = host;
             changed = true;
         }
-        let stale: Vec<crate::SessionId> = self
+        let stale: Vec<ahp_wire::SessionId> = self
             .workbenches
             .iter()
             .map(|(id, _)| id.clone())
@@ -996,7 +1003,7 @@ impl Window {
 
     pub(crate) fn stashed_workbenches(
         &self,
-    ) -> impl Iterator<Item = (&crate::SessionId, &Workbench)> + '_ {
+    ) -> impl Iterator<Item = (&ahp_wire::SessionId, &Workbench)> + '_ {
         self.workbenches.iter()
     }
 
@@ -1108,7 +1115,7 @@ impl Window {
             return false;
         }
         let theme = ::editor::env::Themes::of(store);
-        crate::chat_column_engaged(self.viewport_size().width, &theme.ui().window)
+        crate::workbench::chat_column_engaged(self.viewport_size().width, &theme.ui().window)
     }
 
     /// `chat.composer` (the toolbar bubble, ⌘I): the chat is ALWAYS
@@ -1128,7 +1135,7 @@ impl Window {
             };
             let Some(pane) = crate::pane_rows::mint(
                 store,
-                &crate::PaneRow::new(crate::ChatRow(chats, chat.clone())),
+                &hikit::pane_row::PaneRow::new(ahp_chat::chats::ChatRow(chats, chat.clone())),
             ) else {
                 return;
             };
@@ -1152,7 +1159,7 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        pane: Box<dyn crate::DynPanelView>,
+        pane: Box<dyn hikit::panel::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
         if self.has_modal() {
@@ -1168,8 +1175,8 @@ impl Window {
                 self.workbench_mut().dock_chat(Panel::Plugin(pane));
             }
         }
-        if let Some(crate::ChatRow(chats, chat)) =
-            row.as_ref().and_then(|row| row.row::<crate::ChatRow>())
+        if let Some(ahp_chat::chats::ChatRow(chats, chat)) =
+            row.as_ref().and_then(|row| row.row::<ahp_chat::chats::ChatRow>())
         {
             boot_chat_feed(store, *chats, chat.clone());
         }
@@ -1344,7 +1351,7 @@ impl Window {
             .and_then(|view| view.take_request())
     }
 
-    pub(crate) fn take_panel_request(&mut self) -> Option<crate::PanelRequest> {
+    pub(crate) fn take_panel_request(&mut self) -> Option<hikit::panel::PanelRequest> {
         let mut request = None;
         if let Some(chat) = self.workbench_mut().chat_mut() {
             if let Panel::Plugin(view) = chat.panel_mut() {
@@ -1368,20 +1375,20 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) {
         let _ = (store, ui, window, fx);
         self.content.focus = LayerFocus::Content;
     }
 
-    pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::Panel) {
+    pub(crate) fn replace_focused_panel(&mut self, store: &mut Store, panel: crate::workbench_node::Panel) {
         let displaced = self.workbench_mut().root.replace_focused_panel(panel);
 
         self.stash_displaced(store, displaced);
     }
 
-    pub fn focused_document_id(&self) -> Option<crate::DocumentId> {
+    pub fn focused_document_id(&self) -> Option<documents::DocumentId> {
         Some(
             self.workbench()
                 .root
@@ -1401,14 +1408,14 @@ impl Window {
 
     pub fn unmount_all_widgets(
         &mut self,
-    ) -> Vec<(crate::WidgetOrigin, Box<dyn crate::DynPanelView>)> {
+    ) -> Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)> {
         let mut widgets = Vec::new();
         let mut index = 0usize;
         self.workbench_mut().root.for_each_pane_mut(&mut |panel| {
             if matches!(panel, Panel::Plugin(_)) && !panel.is_blank() {
                 let taken = std::mem::replace(panel, Panel::blank());
                 if let Panel::Plugin(widget) = taken {
-                    widgets.push((crate::WidgetOrigin::Pane(index), widget));
+                    widgets.push((hikit::panel::WidgetOrigin::Pane(index), widget));
                 }
             }
             index += 1;
@@ -1418,11 +1425,11 @@ impl Window {
 
     pub fn restore_widgets(
         &mut self,
-        widgets: Vec<(crate::WidgetOrigin, Box<dyn crate::DynPanelView>)>,
+        widgets: Vec<(hikit::panel::WidgetOrigin, Box<dyn hikit::panel::DynPanelView>)>,
     ) {
         for (origin, widget) in widgets {
             match origin {
-                crate::WidgetOrigin::Pane(target) => {
+                hikit::panel::WidgetOrigin::Pane(target) => {
                     let mut index = 0usize;
                     let mut widget = Some(widget);
                     self.workbench_mut().root.for_each_pane_mut(&mut |panel| {
@@ -1434,12 +1441,12 @@ impl Window {
                         index += 1;
                     });
                 }
-                crate::WidgetOrigin::Row => {}
+                hikit::panel::WidgetOrigin::Row => {}
             }
         }
     }
 
-    pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn crate::DynPanelView>) {
+    pub fn mount_focused(&mut self, store: &mut Store, widget: Box<dyn hikit::panel::DynPanelView>) {
         self.workbench_mut().yield_chat();
         let displaced = self
             .workbench_mut()
@@ -1452,14 +1459,14 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        panel: Box<dyn crate::DynPanelView>,
+        panel: Box<dyn hikit::panel::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
         // A chat pane has ONE home, whatever road carried it here:
         // the workbench's chat slot, never a tree leaf.
         if panel
             .pane_row()
-            .is_some_and(|row| row.row::<crate::ChatRow>().is_some())
+            .is_some_and(|row| row.row::<ahp_chat::chats::ChatRow>().is_some())
         {
             return self.open_chat_panel(store, ui, panel, fx);
         }
@@ -1524,7 +1531,7 @@ impl Window {
         let width = panel_width(store, self.workbench().root.focused_pane())
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
         let documents = self.state.documents();
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
         };
@@ -1532,9 +1539,9 @@ impl Window {
         let theme = ::editor::env::Themes::of(store);
         let new_editor = fx.scope(
             move |command| {
-                crate::AppCommand::at(
+                crate::app::AppCommand::at(
                     documents,
-                    crate::DocumentsCommand::Editor(document_id, command),
+                    documents::DocumentsCommand::Editor(document_id, command),
                 )
             },
             |fx| {
@@ -1559,9 +1566,9 @@ impl Window {
             new_editor,
         );
 
-        crate::OpenDocuments::put_document(store, documents, document_id, document);
+        documents::OpenDocuments::put_document(store, documents, document_id, document);
 
-        let pane_height = crate::OpenDocuments::document_ref(store, documents, document_id)
+        let pane_height = documents::OpenDocuments::document_ref(store, documents, document_id)
             .and_then(|document| document.viewport(entity.editor()))
             .map(|band| band.end - band.start);
         let pane_width = width + ::editor::env::Themes::of(store).ui().editor_gutter.width;
@@ -1583,8 +1590,8 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
-        target: &crate::NavigationLocation,
+        window: crate::window::WindowId,
+        target: &hikit::navigation::NavigationLocation,
         fx: &mut AppFx<'_>,
     ) -> bool {
         if let Some(walk) = self.workbench_mut().root.focused_slot_mut().pending.take() {
@@ -1612,7 +1619,7 @@ impl Window {
                 return true;
             }
         }
-        let Some(panel) = crate::Navigators::navigate(store, ui, window, target, fx) else {
+        let Some(panel) = crate::navigation::Navigators::navigate(store, ui, window, target, fx) else {
             return false;
         };
         self.install_panel(store, ui, panel, fx);
@@ -1624,8 +1631,8 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
-        target: &crate::NavigationLocation,
+        window: crate::window::WindowId,
+        target: &hikit::navigation::NavigationLocation,
         step: crate::workbench_node::WalkStep,
         fx: &mut AppFx<'_>,
     ) -> bool {
@@ -1637,7 +1644,7 @@ impl Window {
         };
         let panel = match taken_in_place {
             true => None,
-            false => match crate::Navigators::navigate(store, ui, window, target, fx) {
+            false => match crate::navigation::Navigators::navigate(store, ui, window, target, fx) {
                 Some(panel) => Some(panel),
                 None => return false,
             },
@@ -1674,7 +1681,7 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
         if self.has_modal() {
@@ -1694,8 +1701,8 @@ impl Window {
         match closed {
             Panel::Editor(pane) => {
                 let view = *pane.content();
-                crate::close_editor(store, view.documents(), view.document(), view.editor());
-                crate::OpenDocuments::remove_on_close(
+                documents::lifecycle::close_editor(store, view.documents(), view.document(), view.editor());
+                documents::OpenDocuments::remove_on_close(
                     store,
                     view.documents(),
                     ui,
@@ -1721,7 +1728,7 @@ impl Window {
         if let Some(target) = target {
             use crate::workbench_node::{PendingWalk, WalkStep};
             if !self.complete_walk(store, ui, window, &target, WalkStep::Replace, fx)
-                && target.place::<crate::EditorPlace>().is_some()
+                && target.place::<hikit::navigation::EditorPlace>().is_some()
             {
                 let slot = self.workbench_mut().root.focused_slot_mut();
                 slot.pending = Some(PendingWalk {
@@ -1739,11 +1746,11 @@ impl Window {
 
     fn touch_recent(
         store: &mut Store,
-        recents: imba::store::Id<crate::RecentLocations>,
-        target: &crate::NavigationLocation,
+        recents: imba::store::Id<ahp_chat::recents::RecentLocations>,
+        target: &hikit::navigation::NavigationLocation,
     ) {
-        if let Some(place) = target.place::<crate::EditorPlace>() {
-            crate::RecentLocations::touch(store, recents, &place.location);
+        if let Some(place) = target.place::<hikit::navigation::EditorPlace>() {
+            ahp_chat::recents::RecentLocations::touch(store, recents, &place.location);
         }
     }
 
@@ -1775,7 +1782,7 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
         self.navigate_history(store, ui, window, fx, true)
@@ -1785,7 +1792,7 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
         self.navigate_history(store, ui, window, fx, false)
@@ -1795,7 +1802,7 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         fx: &mut AppFx<'_>,
         back: bool,
     ) -> bool {
@@ -1819,7 +1826,7 @@ impl Window {
             return true;
         }
 
-        match target.place::<crate::EditorPlace>().is_some() {
+        match target.place::<hikit::navigation::EditorPlace>().is_some() {
             true => {
                 let slot = self.workbench_mut().root.focused_slot_mut();
                 slot.pending = Some(PendingWalk { target, step });
@@ -1839,8 +1846,8 @@ impl Window {
     ) {
         if let Panel::Editor(pane) = &displaced {
             let view = *pane.content();
-            crate::close_editor(store, view.documents(), view.document(), view.editor());
-            crate::OpenDocuments::remove_if_editorless(
+            documents::lifecycle::close_editor(store, view.documents(), view.document(), view.editor());
+            documents::OpenDocuments::remove_if_editorless(
                 store,
                 view.documents(),
                 ui,
@@ -1855,9 +1862,9 @@ impl Window {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
-        document_id: crate::DocumentId,
-        target: Option<std::ops::Range<crate::LineCol>>,
+        window: crate::window::WindowId,
+        document_id: documents::DocumentId,
+        target: Option<std::ops::Range<documents::text_ext::LineCol>>,
         focus: bool,
         fx: &mut AppFx<'_>,
     ) {
@@ -1868,12 +1875,12 @@ impl Window {
         // the chat.
         self.workbench_mut().yield_chat();
         let documents = self.state.documents();
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, document_id)
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, document_id)
         else {
             return;
         };
 
-        if let Some(location) = crate::OpenDocuments::location(store, documents, document_id) {
+        if let Some(location) = documents::OpenDocuments::location(store, documents, document_id) {
             if target.is_none() {
                 let walk_waits = self
                     .workbench()
@@ -1883,7 +1890,7 @@ impl Window {
                     .as_ref()
                     .is_some_and(|walk| {
                         walk.target
-                            .place::<crate::EditorPlace>()
+                            .place::<hikit::navigation::EditorPlace>()
                             .is_some_and(|place| place.location == location)
                     });
                 let already_shown =
@@ -1892,7 +1899,7 @@ impl Window {
                         .focused_pane()
                         .editor()
                         .is_some_and(|pane| {
-                            crate::OpenDocuments::location(
+                            documents::OpenDocuments::location(
                                 store,
                                 pane.content().documents(),
                                 pane.content().document(),
@@ -1901,16 +1908,16 @@ impl Window {
                                 == Some(&location)
                         });
                 if already_shown && !walk_waits {
-                    crate::OpenDocuments::touch(store, documents, document_id);
+                    documents::OpenDocuments::touch(store, documents, document_id);
                     return;
                 }
             }
             let caret = target
                 .as_ref()
-                .map(|target| crate::offset_at(&mut document.text().view(), target.start) as u32)
+                .map(|target| documents::text_ext::offset_at(&mut document.text().view(), target.start) as u32)
                 .unwrap_or(0);
             drop(document);
-            let place = crate::EditorPlace {
+            let place = hikit::navigation::EditorPlace {
                 location,
                 caret,
                 scroll_y: 0.0,
@@ -1919,13 +1926,13 @@ impl Window {
                 store,
                 ui,
                 window,
-                &crate::NavigationLocation::new(place),
+                &hikit::navigation::NavigationLocation::new(place),
                 fx,
             ) {
                 return;
             }
             let Some(document_again) =
-                crate::OpenDocuments::document(store, documents, document_id)
+                documents::OpenDocuments::document(store, documents, document_id)
             else {
                 return;
             };
@@ -1936,12 +1943,12 @@ impl Window {
         let documents = self.state.documents();
         let editor_id = fx.scope(
             move |command| {
-                crate::AppCommand::at(
+                crate::app::AppCommand::at(
                     documents,
-                    crate::DocumentsCommand::Editor(document_id, command),
+                    documents::DocumentsCommand::Editor(document_id, command),
                 )
             },
-            |fx| crate::mount_editor(store, ui, &mut document, width, target, fx),
+            |fx| documents::lifecycle::mount_editor(store, ui, &mut document, width, target, fx),
         );
         documents::scroll_stripes::enable_scroll_stripes(
             store,
@@ -1950,8 +1957,8 @@ impl Window {
             &mut document,
             editor_id,
         );
-        crate::OpenDocuments::put_document(store, documents, document_id, document);
-        crate::OpenDocuments::touch(store, documents, document_id);
+        documents::OpenDocuments::put_document(store, documents, document_id, document);
+        documents::OpenDocuments::touch(store, documents, document_id);
         self.replace_focused_panel(
             store,
             Panel::Editor(ScrollView::new(
@@ -1995,7 +2002,7 @@ impl View for Window {
 impl Window {
     pub(crate) fn sync_viewport(window: WindowId, app: &mut Application, size: Size) {
         if app.viewport_stale(window, size) {
-            app.perform_batch(vec![crate::AppCommand::ViewportResized(window, size)]);
+            app.perform_batch(vec![crate::app::AppCommand::ViewportResized(window, size)]);
         }
     }
 
@@ -2019,7 +2026,7 @@ impl Window {
 
         if trace_resize_enabled() {
             let entity =
-                crate::Windows::window_ref(app.store(), window).expect("the window entity");
+                crate::window::Windows::window_ref(app.store(), window).expect("the window entity");
             if entity.viewport_stale(size) {
                 let current = entity.viewport_size;
                 eprintln!(
@@ -2060,10 +2067,10 @@ fn trace_resize_enabled() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_TRACE_RESIZE").is_some())
 }
 
-fn same_editor_location(a: &crate::NavigationLocation, b: &crate::NavigationLocation) -> bool {
+fn same_editor_location(a: &hikit::navigation::NavigationLocation, b: &hikit::navigation::NavigationLocation) -> bool {
     match (
-        a.place::<crate::EditorPlace>(),
-        b.place::<crate::EditorPlace>(),
+        a.place::<hikit::navigation::EditorPlace>(),
+        b.place::<hikit::navigation::EditorPlace>(),
     ) {
         (Some(a), Some(b)) => a.location == b.location,
         _ => false,

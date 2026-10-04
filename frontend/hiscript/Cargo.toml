@@ -9,6 +9,8 @@ default = ["plugin"]
 plugin = ["dep:himark", "dep:operation", "dep:imba", "dep:myersdiff"]
 
 [dependencies]
+changesview = { path = "../changesview" }
+documents = { path = "../documents" }
 ahp-wire = { path = "../ahp-wire" }
 ahp-session = { path = "../ahp-session" }
 ahp-types = "0.9"

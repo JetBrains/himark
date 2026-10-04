@@ -1,16 +1,17 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use ::ahp_chat::recents::RecentLocations;
+use hikit::{navigation::EditorPlace, navigation::NavigationLocation, navigation::Navigator, navigation::NoPlace, navigation::Place};
+
 use std::any::TypeId;
 use std::sync::Arc;
 
 use imba::store::Store;
 
 use crate::app::AppFx;
-use crate::Panel;
+use crate::workbench_node::Panel;
 
-pub use ::ahp_chat::recents::RecentLocations;
-pub use hikit::{navigation::EditorPlace, navigation::NavigationLocation, navigation::Navigator, navigation::NoPlace, navigation::Place};
 
 /// The WINDOWED navigators — the editor and diff OPEN roads, which
 /// resolve the window's session and land panes into it. Shell-side by
@@ -22,7 +23,7 @@ pub trait WindowedNavigator: Send + Sync + 'static {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         place: &Self::Place,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel>;
@@ -32,7 +33,7 @@ type ErasedNavigate = Arc<
     dyn Fn(
             &mut Store,
             &imba::ui::UiCtx,
-            crate::WindowId,
+            crate::window::WindowId,
             &NavigationLocation,
             &mut AppFx<'_>,
         ) -> Option<Panel>
@@ -51,7 +52,7 @@ impl Navigators {
         let navigator = Arc::new(navigator);
         let erased: ErasedNavigate = Arc::new(move |store, ui, _window, location, fx| {
             let place = location.place::<N::Place>()?;
-            fx.scope(crate::AppCommand::Verb, |fx| {
+            fx.scope(crate::app::AppCommand::Verb, |fx| {
                 navigator.navigate(store, ui, place, fx)
             })
             .map(Panel::Plugin)
@@ -81,7 +82,7 @@ impl Navigators {
     pub fn navigate(
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         location: &NavigationLocation,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel> {
@@ -103,15 +104,15 @@ impl WindowedNavigator for EditorNavigator {
         &self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        window: crate::WindowId,
+        window: crate::window::WindowId,
         place: &EditorPlace,
         fx: &mut AppFx<'_>,
     ) -> Option<Panel> {
-        let documents = crate::Windows::session_state(store, window)
+        let documents = crate::window::Windows::session_state(store, window)
             .expect("navigation runs in a window with a session")
             .documents();
-        let Some(id) = crate::OpenDocuments::by_location(store, documents, &place.location) else {
-            fx.push(crate::open_by_location_effect(
+        let Some(id) = documents::OpenDocuments::by_location(store, documents, &place.location) else {
+            fx.push(crate::workspace::open_by_location_effect(
                 window,
                 documents,
                 place.location.clone(),
@@ -121,18 +122,18 @@ impl WindowedNavigator for EditorNavigator {
             ));
             return None;
         };
-        let mut document = crate::OpenDocuments::document(store, documents, id)?;
-        let width = crate::Windows::window_ref(store, window)
+        let mut document = documents::OpenDocuments::document(store, documents, id)?;
+        let width = crate::window::Windows::window_ref(store, window)
             .and_then(|entity| {
                 crate::app::panel_width(store, entity.workbench().root.focused_pane())
             })
             .unwrap_or_else(|| crate::app::fallback_pane_editor_width(store));
         let editor = fx.scope(
             move |command| {
-                crate::AppCommand::at(documents, crate::DocumentsCommand::Editor(id, command))
+                crate::app::AppCommand::at(documents, documents::DocumentsCommand::Editor(id, command))
             },
             |fx| {
-                let editor = crate::mount_editor(store, ui, &mut document, width, None, fx);
+                let editor = documents::lifecycle::mount_editor(store, ui, &mut document, width, None, fx);
 
                 if place.caret > 0 {
                     let fonts = ::editor::env::Fonts::of(store)();
@@ -149,12 +150,12 @@ impl WindowedNavigator for EditorNavigator {
             &mut document,
             editor,
         );
-        crate::OpenDocuments::put_document(store, documents, id, document);
-        crate::OpenDocuments::touch(store, documents, id);
+        documents::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::touch(store, documents, id);
         let mut pane = imba::scroll::ScrollView::new(
-            crate::EditorIdView::new(documents, id, editor).with_gutter(),
+            documents::entity_view::EditorIdView::new(documents, id, editor).with_gutter(),
         );
         pane.set_scroll_y(place.scroll_y);
-        Some(crate::Panel::Editor(pane))
+        Some(crate::workbench_node::Panel::Editor(pane))
     }
 }

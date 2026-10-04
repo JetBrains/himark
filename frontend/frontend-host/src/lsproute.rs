@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use ahp_wire::fs::ClientDirectory;
 use hicode::{CodeTarget, FindDefinitionEffect};
-use himark::{LineCol};
+use documents::text_ext::LineCol;
 use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};

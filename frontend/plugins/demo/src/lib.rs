@@ -1,11 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-mod inlay;
-mod tree_demo;
+pub mod inlay;
+pub mod tree_demo;
 
-pub use inlay::add_badges;
-pub use tree_demo::{OpenTreeDemo, TreeDemoView};
 
 use editor::document::Document;
 
@@ -21,7 +19,7 @@ pub fn monster_document(
     let (mut document, blocks) =
         himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), store, ui, fonts, theme);
 
-    add_badges(&mut document, &blocks, store, ui, fonts, theme);
+    inlay::add_badges(&mut document, &blocks, store, ui, fonts, theme);
     document
 }
 
@@ -44,7 +42,7 @@ pub fn demo_location(name: &str) -> editor::location::ResourceLocation {
 
 pub struct OpenMonsterDemo;
 
-impl himark::DynamicCommand for OpenMonsterDemo {
+impl himark::commands::DynamicCommand for OpenMonsterDemo {
     fn id(&self) -> &'static str {
         "demo.open-document"
     }
@@ -53,15 +51,15 @@ impl himark::DynamicCommand for OpenMonsterDemo {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let documents = himark::Windows::session_state(store, window)
+        let documents = himark::window::Windows::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
-        fx.push(himark::open_effect(
+        fx.push(himark::app::open_effect(
             window,
             documents,
             "torture sample".to_owned(),
@@ -74,7 +72,7 @@ impl himark::DynamicCommand for OpenMonsterDemo {
 
 pub struct OpenWallOfTextDemo;
 
-impl himark::DynamicCommand for OpenWallOfTextDemo {
+impl himark::commands::DynamicCommand for OpenWallOfTextDemo {
     fn id(&self) -> &'static str {
         "demo.open-wall-of-text"
     }
@@ -83,15 +81,15 @@ impl himark::DynamicCommand for OpenWallOfTextDemo {
     }
     fn perform(
         &self,
-        _app: &mut himark::Application,
+        _app: &mut himark::app::Application,
         store: &mut imba::store::Store,
-        window: himark::WindowId,
-        fx: &mut himark::AppFx<'_>,
+        window: himark::window::WindowId,
+        fx: &mut himark::app::AppFx<'_>,
     ) {
-        let documents = himark::Windows::session_state(store, window)
+        let documents = himark::window::Windows::session_state(store, window)
             .expect("a demo document opens into a window with a session")
             .documents();
-        fx.push(himark::open_effect(
+        fx.push(himark::app::open_effect(
             window,
             documents,
             "wall of text".to_owned(),

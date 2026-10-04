@@ -29,7 +29,7 @@ use std::sync::Arc;
 
 use ahp_wire::client::DocumentsClient;
 use editor::location::ResourceLocation;
-use himark_ahp_ext_types::{DocumentApplied, Uid};
+use himark_ahp_ext_types::documents::{DocumentApplied, Uid};
 use imba::command::Verb;
 use imba::store::Store;
 use rebase::{driver::Local, driver::Offer, RebaseLog};

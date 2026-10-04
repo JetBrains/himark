@@ -3,7 +3,7 @@
 
 use documents::sync::Resolve;
 use himark_ahp_ext_types::text::Span;
-use himark_ahp_ext_types::TextOperation;
+use himark_ahp_ext_types::documents::TextOperation;
 use operation::{op::Op, operation::Operation, builder::OperationBuilder};
 use std::sync::Arc;
 

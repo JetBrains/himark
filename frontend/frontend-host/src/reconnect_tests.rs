@@ -13,7 +13,7 @@
 //! the replay; live events could overtake the replay.
 //!
 //! Every test here runs the production wire (`WireHost`) against a real
-//! `agent_host::Host` on a unix socket. The only instrumentation is the
+//! `agent_host::server::Host` on a unix socket. The only instrumentation is the
 //! `Probe` connector: it counts dials, can hold a dial open, delay a
 //! connection's inbound, or cut its socket — the things a host, a
 //! network or a scheduler do to a wire.
@@ -129,7 +129,7 @@ impl Connector for ProbeConnector {
                 .clone()
                 .unwrap_or(url);
             let path = url.strip_prefix("unix:").expect("a unix url");
-            let inner = desktop::UnixTransport::connect(path, tag, Arc::clone(&dead)).await?;
+            let inner = desktop::unix_transport::UnixTransport::connect(path, tag, Arc::clone(&dead)).await?;
             let link = Arc::new(Link::default());
             probe
                 .links
@@ -145,7 +145,7 @@ impl Connector for ProbeConnector {
 }
 
 struct Probed {
-    inner: desktop::UnixTransport,
+    inner: desktop::unix_transport::UnixTransport,
     link: Arc<Link>,
 }
 
@@ -893,12 +893,12 @@ fn concurrent_subscribes_of_one_channel_share_its_feed() {
 }
 
 fn edit(
-    base: himark_ahp_ext_types::Uid,
+    base: himark_ahp_ext_types::documents::Uid,
     id: u128,
     text: &str,
-) -> himark_ahp_ext_types::DocumentApplied {
-    use himark_ahp_ext_types::{Replacement, TextOperation, TextPosition, TextRange};
-    himark_ahp_ext_types::DocumentApplied {
+) -> himark_ahp_ext_types::documents::DocumentApplied {
+    use himark_ahp_ext_types::documents::{Replacement, TextOperation, TextPosition, TextRange};
+    himark_ahp_ext_types::documents::DocumentApplied {
         base,
         operation: TextOperation {
             replacements: vec![Replacement {
@@ -915,7 +915,7 @@ fn edit(
                 text: text.to_owned(),
             }],
         },
-        id: himark_ahp_ext_types::Uid(id),
+        id: himark_ahp_ext_types::documents::Uid(id),
         origin: None,
     }
 }
@@ -970,7 +970,7 @@ fn a_document_channel_across_a_cut_replays_every_edit_once() {
             .iter()
             .filter_map(|action| match action {
                 StateAction::Unknown(value) => {
-                    serde_json::from_value::<himark_ahp_ext_types::DocumentApplied>(value.clone())
+                    serde_json::from_value::<himark_ahp_ext_types::documents::DocumentApplied>(value.clone())
                         .ok()
                         .map(|applied| applied.id.0)
                 }
@@ -981,7 +981,7 @@ fn a_document_channel_across_a_cut_replays_every_edit_once() {
     let mut version = state.version;
     let mut send = |index: u128| {
         b.dispatch_document(&channel, edit(version, 1000 + index, "x"));
-        version = himark_ahp_ext_types::Uid(1000 + index);
+        version = himark_ahp_ext_types::documents::Uid(1000 + index);
         std::thread::sleep(Duration::from_millis(10));
     };
 

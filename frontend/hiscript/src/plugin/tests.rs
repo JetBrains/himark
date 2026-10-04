@@ -26,7 +26,7 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
     let document = plain_document(source);
     let saved = document.revision();
     let documents =
-        ahp_session::session::Hosts::ensure_state(store, &himark::SessionId::local_default(store))
+        ahp_session::session::state::Hosts::ensure_state(store, &ahp_wire::SessionId::local_default(store))
             .documents();
     OpenDocuments::register(
         store,
@@ -191,7 +191,7 @@ fn an_unopened_target_stores_through_the_host() {
         .into_payload()
         .split()
         .0
-        .downcast::<himark::StoreDocumentEffect>()
+        .downcast::<documents::StoreDocumentEffect>()
         .expect("the store effect");
     assert_eq!(effect.location.path(), ["repo", "out.md"]);
     assert_eq!(effect.text, "made");
@@ -279,8 +279,8 @@ use ahp_types::state::{MarkdownResponsePart, ResponsePart};
 /// The collection the plugin resolves in production (the location's
 /// owner — a bare test store routes to the local default session);
 /// `registered` mints the session, everyone else reads it back.
-fn test_docs(store: &Store) -> imba::store::Id<himark::OpenDocuments> {
-    ahp_session::session::Hosts::state(store, &himark::SessionId::local_default(store))
+fn test_docs(store: &Store) -> imba::store::Id<documents::OpenDocuments> {
+    ahp_session::session::state::Hosts::state(store, &ahp_wire::SessionId::local_default(store))
         .expect("the local state is minted by the first register")
         .documents()
 }
@@ -517,7 +517,7 @@ fn shows_file_now_or_ride_their_store() {
     assert_eq!(landing.error, None, "log: {:?}", landing.log);
     let queued = |store: &Store| {
         store
-            .get::<himark::AppRequests>()
+            .get::<himark::commands::AppRequests>()
             .is_some_and(|requests| !requests.is_empty())
     };
     assert!(!queued(&store), "nothing queued before the landing");
@@ -527,7 +527,7 @@ fn shows_file_now_or_ride_their_store() {
         "the OPEN-target show queued its request at the landing"
     );
 
-    store.put(himark::AppRequests::default());
+    store.put(himark::commands::AppRequests::default());
     let location = located(&["repo", "new.md"]);
     let script_doc = script;
     let stored_landing = |store: &mut Store, stored: ScriptStored| {
@@ -568,7 +568,7 @@ fn shows_file_now_or_ride_their_store() {
         queued(&store),
         "the deferred show queued on the store's landing"
     );
-    store.put(himark::AppRequests::default());
+    store.put(himark::commands::AppRequests::default());
     stored_landing(
         &mut store,
         ScriptStored {

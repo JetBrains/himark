@@ -5,7 +5,7 @@ use imba::anim::AnimationClock;
 use imba::event::{Event, Key, Modifiers, MouseButton};
 use skia_safe::{Point, Size};
 
-use crate::Application;
+use crate::app::Application;
 
 pub fn click(app: &mut Application, x: f32, y: f32, width: f32, height: f32) -> bool {
     app.dispatch_timed(

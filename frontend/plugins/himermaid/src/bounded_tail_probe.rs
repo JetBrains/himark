@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::tests::*;
+use super::tests::helpers::*;
 
 #[test]
 fn bounded_open_converges_over_a_mermaid_fence() {

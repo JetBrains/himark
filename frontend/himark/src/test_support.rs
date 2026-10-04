@@ -4,7 +4,10 @@
 use imba::store::Store;
 
 use crate::app::pane_width;
-use crate::{workbench_geometry, Application, EditorIdView, Panel};
+use crate::workbench::workbench_geometry;
+use crate::app::Application;
+use documents::entity_view::EditorIdView;
+use crate::workbench_node::Panel;
 
 struct TestUris;
 
@@ -38,22 +41,22 @@ impl ahp_wire::client::ResourceUriMap for TestUris {
 pub fn seed_session_folders(
     store: &mut Store,
     folders: &[editor::location::ResourceLocation],
-) -> crate::SessionId {
-    let host = crate::SessionId::local_default(store).host;
-    ahp_session::session::Agents::seed(store, host, "Test Host");
-    ahp_session::session::Hosts::install_uris(store, host, std::sync::Arc::new(TestUris));
+) -> ahp_wire::SessionId {
+    let host = ahp_wire::SessionId::local_default(store).host;
+    ahp_session::session::agents::Agents::seed(store, host, "Test Host");
+    ahp_session::session::state::Hosts::install_uris(store, host, std::sync::Arc::new(TestUris));
     static SEEDED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     let minted = SEEDED.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let id = crate::SessionId {
+    let id = ahp_wire::SessionId {
         host,
         session: ahp_wire::client::SessionUri::new(format!("test-session:/{minted}")),
     };
-    let uris = ahp_session::session::Hosts::uris(store, host).expect("installed above");
+    let uris = ahp_session::session::state::Hosts::uris(store, host).expect("installed above");
     let working_directories: Vec<String> = folders
         .iter()
         .map(|folder| uris.uri_of(folder).into_string())
         .collect();
-    ahp_session::session::Agents::set_channel(
+    ahp_session::session::agents::Agents::set_channel(
         store,
         &id,
         ahp_wire::client::SessionChannel {
@@ -65,7 +68,7 @@ pub fn seed_session_folders(
         },
     );
 
-    ahp_session::session::Agents::add_sessions(
+    ahp_session::session::agents::Agents::add_sessions(
         store,
         host,
         vec![ahp_types::state::SessionSummary {
@@ -90,30 +93,30 @@ pub fn seed_session_folders(
 
 pub fn add_session_folders(
     store: &mut Store,
-    id: &crate::SessionId,
+    id: &ahp_wire::SessionId,
     folders: &[editor::location::ResourceLocation],
 ) {
-    let uris = ahp_session::session::Hosts::uris(store, id.host).expect("a seeded session");
-    let mut channel = ahp_session::session::Agents::channel(store, id).expect("a seeded session");
+    let uris = ahp_session::session::state::Hosts::uris(store, id.host).expect("a seeded session");
+    let mut channel = ahp_session::session::agents::Agents::channel(store, id).expect("a seeded session");
     for folder in folders {
         let uri = uris.uri_of(folder).into_string();
         if !channel.working_directories.iter().any(|held| held == &uri) {
             channel.working_directories.push_back_mut(uri);
         }
     }
-    ahp_session::session::Agents::set_channel(store, id, channel);
+    ahp_session::session::agents::Agents::set_channel(store, id, channel);
 }
 
 #[allow(dead_code)]
 fn pane_height_content(store: &Store, view: EditorIdView) -> Option<f32> {
     Some(
-        crate::OpenDocuments::document_ref(store, view.documents(), view.document())?
+        documents::OpenDocuments::document_ref(store, view.documents(), view.document())?
             .content_height(view.editor()),
     )
 }
 
 impl Application {
-    pub fn sole_window(&self) -> crate::WindowId {
+    pub fn sole_window(&self) -> crate::window::WindowId {
         let windows = self.window_ids();
         assert!(windows.len() <= 1, "multiple windows: tests must name one");
         *windows.first().expect("a window")
@@ -121,45 +124,45 @@ impl Application {
 
     /// The session the sole window is working in — the owner a test
     /// names when it reaches session-addressed state.
-    pub fn sole_window_session(&self) -> crate::SessionId {
-        crate::Windows::window_ref(self.store(), self.sole_window())
+    pub fn sole_window_session(&self) -> ahp_wire::SessionId {
+        crate::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .current_session()
     }
 
     /// The sole window's session — the ids a test threads when it
     /// reaches a collection directly.
-    pub fn sole_family(&self) -> ahp_session::session::SessionState {
-        crate::Windows::session_state(self.store(), self.sole_window())
+    pub fn sole_family(&self) -> ahp_session::session::state::SessionState {
+        crate::window::Windows::session_state(self.store(), self.sole_window())
             .expect("the sole window's state")
     }
 
     /// The sole window session's documents collection.
-    pub fn sole_documents(&self) -> imba::store::Id<crate::OpenDocuments> {
+    pub fn sole_documents(&self) -> imba::store::Id<documents::OpenDocuments> {
         self.sole_family().documents()
     }
 
-    fn workbench(&self) -> &crate::Workbench {
-        crate::Windows::window_ref(self.store(), self.sole_window())
+    fn workbench(&self) -> &crate::workbench::Workbench {
+        crate::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .workbench()
     }
 
     pub fn viewport_size(&self) -> skia_safe::Size {
-        crate::Windows::window_ref(self.store(), self.sole_window())
+        crate::window::Windows::window_ref(self.store(), self.sole_window())
             .expect("the window entity")
             .viewport_size()
     }
 
-    pub fn plugin_modal(&self) -> Option<&dyn crate::ModalView> {
-        crate::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
+    pub fn plugin_modal(&self) -> Option<&dyn hikit::modal::ModalView> {
+        crate::window::Windows::window_ref(self.store(), self.sole_window())?.plugin_modal()
     }
 
     pub fn focused_document_text(&self) -> Option<String> {
-        let document = crate::OpenDocuments::document_ref(
+        let document = documents::OpenDocuments::document_ref(
             self.store(),
             self.sole_documents(),
-            crate::Windows::window_ref(self.store(), self.sole_window())?.focused_document_id()?,
+            crate::window::Windows::window_ref(self.store(), self.sole_window())?.focused_document_id()?,
         )?;
         let end = document.text().byte_count().min(u32::MAX as usize) as u32;
         Some(document.text().view().substring(0..end))
@@ -176,7 +179,7 @@ impl Application {
         });
         let entity = first.expect("an editor pane");
         let document =
-            crate::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())
+            documents::OpenDocuments::document_ref(self.store(), entity.documents(), entity.document())
                 .expect("document");
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
@@ -201,10 +204,10 @@ impl Application {
     }
 
     pub fn focused_document_is_header_at(&self, byte: u32) -> bool {
-        let Some(document) = crate::Windows::window_ref(self.store(), self.sole_window())
+        let Some(document) = crate::window::Windows::window_ref(self.store(), self.sole_window())
             .and_then(|window| window.focused_document_id())
             .and_then(|id| {
-                crate::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)
+                documents::OpenDocuments::document_ref(self.store(), self.sole_documents(), id)
             })
         else {
             return false;
@@ -228,7 +231,7 @@ impl Application {
         let store = self.store();
         let mut check = |index: usize, entity: EditorIdView| {
             if let Some(document) =
-                crate::OpenDocuments::document_ref(store, entity.documents(), entity.document())
+                documents::OpenDocuments::document_ref(store, entity.documents(), entity.document())
             {
                 let (pending, ..) = document.probe_state(entity.editor());
                 if pending.is_some() {
@@ -275,7 +278,7 @@ impl Application {
         );
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = *pane.content();
-        let document = crate::OpenDocuments::document_ref(
+        let document = documents::OpenDocuments::document_ref(
             self.store(),
             entity.documents(),
             entity.document(),
@@ -304,7 +307,7 @@ impl Application {
     pub fn focused_caret_byte(&self) -> Option<u32> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
-        let document = crate::OpenDocuments::document_ref(
+        let document = documents::OpenDocuments::document_ref(
             self.store(),
             entity.documents(),
             entity.document(),
@@ -315,7 +318,7 @@ impl Application {
     pub fn focused_reveal_pending(&self) -> Option<bool> {
         let pane = self.workbench().root.focused_pane().editor()?;
         let entity = pane.content();
-        let document = crate::OpenDocuments::document_ref(
+        let document = documents::OpenDocuments::document_ref(
             self.store(),
             entity.documents(),
             entity.document(),
@@ -345,7 +348,7 @@ impl Application {
             let Some(pane) = panel.editor() else { return };
             let entity = pane.content();
             if let Some(document) =
-                crate::OpenDocuments::document_ref(store, entity.documents(), entity.document())
+                documents::OpenDocuments::document_ref(store, entity.documents(), entity.document())
             {
                 if document.syntax().is_some() {
                     styled += 1;
@@ -369,7 +372,7 @@ impl Application {
     pub fn focused_document_header_at_start(&self) -> Option<Option<u8>> {
         let view = self.workbench().root.focused_pane().editor()?.content();
         let document =
-            crate::OpenDocuments::document_ref(self.store(), view.documents(), view.document())?;
+            documents::OpenDocuments::document_ref(self.store(), view.documents(), view.document())?;
         if document.text().view().byte_count() == 0 {
             return None;
         }
@@ -386,7 +389,7 @@ impl Application {
     }
 
     pub fn document_count(&self) -> usize {
-        crate::OpenDocuments::list(self.store(), self.sole_documents()).len()
+        documents::OpenDocuments::list(self.store(), self.sole_documents()).len()
     }
 
     pub fn pane_count(&self) -> usize {
@@ -395,7 +398,7 @@ impl Application {
         count
     }
 
-    pub fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn crate::DynPanelView)) {
+    pub fn for_each_plugin_panel(&self, visit: &mut dyn FnMut(&dyn hikit::panel::DynPanelView)) {
         // The chat slot is a workbench panel too — always open, just
         // not a tree citizen.
         if let Some(chat) = self.workbench().chat() {
@@ -410,7 +413,7 @@ impl Application {
         });
     }
 
-    pub fn focused_editor_id(&self) -> (crate::DocumentId, ::editor::editor::EditorId) {
+    pub fn focused_editor_id(&self) -> (documents::DocumentId, ::editor::editor::EditorId) {
         let view = self
             .workbench()
             .root
@@ -479,9 +482,9 @@ pub fn handle_effect<R: 'static>(
                                 async move { handler.handle(*effect).await },
                             )))
                         }
-                        Err(value) => match value.downcast::<crate::diffs::DiffNormalizeEffect>() {
+                        Err(value) => match value.downcast::<documents::diffs::DiffNormalizeEffect>() {
                             Ok(effect) => {
-                                let handler = crate::diffs::DiffNormalizeHandler;
+                                let handler = documents::diffs::DiffNormalizeHandler;
                                 Box::new(block_on(Box::pin(async move {
                                     handler.handle(*effect).await
                                 })))

@@ -1,24 +1,30 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use documents::{CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect, PickSaveEffect, StoreDocumentEffect};
+use documents::{BuildDocumentEffect, BuiltDocument};
+use documents::diff_views::{DiffSide, DiffSideInput, OpenDiffPairEffect, OpenedDiffPair};
+use ahp_locations::{
+    FindEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect,
+};
+use ahp_wire::SessionId;
+
 use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
 use crate::app::{AppCommand, AppFx};
 use editor::location::ResourceLocation;
 
-pub use documents::{CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect, PickSaveEffect, StoreDocumentEffect};
 
-pub use documents::{BuildDocumentEffect, BuiltDocument};
 
 pub struct OpenByLocationEffect {
-    pub window: crate::WindowId,
+    pub window: crate::window::WindowId,
     /// The collection the open lands into — stamped at launch.
-    pub documents: imba::store::Id<crate::OpenDocuments>,
+    pub documents: imba::store::Id<documents::OpenDocuments>,
     pub location: ResourceLocation,
     pub primary: bool,
 
-    pub target: Option<std::ops::Range<crate::LineCol>>,
+    pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 
     /// Focus the opened editor (a deliberate jump) or just show it.
     pub focus: bool,
@@ -39,9 +45,9 @@ impl Effect for OpenByLocationEffect {
 /// thread and launch this; the handler opens both sides and lands the
 /// pane-open command.
 pub struct OpenDiffByLocationsEffect {
-    pub window: crate::WindowId,
+    pub window: crate::window::WindowId,
     /// The collection both sides register into — stamped at launch.
-    pub documents: imba::store::Id<crate::OpenDocuments>,
+    pub documents: imba::store::Id<documents::OpenDocuments>,
     pub old: DiffSideInput,
     pub new: DiffSideInput,
 }
@@ -56,16 +62,15 @@ impl Effect for OpenDiffByLocationsEffect {
     type Result = AppCommand;
 }
 
-pub use documents::diff_views::{DiffSide, DiffSideInput, OpenDiffPairEffect, OpenedDiffPair};
 
 pub fn open_by_location_effect(
-    window: crate::WindowId,
-    documents: imba::store::Id<crate::OpenDocuments>,
+    window: crate::window::WindowId,
+    documents: imba::store::Id<documents::OpenDocuments>,
     location: ResourceLocation,
     primary: bool,
     focus: bool,
-    target: Option<std::ops::Range<crate::LineCol>>,
-) -> crate::AppEffect {
+    target: Option<std::ops::Range<documents::text_ext::LineCol>>,
+) -> crate::effects::AppEffect {
     AnyEffect::new(OpenByLocationEffect {
         window,
         documents,
@@ -79,12 +84,12 @@ pub fn open_by_location_effect(
 pub fn open_locations(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: crate::WindowId,
+    window: crate::window::WindowId,
     locations: &[ResourceLocation],
     fx: &mut AppFx<'_>,
 ) {
-    let folders = crate::Windows::window_ref(store, window)
-        .map(|entity| ahp_session::session::session_folders(store, &entity.current_session()))
+    let folders = crate::window::Windows::window_ref(store, window)
+        .map(|entity| ahp_session::session::folders::session_folders(store, &entity.current_session()))
         .unwrap_or_default();
     let locations: Vec<ResourceLocation> = locations
         .iter()
@@ -107,16 +112,16 @@ pub fn open_locations(
         .collect();
     let mut primary = true;
     let Some(documents) =
-        crate::Windows::session_state(store, window).map(|state| state.documents())
+        crate::window::Windows::session_state(store, window).map(|state| state.documents())
     else {
         return;
     };
     for location in &locations {
-        if let Some(document) = crate::OpenDocuments::by_location(store, documents, location) {
+        if let Some(document) = documents::OpenDocuments::by_location(store, documents, location) {
             if primary {
-                if let Some(mut window_entity) = crate::Windows::window(store, window) {
+                if let Some(mut window_entity) = crate::window::Windows::window(store, window) {
                     window_entity.show_document(store, ui, window, document, None, false, fx);
-                    crate::Windows::put(store, window, window_entity);
+                    crate::window::Windows::put(store, window, window_entity);
                 }
             }
             primary = false;
@@ -134,7 +139,3 @@ pub fn open_locations(
     }
 }
 
-pub use ahp_locations::{
-    FindEffect, LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect,
-};
-pub use ahp_wire::SessionId;

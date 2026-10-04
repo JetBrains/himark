@@ -1,22 +1,23 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The session session's RE-MINTABLE rows: which panes a session can
 //! stand back up (terminals, chats, tracked pairs, canvases), erased
 //! behind `hikit::pane_row::PaneRow`. The typed rows live here while their
 //! features still do; each moves out with its feature crate.
 
+
+use ::canvas::{CanvasRow, PairRow};
+use ::terminals::pane::TerminalRow;
+use hikit::pane_row::PaneRow;
+use ::ahp_chat::chats::ChatRow;
+
 use std::sync::Arc;
 
 use imba::store::Store;
 
-pub use ::canvas::{CanvasRow, PairRow};
-pub use ::terminals::pane::TerminalRow;
-pub use hikit::pane_row::PaneRow;
 use hikit::panel::RowMinter;
 
 /// A chat pane's row: the collection and the conversation.
-pub use ::ahp_chat::chats::ChatRow;
 
 #[derive(Clone, Default)]
 pub struct RowMinters(pub(crate) rpds::VectorSync<Arc<RowMinter>>);
@@ -29,7 +30,7 @@ impl RowMinters {
     }
 }
 
-pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>> {
+pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn hikit::panel::DynPanelView>> {
     // The row carries its collection: a pane is minted off the id,
     // and a dismantled chat has no home to walk back to.
     if let Some(ChatRow(chats, chat)) = row.row::<ChatRow>() {
@@ -38,7 +39,7 @@ pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>
             .filter(|rows| rows.holds(chat))
             .map(|_| {
                 Box::new(ahp_chat::chats::ChatPane::new(*chats, chat.clone()))
-                    as Box<dyn crate::DynPanelView>
+                    as Box<dyn hikit::panel::DynPanelView>
             });
     }
     crate::registry::Registry::of(store)?
@@ -52,18 +53,18 @@ pub fn mint(store: &Store, row: &PaneRow) -> Option<Box<dyn crate::DynPanelView>
 /// the session (a window's), never a session to look up.
 pub fn mint_unfronted(
     store: &Store,
-    state: &ahp_session::session::SessionState,
+    state: &ahp_session::session::state::SessionState,
     fronted: &[PaneRow],
-) -> Vec<Box<dyn crate::DynPanelView>> {
+) -> Vec<Box<dyn hikit::panel::DynPanelView>> {
     let mut rows: Vec<PaneRow> = Vec::new();
     {
         rows.extend(
-            crate::terminal::Terminals::list(store, state.terminals())
+            terminals::Terminals::list(store, state.terminals())
                 .into_iter()
                 .map(|id| PaneRow::new(TerminalRow(state.terminals(), id))),
         );
         rows.extend(
-            crate::OpenDocuments::pair_ids(store, state.documents())
+            documents::OpenDocuments::pair_ids(store, state.documents())
                 .into_iter()
                 .map(|pair| PaneRow::new(PairRow(state.documents(), pair))),
         );

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark_ahp_ext_types::{Replacement, TextOperation, TextPosition, TextRange};
+use himark_ahp_ext_types::documents::{Replacement, TextOperation, TextPosition, TextRange};
 
 fn position(line: u64, character: u64) -> TextPosition {
     TextPosition { line, character }

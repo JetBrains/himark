@@ -1,19 +1,23 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The Search dock tab's SHELL half: the dock toggle/focus commands,
 //! the LSP feed opener and the toolbar button — window glue over the
 //! `locations::search` face (the view itself lives with its model,
 //! docs/entities.md).
+
+
+use ::locations::search::{SearchArea, SearchCommand, SearchView};
 
 use std::sync::Arc;
 
 use imba::store::Store;
 
 use ahp_locations::driver::LocationsWire;
-use crate::locations::{open_feed, FeedId, LocationLists, LocationsAsk};
+use locations::open_feed;
+use locations::FeedId;
+use locations::LocationLists;
+use locations::LocationsAsk;
 
-pub use ::locations::search::{SearchArea, SearchCommand, SearchView};
 
 /// The dock owner id — the toggle command's, shared by everything
 /// that lands content into this tab.
@@ -26,13 +30,13 @@ pub const OWNER: &str = "search.view";
 /// (docs/entities.md law 3) — no payload re-entry through the
 /// editor command, no scope re-derived later.
 pub struct OpenLspFeed {
-    pub kind: crate::LspLocationsKind,
+    pub kind: ahp_locations::LspLocationsKind,
     pub title: String,
     pub location: editor::location::ResourceLocation,
-    pub position: crate::LineCol,
+    pub position: documents::text_ext::LineCol,
 }
 
-impl crate::DynamicCommand for OpenLspFeed {
+impl crate::commands::DynamicCommand for OpenLspFeed {
     fn id(&self) -> &'static str {
         "search.open-lsp-feed"
     }
@@ -43,12 +47,12 @@ impl crate::DynamicCommand for OpenLspFeed {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some((lists, wire)) = crate::Windows::window_ref(store, window)
+        let Some((lists, wire)) = crate::window::Windows::window_ref(store, window)
             .map(|entity| (entity.state().lists(), entity.state().locations_wire()))
         else {
             return;
@@ -61,9 +65,9 @@ impl crate::DynamicCommand for OpenLspFeed {
             LocationsAsk::Lsp {
                 feed,
                 kind: match self.kind {
-                    crate::LspLocationsKind::References => crate::locations::LspKind::References,
-                    crate::LspLocationsKind::Implementations => {
-                        crate::locations::LspKind::Implementations
+                    ahp_locations::LspLocationsKind::References => locations::LspKind::References,
+                    ahp_locations::LspLocationsKind::Implementations => {
+                        locations::LspKind::Implementations
                     }
                 },
                 location: self.location.clone(),
@@ -87,7 +91,7 @@ pub struct ShowFeedInDock {
     pub feed: FeedId,
 }
 
-impl crate::DynamicCommand for ShowFeedInDock {
+impl crate::commands::DynamicCommand for ShowFeedInDock {
     fn id(&self) -> &'static str {
         "search.show-feed"
     }
@@ -98,12 +102,12 @@ impl crate::DynamicCommand for ShowFeedInDock {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         if let Some(previous) = LocationLists::search(store, self.lists) {
@@ -114,21 +118,21 @@ impl crate::DynamicCommand for ShowFeedInDock {
         LocationLists::set_search(store, self.lists, self.feed);
 
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
         let panel = SearchView::open(store, &app.ui_ctx(), self.lists);
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), OWNER, fx),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
 pub struct ToggleSearchView;
 
-impl crate::DynamicCommand for ToggleSearchView {
+impl crate::commands::DynamicCommand for ToggleSearchView {
     fn id(&self) -> &'static str {
         OWNER
     }
@@ -139,34 +143,34 @@ impl crate::DynamicCommand for ToggleSearchView {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
 
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
         let session = entity.current_session();
         let lists = entity.state().lists();
-        let folders = ahp_session::session::session_folders(store, &session);
+        let folders = ahp_session::session::folders::session_folders(store, &session);
         LocationLists::adopt_folders(store, lists, &folders);
         let panel = SearchView::open(store, &app.ui_ctx(), lists);
         let owner = self.id();
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
@@ -176,7 +180,7 @@ impl crate::DynamicCommand for ToggleSearchView {
 /// [`ToggleSearchView`]) keeps the toggle every dock button has.
 pub struct FocusSearchView;
 
-impl crate::DynamicCommand for FocusSearchView {
+impl crate::commands::DynamicCommand for FocusSearchView {
     fn id(&self) -> &'static str {
         "search.focus"
     }
@@ -187,21 +191,21 @@ impl crate::DynamicCommand for FocusSearchView {
 
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(OWNER) {
             entity.focus_dock();
             if let Some(panel) = entity.dock_panel_mut() {
                 let ui = app.ui_ctx();
                 fx.scope(
                     move |command| {
-                        crate::AppCommand::Content(
+                        crate::app::AppCommand::Content(
                             window,
-                            crate::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
+                            crate::window::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
                                 crate::dock::DockCommand::Content(command),
                             )),
                         )
@@ -217,19 +221,19 @@ impl crate::DynamicCommand for FocusSearchView {
                     },
                 );
             }
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
         ToggleSearchView.perform(app, store, window, fx);
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: OWNER,
         order: 0.5,
-        side: crate::ToolbarSide::Right,
+        side: crate::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);

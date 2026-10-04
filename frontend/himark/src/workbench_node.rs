@@ -1,12 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use hikit::{panel::DynPanelView, panel::PanelRequest, panel::PanelView, panel::WidgetOrigin};
+
 use editor::editor_view::EditorCommand;
 
-use crate::EditorIdView;
+use documents::entity_view::EditorIdView;
 use imba::{arena::Arena, constraints::Constraints, scroll::{ScrollCommand, ScrollView}, split::{Arrangement, Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
-pub use hikit::{panel::DynPanelView, panel::PanelRequest, panel::PanelView, panel::WidgetOrigin};
 
 #[derive(Clone)]
 pub(crate) struct ClosedPanel;
@@ -34,7 +35,7 @@ impl imba::View for ClosedPanel {
 }
 
 impl PanelView for ClosedPanel {
-    type Place = crate::navigation::NoPlace;
+    type Place = hikit::navigation::NoPlace;
 
     fn title(&self, _store: &Store) -> String {
         String::new()
@@ -72,9 +73,9 @@ pub enum PanelCommand {
 
     Find(crate::find::FindCommand),
 
-    Completion(crate::completion::CompletionFound),
+    Completion(ahp_chat::completion::CompletionFound),
 
-    Hover(crate::hover::HoverFound),
+    Hover(documents::hover::HoverFound),
 
     HoverTick(imba::anim::AnimationClock),
 }
@@ -147,10 +148,10 @@ impl Panel {
             Self::Editor(pane) => {
                 let documents = pane.content().documents();
                 let document = pane.content().document();
-                let name = crate::OpenDocuments::name(store, documents, document)
+                let name = documents::OpenDocuments::name(store, documents, document)
                     .unwrap_or_else(|| "untitled".to_owned());
                 // The unsaved mark rides the omnibox title.
-                match crate::OpenDocuments::entity(store, documents, document)
+                match documents::OpenDocuments::entity(store, documents, document)
                     .is_some_and(|entity| entity.modified())
                 {
                     true => format!("{name}*"),
@@ -176,52 +177,52 @@ impl Panel {
         &self,
         store: &Store,
         ui: &UiCtx,
-        window: crate::WindowId,
-    ) -> Option<Box<dyn crate::ModalView>> {
+        window: crate::window::WindowId,
+    ) -> Option<Box<dyn hikit::modal::ModalView>> {
         match self {
             Self::Editor(pane) => {
                 let view = pane.content();
                 let location =
-                    crate::OpenDocuments::location(store, view.documents(), view.document())?;
+                    documents::OpenDocuments::location(store, view.documents(), view.document())?;
 
                 let document =
-                    crate::OpenDocuments::document_ref(store, view.documents(), view.document())?;
+                    documents::OpenDocuments::document_ref(store, view.documents(), view.document())?;
                 if !document.has_outline() {
                     return None;
                 }
                 let jump = std::sync::Arc::new(move |place| {
-                    crate::ModalRequest::Perform(crate::shell_verb(crate::AppCommand::Dynamic(
+                    hikit::modal::ModalRequest::Perform(crate::app::shell_verb(crate::app::AppCommand::Dynamic(
                         window,
                         std::sync::Arc::new(crate::toc::NavigateToPlace { place }),
                     )))
                 });
-                Some(Box::new(crate::toc::OutlineView::new(
+                Some(Box::new(toc::OutlineView::new(
                     store,
                     ui,
                     view.documents(),
                     view.document(),
                     location,
                     jump,
-                )) as Box<dyn crate::ModalView>)
+                )) as Box<dyn hikit::modal::ModalView>)
             }
             Self::Plugin(view) => view.drawer_view_dyn(store, ui),
         }
     }
 
-    pub(crate) fn navigation_location(&self, store: &Store) -> Option<crate::NavigationLocation> {
+    pub(crate) fn navigation_location(&self, store: &Store) -> Option<hikit::navigation::NavigationLocation> {
         match self {
             Self::Editor(pane) => {
                 let view = pane.content();
                 let location =
-                    crate::OpenDocuments::location(store, view.documents(), view.document())?;
+                    documents::OpenDocuments::location(store, view.documents(), view.document())?;
                 let document =
-                    crate::OpenDocuments::document_ref(store, view.documents(), view.document())?;
+                    documents::OpenDocuments::document_ref(store, view.documents(), view.document())?;
 
-                if crate::is_scratch(&location) && document.revision() == 0 {
+                if documents::is_scratch(&location) && document.revision() == 0 {
                     return None;
                 }
                 let caret = document.caret_byte(view.editor());
-                Some(crate::NavigationLocation::new(crate::EditorPlace {
+                Some(hikit::navigation::NavigationLocation::new(hikit::navigation::EditorPlace {
                     location,
                     caret,
                     scroll_y: pane.scroll_y(),
@@ -235,22 +236,22 @@ impl Panel {
         &mut self,
         store: &mut Store,
         ui: &imba::ui::UiCtx,
-        target: &crate::NavigationLocation,
-        fx: &mut crate::AppFx<'_>,
+        target: &hikit::navigation::NavigationLocation,
+        fx: &mut crate::app::AppFx<'_>,
     ) -> bool {
         match self {
             Self::Editor(pane) => {
-                let Some(place) = target.place::<crate::EditorPlace>() else {
+                let Some(place) = target.place::<hikit::navigation::EditorPlace>() else {
                     return false;
                 };
                 let view = *pane.content();
-                if crate::OpenDocuments::location(store, view.documents(), view.document()).as_ref()
+                if documents::OpenDocuments::location(store, view.documents(), view.document()).as_ref()
                     != Some(&place.location)
                 {
                     return false;
                 }
                 let Some(mut document) =
-                    crate::OpenDocuments::document(store, view.documents(), view.document())
+                    documents::OpenDocuments::document(store, view.documents(), view.document())
                 else {
                     return false;
                 };
@@ -259,9 +260,9 @@ impl Panel {
                 let (documents, target) = (view.documents(), view.document());
                 fx.scope(
                     move |command| {
-                        crate::AppCommand::at(
+                        crate::app::AppCommand::at(
                             documents,
-                            crate::DocumentsCommand::Editor(target, command),
+                            documents::DocumentsCommand::Editor(target, command),
                         )
                     },
                     |fx| {
@@ -276,7 +277,7 @@ impl Panel {
                         )
                     },
                 );
-                crate::OpenDocuments::put_document(
+                documents::OpenDocuments::put_document(
                     store,
                     view.documents(),
                     view.document(),
@@ -285,7 +286,7 @@ impl Panel {
                 pane.set_scroll_y(place.scroll_y);
                 true
             }
-            Self::Plugin(view) => fx.scope(crate::AppCommand::Verb, |fx| {
+            Self::Plugin(view) => fx.scope(crate::app::AppCommand::Verb, |fx| {
                 view.navigate_to_dyn(store, target, fx)
             }),
         }
@@ -314,7 +315,7 @@ impl View for Panel {
                 let anchor = match &command {
                     ScrollCommand::Content(EditorCommand::Viewport { width, anchor, .. }) => {
                         let view = pane.content();
-                        crate::OpenDocuments::document_ref(store, view.documents(), view.document())
+                        documents::OpenDocuments::document_ref(store, view.documents(), view.document())
                             .map(|document| {
                                 (document.layout_width(view.editor()) - *width).abs() > 1.0
                             })
@@ -332,10 +333,10 @@ impl View for Panel {
                     {
                         let view = *pane.content();
                         if let Some(mut document) =
-                            crate::OpenDocuments::document(store, view.documents(), view.document())
+                            documents::OpenDocuments::document(store, view.documents(), view.document())
                         {
                             document.cancel_reveal(view.editor());
-                            crate::OpenDocuments::put_document(
+                            documents::OpenDocuments::put_document(
                                 store,
                                 view.documents(),
                                 view.document(),
@@ -347,7 +348,7 @@ impl View for Panel {
                 if let Some(anchor) = anchor {
                     {
                         let view = *pane.content();
-                        if let Some(document) = crate::OpenDocuments::document_ref(
+                        if let Some(document) = documents::OpenDocuments::document_ref(
                             store,
                             view.documents(),
                             view.document(),
@@ -480,21 +481,21 @@ impl std::ops::DerefMut for PanelWithId {
 #[derive(Clone)]
 pub struct PaneSlot {
     pub(crate) panel: PanelWithId,
-    pub(crate) back: rpds::VectorSync<crate::NavigationLocation>,
-    pub(crate) forward: rpds::VectorSync<crate::NavigationLocation>,
+    pub(crate) back: rpds::VectorSync<hikit::navigation::NavigationLocation>,
+    pub(crate) forward: rpds::VectorSync<hikit::navigation::NavigationLocation>,
 
     pub(crate) pending: Option<PendingWalk>,
 
     pub(crate) find: Option<crate::find::FindBar>,
 
-    pub(crate) completion: crate::completion::Completion,
+    pub(crate) completion: ahp_chat::completion::Completion,
 
-    pub(crate) hover: crate::hover::Hover,
+    pub(crate) hover: documents::hover::Hover,
 }
 
 #[derive(Clone)]
 pub(crate) struct PendingWalk {
-    pub(crate) target: crate::NavigationLocation,
+    pub(crate) target: hikit::navigation::NavigationLocation,
     pub(crate) step: WalkStep,
 }
 
@@ -532,8 +533,8 @@ impl PaneSlot {
             forward: rpds::VectorSync::new_sync(),
             pending: None,
             find: None,
-            completion: crate::completion::Completion::new(),
-            hover: crate::hover::Hover::new(),
+            completion: ahp_chat::completion::Completion::new(),
+            hover: documents::hover::Hover::new(),
         }
     }
 
@@ -553,7 +554,7 @@ impl PaneSlot {
         (self.back.len(), self.forward.len())
     }
 
-    pub(crate) fn find_target(&self) -> Option<(crate::DocumentId, ::editor::editor::EditorId)> {
+    pub(crate) fn find_target(&self) -> Option<(documents::DocumentId, ::editor::editor::EditorId)> {
         self.panel
             .editor()
             .map(|pane| (pane.content().document(), pane.content().editor()))
@@ -561,7 +562,7 @@ impl PaneSlot {
 
     /// The collection this leaf's editor reads through — the pane
     /// holds the id (docs/entities.md law 3).
-    pub(crate) fn documents_id(&self) -> Option<imba::store::Id<crate::OpenDocuments>> {
+    pub(crate) fn documents_id(&self) -> Option<imba::store::Id<documents::OpenDocuments>> {
         self.panel.editor().map(|pane| pane.content().documents())
     }
 
@@ -632,20 +633,20 @@ impl PaneSlot {
         if Some(key) != self.completion.inlay_key() {
             return Some(rewrap(inlay));
         }
-        let popup = match inlay.downcast_ref::<crate::completion::CompletionCommand>() {
+        let popup = match inlay.downcast_ref::<ahp_chat::completion::CompletionCommand>() {
             Some(_) => inlay
-                .downcast::<crate::completion::CompletionCommand>()
+                .downcast::<ahp_chat::completion::CompletionCommand>()
                 .expect("probed above"),
             None => return Some(rewrap(inlay)),
         };
-        use crate::completion::CompletionCommand;
+        use ahp_chat::completion::CompletionCommand;
         let Some((id, editor)) = self.completion.installed() else {
             return None;
         };
         let Some(documents) = self.documents_id() else {
             return None;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
             self.completion.clear();
             return None;
         };
@@ -686,7 +687,7 @@ impl PaneSlot {
                     .drop_state(&mut document, store, ui, fx, Self::completion_editor);
             }
         }
-        crate::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::put_document(store, documents, id, document);
         None
     }
 
@@ -704,7 +705,7 @@ impl PaneSlot {
 
         if let Some(installed) = self.completion.installed() {
             if target != Some(installed) {
-                match crate::OpenDocuments::document(store, documents, installed.0) {
+                match documents::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
                         self.completion.drop_state(
                             &mut old,
@@ -713,7 +714,7 @@ impl PaneSlot {
                             fx,
                             Self::completion_editor,
                         );
-                        crate::OpenDocuments::put_document(store, documents, installed.0, old);
+                        documents::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.completion.clear(),
                 }
@@ -723,15 +724,15 @@ impl PaneSlot {
         if !self.completion.open() && inserted.is_none() {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
             return;
         };
 
         let markdown = document.syntax().map(|syntax| syntax.language.as_str()) == Some("markdown");
         if markdown {
-            let Some((session, state)) = ahp_session::session::Hosts::home_of_documents(store, documents)
+            let Some((session, state)) = ahp_session::session::state::Hosts::home_of_documents(store, documents)
             else {
-                crate::OpenDocuments::put_document(store, documents, id, document);
+                documents::OpenDocuments::put_document(store, documents, id, document);
                 return;
             };
             let typed_at =
@@ -742,7 +743,7 @@ impl PaneSlot {
                 &mut document,
                 editor,
                 typed_at,
-                std::sync::Arc::new(ahp_session::session::session_folders(store, &session)),
+                std::sync::Arc::new(ahp_session::session::folders::session_folders(store, &session)),
                 state.recents(),
                 Some((id, editor)),
                 fx,
@@ -750,7 +751,7 @@ impl PaneSlot {
                 Self::completion_editor,
             );
         } else {
-            match crate::OpenDocuments::location(store, documents, id) {
+            match documents::OpenDocuments::location(store, documents, id) {
                 Some(location) if !location.is_synthetic() => {
                     self.completion.sync_lsp(
                         store,
@@ -778,14 +779,14 @@ impl PaneSlot {
                 _ => {}
             }
         }
-        crate::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn land_completion(
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        found: crate::completion::CompletionFound,
+        found: ahp_chat::completion::CompletionFound,
         _fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
         let _ = ui;
@@ -795,13 +796,13 @@ impl PaneSlot {
         let Some(documents) = self.documents_id() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
             self.completion.clear();
             return;
         };
         self.completion
             .land(store, ui, &mut document, editor, found);
-        crate::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn sync_hover(
@@ -818,11 +819,11 @@ impl PaneSlot {
 
         if let Some(installed) = self.hover.installed() {
             if target != Some(installed) {
-                match crate::OpenDocuments::document(store, documents, installed.0) {
+                match documents::OpenDocuments::document(store, documents, installed.0) {
                     Some(mut old) => {
                         self.hover
                             .retract(store, ui, &mut old, fx, Self::completion_editor);
-                        crate::OpenDocuments::put_document(store, documents, installed.0, old);
+                        documents::OpenDocuments::put_document(store, documents, installed.0, old);
                     }
                     None => self.hover.clear(),
                 }
@@ -832,22 +833,22 @@ impl PaneSlot {
 
         let Some(point) = point else {
             if self.hover.open() {
-                if let Some(mut document) = crate::OpenDocuments::document(store, documents, id) {
+                if let Some(mut document) = documents::OpenDocuments::document(store, documents, id) {
                     self.hover
                         .retract(store, ui, &mut document, fx, Self::completion_editor);
-                    crate::OpenDocuments::put_document(store, documents, id, document);
+                    documents::OpenDocuments::put_document(store, documents, id, document);
                 }
             }
             return;
         };
 
-        let Some(location) = crate::OpenDocuments::location(store, documents, id) else {
+        let Some(location) = documents::OpenDocuments::location(store, documents, id) else {
             return;
         };
         if location.is_synthetic() {
             return;
         }
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
             return;
         };
         let fonts = ::editor::env::ui_collection(store, ui);
@@ -864,7 +865,7 @@ impl PaneSlot {
             fx,
             Self::completion_editor,
         );
-        crate::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn tick_hover(
@@ -879,7 +880,7 @@ impl PaneSlot {
         let Some(documents) = self.documents_id() else {
             return;
         };
-        let Some(document) = crate::OpenDocuments::document_ref(store, documents, id) else {
+        let Some(document) = documents::OpenDocuments::document_ref(store, documents, id) else {
             self.hover.clear();
             return;
         };
@@ -890,7 +891,7 @@ impl PaneSlot {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        found: crate::hover::HoverFound,
+        found: documents::hover::HoverFound,
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) {
         let Some((id, editor)) = self.hover.installed() else {
@@ -899,7 +900,7 @@ impl PaneSlot {
         let Some(documents) = self.documents_id() else {
             return;
         };
-        let Some(mut document) = crate::OpenDocuments::document(store, documents, id) else {
+        let Some(mut document) = documents::OpenDocuments::document(store, documents, id) else {
             self.hover.clear();
             return;
         };
@@ -912,7 +913,7 @@ impl PaneSlot {
             fx,
             Self::completion_editor,
         );
-        crate::OpenDocuments::put_document(store, documents, id, document);
+        documents::OpenDocuments::put_document(store, documents, id, document);
     }
 
     pub(crate) fn perform_find(

@@ -207,7 +207,7 @@ impl MermaidView {
                 svg.paint(canvas, inner);
             }
             Outcome::Error(message) => {
-                let font = himark::fonts::ui_text_font(ui, 12.0);
+                let font = hikit::fonts::ui_text_font(ui, 12.0);
                 imba::layout::TextShaper::of(ui).draw(
                     canvas,
                     &font,

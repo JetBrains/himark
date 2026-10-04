@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
-pub use himark_ahp_ext_types::{SearchKind, SearchTarget};
+use himark_ahp_ext_types::search::{SearchKind, SearchTarget};
 
 #[derive(Clone, Debug)]
 pub struct SearchQuery {
@@ -138,7 +138,7 @@ pub fn scan(
 }
 
 /// One match within a file, positioned and carrying its display
-/// context — the wire shape of `himark_ahp_ext_types::Location`
+/// context — the wire shape of `himark_ahp_ext_types::locations::Location`
 /// minus the URI (docs/ahp/ahp-locations.md §2.1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LineMatch {

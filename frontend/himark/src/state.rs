@@ -5,9 +5,9 @@ use imba::store::Store;
 
 #[derive(Clone, Default)]
 pub struct AppState {
-    pub(crate) hosts: ahp_session::session::Hosts,
+    pub(crate) hosts: ahp_session::session::state::Hosts,
 
-    pub(crate) windows: crate::Windows,
+    pub(crate) windows: crate::window::Windows,
 
     pub(crate) globals: Store,
 }
@@ -19,15 +19,15 @@ impl AppState {
         state
     }
 
-    pub(crate) fn gather_seatless(&self, scope: Option<&crate::SessionId>) -> Store {
+    pub(crate) fn gather_seatless(&self, scope: Option<&ahp_wire::SessionId>) -> Store {
         self.gather(None, scope, &ahp_wire::client::Servers::default())
     }
 
     #[allow(unused_variables)]
     pub(crate) fn gather(
         &self,
-        window: Option<crate::WindowId>,
-        scope: Option<&crate::SessionId>,
+        window: Option<crate::window::WindowId>,
+        scope: Option<&ahp_wire::SessionId>,
         clients: &ahp_wire::client::Servers,
     ) -> Store {
         let mut store = self.globals.clone();
@@ -39,14 +39,14 @@ impl AppState {
         store
     }
 
-    pub(crate) fn scatter(&mut self, mut store: Store, scope: Option<&crate::SessionId>) {
+    pub(crate) fn scatter(&mut self, mut store: Store, scope: Option<&ahp_wire::SessionId>) {
         let _ = store.take::<ahp_wire::client::Servers>();
-        let mut hosts = store.take::<ahp_session::session::Hosts>().unwrap_or_default();
+        let mut hosts = store.take::<ahp_session::session::state::Hosts>().unwrap_or_default();
         if let Some(scope) = scope {
             hosts.scatter_session(&mut store, scope);
         }
         self.hosts = hosts;
-        if let Some(taken) = store.take::<crate::Windows>() {
+        if let Some(taken) = store.take::<crate::window::Windows>() {
             self.windows.absorb(taken);
         }
         self.globals = store;

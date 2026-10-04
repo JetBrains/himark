@@ -4,7 +4,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use himark::{FetchResourceBytesEffect};
+use documents::FetchResourceBytesEffect;
 use editor::enrich::EnrichCx;
 use editor::enrich::EnrichFuture;
 use editor::enrich::EnrichInput;

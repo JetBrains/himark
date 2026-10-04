@@ -1,10 +1,12 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The Files dock tab's SHELL half: the toggle, the toolbar button
 //! and the session closures the windowless tree rides — the view
 //! itself is the `filetree` crate's (the UI lives with its model,
 //! docs/entities.md).
+
+
+use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 
 use std::sync::Arc;
 
@@ -14,23 +16,22 @@ use skia_safe::{Paint, PathBuilder};
 
 use editor::location::ResourceLocation;
 
-pub use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 
 /// Build the shell closures and open the panel — the one door the
 /// dock toggle uses.
 pub fn open_panel(
     store: &mut Store,
     ui: &imba::ui::UiCtx,
-    window: Option<crate::WindowId>,
-    workspace: crate::SessionId,
+    window: Option<crate::window::WindowId>,
+    workspace: ahp_wire::SessionId,
     trees: imba::store::Id<SessionTree>,
     reveal: Option<ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, TreeCommand>,
 ) -> SessionTreeView {
-    let folders = ahp_session::session::session_folders(store, &workspace);
+    let folders = ahp_session::session::folders::session_folders(store, &workspace);
     let mirror: Arc<dyn Fn(&Store) -> Vec<ResourceLocation> + Send + Sync> = {
         let workspace = workspace.clone();
-        Arc::new(move |store: &Store| ahp_session::session::session_folders(store, &workspace))
+        Arc::new(move |store: &Store| ahp_session::session::folders::session_folders(store, &workspace))
     };
     let panel = SessionTreeView::open(
         store,
@@ -51,10 +52,10 @@ pub fn open_panel(
 /// The focus-follow probe: the window's focused location and the
 /// focus generation it stands at, read per paint.
 fn follow_window(
-    window: crate::WindowId,
+    window: crate::window::WindowId,
 ) -> Arc<dyn Fn(&Store) -> Option<(ResourceLocation, u64)> + Send + Sync> {
     Arc::new(move |store| {
-        let entity = crate::Windows::window_ref(store, window)?;
+        let entity = crate::window::Windows::window_ref(store, window)?;
         entity
             .focused_location()
             .cloned()
@@ -66,11 +67,11 @@ fn follow_window(
 /// agent channel; the row itself leaves via the stale-roots gate
 /// when the echo lands.
 fn remove_from_session(
-    workspace: crate::SessionId,
+    workspace: ahp_wire::SessionId,
 ) -> Arc<dyn Fn(&Store, ResourceLocation) -> Option<AnyEffect<TreeCommand>> + Send + Sync> {
     Arc::new(move |store, target| {
         let client = ahp_wire::client::Servers::client(store, workspace.host)?;
-        let uris = ahp_session::session::Hosts::uris(store, workspace.host)?;
+        let uris = ahp_session::session::state::Hosts::uris(store, workspace.host)?;
         use ahp_types::actions as wire;
         let directory = uris.uri_of(&target).as_str().to_owned();
         Some(
@@ -88,7 +89,7 @@ fn remove_from_session(
 
 pub struct ToggleSessionTree;
 
-impl crate::DynamicCommand for ToggleSessionTree {
+impl crate::commands::DynamicCommand for ToggleSessionTree {
     fn id(&self) -> &'static str {
         "files.tree"
     }
@@ -97,10 +98,10 @@ impl crate::DynamicCommand for ToggleSessionTree {
     }
     fn perform(
         &self,
-        app: &mut crate::Application,
+        app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
         // The focused location is a state walk over the views now —
         // nothing is laid to answer it.
@@ -110,21 +111,21 @@ impl crate::DynamicCommand for ToggleSessionTree {
             crate::focus::window_focus_data(&chain_store, &ui, window)
                 .and_then(|mut data| crate::focus::focused_location(&mut data))
         };
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
 
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
 
         let workspace = entity.current_session();
         let trees = entity.state().trees();
-        let panel = fx.scope(crate::dock_scope(window), |fx| {
+        let panel = fx.scope(crate::modal::dock_scope(window), |fx| {
             fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
                 open_panel(
                     store,
@@ -139,18 +140,18 @@ impl crate::DynamicCommand for ToggleSessionTree {
         });
         let owner = self.id();
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.show_dock(store, Box::new(panel), owner, fx),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "files.tree",
         order: 0.0,
-        side: crate::ToolbarSide::Right,
+        side: crate::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -201,7 +202,7 @@ mod tests {
             &mut store,
             &[root.clone(), root.clone(), directory(&["other"])],
         );
-        let folders = ahp_session::session::session_folders(&store, &session);
+        let folders = ahp_session::session::folders::session_folders(&store, &session);
         let unique: std::collections::HashSet<_> = folders
             .iter()
             .map(|folder| folder.path().to_vec())

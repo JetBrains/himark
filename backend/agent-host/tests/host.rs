@@ -19,7 +19,7 @@ struct Client {
 }
 
 impl Client {
-    async fn connect(host: Arc<agent_host::Host>) -> Client {
+    async fn connect(host: Arc<agent_host::server::Host>) -> Client {
         let (ours, theirs) = UnixStream::pair().expect("socketpair");
         tokio::spawn(host.serve_stream(theirs));
         let (read, write) = ours.into_split();
@@ -137,8 +137,8 @@ impl Client {
     }
 }
 
-fn host_at(dir: &Path) -> Arc<agent_host::Host> {
-    agent_host::Host::new(agent_host::HostConfig {
+fn host_at(dir: &Path) -> Arc<agent_host::server::Host> {
+    agent_host::server::Host::new(agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.join("data"),
         claude_binary: agent_host::testing::fake_cli_command(dir),
@@ -182,8 +182,8 @@ async fn open_session(client: &mut Client, dir: &Path) -> (String, String) {
     (session, chat)
 }
 
-fn codex_host_at(dir: &Path) -> Arc<agent_host::Host> {
-    agent_host::Host::new(agent_host::HostConfig {
+fn codex_host_at(dir: &Path) -> Arc<agent_host::server::Host> {
+    agent_host::server::Host::new(agent_host::server::HostConfig {
         data_dir: dir.join("codex-data"),
         claude_binary: "false".to_owned(),
         codex_binary: agent_host::testing::fake_codex_command(dir),
@@ -192,7 +192,7 @@ fn codex_host_at(dir: &Path) -> Arc<agent_host::Host> {
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
         fsp_binary: None,
-        ..agent_host::HostConfig::default()
+        ..agent_host::server::HostConfig::default()
     })
 }
 
@@ -2889,12 +2889,12 @@ async fn a_mirrored_document_opens_idempotently_and_disposes() {
     assert_ne!(fresh["document"], channel.as_str(), "a fresh document");
 }
 
-async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::Host>, Client, String, String) {
+async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::server::Host>, Client, String, String) {
     let root = dir.join("code");
     std::fs::create_dir_all(&root).expect("mkdir");
     let root = root.canonicalize().expect("canonical");
     std::fs::write(root.join("lib.rs"), "fn answer() -> u32 { 42 }\n").unwrap();
-    let host = agent_host::Host::new(agent_host::HostConfig {
+    let host = agent_host::server::Host::new(agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.join("data"),
         claude_binary: "false".to_owned(),
@@ -2902,7 +2902,7 @@ async fn lsp_fixture(dir: &Path) -> (Arc<agent_host::Host>, Client, String, Stri
         claude_home: dir.join("dot-claude"),
         codex_home: dir.join("dot-codex"),
         shell: "/bin/sh".to_owned(),
-        language_servers: vec![agent_host::LanguageServer {
+        language_servers: vec![agent_host::server::LanguageServer {
             extensions: vec!["rs".to_owned()],
             command: agent_host::testing::fake_ls_command(dir),
         }],
@@ -3083,7 +3083,7 @@ async fn lsp_cancellation_reaches_the_language_server() {
 async fn session_config_resolves_and_creation_honors_it() {
     let dir = tempfile::tempdir().expect("tempdir");
 
-    let host = agent_host::Host::new(agent_host::HostConfig {
+    let host = agent_host::server::Host::new(agent_host::server::HostConfig {
         data_dir: dir.path().join("data"),
         claude_binary: agent_host::testing::fake_cli_command(dir.path()),
         claude_home: dir.path().join("dot-claude"),
@@ -3091,7 +3091,7 @@ async fn session_config_resolves_and_creation_honors_it() {
         shell: "/bin/sh".to_owned(),
         language_servers: Vec::new(),
         fsp_binary: None,
-        ..agent_host::HostConfig::default()
+        ..agent_host::server::HostConfig::default()
     });
     let mut client = Client::connect(host).await;
     client
@@ -3842,8 +3842,8 @@ async fn unflushed_client_edits_survive_the_hosts_file_reload() {
 
 // ------------------------------------------------------- the FSP engine
 
-fn fsp_host_at(dir: &Path) -> Arc<agent_host::Host> {
-    agent_host::Host::new(agent_host::HostConfig {
+fn fsp_host_at(dir: &Path) -> Arc<agent_host::server::Host> {
+    agent_host::server::Host::new(agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.join("data"),
         claude_binary: agent_host::testing::fake_cli_command(dir),
@@ -4221,7 +4221,7 @@ async fn fsp_real_server_parity() {
     std::fs::write(root.join("README.md"), "nothing to seek\nplain\n").expect("write");
     std::fs::write(root.join("skip.png"), b"seek\x00binary").expect("write");
 
-    let host = agent_host::Host::new(agent_host::HostConfig {
+    let host = agent_host::server::Host::new(agent_host::server::HostConfig {
         agents: Vec::new(),
         data_dir: dir.path().join("data"),
         claude_binary: agent_host::testing::fake_cli_command(dir.path()),
@@ -4240,9 +4240,9 @@ async fn fsp_real_server_parity() {
     let oracle = |query: &str| {
         let query = hifind::SearchQuery {
             term: query.to_owned(),
-            kind: himark_ahp_ext_types::SearchKind::Text,
+            kind: himark_ahp_ext_types::search::SearchKind::Text,
             case_sensitive: false,
-            target: himark_ahp_ext_types::SearchTarget::Content,
+            target: himark_ahp_ext_types::search::SearchTarget::Content,
         };
         let emitted = std::sync::Mutex::new(Vec::new());
         let leash = std::sync::atomic::AtomicBool::new(false);

@@ -6,7 +6,7 @@ use himark_text::text::Text;
 use himark_text::text_view::TextView;
 use operation::builder::OperationBuilder;
 
-use crate::{Replacement, TextOperation, TextPosition, TextRange};
+use crate::documents::{Replacement, TextOperation, TextPosition, TextRange};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Span {

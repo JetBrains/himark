@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use ahp_wire::fs::ClientDirectory;
-use ahp_wire::client::{LocationsAsk, ResourceUriMap, SearchKind};
+use ahp_wire::client::{LocationsAsk, ResourceUriMap};
+use himark_ahp_ext_types::search::SearchKind;
 use crate::{LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect};
 use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
 use imba::effect::EffectHandler;

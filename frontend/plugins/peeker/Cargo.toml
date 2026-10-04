@@ -5,6 +5,11 @@ edition = "2021"
 license = "Apache-2.0"
 
 [dependencies]
+terminals = { path = "../../terminals" }
+locations = { path = "../../locations" }
+ahp-locations = { path = "../../ahp-locations" }
+hikit = { path = "../../hikit" }
+documents = { path = "../../documents" }
 ahp-session = { path = "../../ahp-session" }
 ahp-wire = { path = "../../ahp-wire" }
 ahp-chat = { path = "../../ahp-chat" }

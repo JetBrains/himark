@@ -1,6 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use documents::DocumentsCommand;
+use imba::command::{Addressed, Verb};
+
 use std::sync::Arc;
 use std::sync::OnceLock;
 
@@ -8,14 +11,24 @@ use imba::{arena::Arena, constraints::Constraints, effect::{Effect, Effects}, ev
 use skia_safe::{Canvas, Rect, Size};
 use text::text::Text;
 
-use crate::{mount_editor, EditorIdView, ModalRequest, ModalView, OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode};
+use documents::lifecycle::mount_editor;
+use documents::entity_view::EditorIdView;
+use hikit::modal::ModalRequest;
+use hikit::modal::ModalView;
+use documents::OpenDocuments;
+use crate::workbench_node::Panel;
+use crate::window::Window;
+use crate::window::WindowId;
+use crate::window::Windows;
+use crate::workbench::Workbench;
+use crate::workbench_node::WorkbenchNode;
 use editor::document::Document;
 use editor::markup::Markup;
 
 use crate::stats::{Stats, StatsCommand};
 
 pub struct Application {
-    state: crate::AppState,
+    state: crate::state::AppState,
 
     committed: Store,
 
@@ -27,7 +40,7 @@ pub struct Application {
     pub(crate) ui_arena: Arena,
     /// The scope `committed` was gathered for — what StoreMut's
     /// write-back scatters with.
-    committed_scope: Option<crate::SessionId>,
+    committed_scope: Option<ahp_wire::SessionId>,
 
     #[cfg(any(not(target_arch = "wasm32"), target_feature = "atomics"))]
     effects: crate::effects::EffectLauncher,
@@ -36,7 +49,7 @@ pub struct Application {
 
     workshop: Arc<::editor::env::Workshop>,
 
-    pending_file_events: Vec<crate::watch::Subscription>,
+    pending_file_events: Vec<documents::watch::Subscription>,
 
     /// A perform raised the settle bit (`Effects::settle`): run the
     /// synchronous `Event::Settle` pulse before the next paint so
@@ -59,7 +72,7 @@ pub struct OpenedDocument {
 
     pub primary: bool,
 
-    pub target: Option<std::ops::Range<crate::LineCol>>,
+    pub target: Option<std::ops::Range<documents::text_ext::LineCol>>,
 
     /// Move the keyboard to the opened editor (a deliberate jump —
     /// a click or Enter) — or just show it, leaving the keyboard
@@ -83,16 +96,16 @@ pub type DocumentBuild = Box<
 >;
 
 pub enum AppCommand {
-    Content(WindowId, crate::WindowCommand),
+    Content(WindowId, crate::window::WindowCommand),
 
-    Dynamic(WindowId, std::sync::Arc<dyn crate::DynamicCommand>),
+    Dynamic(WindowId, std::sync::Arc<dyn crate::commands::DynamicCommand>),
 
     /// The app-level erased vocabulary (imba::command) — windowless:
     /// addressed entity commands, dynamic commands and one-shot
     /// landings that know collections by id and never a window.
     Verb(imba::command::Verb),
 
-    Register(std::sync::Arc<dyn crate::DynamicCommand>),
+    Register(std::sync::Arc<dyn crate::commands::DynamicCommand>),
     Stats(StatsCommand),
 
     /// THE one command road (docs/entities.md law 5): any collection,
@@ -104,7 +117,7 @@ pub enum AppCommand {
 
     Opened(WindowId, OpenedDocument),
 
-    FileChanged(crate::watch::Subscription),
+    FileChanged(documents::watch::Subscription),
 
     OpenAsync {
         window: WindowId,
@@ -115,7 +128,7 @@ pub enum AppCommand {
         build: DocumentBuild,
     },
 
-    OpenPanel(WindowId, Box<dyn crate::DynPanelView>),
+    OpenPanel(WindowId, Box<dyn hikit::panel::DynPanelView>),
 
     OpenModal(WindowId, Box<dyn ModalView>),
 
@@ -130,9 +143,7 @@ pub enum AppCommand {
     RegisterEnrichers(::editor::enrich::Enrichers),
 }
 
-pub use documents::DocumentsCommand;
 
-pub use imba::command::{Addressed, Verb};
 
 /// Wrap a shell command for the verb lane — the opaque escape a kit
 /// request rides when it must name the application (a window-coupled
@@ -148,7 +159,7 @@ pub(crate) fn verb_command(window: WindowId, verb: Verb) -> Option<AppCommand> {
     match verb {
         Verb::Shell(payload) => match payload.downcast::<AppCommand>() {
             Ok(command) => Some(*command),
-            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::DynamicCommand>>() {
+            Err(payload) => match payload.downcast::<std::sync::Arc<dyn crate::commands::DynamicCommand>>() {
                 Ok(command) => Some(AppCommand::Dynamic(window, *command)),
                 Err(_) => {
                     eprintln!("[app] an unknown shell verb payload was dropped");
@@ -172,7 +183,7 @@ pub type AppEffects = imba::effect::Batch<AppCommand>;
 
 pub type AppFx<'a> = Effects<'a, AppCommand>;
 
-pub(crate) fn pane_width(store: &Store, pane: &crate::EditorPane) -> Option<f32> {
+pub(crate) fn pane_width(store: &Store, pane: &crate::workbench_node::EditorPane) -> Option<f32> {
     let view = pane.content();
     Some(
         OpenDocuments::document_ref(store, view.documents(), view.document())?
@@ -202,7 +213,7 @@ impl AppFonts {
     }
 
     pub fn platform() -> Self {
-        Self::new(crate::fonts::source())
+        Self::new(hikit::fonts::source())
     }
 
     pub fn embedded() -> Self {
@@ -218,16 +229,16 @@ pub struct ChromeClearance(pub f32);
 
 pub(crate) fn fresh_workbench_root(
     store: &mut Store,
-    state: &ahp_session::session::SessionState,
+    state: &ahp_session::session::state::SessionState,
     ui: &UiCtx,
     fx: &mut AppFx<'_>,
 ) -> WorkbenchNode {
     let mut scratch = markdown_scratch();
 
     let documents = state.documents();
-    let location = crate::next_scratch_location(store, state.scratch_names());
+    let location = documents::next_scratch_location(store, state.scratch_names());
     let name = location.name().to_owned();
-    crate::RecentLocations::touch(store, state.recents(), &location);
+    ahp_chat::recents::RecentLocations::touch(store, state.recents(), &location);
     let scratch_id =
         OpenDocuments::register(store, documents, scratch.clone(), Some(location), name, 0);
     let width = fallback_pane_editor_width(store);
@@ -251,10 +262,10 @@ pub(crate) fn fresh_workbench_root(
 pub fn switch_session(
     store: &mut Store,
     window: WindowId,
-    target: crate::SessionId,
+    target: ahp_wire::SessionId,
     fx: &mut AppFx<'_>,
 ) {
-    let Some(mut entity) = crate::Windows::window(store, window) else {
+    let Some(mut entity) = crate::window::Windows::window(store, window) else {
         return;
     };
     if entity.current_session() == target {
@@ -271,9 +282,9 @@ pub fn switch_session(
 
     // Session ENTRY: the one legitimate catalog consult — the bundle
     // is wired into the window's record here and read from it after.
-    let state = ahp_session::session::Hosts::ensure_state(store, &target);
+    let state = ahp_session::session::state::Hosts::ensure_state(store, &target);
     let owed = entity.switch_to(target, state);
-    crate::Windows::put(store, window, entity);
+    crate::window::Windows::put(store, window, entity);
     if let Some(previous) = owed {
         fx.follow_up(AppCommand::Dynamic(
             window,
@@ -283,10 +294,10 @@ pub fn switch_session(
 }
 
 struct EnterFreshSession {
-    previous: crate::SessionId,
+    previous: ahp_wire::SessionId,
 }
 
-impl crate::DynamicCommand for EnterFreshSession {
+impl crate::commands::DynamicCommand for EnterFreshSession {
     fn id(&self) -> &'static str {
         "session.enter-fresh"
     }
@@ -301,7 +312,7 @@ impl crate::DynamicCommand for EnterFreshSession {
         fx: &mut AppFx<'_>,
     ) {
         let ui = &app.ui_ctx();
-        let Some(mut entity) = crate::Windows::window(store, window) else {
+        let Some(mut entity) = crate::window::Windows::window(store, window) else {
             return;
         };
         let _ = (ui, fx);
@@ -312,7 +323,7 @@ impl crate::DynamicCommand for EnterFreshSession {
             self.previous.clone(),
             Workbench::new(WorkbenchNode::vacant()),
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
@@ -343,14 +354,14 @@ impl Application {
             track_inset: scrollbar.track_inset,
         });
 
-        let overlay_font = crate::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
+        let overlay_font = hikit::fonts::ui_text_font(&ui, theme.ui().stats.font_size);
 
         crate::commands::register_builtins(&mut store);
         // The baseline diff policy; outer edges override via
         // `register_diff_policy` (docs/editor/structural-diff.md).
         store.put(::editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
-        crate::Navigators::register_windowed(&mut store, crate::navigation::EditorNavigator);
-        crate::higent::install_shell_roads(&mut store);
+        crate::navigation::Navigators::register_windowed(&mut store, crate::navigation::EditorNavigator);
+        crate::higent::chat_roads::install_shell_roads(&mut store);
         // The locations wash hook is no longer boot-global: the
         // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
@@ -361,7 +372,7 @@ impl Application {
         ));
         let handlers = Arc::new(crate::effects::Handlers::default());
         crate::effects::register_builtins(&handlers, &workshop);
-        let state = crate::AppState::adopt(store);
+        let state = crate::state::AppState::adopt(store);
         let committed = state.gather_seatless(None);
         let application = Self {
             state,
@@ -383,7 +394,7 @@ impl Application {
         application
     }
 
-    fn commit(&mut self, store: Store, scope: Option<&crate::SessionId>) {
+    fn commit(&mut self, store: Store, scope: Option<&ahp_wire::SessionId>) {
         self.state.scatter(store, scope);
         self.refresh_committed();
     }
@@ -464,13 +475,13 @@ impl Application {
                 .get::<ahp_wire::client::LocalHost>()
                 .and_then(|local| local.0);
             store.update::<ahp_wire::client::LocalHost>(|local| local.0 = Some(host));
-            store.update::<ahp_session::session::Hosts>(|hosts| {
+            store.update::<ahp_session::session::state::Hosts>(|hosts| {
                 hosts.rekey_local_sessions(previous, host);
             });
             // Families minted under the LOCAL placeholder carried no
             // uri map; now that they live under the real host, stamp
             // its map onto them (docs/entities.md law 4).
-            ahp_session::session::Hosts::stamp_host_uris(store, host);
+            ahp_session::session::state::Hosts::stamp_host_uris(store, host);
         });
         self.state.windows.adopt_local_host_all(host);
         self.refresh_committed();
@@ -480,7 +491,7 @@ impl Application {
         &self,
         store: &Store,
         command: &AppCommand,
-    ) -> (Option<WindowId>, Option<crate::SessionId>) {
+    ) -> (Option<WindowId>, Option<ahp_wire::SessionId>) {
         let window = match command {
             AppCommand::Content(window, _)
             | AppCommand::Dynamic(window, _)
@@ -508,12 +519,12 @@ impl Application {
     }
 
     pub fn add_window(&mut self) -> WindowId {
-        let workspace = crate::SessionId::local_default(&self.state.gather_seatless(None));
+        let workspace = ahp_wire::SessionId::local_default(&self.state.gather_seatless(None));
         let mut store = self.state.gather(None, Some(&workspace), &self.clients);
 
         let ui = self.ui_ctx();
         let mut discarded = AppEffects::new();
-        let state = ahp_session::session::Hosts::ensure_state(&mut store, &workspace);
+        let state = ahp_session::session::state::Hosts::ensure_state(&mut store, &workspace);
         let editors = fresh_workbench_root(&mut store, &state, &ui, &mut discarded.effects());
         let window = Windows::add(&mut store, Window::new(editors, workspace.clone(), state));
         self.commit(store, Some(&workspace));
@@ -543,15 +554,15 @@ impl Application {
         &mut self,
         navigator: N,
     ) {
-        self.setup(|store| crate::Navigators::register_windowed(store, navigator));
+        self.setup(|store| crate::navigation::Navigators::register_windowed(store, navigator));
     }
 
-    pub fn register_navigator<N: crate::Navigator>(&mut self, navigator: N) {
-        self.setup(|store| crate::Navigators::register(store, navigator));
+    pub fn register_navigator<N: hikit::navigation::Navigator>(&mut self, navigator: N) {
+        self.setup(|store| crate::navigation::Navigators::register(store, navigator));
     }
 
     pub fn observe_file_changes(&mut self) {
-        self.setup(crate::watch::Watching::install);
+        self.setup(documents::watch::Watching::install);
     }
 
     /// Install the edge's BASE RESOLVER: working location → base ref,
@@ -560,7 +571,7 @@ impl Application {
         &mut self,
         resolve: std::sync::Arc<dyn documents::diffs::StripeBaseResolver>,
     ) {
-        self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
+        self.setup(move |store| documents::diffs::StripeBases::install(store, resolve.clone()));
     }
 
     pub fn register_editor_command(&mut self, command: Arc<dyn editor::dynamic::DynamicEditorCommand>) {
@@ -573,7 +584,7 @@ impl Application {
         self.setup(|store| documents::dynamic::DocumentCommands::register(store, command));
     }
 
-    pub fn register_toolbar_button(&mut self, button: crate::ToolbarButton) {
+    pub fn register_toolbar_button(&mut self, button: crate::toolbar::ToolbarButton) {
         self.setup(|store| crate::toolbar::ToolbarButtons::register(store, button));
     }
 
@@ -647,7 +658,7 @@ impl Application {
             min_knob: scrollbar.min_knob,
             track_inset: scrollbar.track_inset,
         });
-        self.stats.set_font(crate::fonts::ui_text_font(
+        self.stats.set_font(hikit::fonts::ui_text_font(
             &self.ui,
             theme.ui().stats.font_size,
         ));
@@ -658,7 +669,7 @@ impl Application {
         self.refresh_chrome(&theme);
 
         self.workshop.set_theme(theme);
-        let windows: Vec<(crate::WindowId, Size)> = self
+        let windows: Vec<(crate::window::WindowId, Size)> = self
             .state
             .windows
             .ids()
@@ -674,7 +685,7 @@ impl Application {
     #[doc(hidden)]
     pub fn dock_owner_for_tests(&self, window: WindowId) -> Option<&'static str> {
         let store = self.window_store(window);
-        crate::Windows::window_ref(&store, window).and_then(|entity| entity.dock_owner())
+        crate::window::Windows::window_ref(&store, window).and_then(|entity| entity.dock_owner())
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -790,7 +801,7 @@ impl Application {
                 };
                 let fallback = match (key_down, &result) {
                     (Some((key, mods)), EventResult::Ignored | EventResult::Reveal(_)) => {
-                        crate::Keymaps::binding_of(&store, key, mods).and_then(|id| {
+                        crate::keymap::Keymaps::binding_of(&store, key, mods).and_then(|id| {
                             crate::focus::window_focus_data(&store, ui.as_ref(), window)
                                 .map(|data| data.commands)
                                 .unwrap_or_default()
@@ -862,7 +873,7 @@ impl Application {
         let ui = self.ui.clone();
         let mut batch = AppEffects::new();
 
-        let mut scope: (Option<WindowId>, Option<crate::SessionId>) = (None, None);
+        let mut scope: (Option<WindowId>, Option<ahp_wire::SessionId>) = (None, None);
         let mut store = self.state.gather(scope.0, scope.1.as_ref(), &self.clients);
         let mut queue: std::collections::VecDeque<AppCommand> = commands.into();
         while let Some(command) = queue.pop_front() {
@@ -889,7 +900,7 @@ impl Application {
             // landing's session gets its sweep THIS batch whatever the
             // batch's scope (the old tail served only the LAST scope's
             // session, so a cross-session batch starved the others).
-            for state in ahp_session::session::Hosts::states(&store) {
+            for state in ahp_session::session::state::Hosts::states(&store) {
                 let documents = state.documents();
                 crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
                 documents::scroll_stripes::sync_scroll_stripe_lanes(
@@ -908,7 +919,7 @@ impl Application {
                 // The dock tree views ride the push road too: a
                 // changes / history feed landing refreshes a mounted
                 // stale view in the SAME batch — no paint probe.
-                crate::changes_view::sync_changes_views(
+                changesview::changes_view::sync_changes_views(
                     &mut store,
                     state.changes(),
                     &self.ui_ctx(),
@@ -919,9 +930,9 @@ impl Application {
                 // dressed-views queue drains here: the session's own
                 // note (id-routed landings appended mid-batch), taken
                 // by the one lane that reads it.
-                let dressed = crate::OpenDocuments::take_dressed(&mut store, documents);
+                let dressed = documents::OpenDocuments::take_dressed(&mut store, documents);
                 fx.scope(AppCommand::Verb, |fx| {
-                    crate::diff_canvas::canvas::sync_canvases(
+                    canvas::canvas::sync_canvases(
                         &mut store,
                         state.canvas_router(),
                         &self.ui_ctx(),
@@ -993,13 +1004,13 @@ impl Application {
             self.propagate_theme_change();
         }
 
-        let changed: std::collections::HashSet<crate::Subscription> =
+        let changed: std::collections::HashSet<documents::watch::Subscription> =
             std::mem::take(&mut self.pending_file_events)
                 .into_iter()
                 .collect();
         if !changed.is_empty() {
-            let event = crate::watch::FilesChanged(std::sync::Arc::new(changed));
-            let windows: Vec<(crate::WindowId, Size)> = self
+            let event = documents::watch::FilesChanged(std::sync::Arc::new(changed));
+            let windows: Vec<(crate::window::WindowId, Size)> = self
                 .state
                 .windows
                 .ids()
@@ -1023,7 +1034,7 @@ impl Application {
             let mut rounds = 0;
             while self.settle_requested && rounds < 3 {
                 self.settle_requested = false;
-                let windows: Vec<(crate::WindowId, Size)> = self
+                let windows: Vec<(crate::window::WindowId, Size)> = self
                     .state
                     .windows
                     .ids()
@@ -1189,25 +1200,25 @@ fn command_label(command: &AppCommand) -> std::borrow::Cow<'static, str> {
         return addressed.to_string().into();
     }
     std::borrow::Cow::Borrowed(match command {
-        AppCommand::Content(_, crate::WindowCommand::Base(_)) => "pane",
-        AppCommand::Content(_, crate::WindowCommand::Toolbar(_)) => "toolbar",
-        AppCommand::Content(_, crate::WindowCommand::Side(command)) => {
+        AppCommand::Content(_, crate::window::WindowCommand::Base(_)) => "pane",
+        AppCommand::Content(_, crate::window::WindowCommand::Toolbar(_)) => "toolbar",
+        AppCommand::Content(_, crate::window::WindowCommand::Side(command)) => {
             match command.downcast_ref::<crate::drawer::DrawerCommand>() {
                 Some(crate::drawer::DrawerCommand::Tick(_)) => "side slide-tick",
                 Some(crate::drawer::DrawerCommand::Content(_)) => "side content",
                 None => "side",
             }
         }
-        AppCommand::Content(_, crate::WindowCommand::SideFocusLost) => "side",
-        AppCommand::Content(_, crate::WindowCommand::Dock(command)) => {
+        AppCommand::Content(_, crate::window::WindowCommand::SideFocusLost) => "side",
+        AppCommand::Content(_, crate::window::WindowCommand::Dock(command)) => {
             match command.downcast_ref::<crate::dock::DockCommand>() {
                 Some(crate::dock::DockCommand::Tick(_)) => "dock slide-tick",
                 Some(crate::dock::DockCommand::Content(_)) => "dock content",
                 _ => "dock",
             }
         }
-        AppCommand::Content(_, crate::WindowCommand::Modal(_)) => "modal",
-        AppCommand::Content(_, crate::WindowCommand::Focus(_)) => "focus",
+        AppCommand::Content(_, crate::window::WindowCommand::Modal(_)) => "modal",
+        AppCommand::Content(_, crate::window::WindowCommand::Focus(_)) => "focus",
         AppCommand::Dynamic(..) => "dynamic",
         AppCommand::Verb(..) => "verb",
         AppCommand::Register(_) => "register",
@@ -1285,7 +1296,7 @@ impl Application {
     fn perform(&mut self, store: &mut Store, ui: &UiCtx, command: AppCommand, fx: &mut AppFx<'_>) {
         match command {
             AppCommand::Content(window, command) => {
-                let mut entity = crate::Windows::window(store, window).expect("the window entity");
+                let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.perform(store, ui, command, fx),
@@ -1306,14 +1317,14 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                     }
                     Some(ModalRequest::Perform(verb)) => {
                         fx.scope(
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                         if let Some(command) = verb_command(window, verb) {
                             self.perform(store, ui, command, fx);
                         }
@@ -1327,9 +1338,9 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                         if let Some(state) = Windows::session_state(store, window) {
-                            fx.push(crate::open_by_location_effect(
+                            fx.push(crate::workspace::open_by_location_effect(
                                 window,
                                 state.documents(),
                                 location,
@@ -1345,12 +1356,12 @@ impl Application {
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         entity.show_document(store, ui, window, document, None, false, fx);
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
 
                         if let Some(state) = Windows::session_state(store, window) {
                             crate::watch::sync_document_watches(store, state.documents(), fx);
                             fx.scope(AppCommand::Verb, |fx| {
-                                crate::diffs::sync_stripe_bases(store, state.documents(), ui, fx)
+                                documents::lanes::sync_stripe_bases(store, state.documents(), ui, fx)
                             });
                         }
                     }
@@ -1359,8 +1370,8 @@ impl Application {
                             move |command| AppCommand::Content(window, command),
                             |fx| entity.dismiss_modal(store, fx),
                         );
-                        crate::Windows::put(store, window, entity);
-                        crate::open_locations(store, ui, window, &locations, fx);
+                        crate::window::Windows::put(store, window, entity);
+                        crate::workspace::open_locations(store, ui, window, &locations, fx);
                     }
                     Some(ModalRequest::SelectWidget(widget)) => {
                         fx.scope(
@@ -1368,25 +1379,25 @@ impl Application {
                             |fx| entity.dismiss_modal(store, fx),
                         );
                         entity.mount_focused(store, widget);
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                     }
                     None => {
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                     }
                 }
                 if let Some(request) = side_request {
                     let mut entity =
-                        crate::Windows::window(store, window).expect("the window entity");
+                        crate::window::Windows::window(store, window).expect("the window entity");
                     fx.scope(
                         move |command| AppCommand::Content(window, command),
                         |fx| entity.dismiss_side_panel(store, fx),
                     );
                     match request {
                         ModalRequest::Close => {
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                         }
                         ModalRequest::Perform(verb) => {
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                             if let Some(command) = verb_command(window, verb) {
                                 self.perform(store, ui, command, fx);
                             }
@@ -1396,9 +1407,9 @@ impl Application {
                             target,
                             focus,
                         } => {
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                             if let Some(state) = Windows::session_state(store, window) {
-                                fx.push(crate::open_by_location_effect(
+                                fx.push(crate::workspace::open_by_location_effect(
                                     window,
                                     state.documents(),
                                     location,
@@ -1410,12 +1421,12 @@ impl Application {
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
 
                             if let Some(state) = Windows::session_state(store, window) {
                                 crate::watch::sync_document_watches(store, state.documents(), fx);
                                 fx.scope(AppCommand::Verb, |fx| {
-                                    crate::diffs::sync_stripe_bases(
+                                    documents::lanes::sync_stripe_bases(
                                         store,
                                         state.documents(),
                                         ui,
@@ -1425,28 +1436,28 @@ impl Application {
                             }
                         }
                         ModalRequest::OpenLocations(locations) => {
-                            crate::Windows::put(store, window, entity);
-                            crate::open_locations(store, ui, window, &locations, fx);
+                            crate::window::Windows::put(store, window, entity);
+                            crate::workspace::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
                             entity.mount_focused(store, widget);
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                         }
                     }
                 }
                 if let Some(request) = dock_request {
                     let mut entity =
-                        crate::Windows::window(store, window).expect("the window entity");
+                        crate::window::Windows::window(store, window).expect("the window entity");
                     match request {
                         ModalRequest::Close => {
                             fx.scope(
                                 move |command| AppCommand::Content(window, command),
                                 |fx| entity.dismiss_dock(store, fx),
                             );
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                         }
                         ModalRequest::Perform(verb) => {
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                             if let Some(command) = verb_command(window, verb) {
                                 self.perform(store, ui, command, fx);
                             }
@@ -1456,9 +1467,9 @@ impl Application {
                             target,
                             focus,
                         } => {
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                             if let Some(state) = Windows::session_state(store, window) {
-                                fx.push(crate::open_by_location_effect(
+                                fx.push(crate::workspace::open_by_location_effect(
                                     window,
                                     state.documents(),
                                     location,
@@ -1470,11 +1481,11 @@ impl Application {
                         }
                         ModalRequest::ShowDocument(document) => {
                             entity.show_document(store, ui, window, document, None, false, fx);
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                             if let Some(state) = Windows::session_state(store, window) {
                                 crate::watch::sync_document_watches(store, state.documents(), fx);
                                 fx.scope(AppCommand::Verb, |fx| {
-                                    crate::diffs::sync_stripe_bases(
+                                    documents::lanes::sync_stripe_bases(
                                         store,
                                         state.documents(),
                                         ui,
@@ -1484,20 +1495,20 @@ impl Application {
                             }
                         }
                         ModalRequest::OpenLocations(locations) => {
-                            crate::Windows::put(store, window, entity);
-                            crate::open_locations(store, ui, window, &locations, fx);
+                            crate::window::Windows::put(store, window, entity);
+                            crate::workspace::open_locations(store, ui, window, &locations, fx);
                         }
                         ModalRequest::SelectWidget(widget) => {
                             entity.mount_focused(store, widget);
-                            crate::Windows::put(store, window, entity);
+                            crate::window::Windows::put(store, window, entity);
                         }
                     }
                 }
                 match panel_request {
-                    Some(crate::PanelRequest::OpenLocations(locations)) => {
-                        crate::open_locations(store, ui, window, &locations, fx);
+                    Some(hikit::panel::PanelRequest::OpenLocations(locations)) => {
+                        crate::workspace::open_locations(store, ui, window, &locations, fx);
                     }
-                    Some(crate::PanelRequest::OpenDiff(old_side, new_side)) => {
+                    Some(hikit::panel::PanelRequest::OpenDiff(old_side, new_side)) => {
                         self.perform(
                             store,
                             ui,
@@ -1511,7 +1522,7 @@ impl Application {
                             fx,
                         );
                     }
-                    Some(crate::PanelRequest::OpenAt(location, target)) => {
+                    Some(hikit::panel::PanelRequest::OpenAt(location, target)) => {
                         self.perform(
                             store,
                             ui,
@@ -1525,11 +1536,11 @@ impl Application {
                             fx,
                         );
                     }
-                    Some(crate::PanelRequest::Perform(command)) => {
+                    Some(hikit::panel::PanelRequest::Perform(command)) => {
                         self.perform(store, ui, AppCommand::Verb(Verb::Dynamic(command)), fx);
                     }
-                    Some(crate::PanelRequest::Shell(payload)) => {
-                        match payload.downcast_ref::<std::sync::Arc<dyn crate::DynamicCommand>>() {
+                    Some(hikit::panel::PanelRequest::Shell(payload)) => {
+                        match payload.downcast_ref::<std::sync::Arc<dyn crate::commands::DynamicCommand>>() {
                             Some(command) => {
                                 let command = command.clone();
                                 self.perform(store, ui, AppCommand::Dynamic(window, command), fx);
@@ -1540,7 +1551,7 @@ impl Application {
                     None => {}
                 }
                 match toolbar_request {
-                    Some(crate::ToolbarRequest::Command(id)) => {
+                    Some(crate::toolbar::ToolbarRequest::Command(id)) => {
                         if let Some(command) =
                             crate::commands::Commands::of(store).find(id).cloned()
                         {
@@ -1594,7 +1605,7 @@ impl Application {
                 // The border road: the event names only a subscription;
                 // its documents collection is found once, by content.
                 if let Some(documents) =
-                    ahp_session::session::Hosts::documents_of_watch(store, subscription)
+                    ahp_session::session::state::Hosts::documents_of_watch(store, subscription)
                 {
                     crate::watch::refetch_watched(store, documents, subscription, fx);
                 }
@@ -1627,11 +1638,11 @@ impl Application {
 
                 crate::watch::sync_document_watches(store, documents, fx);
                 fx.scope(AppCommand::Verb, |fx| {
-                    crate::diffs::sync_stripe_bases(store, documents, ui, fx)
+                    documents::lanes::sync_stripe_bases(store, documents, ui, fx)
                 });
 
                 if opened.primary {
-                    if let Some(mut entity) = crate::Windows::window(store, window) {
+                    if let Some(mut entity) = crate::window::Windows::window(store, window) {
                         entity.show_document(
                             store,
                             ui,
@@ -1641,7 +1652,7 @@ impl Application {
                             opened.focus,
                             fx,
                         );
-                        crate::Windows::put(store, window, entity);
+                        crate::window::Windows::put(store, window, entity);
                     }
                 }
             }
@@ -1662,30 +1673,30 @@ impl Application {
                 ));
             }
             AppCommand::OpenPanel(window, panel) => {
-                let mut entity = crate::Windows::window(store, window).expect("the window entity");
+                let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
                 entity.open_panel(store, ui, panel, fx);
-                crate::Windows::put(store, window, entity);
+                crate::window::Windows::put(store, window, entity);
             }
             AppCommand::OpenModal(window, modal) => {
-                let mut entity = crate::Windows::window(store, window).expect("the window entity");
+                let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.show_modal(store, modal, fx),
                 );
-                crate::Windows::put(store, window, entity);
+                crate::window::Windows::put(store, window, entity);
             }
             AppCommand::CloseModal(window) => {
-                let mut entity = crate::Windows::window(store, window).expect("the window entity");
+                let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
                 fx.scope(
                     move |command| AppCommand::Content(window, command),
                     |fx| entity.dismiss_modal(store, fx),
                 );
-                crate::Windows::put(store, window, entity);
+                crate::window::Windows::put(store, window, entity);
             }
             AppCommand::ViewportResized(window, size) => {
-                let mut entity = crate::Windows::window(store, window).expect("the window entity");
+                let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
                 entity.set_viewport_size(size);
-                crate::Windows::put(store, window, entity);
+                crate::window::Windows::put(store, window, entity);
             }
             AppCommand::RegisterLanguages(languages) => {
                 store.put(::editor::env::Parsers(std::sync::Arc::new(languages)));
@@ -1710,7 +1721,7 @@ impl Application {
         constraints: Constraints,
     ) -> impl Thunk<'a, AppCommand> + 'a {
         let size = constraints.max;
-        let entity = crate::Windows::window_ref(store, window).expect("the window entity");
+        let entity = crate::window::Windows::window_ref(store, window).expect("the window entity");
         let content = imba::layout::Layout::layout(entity.display(arena, store, ui), arena, constraints);
         let stats = imba::layout::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
 

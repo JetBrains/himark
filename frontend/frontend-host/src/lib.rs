@@ -5,27 +5,29 @@ use std::collections::VecDeque;
 use std::ffi::{c_char, c_void};
 use std::sync::{Arc, Mutex};
 
-pub use himark::terminal::TerminalBackend;
-pub use himark::AppFonts;
-pub use host::{HimarkHostCallbacks, HimarkLocation, HimarkStr};
 
 use ahp_docsync as docsync;
 use ahp_locations::find;
 use ahp_session::fsroute;
-mod host;
+pub mod host;
+use himark::app::AppFonts;
+use host::{HimarkHostCallbacks, HimarkLocation};
 mod lsproute;
 use ahp_wire::uris;
 
 use demo::demo_location;
-use himark::{AppCommand, AppExt, Application, BackgroundRunner};
+use himark::app::AppCommand;
+use himark::app_ext::AppExt;
+use himark::app::Application;
+use himark::effects::BackgroundRunner;
 use imba::anim::AnimationClock;
 use imba::event::{Event, Key, MouseButton};
 use skia_safe::{Canvas, Point, Size};
 
 type WakeCallback = Box<dyn Fn() + Send + 'static>;
 
-fn wid(window: u64) -> himark::WindowId {
-    himark::WindowId::from_raw(window)
+fn wid(window: u64) -> himark::window::WindowId {
+    himark::window::WindowId::from_raw(window)
 }
 
 #[derive(Clone, Copy, Default)]
@@ -126,9 +128,9 @@ fn register_agent_server(
     client: ahp_wire::client::Client,
 ) -> ahp_wire::client::HostId {
     let id = app.register_client(client.clone());
-    ahp_session::session::Agents::seed(&mut app.store_mut(), id, name);
+    ahp_session::session::agents::Agents::seed(&mut app.store_mut(), id, name);
 
-    ahp_session::session::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
+    ahp_session::session::state::Hosts::install_uris(&mut app.store_mut(), id, Arc::new(uris::FileUris));
     clients.record(id, client);
     id
 }
@@ -445,15 +447,15 @@ impl HimarkEngine {
         app.register_command(Arc::new(palette::TogglePalette));
         app.register_command(Arc::new(peeker::TogglePeeker));
 
-        app.register_command(Arc::new(himark::OpenDiff));
-        app.register_row_minter(himark::pair_row_minter());
-        app.register_navigator(himark::CanvasNavigator);
-        app.register_command(Arc::new(demo::OpenTreeDemo));
+        app.register_command(Arc::new(himark::diff_pane::OpenDiff));
+        app.register_row_minter(canvas::diff_pane::pair_row_minter());
+        app.register_navigator(canvas::canvas::CanvasNavigator);
+        app.register_command(Arc::new(demo::tree_demo::OpenTreeDemo));
         app.register_command(Arc::new(demo::OpenMonsterDemo));
         app.register_command(Arc::new(demo::OpenWallOfTextDemo));
 
         himarkdown::register_handlers(&mut app);
-        app.register_editor_command(Arc::new(himarkdown::InsertTable));
+        app.register_editor_command(Arc::new(himarkdown::table::InsertTable));
 
         himark::hiahp::register_all(&mut app);
         himark::hiahp::install_build_handler(&mut app, languages, diff_policy);
@@ -462,15 +464,15 @@ impl HimarkEngine {
         // The comments hook and the comment gesture are no longer
         // boot-global: the session ceremony installs them per session,
         // wired with their sibling ids (docs/entities.md law 4).
-        himark::hicomments::install(&mut app.store_mut());
+        comments::install(&mut app.store_mut());
         app.register_command(Arc::new(himark::hicomments::ToggleCommentsView));
         app.register_toolbar_button(himark::hicomments::toolbar_button());
 
-        app.register_command(Arc::new(himark::higent::ToggleAgentsView));
-        app.register_command(Arc::new(himark::higent::NewChat));
-        app.register_toolbar_button(himark::higent::toolbar_button());
+        app.register_command(Arc::new(himark::higent::drawer::ToggleAgentsView));
+        app.register_command(Arc::new(himark::higent::session::new_chat::NewChat));
+        app.register_toolbar_button(himark::higent::drawer::toolbar_button());
 
-        app.register_toolbar_button(himark::composer_button());
+        app.register_toolbar_button(himark::toolbar::composer_button());
 
         let inbox: Arc<Mutex<VecDeque<AppCommand>>> = Arc::new(Mutex::new(VecDeque::new()));
         let wake = Arc::new(WakeSlot::default());
@@ -496,7 +498,7 @@ impl HimarkEngine {
             runtime.handle().clone(),
             {
                 let dispatcher = dispatcher.clone();
-                Arc::new(move |verb| dispatcher(himark::AppCommand::Verb(verb)))
+                Arc::new(move |verb| dispatcher(himark::app::AppCommand::Verb(verb)))
             },
             Arc::clone(&resource_uris),
         );
@@ -516,14 +518,14 @@ impl HimarkEngine {
                 inbox
                     .lock()
                     .expect("inbox")
-                    .push_back(AppCommand::FileChanged(himark::Subscription(subscription)));
+                    .push_back(AppCommand::FileChanged(documents::watch::Subscription(subscription)));
                 wake.fire();
             })
         }));
 
         host_discovery::logging::init("app");
         let connector: Arc<dyn ahp_wire::transport::Connector> =
-            Arc::new(desktop::DesktopConnector);
+            Arc::new(desktop::connector::DesktopConnector);
 
         register_agent_server(
             &mut app,
@@ -552,7 +554,7 @@ impl HimarkEngine {
             let clients = clients.clone();
             let handle = runtime.handle().clone();
             let connector = Arc::clone(&connector);
-            himark::higent::AgentFlows::install_add_host(
+            himark::higent::flows::AgentFlows::install_add_host(
                 &mut app.store_mut(),
                 Arc::new(move |app, store, url| {
                     let client = ahp_wire::client::Client::of(Arc::new(
@@ -563,8 +565,8 @@ impl HimarkEngine {
                         ),
                     ));
                     let id = app.register_client(client.clone());
-                    ahp_session::session::Agents::seed(store, id, url.trim());
-                    ahp_session::session::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
+                    ahp_session::session::agents::Agents::seed(store, id, url.trim());
+                    ahp_session::session::state::Hosts::install_uris(store, id, Arc::new(uris::FileUris));
                     clients.record(id, client);
                     Some(id)
                 }),
@@ -572,7 +574,7 @@ impl HimarkEngine {
         }
 
         let refresh: Arc<
-            dyn Fn(himark::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync,
+            dyn Fn(himark::window::WindowId, Arc<std::sync::atomic::AtomicBool>) + Send + Sync,
         > = {
             let inbox = inbox.clone();
             let wake = wake.clone();
@@ -586,47 +588,47 @@ impl HimarkEngine {
         };
         app.register_handler::<host::NewTerminalEffect>(host::SessionTerminalHandler { refresh });
         app.register_command(Arc::new(host::OpenTerminal));
-        himark::OpenDocuments::install_hook(
+        documents::OpenDocuments::install_hook(
             &mut app.store_mut(),
             Arc::new(docsync::DocsyncHook {
                 channels: Arc::clone(&document_channels),
                 directory: Arc::clone(&clients),
             }),
         );
-        app.register_handler::<himark::FetchDocumentEffect>(fsroute::RouteFetch {
+        app.register_handler::<documents::FetchDocumentEffect>(fsroute::RouteFetch {
             uris: Arc::clone(&resource_uris),
             directory: Arc::clone(&clients),
         });
-        app.register_handler::<himark::FetchResourceBytesEffect>(fsroute::RouteFetchBytes {
+        app.register_handler::<documents::FetchResourceBytesEffect>(fsroute::RouteFetchBytes {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::StoreDocumentEffect>(fsroute::RouteStore {
+        app.register_handler::<documents::StoreDocumentEffect>(fsroute::RouteStore {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
             channels: Arc::clone(&document_channels),
         });
-        app.register_handler::<himark::ListDirectoryEffect>(fsroute::RouteList {
+        app.register_handler::<documents::ListDirectoryEffect>(fsroute::RouteList {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::CreateDocumentEffect>(fsroute::RouteCreate {
+        app.register_handler::<documents::CreateDocumentEffect>(fsroute::RouteCreate {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::DeleteResourceEffect>(fsroute::RouteDelete {
+        app.register_handler::<documents::DeleteResourceEffect>(fsroute::RouteDelete {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::MoveResourceEffect>(fsroute::RouteMove {
+        app.register_handler::<documents::MoveResourceEffect>(fsroute::RouteMove {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::SubscribeEffect>(fsroute::RouteSubscribe {
+        app.register_handler::<documents::watch::SubscribeEffect>(fsroute::RouteSubscribe {
             directory: Arc::clone(&clients),
             uris: Arc::clone(&resource_uris),
         });
-        app.register_handler::<himark::UnsubscribeEffect>(fsroute::RouteUnsubscribe {
+        app.register_handler::<documents::watch::UnsubscribeEffect>(fsroute::RouteUnsubscribe {
             directory: Arc::clone(&clients),
         });
         app.observe_file_changes();
@@ -657,7 +659,7 @@ impl HimarkEngine {
     pub fn add_window(&mut self) -> u64 {
         let window = self.app.add_window();
         if self.compose_new_windows {
-            self.app.perform_command(himark::AppCommand::Dynamic(
+            self.app.perform_command(himark::app::AppCommand::Dynamic(
                 window,
                 std::sync::Arc::new(himark::new_session::OpenNewSession { host: None }),
             ));
@@ -748,7 +750,7 @@ impl HimarkEngine {
         height: f32,
         _scale: f32,
     ) -> bool {
-        himark::Window::draw_with_size(wid(window), &mut self.app, canvas, Size::new(width, height))
+        himark::window::Window::draw_with_size(wid(window), &mut self.app, canvas, Size::new(width, height))
     }
 
     pub fn record_latency(&mut self, now_secs: f64) {
@@ -824,7 +826,7 @@ impl HimarkEngine {
         }
         self.app
             .with_clipboard_client(wid(window), |client| {
-                client.paste(&himark::ClipboardContent {
+                client.paste(&imba::clipboard::ClipboardContent {
                     text: text.to_owned(),
                 })
             })
@@ -1060,7 +1062,7 @@ impl HimarkEngine {
             self.app
                 .register_command(Arc::new(himark::hichanges::ToggleChangesView));
 
-            self.app.register_command(Arc::new(himark::ReloadDocument));
+            self.app.register_command(Arc::new(himark::watch::ReloadDocument));
             self.app
                 .register_command(Arc::new(himark::hichanges::RefetchChanges::default()));
             self.app
@@ -1074,19 +1076,19 @@ impl HimarkEngine {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 });
-            self.app.register_handler::<himark::LspCompletionEffect>(
+            self.app.register_handler::<ahp_lsp::LspCompletionEffect>(
                 ahp_lsp::CompletionRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
-            self.app.register_handler::<himark::hover::LspHoverEffect>(
+            self.app.register_handler::<documents::hover::LspHoverEffect>(
                 ahp_lsp::HoverRoute {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
                 },
             );
-            self.app.register_handler::<himark::LspLocationsEffect>(
+            self.app.register_handler::<ahp_locations::LspLocationsEffect>(
                 ahp_locations::routes::RouteLspLocations {
                     directory: Arc::clone(&self.clients),
                     uris: Arc::clone(&self.resource_uris),
@@ -1115,23 +1117,23 @@ impl HimarkEngine {
         }
         if capabilities.store_document && !installed.store_document {
             self.app
-                .register_document_command(Arc::new(himark::SaveDocument::with_save_as()));
-            self.app.register_command(Arc::new(himark::SaveAll));
+                .register_document_command(Arc::new(himark::save::SaveDocument::with_save_as()));
+            self.app.register_command(Arc::new(himark::save::SaveAll));
 
             self.app
-                .register_editor_command(Arc::new(hiscript::RunScript));
+                .register_editor_command(Arc::new(hiscript::plugin::RunScript));
             let caller = self.app.effect_caller();
             self.app
-                .register_handler::<hiscript::RunScriptEffect>(hiscript::RunScriptHandler {
+                .register_handler::<hiscript::plugin::RunScriptEffect>(hiscript::plugin::RunScriptHandler {
                     caller,
                 });
         }
         if capabilities.list_directory && !installed.list_directory {
             self.app
-                .register_handler::<himark::FindEffect>(find::NativeFindHandler {
+                .register_handler::<ahp_locations::FindEffect>(find::NativeFindHandler {
                     directory: Arc::clone(&self.clients),
                 });
-            self.app.register_handler::<himark::SearchLocationsEffect>(
+            self.app.register_handler::<ahp_locations::SearchLocationsEffect>(
                 ahp_locations::routes::RouteSearchLocations {
                     directory: Arc::clone(&self.clients),
                 },
@@ -1176,7 +1178,7 @@ impl HimarkEngine {
                     Arc::clone(&bridge),
                 ));
             self.app
-                .register_command(Arc::new(himark::higent::ShareHost));
+                .register_command(Arc::new(himark::higent::drawer::ShareHost));
         }
 
         self.install_agent_host_filesystem(AgentHostFilesystemCapabilities {
@@ -1186,7 +1188,7 @@ impl HimarkEngine {
         });
         if callbacks.pick_save.is_some() {
             self.app
-                .register_handler::<himark::PickSaveEffect>(host::PickSaveHandler(Arc::clone(
+                .register_handler::<documents::PickSaveEffect>(host::PickSaveHandler(Arc::clone(
                     &bridge,
                 )));
         }
@@ -1223,7 +1225,7 @@ impl HimarkEngine {
             .inbox
             .lock()
             .expect("inbox")
-            .push_back(himark::AppCommand::FileChanged(himark::Subscription(
+            .push_back(himark::app::AppCommand::FileChanged(documents::watch::Subscription(
                 subscription,
             )));
         self.shared.wake.fire();
@@ -2113,7 +2115,7 @@ unsafe fn write_optional_out<T: Copy>(value: Option<T>, out: *mut T) -> bool {
 
 #[cfg(test)]
 fn test_connector() -> Arc<dyn ahp_wire::transport::Connector> {
-    Arc::new(desktop::DesktopConnector)
+    Arc::new(desktop::connector::DesktopConnector)
 }
 
 #[cfg(test)]

@@ -1,18 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use rquickjs;
 
 #[cfg(feature = "plugin")]
-mod plugin;
-mod run;
+pub mod plugin;
+pub mod run;
 #[cfg(feature = "plugin")]
-pub use plugin::{
-    resolve, RunScript, RunScriptEffect, RunScriptHandler, ScriptAgent, ScriptCapture, ScriptEdit,
-    ScriptLanding, ScriptLanes, ScriptRecord, ScriptRuns, ScriptSnapshot, ScriptStored,
-    ShowDocuments,
-};
-pub use run::{run_script, Limits, ScriptOutcome, ScriptWorld, ScriptWrite, WorldFuture};
 
 pub fn eval_to_string(source: &str) -> Result<String, String> {
     let runtime = rquickjs::Runtime::new().map_err(|error| error.to_string())?;

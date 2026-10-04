@@ -1,19 +1,20 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
-
 //! The shell half of the history feature: the dock toggle and its
 //! toolbar button. The collection and the commit graph live in the
 //! `changesview` crate.
+
+
+use changesview::hihistory::*;
 
 use std::sync::Arc;
 
 use imba::store::Store;
 
-pub use changesview::hihistory::*;
 
 pub struct ToggleHistoryView;
 
-impl crate::DynamicCommand for ToggleHistoryView {
+impl crate::commands::DynamicCommand for ToggleHistoryView {
     fn id(&self) -> &'static str {
         "history.view"
     }
@@ -22,28 +23,28 @@ impl crate::DynamicCommand for ToggleHistoryView {
     }
     fn perform(
         &self,
-        _app: &mut crate::Application,
+        _app: &mut crate::app::Application,
         store: &mut Store,
-        window: crate::WindowId,
-        fx: &mut crate::AppFx<'_>,
+        window: crate::window::WindowId,
+        fx: &mut crate::app::AppFx<'_>,
     ) {
-        let mut entity = crate::Windows::window(store, window).expect("the window entity");
+        let mut entity = crate::window::Windows::window(store, window).expect("the window entity");
         if entity.dock_owner() == Some(self.id()) {
             entity.roll_away_dock();
-            crate::Windows::put(store, window, entity);
+            crate::window::Windows::put(store, window, entity);
             return;
         }
         let workspace = entity.current_session();
         let changes = entity.state().changes();
         let wire = entity.state().changes_wire();
-        let folders = ahp_session::session::session_folders(store, &workspace);
-        fx.scope(crate::AppCommand::Verb, |fx| {
+        let folders = ahp_session::session::folders::session_folders(store, &workspace);
+        fx.scope(crate::app::AppCommand::Verb, |fx| {
             ahp_changes::changes::ensure(store, wire, folders, fx)
         });
         // The canvas-open verb the tree emits — the window rides in
         // the closure; the view never holds one.
-        let open_canvas: crate::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
-            crate::shell_verb(crate::AppCommand::Dynamic(
+        let open_canvas: changesview::changes_view::CanvasOpener = Arc::new(move |source, reveal| {
+            crate::app::shell_verb(crate::app::AppCommand::Dynamic(
                 window,
                 Arc::new(crate::diff_canvas::OpenDiffCanvas {
                     changes,
@@ -53,41 +54,41 @@ impl crate::DynamicCommand for ToggleHistoryView {
             ))
         });
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| entity.dismiss_modal(store, fx),
         );
-        let view = crate::hichanges::Changes::mint_view(
+        let view = changesview::hichanges::Changes::mint_view(
             store,
             changes,
-            crate::changes_view::ChangesView::open(
+            changesview::changes_view::ChangesView::open(
                 store,
                 &_app.ui_ctx(),
                 changes,
-                crate::changes_view::ViewSets::History,
+                changesview::changes_view::ViewSets::History,
                 open_canvas,
             ),
         );
         let owner = self.id();
         fx.scope(
-            move |command| crate::AppCommand::Content(window, command),
+            move |command| crate::app::AppCommand::Content(window, command),
             |fx| {
                 entity.show_dock(
                     store,
-                    Box::new(crate::changes_view::ChangesPane::new(changes, view)),
+                    Box::new(changesview::changes_view::ChangesPane::new(changes, view)),
                     owner,
                     fx,
                 )
             },
         );
-        crate::Windows::put(store, window, entity);
+        crate::window::Windows::put(store, window, entity);
     }
 }
 
-pub fn toolbar_button() -> crate::ToolbarButton {
-    crate::ToolbarButton {
+pub fn toolbar_button() -> crate::toolbar::ToolbarButton {
+    crate::toolbar::ToolbarButton {
         command: "history.view",
         order: 1.1,
-        side: crate::ToolbarSide::Right,
+        side: crate::toolbar::ToolbarSide::Right,
         glyph: Arc::new(|canvas, rect, color| {
             let mut paint = skia_safe::Paint::default();
             paint.set_anti_alias(true);
