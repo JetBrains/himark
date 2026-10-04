@@ -4,7 +4,6 @@
 pub mod app;
 pub mod app_ext;
 pub mod commands;
-pub mod diffs;
 pub mod dock;
 pub mod drawer;
 pub mod effects;

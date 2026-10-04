@@ -902,20 +902,19 @@ impl Application {
             // session, so a cross-session batch starved the others).
             for state in ahp_session::session::state::Hosts::states(&store) {
                 let documents = state.documents();
-                crate::diffs::sync_diff_lanes(&mut store, documents, &mut fx);
-                documents::scroll_stripes::sync_scroll_stripe_lanes(
-                    &mut store,
-                    documents,
-                    &mut fx,
-                    move |document, command| {
-                        AppCommand::at(documents, DocumentsCommand::Editor(document, command))
-                    },
-                );
+                fx.scope(AppCommand::Verb, |fx| {
+                    documents::lanes::sync_diff_lanes(&mut store, documents, fx)
+                });
+                fx.scope(AppCommand::Verb, |fx| {
+                    documents::lanes::sync_scroll_stripe_lanes(&mut store, documents, fx)
+                });
                 // The DRESSING sweep: any view whose basis lags its
                 // pair resyncs NOW, id-routed — a normalize landing
                 // and its re-dress share a batch, and no face waits
                 // for paint.
-                crate::diffs::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), &mut fx);
+                fx.scope(AppCommand::Verb, |fx| {
+                    documents::lanes::sync_diff_dressing(&mut store, documents, &self.ui_ctx(), fx)
+                });
                 // The dock tree views ride the push road too: a
                 // changes / history feed landing refreshes a mounted
                 // stale view in the SAME batch — no paint probe.

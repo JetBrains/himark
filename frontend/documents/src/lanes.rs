@@ -94,3 +94,49 @@ pub fn refetch_watched(
         )
     });
 }
+
+/// The batch-tail DRESSING sweep, scoped onto the At road.
+pub fn sync_diff_dressing(
+    store: &mut imba::store::Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    ui: &imba::ui::UiCtx,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    fx.scope(
+        move |command| imba::command::Verb::at(documents, command),
+        |fx| crate::diff_views::sync_diff_dressing(store, documents, ui, fx),
+    );
+}
+
+/// The diff NORMALIZE lanes — landings route At the collection.
+pub fn sync_diff_lanes(
+    store: &mut imba::store::Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    crate::diffs::sync_diff_lanes(store, documents, fx, move |normalized| {
+        imba::command::Verb::at(
+            documents,
+            crate::DocumentsCommand::Normalized {
+                diff: normalized.diff,
+                operation: normalized.operation,
+                markup: normalized.markup,
+                changed: normalized.changed,
+                base_revision: normalized.base_revision,
+                target_revision: normalized.target_revision,
+            },
+        )
+    });
+}
+
+/// The scroll-stripe sweep — stripe writes land as editor commands
+/// routed At the collection.
+pub fn sync_scroll_stripe_lanes(
+    store: &mut imba::store::Store,
+    documents: imba::store::Id<crate::OpenDocuments>,
+    fx: &mut imba::command::Fx<'_>,
+) {
+    crate::scroll_stripes::sync_scroll_stripe_lanes(store, documents, fx, move |document, command| {
+        imba::command::Verb::at(documents, crate::DocumentsCommand::Editor(document, command))
+    });
+}
