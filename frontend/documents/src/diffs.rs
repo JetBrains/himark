@@ -244,6 +244,33 @@ impl OpenDocuments {
         });
     }
 
+    /// Note a view the dressing touched this batch — the collection's
+    /// own tail queue (the `PendingSweeps` shape): the canvas lane
+    /// takes exactly these at the batch tail and resizes their rows.
+    pub fn note_dressed(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+        id: DiffViewId,
+    ) {
+        store.update_entity(documents, |docs: &mut OpenDocuments| {
+            docs.pending.dressed.push(id);
+        });
+    }
+
+    /// Drain the dressed-views queue. Read-take-put, never minting:
+    /// a gone collection answers empty instead of resurrecting.
+    pub fn take_dressed(
+        store: &mut Store,
+        documents: imba::store::Id<OpenDocuments>,
+    ) -> Vec<DiffViewId> {
+        let Some(mut docs) = store.entity::<OpenDocuments>(documents).cloned() else {
+            return Vec::new();
+        };
+        let dressed = std::mem::take(&mut docs.pending.dressed);
+        store.put_entity(documents, docs);
+        dressed
+    }
+
     pub fn take_diff_view(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,

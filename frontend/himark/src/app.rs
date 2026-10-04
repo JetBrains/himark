@@ -976,18 +976,19 @@ impl Application {
                 );
                 // The canvases sync against the fresh document/diff/
                 // changeset state — the SAME batch a feed landed in, a
-                // direct lane over the sets that own them.
+                // direct lane over the sets that own them. The
+                // dressed-views queue drains here: the family's own
+                // note (id-routed landings appended mid-batch), taken
+                // by the one lane that reads it.
+                let dressed = crate::OpenDocuments::take_dressed(&mut store, documents);
                 crate::diff_canvas::canvas::sync_canvases(
                     &mut store,
                     family.changes(),
                     &self.ui_ctx(),
+                    &dressed,
                     &mut fx,
                 );
             }
-            // The dressed-views note is consumed above (the canvas
-            // resized its touched rows); clear it AFTER consumption —
-            // id-routed landings append to it mid-batch.
-            store.put(crate::diffs::DressedViews::default());
         }
         // The safety net for a tail lane's follow-up: the queue loop
         // is over, so perform them here — late but never lost.

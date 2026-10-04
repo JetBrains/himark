@@ -93,14 +93,8 @@ pub(crate) fn perform_diff_view(
     );
     pair.state = Some(view.split.state);
     crate::OpenDocuments::put_diff_view(store, documents, id, pair);
-    store.update::<DressedViews>(|dressed| dressed.0.push(id));
+    crate::OpenDocuments::note_dressed(store, documents, id);
 }
-
-/// The diff views the dressing touched THIS batch — written by the
-/// sweep and the id-routed landings, read by later tail lanes (the
-/// canvas resizes exactly these rows). Reset at the next sweep.
-#[derive(Clone, Default)]
-pub struct DressedViews(pub Vec<DiffViewId>);
 
 /// The batch-tail DRESSING sweep (docs/model-view.md step 1): any
 /// tracked view whose basis lags its pair — a normalize landed, or

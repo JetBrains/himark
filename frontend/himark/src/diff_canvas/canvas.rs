@@ -1792,12 +1792,9 @@ pub(crate) fn sync_canvases(
     store: &mut Store,
     changes: imba::store::Id<Changes>,
     ui: &UiCtx,
+    dressed: &[crate::DiffViewId],
     fx: &mut crate::AppFx<'_>,
 ) {
-    let dressed: Vec<crate::DiffViewId> = store
-        .get::<crate::DressedViews>()
-        .map(|dressed| dressed.0.clone())
-        .unwrap_or_default();
     for (set, id) in Changes::canvas_ids(store, changes) {
         let Some(mut canvas) = Changes::take_canvas(store, changes, set, id) else {
             continue;

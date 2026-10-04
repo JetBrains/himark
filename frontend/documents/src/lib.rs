@@ -551,6 +551,11 @@ pub(crate) struct PendingSweeps {
     pub(crate) stripes: rpds::HashTrieSetSync<DocumentId>,
     pub(crate) dressing: rpds::HashTrieSetSync<DocumentId>,
     pub(crate) theme: Option<String>,
+
+    /// The diff views the dressing touched this batch — written by
+    /// the sweep and the id-routed landings, taken by the canvas
+    /// lane (`take_dressed`), which resizes exactly these rows.
+    pub(crate) dressed: Vec<crate::DiffViewId>,
 }
 
 impl Default for PendingSweeps {
@@ -560,6 +565,7 @@ impl Default for PendingSweeps {
             stripes: rpds::HashTrieSetSync::new_sync(),
             dressing: rpds::HashTrieSetSync::new_sync(),
             theme: None,
+            dressed: Vec::new(),
         }
     }
 }
