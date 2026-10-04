@@ -11,7 +11,9 @@ use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetSt
 use serde_json::json;
 
 use super::*;
+use crate::changes_view::RowItem;
 use crate::drivers::changes::{digest_actions, digest_state, CatalogEntry};
+use crate::{ForestNode, ResourceLocation, ResourceType};
 
 struct InertSeat;
 
@@ -539,7 +541,7 @@ fn activation_pairs_carry_the_exact_locations() {
     );
     assert_eq!(
         by_key("new.md").old.authority().as_str(),
-        super::EMPTY_AUTHORITY,
+        EMPTY_AUTHORITY,
         "an add's old side is the empty authority"
     );
 }

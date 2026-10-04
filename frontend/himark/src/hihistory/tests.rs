@@ -6,10 +6,12 @@ use std::sync::Arc;
 use serde_json::json;
 
 use super::*;
+use crate::changes_view::RowItem;
 use crate::drivers::history::{digest_deltas, digest_snapshot};
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
 use crate::Authority;
+use crate::{ForestNode, ResourceLocation, ResourceType};
 use himark_ahp_ext_types::history as history_wire;
 
 struct InertSeat;
