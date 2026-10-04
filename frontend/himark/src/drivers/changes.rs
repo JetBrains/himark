@@ -11,11 +11,13 @@
 use std::sync::Arc;
 
 use crate::hichanges::{
-    digest_actions, digest_catalog, digest_state, entry_serves, CatalogEntry, ChangeSets, Changes,
+    before_ref_location, ChangeEntry, ChangeSets, Changes, ChangesStatus, DigestedChangeset,
 };
 use crate::higent::ahp_types::actions::StateAction;
+use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
 use crate::higent::{AhpServer, PollChangesetEffect, SubscribeChangesetEffect};
-use crate::{AppCommand, ResourceLocation};
+use crate::{AppCommand, ResourceLocation, ResourceType};
+use himark_ahp_ext_types::history as history_wire;
 use imba::{effect::AnyEffect, store::Store};
 
 /// One folder's wire: the seat and AHP session its changeset rides,
@@ -704,4 +706,197 @@ impl crate::DynamicCommand for Dispatched {
             eprintln!("[hichanges] workingDirectorySet failed: {error}");
         }
     }
+}
+
+// ---------------------------------------------------------------
+// WIRE → MIRROR digestion: the changeset payload translation, run
+// on the effect worker inside the landing maps — the model never
+// sees an ahp type (docs/entities.md; the collection speaks its own
+// mirrors).
+
+#[derive(serde::Deserialize)]
+struct WireSide {
+    uri: String,
+    #[serde(default)]
+    content: Option<WireContent>,
+}
+
+#[derive(serde::Deserialize)]
+struct WireContent {
+    uri: String,
+}
+
+#[derive(serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct WireCounts {
+    #[serde(default)]
+    added: Option<i64>,
+    #[serde(default)]
+    removed: Option<i64>,
+}
+
+pub(crate) fn entry_of(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    file: &ChangesetFile,
+) -> Option<ChangeEntry> {
+    use serde::Deserialize as _;
+    // Deserialized BY REFERENCE: the wire `Value` trees are arbitrary
+    // and large, and this reads two strings out of them — never pay a
+    // deep clone for that (docs/perf-issue.md §2).
+    let side = |value: &Option<serde_json::Value>| -> Option<WireSide> {
+        value
+            .as_ref()
+            .and_then(|value| WireSide::deserialize(value).ok())
+    };
+    let before = side(&file.edit.before);
+    let after = side(&file.edit.after);
+    let working = after.as_ref().or(before.as_ref()).and_then(|side| {
+        uris.location_of(
+            &crate::higent::ResourceUri::new(side.uri.as_str()),
+            ResourceType::document(),
+            folder.authority(),
+        )
+    })?;
+    if !working.path().starts_with(folder.path()) {
+        return None;
+    }
+    let rel: Vec<String> = working.path()[folder.path().len()..].to_vec();
+    if rel.is_empty() {
+        return None;
+    }
+    let path: Vec<String> = working.path().to_vec();
+    let after_ref = after.and_then(|side| side.content).map(|content| {
+        before_ref_location(folder.authority().as_str(), &content.uri, path.clone())
+    });
+    let before = before.and_then(|side| side.content).map(|content| {
+        before_ref_location(folder.authority().as_str(), &content.uri, path.clone())
+    });
+    let counts: WireCounts = file
+        .edit
+        .diff
+        .as_ref()
+        .and_then(|value| WireCounts::deserialize(value).ok())
+        .unwrap_or_default();
+    Some(ChangeEntry::assembled(
+        file.id.clone(),
+        rel,
+        working,
+        before,
+        after_ref,
+        counts.added,
+        counts.removed,
+    ))
+}
+
+pub(crate) fn digest_state(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    state: &ChangesetState,
+) -> DigestedChangeset {
+    DigestedChangeset {
+        status: status_of_wire(
+            &state.status,
+            state.error.as_ref().map(|error| error.message.as_str()),
+        ),
+        entries: state
+            .files
+            .iter()
+            .filter_map(|file| entry_of(uris, folder, file))
+            .collect(),
+    }
+}
+
+pub(crate) fn digest_actions(
+    uris: &dyn crate::higent::ResourceUriMap,
+    folder: &ResourceLocation,
+    actions: &[StateAction],
+) -> Vec<ChangeAction> {
+    // A full snapshot wholesale replaces the file list, so every file
+    // mutation BEFORE the batch's last one is superseded — skip its
+    // conversion entirely; only status changes survive in order
+    // (docs/perf-issue.md §4 measure 3).
+    let last_content = actions
+        .iter()
+        .rposition(|action| matches!(action, StateAction::ChangesetContentChanged(_)));
+    let mut digested = Vec::new();
+    for (at, action) in actions.iter().enumerate() {
+        let superseded = last_content.is_some_and(|last| at < last);
+        match action {
+            StateAction::ChangesetContentChanged(content) if !superseded => {
+                digested.push(ChangeAction::Content(
+                    content
+                        .files
+                        .iter()
+                        .filter_map(|file| entry_of(uris, folder, file))
+                        .collect(),
+                ));
+            }
+            StateAction::ChangesetStatusChanged(status) => {
+                digested.push(ChangeAction::Status(status_of_wire(
+                    &status.status,
+                    status.error.as_ref().map(|error| error.message.as_str()),
+                )));
+            }
+            StateAction::ChangesetFileSet(set) if !superseded => {
+                digested.push(ChangeAction::FileSet {
+                    id: set.file.id.clone(),
+                    entry: entry_of(uris, folder, &set.file),
+                });
+            }
+            StateAction::ChangesetFileRemoved(removed) if !superseded => {
+                digested.push(ChangeAction::FileRemoved(removed.file_id.clone()));
+            }
+            StateAction::ChangesetCleared(_) if !superseded => {
+                digested.push(ChangeAction::Cleared);
+            }
+            _ => {}
+        }
+    }
+    digested
+}
+
+/// WIRE → MIRROR for the changeset status.
+pub(crate) fn status_of_wire(status: &ChangesetStatus, error: Option<&str>) -> ChangesStatus {
+    match status {
+        ChangesetStatus::Computing => ChangesStatus::Computing,
+        ChangesetStatus::Ready => ChangesStatus::Ready,
+        ChangesetStatus::Error => {
+            ChangesStatus::Error(error.unwrap_or("changeset error").to_owned())
+        }
+        // A status from a newer protocol: not an error, not
+        // provably ready — keep the chip spinning.
+        ChangesetStatus::Unknown(_) => ChangesStatus::Computing,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct CatalogEntry {
+    pub(crate) uri: crate::higent::ChannelUri,
+    pub(crate) description: Option<String>,
+
+    pub(crate) kind: String,
+}
+
+pub(crate) fn digest_catalog(
+    changesets: &[crate::higent::ahp_types::state::Changeset],
+) -> Vec<CatalogEntry> {
+    changesets
+        .iter()
+        .filter(|entry| {
+            (entry.change_kind == "uncommitted"
+                || entry.change_kind == history_wire::HISTORY_CHANGE_KIND)
+                && !entry.uri_template.contains('{')
+        })
+        .map(|entry| CatalogEntry {
+            uri: crate::higent::ChannelUri::new(entry.uri_template.clone()),
+            description: entry.description.clone(),
+            kind: entry.change_kind.clone(),
+        })
+        .collect()
+}
+
+pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> bool {
+    let abs = format!("/{}", folder.path().join("/"));
+    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.as_str().ends_with(&abs)
 }

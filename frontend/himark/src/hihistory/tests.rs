@@ -368,7 +368,7 @@ fn fetched_commit_files_expand_with_pinned_sides() {
         changes_id(),
         &folder,
         &crate::hichanges::Revision::new("b"),
-        &Ok(crate::hichanges::digest_state(
+        &Ok(crate::drivers::changes::digest_state(
             &FileUris,
             &folder,
             &ready(vec![file]),

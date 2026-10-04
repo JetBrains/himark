@@ -4,10 +4,7 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use crate::higent::ahp_types::actions::StateAction;
-use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus};
 use crate::{Authority, ForestNode, ResourceLocation, ResourceType};
-use himark_ahp_ext_types::history as history_wire;
 use imba::{effect::AnyEffect, store::Store};
 
 const NOTE_KIND: &str = "changes-note";
@@ -55,27 +52,6 @@ pub(crate) fn empty_side(of: &ResourceLocation) -> ResourceLocation {
     )
 }
 
-#[derive(serde::Deserialize)]
-struct WireSide {
-    uri: String,
-    #[serde(default)]
-    content: Option<WireContent>,
-}
-
-#[derive(serde::Deserialize)]
-struct WireContent {
-    uri: String,
-}
-
-#[derive(serde::Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct WireCounts {
-    #[serde(default)]
-    added: Option<i64>,
-    #[serde(default)]
-    removed: Option<i64>,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChangeEntry {
     id: String,
@@ -98,59 +74,31 @@ pub struct ChangeEntry {
     pub(crate) updated: u64,
 }
 
-pub(crate) fn entry_of(
-    uris: &dyn crate::higent::ResourceUriMap,
-    folder: &ResourceLocation,
-    file: &ChangesetFile,
-) -> Option<ChangeEntry> {
-    use serde::Deserialize as _;
-    // Deserialized BY REFERENCE: the wire `Value` trees are arbitrary
-    // and large, and this reads two strings out of them — never pay a
-    // deep clone for that (docs/perf-issue.md §2).
-    let side = |value: &Option<serde_json::Value>| -> Option<WireSide> {
-        value
-            .as_ref()
-            .and_then(|value| WireSide::deserialize(value).ok())
-    };
-    let before = side(&file.edit.before);
-    let after = side(&file.edit.after);
-    let working = after.as_ref().or(before.as_ref()).and_then(|side| {
-        uris.location_of(
-            &crate::higent::ResourceUri::new(side.uri.as_str()),
-            ResourceType::document(),
-            folder.authority(),
-        )
-    })?;
-    if !working.path().starts_with(folder.path()) {
-        return None;
+impl ChangeEntry {
+    /// The driver's construction door — digestion builds entries
+    /// outside this module; the stamp starts at zero and is the
+    /// adopt road's to move.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn assembled(
+        id: String,
+        rel: Vec<String>,
+        working: ResourceLocation,
+        before: Option<ResourceLocation>,
+        after: Option<ResourceLocation>,
+        added: Option<i64>,
+        removed: Option<i64>,
+    ) -> Self {
+        Self {
+            id,
+            rel,
+            working,
+            before,
+            after,
+            added,
+            removed,
+            updated: 0,
+        }
     }
-    let rel: Vec<String> = working.path()[folder.path().len()..].to_vec();
-    if rel.is_empty() {
-        return None;
-    }
-    let path: Vec<String> = working.path().to_vec();
-    let after_ref = after.and_then(|side| side.content).map(|content| {
-        before_ref_location(folder.authority().as_str(), &content.uri, path.clone())
-    });
-    let before = before.and_then(|side| side.content).map(|content| {
-        before_ref_location(folder.authority().as_str(), &content.uri, path.clone())
-    });
-    let counts: WireCounts = file
-        .edit
-        .diff
-        .as_ref()
-        .and_then(|value| WireCounts::deserialize(value).ok())
-        .unwrap_or_default();
-    Some(ChangeEntry {
-        id: file.id.clone(),
-        rel,
-        working,
-        before,
-        after: after_ref,
-        added: counts.added,
-        removed: counts.removed,
-        updated: 0,
-    })
 }
 
 /// Value identity for stamping — everything but the stamp itself.
@@ -213,73 +161,6 @@ pub enum ChangeAction {
     },
     FileRemoved(String),
     Cleared,
-}
-
-pub(crate) fn digest_state(
-    uris: &dyn crate::higent::ResourceUriMap,
-    folder: &ResourceLocation,
-    state: &ChangesetState,
-) -> DigestedChangeset {
-    DigestedChangeset {
-        status: ChangesStatus::of_wire(
-            &state.status,
-            state.error.as_ref().map(|error| error.message.as_str()),
-        ),
-        entries: state
-            .files
-            .iter()
-            .filter_map(|file| entry_of(uris, folder, file))
-            .collect(),
-    }
-}
-
-pub(crate) fn digest_actions(
-    uris: &dyn crate::higent::ResourceUriMap,
-    folder: &ResourceLocation,
-    actions: &[StateAction],
-) -> Vec<ChangeAction> {
-    // A full snapshot wholesale replaces the file list, so every file
-    // mutation BEFORE the batch's last one is superseded — skip its
-    // conversion entirely; only status changes survive in order
-    // (docs/perf-issue.md §4 measure 3).
-    let last_content = actions
-        .iter()
-        .rposition(|action| matches!(action, StateAction::ChangesetContentChanged(_)));
-    let mut digested = Vec::new();
-    for (at, action) in actions.iter().enumerate() {
-        let superseded = last_content.is_some_and(|last| at < last);
-        match action {
-            StateAction::ChangesetContentChanged(content) if !superseded => {
-                digested.push(ChangeAction::Content(
-                    content
-                        .files
-                        .iter()
-                        .filter_map(|file| entry_of(uris, folder, file))
-                        .collect(),
-                ));
-            }
-            StateAction::ChangesetStatusChanged(status) => {
-                digested.push(ChangeAction::Status(ChangesStatus::of_wire(
-                    &status.status,
-                    status.error.as_ref().map(|error| error.message.as_str()),
-                )));
-            }
-            StateAction::ChangesetFileSet(set) if !superseded => {
-                digested.push(ChangeAction::FileSet {
-                    id: set.file.id.clone(),
-                    entry: entry_of(uris, folder, &set.file),
-                });
-            }
-            StateAction::ChangesetFileRemoved(removed) if !superseded => {
-                digested.push(ChangeAction::FileRemoved(removed.file_id.clone()));
-            }
-            StateAction::ChangesetCleared(_) if !superseded => {
-                digested.push(ChangeAction::Cleared);
-            }
-            _ => {}
-        }
-    }
-    digested
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -400,52 +281,6 @@ impl ChangeSet {
 /// per-folder record `FolderChanges`; it IS the working-copy
 /// `ChangeSet` now.
 pub type FolderChanges = ChangeSet;
-
-impl ChangesStatus {
-    pub(crate) fn of_wire(status: &ChangesetStatus, error: Option<&str>) -> ChangesStatus {
-        match status {
-            ChangesetStatus::Computing => ChangesStatus::Computing,
-            ChangesetStatus::Ready => ChangesStatus::Ready,
-            ChangesetStatus::Error => {
-                ChangesStatus::Error(error.unwrap_or("changeset error").to_owned())
-            }
-            // A status from a newer protocol: not an error, not
-            // provably ready — keep the chip spinning.
-            ChangesetStatus::Unknown(_) => ChangesStatus::Computing,
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct CatalogEntry {
-    pub(crate) uri: crate::higent::ChannelUri,
-    pub(crate) description: Option<String>,
-
-    pub(crate) kind: String,
-}
-
-pub(crate) fn digest_catalog(
-    changesets: &[crate::higent::ahp_types::state::Changeset],
-) -> Vec<CatalogEntry> {
-    changesets
-        .iter()
-        .filter(|entry| {
-            (entry.change_kind == "uncommitted"
-                || entry.change_kind == history_wire::HISTORY_CHANGE_KIND)
-                && !entry.uri_template.contains('{')
-        })
-        .map(|entry| CatalogEntry {
-            uri: crate::higent::ChannelUri::new(entry.uri_template.clone()),
-            description: entry.description.clone(),
-            kind: entry.change_kind.clone(),
-        })
-        .collect()
-}
-
-pub(crate) fn entry_serves(folder: &ResourceLocation, entry: &CatalogEntry) -> bool {
-    let abs = format!("/{}", folder.path().join("/"));
-    entry.description.as_deref() == Some(abs.as_str()) || entry.uri.as_str().ends_with(&abs)
-}
 
 /// The session's change sets, keyed by minted id
 /// (docs/model-view.md): one record per working copy, one per commit.

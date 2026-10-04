@@ -11,6 +11,7 @@ use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetSt
 use serde_json::json;
 
 use super::*;
+use crate::drivers::changes::{digest_actions, digest_state, CatalogEntry};
 
 struct InertSeat;
 

@@ -11,7 +11,8 @@
 
 use std::sync::Arc;
 
-use crate::hichanges::{digest_actions, digest_state, entry_serves, CatalogEntry, Changes};
+use crate::drivers::changes::{digest_actions, digest_state, entry_serves, CatalogEntry};
+use crate::hichanges::Changes;
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::{
     AhpServer, DispatchChatActionEffect, PollChangesetEffect, SubscribeChangesetEffect,
