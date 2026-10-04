@@ -316,7 +316,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
     let server = app.register_seat(std::sync::Arc::new(InertSeat));
     app.store_mut()
         .update::<crate::higent::LocalHost>(|local| local.0 = Some(server));
-    crate::hicomments::Comments::install(&mut app.store_mut());
+    crate::hicomments::install(&mut app.store_mut());
     invoke(&mut app, window, "test.select");
     invoke(&mut app, window, "comments.add");
     let (_, inlays) = commented_document(&app);

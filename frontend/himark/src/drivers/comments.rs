@@ -104,7 +104,7 @@ pub fn ensure(
     location: &ResourceLocation,
     fx: &mut crate::AppFx<'_>,
 ) {
-    if !Comments::installed(store) {
+    if !crate::hicomments::installed(store) {
         return;
     }
     let Some((server, seat, session)) =

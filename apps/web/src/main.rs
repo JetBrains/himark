@@ -314,7 +314,7 @@ mod app {
             state.register_navigator(himark::CanvasNavigator);
             state.register_command(std::sync::Arc::new(demo::OpenTreeDemo));
 
-            himark::hicomments::Comments::install(&mut state.store_mut());
+            himark::hicomments::install(&mut state.store_mut());
             state.register_command(std::sync::Arc::new(himark::hicomments::ToggleCommentsView));
             state.register_toolbar_button(himark::hicomments::toolbar_button());
             state.register_command(std::sync::Arc::new(himark::higent::ToggleAgentsView));

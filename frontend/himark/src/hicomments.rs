@@ -24,8 +24,8 @@ mod sync;
 
 pub use panel::{toolbar_button, CommentsView, ToggleCommentsView};
 pub use sync::{
-    run_card_work, AnnotationId, Announce, CardWork, CommentDelta, CommentRecord, CommentSeed,
-    Comments, CommentsHook, EntryRecord,
+    install, installed, run_card_work, AnnotationId, Announce, CardWork, CommentDelta,
+    CommentRecord, CommentSeed, Comments, CommentsHook, EntryRecord,
 };
 
 #[cfg(test)]
@@ -74,13 +74,13 @@ impl documents::DocumentCommand for AddComment {
         };
         let host = Some(document_id);
 
-        let annotation = {
+        let annotation = sync::installed(store).then(|| {
             let mut view = document.text().view();
             let range = crate::line_col_at(&mut view, selection.start as usize)
                 ..crate::line_col_at(&mut view, selection.end as usize);
             let turn = crate::drivers::comments::latest_turn(store, self.wire);
             sync::Comments::created(store, comments, location, range, turn)
-        };
+        });
 
         let view = CommentView::new(
             comments,

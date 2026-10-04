@@ -1,0 +1,12 @@
+[package]
+name = "comments"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+documents = { path = "../documents" }
+editor = { path = "../editor" }
+imba = { path = "../imba" }
+rpds = "1"
+text = { path = "../text" }
