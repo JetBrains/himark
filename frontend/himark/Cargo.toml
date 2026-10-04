@@ -15,6 +15,7 @@ serde_json = "1"
 regex = "1"
 rpds = "1"
 documents = { path = "../documents" }
+terminals = { path = "../terminals" }
 editor = { path = "../editor" }
 myersdiff = { path = "../myersdiff" }
 imba = { path = "../imba" }

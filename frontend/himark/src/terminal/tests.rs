@@ -1,6 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+//! The PANE's tests — the keymap, the grid reconcile, the dismantle
+//! road. The emulator's own tests live with the `terminals` crate.
+
+use std::sync::{Arc, Mutex};
+
 use super::*;
 use crate::AppExt;
 
@@ -23,54 +28,6 @@ impl TerminalBackend for Recorder {
     fn hangup(&self) {
         *self.hangups.lock().unwrap() += 1;
     }
-}
-
-fn row_text(session: &Session, row: i32) -> String {
-    let term = session.term.lock();
-    let mut text = String::new();
-    for column in 0..term.columns() {
-        text.push(term.grid()[Line(row)][Column(column)].c);
-    }
-    text.trim_end().to_owned()
-}
-
-#[test]
-fn output_lands_in_the_grid() {
-    let session = Session::new(Box::new(Recorder::default()));
-    session.output(b"hello \x1b[1;32mworld\x1b[0m\r\ncolors");
-    assert_eq!(row_text(&session, 0), "hello world");
-    assert_eq!(row_text(&session, 1), "colors");
-}
-
-#[test]
-fn cursor_reports_write_back_through_the_backend() {
-    let recorder = Recorder::default();
-    let session = Session::new(Box::new(recorder.clone()));
-
-    session.output(b"\x1b[6n");
-    let written = recorder.written.lock().unwrap().clone();
-    assert_eq!(String::from_utf8_lossy(&written), "\x1b[1;1R");
-}
-
-#[test]
-fn resize_reaches_term_and_backend_once() {
-    let recorder = Recorder::default();
-    let session = Session::new(Box::new(recorder.clone()));
-    session.resize(120, 40, 960.0, 1200.0);
-    session.resize(120, 40, 960.0, 1200.0);
-    assert_eq!(*recorder.resizes.lock().unwrap(), vec![(120, 40)]);
-    assert_eq!(session.term.lock().columns(), 120);
-    assert_eq!(session.term.lock().screen_lines(), 40);
-}
-
-#[test]
-fn an_exited_session_stops_writing() {
-    let recorder = Recorder::default();
-    let session = Session::new(Box::new(recorder.clone()));
-    session.write(b"ls\r");
-    session.exited(0);
-    session.write(b"ignored");
-    assert_eq!(recorder.written.lock().unwrap().as_slice(), b"ls\r");
 }
 
 #[test]
@@ -115,14 +72,6 @@ fn keys_encode_like_xterm() {
 }
 
 #[test]
-fn alternate_screen_and_title_follow_the_stream() {
-    let session = Session::new(Box::new(Recorder::default()));
-    session.output(b"\x1b]0;vim\x07\x1b[?1049h");
-    assert_eq!(session.title.lock().unwrap().as_str(), "vim");
-    assert!(session.term.lock().mode().contains(TermMode::ALT_SCREEN));
-}
-
-#[test]
 fn the_panel_reconciles_its_grid_and_routes_focused_input() {
     let mut app = crate::Application::new(crate::AppFonts::embedded());
     let _ = app.add_window();
@@ -151,8 +100,8 @@ fn the_panel_reconciles_its_grid_and_routes_focused_input() {
         "one resize to the laid-out grid: {resizes:?}"
     );
     let (cols, rows) = resizes[0];
-    assert_eq!(session.term.lock().columns(), cols as usize);
-    assert_eq!(session.term.lock().screen_lines(), rows as usize);
+    assert_eq!(session.term().lock().columns(), cols as usize);
+    assert_eq!(session.term().lock().screen_lines(), rows as usize);
     assert!(
         (cols, rows) != (DEFAULT_COLS, DEFAULT_ROWS),
         "the pane's grid differs from the default"

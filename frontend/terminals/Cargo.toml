@@ -1,0 +1,10 @@
+[package]
+name = "terminals"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+
+[dependencies]
+alacritty_terminal = { version = "0.26.0", default-features = false }
+imba = { path = "../imba" }
+rpds = "1"

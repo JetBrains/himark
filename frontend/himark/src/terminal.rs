@@ -1,17 +1,16 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+//! The terminal PANE: the workbench face over the `terminals` crate's
+//! collection — the grid painter, the xterm keymap, the navigation
+//! place. The model (the emulator, the backend door, the rows) lives
+//! in the crate; this module holds what needs the workbench.
 
-use alacritty_terminal::event::{Event as TermEvent, EventListener, WindowSize};
-use alacritty_terminal::grid::{Dimensions, Scroll};
+use alacritty_terminal::grid::Dimensions;
 use alacritty_terminal::index::{Column, Line, Point as TermPoint};
-use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Flags as CellFlags;
-use alacritty_terminal::term::test::TermSize;
-use alacritty_terminal::term::{Config, Term, TermMode};
-use alacritty_terminal::vte::ansi::{Color as TermColor, CursorShape, NamedColor, Processor, Rgb};
+use alacritty_terminal::term::{Term, TermMode};
+use alacritty_terminal::vte::ansi::{Color as TermColor, CursorShape, NamedColor, Rgb};
 
 use imba::event::{Event, EventResult, Key, Modifiers};
 use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View, Widget};
@@ -19,147 +18,9 @@ use skia_safe::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
 use crate::PanelView;
 
-pub trait TerminalBackend: Send + Sync {
-    fn write(&self, bytes: &[u8]);
-
-    fn resize(&self, cols: u16, rows: u16, px_width: f32, px_height: f32);
-
-    fn hangup(&self);
-}
-
-#[derive(Clone)]
-struct Collector(Arc<Mutex<Vec<TermEvent>>>);
-
-impl EventListener for Collector {
-    fn send_event(&self, event: TermEvent) {
-        self.0.lock().expect("collector lock").push(event);
-    }
-}
-
-pub struct Session {
-    term: FairMutex<Term<Collector>>,
-    parser: Mutex<Processor>,
-    events: Arc<Mutex<Vec<TermEvent>>>,
-    backend: Box<dyn TerminalBackend>,
-    title: Mutex<String>,
-    exited: Mutex<Option<i32>>,
-    hung_up: AtomicBool,
-
-    told: Mutex<(u16, u16)>,
-}
-
-/// A terminal's identity in its family — minted at the landing that
-/// files the session, carried by the pane and its place. The model's
-/// OWN id: which wire channel feeds the PTY is the backend's
-/// business, never the collection's key.
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-pub struct TerminalId(u64);
-
-impl TerminalId {
-    pub fn mint() -> Self {
-        static NEXT: AtomicU64 = AtomicU64::new(1);
-        Self(NEXT.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
-const DEFAULT_COLS: u16 = 80;
-const DEFAULT_ROWS: u16 = 24;
-
-impl Session {
-    pub fn new(backend: Box<dyn TerminalBackend>) -> Arc<Self> {
-        let events = Arc::new(Mutex::new(Vec::new()));
-        let size = TermSize::new(DEFAULT_COLS as usize, DEFAULT_ROWS as usize);
-        let term = Term::new(Config::default(), &size, Collector(events.clone()));
-        Arc::new(Self {
-            term: FairMutex::new(term),
-            parser: Mutex::new(Processor::new()),
-            events,
-            backend,
-            title: Mutex::new(String::new()),
-            exited: Mutex::new(None),
-            hung_up: AtomicBool::new(false),
-            told: Mutex::new((DEFAULT_COLS, DEFAULT_ROWS)),
-        })
-    }
-
-    pub fn output(&self, bytes: &[u8]) -> bool {
-        {
-            let mut parser = self.parser.lock().expect("parser lock");
-            let mut term = self.term.lock();
-            parser.advance(&mut *term, bytes);
-        }
-        self.drain_events();
-        true
-    }
-
-    pub fn exited(&self, code: i32) -> bool {
-        *self.exited.lock().expect("exit lock") = Some(code);
-        true
-    }
-
-    fn drain_events(&self) {
-        let events: Vec<TermEvent> = std::mem::take(&mut *self.events.lock().expect("events"));
-        for event in events {
-            match event {
-                TermEvent::PtyWrite(text) => self.write(text.as_bytes()),
-                TermEvent::Title(title) => {
-                    *self.title.lock().expect("title lock") = title;
-                }
-                TermEvent::ResetTitle => self.title.lock().expect("title lock").clear(),
-                TermEvent::TextAreaSizeRequest(format) => {
-                    let (cols, rows) = *self.told.lock().expect("told lock");
-                    let reply = format(WindowSize {
-                        num_lines: rows,
-                        num_cols: cols,
-                        cell_width: 0,
-                        cell_height: 0,
-                    });
-                    self.write(reply.as_bytes());
-                }
-
-                _ => {}
-            }
-        }
-    }
-
-    fn write(&self, bytes: &[u8]) {
-        if self.exited.lock().expect("exit lock").is_none() {
-            self.backend.write(bytes);
-        }
-    }
-
-    fn resize(&self, cols: u16, rows: u16, px_width: f32, px_height: f32) {
-        let cols = cols.max(2);
-        let rows = rows.max(2);
-        {
-            let mut told = self.told.lock().expect("told lock");
-            if *told == (cols, rows) {
-                return;
-            }
-            *told = (cols, rows);
-        }
-        self.term
-            .lock()
-            .resize(TermSize::new(cols as usize, rows as usize));
-        self.backend.resize(cols, rows, px_width, px_height);
-    }
-
-    pub fn hangup(&self) {
-        if !self.hung_up.swap(true, Ordering::SeqCst) {
-            self.backend.hangup();
-        }
-    }
-
-    fn scroll_lines(&self, lines: i32) {
-        self.term.lock().scroll_display(Scroll::Delta(lines));
-    }
-}
-
-impl Drop for Session {
-    fn drop(&mut self) {
-        self.hangup();
-    }
-}
+pub use terminals::{
+    Collector, Session, TerminalBackend, TerminalId, Terminals, DEFAULT_COLS, DEFAULT_ROWS,
+};
 
 #[derive(Clone)]
 pub enum TerminalCommand {
@@ -218,7 +79,7 @@ impl View for TerminalView {
         };
         imba::focus::FocusData {
             on_key: Some(Box::new(move |key, mods| {
-                let app_cursor = session.term.lock().mode().contains(TermMode::APP_CURSOR);
+                let app_cursor = session.term().lock().mode().contains(TermMode::APP_CURSOR);
                 match encode_key(key, mods, app_cursor) {
                     Some(bytes) => {
                         session.write(&bytes);
@@ -307,7 +168,7 @@ impl View for TerminalView {
                     font,
                     cell,
                     fallbacks,
-                    surface: imba::event::ScrollSurfaceId::keyed(self.id.0),
+                    surface: imba::event::ScrollSurfaceId::keyed(self.id.raw()),
                 }),
             )
         })
@@ -368,10 +229,10 @@ impl PanelView for TerminalView {
 
     fn title(&self, store: &Store) -> String {
         let title = Terminals::session_ref(store, self.terminals, self.id)
-            .map(|session| session.title.lock().expect("title lock").clone())
+            .map(|session| session.title())
             .unwrap_or_default();
         match title.is_empty() {
-            true => format!("Terminal {}", self.id.0),
+            true => format!("Terminal {}", self.id.raw()),
             false => title,
         }
     }
@@ -389,62 +250,6 @@ impl PanelView for TerminalView {
 
     fn as_any(&self) -> &dyn std::any::Any {
         self
-    }
-}
-
-#[derive(Clone, Default)]
-pub struct Terminals(rpds::HashTrieMapSync<TerminalId, Arc<Session>>);
-
-/// A terminal belongs to the family whose id reached here — threaded
-/// from the owning session's row by whoever had the session context
-/// (docs/entities.md law 3); this module never sees a `SessionId`.
-impl Terminals {
-    pub fn put(
-        store: &mut Store,
-        terminals: imba::store::Id<Self>,
-        id: TerminalId,
-        session: Arc<Session>,
-    ) {
-        store.update_entity(terminals, |terminals| {
-            terminals.0.insert_mut(id, session);
-        });
-    }
-
-    pub fn session(
-        store: &Store,
-        terminals: imba::store::Id<Self>,
-        id: TerminalId,
-    ) -> Option<Arc<Session>> {
-        Self::session_ref(store, terminals, id).cloned()
-    }
-
-    pub fn session_ref<'a>(
-        store: &'a Store,
-        terminals: imba::store::Id<Self>,
-        id: TerminalId,
-    ) -> Option<&'a Arc<Session>> {
-        store.entity(terminals)?.0.get(&id)
-    }
-
-    pub fn remove(store: &mut Store, terminals: imba::store::Id<Self>, id: TerminalId) {
-        store.update_entity(terminals, |terminals| {
-            terminals.0.remove_mut(&id);
-        });
-    }
-
-    pub fn list(store: &Store, terminals: imba::store::Id<Self>) -> Vec<TerminalId> {
-        store
-            .entity(terminals)
-            .map(|terminals| terminals.0.keys().copied().collect())
-            .unwrap_or_default()
-    }
-
-    pub(crate) fn holds(&self, id: TerminalId) -> bool {
-        self.0.contains_key(&id)
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_empty()
     }
 }
 
@@ -565,7 +370,7 @@ impl TerminalWidget<'_> {
 
         let (cell_w, cell_h, baseline) = self.cell;
         let origin = (self.chrome.pad, self.chrome.pad);
-        let term = self.session.term.lock();
+        let term = self.session.term().lock();
         let content = term.renderable_content();
         let cursor = content.cursor;
         let display_offset = content.display_offset as i32;
@@ -737,7 +542,7 @@ impl<'a> Widget<'a, TerminalCommand> for TerminalWidget<'a> {
                 self.paint_grid(canvas, *focused);
 
                 let (cols, rows) = self.grid_for();
-                let told = *self.session.told.lock().expect("told lock");
+                let told = self.session.told();
                 if told != (cols, rows) {
                     return EventResult::Command(TerminalCommand::Resize {
                         cols,
