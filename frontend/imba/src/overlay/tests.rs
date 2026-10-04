@@ -5,14 +5,7 @@ use std::cell::RefCell;
 
 use skia_safe::{Point, Rect, Size};
 
-use crate::{
-    arena::Arena,
-    container::Container,
-    event::{Event, EventResult, MouseButton},
-    leaf::leaf,
-    thunk_ext::ThunkExt,
-    Thunk, ThunkBox, Widget,
-};
+use crate::{arena::Arena, container::Container, event::{Event, EventResult, MouseButton}, leaf::leaf, thunk_ext::ThunkExt, Thunk, ThunkBox, Widget};
 
 use super::OverlayHost;
 
@@ -470,10 +463,7 @@ fn a_lazy_subtree_mints_requests_only_for_what_realizes() {
 
 #[test]
 fn scroll_carries_anchors_by_the_scroll_offset() {
-    use crate::{
-        constraints::Constraints, scroll::ScrollCommand, scroll::ScrollView, store::Store,
-        ui::UiCtx, View,
-    };
+    use crate::{constraints::Constraints, scroll::ScrollCommand, scroll::ScrollView, store::Store, ui::UiCtx, View};
 
     struct Tall;
     impl View for Tall {
@@ -491,8 +481,8 @@ fn scroll_carries_anchors_by_the_scroll_offset() {
             arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a UiCtx,
-        ) -> impl crate::Layout<'a, Cmd> + crate::LayoutValue + 'a {
-            crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+        ) -> impl crate::layout::Layout<'a, Cmd> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
                 let mut root: Container<'_, Cmd> =
                     Container::new(arena, Size::new(constraints.max.width, 500.0));
                 root.place(
@@ -518,7 +508,7 @@ fn scroll_carries_anchors_by_the_scroll_offset() {
             &mut batch.effects(),
         );
     }
-    let mut widget = crate::Layout::layout(
+    let mut widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints {

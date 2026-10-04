@@ -13,20 +13,12 @@
 
 use std::sync::Arc;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::AnyEffect,
-    event::{Event, EventResult, Key as InputKey},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::AnyEffect, event::{Event, EventResult, Key as InputKey}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::views::files_forest;
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsAsk};
-use editor::{Document, EditorCommand, EditorView, InlayKey};
+use editor::{document::Document, editor_view::EditorCommand, editor_view::EditorView, markup::InlayKey};
 use hikit::ForestList;
 use hikit::{tree_toggle, TreeListCommand};
 use hikit::{ListKeyCommand, ListKeyboardController};
@@ -91,15 +83,15 @@ pub struct PeekView {
     /// re-scrolls and re-tints the standing editor — no refetch, no
     /// relayout.
     preview: Option<imba::scroll::ScrollView<EditorView>>,
-    preview_for: Option<editor::ResourceLocation>,
-    preview_markup: Option<editor::MarkupId>,
+    preview_for: Option<editor::location::ResourceLocation>,
+    preview_markup: Option<editor::markup::MarkupId>,
     preview_hit: Option<(u32, u32)>,
     fetch_token: Option<imba::effect::CancellationToken>,
 
     /// The open-in-pane verb, injected at mount — the shell's window
     /// rides in the closure; the card never holds one.
     open: Arc<
-        dyn Fn(&mut Store, editor::ResourceLocation, std::ops::Range<documents::LineCol>)
+        dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::LineCol>)
             + Send
             + Sync,
     >,
@@ -117,7 +109,7 @@ impl PeekView {
         feed: FeedId,
         promote: Arc<dyn Fn(&mut Store) + Send + Sync>,
         open: Arc<
-            dyn Fn(&mut Store, editor::ResourceLocation, std::ops::Range<documents::LineCol>)
+            dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<documents::LineCol>)
                 + Send
                 + Sync,
         >,
@@ -214,7 +206,7 @@ impl PeekView {
     fn ensure_preview(
         &mut self,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
         let Some(key) = self.tree.inner().list().cursor().cloned() else {
@@ -251,7 +243,7 @@ impl PeekView {
     fn retarget_preview(
         &mut self,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         found: &FoundLocation,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
     ) {
@@ -276,7 +268,7 @@ impl PeekView {
         if let Some((start, end)) = self.preview_hit.replace(target) {
             changed.push(start..end);
         }
-        let mut tints = editor::Markup::new();
+        let mut tints = editor::markup::Markup::new();
         tints.push_styled(target.0..target.1, editor::theme::StyleId::Match);
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
@@ -307,7 +299,7 @@ impl PeekView {
     fn install_preview(
         &mut self,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         built: documents::BuiltDocument,
         index: usize,
         fx: &mut imba::effect::Effects<'_, PeekCommand>,
@@ -332,7 +324,7 @@ impl PeekView {
         };
 
         let markup = document.add_markup();
-        let mut tints = editor::Markup::new();
+        let mut tints = editor::markup::Markup::new();
         tints.push_styled(target.clone(), editor::theme::StyleId::Match);
         let scoped = |command| PeekCommand::Preview(imba::scroll::ScrollCommand::Content(command));
         fx.scope(scoped, |fx| {
@@ -353,7 +345,7 @@ impl PeekView {
             document.add_editor(
                 detail,
                 None,
-                ::editor::EditorBuild::Bounded,
+                ::editor::document::EditorBuild::Bounded,
                 &[],
                 store,
                 ui,
@@ -535,8 +527,8 @@ impl View for PeekView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width.min(self.width).max(120.0);
             let size = Size::new(width, PEEK_HEIGHT);
             let chrome = editor::env::Themes::of(store).ui().peeker.clone();
@@ -600,7 +592,7 @@ impl View for PeekView {
             card.place(
                 0.0,
                 HEADER_HEIGHT + 1.0,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.tree.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(master, PEEK_HEIGHT - HEADER_HEIGHT - 2.0)),
@@ -611,7 +603,7 @@ impl View for PeekView {
                 card.place(
                     master + 1.0,
                     HEADER_HEIGHT + 1.0,
-                    imba::Layout::layout(
+                    imba::layout::Layout::layout(
                         preview.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -699,7 +691,7 @@ impl imba::command::DynamicCommand for RemovePeek {
         "Close Reference Peek".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         // The collection's wired sibling, not the window's current
         // session — the window may have moved on since the mount.
         let Some(documents) = LocationLists::documents_of(store, self.lists) else {
@@ -760,9 +752,9 @@ mod tests {
 
     fn found(name: &str, line: u32, context: &str) -> FoundLocation {
         FoundLocation {
-            location: editor::ResourceLocation::new(
-                editor::ResourceType::document(),
-                editor::Authority::new("local"),
+            location: editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("local"),
                 vec!["work".to_owned(), name.to_owned()],
             ),
             line,
@@ -807,7 +799,7 @@ mod tests {
             ],
             true,
         );
-        let opened: Arc<std::sync::Mutex<Option<editor::ResourceLocation>>> = Default::default();
+        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> = Default::default();
         let noted = opened.clone();
         let mut view = PeekView::new(
             &store,
@@ -862,7 +854,7 @@ mod tests {
         let mut store = Store::new();
         let ui = ::editor::test_document::test_ui();
         let (lists, feed) = feed(&mut store, &[found("a.rs", 3, "only")], true);
-        let opened: Arc<std::sync::Mutex<Option<editor::ResourceLocation>>> = Default::default();
+        let opened: Arc<std::sync::Mutex<Option<editor::location::ResourceLocation>>> = Default::default();
         let noted = opened.clone();
         let mut view = PeekView::new(
             &store,
@@ -892,7 +884,7 @@ mod tests {
         let editor = document.add_editor(
             600.0,
             None,
-            ::editor::EditorBuild::Complete,
+            ::editor::document::EditorBuild::Complete,
             &[],
             store,
             ui,
@@ -902,7 +894,7 @@ mod tests {
         );
         let bare = document.content_height(editor);
 
-        let markup = editor::MarkupId::mint();
+        let markup = editor::markup::MarkupId::mint();
         document.ensure_document_markup(markup);
         // The regression: an empty anchor renders NOTHING (an Under
         // inlay anchors on a line by its span) — the card must mount
@@ -913,7 +905,7 @@ mod tests {
             let key = document.push_inlay(
                 markup,
                 anchor,
-                editor::Inlay::new(editor::InlayMode::Under, ProbeCard),
+                editor::markup::Inlay::new(editor::markup::InlayMode::Under, ProbeCard),
                 store,
                 ui,
                 &fonts,
@@ -937,7 +929,7 @@ mod tests {
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
-            _ui: &imba::UiCtx,
+            _ui: &imba::ui::UiCtx,
             _command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
@@ -946,9 +938,9 @@ mod tests {
             &'a self,
             _arena: &'a imba::arena::Arena,
             _store: &'a imba::store::Store,
-            _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-            imba::laid(move |arena: &'a imba::arena::Arena, _constraints| {
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(move |arena: &'a imba::arena::Arena, _constraints| {
                 imba::ThunkBox::new(
                     arena,
                     imba::leaf::leaf::<std::convert::Infallible>(200.0, 111.0),

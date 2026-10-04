@@ -4,14 +4,17 @@
 use super::*;
 
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    himark::test_document::test_fonts_collection().clone()
+    ::editor::test_document::test_fonts_collection().clone()
 }
 
-fn test_theme() -> himark::Theme {
-    himark::Theme::embedded()
+fn test_theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
-use himark::{MarkupBuilder, ReparseWork, StyleId, SyntaxLanguage};
+use editor::markup::MarkupBuilder;
+use editor::reparse::ReparseWork;
+use editor::markup::StyleId;
+use editor::reparse::SyntaxLanguage;
 use std::sync::Arc;
 
 struct Toy;
@@ -38,7 +41,7 @@ impl SyntaxLanguage for Toy {
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
         _fonts: &skia_safe::textlayout::FontCollection,
-        _theme: &himark::Theme,
+        _theme: &editor::theme::Theme,
     ) {
         let len = range.end - range.start;
         invalidated.push(0..len);
@@ -62,18 +65,18 @@ fn keyword_spans(document: &Document, line: std::ops::Range<u32>) -> Vec<std::op
 #[test]
 fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "title\n\n```toy\nabc def\n```\n";
     let content_start = source.find("abc").unwrap() as u32;
     let content_end = content_start + "abc def\n".len() as u32;
-    let mut languages = himark::SyntaxLanguages::new();
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     languages.register(&["toy"], Arc::new(Toy));
     let toy_languages = std::sync::Arc::new(markdown_languages(languages));
     let mut document = document_from_markdown(source, store, ui, &test_fonts(), &test_theme());
     let _editor = document.add_editor(
         400.0,
         None,
-        himark::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -105,7 +108,7 @@ fn fenced_blocks_highlight_through_one_hierarchical_reparse() {
 
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, content_start + 3, "zz"),
+        &operation::operation::Operation::insert_in(len, content_start + 3, "zz"),
         store,
         ui,
         &test_fonts(),

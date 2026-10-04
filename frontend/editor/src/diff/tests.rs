@@ -227,7 +227,7 @@ fn fragments_at_matches_the_full_walk() {
     }
 }
 
-fn document_string(document: &crate::Document) -> String {
+fn document_string(document: &crate::document::Document) -> String {
     let mut view = document.text().view();
     let count = view.byte_count();
     view.byte_string(0, count)

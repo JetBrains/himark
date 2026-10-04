@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use editor::{Assist, AssistKind, AssistRequest, SyntaxLanguage};
-use operation::Op;
+use editor::{reparse::Assist, reparse::AssistKind, reparse::AssistRequest, reparse::SyntaxLanguage};
+use operation::op::Op;
 
 fn language() -> hisitter::TreeSitterLanguage {
     hisitter::TreeSitterLanguage::new(
@@ -35,7 +35,7 @@ fn applied(source: &str, assist: &Assist) -> String {
 
 fn assist_on(source: &str, location: Range<u32>, kind: AssistKind) -> Option<(String, u32)> {
     let language = language();
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
     let len = source.len() as u32;
     let tree = language.parse(&text, 0..len, None)?;
     let assist = language.assist(&AssistRequest {

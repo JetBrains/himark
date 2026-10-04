@@ -4,23 +4,13 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use editor::{ResourceLocation, ResourceType};
+use editor::{location::ResourceLocation, location::ResourceType};
 use hikit::{
     ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
     ListKeyboardController, ModalRequest, ModalView, TreeListCommand,
 };
 use imba::list::ListOps;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::Effects,
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
 use crate::view::comments_markup;
@@ -284,7 +274,7 @@ impl CommentsView {
         if nodes.is_empty() {
             let note = ResourceLocation::new(
                 ResourceType::new("note"),
-                editor::Authority::new("comments"),
+                editor::location::Authority::new("comments"),
                 vec!["empty".to_owned()],
             );
             items.insert_mut(note.clone(), RowItem::Note);
@@ -370,7 +360,7 @@ impl View for CommentsView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         fx.scope(CommentsViewCommand::Rows, |fx| {
             self.list.clear(store, ui, fx)
         });
@@ -448,15 +438,15 @@ impl View for CommentsView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
             let chrome = editor::env::Themes::of(store).ui().peeker.clone();
             let chip_height = chrome.hint_size * 2.0;
             let band = chrome.margin + chip_height + PANEL_PAD;
-            let rows = imba::Layout::layout(
+            let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(size.width, size.height - band)),
@@ -590,7 +580,7 @@ fn live_range(
     let byte_count = doc.text().byte_count().min(u32::MAX as usize) as u32;
     let markup = doc.feature_markup(comments_markup())?;
     let extras = [(comments_markup(), markup)];
-    let interval = editor::OverlaidMarkup::new(doc.markup(), &extras)
+    let interval = editor::markup::OverlaidMarkup::new(doc.markup(), &extras)
         .all_inlays_in(0..byte_count)
         .into_iter()
         .find(|interval| interval.key == key)?;

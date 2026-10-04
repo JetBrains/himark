@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use documents::sync::SyncEdit;
-use editor::{EditIdentity, EditLog};
-use operation::{Op, Operation};
+use editor::{edit_log::EditIdentity, edit_log::EditLog};
+use operation::{op::Op, operation::Operation};
 use rebase::Offer;
 
 use super::SyncState;

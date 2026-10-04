@@ -6,7 +6,7 @@ use std::sync::Arc;
 use ahp_wire::fs::ClientDirectory;
 use ahp_wire::client::{SearchAsk, SearchKind, SearchTarget};
 use crate::FindEffect;
-use editor::{ResourceLocation, ResourceType};
+use editor::{location::ResourceLocation, location::ResourceType};
 use imba::effect::EffectHandler;
 
 const PATH_CAP: usize = 128;

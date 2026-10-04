@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::Measure;
+use crate::metrics::Measure;
 
 use crate::node::{Child, MetricsWithLength, Node};
 use crate::rope::Rope;

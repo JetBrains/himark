@@ -3,18 +3,10 @@
 
 use std::ops::Range;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::{Effect, Effects},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
-};
-use operation::{Bias, Op, Operation};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::{Effect, Effects}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
+use operation::{operation::Bias, op::Op, operation::Operation};
 use skia_safe::Size;
-use text::Text;
+use text::text::Text;
 
 use crate::diff::FragmentKind;
 use crate::editor_view::{EditorCommand, EditorView};
@@ -93,8 +85,8 @@ pub struct DiffViewState {
 impl DiffViewState {
     pub fn attach(
         id: crate::diff::DiffId,
-        left: &crate::Document,
-        right: &crate::Document,
+        left: &crate::document::Document,
+        right: &crate::document::Document,
         left_marks: crate::markup::MarkupId,
         right_marks: crate::markup::MarkupId,
         seeded: Option<Range<u32>>,
@@ -157,7 +149,7 @@ impl DiffViewState {
     /// containers, and misses faces realized after it fired). One
     /// Resync clears it: settle rolls the revisions forward and adopts
     /// the pending generation.
-    pub fn stale(&self, left: &crate::Document, right: &crate::Document) -> bool {
+    pub fn stale(&self, left: &crate::document::Document, right: &crate::document::Document) -> bool {
         self.left_revision != left.revision()
             || self.right_revision != right.revision()
             || right
@@ -980,7 +972,7 @@ impl View for SplitDiffView {
     fn focus_data<'w>(
         &'w self,
         store: &'w imba::store::Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, SplitDiffCommand> {
         if self.left.focus() != crate::editor_view::EditorFocus::None {
             self.left.focus_data(store, ui).map(SplitDiffCommand::Left)
@@ -1152,8 +1144,8 @@ impl View for SplitDiffView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width;
             let half = ((width - CENTER_GAP) * 0.5).max(1.0);
             let half_constraints = Constraints {
@@ -1161,9 +1153,9 @@ impl View for SplitDiffView {
                 max: Size::new(half, f32::MAX),
             };
             let left =
-                imba::Layout::layout(self.left.display(arena, store, ui), arena, half_constraints)
+                imba::layout::Layout::layout(self.left.display(arena, store, ui), arena, half_constraints)
                     .map(SplitDiffCommand::Left);
-            let right = imba::Layout::layout(
+            let right = imba::layout::Layout::layout(
                 self.right.display(arena, store, ui),
                 arena,
                 half_constraints,

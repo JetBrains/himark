@@ -9,13 +9,7 @@
 
 use std::sync::Arc;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, Key as InputKey},
-    store::Store,
-    LayoutExt as _, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key as InputKey}, store::Store, layout::LayoutExt as _, ui::UiCtx, View};
 use skia_safe::Size;
 
 use hikit::{
@@ -47,7 +41,7 @@ pub struct TocView {
     context: String,
     search: ListKeyboardController<ForestList<u64>, ForestSearcher<u64>>,
 
-    targets: rpds::HashTrieMapSync<u64, editor::ResourceLocation>,
+    targets: rpds::HashTrieMapSync<u64, editor::location::ResourceLocation>,
     request: Option<ModalRequest>,
 }
 
@@ -66,7 +60,7 @@ impl Clone for TocView {
 #[derive(Default)]
 struct DirTrie {
     dirs: std::collections::BTreeMap<String, DirTrie>,
-    files: Vec<editor::ResourceLocation>,
+    files: Vec<editor::location::ResourceLocation>,
 }
 
 impl DirTrie {
@@ -74,7 +68,7 @@ impl DirTrie {
         mut self,
         mut label: String,
         next: &mut u64,
-        targets: &mut rpds::HashTrieMapSync<u64, editor::ResourceLocation>,
+        targets: &mut rpds::HashTrieMapSync<u64, editor::location::ResourceLocation>,
     ) -> ForestNode<u64> {
         while self.files.is_empty() && self.dirs.len() == 1 {
             let (segment, child) = self.dirs.pop_first().expect("one child");
@@ -120,12 +114,12 @@ impl TocView {
     pub fn for_locations(
         store: &Store,
         ui: &UiCtx,
-        locations: &[editor::ResourceLocation],
+        locations: &[editor::location::ResourceLocation],
     ) -> Option<Self> {
         if locations.is_empty() {
             return None;
         }
-        let mut sorted: Vec<&editor::ResourceLocation> = locations.iter().collect();
+        let mut sorted: Vec<&editor::location::ResourceLocation> = locations.iter().collect();
         sorted.sort_by_key(|location| location.path().to_vec());
         sorted.dedup_by(|a, b| a == b);
 
@@ -295,13 +289,13 @@ impl View for TocView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         {
             let theme_ui = editor::env::Themes::of(store).ui().clone();
             let title_font = hikit::fonts::ui_font(ui, theme_ui.panel.title_size);
             let searching = self.search.searching();
             DrawerPanel {
-                content: imba::LayoutBox::new(
+                content: imba::layout::LayoutBox::new(
                     arena,
                     self.search
                         .display(arena, store, ui)
@@ -309,7 +303,7 @@ impl View for TocView {
                 ),
                 theme: theme_ui,
                 title_font,
-                shaper: imba::TextShaper::of(ui),
+                shaper: imba::layout::TextShaper::of(ui),
                 context: self.context.clone(),
                 scaled_pad: true,
                 keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
@@ -338,12 +332,12 @@ impl ModalView for TocView {
     }
 }
 
-pub type OutlineKey = (::editor::SyntaxId, ::editor::IntervalId);
+pub type OutlineKey = (::editor::markup::SyntaxId, ::editor::markup::IntervalId);
 
 #[derive(Clone, Debug)]
 pub struct OutlineRow {
-    pub syntax: ::editor::SyntaxId,
-    pub key: ::editor::IntervalId,
+    pub syntax: ::editor::markup::SyntaxId,
+    pub key: ::editor::markup::IntervalId,
     pub depth: u8,
     pub title: String,
 
@@ -351,7 +345,7 @@ pub struct OutlineRow {
 }
 
 pub struct OutlineEffect {
-    document: ::editor::Document,
+    document: ::editor::document::Document,
     stamp: (u64, u64),
 }
 
@@ -433,7 +427,7 @@ pub struct OutlineView {
     jump: Arc<dyn Fn(EditorPlace) -> ModalRequest + Send + Sync>,
     documents: imba::store::Id<documents::OpenDocuments>,
     document: documents::DocumentId,
-    location: editor::ResourceLocation,
+    location: editor::location::ResourceLocation,
     rows: Vec<OutlineRow>,
 
     derived: Option<(u64, u64)>,
@@ -464,10 +458,10 @@ impl Clone for OutlineView {
 impl OutlineView {
     pub fn new(
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         documents: imba::store::Id<documents::OpenDocuments>,
         document: documents::DocumentId,
-        location: editor::ResourceLocation,
+        location: editor::location::ResourceLocation,
         jump: Arc<dyn Fn(EditorPlace) -> ModalRequest + Send + Sync>,
     ) -> Self {
         Self {
@@ -524,7 +518,7 @@ impl OutlineView {
             .map(|row| row.title.clone())
     }
 
-    fn stamp_of(document: &::editor::Document) -> (u64, u64) {
+    fn stamp_of(document: &::editor::document::Document) -> (u64, u64) {
         (document.revision(), document.markup_generation())
     }
 
@@ -690,7 +684,7 @@ impl View for OutlineView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         {
             let theme_ui = editor::env::Themes::of(store).ui().clone();
             let title_font = hikit::fonts::ui_font(ui, theme_ui.panel.title_size);
@@ -702,7 +696,7 @@ impl View for OutlineView {
                     });
             let searching = self.search.searching();
             DrawerPanel {
-                content: imba::LayoutBox::new(
+                content: imba::layout::LayoutBox::new(
                     arena,
                     self.search
                         .display(arena, store, ui)
@@ -710,7 +704,7 @@ impl View for OutlineView {
                 ),
                 theme: theme_ui,
                 title_font,
-                shaper: imba::TextShaper::of(ui),
+                shaper: imba::layout::TextShaper::of(ui),
                 context: self.location.name().to_owned(),
                 scaled_pad: false,
                 keys: move |_arena: &Arena, event: &Event<'_>, _size: Size| match event {
@@ -746,10 +740,10 @@ impl ModalView for OutlineView {
 /// pad depends on the incoming height, which is exactly why this is
 /// a layout struct and not a `display`-time composition.
 struct DrawerPanel<'a, Command, Keys> {
-    content: imba::LayoutBox<'a, Command>,
+    content: imba::layout::LayoutBox<'a, Command>,
     theme: ::editor::theme::UiTheme,
     title_font: skia_safe::Font,
-    shaper: std::rc::Rc<imba::TextShaper>,
+    shaper: std::rc::Rc<imba::layout::TextShaper>,
     context: String,
     /// The toc panel scales its content pad with the height; the
     /// outline panel uses a hairline.
@@ -757,11 +751,11 @@ struct DrawerPanel<'a, Command, Keys> {
     keys: Keys,
 }
 
-impl<Command, Keys> imba::LayoutValue for DrawerPanel<'_, Command, Keys> {}
+impl<Command, Keys> imba::layout::LayoutValue for DrawerPanel<'_, Command, Keys> {}
 
-impl<'a, Command: 'a, Keys> imba::Layout<'a, Command> for DrawerPanel<'a, Command, Keys>
+impl<'a, Command: 'a, Keys> imba::layout::Layout<'a, Command> for DrawerPanel<'a, Command, Keys>
 where
-    Keys: imba::EventHandler<Command> + 'a,
+    Keys: imba::layout::EventHandler<Command> + 'a,
 {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, Command> {
         let size = constraints.max;
@@ -784,7 +778,7 @@ where
             ..
         } = self;
         let panel = content
-            .pad_insets(imba::Insets {
+            .pad_insets(imba::layout::Insets {
                 left: inset + 1.0,
                 top,
                 right: inset + 1.0,
@@ -805,8 +799,8 @@ where
             )
             .shield()
             .sized(hikit::rows::DRAWER_WIDTH, size.height);
-        imba::ZBox::new(arena)
-            .child(imba::Fill::new().on_event(keys))
+        imba::layout::ZBox::new(arena)
+            .child(imba::layout::Fill::new().on_event(keys))
             .child(panel)
             .layout(arena, constraints)
     }

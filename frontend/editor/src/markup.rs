@@ -3,9 +3,9 @@
 
 use std::{ops::Range, sync::Arc};
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, DynCommand, Thunk, UiCtx, View};
+use imba::{arena::Arena, constraints::Constraints, store::Store, dyn_view::DynCommand, Thunk, ui::UiCtx, View};
 use intervals::{Interval, IntervalQuery, Intervals, Order};
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 use skia_safe::Size;
 
 pub(crate) fn interval_steps(
@@ -537,7 +537,7 @@ where
         command: InlayCommand,
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
     ) -> Option<Operation> {
-        imba::DynView::perform_dyn(&mut self.0, store, ui, command, fx);
+        imba::dyn_view::DynView::perform_dyn(&mut self.0, store, ui, command, fx);
         None
     }
 
@@ -548,7 +548,7 @@ where
         ui: &'a UiCtx,
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, InlayCommand> {
-        imba::DynView::layout_dyn(&self.0, arena, store, ui, constraints)
+        imba::dyn_view::DynView::layout_dyn(&self.0, arena, store, ui, constraints)
     }
 
     fn focus_view<'w>(
@@ -556,7 +556,7 @@ where
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, InlayCommand> {
-        imba::DynView::focus_data_dyn(&self.0, store, ui)
+        imba::dyn_view::DynView::focus_data_dyn(&self.0, store, ui)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -578,7 +578,7 @@ where
         store: &mut Store,
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
     ) {
-        imba::DynView::destroy_dyn(&mut self.0, store, fx);
+        imba::dyn_view::DynView::destroy_dyn(&mut self.0, store, fx);
     }
 }
 
@@ -613,7 +613,7 @@ where
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
     ) -> Option<Operation> {
         self.view.set_range(range.clone());
-        imba::DynView::perform_dyn(&mut self.view, store, ui, command, fx);
+        imba::dyn_view::DynView::perform_dyn(&mut self.view, store, ui, command, fx);
         self.view.take_edit()
     }
 
@@ -624,7 +624,7 @@ where
         ui: &'a UiCtx,
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, InlayCommand> {
-        imba::DynView::layout_dyn(&self.view, arena, store, ui, constraints)
+        imba::dyn_view::DynView::layout_dyn(&self.view, arena, store, ui, constraints)
     }
 
     fn passive_view(&self, command: &InlayCommand) -> bool {
@@ -636,7 +636,7 @@ where
         store: &'w Store,
         ui: &'w UiCtx,
     ) -> imba::focus::FocusData<'w, InlayCommand> {
-        imba::DynView::focus_data_dyn(&self.view, store, ui)
+        imba::dyn_view::DynView::focus_data_dyn(&self.view, store, ui)
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -662,7 +662,7 @@ where
         store: &mut Store,
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
     ) {
-        imba::DynView::destroy_dyn(&mut self.view, store, fx);
+        imba::dyn_view::DynView::destroy_dyn(&mut self.view, store, fx);
     }
 }
 
@@ -1509,7 +1509,7 @@ impl Markup {
         &mut self,
         old: &Markup,
         sites: &[crate::reparse::SyntaxSite],
-        text: &text::Text,
+        text: &text::text::Text,
     ) -> Vec<FreshSyntax> {
         let _ = text;
         self.reconcile_syntaxes_in(old, &[0..u32::MAX], sites)
@@ -1713,7 +1713,7 @@ impl Markup {
         (Some((range, mode)), edit)
     }
 
-    pub(crate) fn edit(&mut self, operation: &Operation, view: &mut text::TextView, base: u32) {
+    pub(crate) fn edit(&mut self, operation: &Operation, view: &mut text::text_view::TextView, base: u32) {
         if !self.syntaxes.is_empty() {
             let Some(affected) = affected_span(operation) else {
                 self.shape.edit(interval_steps(operation));
@@ -2155,7 +2155,7 @@ fn rebase_into(
     greedy_left: bool,
     greedy_right: bool,
 ) -> Rebase {
-    use operation::Op;
+    use operation::op::Op;
     let mut position: u32 = 0;
     let mut inner: Vec<Op> = Vec::new();
     let mut written: u32 = 0;
@@ -2397,7 +2397,7 @@ impl Markup {
 }
 
 fn affected_span(operation: &Operation) -> Option<Range<u32>> {
-    use operation::Op;
+    use operation::op::Op;
     let mut position: u32 = 0;
     let mut start: Option<u32> = None;
     let mut end: u32 = 0;

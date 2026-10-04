@@ -3,14 +3,25 @@
 
 use std::ops::Range;
 
-use himark::{
-    Document, EditorIdView, EnrichCx, EnrichFuture, EnrichInput, Enricher, EnricherId, Enrichment,
-    FetchDocumentEffect, Inlay, InlayMode, InsteadKind, Markup, OpenDocuments, ResourceLocation,
-    ResourceType, StyleId, SyntaxLanguages,
-};
+use himark::{EditorIdView, FetchDocumentEffect, OpenDocuments};
+use editor::document::Document;
+use editor::enrich::EnrichCx;
+use editor::enrich::EnrichFuture;
+use editor::enrich::EnrichInput;
+use editor::enrich::Enricher;
+use editor::enrich::EnricherId;
+use editor::enrich::Enrichment;
+use editor::markup::Inlay;
+use editor::markup::InlayMode;
+use editor::markup::InsteadKind;
+use editor::markup::Markup;
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
+use editor::markup::StyleId;
+use editor::reparse::SyntaxLanguages;
 use hisitter::TsTree;
-use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View};
-use text::Text;
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View};
+use text::text::Text;
 
 struct FenceRef {
     block: Range<u32>,
@@ -24,7 +35,7 @@ const EMBED_WIDTH: f32 = 720.0;
 
 struct Prepared {
     document: Document,
-    layout: himark::DocumentLayout,
+    layout: editor::document_layout::DocumentLayout,
 }
 
 #[derive(Clone)]
@@ -54,8 +65,8 @@ impl View for EmbedPending {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::fixed(imba::leaf::leaf(0.0, 0.0))
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::fixed(imba::leaf::leaf(0.0, 0.0))
     }
 }
 
@@ -64,7 +75,7 @@ pub struct EmbedView {
     view: EditorIdView,
     height: f32,
 
-    fragments: Option<himark::FragmentSetId>,
+    fragments: Option<editor::document::FragmentSetId>,
 }
 
 impl EmbedView {
@@ -80,13 +91,13 @@ impl EmbedView {
         self.height
     }
 
-    pub fn editor(&self) -> himark::EditorId {
+    pub fn editor(&self) -> editor::editor::EditorId {
         self.view.editor()
     }
 }
 
 impl View for EmbedView {
-    type Command = himark::EditorCommand;
+    type Command = editor::editor_view::EditorCommand;
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         if let Some(set) = self.fragments.take() {
@@ -122,7 +133,7 @@ impl View for EmbedView {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         EmbedFrame {
             embed: self,
             store,
@@ -141,8 +152,8 @@ impl EmbedView {
     }
 }
 
-impl himark::InlayEditing for EmbedView {
-    fn take_edit(&mut self) -> Option<operation::Operation> {
+impl editor::markup::InlayEditing for EmbedView {
+    fn take_edit(&mut self) -> Option<operation::operation::Operation> {
         None
     }
 
@@ -152,23 +163,23 @@ impl himark::InlayEditing for EmbedView {
         &mut self,
         previous: &Self,
         _store: &imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _fonts: &skia_safe::textlayout::FontCollection,
-        _theme: &himark::Theme,
+        _theme: &editor::theme::Theme,
     ) -> bool {
         *self = *previous;
         true
     }
 
-    fn passive(&self, command: &himark::InlayCommand) -> bool {
+    fn passive(&self, command: &editor::markup::InlayCommand) -> bool {
         matches!(
-            command.downcast_ref::<himark::EditorCommand>(),
+            command.downcast_ref::<editor::editor_view::EditorCommand>(),
             Some(
-                himark::EditorCommand::ApplyRepair(_)
-                    | himark::EditorCommand::ApplyReparse(_)
-                    | himark::EditorCommand::ApplyEnrichment(_)
-                    | himark::EditorCommand::Retheme { .. }
-                    | himark::EditorCommand::Viewport { .. }
+                editor::editor_view::EditorCommand::ApplyRepair(_)
+                    | editor::editor_view::EditorCommand::ApplyReparse(_)
+                    | editor::editor_view::EditorCommand::ApplyEnrichment(_)
+                    | editor::editor_view::EditorCommand::Retheme { .. }
+                    | editor::editor_view::EditorCommand::Viewport { .. }
             )
         )
     }
@@ -188,11 +199,11 @@ impl Enricher for FenceEmbedEnricher {
     fn install(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         replacement: &mut Markup,
         changed: &[Range<u32>],
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         install(store, ui, replacement, changed, fonts, theme);
     }
@@ -242,12 +253,12 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
             .lines
             .and_then(|(from, to)| line_window(document.text(), from, to));
         let layout = {
-            let globals: Vec<(himark::MarkupId, &Markup)> =
+            let globals: Vec<(editor::markup::MarkupId, &Markup)> =
                 document.document_scoped_markups().collect();
             cx.measure.measure(EMBED_WIDTH, |measure| {
-                himark::DocumentLayout::build_complete(
+                editor::document_layout::DocumentLayout::build_complete(
                     document.text(),
-                    himark::OverlaidMarkup::new(document.markup(), &globals),
+                    editor::markup::OverlaidMarkup::new(document.markup(), &globals),
                     measure,
                     cx.fonts,
                     cx.theme,
@@ -285,13 +296,13 @@ async fn derive(input: &EnrichInput, cx: &EnrichCx<'_>) -> Enrichment {
 
 fn install(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     replacement: &mut Markup,
     changed: &[Range<u32>],
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) {
-    let pending: Vec<(himark::InlayKey, Range<u32>, EmbedPending)> = changed
+    let pending: Vec<(editor::markup::InlayKey, Range<u32>, EmbedPending)> = changed
         .iter()
         .flat_map(|range| replacement.all_inlays_in(range.clone()))
         .filter_map(|interval| {
@@ -299,7 +310,7 @@ fn install(
             Some((interval.key, interval.range.clone(), embed))
         })
         .collect();
-    let languages = himark::env::Parsers::of(store);
+    let languages = ::editor::env::Parsers::of(store);
     for (key, range, embed) in pending {
         // The embed's temp documents file under the location's owner
         // (synthetic embed locations fall to the local session).
@@ -371,8 +382,8 @@ fn install(
             None => (None, None),
         };
         let build = match prebuilt {
-            Some(layout) => himark::EditorBuild::Prebuilt(layout),
-            None => himark::EditorBuild::Complete,
+            Some(layout) => editor::document::EditorBuild::Prebuilt(layout),
+            None => editor::document::EditorBuild::Complete,
         };
         let mut batch = imba::effect::Batch::new();
         let editor = document.add_editor(
@@ -467,7 +478,7 @@ fn fence_refs(input: &EnrichInput) -> Vec<FenceRef> {
     refs
 }
 
-fn fence_info(view: &mut text::TextView, node: tree_sitter::Node) -> Option<String> {
+fn fence_info(view: &mut text::text_view::TextView, node: tree_sitter::Node) -> Option<String> {
     for index in 0..node.child_count() {
         let child = node.child(index as u32)?;
         if child.kind() == "info_string" {
@@ -516,9 +527,9 @@ fn build_document(
     language: &str,
     languages: Option<&SyntaxLanguages>,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Document {
     let text = Text::from_string_exact(content);
     if let Some(languages) = languages {
@@ -544,14 +555,14 @@ struct EmbedFrame<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for EmbedFrame<'_> {}
+impl imba::layout::LayoutValue for EmbedFrame<'_> {}
 
-impl<'a> imba::Layout<'a, himark::EditorCommand> for EmbedFrame<'a> {
+impl<'a> imba::layout::Layout<'a, editor::editor_view::EditorCommand> for EmbedFrame<'a> {
     fn layout(
         self,
         arena: &'a Arena,
         constraints: Constraints,
-    ) -> imba::ThunkBox<'a, himark::EditorCommand> {
+    ) -> imba::ThunkBox<'a, editor::editor_view::EditorCommand> {
         let EmbedFrame { embed, store, ui } = self;
         let height = embed.live_height(store).unwrap_or(embed.height).max(1.0);
         let width = match constraints.max.width.is_finite() {
@@ -563,7 +574,7 @@ impl<'a> imba::Layout<'a, himark::EditorCommand> for EmbedFrame<'a> {
         pane.place(
             0.0,
             0.0,
-            imba::Layout::layout(embed.view.display(arena, store, ui), arena, constraints),
+            imba::layout::Layout::layout(embed.view.display(arena, store, ui), arena, constraints),
         );
         imba::ThunkBox::new(arena, pane)
     }

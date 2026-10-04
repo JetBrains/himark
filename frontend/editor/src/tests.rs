@@ -3,7 +3,7 @@
 
 use std::str;
 
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 use skia_safe::{textlayout::FontCollection, Point};
 
 macro_rules! fx {
@@ -12,17 +12,10 @@ macro_rules! fx {
     };
 }
 
-use crate::{
-    document::Document,
-    document_layout::DocumentLayout,
-    editor_view::EditorView,
-    markup::BlockStyle,
-    shaped_line::line_paragraph,
-    test_document::{
+use crate::{document::Document, document_layout::DocumentLayout, editor_view::EditorView, markup::BlockStyle, shaped_line::line_paragraph, test_document::{
         fenced_code_document, header_marks, hidden_document, list_document, marked_document,
         plain_document,
-    },
-};
+    }};
 
 fn test_theme() -> crate::theme::Theme {
     crate::theme::Theme::embedded()
@@ -80,7 +73,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &test_theme(),
         &mut imba::effect::Batch::new().effects(),
     );
-    let mut store = imba::Store::new();
+    let mut store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
 
     let wrapped_height = document.content_height(editor);
@@ -91,7 +84,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::ToggleSoftwrap,
+        crate::editor_view::EditorCommand::ToggleSoftwrap,
         fx!(),
     );
     assert!(!document.softwrap(editor));
@@ -115,7 +108,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::HorizontalScroll(120.0),
+        crate::editor_view::EditorCommand::HorizontalScroll(120.0),
         fx!(),
     );
     assert_eq!(document.scroll_x(editor), 120.0);
@@ -123,7 +116,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::HorizontalScroll(1.0e9),
+        crate::editor_view::EditorCommand::HorizontalScroll(1.0e9),
         fx!(),
     );
     assert!(
@@ -135,7 +128,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::HorizontalScroll(-1.0e9),
+        crate::editor_view::EditorCommand::HorizontalScroll(-1.0e9),
         fx!(),
     );
     assert_eq!(document.scroll_x(editor), 0.0);
@@ -144,7 +137,7 @@ fn softwrap_toggles_to_a_panning_single_row_layout() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::ToggleSoftwrap,
+        crate::editor_view::EditorCommand::ToggleSoftwrap,
         fx!(),
     );
     assert!(document.softwrap(editor));
@@ -555,7 +548,7 @@ fn font_collection() -> FontCollection {
 
 #[test]
 fn misaligned_boundary_detector_fires() {
-    use text::Text;
+    use text::text::Text;
 
     let document = Document::new(
         Text::from_string_exact("aa\u{1F600}aa\nbb\u{1F600}bb\n"),
@@ -713,10 +706,10 @@ fn backspacing_a_document_to_nothing_settles_clean() {
         while !text.is_empty() {
             let last = text.chars().last().expect("char");
             let at = (text.len() - last.len_utf8()) as u32;
-            let op = operation::Operation::delete_at(at, last.to_string());
+            let op = operation::operation::Operation::delete_at(at, last.to_string());
             layout.edit(&op);
             text.truncate(at as usize);
-            let value = text::Text::from_string_exact(&text);
+            let value = text::text::Text::from_string_exact(&text);
             let mut rounds = 0;
             while let Some(pending) = layout.repair_pending() {
                 rounds += 1;
@@ -736,7 +729,7 @@ fn backspacing_a_document_to_nothing_settles_clean() {
             }
         }
 
-        let empty = text::Text::from_string_exact("");
+        let empty = text::text::Text::from_string_exact("");
         let anchor = layout.mark_modified_in(0..0);
         let mut rounds = 0;
         while let Some(pending) = layout.repair_pending() {
@@ -766,7 +759,7 @@ fn deleting_everything_leaves_no_unhealable_damage() {
         let extras: Vec<_> = document.document_scoped_markups().collect();
         let markup = crate::markup::OverlaidMarkup::new(document.markup(), &extras);
         let mut layout = layout_of(&document, 600.0);
-        layout.edit(&operation::Operation::delete_at(0, source));
+        layout.edit(&operation::operation::Operation::delete_at(0, source));
         assert_eq!(
             layout.repair_pending(),
             None,
@@ -1147,7 +1140,7 @@ fn a_bounded_editor_lays_out_exactly_its_fragment() {
         "a fragment-sized layout fits the synchronous budget"
     );
 
-    let reference = crate::EditorView::complete(
+    let reference = crate::editor_view::EditorView::complete(
         plain_document("bravo\ncharlie"),
         400.0,
         store,
@@ -1162,7 +1155,7 @@ fn a_bounded_editor_lays_out_exactly_its_fragment() {
         reference.content_height()
     );
 
-    let view = crate::EditorView {
+    let view = crate::editor_view::EditorView {
         document: document.clone(),
         editor,
         reports_geometry: false,
@@ -1246,7 +1239,7 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         &test_theme(),
         fx!(),
     );
-    let reference = crate::EditorView::complete(
+    let reference = crate::editor_view::EditorView::complete(
         plain_document("b\nXravo\ncharlie"),
         400.0,
         store,
@@ -1261,7 +1254,7 @@ fn a_bounded_editor_edits_the_shared_document_and_tracks_shifts() {
         reference.content_height()
     );
 
-    let view = crate::EditorView {
+    let view = crate::editor_view::EditorView {
         document: document.clone(),
         editor: bounded,
         reports_geometry: false,
@@ -1338,7 +1331,7 @@ mod injected_syntax {
     use crate::markup::Syntax;
     use crate::markup::{Markup, StyleId};
     use crate::test_document::plain_document;
-    use operation::Operation;
+    use operation::operation::Operation;
 
     fn payload(tokens: &[(std::ops::Range<u32>, StyleId)]) -> Syntax {
         let mut markup = Markup::new();
@@ -1526,7 +1519,7 @@ mod injected_syntax {
     fn reconcile_inherits_stable_keys_and_launches_only_fresh() {
         use crate::reparse::SyntaxSite;
         use intervals::IntervalQuery;
-        let text = text::Text::from_string_exact("prefix let x tail");
+        let text = text::text::Text::from_string_exact("prefix let x tail");
         let site = SyntaxSite {
             range: 7..12,
             language: "toy".to_owned(),
@@ -1593,7 +1586,7 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
     let source = line.repeat(50_000);
     let fonts = test_fonts();
     let mut document = Document::new(
-        text::Text::from_string_exact(&source),
+        text::text::Text::from_string_exact(&source),
         crate::markup::Markup::new(),
     );
     let _editor = document.add_editor(
@@ -1613,7 +1606,7 @@ fn typing_in_a_blank_line_free_document_repairs_one_line() {
     for i in 0..12u32 {
         let started = std::time::Instant::now();
         let _ = document.edit(
-            &operation::Operation::insert_in(
+            &operation::operation::Operation::insert_in(
                 crate::text_cursor::byte_count(document.text()),
                 at + i,
                 "x",
@@ -1723,8 +1716,8 @@ fn paired_layouts_align_retained_boundaries() {
                 continue;
             }
 
-            let mapped = diff.transform_offset(boundary, operation::Bias::Right);
-            if diff.transform_offset_back(mapped, operation::Bias::Right) != boundary {
+            let mapped = diff.transform_offset(boundary, operation::operation::Bias::Right);
+            if diff.transform_offset_back(mapped, operation::operation::Bias::Right) != boundary {
                 continue;
             }
             let right_boundary = right_layout
@@ -1818,7 +1811,7 @@ fn popup_overlays_carry_projected_inlays() {
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
-    let view = crate::EditorView {
+    let view = crate::editor_view::EditorView {
         document,
         editor,
         reports_geometry: false,
@@ -1826,13 +1819,13 @@ fn popup_overlays_carry_projected_inlays() {
         gutter_width: 0.0,
         base: None,
     };
-    let store = imba::Store::new();
+    let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
     // Through the PRODUCTION path: the editor's own realize mints
     // the projections from its shared viewport build.
-    let laid = imba::Layout::layout(
+    let laid = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
         imba::constraints::Constraints::tight(skia_safe::Size::new(240.0, 400.0)),
@@ -1937,7 +1930,7 @@ impl imba::View for FixedInlay {
     fn perform(
         &mut self,
         _store: &mut imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -1947,9 +1940,9 @@ impl imba::View for FixedInlay {
         &'a self,
         _arena: &'a imba::arena::Arena,
         _store: &'a imba::store::Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 imba::leaf::leaf(self.width, self.height)
             },
@@ -1964,7 +1957,7 @@ fn alignment_markers_place_the_covered_lines() {
     let fonts = font_collection();
     let theme = test_theme();
     let source = "right\ncente\nplain\n";
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
     let mut builder = crate::markup::Markup::builder();
     builder.push_alignment(0..5, crate::theme::TextAlignment::Right);
     builder.push_alignment(6..11, crate::theme::TextAlignment::Center);
@@ -2017,7 +2010,7 @@ fn line_spanning_background_markers_paint_to_the_line_end() {
     let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n\n";
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
 
     let washed = |line: std::ops::Range<u32>, mark: std::ops::Range<u32>| -> (bool, bool) {
         let mut builder = crate::markup::Markup::builder();
@@ -2080,7 +2073,7 @@ fn a_through_end_wash_fills_the_block_gap_below() {
     let fonts = font_collection();
     let theme = test_theme();
     let source = "washed\n";
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
 
     let paints = |style: crate::theme::StyleId, mark: std::ops::Range<u32>| -> (Vec<u8>, Vec<u8>) {
         let mut builder = crate::markup::Markup::builder();
@@ -2156,7 +2149,7 @@ fn tight_background_markers_hug_their_glyphs() {
     let fonts = font_collection();
     let theme = test_theme();
     let source = "BIG word here\n";
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
 
     let paint_rows = |style: Option<crate::theme::StyleId>| -> Vec<u8> {
         let mut builder = crate::markup::Markup::builder();
@@ -2391,8 +2384,8 @@ fn markup_only_languages_ride_an_opaque_parse() {
         }
         fn edit(
             &mut self,
-            _operation: &operation::Operation,
-            _view: &mut text::TextView,
+            _operation: &operation::operation::Operation,
+            _view: &mut text::text_view::TextView,
             _base: u32,
         ) {
         }
@@ -2411,7 +2404,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     impl crate::reparse::SyntaxLanguage for Recording {
         fn parse(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             _range: std::ops::Range<u32>,
             _old: Option<&dyn SyntaxTree>,
         ) -> Option<Box<dyn SyntaxTree>> {
@@ -2420,7 +2413,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
 
         fn markup_for_changes(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             range: std::ops::Range<u32>,
             _tree: &dyn SyntaxTree,
             changed: &[std::ops::Range<u32>],
@@ -2446,7 +2439,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     let theme = test_theme();
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
-    let text = text::Text::from_string_exact("hello markup-only\n");
+    let text = text::text::Text::from_string_exact("hello markup-only\n");
     let len = text.byte_count() as u32;
 
     let (syntax, invalidated, sites) = languages
@@ -2480,7 +2473,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
     impl crate::reparse::SyntaxLanguage for Unusable {
         fn parse(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             _range: std::ops::Range<u32>,
             _old: Option<&dyn SyntaxTree>,
         ) -> Option<Box<dyn SyntaxTree>> {
@@ -2488,7 +2481,7 @@ fn markup_only_languages_ride_an_opaque_parse() {
         }
         fn markup_for_changes(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             _range: std::ops::Range<u32>,
             _tree: &dyn SyntaxTree,
             _changed: &[std::ops::Range<u32>],
@@ -2526,7 +2519,7 @@ fn layout_survives_chars_straddling_the_chunk_grid() {
     source.push_str(&"y".repeat(200));
     source.push_str("\ntail line one\ntail line two\n");
     let document = Document::new(
-        text::Text::from_string_exact(&source),
+        text::text::Text::from_string_exact(&source),
         crate::markup::Markup::builder().finish(),
     );
     let mut layout = layout_of(&document, 300.0);
@@ -2588,7 +2581,7 @@ fn a_repair_relaunch_cancels_the_in_flight_lane() {
     let source = "word ".repeat(20_000);
     let mut document = plain_document(&source);
 
-    let repair_tokens = |batch: Batch<crate::EditorCommand>| {
+    let repair_tokens = |batch: Batch<crate::editor_view::EditorCommand>| {
         let mut cancels = Vec::new();
         let mut launched = Vec::new();
         for message in batch.drain() {
@@ -3099,7 +3092,7 @@ fn select_next_occurrence_walks_matches() {
 #[test]
 fn each_occurrence_streams_like_the_one_at_a_time_walk() {
     let body = "ab".repeat(100_000);
-    let text = text::Text::from_string_exact(&body);
+    let text = text::text::Text::from_string_exact(&body);
     let needle = b"abab";
     let range = 0u32..body.len() as u32;
     let mut streamed = Vec::new();
@@ -3201,7 +3194,7 @@ fn text_focus_offers_caret_commands_to_the_palette() {
     let ui = crate::test_document::test_ui();
     let document = plain_document("foo bar foo");
     let mut view =
-        crate::EditorView::complete(document, 600.0, store, ui, &test_fonts(), &test_theme());
+        crate::editor_view::EditorView::complete(document, 600.0, store, ui, &test_fonts(), &test_theme());
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
 
@@ -3236,7 +3229,7 @@ fn short_lines_straddling_the_chunk_grid_do_not_split() {
     let line = "let clock = std::cell::Cell::new(0.0f64); // filler text\n";
     let source = line.repeat(48 * 1024 / line.len());
     let document = Document::new(
-        text::Text::from_string_exact(&source),
+        text::text::Text::from_string_exact(&source),
         crate::markup::Markup::builder().finish(),
     );
     let mut layout = layout_of(&document, 100_000.0);
@@ -3276,7 +3269,7 @@ fn monster_lines_still_tile_on_the_grid() {
     let mut source = "x".repeat(40 * 1024);
     source.push_str("\nshort tail\n");
     let document = Document::new(
-        text::Text::from_string_exact(&source),
+        text::text::Text::from_string_exact(&source),
         crate::markup::Markup::builder().finish(),
     );
     let mut layout = layout_of(&document, 300.0);
@@ -3424,7 +3417,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
     let ui = crate::test_document::test_ui();
     let chrome_width = test_theme().ui().editor_gutter.width;
     let source = "alpha\nbeta\ngamma\n";
-    let mut view = crate::EditorView::complete(
+    let mut view = crate::editor_view::EditorView::complete(
         plain_document(source),
         400.0,
         store,
@@ -3433,7 +3426,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
         &test_theme(),
     );
     view.gutter_width = chrome_width;
-    let store = imba::Store::new();
+    let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
@@ -3441,7 +3434,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
         min: skia_safe::Size::default(),
         max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
     };
-    let widget = imba::Layout::layout(
+    let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
         constraints,
@@ -3484,7 +3477,7 @@ fn gutter_paints_numbers_beside_shifted_text() {
 
     drop(widget);
     view.gutter_width = 0.0;
-    let widget = imba::Layout::layout(
+    let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
         constraints,
@@ -3522,7 +3515,7 @@ fn gutter_numbers_share_the_text_baseline() {
     let chrome = test_theme().ui().editor_gutter.clone();
 
     let source = "alpha\nbeta\ngamma";
-    let mut view = crate::EditorView::complete(
+    let mut view = crate::editor_view::EditorView::complete(
         plain_document(source),
         400.0,
         store,
@@ -3531,7 +3524,7 @@ fn gutter_numbers_share_the_text_baseline() {
         &test_theme(),
     );
     view.gutter_width = chrome.width;
-    let store = imba::Store::new();
+    let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
@@ -3539,7 +3532,7 @@ fn gutter_numbers_share_the_text_baseline() {
         min: skia_safe::Size::default(),
         max: skia_safe::Size::new(400.0 + chrome.width, f32::MAX),
     };
-    let widget = imba::Layout::layout(
+    let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
         constraints,
@@ -3585,7 +3578,7 @@ mod folding {
     use crate::document::Document;
     use crate::markup::{Markup, Syntax};
     use crate::viewport::EditorViewport;
-    use operation::Operation;
+    use operation::operation::Operation;
 
     fn foldable_document(source: &str, foldable: std::ops::Range<u32>) -> Document {
         let mut syntax = Syntax::new("toy", None, Markup::new());
@@ -3596,29 +3589,29 @@ mod folding {
             key: crate::markup::IntervalId(0),
             value: (),
         }]);
-        Document::new(text::Text::from_string_exact(source), Markup::new()).with_syntax(syntax, &[])
+        Document::new(text::text::Text::from_string_exact(source), Markup::new()).with_syntax(syntax, &[])
     }
 
     const SOURCE: &str = "head\nfn demo() {\n    body\n}\ntail\n";
 
     fn settle_fold_animation(
         document: &mut Document,
-        editor: crate::EditorId,
+        editor: crate::editor::EditorId,
         range: &std::ops::Range<u32>,
     ) {
         let key = document
             .fold_matching(editor, range)
             .expect("a standing fold");
-        let mut store = imba::Store::new();
+        let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         for millis in [0.0, 10_000.0] {
             document.perform(
                 &mut store,
                 &ui,
                 editor,
-                crate::EditorCommand::Inlay {
+                crate::editor_view::EditorCommand::Inlay {
                     key,
-                    command: imba::DynCommand::new(crate::fold::FoldCommand::Tick(
+                    command: imba::dyn_view::DynCommand::new(crate::fold::FoldCommand::Tick(
                         imba::anim::AnimationClock::from_millis(millis),
                     )),
                 },
@@ -3633,7 +3626,7 @@ mod folding {
         start..end
     }
 
-    fn viewport_of(document: &Document, editor: crate::EditorId) -> EditorViewport {
+    fn viewport_of(document: &Document, editor: crate::editor::EditorId) -> EditorViewport {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         EditorViewport::build(
@@ -3921,15 +3914,15 @@ mod folding {
         );
         let key = document.fold_matching(editor, &interior()).expect("folded");
 
-        let mut store = imba::Store::new();
+        let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         document.perform(
             &mut store,
             &ui,
             editor,
-            crate::EditorCommand::Inlay {
+            crate::editor_view::EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(crate::fold::FoldCommand::Unfold),
+                command: imba::dyn_view::DynCommand::new(crate::fold::FoldCommand::Unfold),
             },
             fx!(),
         );
@@ -3947,7 +3940,7 @@ mod folding {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         let chrome_width = test_theme().ui().editor_gutter.width;
-        let mut view = crate::EditorView::complete(
+        let mut view = crate::editor_view::EditorView::complete(
             foldable_document(SOURCE, interior()),
             400.0,
             store,
@@ -3957,7 +3950,7 @@ mod folding {
         );
         view.gutter_width = chrome_width;
         let editor = view.editor;
-        let store = imba::Store::new();
+        let store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         ui.set(crate::env::UiFonts(test_fonts()));
         let arena = imba::arena::Arena::default();
@@ -3966,7 +3959,7 @@ mod folding {
             max: skia_safe::Size::new(400.0 + chrome_width, f32::MAX),
         };
         let y = view.document.height_before(editor, interior().start) + 2.0;
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, &ui),
             &arena,
             constraints,
@@ -3987,7 +3980,7 @@ mod folding {
             },
             skia_safe::Rect::from_wh(400.0 + chrome_width, 600.0),
         );
-        let imba::event::EventResult::Command(crate::EditorCommand::ToggleFold { range }) = result
+        let imba::event::EventResult::Command(crate::editor_view::EditorCommand::ToggleFold { range }) = result
         else {
             panic!("the gutter click answers the toggle");
         };
@@ -4075,7 +4068,7 @@ mod gutter_stripes {
 
     fn build(
         document: &Document,
-        editor: crate::EditorId,
+        editor: crate::editor::EditorId,
         stripes: Option<crate::diff::DiffId>,
     ) -> EditorViewport {
         let store = &imba::store::Store::new();
@@ -4112,7 +4105,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
+        let operation = myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         let viewport = build(&document, editor, Some(id));
@@ -4154,7 +4147,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
+        let operation = myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
         let id = document.add_diff(operation, 0);
 
         // Typing ABOVE the standing hunk shifts its stripe the same
@@ -4180,7 +4173,7 @@ mod gutter_stripes {
 
         // The landing installs the fresh derivation and the typed
         // line stripes.
-        let minimal = myersdiff::diff(&text::Text::from_string_exact(base), document.text());
+        let minimal = myersdiff::diff(&text::text::Text::from_string_exact(base), document.text());
         let fresh = crate::diff::hunk_markup(&minimal, document.text());
         assert!(document.install_normalized_diff(id, minimal, 0));
         document.install_diff_markup(
@@ -4225,7 +4218,7 @@ mod gutter_stripes {
             &test_theme(),
             fx!(),
         );
-        let operation = myersdiff::diff(&text::Text::from_string_exact("one\n"), document.text());
+        let operation = myersdiff::diff(&text::text::Text::from_string_exact("one\n"), document.text());
         let id = document.add_diff(operation, 0);
         let unjoined = build(&document, editor, None);
         assert!(unjoined.lines.iter().all(|line| line.diff.is_none()));
@@ -4258,7 +4251,7 @@ mod before_inlay {
     const BASE: &str = "one\ntwo\nthree\nfour\nfive\nsix\n";
     const SOURCE: &str = "one\nTWO!\nthree\nadded\nfour\nsix\n";
 
-    fn joined() -> crate::EditorView {
+    fn joined() -> crate::editor_view::EditorView {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         let mut document = plain_document(SOURCE);
@@ -4276,7 +4269,7 @@ mod before_inlay {
         let base_document = plain_document(BASE);
         let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
-        crate::EditorView {
+        crate::editor_view::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -4286,20 +4279,20 @@ mod before_inlay {
         }
     }
 
-    fn toggle(view: &mut crate::EditorView, at: u32) {
+    fn toggle(view: &mut crate::editor_view::EditorView, at: u32) {
         use imba::View;
         let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         view.perform(
             &mut store,
             &ui,
-            crate::EditorCommand::ToggleBeforeInlay { at },
+            crate::editor_view::EditorCommand::ToggleBeforeInlay { at },
             fx!(),
         );
     }
 
     fn cards(
-        view: &crate::EditorView,
+        view: &crate::editor_view::EditorView,
     ) -> Vec<(std::ops::Range<u32>, std::ops::Range<u32>, String)> {
         view.document.before_inlays(view.editor)
     }
@@ -4431,7 +4424,7 @@ mod before_inlay {
         let base_document = plain_document(base);
         let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
-        let mut view = crate::EditorView {
+        let mut view = crate::editor_view::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -4467,7 +4460,7 @@ mod before_inlay_presentation {
     const BASE: &str = "one\ntwo\nthree\nfour\nfive\nsix\n";
     const SOURCE: &str = "one\nTWO!\nthree\nadded\nfour\nsix\n";
 
-    fn joined() -> crate::EditorView {
+    fn joined() -> crate::editor_view::EditorView {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         let mut document = plain_document(SOURCE);
@@ -4485,7 +4478,7 @@ mod before_inlay_presentation {
         let base_document = plain_document(BASE);
         let operation = myersdiff::diff(base_document.text(), document.text());
         let id = document.add_diff(operation, base_document.revision());
-        crate::EditorView {
+        crate::editor_view::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -4495,30 +4488,30 @@ mod before_inlay_presentation {
         }
     }
 
-    fn perform(view: &mut crate::EditorView, command: crate::EditorCommand) {
+    fn perform(view: &mut crate::editor_view::EditorView, command: crate::editor_view::EditorCommand) {
         use imba::View;
         let mut store = imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         view.perform(&mut store, &ui, command, fx!());
     }
 
-    fn toggled(view: &mut crate::EditorView, at: u32) -> crate::markup::InlayKey {
-        perform(view, crate::EditorCommand::ToggleBeforeInlay { at });
+    fn toggled(view: &mut crate::editor_view::EditorView, at: u32) -> crate::markup::InlayKey {
+        perform(view, crate::editor_view::EditorCommand::ToggleBeforeInlay { at });
         let cards = view.document.before_inlay_views(view.editor);
         assert_eq!(cards.len(), 1, "one card standing");
         cards[0].0
     }
 
-    fn card(view: &crate::EditorView) -> crate::BeforeInlay {
+    fn card(view: &crate::editor_view::EditorView) -> crate::before_inlay::BeforeInlay {
         view.document.before_inlay_views(view.editor)[0].1.clone()
     }
 
-    fn tick(view: &mut crate::EditorView, key: crate::markup::InlayKey, at_ms: f64) {
+    fn tick(view: &mut crate::editor_view::EditorView, key: crate::markup::InlayKey, at_ms: f64) {
         perform(
             view,
-            crate::EditorCommand::Inlay {
+            crate::editor_view::EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(BeforeCommand::Tick(
+                command: imba::dyn_view::DynCommand::new(BeforeCommand::Tick(
                     imba::anim::AnimationClock::from_millis(at_ms),
                 )),
             },
@@ -4543,7 +4536,7 @@ mod before_inlay_presentation {
         assert!(!card(&view).is_appearing(), "the growth settles");
         assert_eq!(
             view.focus(),
-            crate::EditorFocus::Text,
+            crate::editor_view::EditorFocus::Text,
             "ticks never stole the host's caret"
         );
     }
@@ -4555,9 +4548,9 @@ mod before_inlay_presentation {
         let before = card(&view).card_width();
         perform(
             &mut view,
-            crate::EditorCommand::Inlay {
+            crate::editor_view::EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(BeforeCommand::Rewrap(before + 120.0)),
+                command: imba::dyn_view::DynCommand::new(BeforeCommand::Rewrap(before + 120.0)),
             },
         );
         assert_eq!(
@@ -4574,16 +4567,16 @@ mod before_inlay_presentation {
         let key = toggled(&mut view, SOURCE.find("TWO!").unwrap() as u32);
         assert_eq!(
             card(&view).card_focus(),
-            crate::EditorFocus::None,
+            crate::editor_view::EditorFocus::None,
             "born blurred"
         );
         perform(
             &mut view,
-            crate::EditorCommand::Inlay {
+            crate::editor_view::EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(BeforeCommand::Editor(
-                    crate::EditorCommand::Click {
-                        kind: crate::ClickKind::Set,
+                command: imba::dyn_view::DynCommand::new(BeforeCommand::Editor(
+                    crate::editor_view::EditorCommand::Click {
+                        kind: crate::editor_view::ClickKind::Set,
                         point: skia_safe::Point::new(2.0, 2.0),
                     },
                 )),
@@ -4591,12 +4584,12 @@ mod before_inlay_presentation {
         );
         assert_eq!(
             view.focus(),
-            crate::EditorFocus::Inlay(key),
+            crate::editor_view::EditorFocus::Inlay(key),
             "the host routes position-less events to the card"
         );
         assert_eq!(
             card(&view).card_focus(),
-            crate::EditorFocus::Text,
+            crate::editor_view::EditorFocus::Text,
             "the card's own caret is live"
         );
     }
@@ -4829,7 +4822,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
     let theme = test_theme();
     let source: String = (0..200).map(|i| format!("line number {i}\n")).collect();
     let mut view =
-        crate::EditorView::complete(plain_document(&source), 400.0, store, ui, &fonts, &theme);
+        crate::editor_view::EditorView::complete(plain_document(&source), 400.0, store, ui, &fonts, &theme);
     let editor = view.editor;
 
     let before_height = view.document.content_height(editor);
@@ -4873,7 +4866,7 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
         "a popup must not move the layout"
     );
 
-    let store = imba::Store::new();
+    let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
@@ -4884,14 +4877,14 @@ fn popups_mint_from_the_visible_band_with_zero_flow_impact() {
 
     let marker_y = view.document.height_before(editor, range.start);
     fn drain(
-        view: &crate::EditorView,
+        view: &crate::editor_view::EditorView,
         arena: &imba::arena::Arena,
-        store: &imba::Store,
-        ui: &imba::UiCtx,
+        store: &imba::store::Store,
+        ui: &imba::ui::UiCtx,
         constraints: imba::constraints::Constraints,
         viewport: skia_safe::Rect,
     ) -> Vec<(skia_safe::Rect, imba::overlay::OverlayHost)> {
-        let thunk = imba::Layout::layout(
+        let thunk = imba::layout::Layout::layout(
             imba::View::display(view, arena, store, ui),
             arena,
             constraints,
@@ -4998,11 +4991,11 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         },
     );
     let document = crate::document::Document::new(
-        text::Text::from_string_exact(&source),
+        text::text::Text::from_string_exact(&source),
         crate::markup::Markup::new(),
     )
     .with_syntax(syntax, &[]);
-    let mut view = crate::EditorView::complete(document, 400.0, store, ui, &fonts, &theme);
+    let mut view = crate::editor_view::EditorView::complete(document, 400.0, store, ui, &fonts, &theme);
 
     view.gutter_width = 100.0;
     let editor = view.editor;
@@ -5016,7 +5009,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
     );
     assert!(view.document.outline_enclosing(line_start(5)).is_empty());
 
-    let store = imba::Store::new();
+    let store = imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     ui.set(crate::env::UiFonts(test_fonts()));
     let arena = imba::arena::Arena::default();
@@ -5025,8 +5018,8 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         max: skia_safe::Size::new(400.0, f32::MAX),
     };
     let drain =
-        |viewport: skia_safe::Rect| -> Vec<imba::overlay::Overlay<'_, crate::EditorCommand>> {
-            let thunk = imba::Layout::layout(
+        |viewport: skia_safe::Rect| -> Vec<imba::overlay::Overlay<'_, crate::editor_view::EditorCommand>> {
+            let thunk = imba::layout::Layout::layout(
                 imba::View::display(&view, &arena, &store, &ui),
                 &arena,
                 constraints,
@@ -5099,7 +5092,7 @@ fn sticky_lines_pin_the_enclosing_scopes() {
         skia_safe::Rect::from_size(size),
     );
     match pressed {
-        imba::event::EventResult::Command(crate::EditorCommand::RevealAt { byte }) => {
+        imba::event::EventResult::Command(crate::editor_view::EditorCommand::RevealAt { byte }) => {
             assert_eq!(byte, inner.start, "the row's own scope header");
         }
         _ => panic!("a press must command the jump"),
@@ -5132,7 +5125,7 @@ fn lazy_languages_load_on_first_parse_only() {
     impl crate::reparse::SyntaxLanguage for Nothing {
         fn parse(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             _range: std::ops::Range<u32>,
             _old: Option<&dyn crate::reparse::SyntaxTree>,
         ) -> Option<Box<dyn crate::reparse::SyntaxTree>> {
@@ -5140,7 +5133,7 @@ fn lazy_languages_load_on_first_parse_only() {
         }
         fn markup_for_changes(
             &self,
-            _text: &text::Text,
+            _text: &text::text::Text,
             _range: std::ops::Range<u32>,
             _tree: &dyn crate::reparse::SyntaxTree,
             _changed: &[std::ops::Range<u32>],
@@ -5268,7 +5261,7 @@ fn the_first_baseline_is_cached_at_shape_time() {
         "\n",
         "a long line that will certainly soft wrap when laid out at a narrow width, yes\n",
     ] {
-        let text = text::Text::from_string_exact(source);
+        let text = text::text::Text::from_string_exact(source);
         let markup = crate::markup::Markup::builder().finish();
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
@@ -5316,9 +5309,9 @@ fn deleting_the_text_drops_its_markup_intervals() {
     assert_eq!(markup.query_count(), 1000);
 
     let source = "x".repeat(10_000);
-    let text = text::Text::from_string_exact(&source);
+    let text = text::text::Text::from_string_exact(&source);
     let mut view = text.view();
-    markup.edit(&operation::Operation::delete_at(0, &source), &mut view, 0);
+    markup.edit(&operation::operation::Operation::delete_at(0, &source), &mut view, 0);
 
     assert_eq!(markup.query_count(), 0, "no corpse is left to walk");
     assert_eq!(
@@ -5448,7 +5441,7 @@ fn translucent_washes_never_double_at_block_seams() {
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
-    let operation = myersdiff::diff(&text::Text::from_string_exact(""), document.text());
+    let operation = myersdiff::diff(&text::text::Text::from_string_exact(""), document.text());
     let id = document.add_diff(operation, 0);
     let hunks = document.diff(id).expect("tracked").markup();
     document.show_markup(editor, hunks);
@@ -5599,7 +5592,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
     let editor = document.add_editor(
         400.0,
         None,
-        crate::EditorBuild::Complete,
+        crate::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -5619,7 +5612,7 @@ fn an_edit_above_the_viewport_leaves_an_exact_settle_target() {
             store,
             ui,
             editor,
-            crate::EditorCommand::Viewport {
+            crate::editor_view::EditorCommand::Viewport {
                 width,
                 top,
                 bottom: top + 100.0,
@@ -5685,7 +5678,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
     let editor = document.add_editor(
         600.0,
         None,
-        crate::EditorBuild::Complete,
+        crate::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -5702,7 +5695,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::Viewport {
+        crate::editor_view::EditorCommand::Viewport {
             width: 600.0,
             top,
             bottom: top + 100.0,
@@ -5721,7 +5714,7 @@ fn a_rewrap_keeps_the_viewport_anchor_in_view() {
         &mut store,
         &ui,
         editor,
-        crate::EditorCommand::Viewport {
+        crate::editor_view::EditorCommand::Viewport {
             width: 220.0,
             top,
             bottom: top + 100.0,

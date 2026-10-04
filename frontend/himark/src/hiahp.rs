@@ -17,7 +17,7 @@ pub use ::ahp_session::{
 use std::sync::Arc;
 
 use documents::FetchDocumentEffect;
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
@@ -28,7 +28,7 @@ use crate::{AppCommand, AppFx, DynamicCommand, OpenByLocationEffect};
 /// in sight. It installs at boot, on its own.
 pub fn install_build_handler(
     app: &mut crate::Application,
-    languages: Arc<editor::SyntaxLanguages>,
+    languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 ) {
     let workshop = Arc::clone(app.workshop());
@@ -49,7 +49,7 @@ pub fn install_build_handler(
 
 pub fn install_open_handlers(
     app: &mut crate::Application,
-    languages: Arc<editor::SyntaxLanguages>,
+    languages: Arc<editor::reparse::SyntaxLanguages>,
     diff_policy: Arc<dyn editor::diff::DiffPolicy>,
 ) {
     let caller = app.effect_caller();
@@ -114,7 +114,7 @@ impl crate::navigation::WindowedNavigator for DiffNavigator {
     fn navigate(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         place: &canvas::diff_pane::DiffPlace,
         fx: &mut AppFx<'_>,
@@ -177,8 +177,8 @@ impl DynamicCommand for OpenDiffPair {
 
 pub struct OpenByLocationHandler {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::Workshop>,
-    pub languages: Arc<editor::SyntaxLanguages>,
+    pub workshop: Arc<editor::env::Workshop>,
+    pub languages: Arc<editor::reparse::SyntaxLanguages>,
 }
 
 impl EffectHandler<OpenByLocationEffect> for OpenByLocationHandler {

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use imba::store::Store;
-use text::Text;
+use text::text::Text;
 
 use crate::document::Document;
 use crate::editor::EditorEffects;
@@ -14,7 +14,7 @@ pub trait ChangeSink: Send + Sync {
         &self,
         store: &Store,
         document: &Document,
-        location: &crate::ResourceLocation,
+        location: &crate::location::ResourceLocation,
         base_revision: u64,
         text_before: &Text,
         fx: &mut EditorEffects<'_>,

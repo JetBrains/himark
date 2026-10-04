@@ -4,7 +4,7 @@
 use imba::store::Store;
 
 #[derive(Clone, Default)]
-pub struct RecentLocations(Vec<editor::ResourceLocation>);
+pub struct RecentLocations(Vec<editor::location::ResourceLocation>);
 
 /// Recents belong to the session you are working in; its session row
 /// hands the id to whoever has that context (docs/entities.md law 3) —
@@ -15,7 +15,7 @@ impl RecentLocations {
     pub fn touch(
         store: &mut Store,
         recents: imba::store::Id<Self>,
-        location: &editor::ResourceLocation,
+        location: &editor::location::ResourceLocation,
     ) {
         store.update_entity(recents, |recents| {
             let recents = &mut recents.0;
@@ -28,8 +28,8 @@ impl RecentLocations {
     pub fn replace(
         store: &mut Store,
         recents: imba::store::Id<Self>,
-        old: &editor::ResourceLocation,
-        new: &editor::ResourceLocation,
+        old: &editor::location::ResourceLocation,
+        new: &editor::location::ResourceLocation,
     ) {
         store.update_entity(recents, |recents| {
             let recents = &mut recents.0;
@@ -43,7 +43,7 @@ impl RecentLocations {
         self.0.is_empty()
     }
 
-    pub fn list(store: &Store, recents: imba::store::Id<Self>) -> Vec<editor::ResourceLocation> {
+    pub fn list(store: &Store, recents: imba::store::Id<Self>) -> Vec<editor::location::ResourceLocation> {
         store
             .entity(recents)
             .map(|recents| recents.0.clone())

@@ -21,7 +21,7 @@ use changesview::hichanges::Changes;
 use changesview::hihistory::{
     CommitAuthor, CommitInfo, CommitRef, History, HistoryDelta, HistoryHead, HistorySnapshot,
 };
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use himark_ahp_ext_types::history as history_wire;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
@@ -373,7 +373,7 @@ impl imba::command::DynamicCommand for SnapshotLanded {
     fn name(&self) -> String {
         "History Snapshot".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire) else {
             return;
         };
@@ -408,7 +408,7 @@ impl imba::command::DynamicCommand for Polled {
     fn name(&self) -> String {
         "History Update".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire) else {
             return;
         };
@@ -477,7 +477,7 @@ impl imba::command::DynamicCommand for CommitFilesLanded {
     fn name(&self) -> String {
         "Commit Files".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(changes) = of(store, self.wire).map(|row| row.changes) else {
             return;
         };
@@ -501,7 +501,7 @@ impl imba::command::DynamicCommand for CommitFilesPolled {
     fn name(&self) -> String {
         "Commit Files Update".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(changes) = of(store, self.wire).map(|row| row.changes) else {
             return;
         };

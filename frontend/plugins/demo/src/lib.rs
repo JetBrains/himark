@@ -7,16 +7,16 @@ mod tree_demo;
 pub use inlay::add_badges;
 pub use tree_demo::{OpenTreeDemo, TreeDemoView};
 
-use himark::Document;
+use editor::document::Document;
 
 const SAMPLE: &str = include_str!("../sample.md");
 const SAMPLE_REPETITIONS: usize = 1_409;
 
 pub fn monster_document(
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Document {
     let (mut document, blocks) =
         himarkdown::markdown_document(&SAMPLE.repeat(SAMPLE_REPETITIONS), store, ui, fonts, theme);
@@ -27,17 +27,17 @@ pub fn monster_document(
 
 pub fn wall_of_text_document(
     _store: &imba::store::Store,
-    _ui: &imba::UiCtx,
+    _ui: &imba::ui::UiCtx,
     _fonts: &skia_safe::textlayout::FontCollection,
-    _theme: &himark::Theme,
+    _theme: &editor::theme::Theme,
 ) -> Document {
     wall_of_text(1_000_000)
 }
 
-pub fn demo_location(name: &str) -> himark::ResourceLocation {
-    himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("demo"),
+pub fn demo_location(name: &str) -> editor::location::ResourceLocation {
+    editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("demo"),
         vec![name.to_owned()],
     )
 }
@@ -115,8 +115,8 @@ pub fn wall_of_text(lines: usize) -> Document {
     }
     let source = block.repeat(lines.max(lengths.len()) / lengths.len());
     Document::new(
-        himark::Text::from_string_exact(&source),
-        himark::Markup::new(),
+        text::text::Text::from_string_exact(&source),
+        editor::markup::Markup::new(),
     )
 }
 

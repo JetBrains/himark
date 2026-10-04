@@ -14,14 +14,14 @@ fn test_ui() -> UiCtx {
 
 fn test_store() -> Store {
     let mut store = Store::new();
-    editor::env::Themes::set(&mut store, editor::Theme::embedded());
+    editor::env::Themes::set(&mut store, editor::theme::Theme::embedded());
     store
 }
 
 fn face(line: &str, markdown: &str) -> ToolFace {
     ToolFace {
         line: line.to_owned(),
-        markdown: editor::Text::from_string_exact(markdown),
+        markdown: text::text::Text::from_string_exact(markdown),
         failed: false,
         live: false,
     }

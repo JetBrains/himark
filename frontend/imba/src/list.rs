@@ -6,18 +6,10 @@ use std::hash::Hash;
 use crate::anim::{Animation, AnimationClock, Easing, Motion};
 use crate::ui::UiCtx;
 use intervals::{Interval, IntervalQuery, Intervals, Order};
-use rope::{Cursor, Measure, MetricId, Metrics, Rope, SeekMode};
+use rope::{cursor::Cursor, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
 use skia_safe::{Color, Paint, Rect, Size};
 
-use crate::{
-    arena::Arena,
-    constraints::Constraints,
-    container::viewport_for_child,
-    event::{Event, EventResult},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, View, Widget,
-};
+use crate::{arena::Arena, constraints::Constraints, container::viewport_for_child, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, View, Widget};
 
 const ROW_PX: MetricId = MetricId(0);
 
@@ -1505,7 +1497,7 @@ impl<T: Clone, K: Clone + Eq + Hash> Clone for ListView<T, K> {
 /// measurement costs a text measure, never a font-manager build.
 fn laid_row_height<T: View>(view: &T, store: &Store, ui: &UiCtx) -> f32 {
     let arena = Arena::default();
-    let thunk = crate::Layout::layout(
+    let thunk = crate::layout::Layout::layout(
         view.display(&arena, store, ui),
         &arena,
         Constraints {
@@ -1562,7 +1554,7 @@ where
                     f32::from_bits(self.laid_width.load(std::sync::atomic::Ordering::Relaxed));
                 if laid_width.is_finite() {
                     let frame = Arena::default();
-                    let live = crate::Layout::layout(
+                    let live = crate::layout::Layout::layout(
                         element.view.display(&frame, store, ui),
                         &frame,
                         Constraints {
@@ -1742,8 +1734,8 @@ where
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width;
             self.laid_width
                 .store(width.to_bits(), std::sync::atomic::Ordering::Relaxed);
@@ -1842,7 +1834,7 @@ where
     ) -> EventResult<ListCommand<T::Command>> {
         let index = cursor.index() as usize;
         let rect = self.row_rect(cursor);
-        crate::Layout::layout(
+        crate::layout::Layout::layout(
             cursor.element().view.display(arena, self.store, self.ui),
             arena,
             self.child_constraints,
@@ -2005,7 +1997,7 @@ where
                     self.child_constraints.max.width.max(1.0),
                     line.height,
                 );
-                crate::Layout::layout(
+                crate::layout::Layout::layout(
                     line.view.display(arena, self.store, self.ui),
                     arena,
                     self.child_constraints,
@@ -2195,7 +2187,7 @@ where
         // The cursor moves into the arena so the row view's borrow
         // reaches the frame lifetime; the realized row rides along.
         let cursor: &'a _ = crate::arena::ArenaBox::leak(self.arena.boxed(cursor));
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             cursor
                 .element()
                 .view
@@ -2303,7 +2295,7 @@ where
                     canvas.clip_rect(Rect::from_size(rect.size()), None, true);
 
                     let index = cursor.index() as usize;
-                    let widget = crate::Layout::layout(
+                    let widget = crate::layout::Layout::layout(
                         cursor.element().view.display(arena, self.store, self.ui),
                         arena,
                         self.child_constraints,

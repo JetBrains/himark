@@ -1,27 +1,17 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::{
-    Application, BuildDocumentEffect, Document, EditorIdView, EditorPane, FetchDocumentEffect,
-    FindEffect, ModalRequest, ModalView, PaneCommand, ResourceLocation, WidgetOrigin,
-};
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, Key},
-    leaf::leaf,
-    scroll::ScrollView,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, UiCtx, View,
-};
+use himark::{Application, BuildDocumentEffect, EditorIdView, EditorPane, FetchDocumentEffect, FindEffect, ModalRequest, ModalView, PaneCommand, WidgetOrigin};
+use editor::document::Document;
+use editor::location::ResourceLocation;
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key}, leaf::leaf, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, layout::Layout as _, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
 #[derive(Clone)]
 pub struct Peeker {
     /// The peeker's own query input: the overlay owns its text, typed
     /// directly — no omnibox in between.
-    input: himark::EditorView,
+    input: editor::editor_view::EditorView,
 
     /// The documents collection this peeker fronts — its id is wired
     /// at open from the window.s session bundle (docs/entities.md law 3).
@@ -56,7 +46,7 @@ pub struct Peeker {
 
     preview_width: f32,
 
-    chrome: himark::theme::PeekerChrome,
+    chrome: ::editor::theme::PeekerChrome,
 
     request: himark::RequestSlot<ModalRequest>,
 }
@@ -67,7 +57,7 @@ pub type PeekerEffects<'a> = imba::effect::Effects<'a, PeekerCommand>;
 pub enum PeekerCommand {
     /// The peeker's OWN input editor — the query lives here, not in
     /// any toolbar.
-    Input(himark::EditorCommand),
+    Input(editor::editor_view::EditorCommand),
 
     Preview(PaneCommand),
 
@@ -90,7 +80,7 @@ pub enum PeekerCommand {
         document: Document,
     },
 
-    Widget(imba::DynCommand),
+    Widget(imba::dyn_view::DynCommand),
 
     Rows(RowsCommand),
 }
@@ -160,7 +150,7 @@ impl Peeker {
         viewport: Size,
         recents: Vec<ResourceLocation>,
         widgets: Vec<(WidgetOrigin, Box<dyn himark::DynPanelView>)>,
-        folders: Vec<himark::ResourceLocation>,
+        folders: Vec<editor::location::ResourceLocation>,
         fx: &mut PeekerEffects<'_>,
     ) -> Self {
         let workspace = folders;
@@ -168,8 +158,8 @@ impl Peeker {
             .iter()
             .map(|(_, widget)| widget.title(store))
             .collect();
-        let chrome = himark::env::Themes::of(store).ui().peeker.clone();
-        let mut input = himark::EditorView::input(600.0, store, ui, himark::fonts::source());
+        let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
+        let mut input = editor::editor_view::EditorView::input(600.0, store, ui, himark::fonts::source());
         input.focus_text();
 
         let mut peeker = Self {
@@ -353,7 +343,7 @@ impl Peeker {
     fn cleanup_temps(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         keep: Option<himark::DocumentId>,
         fx: &mut PeekerEffects<'_>,
     ) {
@@ -376,7 +366,7 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn drop_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
+    fn drop_preview(&mut self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut PeekerEffects<'_>) {
         if let Some(PreviewSlot::Editor(preview)) = &self.preview {
             let entity = *preview.pane.content();
             himark::close_editor(
@@ -402,11 +392,11 @@ impl Peeker {
         self.preview = None;
     }
 
-    fn ensure_preview(&mut self, store: &mut Store, ui: &imba::UiCtx, fx: &mut PeekerEffects<'_>) {
+    fn ensure_preview(&mut self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut PeekerEffects<'_>) {
         let documents = self.documents;
         let width = EditorIdView::editor_width(
             self.preview_width,
-            &himark::env::Themes::of(store).ui().window,
+            &::editor::env::Themes::of(store).ui().window,
         );
 
         if let Some(index) = self.widget_at(self.selected()) {
@@ -502,7 +492,7 @@ impl View for Peeker {
     fn focus_data<'w>(
         &'w self,
         _store: &'w Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, PeekerCommand> {
         use imba::event::EventResult;
         // Movement and Enter are the controller's table; the peeker
@@ -530,7 +520,7 @@ impl View for Peeker {
             fx.cancel(token);
         }
         // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         self.cleanup_temps(store, ui, None, fx);
     }
 
@@ -677,8 +667,8 @@ impl View for Peeker {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let chrome = &self.chrome;
             let row_font = himark::fonts::ui_font(ui, chrome.row_size);
@@ -695,7 +685,7 @@ impl View for Peeker {
             let list_top = inset + 8.0 + input_height;
             let list_height = (size.height - inset - row_height - 2.0 - list_top).max(row_height);
 
-            let sheet_rule = himark::env::Themes::of(store).ui().toolbar.rule.0;
+            let sheet_rule = ::editor::env::Themes::of(store).ui().toolbar.rule.0;
             let match_count = self.labels.len();
             let hidden = self.hidden;
             let has_preview = self.preview.is_some();
@@ -704,7 +694,7 @@ impl View for Peeker {
 
             let input_w = (list_width - chrome.input_inset_x * 2.0).max(chrome.input_min_width);
             let input_h = (input_height - chrome.input_inset_y * 2.0).max(1.0);
-            let input_editor = imba::Layout::layout(
+            let input_editor = imba::layout::Layout::layout(
                 self.input.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -785,7 +775,7 @@ impl View for Peeker {
                 input_editor,
             );
 
-            // The chrome labels as `imba::text`, centered in the
+            // The chrome labels as `imba::layout::text`, centered in the
             // bottom row band (the design-system row rule); the texts
             // ignore presses, so the backdrop's close-on-click still
             // answers underneath them.
@@ -798,7 +788,7 @@ impl View for Peeker {
                 inset + chrome.row_text_x,
                 panel_bottom - chrome.row_height
                     + ((chrome.row_height - hint_height) * 0.5).max(0.0),
-                imba::text(
+                imba::layout::text(
                     ui,
                     format!(
                         "{} matched   enter open   esc dismiss",
@@ -814,7 +804,7 @@ impl View for Peeker {
                 container.place_boxed(
                     preview_x,
                     list_top + chrome.no_preview_offset - row_ascent,
-                    imba::text(ui, "no preview", row_font.clone(), chrome.dim_text.0)
+                    imba::layout::text(ui, "no preview", row_font.clone(), chrome.dim_text.0)
                         .layout(arena, Constraints::tight(size).loosen()),
                 );
             }
@@ -823,7 +813,7 @@ impl View for Peeker {
                 let preview_height = (size.height - list_top - margin).max(1.0);
                 match slot {
                     PreviewSlot::Editor(preview) => {
-                        let pane = imba::Layout::layout(
+                        let pane = imba::layout::Layout::layout(
                             preview.pane.display(arena, store, ui),
                             arena,
                             Constraints::tight(Size::new(preview_width, preview_height)),
@@ -860,7 +850,7 @@ impl View for Peeker {
             container.place(
                 list_x,
                 list_top,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.list.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(list_width, list_height)),
@@ -895,11 +885,11 @@ fn subsequence_match(candidate: &str, query: &str) -> bool {
         .all(|wanted| candidate.by_ref().any(|ch| ch == wanted))
 }
 
-fn list_width(size: Size, chrome: &himark::theme::PeekerChrome) -> f32 {
+fn list_width(size: Size, chrome: &::editor::theme::PeekerChrome) -> f32 {
     (size.width * chrome.list_ratio).clamp(chrome.list_min, chrome.list_max)
 }
 
-fn preview_width(size: Size, chrome: &himark::theme::PeekerChrome) -> f32 {
+fn preview_width(size: Size, chrome: &::editor::theme::PeekerChrome) -> f32 {
     (size.width - list_width(size, chrome) - chrome.margin * 2.0 - chrome.preview_margin).max(160.0)
 }
 
@@ -954,7 +944,7 @@ pub fn build(
 
         let documents = entity.state().documents();
         let peeker = fx.scope(himark::modal_scope(window), |fx| {
-            fx.scope(imba::DynCommand::new::<PeekerCommand>, |fx| {
+            fx.scope(imba::dyn_view::DynCommand::new::<PeekerCommand>, |fx| {
                 Peeker::open(
                     store, ui, documents, viewport, recents, widgets, folders, fx,
                 )

@@ -12,5 +12,6 @@ hisitter = { path = "../../../hisitter" }
 tree-sitter-python = "0.25.0"
 
 [dev-dependencies]
+text = { path = "../../../text" }
 himarkdown = { path = "../../himarkdown" }
 imba = { path = "../../../imba" }

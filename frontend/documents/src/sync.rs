@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use ::editor::{bridge, EditIdentity, EditLog};
-use operation::Operation;
-use text::Text;
+use ::editor::{edit_log::bridge, edit_log::EditIdentity, edit_log::EditLog};
+use operation::operation::Operation;
+use text::text::Text;
 
 #[derive(Clone, Debug)]
 pub struct SyncState {
@@ -93,7 +93,7 @@ impl rebase::Action for SyncEdit {
         if op.is_empty()
             || op
                 .iter()
-                .all(|step| matches!(step, operation::Op::Retain(_)))
+                .all(|step| matches!(step, operation::op::Op::Retain(_)))
         {
             return None;
         }

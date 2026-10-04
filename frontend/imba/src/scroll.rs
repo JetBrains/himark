@@ -6,13 +6,7 @@ use std::marker::PhantomData;
 
 use skia_safe::{Canvas, Color, Contains, Paint, Rect, Size};
 
-use crate::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult},
-    store::Store,
-    Thunk, View, Widget,
-};
+use crate::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, store::Store, Thunk, View, Widget};
 
 #[derive(Clone, Copy, Default)]
 pub struct ScrollbarStyle {
@@ -290,10 +284,10 @@ where
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let viewport = constraints.max;
-            let content = crate::Layout::layout(
+            let content = crate::layout::Layout::layout(
                 self.content.display(arena, store, ui),
                 arena,
                 Constraints {

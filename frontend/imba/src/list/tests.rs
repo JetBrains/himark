@@ -12,7 +12,7 @@ impl crate::View for Stub {
     fn perform(
         &mut self,
         _store: &mut crate::store::Store,
-        _ui: &crate::UiCtx,
+        _ui: &crate::ui::UiCtx,
         _command: std::convert::Infallible,
         _fx: &mut crate::effect::Effects<'_, std::convert::Infallible>,
     ) {
@@ -22,9 +22,9 @@ impl crate::View for Stub {
         &'a self,
         _arena: &'a crate::arena::Arena,
         _store: &'a crate::store::Store,
-        _ui: &'a crate::UiCtx,
-    ) -> impl crate::Layout<'a, std::convert::Infallible> + crate::LayoutValue + 'a {
-        crate::laid(
+        _ui: &'a crate::ui::UiCtx,
+    ) -> impl crate::layout::Layout<'a, std::convert::Infallible> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(
             move |_arena: &'a crate::arena::Arena,
                   _constraints: crate::constraints::Constraints| {
                 crate::leaf::leaf::<std::convert::Infallible>(10.0, 30.0)
@@ -52,7 +52,7 @@ fn extent_of_reads_metric_spans() {
 #[test]
 fn probe_unroll_is_monotone() {
     use crate::store::Store;
-    use crate::UiCtx;
+    use crate::ui::UiCtx;
     let mut rows = list(&[30.0, 30.0, 30.0]);
 
     rows.splice_animated(1..2, (0..5).map(|_| (Stub, 30.0)));
@@ -95,7 +95,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
     use crate::event::{Event, EventResult};
     use crate::store::Store;
     use crate::thunk_ext::ThunkExt;
-    use crate::UiCtx;
+    use crate::ui::UiCtx;
     use skia_safe::{Point, Rect, Size};
 
     // A row that echoes the pointer coordinates it was handed.
@@ -125,8 +125,8 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
             _arena: &'a crate::arena::Arena,
             _store: &'a Store,
             _ui: &'a UiCtx,
-        ) -> impl crate::Layout<'a, EchoedPoint> + crate::LayoutValue + 'a {
-            crate::laid(
+        ) -> impl crate::layout::Layout<'a, EchoedPoint> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(
                 move |_arena: &'a crate::arena::Arena, _constraints: Constraints| {
                     crate::leaf::leaf::<EchoedPoint>(200.0, 30.0).event(|_arena, event, _size| {
                         match event {
@@ -151,7 +151,7 @@ fn drags_reach_the_focused_row_in_row_coordinates() {
     let ui = UiCtx::dont_use_too_slow();
     let viewport = Rect::from_wh(200.0, 90.0);
     let widget = crate::Thunk::realize(
-        crate::Layout::layout(
+        crate::layout::Layout::layout(
             rows.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 90.0)),

@@ -33,10 +33,10 @@ fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
 /// landing registers them (register-at-display) and the normalize lane
 /// computes the diff.
 fn prepared_pair(
-    old_location: himark::ResourceLocation,
-    old: himark::Document,
-    new_location: himark::ResourceLocation,
-    new: himark::Document,
+    old_location: editor::location::ResourceLocation,
+    old: editor::document::Document,
+    new_location: editor::location::ResourceLocation,
+    new: editor::document::Document,
     width: f32,
 ) -> himark::OpenedDiffPair {
     himark::OpenedDiffPair {
@@ -55,7 +55,7 @@ fn prepared_pair(
 
 #[test]
 fn the_diff_panel_opens_edits_and_dismantles() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -68,8 +68,8 @@ fn the_diff_panel_opens_edits_and_dismantles() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     assert!(app.add_document(
         app.sole_window(),
         himarkdown::document_from_markdown(
@@ -163,7 +163,7 @@ fn the_diff_panel_opens_edits_and_dismantles() {
 
 #[test]
 fn the_optimizer_landing_cancels_matching_edits() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -176,8 +176,8 @@ fn the_optimizer_landing_cancels_matching_edits() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
             app.sole_window(),
@@ -245,7 +245,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
             let document =
                 himark::OpenDocuments::document_ref(app.store(), app.sole_documents(), info.0)
                     .expect("document");
-            himark::diff::fragments_from(state.diff(), document.text(), 0).collect()
+            ::editor::diff::fragments_from(state.diff(), document.text(), 0).collect()
         };
         assert!(
             fragments.is_empty(),
@@ -259,7 +259,7 @@ fn the_optimizer_landing_cancels_matching_edits() {
 #[test]
 fn identical_documents_settle_spacer_free() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -272,8 +272,8 @@ fn identical_documents_settle_spacer_free() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary\nprose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that\nshould soft-wrap cleanly.\n\n## Inline Texture\n\n1. First ordered item\n2. Second ordered item with `inline_code()` and **bold** content.\n3. Third ordered item with a link: [tree-sitter markdown](https://example.com).\n\n- [x] Parse a tree-sitter tree\n- [ ] Build document elements\n\n```rust\nfn main() {\n    println!(\"hello\");\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all.\n";
     for name in ["one.md", "two.md"] {
         assert!(app.add_document(
@@ -335,7 +335,7 @@ fn identical_documents_settle_spacer_free() {
 #[test]
 fn every_keystroke_and_landing_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -348,8 +348,8 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Speculative Sample\n\nThe first paragraph wraps a couple of times at the pane width so its heights are not trivial at all.\n\n- [x] first task\n- [ ] second task\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, again long enough to wrap once or twice at the half width.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -416,7 +416,7 @@ fn every_keystroke_and_landing_keeps_the_pair_aligned() {
 #[test]
 fn an_edit_from_another_editor_realigns_the_pair() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -429,8 +429,8 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     // A LONG identical middle: the first dressing folds it, and the
     // out-of-pane edit lands inside the folded run — a stale carry
     // would keep the (grown) strip covering the edit.
@@ -497,8 +497,8 @@ fn an_edit_from_another_editor_realigns_the_pair() {
     // touches the diff pane.
     let inserted = "an inserted line from the OTHER editor\n";
     {
-        let fonts = himark::env::Fonts::of(&app.store())();
-        let theme = himark::env::Themes::of(&app.store());
+        let fonts = editor::env::Fonts::of(&app.store())();
+        let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
@@ -508,7 +508,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
         let at = text.find("same line 60").expect("the identical run") as u32;
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &operation::Operation::insert_in(len, at, inserted),
+            &operation::operation::Operation::insert_in(len, at, inserted),
             &store,
             ui,
             &fonts,
@@ -539,7 +539,7 @@ fn an_edit_from_another_editor_realigns_the_pair() {
 #[test]
 fn typed_insertions_paint_washes() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -552,8 +552,8 @@ fn typed_insertions_paint_washes() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "# Wash Probe\n\nA plain paragraph that wraps at the half width without any code in it.\n\nAnother plain paragraph to give the pane some body to align against.\n";
     for name in ["left.md", "right.md"] {
         assert!(app.add_document(
@@ -645,7 +645,7 @@ fn typed_insertions_paint_washes() {
 #[test]
 fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -658,8 +658,8 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let left_body = "# Torture \u{1F680}\n\nThis paragraph wraps a couple of times at the half width so heights are not trivial.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n> A quote long enough to wrap once at the pane width, with **bold** and `code`.\n\n### Code Fence: Rust\n\n```rust\nfn tick(x: f32) -> f32 {\n    x + 1.0\n}\n```\n\nA closing paragraph, long enough to wrap at the half width as well.\n";
     let right_body = left_body
         .replace(
@@ -719,7 +719,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
     settle(&mut app, &mut surface, 10);
     assert_pair_aligned(&app);
 
-    let light = himark::Theme::light();
+    let light = editor::theme::Theme::light();
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
@@ -755,7 +755,7 @@ fn theme_toggle_keeps_the_diff_pane_aligned_and_converges() {
 #[test]
 fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -768,8 +768,8 @@ fn a_diff_opened_into_a_wide_window_reshapes_and_settles() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let sample = include_str!("../../plugins/demo/sample.md");
     let left_body = sample.repeat(3);
     let right_body = left_body.replace("skia paragraph", "skia PARAGRAPH");
@@ -992,7 +992,7 @@ fn dump_pair(app: &Application) {
 #[test]
 fn washes_follow_the_scroll_into_deep_documents() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1005,8 +1005,8 @@ fn washes_follow_the_scroll_into_deep_documents() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     let block = "## Section\n\nA steady paragraph with enough words to wrap once at the half width, followed by another sentence for body.\n\n- item one\n- item two\n\n";
     let left_body: String = (0..500)
@@ -1106,7 +1106,7 @@ fn washes_follow_the_scroll_into_deep_documents() {
 #[test]
 fn scrolling_after_a_theme_toggle_converges() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1119,8 +1119,8 @@ fn scrolling_after_a_theme_toggle_converges() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let block = "## Section\n\n| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, and long lines that should soft-wrap cleanly.\n\n- [x] Parse a tree-sitter tree\n- [ ] Paint real inline spans\n\n";
     let left_body: String = (0..24)
         .map(|index| {
@@ -1202,7 +1202,7 @@ fn scrolling_after_a_theme_toggle_converges() {
                     .expect("document");
             document
                 .editor_ids()
-                .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
+                .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
         }
     };
     let mut focused = false;
@@ -1226,7 +1226,7 @@ fn scrolling_after_a_theme_toggle_converges() {
     settle(&mut app, &mut surface, 30);
     assert_pair_aligned(&app);
 
-    let light = himark::Theme::light();
+    let light = editor::theme::Theme::light();
     let mut checked = false;
     app.for_each_plugin_panel(&mut |panel| {
         let Some(panel) = panel.as_any().downcast_ref::<DiffPanelView>() else {
@@ -1265,9 +1265,9 @@ fn scrolling_after_a_theme_toggle_converges() {
 #[test]
 fn a_repair_captured_before_a_caret_move_discards_itself() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let theme = himark::Theme::embedded();
-    let fonts = himark::test_document::test_fonts_collection();
+    let ui = ::editor::test_document::test_ui();
+    let theme = editor::theme::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
 
     let body: String = (0..80)
         .map(|index| {
@@ -1280,7 +1280,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let editor = document.add_editor(
         360.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         &store,
         &ui,
@@ -1289,8 +1289,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
         &mut imba::effect::Batch::new().effects(),
     );
     let mut store = policy_store();
-    let ui = himark::test_document::test_ui();
-    let mut perform = |document: &mut himark::Document, command| {
+    let ui = ::editor::test_document::test_ui();
+    let mut perform = |document: &mut editor::document::Document, command| {
         let mut batch = imba::effect::Batch::new();
         document.perform(&mut store, &ui, editor, command, &mut batch.effects());
         himark::test_support::surviving_launches(batch)
@@ -1298,7 +1298,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 
     let _ = perform(
         &mut document,
-        himark::EditorCommand::Viewport {
+        editor::editor_view::EditorCommand::Viewport {
             width: 360.0,
             top: 0.0,
             bottom: 400.0,
@@ -1307,8 +1307,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     );
     let _ = perform(
         &mut document,
-        himark::EditorCommand::Click {
-            kind: himark::ClickKind::Set,
+        editor::editor_view::EditorCommand::Click {
+            kind: editor::editor_view::ClickKind::Set,
             point: skia_safe::Point::new(5.0, 50.0),
         },
     );
@@ -1316,11 +1316,11 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
     let filler = "filler words to reshape and push the budget over\n\n".repeat(60);
     let effects = perform(
         &mut document,
-        himark::EditorCommand::InsertText { text: filler },
+        editor::editor_view::EditorCommand::InsertText { text: filler },
     );
     let held: Vec<_> = effects
         .into_iter()
-        .filter(|effect| effect.is::<himark::RepairEffect>())
+        .filter(|effect| effect.is::<editor::repair::RepairEffect>())
         .collect();
     assert!(
         !held.is_empty(),
@@ -1329,8 +1329,8 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 
     let _ = perform(
         &mut document,
-        himark::EditorCommand::Click {
-            kind: himark::ClickKind::Set,
+        editor::editor_view::EditorCommand::Click {
+            kind: editor::editor_view::ClickKind::Set,
             point: skia_safe::Point::new(5.0, 300.0),
         },
     );
@@ -1368,7 +1368,7 @@ fn a_repair_captured_before_a_caret_move_discards_itself() {
 #[test]
 fn typing_into_a_table_cell_keeps_the_pair_aligned() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1381,8 +1381,8 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let body = "| Feature | Status | Notes |\n| --- | --- | --- |\n| Persistent store | done | HAMT snapshots |\n| Effects | done | commands come home |\n\nA paragraph under the table long enough to wrap at the half width once or twice.\n\nAnother paragraph so the pair has body below the table as well.\n";
     for name in ["left.md", "right.md"] {
         let (mut document, blocks) =
@@ -1423,7 +1423,7 @@ fn typing_into_a_table_cell_keeps_the_pair_aligned() {
                         .expect("document");
                 document
                     .editor_ids()
-                    .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
+                    .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
             };
             if focused {
                 cell_focused = true;
@@ -1534,8 +1534,8 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
             if range.is_empty() {
                 continue;
             }
-            let mapped = diff.transform_offset(boundary, operation::Bias::Right);
-            if diff.transform_offset_back(mapped, operation::Bias::Right) != boundary {
+            let mapped = diff.transform_offset(boundary, operation::operation::Bias::Right);
+            if diff.transform_offset_back(mapped, operation::operation::Bias::Right) != boundary {
                 continue;
             }
             let (Some(left_top), Some(right_top)) =
@@ -1596,12 +1596,12 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
                 let boundary = range.start;
                 let round_trip = match forward {
                     true => diff.transform_offset_back(
-                        diff.transform_offset(boundary, operation::Bias::Right),
-                        operation::Bias::Right,
+                        diff.transform_offset(boundary, operation::operation::Bias::Right),
+                        operation::operation::Bias::Right,
                     ),
                     false => diff.transform_offset(
-                        diff.transform_offset_back(boundary, operation::Bias::Right),
-                        operation::Bias::Right,
+                        diff.transform_offset_back(boundary, operation::operation::Bias::Right),
+                        operation::operation::Bias::Right,
                     ),
                 };
                 assert_eq!(
@@ -1618,7 +1618,7 @@ pub(crate) fn assert_pair_consistent(app: &Application, expect_pairs: bool) {
 #[test]
 fn an_edited_markdown_pair_settles_aligned() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -1631,8 +1631,8 @@ fn an_edited_markdown_pair_settles_aligned() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let left_body = "# Himark Render Torture Sample \u{1F680}\n\nThis file is intentionally more varied than the design notes. It mixes ordinary prose, emoji, inline `code`, **strong text**, _emphasis_, ~~deleted text~~, [links](https://example.com), and long lines that should soft-wrap cleanly without making the renderer work harder than necessary.\n\n## Inline Texture\n\nThe quick brown fox edits markdown at 120 Hz while the cursor passes through Unicode: caf\u{e9}, r\u{e9}sum\u{e9}, na\u{ef}ve, and emoji clusters like \u{1F469}\u{200D}\u{1F4BB}.\n\n- [x] Parse a tree-sitter tree\n- [x] Build document elements\n- [ ] Paint real inline spans\n- [ ] Keep scrolling boringly fast\n\n> A quote should look like a quote eventually. It exercises punctuation, wrapping, and multiple inline styles with **bold claims** and `tiny identifiers`.\n\n### Code Fence: Rust\n\n```rust\nfn render_frame(viewport_y: f32) -> f32 {\n    viewport_y + 1.0\n}\n```\n\nA closing paragraph long enough to wrap a few times at narrow widths, deliberately plain but not short at all, so soft wrapping differences show up.\n";
 
     let right_body = left_body
@@ -1704,17 +1704,17 @@ fn document_text(app: &Application, name: &str) -> String {
 
 #[test]
 fn dismantle_retracts_editors_and_removes_the_editorless_side() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = himark::Theme::embedded();
-    let fonts = himark::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let mut open = |body: &str, extra_editor: bool| {
         let mut document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         let pane = extra_editor.then(|| {
             document.add_editor(
                 600.0,
                 None,
-                himark::EditorBuild::Bounded,
+                editor::document::EditorBuild::Bounded,
                 &[],
                 &store,
                 ui,
@@ -1726,7 +1726,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
         let editor = document.add_editor(
             420.0,
             None,
-            himark::EditorBuild::Bounded,
+            editor::document::EditorBuild::Bounded,
             &[],
             &store,
             ui,
@@ -1784,7 +1784,7 @@ fn dismantle_retracts_editors_and_removes_the_editorless_side() {
 #[test]
 fn located_diff_halves_offer_and_dispatch_editor_commands() {
     struct Probe(Arc<std::sync::Mutex<Vec<(String, String)>>>);
-    impl himark::DynamicEditorCommand for Probe {
+    impl editor::dynamic::DynamicEditorCommand for Probe {
         fn id(&self) -> &'static str {
             "test.probe"
         }
@@ -1794,12 +1794,12 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
         fn perform(
             &self,
             _store: &mut imba::store::Store,
-            _ui: &imba::UiCtx,
-            document: &mut himark::Document,
-            _editor: himark::EditorId,
-            location: &himark::ResourceLocation,
+            _ui: &imba::ui::UiCtx,
+            document: &mut editor::document::Document,
+            _editor: editor::editor::EditorId,
+            location: &editor::location::ResourceLocation,
             _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-            _fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+            _fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
         ) {
             let end = document.text().byte_count().min(u32::MAX as usize) as u32;
             let text = document.text().view().substring(0..end);
@@ -1817,9 +1817,9 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
     let hits: Arc<std::sync::Mutex<Vec<(String, String)>>> = Arc::default();
     app.register_editor_command(Arc::new(Probe(Arc::clone(&hits))));
     let located = |name: &str| {
-        himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("local"),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("local"),
             vec!["project".to_owned(), name.to_owned()],
         )
     };
@@ -1829,7 +1829,7 @@ fn located_diff_halves_offer_and_dispatch_editor_commands() {
             himark::OpenedDocument {
                 documents: app.sole_documents(),
                 name: name.to_owned(),
-                document: himark::test_document::plain_document(body),
+                document: ::editor::test_document::plain_document(body),
                 location: Some(located(name)),
                 primary: false,
                 target: None,
@@ -1856,7 +1856,7 @@ fn policy_store() -> imba::store::Store {
     let mut store = imba::store::Store::new();
     // Production stores carry the edge-installed diff policy; a bare
     // store degrades to ReplaceAll and every diff becomes one hunk.
-    store.put(himark::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
+    store.put(editor::env::Differ(std::sync::Arc::new(myersdiff::Myers)));
     store
 }
 
@@ -1869,10 +1869,10 @@ fn policy_store() -> imba::store::Store {
 /// off-thread and open dressed; only this dev-command road defers.)
 #[test]
 fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = himark::Theme::embedded();
-    let fonts = himark::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let mut middle = String::new();
     for line in 0..300u32 {
         middle.push_str(&format!("line {line}: the quiet unchanged middle\n"));
@@ -1917,10 +1917,10 @@ fn a_prepless_panel_opens_on_the_seed_and_owes_its_dressing() {
 
 #[test]
 fn a_shared_pair_reuses_the_standing_entry() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = policy_store();
-    let theme = himark::Theme::embedded();
-    let fonts = himark::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let mut register = |body: &str, name: &str| {
         let document = himarkdown::document_from_markdown(body, &store, ui, &fonts, &theme);
         himark::OpenDocuments::register(&mut store, test_docs(), document, None, name.to_owned(), 0)
@@ -1957,7 +1957,7 @@ fn a_shared_pair_reuses_the_standing_entry() {
 #[test]
 fn a_settled_diff_pane_goes_quiet() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = himark::AppFonts::embedded();
     let mut app = himark::Application::new(fonts);
     let _ = app.add_window();
@@ -1969,8 +1969,8 @@ fn a_settled_diff_pane_goes_quiet() {
         }),
         std::sync::Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     for (name, body) in [
         ("left.md", "# Shared\n\nleft body line\n\ntail\n"),
         (
@@ -2019,7 +2019,7 @@ fn a_settled_diff_pane_goes_quiet() {
 
 #[test]
 fn the_unified_view_switches_between_split_and_inline() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2032,8 +2032,8 @@ fn the_unified_view_switches_between_split_and_inline() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     let unchanged: String = (0..30).map(|n| format!("same line {n}\n")).collect();
     assert!(app.add_document(
@@ -2097,7 +2097,7 @@ fn the_unified_view_switches_between_split_and_inline() {
             .and_then(|pair| pair.state.clone())
             .expect("the pair's state row")
     };
-    assert_eq!(pair_state(&app).unified_layout(), himark::DiffLayout::Split);
+    assert_eq!(pair_state(&app).unified_layout(), editor::unified_diff::DiffLayout::Split);
 
     let toggle = |app: &mut Application| {
         let command = himark::palette_commands(app.store(), &app.ui_handle(), app.sole_window())
@@ -2111,7 +2111,7 @@ fn the_unified_view_switches_between_split_and_inline() {
     settle(&mut app, &mut surface);
 
     let state = pair_state(&app);
-    assert_eq!(state.unified_layout(), himark::DiffLayout::Inline);
+    assert_eq!(state.unified_layout(), editor::unified_diff::DiffLayout::Inline);
     let inline_editor = state.inline_editor().expect("the inline editor minted");
     let pair = himark::OpenDocuments::diff_view_ref(app.store(), app.sole_documents(), pair_id)
         .expect("the pair");
@@ -2166,7 +2166,7 @@ fn the_unified_view_switches_between_split_and_inline() {
                 .expect("right");
         assert_eq!(
             right.focus(inline_editor),
-            himark::EditorFocus::Text,
+            editor::editor_view::EditorFocus::Text,
             "the click should land on host text, not a card"
         );
     }
@@ -2182,7 +2182,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 
     toggle(&mut app);
     settle(&mut app, &mut surface);
-    assert_eq!(pair_state(&app).unified_layout(), himark::DiffLayout::Split);
+    assert_eq!(pair_state(&app).unified_layout(), editor::unified_diff::DiffLayout::Split);
 }
 
 /// PERF REGRESSION (the DiffCanvas trace, 2026-09-17): painting the
@@ -2193,7 +2193,7 @@ fn the_unified_view_switches_between_split_and_inline() {
 #[test]
 fn inline_diff_paint_cost_is_flat_across_the_document() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2206,8 +2206,8 @@ fn inline_diff_paint_cost_is_flat_across_the_document() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // 6000 lines, a one-line change every 150 — forty hunks.
     let mut old_body = String::new();
@@ -2294,8 +2294,8 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // 8000 lines, a one-line change every 100 — eighty hunks.
     let mut old_body = String::new();
@@ -2312,7 +2312,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
     // Dense inline markup — the volume a syntax highlighter puts on
     // a real source file (several styled spans per line).
     let dense = |body: &str| {
-        let mut markup = himark::Markup::new();
+        let mut markup = editor::markup::Markup::new();
         let mut at = 0u32;
         for line in body.split_inclusive('\n') {
             let len = line.len() as u32;
@@ -2320,34 +2320,34 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
                 let start = at + word * 4;
                 let end = (start + 3).min(at + len.saturating_sub(1));
                 if start < end {
-                    markup.push_styled(start..end, himark::StyleId::DiffAdded);
+                    markup.push_styled(start..end, editor::markup::StyleId::DiffAdded);
                 }
             }
             at += len;
         }
         markup
     };
-    let old = himark::Document::new(
-        himark::Text::from_string_exact(old_body.clone()),
+    let old = editor::document::Document::new(
+        text::text::Text::from_string_exact(old_body.clone()),
         dense(&old_body),
     );
-    let new = himark::Document::new(
-        himark::Text::from_string_exact(new_body.clone()),
+    let new = editor::document::Document::new(
+        text::text::Text::from_string_exact(new_body.clone()),
         dense(&new_body),
     );
     let _ = (&markdown_fonts, &theme);
 
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let file = himark::diff_canvas::CanvasFile {
         title: "big.md".to_owned(),
-        old: location("big.md.old", himark::ResourceType::document()),
-        new: location("big.md", himark::ResourceType::document()),
+        old: location("big.md.old", editor::location::ResourceType::document()),
+        new: location("big.md", editor::location::ResourceType::document()),
         added: Some(80),
         removed: Some(80),
         updated: 0,
@@ -2362,7 +2362,7 @@ fn canvas_diff_paint_cost_is_flat_across_the_document() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -2435,7 +2435,7 @@ fn folded_squash_paint_cost_is_size_independent() {
             }
         }
         let dense = |body: &str| {
-            let mut markup = himark::Markup::new();
+            let mut markup = editor::markup::Markup::new();
             let mut at = 0u32;
             for line in body.split_inclusive('\n') {
                 let len = line.len() as u32;
@@ -2443,32 +2443,32 @@ fn folded_squash_paint_cost_is_size_independent() {
                     let start = at + word * 4;
                     let end = (start + 3).min(at + len.saturating_sub(1));
                     if start < end {
-                        markup.push_styled(start..end, himark::StyleId::DiffAdded);
+                        markup.push_styled(start..end, editor::markup::StyleId::DiffAdded);
                     }
                 }
                 at += len;
             }
             markup
         };
-        let old = himark::Document::new(
-            himark::Text::from_string_exact(old_body.clone()),
+        let old = editor::document::Document::new(
+            text::text::Text::from_string_exact(old_body.clone()),
             dense(&old_body),
         );
-        let new = himark::Document::new(
-            himark::Text::from_string_exact(new_body.clone()),
+        let new = editor::document::Document::new(
+            text::text::Text::from_string_exact(new_body.clone()),
             dense(&new_body),
         );
         let location = |name: &str, kind| {
-            himark::ResourceLocation::new(
+            editor::location::ResourceLocation::new(
                 kind,
-                himark::Authority::new("test"),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), name.to_owned()],
             )
         };
         let file = himark::diff_canvas::CanvasFile {
             title: "big.md".to_owned(),
-            old: location("big.md.old", himark::ResourceType::document()),
-            new: location("big.md", himark::ResourceType::document()),
+            old: location("big.md.old", editor::location::ResourceType::document()),
+            new: location("big.md", editor::location::ResourceType::document()),
             added: Some(2),
             removed: Some(2),
             updated: 0,
@@ -2483,7 +2483,7 @@ fn folded_squash_paint_cost_is_size_independent() {
                 &ui,
                 changes,
                 himark::diff_canvas::CanvasSource::WorkingCopy {
-                    folder: location("proj", himark::ResourceType::directory()),
+                    folder: location("proj", editor::location::ResourceType::directory()),
                 },
                 file,
                 built,
@@ -2525,7 +2525,7 @@ fn folded_squash_paint_cost_is_size_independent() {
 #[test]
 fn a_full_click_on_host_text_keeps_host_focus() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2542,21 +2542,21 @@ fn a_full_click_on_host_text_keeps_host_focus() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let file = himark::diff_canvas::CanvasFile {
         title: "small.md".to_owned(),
-        old: location("small.md.old", himark::ResourceType::document()),
-        new: location("small.md", himark::ResourceType::document()),
+        old: location("small.md.old", editor::location::ResourceType::document()),
+        new: location("small.md", editor::location::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
         updated: 0,
@@ -2573,7 +2573,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -2662,7 +2662,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
                 shot = canvas
                     .probe_pair(
                         store,
-                        &location("small.md", himark::ResourceType::document()),
+                        &location("small.md", editor::location::ResourceType::document()),
                     )
                     .and_then(|id| himark::OpenDocuments::diff_view_ref(store, app_docs, id))
                     .and_then(|pair| pair.state.as_ref())
@@ -2697,7 +2697,7 @@ fn a_full_click_on_host_text_keeps_host_focus() {
 #[test]
 fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2721,21 +2721,21 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let file = himark::diff_canvas::CanvasFile {
         title: "long.md".to_owned(),
-        old: location("long.md.old", himark::ResourceType::document()),
-        new: location("long.md", himark::ResourceType::document()),
+        old: location("long.md.old", editor::location::ResourceType::document()),
+        new: location("long.md", editor::location::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
         updated: 0,
@@ -2750,7 +2750,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -2774,7 +2774,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 
     let probe = |app: &Application| -> (
         Vec<(String, canvas::RowPhase, f32)>,
-        Vec<(String, himark::DiffLayout)>,
+        Vec<(String, editor::unified_diff::DiffLayout)>,
         f32,
     ) {
         let store = app.store();
@@ -2798,15 +2798,15 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     let (rows, layouts, _) = probe(&app);
     assert_eq!(rows.len(), 1);
     assert!(rows[0].2 > 0.0, "the diff row stands expanded: {rows:?}");
-    assert_eq!(layouts[0].1, himark::DiffLayout::Inline, "mounted inline");
+    assert_eq!(layouts[0].1, editor::unified_diff::DiffLayout::Inline, "mounted inline");
 
     // The header geometry, mirrored from HeaderFace::new: the chevron
     // strip at the left, the three buttons walking in from the right.
-    let chrome_top = himark::env::Themes::of(app.store()).ui().toolbar.height;
+    let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
     let chat_pad;
     let chat_title;
     {
-        let ui = himark::env::Themes::of(app.store()).ui().chat.clone();
+        let ui = editor::env::Themes::of(app.store()).ui().chat.clone();
         chat_pad = ui.pad;
         chat_title = ui.title_size;
     }
@@ -2820,7 +2820,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     settle(&mut app);
     assert_eq!(
         probe(&app).1[0].1,
-        himark::DiffLayout::Split,
+        editor::unified_diff::DiffLayout::Split,
         "the face button flips inline → split"
     );
 
@@ -2838,7 +2838,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
     settle(&mut app);
     assert_eq!(
         probe(&app).1[0].1,
-        himark::DiffLayout::Inline,
+        editor::unified_diff::DiffLayout::Inline,
         "toggling a collapsed file reaches the parked view"
     );
 
@@ -2883,7 +2883,7 @@ fn the_header_folds_toggles_and_answers_from_the_sticky_band() {
 #[test]
 fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -2895,8 +2895,8 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // A changed head over a long identical middle: undressed, the body
     // is ~90 lines tall; dressed, the middle folds away. Reserved,
@@ -2922,16 +2922,16 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
         &theme,
     );
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let file = himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
-        old: location("a.md.old", himark::ResourceType::document()),
-        new: location("a.md", himark::ResourceType::document()),
+        old: location("a.md.old", editor::location::ResourceType::document()),
+        new: location("a.md", editor::location::ResourceType::document()),
         added: Some(1),
         removed: Some(1),
         updated: 0,
@@ -2946,7 +2946,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -3003,7 +3003,7 @@ fn a_landing_row_wears_the_stub_until_the_diff_is_dressed() {
 #[test]
 fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -3015,8 +3015,8 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
 
     // A long identical middle so the first dressing folds it small.
     let mut body = String::from("head\n");
@@ -3041,16 +3041,16 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         &theme,
     );
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
-    let key = location("a.md", himark::ResourceType::document());
+    let key = location("a.md", editor::location::ResourceType::document());
     let file = himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
-        old: location("a.md.old", himark::ResourceType::document()),
+        old: location("a.md.old", editor::location::ResourceType::document()),
         new: key.clone(),
         added: Some(0),
         removed: Some(0),
@@ -3066,7 +3066,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -3116,8 +3116,8 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
     let target = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
         .expect("the row's registered target");
     {
-        let fonts = himark::env::Fonts::of(&app.store())();
-        let theme = himark::env::Themes::of(&app.store());
+        let fonts = editor::env::Fonts::of(&app.store())();
+        let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
@@ -3127,7 +3127,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         let mut batch = imba::effect::Batch::new();
         document.edit(
-            &operation::Operation::insert_in(len, at, "CHANGED an inserted line\n"),
+            &operation::operation::Operation::insert_in(len, at, "CHANGED an inserted line\n"),
             &store,
             ui,
             &fonts,
@@ -3159,7 +3159,7 @@ fn a_diff_height_change_resizes_its_canvas_row_through_sync() {
 #[test]
 fn the_split_face_folds_and_wraps_to_its_halves() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -3173,21 +3173,21 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     new_body.push_str("new tail\n");
 
     himarkdown::register_handlers(&mut app);
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let file = himark::diff_canvas::CanvasFile {
         title: "long.md".to_owned(),
-        old: location("long.md.old", himark::ResourceType::document()),
-        new: location("long.md", himark::ResourceType::document()),
+        old: location("long.md.old", editor::location::ResourceType::document()),
+        new: location("long.md", editor::location::ResourceType::document()),
         added: Some(2),
         removed: Some(2),
         updated: 0,
@@ -3202,7 +3202,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -3254,16 +3254,16 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
         shot.expect("the canvas panel")
     };
     let (rows, layouts) = probe(&app);
-    assert_eq!(layouts[0].1, himark::DiffLayout::Inline);
+    assert_eq!(layouts[0].1, editor::unified_diff::DiffLayout::Inline);
     let inline_height = rows[0].2;
     assert!(
         inline_height < 1200.0,
         "the inline face folds the 600-line run: {inline_height}"
     );
 
-    let chrome_top = himark::env::Themes::of(app.store()).ui().toolbar.height;
+    let chrome_top = editor::env::Themes::of(app.store()).ui().toolbar.height;
     let (chat_pad, chat_title) = {
-        let ui = himark::env::Themes::of(app.store()).ui().chat.clone();
+        let ui = editor::env::Themes::of(app.store()).ui().chat.clone();
         (ui.pad, ui.title_size)
     };
     let zone = chat_title * 2.2;
@@ -3274,7 +3274,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     settle(&mut app);
 
     let (rows, layouts) = probe(&app);
-    assert_eq!(layouts[0].1, himark::DiffLayout::Split);
+    assert_eq!(layouts[0].1, editor::unified_diff::DiffLayout::Split);
     assert!(
         rows[0].2 < inline_height + 400.0,
         "the split face folds too — no blank wash of estimated lines \
@@ -3299,7 +3299,7 @@ fn the_split_face_folds_and_wraps_to_its_halves() {
     settle(&mut app);
     settle(&mut app);
     let (rows, layouts) = probe(&app);
-    assert_eq!(layouts[0].1, himark::DiffLayout::Inline);
+    assert_eq!(layouts[0].1, editor::unified_diff::DiffLayout::Inline);
     assert!(
         (rows[0].2 - inline_height).abs() < 200.0,
         "the inline face comes back at its folded height: {} vs {inline_height}",
@@ -3325,28 +3325,28 @@ fn reconcile_follows_the_change_set_without_flashing() {
     let _ = app.add_window();
 
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let canvas_file = |name: &str, updated: u64| himark::diff_canvas::CanvasFile {
         title: name.to_owned(),
-        old: location(&format!("{name}.old"), himark::ResourceType::document()),
-        new: location(name, himark::ResourceType::document()),
+        old: location(&format!("{name}.old"), editor::location::ResourceType::document()),
+        new: location(name, editor::location::ResourceType::document()),
         added: Some(1),
         removed: Some(1),
         updated,
     };
     let built_diff = |file: &himark::diff_canvas::CanvasFile, old_body: &str, new_body: &str| {
-        let old = himark::Document::new(
-            himark::Text::from_string_exact(old_body),
-            himark::Markup::new(),
+        let old = editor::document::Document::new(
+            text::text::Text::from_string_exact(old_body),
+            editor::markup::Markup::new(),
         );
-        let new = himark::Document::new(
-            himark::Text::from_string_exact(new_body),
-            himark::Markup::new(),
+        let new = editor::document::Document::new(
+            text::text::Text::from_string_exact(new_body),
+            editor::markup::Markup::new(),
         );
         prepared_pair(file.old.clone(), old, file.new.clone(), new, 1100.0)
     };
@@ -3361,7 +3361,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file_a.clone(),
             built_diff(&file_a, "one\ntwo\n", "one\nTWO\n"),
@@ -3440,7 +3440,7 @@ fn reconcile_follows_the_change_set_without_flashing() {
 /// diff — the bug that motivated moving rows off throwaway snapshots.
 #[test]
 fn typing_in_a_canvas_row_updates_its_diff() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -3468,17 +3468,17 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     };
 
     let doc_loc = |name: &str| {
-        himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("test"),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
 
     // Identical sides: the initial diff is the identity.
     let body = "hello\nworld\n";
-    let old = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
-    let new = himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new());
+    let old = editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new());
+    let new = editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new());
     let file = himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
         old: doc_loc("a.md.old"),
@@ -3498,9 +3498,9 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: himark::ResourceLocation::new(
-                    himark::ResourceType::directory(),
-                    himark::Authority::new("test"),
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
                     vec!["proj".to_owned()],
                 ),
             },
@@ -3533,7 +3533,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
             .expect("the row's diff is tracked on the registered document")
     };
     let has_edit =
-        |op: &operation::Operation| op.iter().any(|o| !matches!(o, operation::Op::Retain(_)));
+        |op: &operation::operation::Operation| op.iter().any(|o| !matches!(o, operation::op::Op::Retain(_)));
 
     settle(&mut app);
     let before = op_of(&app);
@@ -3544,8 +3544,8 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 
     // Type an "X" after "hello" into the registered target document.
     {
-        let fonts = himark::env::Fonts::of(&app.store())();
-        let theme = himark::env::Themes::of(&app.store());
+        let fonts = editor::env::Fonts::of(&app.store())();
+        let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
@@ -3553,7 +3553,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
         let mut batch = imba::effect::Batch::new();
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &operation::Operation::insert_in(len, 5, "X"),
+            &operation::operation::Operation::insert_in(len, 5, "X"),
             &store,
             ui,
             &fonts,
@@ -3571,7 +3571,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
     assert!(
         after
             .iter()
-            .any(|o| matches!(o, operation::Op::Insert(text) if text == "X")),
+            .any(|o| matches!(o, operation::op::Op::Insert(text) if text == "X")),
         "the diff reflects the typed insert: {after:?}"
     );
 }
@@ -3584,7 +3584,7 @@ fn typing_in_a_canvas_row_updates_its_diff() {
 #[test]
 fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let _ = app.add_window();
@@ -3596,8 +3596,8 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
         }),
         Arc::new(|| {}),
     );
-    let theme = himark::Theme::embedded();
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
     let mut old_body = String::from("old head\n");
     let mut new_body = String::from("new head\n");
     for n in 0..30 {
@@ -3609,16 +3609,16 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let old = himarkdown::document_from_markdown(&old_body, &store, ui, &markdown_fonts, &theme);
     let new = himarkdown::document_from_markdown(&new_body, &store, ui, &markdown_fonts, &theme);
     let location = |name: &str, kind| {
-        himark::ResourceLocation::new(
+        editor::location::ResourceLocation::new(
             kind,
-            himark::Authority::new("test"),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
-    let key = location("a.md", himark::ResourceType::document());
+    let key = location("a.md", editor::location::ResourceType::document());
     let file = himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
-        old: location("a.md.old", himark::ResourceType::document()),
+        old: location("a.md.old", editor::location::ResourceType::document()),
         new: key.clone(),
         added: Some(1),
         removed: Some(1),
@@ -3634,7 +3634,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: location("proj", himark::ResourceType::directory()),
+                folder: location("proj", editor::location::ResourceType::directory()),
             },
             file,
             built,
@@ -3688,8 +3688,8 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
     let right_id = himark::OpenDocuments::by_location(&app.store(), app.sole_documents(), &key)
         .expect("the registered target");
     {
-        let fonts = himark::env::Fonts::of(&app.store())();
-        let theme = himark::env::Themes::of(&app.store());
+        let fonts = editor::env::Fonts::of(&app.store())();
+        let theme = editor::env::Themes::of(&app.store());
         let app_docs = app.sole_documents();
         let mut store = app.store_mut();
         let mut document =
@@ -3699,7 +3699,7 @@ fn an_unfocused_canvas_row_resyncs_from_the_dressing_sweep() {
         let at = text.find("same line 15").expect("the identical run") as u32;
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &operation::Operation::insert_in(len, at, "typed from the split editor\n"),
+            &operation::operation::Operation::insert_in(len, at, "typed from the split editor\n"),
             &store,
             ui,
             &fonts,
@@ -3745,9 +3745,9 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
     let _ = app.add_window();
 
     let doc_loc = |name: &str| {
-        himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("test"),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
@@ -3760,7 +3760,7 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
         updated: 0,
     };
     let make = |body: &str| {
-        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new())
+        editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new())
     };
     let old = make("hello\n");
     let new = make("hello\n");
@@ -3775,9 +3775,9 @@ fn canvases_sync_is_a_safe_no_op_when_current() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: himark::ResourceLocation::new(
-                    himark::ResourceType::directory(),
-                    himark::Authority::new("test"),
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
                     vec!["proj".to_owned()],
                 ),
             },
@@ -3864,7 +3864,7 @@ fn a_committed_change_set_empties_the_canvas() {
     // The commit: the host clears the set — READY and empty.
     view.adopt_for_tests(
         &mut app.store_mut(),
-        himark::test_document::test_ui(),
+        ::editor::test_document::test_ui(),
         7,
         himark::diff_canvas::CanvasListing::Empty("no changes".to_owned()),
     );
@@ -3887,7 +3887,7 @@ fn a_committed_change_set_empties_the_canvas() {
     // A transient computing state must NOT clear anything…
     view.adopt_for_tests(
         &mut app.store_mut(),
-        himark::test_document::test_ui(),
+        ::editor::test_document::test_ui(),
         8,
         himark::diff_canvas::CanvasListing::Ready(vec![canvas_file(&key, 3)]),
     );
@@ -3898,7 +3898,7 @@ fn a_committed_change_set_empties_the_canvas() {
     );
     view.adopt_for_tests(
         &mut app.store_mut(),
-        himark::test_document::test_ui(),
+        ::editor::test_document::test_ui(),
         9,
         himark::diff_canvas::CanvasListing::Pending("computing…".to_owned()),
     );
@@ -3909,12 +3909,12 @@ fn a_committed_change_set_empties_the_canvas() {
     );
 }
 
-fn canvas_file(key: &himark::ResourceLocation, updated: u64) -> himark::diff_canvas::CanvasFile {
+fn canvas_file(key: &editor::location::ResourceLocation, updated: u64) -> himark::diff_canvas::CanvasFile {
     himark::diff_canvas::CanvasFile {
         title: "a.md".to_owned(),
-        old: himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("test"),
+        old: editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), "a.md.old".to_owned()],
         ),
         new: key.clone(),
@@ -3928,17 +3928,17 @@ fn seeded_working_canvas(
     app: &mut Application,
 ) -> (
     DiffCanvasView,
-    himark::ResourceLocation,
+    editor::location::ResourceLocation,
     himark::OpenedDiffPair,
 ) {
-    let key = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("test"),
+    let key = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("test"),
         vec!["proj".to_owned(), "a.md".to_owned()],
     );
     let file = canvas_file(&key, 1);
     let make = |body: &str| {
-        himark::Document::new(himark::Text::from_string_exact(body), himark::Markup::new())
+        editor::document::Document::new(text::text::Text::from_string_exact(body), editor::markup::Markup::new())
     };
     let built = |old_body: &str, new_body: &str| {
         prepared_pair(
@@ -3958,9 +3958,9 @@ fn seeded_working_canvas(
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: himark::ResourceLocation::new(
-                    himark::ResourceType::directory(),
-                    himark::Authority::new("test"),
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
                     vec!["proj".to_owned()],
                 ),
             },
@@ -3984,9 +3984,9 @@ fn a_retired_file_leaves_no_orphan_row() {
     let _ = app.add_window();
 
     let loc = |name: &str| {
-        himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("test"),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
@@ -3999,7 +3999,7 @@ fn a_retired_file_leaves_no_orphan_row() {
         updated,
     };
     let make =
-        |b: &str| himark::Document::new(himark::Text::from_string_exact(b), himark::Markup::new());
+        |b: &str| editor::document::Document::new(text::text::Text::from_string_exact(b), editor::markup::Markup::new());
     let built = |name: &str, o: &str, n: &str| {
         prepared_pair(
             loc(&format!("{name}.old")),
@@ -4020,9 +4020,9 @@ fn a_retired_file_leaves_no_orphan_row() {
             &ui,
             changes,
             himark::diff_canvas::CanvasSource::WorkingCopy {
-                folder: himark::ResourceLocation::new(
-                    himark::ResourceType::directory(),
-                    himark::Authority::new("test"),
+                folder: editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::directory(),
+                    editor::location::Authority::new("test"),
                     vec!["proj".to_owned()],
                 ),
             },
@@ -4076,19 +4076,19 @@ fn membership_follows_every_adopted_listing() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
 
-    let pool: Vec<himark::ResourceLocation> = (0..8)
+    let pool: Vec<editor::location::ResourceLocation> = (0..8)
         .map(|index| {
-            himark::ResourceLocation::new(
-                himark::ResourceType::document(),
-                himark::Authority::new("test"),
+            editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), format!("f{index}.md")],
             )
         })
         .collect();
     let source = himark::diff_canvas::CanvasSource::WorkingCopy {
-        folder: himark::ResourceLocation::new(
-            himark::ResourceType::directory(),
-            himark::Authority::new("test"),
+        folder: editor::location::ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned()],
         ),
     };
@@ -4109,7 +4109,7 @@ fn membership_follows_every_adopted_listing() {
     let mut generation: u64 = 1;
     let mut seen: Option<u64> = None;
     let mut expected: Option<Vec<String>> = None; // None = never populated
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
 
     for step in 0..400 {
         let roll = rand() % 10;
@@ -4177,16 +4177,16 @@ fn membership_minimal_repro() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     let key = |name: &str| {
-        himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("test"),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };
     let source = himark::diff_canvas::CanvasSource::WorkingCopy {
-        folder: himark::ResourceLocation::new(
-            himark::ResourceType::directory(),
-            himark::Authority::new("test"),
+        folder: editor::location::ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            editor::location::Authority::new("test"),
             vec!["proj".to_owned()],
         ),
     };
@@ -4195,7 +4195,7 @@ fn membership_minimal_repro() {
         let changes = canvas_changes(&store);
         DiffCanvasView::over(&mut store, changes, source)
     };
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let ready = |names: &[&str], gen: u64| {
         himark::diff_canvas::CanvasListing::Ready(
             names

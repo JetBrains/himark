@@ -5,12 +5,7 @@ use std::marker::PhantomData;
 
 use skia_safe::{Canvas, Rect, Size};
 
-use crate::{
-    arena::Arena,
-    event::{Event, EventResult},
-    overlay::{Overlay, OverlayContent, OverlayHost},
-    Thunk, Widget, WidgetBox,
-};
+use crate::{arena::Arena, event::{Event, EventResult}, overlay::{Overlay, OverlayContent, OverlayHost}, Thunk, Widget, WidgetBox};
 
 pub trait ThunkExt<'a, Command>: Thunk<'a, Command> + Sized {
     fn map<ParentCommand, F>(self, map: F) -> impl Thunk<'a, ParentCommand> + 'a

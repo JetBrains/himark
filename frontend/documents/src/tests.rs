@@ -125,9 +125,9 @@ fn a_moved_base_retires_the_stale_stripes_track() {
     let documents = imba::store::Id::mint();
     let mut batch = imba::effect::Batch::<crate::DocumentsCommand>::new();
     let location = |authority: &str, name: &str| {
-        editor::ResourceLocation::new(
-            editor::ResourceType::document(),
-            editor::Authority::new(authority),
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new(authority),
             vec!["proj".to_owned(), name.to_owned()],
         )
     };

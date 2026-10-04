@@ -28,7 +28,7 @@ pub const OWNER: &str = "search.view";
 pub struct OpenLspFeed {
     pub kind: crate::LspLocationsKind,
     pub title: String,
-    pub location: crate::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub position: crate::LineCol,
 }
 
@@ -201,17 +201,17 @@ impl crate::DynamicCommand for FocusSearchView {
                     move |command| {
                         crate::AppCommand::Content(
                             window,
-                            crate::WindowCommand::Dock(imba::DynCommand::new(
+                            crate::WindowCommand::Dock(imba::dyn_view::DynCommand::new(
                                 crate::dock::DockCommand::Content(command),
                             )),
                         )
                     },
                     |fx| {
-                        imba::DynView::perform_dyn(
+                        imba::dyn_view::DynView::perform_dyn(
                             panel.as_mut(),
                             store,
                             &ui,
-                            imba::DynCommand::new(SearchCommand::Focus(SearchArea::Input, None)),
+                            imba::dyn_view::DynCommand::new(SearchCommand::Focus(SearchArea::Input, None)),
                             fx,
                         )
                     },

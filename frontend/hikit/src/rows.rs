@@ -1,14 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    effect::Effects,
-    event::{Event, EventResult},
-    list::{ListSlice, SelectionStyle},
-    store::Store,
-    LayoutExt as _, UiCtx, View,
-};
+use imba::{arena::Arena, effect::Effects, event::{Event, EventResult}, list::{ListSlice, SelectionStyle}, store::Store, layout::LayoutExt as _, ui::UiCtx, View};
 
 #[derive(Clone)]
 pub struct LabelRow {
@@ -42,7 +35,7 @@ impl View for LabelRow {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let style = crate::ui::RowStyle::standard(store, ui);
         let dim = self.dim;
         let mut row = crate::ui::ListRow::new(arena, style.clone()).label_styled(
@@ -110,7 +103,7 @@ pub fn panel_inset(ui: &::editor::theme::UiTheme) -> f32 {
 }
 
 pub fn paint_panel_chrome(
-    shaper: &imba::TextShaper,
+    shaper: &imba::layout::TextShaper,
     canvas: &skia_safe::Canvas,
     rect: skia_safe::Rect,
     ui: &::editor::theme::UiTheme,
@@ -222,7 +215,7 @@ mod tests {
         for tick in 0..120 {
             let commands = {
                 let arena = Arena::default();
-                let widget = imba::Layout::layout(
+                let widget = imba::layout::Layout::layout(
                     imba::View::display(&list, &arena, &store, &ui),
                     &arena,
                     imba::constraints::Constraints::tight(viewport),

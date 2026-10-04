@@ -11,8 +11,10 @@ use crate::drivers::history::{digest_deltas, digest_snapshot};
 use crate::hichanges::ChangesStatus;
 use crate::higent::ahp_types::actions::StateAction;
 use crate::higent::ahp_types::state::{ChangesetFile, ChangesetState, ChangesetStatus, FileEdit};
-use crate::Authority;
-use crate::{ForestNode, ResourceLocation, ResourceType};
+use editor::location::Authority;
+use crate::{ForestNode};
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 use himark_ahp_ext_types::history as history_wire;
 
 

@@ -12,4 +12,5 @@ hisitter = { path = "../../../hisitter" }
 tree-sitter-fsharp = "0.3.11"
 
 [dev-dependencies]
+text = { path = "../../../text" }
 imba = { path = "../../../imba" }

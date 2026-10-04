@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Bias, Op, Operation};
+use crate::{operation::Bias, op::Op, operation::Operation};
 
 fn apply_operation(base: &str, operation: &Operation) -> String {
     let mut cursor = 0usize;

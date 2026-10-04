@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use skia_safe::{Canvas, Rect, Size};
 
-use crate::{
-    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
-};
+use crate::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
 fn fontdb() -> &'static Arc<resvg::usvg::fontdb::Database> {
     static FONTDB: OnceLock<Arc<resvg::usvg::fontdb::Database>> = OnceLock::new();
@@ -186,7 +184,7 @@ impl View for SvgView {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
         Scaled(self)
     }
 }
@@ -194,9 +192,9 @@ impl View for SvgView {
 /// The view's one layout, reified: width-scaled box, self-painting.
 struct Scaled<'a>(&'a SvgView);
 
-impl crate::LayoutValue for Scaled<'_> {}
+impl crate::layout::LayoutValue for Scaled<'_> {}
 
-impl<'a> crate::Layout<'a, SvgCommand> for Scaled<'a> {
+impl<'a> crate::layout::Layout<'a, SvgCommand> for Scaled<'a> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> crate::ThunkBox<'a, SvgCommand> {
         let size = self.0.scaled(constraints.max.width);
         crate::ThunkBox::new(

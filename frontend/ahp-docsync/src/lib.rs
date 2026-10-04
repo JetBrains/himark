@@ -27,7 +27,7 @@ mod rules;
 use std::sync::Arc;
 
 use ahp_wire::client::DocumentsClient;
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use himark_ahp_ext_types::{DocumentApplied, Uid};
 use imba::command::Verb;
 use imba::store::Store;
@@ -35,7 +35,7 @@ use rebase::{Local, Offer, RebaseLog};
 use tokio::sync::{mpsc, oneshot, watch};
 
 use documents::sync::{SyncEdit, SyncState};
-use editor::EditIdentity;
+use editor::edit_log::EditIdentity;
 
 #[doc(hidden)]
 pub use codec::{resolve_wire, wire_operation};
@@ -608,7 +608,7 @@ impl imba::command::DynamicCommand for EnsureSync {
     fn name(&self) -> String {
         "Sync Document".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         if SyncClients::draining(store, &self.location) {
             SyncClients::queue_reopen(
                 store,
@@ -650,7 +650,7 @@ impl imba::command::DynamicCommand for Drained {
     fn name(&self) -> String {
         "Retire Document Channel".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         match SyncClients::retire(store, &self.location) {
             Some(ClientState::Draining {
                 reopen: Some(reopen),
@@ -707,7 +707,7 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
     fn name(&self) -> String {
         "Adopt Document Channel".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some((stop, since)) = SyncClients::connecting(store, &self.location) else {
             return;
         };
@@ -733,7 +733,7 @@ impl imba::command::DynamicCommand for AdoptSnapshot {
             Some(meanwhile) => document.text().edit(&meanwhile.invert()),
             None => document.text().clone(),
         };
-        let snapshot = editor::Text::from_string_exact(&self.snapshot);
+        let snapshot = text::text::Text::from_string_exact(&self.snapshot);
         let mut history = log.as_of(since);
         // A patch, not a picture: the minimal exact edit
         // (docs/editor/structural-diff.md, decision 3).
@@ -830,7 +830,7 @@ impl imba::command::DynamicCommand for GiveUp {
     fn name(&self) -> String {
         "Release Document Channel".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         if SyncClients::connecting(store, &self.location).is_some() {
             SyncClients::detach(store, &self.location);
         }
@@ -863,7 +863,7 @@ impl imba::command::DynamicCommand for ApplyOffer {
     fn name(&self) -> String {
         "Apply Document Offer".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(client) = SyncClients::client(store, &self.location) else {
             return;
         };
@@ -926,15 +926,15 @@ impl imba::command::DynamicCommand for ApplyOffer {
 
 pub struct SyncSink;
 
-impl editor::ChangeSink for SyncSink {
+impl editor::change_sink::ChangeSink for SyncSink {
     fn changed(
         &self,
         store: &Store,
-        document: &editor::Document,
-        location: &editor::ResourceLocation,
+        document: &editor::document::Document,
+        location: &editor::location::ResourceLocation,
         base_revision: u64,
-        _text_before: &editor::Text,
-        _fx: &mut editor::EditorEffects<'_>,
+        _text_before: &text::text::Text,
+        _fx: &mut editor::editor::EditorEffects<'_>,
     ) {
         let Some(client) = SyncClients::client(store, location) else {
             return;
@@ -957,7 +957,7 @@ impl documents::DocumentHook for DocsyncHook {
         _store: &mut Store,
         documents: imba::store::Id<documents::OpenDocuments>,
         _document: documents::DocumentId,
-        location: Option<&editor::ResourceLocation>,
+        location: Option<&editor::location::ResourceLocation>,
     ) {
         // The invariant (2026-09-15): every located document that
         // talks to the outside world is registered in OpenDocuments —
@@ -985,8 +985,8 @@ impl documents::DocumentHook for DocsyncHook {
         store: &mut Store,
         _documents: imba::store::Id<documents::OpenDocuments>,
         _document: documents::DocumentId,
-        location: Option<&editor::ResourceLocation>,
-        _doc: &editor::Document,
+        location: Option<&editor::location::ResourceLocation>,
+        _doc: &editor::document::Document,
     ) {
         // The row leaves the collection right after this hook — no
         // flag writes back into it; the release already unsubscribes

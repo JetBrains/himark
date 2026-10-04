@@ -3,9 +3,10 @@
 
 use std::ops::Range;
 
-use himark::{Assist, AssistKind};
-use operation::OperationBuilder;
-use text::Text;
+use editor::reparse::Assist;
+use editor::reparse::AssistKind;
+use operation::builder::OperationBuilder;
+use text::text::Text;
 use tree_sitter::{Node, Tree};
 
 const LIST_INDENT: &str = "  ";
@@ -98,7 +99,7 @@ fn renest(text: &Text, item: Node<'_>, base: u32, location: &Range<u32>, deeper:
         }
     };
     let line_starts: Vec<u32> = (first_line..=last_line)
-        .map(|line| view.line_start_offset(text::LineNumber(line)) as u32)
+        .map(|line| view.line_start_offset(text::line_number::LineNumber(line)) as u32)
         .collect();
 
     let mut builder = OperationBuilder::new();
@@ -249,7 +250,7 @@ fn line_of(text: &Text, offset: u32) -> Range<u32> {
     let line = view.line_at((offset as usize).min(byte_count));
     let start = view.line_start_offset(line) as u32;
     let end = match line.0 + 1 < view.line_count().0 {
-        true => view.line_start_offset(text::LineNumber(line.0 + 1)) as u32,
+        true => view.line_start_offset(text::line_number::LineNumber(line.0 + 1)) as u32,
         false => byte_count as u32,
     };
     start..end
@@ -288,10 +289,12 @@ fn replace(text: &Text, range: &Range<u32>, insert: &str) -> Assist {
 
 #[cfg(test)]
 mod tests {
-    use himark::{AssistKind, AssistRequest, SyntaxLanguage};
-    use operation::Op;
+    use editor::reparse::AssistKind;
+use editor::reparse::AssistRequest;
+use editor::reparse::SyntaxLanguage;
+    use operation::op::Op;
 
-    fn applied(source: &str, assist: &himark::Assist) -> String {
+    fn applied(source: &str, assist: &editor::reparse::Assist) -> String {
         let mut out = String::new();
         let mut position = 0usize;
         for op in assist.operation.iter() {
@@ -317,7 +320,7 @@ mod tests {
 
     fn assist_on(source: &str, caret: u32, kind: AssistKind) -> Option<(String, u32)> {
         let language = crate::MarkdownLanguage;
-        let text = text::Text::from_string_exact(source);
+        let text = text::text::Text::from_string_exact(source);
         let len = source.len() as u32;
         let tree = language.parse(&text, 0..len, None)?;
         let assist = language.assist(&AssistRequest {

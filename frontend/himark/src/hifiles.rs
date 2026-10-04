@@ -12,7 +12,7 @@ use imba::effect::AnyEffect;
 use imba::store::Store;
 use skia_safe::{Paint, PathBuilder};
 
-use crate::ResourceLocation;
+use editor::location::ResourceLocation;
 
 pub use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 
@@ -20,7 +20,7 @@ pub use ::filetree::{SessionTree, SessionTreeView, TreeCommand};
 /// dock toggle uses.
 pub fn open_panel(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: Option<crate::WindowId>,
     workspace: crate::SessionId,
     trees: imba::store::Id<SessionTree>,
@@ -125,7 +125,7 @@ impl crate::DynamicCommand for ToggleSessionTree {
         let workspace = entity.current_session();
         let trees = entity.state().trees();
         let panel = fx.scope(crate::dock_scope(window), |fx| {
-            fx.scope(imba::DynCommand::new::<TreeCommand>, |fx| {
+            fx.scope(imba::dyn_view::DynCommand::new::<TreeCommand>, |fx| {
                 open_panel(
                     store,
                     &app.ui_ctx(),
@@ -183,10 +183,10 @@ pub fn toolbar_button() -> crate::ToolbarButton {
 mod tests {
     use imba::store::Store;
 
-    fn directory(path: &[&str]) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::directory(),
-            crate::Authority::new("test"),
+    fn directory(path: &[&str]) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            editor::location::Authority::new("test"),
             path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
         )
     }

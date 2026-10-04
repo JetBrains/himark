@@ -7,7 +7,7 @@
 //! verb lane's shell escape, built by the shell's own helpers.
 
 use imba::store::Store;
-use imba::{arena::Arena, constraints::Constraints, DynCommand, UiCtx, View};
+use imba::{arena::Arena, constraints::Constraints, dyn_view::DynCommand, ui::UiCtx, View};
 
 /// A one-slot mailbox for a view's outbound request. Cloning a view
 /// never clones its pending ask — the clone starts empty.
@@ -44,25 +44,25 @@ pub enum ModalRequest {
     /// supplies the window. `focus` distinguishes the deliberate
     /// jump from a browsing show (the keyboard stays where it was).
     OpenAt {
-        location: editor::ResourceLocation,
+        location: editor::location::ResourceLocation,
         target: Option<std::ops::Range<documents::LineCol>>,
         focus: bool,
     },
 
     ShowDocument(documents::DocumentId),
 
-    OpenLocations(Vec<editor::ResourceLocation>),
+    OpenLocations(Vec<editor::location::ResourceLocation>),
 
     SelectWidget(Box<dyn crate::DynPanelView>),
 }
 
-pub trait ModalView: imba::DynView + Send + Sync {
+pub trait ModalView: imba::dyn_view::DynView + Send + Sync {
     fn take_request(&mut self) -> Option<ModalRequest>;
 
     fn set_query(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _query: &str,
         _fx: &mut imba::effect::Effects<'_, DynCommand>,
     ) {
@@ -110,8 +110,8 @@ impl View for Box<dyn ModalView> {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             self.as_ref().layout_dyn(arena, store, ui, constraints)
         })
     }

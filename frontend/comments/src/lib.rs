@@ -11,9 +11,9 @@
 use std::ops::Range;
 
 use documents::{DocumentId, LineCol, OpenDocuments};
-use editor::{InlayKey, ResourceLocation};
+use editor::{markup::InlayKey, location::ResourceLocation};
 use imba::store::Store;
-use text::Text;
+use text::text::Text;
 
 pub mod cards;
 pub mod panel;

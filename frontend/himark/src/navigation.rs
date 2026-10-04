@@ -21,7 +21,7 @@ pub trait WindowedNavigator: Send + Sync + 'static {
     fn navigate(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         place: &Self::Place,
         fx: &mut AppFx<'_>,
@@ -31,7 +31,7 @@ pub trait WindowedNavigator: Send + Sync + 'static {
 type ErasedNavigate = Arc<
     dyn Fn(
             &mut Store,
-            &imba::UiCtx,
+            &imba::ui::UiCtx,
             crate::WindowId,
             &NavigationLocation,
             &mut AppFx<'_>,
@@ -80,7 +80,7 @@ impl Navigators {
 
     pub fn navigate(
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         location: &NavigationLocation,
         fx: &mut AppFx<'_>,
@@ -102,7 +102,7 @@ impl WindowedNavigator for EditorNavigator {
     fn navigate(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         place: &EditorPlace,
         fx: &mut AppFx<'_>,

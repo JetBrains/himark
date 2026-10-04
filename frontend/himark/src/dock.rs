@@ -1,17 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    anim::{Animation, AnimationClock, Easing, Motion},
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    event::{Event, EventResult},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
+use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::{ModalRequest, ModalView};
@@ -40,7 +30,7 @@ pub enum DockCommand {
 
     EndResize,
 
-    Content(imba::DynCommand),
+    Content(imba::dyn_view::DynCommand),
 }
 
 impl std::fmt::Display for DockCommand {
@@ -175,7 +165,7 @@ impl View for Dock {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, DockCommand> {
         self.content
             .as_ref()
@@ -185,7 +175,7 @@ impl View for Dock {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(DockCommand::Content, |fx| {
-            imba::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)
+            imba::dyn_view::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)
         })
     }
 
@@ -229,14 +219,14 @@ impl View for Dock {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let revealed = self.revealed();
             let edge = size.width - revealed;
             let mut surface = container(arena, size);
 
-            let theme = crate::env::Themes::of(store);
+            let theme = ::editor::env::Themes::of(store);
             let chrome = &theme.ui().peeker;
             let body_bg = chrome.background.0;
             let rule = chrome.rule.0;

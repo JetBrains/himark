@@ -99,7 +99,7 @@ fn drain(view: &mut SplitDiffView, effects: Vec<imba::effect::AnyEffect<SplitDif
     }
 }
 
-fn track(left: &mut crate::Document, right: &mut crate::Document) -> DiffViewState {
+fn track(left: &mut crate::document::Document, right: &mut crate::document::Document) -> DiffViewState {
     let operation = myersdiff::diff(left.text(), right.text());
     let id = right.add_diff(operation, left.revision());
     let left_marks = left.add_markup();
@@ -201,11 +201,11 @@ fn assert_aligned(view: &SplitDiffView) {
         let mapped = view
             .state
             .diff()
-            .transform_offset(boundary, operation::Bias::Right);
+            .transform_offset(boundary, operation::operation::Bias::Right);
         if view
             .state
             .diff()
-            .transform_offset_back(mapped, operation::Bias::Right)
+            .transform_offset_back(mapped, operation::operation::Bias::Right)
             != boundary
         {
             continue;
@@ -238,17 +238,17 @@ fn assert_aligned(view: &SplitDiffView) {
             let diff = view.state.diff();
             let (mapped, round_trip) = match forward {
                 true => {
-                    let mapped = diff.transform_offset(boundary, operation::Bias::Right);
+                    let mapped = diff.transform_offset(boundary, operation::operation::Bias::Right);
                     (
                         mapped,
-                        diff.transform_offset_back(mapped, operation::Bias::Right),
+                        diff.transform_offset_back(mapped, operation::operation::Bias::Right),
                     )
                 }
                 false => {
-                    let mapped = diff.transform_offset_back(boundary, operation::Bias::Right);
+                    let mapped = diff.transform_offset_back(boundary, operation::operation::Bias::Right);
                     (
                         mapped,
-                        diff.transform_offset(mapped, operation::Bias::Right),
+                        diff.transform_offset(mapped, operation::operation::Bias::Right),
                     )
                 }
             };
@@ -382,12 +382,12 @@ fn typing_and_landings_keep_the_pair_aligned() {
     let mut at = 0usize;
     for op in view.state.diff().iter() {
         match op {
-            operation::Op::Retain(len) => {
+            operation::op::Op::Retain(len) => {
                 out.push_str(&left_text[at..at + len as usize]);
                 at += len as usize;
             }
-            operation::Op::Delete(text) => at += text.len(),
-            operation::Op::Insert(text) => out.push_str(&text),
+            operation::op::Op::Delete(text) => at += text.len(),
+            operation::op::Op::Insert(text) => out.push_str(&text),
         }
     }
     assert_eq!(
@@ -645,8 +645,8 @@ fn clicking_a_half_takes_focus_from_the_other() {
         &ui,
         SplitDiffCommand::Right(click(2.0, 5.0)),
     );
-    assert_eq!(view.right.focus(), crate::EditorFocus::Text);
-    assert_eq!(view.left.focus(), crate::EditorFocus::None);
+    assert_eq!(view.right.focus(), crate::editor_view::EditorFocus::Text);
+    assert_eq!(view.left.focus(), crate::editor_view::EditorFocus::None);
 
     let _ = perform_collect(
         &mut view,
@@ -656,12 +656,12 @@ fn clicking_a_half_takes_focus_from_the_other() {
     );
     assert_eq!(
         view.left.focus(),
-        crate::EditorFocus::Text,
+        crate::editor_view::EditorFocus::Text,
         "left takes focus"
     );
     assert_eq!(
         view.right.focus(),
-        crate::EditorFocus::None,
+        crate::editor_view::EditorFocus::None,
         "and the right yields it"
     );
 }
@@ -826,7 +826,7 @@ fn fuzzed_editing_keeps_the_pair_aligned() {
                 let right_editor = view.right.editor;
                 let end = view.left.document.text().byte_count() as u32;
                 let left_state = view.left.document.editors.get_mut(&left_editor).unwrap();
-                let left_layout = &mut left_state.layout as *mut crate::DocumentLayout;
+                let left_layout = &mut left_state.layout as *mut crate::document_layout::DocumentLayout;
                 let right_state = view.right.document.editors.get_mut(&right_editor).unwrap();
                 let right_layout = &mut right_state.layout;
 
@@ -1139,8 +1139,8 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
     let right_source = format!("RIGHT HEAD\n{}\nRIGHT TAIL\n", middle.join("\n"));
     let mut view = pair(&left_source, &right_source, 240.0);
 
-    let strips = |document: &crate::Document,
-                  marks: crate::MarkupId|
+    let strips = |document: &crate::document::Document,
+                  marks: crate::markup::MarkupId|
      -> Vec<(crate::markup::IntervalId, Range<u32>)> {
         document
             .feature_markup(marks)
@@ -1180,7 +1180,7 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Inlay {
             key,
-            command: imba::DynCommand::new(fold::FoldCommand::RevealTop),
+            command: imba::dyn_view::DynCommand::new(fold::FoldCommand::RevealTop),
         }),
     );
     let left_after = strips(&view.left.document, lm);
@@ -1209,7 +1209,7 @@ fn folds_derive_on_the_marks_worker_and_adjust_in_lockstep() {
         &ui,
         SplitDiffCommand::Right(EditorCommand::Inlay {
             key,
-            command: imba::DynCommand::new(fold::FoldCommand::Remove),
+            command: imba::dyn_view::DynCommand::new(fold::FoldCommand::Remove),
         }),
     );
     drain(&mut view, effects);
@@ -1569,7 +1569,7 @@ fn folds_at_the_end_of_the_diff_survive_every_edge_command() {
             &ui,
             SplitDiffCommand::Left(EditorCommand::Inlay {
                 key,
-                command: imba::DynCommand::new(command),
+                command: imba::dyn_view::DynCommand::new(command),
             }),
         );
         drain(&mut view, effects);
@@ -1624,7 +1624,7 @@ fn a_removed_fold_survives_rederivation() {
         &ui,
         SplitDiffCommand::Left(EditorCommand::Inlay {
             key,
-            command: imba::DynCommand::new(fold::FoldCommand::Remove),
+            command: imba::dyn_view::DynCommand::new(fold::FoldCommand::Remove),
         }),
     );
     drain(&mut view, effects);

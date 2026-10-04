@@ -12,7 +12,7 @@ use std::collections::BTreeMap;
 use imba::store::Store;
 
 use crate::{FeedId, FoundLocation, LocationKey, LocationLists, LocationsFeedRow};
-use editor::{ResourceLocation, ResourceType};
+use editor::{location::ResourceLocation, location::ResourceType};
 use hikit::ForestNode;
 
 /// The registration hook: a search-picked document opened — wash it.
@@ -29,7 +29,7 @@ impl documents::DocumentHook for LocationsWashHook {
         store: &mut Store,
         _documents: imba::store::Id<documents::OpenDocuments>,
         document: documents::DocumentId,
-        location: Option<&editor::ResourceLocation>,
+        location: Option<&editor::location::ResourceLocation>,
     ) {
         let Some(location) = location else {
             return;
@@ -52,8 +52,8 @@ impl documents::DocumentHook for LocationsWashHook {
         _store: &mut Store,
         _documents: imba::store::Id<documents::OpenDocuments>,
         _document: documents::DocumentId,
-        _location: Option<&editor::ResourceLocation>,
-        _doc: &editor::Document,
+        _location: Option<&editor::location::ResourceLocation>,
+        _doc: &editor::document::Document,
     ) {
     }
 }
@@ -79,7 +79,7 @@ impl imba::command::DynamicCommand for WashDocument {
         "Highlight Found Results".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(mut row) = LocationLists::row(store, self.lists, self.feed) else {
             return;
         };
@@ -122,9 +122,9 @@ impl imba::command::DynamicCommand for WashDocument {
 
         let fonts = editor::env::Fonts::of(store)();
         let theme = editor::env::Themes::of(store);
-        let markup = editor::MarkupId::mint();
+        let markup = editor::markup::MarkupId::mint();
         document.ensure_document_markup(markup);
-        let mut tints = editor::Markup::new();
+        let mut tints = editor::markup::Markup::new();
         for range in &ranges {
             tints.push_styled(range.clone(), editor::theme::StyleId::Match);
         }
@@ -157,7 +157,7 @@ impl imba::command::DynamicCommand for WashDocument {
 fn remove_washes(
     store: &mut Store,
     documents: imba::store::Id<documents::OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     row: &LocationsFeedRow,
     fx: &mut imba::command::Fx<'_>,
 ) {
@@ -189,7 +189,7 @@ fn remove_washes(
 /// (`drivers::locations::DisposeFeed`), which calls here after.
 pub fn dispose_feed(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     lists: imba::store::Id<LocationLists>,
     feed: FeedId,
     fx: &mut imba::command::Fx<'_>,
@@ -423,8 +423,8 @@ mod tests {
     fn found(path: &[&str], line: u32, column: u32, context: &str) -> FoundLocation {
         FoundLocation {
             location: ResourceLocation::new(
-                editor::ResourceType::document(),
-                editor::Authority::new("local"),
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("local"),
                 path.iter()
                     .map(|segment| segment.to_string())
                     .collect::<Vec<String>>(),

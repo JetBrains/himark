@@ -47,7 +47,7 @@ fn range_ends_extend_conservatively() {
 }
 
 fn text_of(source: &str, log: &EditLog, from: u64) -> String {
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
     let edited = match log.compose_since(from) {
         Some(operation) => text.edit(&operation),
         None => text,
@@ -92,7 +92,7 @@ fn the_bridge_undoes_mine_and_redoes_theirs() {
         "hello!",
         "the state my log describes"
     );
-    let carried = text::Text::from_string_exact("hello!").edit(&arrow);
+    let carried = text::text::Text::from_string_exact("hello!").edit(&arrow);
     let end = carried.byte_count() as u32;
     assert_eq!(
         carried.view().substring(0..end),
@@ -102,7 +102,7 @@ fn the_bridge_undoes_mine_and_redoes_theirs() {
 
     let late = Operation::insert_in(6, 6, "?");
     let placed = late.transform(&arrow);
-    let landed = text::Text::from_string_exact(">> hello").edit(&placed);
+    let landed = text::text::Text::from_string_exact(">> hello").edit(&placed);
     let end = landed.byte_count() as u32;
     assert_eq!(landed.view().substring(0..end), ">> hello?");
 }
@@ -116,7 +116,7 @@ fn strangers_bridge_across_everything() {
     assert_eq!(common_base(&mine, &theirs), None);
 
     let arrow = bridge(&mine, &theirs).expect("their histories meet end to end");
-    let landed = text::Text::from_string_exact("mine").edit(&arrow);
+    let landed = text::text::Text::from_string_exact("mine").edit(&arrow);
     let end = landed.byte_count() as u32;
     assert_eq!(landed.view().substring(0..end), "theirs");
 }

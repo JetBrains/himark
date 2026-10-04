@@ -11,13 +11,7 @@ use std::{
 
 use imba::effect::Effects;
 
-use crate::{
-    caret::MultiCaret,
-    document::{Document, FragmentKey},
-    document_layout::DocumentLayout,
-    editor_view::{EditorCommand, EditorFocus},
-    markup::MarkupId,
-};
+use crate::{caret::MultiCaret, document::{Document, FragmentKey}, document_layout::DocumentLayout, editor_view::{EditorCommand, EditorFocus}, markup::MarkupId};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EditorId(u64);
@@ -115,7 +109,7 @@ impl Editor {
         owned_markups: Vec<MarkupId>,
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         bounds: Option<FragmentKey>,

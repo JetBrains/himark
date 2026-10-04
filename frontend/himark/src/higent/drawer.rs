@@ -8,30 +8,15 @@ use crate::higent::{
     ConnectServerEffect, HostId, ListSessionsEffect, PollServerEffect, RootInfo, ServerEvent,
     SessionsPage,
 };
-use crate::{
-    ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView,
-    TreeLabel, TreeListCommand, TreeRow,
-};
+use crate::{ActivateTrigger, AppCommand, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, TreeLabel, TreeListCommand, TreeRow};
 use ahp_types::state::SessionSummary;
 use imba::list::ListOps;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::{AnyEffect, CancellationToken, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    list::{ListSlice, ListView},
-    scroll::ScrollView,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
 use crate::higent::OpenSessionRow;
 use crate::higent::{Agents, HostStatus};
-use ::editor::{EditorCommand, EditorView};
+use ::editor::{editor_view::EditorCommand, editor_view::EditorView};
 
 const PANEL_WIDTH: f32 = crate::DRAWER_WIDTH;
 const PANEL_PAD: f32 = 6.0;
@@ -160,7 +145,7 @@ impl AgentsPanel {
                 SessionSearcher,
                 store,
                 ui,
-                crate::env::Fonts::of(store),
+                ::editor::env::Fonts::of(store),
             )
             .with_folds(),
             window,
@@ -217,7 +202,7 @@ impl AgentsPanel {
         let mut slice: ListSlice<TreeRow, AgentKey> = ListSlice::new();
 
         let now = std::time::SystemTime::now();
-        let theme = crate::env::Themes::of(store);
+        let theme = ::editor::env::Themes::of(store);
         let dim = theme.ui().peeker.dim_text.0;
         let (accent, stop) = (theme.ui().chat.accent.0, theme.ui().chat.stop_color.0);
         for (server, record) in Agents::list(store) {
@@ -797,18 +782,18 @@ impl View for AgentsPanel {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let theme = crate::env::Themes::of(store);
+            let theme = ::editor::env::Themes::of(store);
             let ui_theme = theme.ui().clone();
             let header = ui_theme.panel.header_height;
             let inset = crate::panel_inset(&ui_theme);
             let title_font = crate::fonts::ui_font(ui, ui_theme.panel.title_size);
             let mut panel = container(arena, Size::new(PANEL_WIDTH, size.height));
-            let shaper = imba::TextShaper::of(ui);
+            let shaper = imba::layout::TextShaper::of(ui);
             let backdrop = leaf::<AgentsCommand>(PANEL_WIDTH, size.height)
                 .paint_instead(move |_arena, canvas, rect| {
                     crate::paint_panel_chrome(
@@ -827,7 +812,7 @@ impl View for AgentsPanel {
                 })
                 .hit_opaque();
             panel.place(0.0, 0.0, backdrop);
-            let rows = imba::Layout::layout(
+            let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
@@ -873,7 +858,7 @@ impl View for AgentsPanel {
                 panel.place(
                     inset + search.input_pad_x,
                     well_y + search.input_pad_y,
-                    imba::Layout::layout(
+                    imba::layout::Layout::layout(
                         input.display(arena, store, ui),
                         arena,
                         Constraints {

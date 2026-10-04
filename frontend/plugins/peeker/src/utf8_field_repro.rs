@@ -12,7 +12,7 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
     let mut app = Application::new(fonts);
     let _ = app.add_window();
     app.register_command(std::sync::Arc::new(TogglePeeker));
-    let mut languages = himark::SyntaxLanguages::new();
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
     app.register_syntax_languages(himarkdown::markdown_languages(languages));
     let (posted, arriving) = mpsc::channel();
@@ -22,8 +22,8 @@ fn browsing_the_peeker_over_the_docs_keeps_text_ranges_valid() {
         }),
         Arc::new(|| {}),
     );
-    let markdown_fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let markdown_fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
     for (name, source) in [
         (
             "search.md",

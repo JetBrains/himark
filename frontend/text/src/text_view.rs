@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::{Cursor, SeekMode};
+use rope::{cursor::Cursor, cursor::SeekMode};
 
 use crate::line_number::LineNumber;
 use crate::measure::{count_newlines, TextMeasure, NEWLINES, UTF16};
@@ -18,7 +18,7 @@ pub struct TextView {
 }
 
 impl TextView {
-    pub(crate) fn new(rope: rope::Rope<u8, TextMeasure>) -> Self {
+    pub(crate) fn new(rope: rope::rope::Rope<u8, TextMeasure>) -> Self {
         let byte_count = rope.len();
         let line_count = LineNumber(rope.metrics().metric_at(NEWLINES) as usize + 1);
         let mut cursor = rope.cursor();

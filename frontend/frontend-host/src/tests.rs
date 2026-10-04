@@ -133,15 +133,15 @@ struct HostedFs {
 }
 
 impl HostedFs {
-    fn doc(&self, rel: &[&str]) -> himark::ResourceLocation {
-        self.location(himark::ResourceType::document(), rel)
+    fn doc(&self, rel: &[&str]) -> editor::location::ResourceLocation {
+        self.location(editor::location::ResourceType::document(), rel)
     }
 
-    fn dir(&self, rel: &[&str]) -> himark::ResourceLocation {
-        self.location(himark::ResourceType::directory(), rel)
+    fn dir(&self, rel: &[&str]) -> editor::location::ResourceLocation {
+        self.location(editor::location::ResourceType::directory(), rel)
     }
 
-    fn location(&self, kind: himark::ResourceType, rel: &[&str]) -> himark::ResourceLocation {
+    fn location(&self, kind: editor::location::ResourceType, rel: &[&str]) -> editor::location::ResourceLocation {
         let mut path: Vec<String> = self
             .root
             .components()
@@ -153,7 +153,7 @@ impl HostedFs {
             })
             .collect();
         path.extend(rel.iter().map(|segment| segment.to_string()));
-        himark::ResourceLocation::new(kind, himark::Authority::new("local"), path)
+        editor::location::ResourceLocation::new(kind, editor::location::Authority::new("local"), path)
     }
 
     fn path(&self, rel: &[&str]) -> std::path::PathBuf {
@@ -653,7 +653,7 @@ fn dock_x(x: f32) -> f32 {
 /// pane's right edge (the pane ends where the dock begins). Mirrors
 /// `HeaderFace::new` in hidiff/src/canvas.rs.
 fn canvas_pane_button_x() -> f32 {
-    let ui = himark::Theme::embedded();
+    let ui = editor::theme::Theme::embedded();
     let chat = &ui.ui().chat;
     let zone = chat.title_size * 1.2 + chat.title_size;
     900.0 - himark::DOCK_WIDTH - chat.pad - zone * 0.5
@@ -673,14 +673,14 @@ fn derived_row_height(font_size: f32) -> f32 {
 }
 
 fn tree_row_y(index: usize) -> f32 {
-    let ui = himark::Theme::embedded();
+    let ui = editor::theme::Theme::embedded();
     let row = derived_row_height(ui.ui().tree.font_size);
 
     ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
 }
 
 fn changes_row_y(index: usize) -> f32 {
-    let ui = himark::Theme::embedded();
+    let ui = editor::theme::Theme::embedded();
     let row = derived_row_height(ui.ui().tree.font_size);
     // REFRESH rides the repository root row now — the dock is just
     // the tree under a slim pad.
@@ -692,21 +692,21 @@ fn changes_row_y(index: usize) -> f32 {
 /// plus the toolbar row. Mirrors `composer_band` in
 /// hidiff/src/canvas.rs with an empty box.
 fn canvas_composer_band() -> f32 {
-    let ui = himark::Theme::embedded();
+    let ui = editor::theme::Theme::embedded();
     let chat = &ui.ui().chat;
     chat.title_size * 1.6 + chat.pad * 1.5 + ui.ui().toolbar.height
 }
 
 fn history_row_y(index: usize) -> f32 {
-    let ui = himark::Theme::embedded();
+    let ui = editor::theme::Theme::embedded();
     let row = derived_row_height(ui.ui().tree.font_size);
     ui.ui().toolbar.height + 6.0 + row * index as f32 + row / 2.0
 }
 
-fn directory_location(path: &[&str]) -> himark::ResourceLocation {
-    himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("test"),
+fn directory_location(path: &[&str]) -> editor::location::ResourceLocation {
+    editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("test"),
         path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
     )
 }
@@ -1000,7 +1000,7 @@ fn the_workspace_tree_lists_lazily_and_opens_documents() {
 
 #[test]
 fn the_docked_tree_follows_the_focused_document() {
-    struct OpenAt(himark::ResourceLocation);
+    struct OpenAt(editor::location::ResourceLocation);
     impl himark::DynamicCommand for OpenAt {
         fn id(&self) -> &'static str {
             "test.open-at"
@@ -1124,9 +1124,9 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
         .filter(|segment| !segment.is_empty())
         .map(str::to_owned)
         .collect();
-    let folder = himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("local"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
         root_segments.clone(),
     );
 
@@ -1231,7 +1231,7 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
     // the old road, still reachable per file (the header BODY opens
     // the live file now). The working-copy canvas heads with the
     // commit composer, so the file header sits one band down.
-    let chrome_top = himark::env::Themes::of(engine.app.store())
+    let chrome_top = editor::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
@@ -1291,8 +1291,8 @@ fn the_changes_view_lists_changes_and_opens_a_diff() {
                 .cloned()
         })
         .expect("the session folder");
-    let new_side = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
+    let new_side = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
         session_folder.authority().clone(),
         {
             let mut segments = root_segments.clone();
@@ -1425,9 +1425,9 @@ fn stripes_take_the_changesets_old_text_as_base() {
         .filter(|segment| !segment.is_empty())
         .map(str::to_owned)
         .collect();
-    let folder = himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("local"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
         root_segments.clone(),
     );
     assert!(engine.perform_command(window, "file.open"));
@@ -1439,9 +1439,9 @@ fn stripes_take_the_changesets_old_text_as_base() {
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
-    let file = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("local"),
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         {
             let mut segments = root_segments.clone();
             segments.push("README.md".to_owned());
@@ -1949,7 +1949,7 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
             .expect("document");
             document
                 .editor_ids()
-                .any(|editor| matches!(document.focus(editor), himark::EditorFocus::Inlay(_)))
+                .any(|editor| matches!(document.focus(editor), editor::editor_view::EditorFocus::Inlay(_)))
         }
     };
     let mut focused = false;
@@ -2001,8 +2001,8 @@ fn table_cell_typing_keeps_the_diff_aligned_through_the_engine() {
             let mut aligned = 0;
             for range in left_ranges {
                 let boundary = range.start;
-                let mapped = diff.transform_offset(boundary, operation::Bias::Right);
-                if diff.transform_offset_back(mapped, operation::Bias::Right) != boundary {
+                let mapped = diff.transform_offset(boundary, operation::operation::Bias::Right);
+                if diff.transform_offset_back(mapped, operation::operation::Bias::Right) != boundary {
                     continue;
                 }
                 let (Some(left_top), Some(right_top)) =
@@ -2242,7 +2242,7 @@ fn an_opened_mermaid_fence_renders_through_the_pipeline() {
         "# Doc\n\n```mermaid\nflowchart TD\n    Start --> Finish\n```\n\ntail\n",
     );
     assert!(
-        himark::env::Enrichers::of(engine.app.store()).is_some_and(|passes| !passes.is_empty()),
+        editor::env::Enrichers::of(engine.app.store()).is_some_and(|passes| !passes.is_empty()),
         "the enrichment registry reached the store"
     );
     settle_until(&mut engine, "the diagram landed", |engine| {
@@ -2278,7 +2278,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
                 let document = entity.1.document();
                 document.editor_ids().any(|editor| {
                     document
-                        .enrichment_markup(himark::EnricherId("ts-brace-match"), Some(editor))
+                        .enrichment_markup(editor::enrich::EnricherId("ts-brace-match"), Some(editor))
                         .is_some_and(|markup| {
                             document.markup_styled_ranges(markup)
                                 == vec![open..open + 1, close..close + 1]
@@ -2295,7 +2295,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
                 let document = entity.1.document();
                 document.editor_ids().any(|editor| {
                     document
-                        .enrichment_markup(himark::EnricherId("ts-occurrences"), Some(editor))
+                        .enrichment_markup(editor::enrich::EnricherId("ts-occurrences"), Some(editor))
                         .is_some_and(|markup| !document.markup_styled_ranges(markup).is_empty())
                 })
             })
@@ -2304,7 +2304,7 @@ fn a_caret_move_lights_the_bracket_pair_in_an_opened_rust_file() {
 
 #[test]
 fn an_addressed_fence_embeds_a_sibling_file() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((1400, 800)).expect("surface");
 
@@ -2381,10 +2381,10 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         let _ = imba::View::perform(
             &mut view,
             &mut *engine.app.store_mut(),
-            himark::test_document::test_ui(),
-            himark::EditorCommand::Inlay {
+            ::editor::test_document::test_ui(),
+            editor::editor_view::EditorCommand::Inlay {
                 key: inlay_key,
-                command: imba::DynCommand::new(himark::EditorCommand::Viewport {
+                command: imba::dyn_view::DynCommand::new(editor::editor_view::EditorCommand::Viewport {
                     width: 1300.0,
                     top: 0.0,
                     bottom: 400.0,
@@ -2408,7 +2408,7 @@ fn an_addressed_fence_embeds_a_sibling_file() {
             })
         })
         .expect("the embed after the resize");
-    let at_install_width = himark::EditorView::complete(
+    let at_install_width = editor::editor_view::EditorView::complete(
         himark::OpenDocuments::list(store, engine.app.sole_documents())
             .into_iter()
             .find(|entity| {
@@ -2424,8 +2424,8 @@ fn an_addressed_fence_embeds_a_sibling_file() {
         720.0,
         store,
         &ui,
-        himark::test_document::test_fonts_collection(),
-        &himark::env::Themes::of(store),
+        ::editor::test_document::test_fonts_collection(),
+        &editor::env::Themes::of(store),
     )
     .content_height();
     assert!(
@@ -2547,7 +2547,7 @@ fn splitting_and_opening_the_embedded_file_survives() {
 
 #[test]
 fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let (_host, mut engine, window, fs) = hosted_engine();
     let mut surface = skia_safe::surfaces::raster_n32_premul((900, 700)).expect("surface");
     let body = "fn one() {}\nfn two() {}\nfn three() {}\nfn four() {}\nfn five() {}\n";
@@ -2608,13 +2608,13 @@ fn a_line_window_embed_is_bounded_and_survives_the_split_gauntlet() {
                     .is_some_and(|location| location.name() == "sidecar.rs")
             })
             .expect("the target document");
-        himark::EditorView::complete(
+        editor::editor_view::EditorView::complete(
             target.1.document().clone(),
             720.0,
             store,
             &ui,
-            himark::test_document::test_fonts_collection(),
-            &himark::env::Themes::of(store),
+            ::editor::test_document::test_fonts_collection(),
+            &editor::env::Themes::of(store),
         )
         .content_height()
     };
@@ -2745,9 +2745,9 @@ fn a_one_sided_diff_goes_quiet() {
         .filter(|segment| !segment.is_empty())
         .map(str::to_owned)
         .collect();
-    let folder = himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("local"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
         root_segments.clone(),
     );
     assert!(engine.perform_command(window, "file.open"));
@@ -2759,9 +2759,9 @@ fn a_one_sided_diff_goes_quiet() {
     assert!(engine.perform_command(window, "file.open"));
     settle(&mut engine);
     let request = pick_request(&mut engine, &_host.seat);
-    let file = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("local"),
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         {
             let mut segments = root_segments.clone();
             segments.push("fresh.json".to_owned());
@@ -2848,7 +2848,7 @@ fn a_one_sided_diff_goes_quiet() {
     // canvas sits in a split half here, so the body span is narrow —
     // x=90 clears the chevron and stays left of the three buttons.
     // The composer banner heads the canvas; the header sits below it.
-    let chrome_top = himark::env::Themes::of(engine.app.store())
+    let chrome_top = editor::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
@@ -3090,7 +3090,7 @@ macro_rules! fs_probe {
             engine: &mut HimarkEngine,
             surface: &mut skia_safe::Surface,
             window: u64,
-            location: himark::ResourceLocation,
+            location: editor::location::ResourceLocation,
         ) -> Option<$result> {
             let slot: std::sync::Arc<std::sync::Mutex<Option<$result>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -3133,7 +3133,7 @@ fs_probe!(
     probe_fetch,
     himark::FetchDocumentEffect,
     Option<String>,
-    |location: &himark::ResourceLocation| himark::FetchDocumentEffect {
+    |location: &editor::location::ResourceLocation| himark::FetchDocumentEffect {
         location: location.clone(),
     }
 );
@@ -3825,8 +3825,8 @@ fn a_document_channel_survives_reconnects() {
     let replica = |snapshot: &himark_ahp_ext_types::DocumentState| {
         RebaseLog::new(
             SyncState::new(
-                himark::Text::from_string_exact(&snapshot.text),
-                himark::EditLog::new(),
+                text::text::Text::from_string_exact(&snapshot.text),
+                editor::edit_log::EditLog::new(),
             ),
             snapshot.version,
         )
@@ -3841,7 +3841,7 @@ fn a_document_channel_survives_reconnects() {
         insert: &str,
     ) -> himark_ahp_ext_types::DocumentApplied {
         let state = log.display();
-        let mut builder = operation::OperationBuilder::new();
+        let mut builder = operation::builder::OperationBuilder::new();
         if at > 0 {
             builder.push_retain(at as u32);
         }
@@ -3853,7 +3853,7 @@ fn a_document_channel_survives_reconnects() {
         let edit = SyncEdit::captured(
             state.log.clone(),
             builder.finish(),
-            himark::EditIdentity::mint(),
+            editor::edit_log::EditIdentity::mint(),
         );
         let dispatch = log.local(id, edit).expect("a settled edit dispatches");
         himark_ahp_ext_types::DocumentApplied {
@@ -4392,7 +4392,7 @@ fn a_reopened_chat_pane_keeps_the_whole_transcript() {
 
     struct NoFind;
     impl imba::effect::EffectHandler<himark::FindEffect> for NoFind {
-        async fn handle(&self, _effect: himark::FindEffect) -> Vec<himark::ResourceLocation> {
+        async fn handle(&self, _effect: himark::FindEffect) -> Vec<editor::location::ResourceLocation> {
             Vec::new()
         }
     }
@@ -4588,7 +4588,7 @@ fn the_chat_runs_through_the_himark_host() {
 
     struct NoFind;
     impl imba::effect::EffectHandler<himark::FindEffect> for NoFind {
-        async fn handle(&self, _effect: himark::FindEffect) -> Vec<himark::ResourceLocation> {
+        async fn handle(&self, _effect: himark::FindEffect) -> Vec<editor::location::ResourceLocation> {
             Vec::new()
         }
     }
@@ -5088,7 +5088,7 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     let plus = plus.expect("connected");
     pick_drawer_row(&mut engine, plus);
 
-    let current_folders = |engine: &HimarkEngine| -> Vec<himark::ResourceLocation> {
+    let current_folders = |engine: &HimarkEngine| -> Vec<editor::location::ResourceLocation> {
         let entity = himark::Windows::window_ref(engine.app.store(), engine.app.sole_window())
             .expect("the window entity");
         himark::higent::session_folders(engine.app.store(), &entity.current_session())
@@ -5198,8 +5198,8 @@ fn the_session_workspace_lists_and_opens_files_through_the_himark_host() {
     let clicked =
         himark::test_driver::click(&mut engine.app, dock_x(40.0), tree_row_y(1), 900.0, 700.0);
     assert!(clicked, "the file row took the click");
-    let file = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
         folders[0].authority().clone(),
         {
             let mut segments = folders[0].path().to_vec();
@@ -5379,8 +5379,8 @@ fn two_wire_clients_converge_on_one_document() {
     let replica = |snapshot: &himark_ahp_ext_types::DocumentState| {
         RebaseLog::new(
             SyncState::new(
-                himark::Text::from_string_exact(&snapshot.text),
-                himark::EditLog::new(),
+                text::text::Text::from_string_exact(&snapshot.text),
+                editor::edit_log::EditLog::new(),
             ),
             snapshot.version,
         )
@@ -5395,7 +5395,7 @@ fn two_wire_clients_converge_on_one_document() {
         insert: &str,
     ) -> himark_ahp_ext_types::DocumentApplied {
         let state = log.display();
-        let mut builder = operation::OperationBuilder::new();
+        let mut builder = operation::builder::OperationBuilder::new();
         if at > 0 {
             builder.push_retain(at as u32);
         }
@@ -5407,7 +5407,7 @@ fn two_wire_clients_converge_on_one_document() {
         let edit = SyncEdit::captured(
             state.log.clone(),
             builder.finish(),
-            himark::EditIdentity::mint(),
+            editor::edit_log::EditIdentity::mint(),
         );
         let dispatch = log.local(id, edit).expect("a settled edit dispatches");
         himark_ahp_ext_types::DocumentApplied {
@@ -5726,9 +5726,9 @@ fn two_engines_sync_a_live_document() {
     let file_path = dir.path().join("files/shared.md");
     std::fs::create_dir_all(file_path.parent().unwrap()).expect("mkdir");
     std::fs::write(&file_path, "shared story\n").expect("seed");
-    let location = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("local"),
+    let location = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         file_path
             .canonicalize()
             .expect("canonical")
@@ -5891,9 +5891,9 @@ fn a_late_joiner_adopts_a_document_edited_before_it_opened() {
     let file_path = dir.path().join("files/shared.md");
     std::fs::create_dir_all(file_path.parent().unwrap()).expect("mkdir");
     std::fs::write(&file_path, "shared story\n").expect("seed");
-    let location = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("local"),
+    let location = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         file_path
             .canonicalize()
             .expect("canonical")
@@ -6682,7 +6682,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
 
     let edits_cell = seeded.cells[2];
 
-    let window_chrome = himark::env::Themes::of(engine.app.store())
+    let window_chrome = editor::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
@@ -6696,7 +6696,7 @@ fn a_dirless_session_gains_a_folder_and_switches_edits() {
     ));
     assert!(toolbar(&engine).edits.open, "the EDITS menu stands");
 
-    let row_h = himark::env::Themes::of(engine.app.store())
+    let row_h = editor::env::Themes::of(engine.app.store())
         .ui()
         .combo
         .menu_row_height;
@@ -6941,9 +6941,9 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         .filter(|segment| !segment.is_empty())
         .map(str::to_owned)
         .collect();
-    let folder = himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("local"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
         root_segments,
     );
     assert!(engine.perform_command(window, "file.open"));
@@ -7094,7 +7094,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
             });
             shot
         };
-        let chrome_top = himark::env::Themes::of(engine.app.store())
+        let chrome_top = editor::env::Themes::of(engine.app.store())
             .ui()
             .toolbar
             .height;
@@ -7223,7 +7223,7 @@ fn the_graph_section_expands_commits_and_commits_from_the_box() {
         composer(engine).is_some()
     });
 
-    let chrome_top = himark::env::Themes::of(engine.app.store())
+    let chrome_top = editor::env::Themes::of(engine.app.store())
         .ui()
         .toolbar
         .height;
@@ -7346,9 +7346,9 @@ fn diff_resize_probe_over_real_code() {
         .filter(|segment| !segment.is_empty())
         .map(str::to_owned)
         .collect();
-    let folder = himark::ResourceLocation::new(
-        himark::ResourceType::directory(),
-        himark::Authority::new("local"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("local"),
         root_segments,
     );
     assert!(engine.perform_command(window, "file.open"));
@@ -7521,7 +7521,7 @@ fn a_markdown_image_shows_under_its_line() {
                         .inlay
                         .view_as::<himarkdown::image::ImageInlay>()
                         .is_some_and(|picture| {
-                            interval.inlay.mode() == himark::InlayMode::Under
+                            interval.inlay.mode() == editor::markup::InlayMode::Under
                                 && picture.reference() == "shot.png"
                                 && picture.intrinsic().width == 6.0
                                 && picture.intrinsic().height == 3.0
@@ -7975,8 +7975,8 @@ fn a_reopened_document_types_exactly_once() {
 #[test]
 fn a_diff_opened_before_the_editor_does_not_double_reloads() {
     struct OpenWorkingDiff {
-        old: himark::ResourceLocation,
-        new: himark::ResourceLocation,
+        old: editor::location::ResourceLocation,
+        new: editor::location::ResourceLocation,
     }
     impl himark::DynamicCommand for OpenWorkingDiff {
         fn id(&self) -> &'static str {
@@ -8102,8 +8102,8 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         .expect("the window entity")
         .current_session();
     let folders = himark::higent::session_folders(engine.app.store(), &session);
-    let file = himark::ResourceLocation::new(
-        himark::ResourceType::document(),
+    let file = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
         folders[0].authority().clone(),
         {
             let mut segments = folders[0].path().to_vec();
@@ -8112,7 +8112,7 @@ fn implementations_stream_into_the_search_dock_over_the_wire() {
         },
     );
 
-    struct Open(himark::ResourceLocation);
+    struct Open(editor::location::ResourceLocation);
     impl himark::DynamicCommand for Open {
         fn id(&self) -> &'static str {
             "test.open-lib"

@@ -4,7 +4,7 @@
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use imba::{container::Container, store::Store, thunk_ext::ThunkExt, UiCtx, View};
+use imba::{container::Container, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
 use ahp_wire::client::{HostId, SessionChannel};
 use hikit::combo::{Combo, ComboCommand, ComboOption};
@@ -46,7 +46,7 @@ pub enum ToolbarAsk {
 }
 
 impl SessionToolbar {
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
         let compact = |mut combo: Combo| {
             combo.compact = true;
             combo

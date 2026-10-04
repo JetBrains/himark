@@ -26,7 +26,7 @@ use ahp_wire::client::SessionUri as Uri;
 use comments::{
     AnnotationId, Announce, CommentDelta, CommentRecord, CommentSeed, Comments, EntryRecord,
 };
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
 
@@ -195,7 +195,7 @@ fn place(row: &CommentsWire, session: &Uri, annotation: &Annotation) -> Option<R
     let authority = ahp_wire::client::route_authority(server, session);
     uris.location_of(
         &ahp_wire::client::ResourceUri::new(annotation.resource.clone()),
-        editor::ResourceType::document(),
+        editor::location::ResourceType::document(),
         &authority,
     )
 }
@@ -248,7 +248,7 @@ impl imba::command::DynamicCommand for SnapshotLanded {
     fn name(&self) -> String {
         "Comments Snapshot".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire).cloned() else {
             return;
         };
@@ -298,7 +298,7 @@ impl imba::command::DynamicCommand for Polled {
     fn name(&self) -> String {
         "Comments Update".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire).cloned() else {
             return;
         };
@@ -342,7 +342,7 @@ fn relaunch_poll(store: &Store, wire: imba::store::Id<CommentsWire>, fx: &mut Fx
 pub fn sync(
     store: &mut Store,
     wire: imba::store::Id<CommentsWire>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fx: &mut Fx<'_>,
 ) {
     let Some(row) = of(store, wire).cloned() else {
@@ -524,7 +524,7 @@ impl imba::command::DynamicCommand for Sent {
     fn name(&self) -> String {
         "Comments Sent".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(comments) = of(store, self.wire).map(|row| row.comments) else {
             return;
         };
@@ -593,14 +593,14 @@ fn author_meta(author: &str) -> Option<serde_json::Map<String, serde_json::Value
     Some(meta)
 }
 
-fn wire_text(text: &StringOrMarkdown) -> editor::Text {
-    editor::Text::from_string_exact(match text {
+fn wire_text(text: &StringOrMarkdown) -> text::text::Text {
+    text::text::Text::from_string_exact(match text {
         StringOrMarkdown::Plain(text) => text,
         StringOrMarkdown::Markdown { markdown } => markdown,
     })
 }
 
-fn wire_string(text: &editor::Text) -> String {
+fn wire_string(text: &text::text::Text) -> String {
     let mut view = text.view();
     let end = view.byte_count().min(u32::MAX as usize) as u32;
     view.substring(0..end)

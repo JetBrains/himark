@@ -6,7 +6,7 @@ use std::sync::Arc;
 use ahp_wire::fs::ClientDirectory;
 use ahp_wire::client::{LocationsAsk, ResourceUriMap, SearchKind};
 use crate::{LocationsChannel, LspLocationsEffect, LspLocationsKind, SearchLocationsEffect};
-use editor::{Authority, ResourceLocation, ResourceType};
+use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
 use imba::effect::EffectHandler;
 
 pub struct RouteSearchLocations {

@@ -17,7 +17,7 @@ use changesview::hichanges::{
     before_ref_location, ChangeAction, ChangeEntry, ChangeSets, Changes, ChangesStatus,
     DigestedChangeset,
 };
-use editor::{ResourceLocation, ResourceType};
+use editor::{location::ResourceLocation, location::ResourceType};
 use himark_ahp_ext_types::history as history_wire;
 use imba::command::{Fx, Verb};
 use imba::{effect::AnyEffect, store::Store};
@@ -448,7 +448,7 @@ fn relaunch_session_poll(
 /// folders the mutation touched re-ask. The model NOTES the folders
 /// (its own row schema); the driver drains and runs the asks.
 fn run_tail(
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     store: &mut Store,
     changes: imba::store::Id<ChangeSets>,
     fx: &mut Fx<'_>,
@@ -481,7 +481,7 @@ impl imba::command::DynamicCommand for SnapshotLanded {
     fn name(&self) -> String {
         "Changes Snapshot".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         apply_snapshot(store, ui, self.wire, &self.folder, self.result.clone(), fx);
     }
 }
@@ -490,7 +490,7 @@ impl imba::command::DynamicCommand for SnapshotLanded {
 /// it the way the command does.
 pub fn apply_snapshot(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     wire: imba::store::Id<ChangesWire>,
     folder: &ResourceLocation,
     result: Result<changesview::hichanges::DigestedChangeset, String>,
@@ -522,7 +522,7 @@ impl imba::command::DynamicCommand for PollDrained {
     fn name(&self) -> String {
         "Changes Poll".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         apply_poll(
             store,
             ui,
@@ -539,7 +539,7 @@ impl imba::command::DynamicCommand for PollDrained {
 /// the way the command does.
 pub fn apply_poll(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     wire: imba::store::Id<ChangesWire>,
     folder: &ResourceLocation,
     serial: u64,
@@ -580,7 +580,7 @@ impl imba::command::DynamicCommand for SessionLanded {
     fn name(&self) -> String {
         "Changes Catalog".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(row) = of(store, self.wire) else {
             return;
         };
@@ -633,7 +633,7 @@ impl imba::command::DynamicCommand for SessionPolled {
     fn name(&self) -> String {
         "Changes Catalog Update".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         // The catalog actions apply against windows — the installed
         // shell road carries them; the poll re-arms here either way.
         if let Some(road) = store
@@ -657,7 +657,7 @@ impl imba::command::DynamicCommand for Dispatched {
     fn name(&self) -> String {
         "Changes Dispatch".to_owned()
     }
-    fn perform(&self, _store: &mut Store, _ui: &imba::UiCtx, _fx: &mut Fx<'_>) {
+    fn perform(&self, _store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut Fx<'_>) {
         if let Err(error) = &self.result {
             eprintln!("[hichanges] workingDirectorySet failed: {error}");
         }

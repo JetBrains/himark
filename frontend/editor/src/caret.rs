@@ -4,7 +4,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use operation::{Bias, Operation};
+use operation::{operation::Bias, operation::Operation};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub enum DragOrigin {

@@ -1,14 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
 use skia_safe::{Contains as _, Rect, Size};
 
 use crate::workbench_node::{NodeCommand, PaneSlot, Panel, WorkbenchNode};
@@ -189,12 +182,12 @@ impl Workbench {
     pub(crate) fn perform_dock(
         &mut self,
         store: &mut imba::store::Store,
-        ui: &imba::UiCtx,
-        command: imba::DynCommand,
-        fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
+        ui: &imba::ui::UiCtx,
+        command: imba::dyn_view::DynCommand,
+        fx: &mut imba::effect::Effects<'_, imba::dyn_view::DynCommand>,
     ) {
         if let Some(dock) = &mut self.dock {
-            imba::DynView::perform_dyn(dock, store, ui, command, fx);
+            imba::dyn_view::DynView::perform_dyn(dock, store, ui, command, fx);
         }
     }
 
@@ -378,7 +371,7 @@ impl View for Workbench {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         WorkbenchFrame {
             workbench: self,
             store,
@@ -510,9 +503,9 @@ struct WorkbenchFrame<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for WorkbenchFrame<'_> {}
+impl imba::layout::LayoutValue for WorkbenchFrame<'_> {}
 
-impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
+impl<'a> imba::layout::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
     fn layout(
         self,
         arena: &'a Arena,
@@ -564,7 +557,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         };
 
         let Some(chat) = chat else {
-            let root = imba::Layout::layout(
+            let root = imba::layout::Layout::layout(
                 workbench.root.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
@@ -618,7 +611,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let engaged =
             chat_column_engaged(size.width, &theme.ui().window) && !workbench.chat_minimized();
         if workbench.root.is_vacant() || (workbench.chat_fronted() && !engaged) {
-            let column = imba::Layout::layout(
+            let column = imba::layout::Layout::layout(
                 chat.node.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
@@ -654,7 +647,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         }
 
         if !engaged {
-            let root = imba::Layout::layout(
+            let root = imba::layout::Layout::layout(
                 workbench.root.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(
@@ -714,7 +707,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         let root_width = (geometry.split_width - column_width).max(1.0);
         let root_rect = Rect::from_xywh(root_x, geometry.top, root_width, split_height);
 
-        let column = imba::Layout::layout(
+        let column = imba::layout::Layout::layout(
             chat.node.display(arena, store, ui),
             arena,
             Constraints::tight(Size::new(
@@ -725,7 +718,7 @@ impl<'a> imba::Layout<'a, WorkbenchCommand> for WorkbenchFrame<'a> {
         .map(WorkbenchCommand::Chat)
         .focus_scope(workbench.chat_focused());
 
-        let root = imba::Layout::layout(
+        let root = imba::layout::Layout::layout(
             workbench.root.display(arena, store, ui),
             arena,
             Constraints::tight(Size::new(root_width, (split_height - header_h).max(1.0))),

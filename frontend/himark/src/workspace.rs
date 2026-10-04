@@ -5,7 +5,7 @@ use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
 use crate::app::{AppCommand, AppFx};
-use crate::ResourceLocation;
+use editor::location::ResourceLocation;
 
 pub use documents::{
     CreateDocumentEffect, DeleteResourceEffect, ListDirectoryEffect, MoveResourceEffect,
@@ -81,7 +81,7 @@ pub fn open_by_location_effect(
 
 pub fn open_locations(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: crate::WindowId,
     locations: &[ResourceLocation],
     fx: &mut AppFx<'_>,

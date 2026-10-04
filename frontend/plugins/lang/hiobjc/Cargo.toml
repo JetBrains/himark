@@ -13,4 +13,5 @@ tree-sitter-objc = "3.0.2"
 tree-sitter-c = "0.24.2"
 
 [dev-dependencies]
+text = { path = "../../../text" }
 imba = { path = "../../../imba" }

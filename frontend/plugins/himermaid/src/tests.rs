@@ -7,11 +7,11 @@ mod helpers {
     use super::super::*;
 
     pub(crate) fn fonts() -> skia_safe::textlayout::FontCollection {
-        himark::test_document::test_fonts_collection().clone()
+        ::editor::test_document::test_fonts_collection().clone()
     }
 
-    pub(crate) fn theme() -> himark::Theme {
-        himark::Theme::embedded()
+    pub(crate) fn theme() -> editor::theme::Theme {
+        editor::theme::Theme::embedded()
     }
 
     pub(crate) fn languages() -> Arc<SyntaxLanguages> {
@@ -20,16 +20,16 @@ mod helpers {
         Arc::new(himarkdown::markdown_languages(registry))
     }
 
-    pub(crate) fn enrichers() -> Arc<himark::Enrichers> {
-        let mut registry = himark::Enrichers::new();
+    pub(crate) fn enrichers() -> Arc<editor::enrich::Enrichers> {
+        let mut registry = editor::enrich::Enrichers::new();
         register_enricher(&mut registry);
         Arc::new(registry)
     }
 
-    pub(crate) fn settle(document: &mut himark::Document, registry: &Arc<SyntaxLanguages>) {
+    pub(crate) fn settle(document: &mut editor::document::Document, registry: &Arc<SyntaxLanguages>) {
         let store = &imba::store::Store::new();
-        let ui = himark::test_document::test_ui();
-        let outcome = himark::ReparseWork::capture(document, registry.clone())
+        let ui = ::editor::test_document::test_ui();
+        let outcome = editor::reparse::ReparseWork::capture(document, registry.clone())
             .expect("parse")
             .run_reparse();
         let invalidated = document.apply_reparse_outcome(
@@ -46,12 +46,12 @@ mod helpers {
     }
 
     trait RunReparse {
-        fn run_reparse(self) -> himark::ReparseOutcome;
+        fn run_reparse(self) -> editor::reparse::ReparseOutcome;
     }
 
-    impl RunReparse for himark::ReparseWork {
-        fn run_reparse(self) -> himark::ReparseOutcome {
-            himark::ReparseHandler(himark::test_support::test_workshop(theme())).reparse(self)
+    impl RunReparse for editor::reparse::ReparseWork {
+        fn run_reparse(self) -> editor::reparse::ReparseOutcome {
+            editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme())).reparse(self)
         }
     }
 }
@@ -59,7 +59,7 @@ mod helpers {
 use super::*;
 
 fn diagram_inlay(
-    document: &himark::Document,
+    document: &editor::document::Document,
 ) -> Option<(Range<u32>, InlayMode, bool, Option<String>)> {
     let len = document.text().byte_count() as u32;
     document
@@ -79,11 +79,11 @@ fn diagram_inlay(
 #[test]
 fn a_mermaid_fence_carries_the_diagram_under_it() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "# Title\n\n```mermaid\nflowchart TD\n    Start --> Finish\n```\n\ntail\n";
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "markdown",
         &registry,
         store,
@@ -120,11 +120,11 @@ fn a_mermaid_fence_carries_the_diagram_under_it() {
 #[test]
 fn typing_in_the_fence_rerenders_the_diagram() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "```mermaid\nflowchart TD\n    Start --> Middle\n```\n";
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "markdown",
         &registry,
         store,
@@ -138,7 +138,7 @@ fn typing_in_the_fence_rerenders_the_diagram() {
     let at = source.find("\n```").expect("closing fence") as u32;
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, at, "\n    Middle --> Finish"),
+        &operation::operation::Operation::insert_in(len, at, "\n    Middle --> Finish"),
         store,
         ui,
         &fonts(),
@@ -164,10 +164,10 @@ fn typing_in_the_fence_rerenders_the_diagram() {
 #[test]
 fn a_pure_mermaid_file_renders_source_plus_diagram() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "flowchart LR\n    A --> B\n    B --> C\n";
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "mmd",
         &languages(),
         store,
@@ -183,20 +183,20 @@ fn a_pure_mermaid_file_renders_source_plus_diagram() {
     assert!(is_diagram);
 
     let extras: Vec<_> = document.document_scoped_markups().collect();
-    assert!(himark::OverlaidMarkup::new(document.markup(), &extras)
+    assert!(editor::markup::OverlaidMarkup::new(document.markup(), &extras)
         .block_marks_in(0..source.len() as u32)
         .ids()
-        .contains(&himark::StyleId::SourceCode));
+        .contains(&editor::markup::StyleId::SourceCode));
 }
 
 #[test]
 fn broken_source_shows_the_error_strip_until_it_parses() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "```mermaid\nnot a diagram at all\n```\n";
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "markdown",
         &registry,
         store,
@@ -211,11 +211,11 @@ fn broken_source_shows_the_error_strip_until_it_parses() {
     let at = source.find("not a diagram").expect("start") as u32;
     let tail = document.text().byte_count() as u32 - at - "not a diagram at all".len() as u32;
     document.edit(
-        &operation::Operation::from_ops([
-            operation::Op::Retain(at),
-            operation::Op::Delete("not a diagram at all".into()),
-            operation::Op::Insert("flowchart TD\n    A --> B".into()),
-            operation::Op::Retain(tail),
+        &operation::operation::Operation::from_ops([
+            operation::op::Op::Retain(at),
+            operation::op::Op::Delete("not a diagram at all".into()),
+            operation::op::Op::Insert("flowchart TD\n    A --> B".into()),
+            operation::op::Op::Retain(tail),
         ]),
         store,
         ui,

@@ -253,11 +253,11 @@ where
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a crate::ui::UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let inner = ThunkBox::new(
                 arena,
-                crate::Layout::layout(self.view.display(arena, store, ui), arena, constraints)
+                crate::layout::Layout::layout(self.view.display(arena, store, ui), arena, constraints)
                     .map(TooltipCommand::Host),
             );
             let tip = match &self.hover {
@@ -265,7 +265,7 @@ where
                     *anchor,
                     ThunkBox::new(
                         arena,
-                        crate::Layout::layout(
+                        crate::layout::Layout::layout(
                             tip.display(arena, store, ui),
                             arena,
                             Constraints::tight(constraints.max).loosen(),
@@ -408,8 +408,8 @@ mod tests {
             _arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
-        ) -> impl crate::Layout<'a, u32> + crate::LayoutValue + 'a {
-            crate::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(200.0, 40.0))
+        ) -> impl crate::layout::Layout<'a, u32> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(200.0, 40.0))
         }
     }
 
@@ -430,8 +430,8 @@ mod tests {
             _arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
-        ) -> impl crate::Layout<'a, Infallible> + crate::LayoutValue + 'a {
-            crate::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(60.0, 24.0))
+        ) -> impl crate::layout::Layout<'a, Infallible> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| leaf(60.0, 24.0))
         }
     }
 
@@ -448,7 +448,7 @@ mod tests {
         let commands = {
             let arena = Arena::default();
             let store = Store::new();
-            let widget = crate::Layout::layout(
+            let widget = crate::layout::Layout::layout(
                 view.display(&arena, &store, &ui),
                 &arena,
                 Constraints::tight(Size::new(200.0, 40.0)),
@@ -471,7 +471,7 @@ mod tests {
         let arena = Arena::default();
         let store = Store::new();
         let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let mut widget = crate::Layout::layout(
+        let mut widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 40.0)),
@@ -569,7 +569,7 @@ mod tests {
         let arena = Arena::default();
         let store = Store::new();
         let ui = crate::ui::UiCtx::dont_use_too_slow();
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 40.0)),

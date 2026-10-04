@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use operation::{Bias, Op, Operation};
+use operation::{operation::Bias, op::Op, operation::Operation};
 
 use crate::document_layout::DocumentLayout;
 

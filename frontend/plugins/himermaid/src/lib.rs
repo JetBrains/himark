@@ -4,16 +4,18 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use himark::{
-    Enricher, EnricherId, Enrichers, Enrichment, Inlay, InlayMode, SyntaxLanguage, SyntaxLanguages,
-    SyntaxTree,
-};
-use imba::{
-    arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt, UiCtx,
-    View,
-};
+use editor::enrich::Enricher;
+use editor::enrich::EnricherId;
+use editor::enrich::Enrichers;
+use editor::enrich::Enrichment;
+use editor::markup::Inlay;
+use editor::markup::InlayMode;
+use editor::reparse::SyntaxLanguage;
+use editor::reparse::SyntaxLanguages;
+use editor::reparse::SyntaxTree;
+use imba::{arena::Arena, constraints::Constraints, store::Store, svg::SvgView, thunk_ext::ThunkExt, ui::UiCtx, View};
 use skia_safe::{Canvas, Rect, Size};
-use text::Text;
+use text::text::Text;
 
 pub fn register(registry: &mut SyntaxLanguages) {
     registry.register(&["mermaid", "mmd"], Arc::new(MermaidLanguage));
@@ -34,10 +36,10 @@ impl Enricher for MermaidEnricher {
 
     fn derive<'a>(
         &'a self,
-        input: &'a himark::EnrichInput,
-        _cx: &'a himark::EnrichCx<'a>,
-    ) -> himark::EnrichFuture<'a> {
-        let mut builder = himark::Markup::builder();
+        input: &'a editor::enrich::EnrichInput,
+        _cx: &'a editor::enrich::EnrichCx<'a>,
+    ) -> editor::enrich::EnrichFuture<'a> {
+        let mut builder = editor::markup::Markup::builder();
 
         let mut changed: Vec<Range<u32>> = Vec::new();
         let byte_count = input.text.byte_count().min(u32::MAX as usize) as u32;
@@ -77,7 +79,7 @@ impl Enricher for MermaidEnricher {
             }
         }
         changed.sort_by_key(|range| range.start);
-        himark::enrich_ready(Enrichment {
+        editor::enrich::ready(Enrichment {
             replacement: builder,
             changed,
         })
@@ -93,7 +95,7 @@ impl SyntaxTree for MermaidParse {
         Box::new(MermaidParse)
     }
 
-    fn edit(&mut self, _operation: &operation::Operation, _view: &mut text::TextView, _base: u32) {}
+    fn edit(&mut self, _operation: &operation::operation::Operation, _view: &mut text::text_view::TextView, _base: u32) {}
 
     fn changed_since(&self, _old: &dyn SyntaxTree) -> Option<Vec<Range<u32>>> {
         Some(Vec::new())
@@ -120,10 +122,10 @@ impl SyntaxLanguage for MermaidLanguage {
         _range: Range<u32>,
         _tree: &dyn SyntaxTree,
         _changed: &[Range<u32>],
-        _replacement: &mut himark::MarkupBuilder,
+        _replacement: &mut editor::markup::MarkupBuilder,
         _invalidated: &mut Vec<Range<u32>>,
         _fonts: &skia_safe::textlayout::FontCollection,
-        _theme: &himark::Theme,
+        _theme: &editor::theme::Theme,
     ) {
     }
 }
@@ -206,7 +208,7 @@ impl MermaidView {
             }
             Outcome::Error(message) => {
                 let font = himark::fonts::ui_text_font(ui, 12.0);
-                imba::TextShaper::of(ui).draw(
+                imba::layout::TextShaper::of(ui).draw(
                     canvas,
                     &font,
                     message.as_ref(),
@@ -246,8 +248,8 @@ impl View for MermaidView {
         _arena: &'a Arena,
         _store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = self.scaled(constraints.max.width);
             imba::leaf::leaf(size.width, size.height)
                 .paint_instead(move |_, canvas, rect| self.paint(ui, canvas, rect))

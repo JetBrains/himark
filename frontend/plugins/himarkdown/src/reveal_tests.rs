@@ -6,9 +6,9 @@ use super::*;
 #[test]
 fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let fonts = himark::test_document::test_fonts_collection();
-    let theme = himark::Theme::embedded();
+    let ui = ::editor::test_document::test_ui();
+    let fonts = ::editor::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
     let mut document = document_from_markdown(
         "# Title\n\nsome **bold** words\n",
         store,
@@ -19,7 +19,7 @@ fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
     let editor = document.add_editor(
         700.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         store,
         ui,
@@ -28,11 +28,11 @@ fn syntax_reveals_on_the_caret_line_and_rehides_off_it() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let hidden_at = |document: &himark::Document, line: std::ops::Range<u32>| {
+    let hidden_at = |document: &editor::document::Document, line: std::ops::Range<u32>| {
         let mut inline = Vec::new();
         let mut hidden = Vec::new();
         let extras = document.extras_keyed(editor);
-        himark::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
+        editor::markup::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
             line,
             &mut inline,
             &mut hidden,

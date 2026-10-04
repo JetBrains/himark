@@ -305,11 +305,11 @@ fn app_fonts() -> AppFonts {
     AppFonts::platform()
 }
 
-fn enrichment_passes() -> himark::Enrichers {
-    let mut enrichers = himarkdown::markdown_enrichers(himark::Enrichers::new());
+fn enrichment_passes() -> editor::enrich::Enrichers {
+    let mut enrichers = himarkdown::markdown_enrichers(editor::enrich::Enrichers::new());
     himermaid::register_enricher(&mut enrichers);
 
-    hisitter::register_caret_enrichers(&mut enrichers);
+    hisitter::caret_passes::register_caret_enrichers(&mut enrichers);
     enrichers
 }
 
@@ -353,11 +353,11 @@ fn autostart_himark_host() -> Option<String> {
     None
 }
 
-fn syntax_languages() -> himark::SyntaxLanguages {
-    static LANGUAGES: std::sync::OnceLock<himark::SyntaxLanguages> = std::sync::OnceLock::new();
+fn syntax_languages() -> editor::reparse::SyntaxLanguages {
+    static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> = std::sync::OnceLock::new();
     LANGUAGES
         .get_or_init(|| {
-            let mut languages = himark::SyntaxLanguages::new();
+            let mut languages = editor::reparse::SyntaxLanguages::new();
             hirust::register(&mut languages);
             hipython::register(&mut languages);
             hijavascript::register(&mut languages);
@@ -437,7 +437,7 @@ impl HimarkEngine {
         // ONE policy: what the diff view computes with is what the
         // chat's cells are built with.
         let languages = Arc::new(syntax_languages());
-        let diff_policy: Arc<dyn himark::diff::DiffPolicy> =
+        let diff_policy: Arc<dyn ::editor::diff::DiffPolicy> =
             Arc::new(structdiff::Structural::new(Arc::clone(&languages)));
         app.register_diff_policy(Arc::clone(&diff_policy));
         app.register_enrichers(enrichment_passes());
@@ -893,7 +893,7 @@ impl HimarkEngine {
     }
 
     pub fn toolbar_height(&self) -> f32 {
-        ::himark::env::Themes::of(self.app.store())
+        editor::env::Themes::of(self.app.store())
             .ui()
             .toolbar
             .height
@@ -1092,7 +1092,7 @@ impl HimarkEngine {
                 },
             );
 
-            himark::InstalledChangeSink::install(
+            editor::change_sink::InstalledChangeSink::install(
                 &mut self.app.store_mut(),
                 Arc::new(docsync::SyncSink),
             );
@@ -1192,7 +1192,7 @@ impl HimarkEngine {
         self.host = Some(bridge);
     }
 
-    pub fn host_picked(&mut self, request: u64, locations: Vec<himark::ResourceLocation>) -> bool {
+    pub fn host_picked(&mut self, request: u64, locations: Vec<editor::location::ResourceLocation>) -> bool {
         self.host
             .as_ref()
             .is_some_and(|host| host.requests.fulfill(request, Box::new(locations)))
@@ -1201,7 +1201,7 @@ impl HimarkEngine {
     pub fn host_picked_folder(
         &mut self,
         request: u64,
-        location: Option<himark::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
     ) -> bool {
         self.host
             .as_ref()
@@ -1238,7 +1238,7 @@ impl HimarkEngine {
     pub fn host_listed(
         &mut self,
         request: u64,
-        entries: Option<Vec<himark::ResourceLocation>>,
+        entries: Option<Vec<editor::location::ResourceLocation>>,
     ) -> bool {
         self.host
             .as_ref()
@@ -1913,10 +1913,10 @@ fn document_for(
     name: &str,
     source: &str,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
-) -> himark::Document {
+    theme: &editor::theme::Theme,
+) -> editor::document::Document {
     himark::hiahp::open::document_for(&syntax_languages(), name, source, store, ui, fonts, theme)
 }
 

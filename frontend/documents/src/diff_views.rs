@@ -15,7 +15,7 @@ use imba::View as _;
 
 use crate::diffs::{DiffView, DiffViewId};
 use crate::{DocumentsCommand, OpenDocuments};
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 
 /// The ONE off-thread step both diff roads share: ensure each side is
 /// a REGISTERED document. An OPEN side passes through by id (no
@@ -90,8 +90,8 @@ pub fn gather_diff_view(
     pair: &DiffView,
     store: &Store,
     documents: imba::store::Id<OpenDocuments>,
-) -> Option<editor::UnifiedDiffView> {
-    let left_view = editor::EditorView {
+) -> Option<editor::unified_diff::UnifiedDiffView> {
+    let left_view = editor::editor_view::EditorView {
         document: OpenDocuments::document(store, documents, pair.left.document())?,
         editor: pair.left.editor(),
         reports_geometry: true,
@@ -99,7 +99,7 @@ pub fn gather_diff_view(
         gutter_width: 0.0,
         base: None,
     };
-    let right_view = editor::EditorView {
+    let right_view = editor::editor_view::EditorView {
         document: OpenDocuments::document(store, documents, pair.right.document())?,
         editor: pair.right.editor(),
         reports_geometry: true,
@@ -109,7 +109,7 @@ pub fn gather_diff_view(
     };
     let state = match &pair.state {
         Some(state) => state.clone(),
-        None => editor::DiffViewState::attach(
+        None => editor::split_diff::DiffViewState::attach(
             pair.diff,
             &left_view.document,
             &right_view.document,
@@ -118,7 +118,7 @@ pub fn gather_diff_view(
             None,
         )?,
     };
-    Some(editor::UnifiedDiffView::new(editor::SplitDiffView::new(
+    Some(editor::unified_diff::UnifiedDiffView::new(editor::split_diff::SplitDiffView::new(
         left_view, right_view, state,
     )))
 }
@@ -132,9 +132,9 @@ pub fn gather_diff_view(
 pub fn perform_diff_view(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     id: DiffViewId,
-    command: editor::UnifiedDiffCommand,
+    command: editor::unified_diff::UnifiedDiffCommand,
     fx: &mut Effects<'_, DocumentsCommand>,
 ) {
     let Some(mut pair) = OpenDocuments::take_diff_view(store, documents, id) else {
@@ -145,7 +145,7 @@ pub fn perform_diff_view(
         return;
     };
     fx.scope(
-        move |command: editor::UnifiedDiffCommand| {
+        move |command: editor::unified_diff::UnifiedDiffCommand| {
             DocumentsCommand::DiffView(id, Box::new(command))
         },
         |fx| view.perform(store, ui, command, fx),
@@ -178,7 +178,7 @@ pub fn perform_diff_view(
 pub fn sync_diff_dressing(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fx: &mut Effects<'_, DocumentsCommand>,
 ) {
     for id in OpenDocuments::take_stale_view_candidates(store, documents) {
@@ -205,7 +205,7 @@ pub fn sync_diff_dressing(
             documents,
             ui,
             id,
-            editor::UnifiedDiffCommand::Split(editor::SplitDiffCommand::Resync),
+            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
             fx,
         );
     }
@@ -225,7 +225,7 @@ pub fn teardown_diff_view(
 ) {
     // Teardown-only road (dismantle/destroy/retire carry no UiCtx);
     // the release may reshape a surviving base document's markup once.
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let Some(pair) = OpenDocuments::take_diff_view(store, documents, id) else {
         return;
     };
@@ -247,7 +247,7 @@ pub fn teardown_diff_view(
         documents,
         ui,
         pair.diff,
-        &mut imba::effect::Batch::<editor::UnifiedDiffCommand>::new().effects(),
+        &mut imba::effect::Batch::<editor::unified_diff::UnifiedDiffCommand>::new().effects(),
     );
 }
 
@@ -258,10 +258,10 @@ pub fn teardown_diff_view(
 pub fn rewrap_pair(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     id: DiffViewId,
     width: f32,
-    fx: &mut Effects<'_, editor::UnifiedDiffCommand>,
+    fx: &mut Effects<'_, editor::unified_diff::UnifiedDiffCommand>,
 ) {
     let Some(mut pair) = OpenDocuments::take_diff_view(store, documents, id) else {
         return;
@@ -270,7 +270,7 @@ pub fn rewrap_pair(
         OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     };
-    if view.layout == editor::DiffLayout::Split {
+    if view.layout == editor::unified_diff::DiffLayout::Split {
         OpenDocuments::put_diff_view(store, documents, id, pair);
         return;
     }
@@ -280,8 +280,8 @@ pub fn rewrap_pair(
     let right_editor = view.split.right.editor;
     let inline = view.inline_editor;
     fx.scope(
-        |c: editor::EditorCommand| {
-            editor::UnifiedDiffCommand::Split(editor::SplitDiffCommand::Left(c))
+        |c: editor::editor_view::EditorCommand| {
+            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Left(c))
         },
         |fx| {
             view.split
@@ -291,8 +291,8 @@ pub fn rewrap_pair(
         },
     );
     fx.scope(
-        |c: editor::EditorCommand| {
-            editor::UnifiedDiffCommand::Split(editor::SplitDiffCommand::Right(c))
+        |c: editor::editor_view::EditorCommand| {
+            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Right(c))
         },
         |fx| {
             view.split
@@ -303,7 +303,7 @@ pub fn rewrap_pair(
     );
     if let Some(inline) = inline {
         fx.scope(
-            |c: editor::EditorCommand| editor::UnifiedDiffCommand::Inline(c),
+            |c: editor::editor_view::EditorCommand| editor::unified_diff::UnifiedDiffCommand::Inline(c),
             |fx| {
                 view.split
                     .right
@@ -315,7 +315,7 @@ pub fn rewrap_pair(
     view.perform(
         store,
         ui,
-        editor::UnifiedDiffCommand::Split(editor::SplitDiffCommand::Resync),
+        editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
         fx,
     );
     OpenDocuments::put_document(
@@ -368,7 +368,7 @@ fn register_or_reuse(
 pub fn install_opened_pair(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     pair: OpenedDiffPair,
     embedded: bool,
 ) -> Option<DiffViewId> {
@@ -394,7 +394,7 @@ pub fn install_opened_pair(
 pub fn build_diff_view(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     left: crate::DocumentId,
     right: crate::DocumentId,
     half_width: f32,
@@ -409,13 +409,13 @@ pub fn build_diff_view(
         .and_then(|document| document.diff(diff).map(|entry| entry.markup()))?;
 
     let mut open =
-        |document_id: crate::DocumentId, marks: editor::MarkupId| -> Option<crate::EditorIdView> {
+        |document_id: crate::DocumentId, marks: editor::markup::MarkupId| -> Option<crate::EditorIdView> {
             let mut document = OpenDocuments::document(store, documents, document_id)?;
 
             let editor = document.add_editor(
                 half_width,
                 None,
-                editor::EditorBuild::Bounded,
+                editor::document::EditorBuild::Bounded,
                 &[marks],
                 store,
                 ui,
@@ -449,7 +449,7 @@ pub fn build_diff_view(
     let state = {
         let left_document = OpenDocuments::document_ref(store, documents, left)?;
         let right_document = OpenDocuments::document_ref(store, documents, right)?;
-        editor::DiffViewState::attach(
+        editor::split_diff::DiffViewState::attach(
             diff,
             left_document,
             right_document,

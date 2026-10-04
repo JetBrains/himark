@@ -73,10 +73,10 @@ impl crate::DynamicCommand for OpenEditedFile {
             return;
         };
         let authority =
-            editor::Authority::new(crate::higent::client::authority(self.server, &self.session));
+            editor::location::Authority::new(crate::higent::client::authority(self.server, &self.session));
         let Some(location) = uris.location_of(
             &crate::higent::ResourceUri::new(self.uri.as_str()),
-            editor::ResourceType::document(),
+            editor::location::ResourceType::document(),
             &authority,
         ) else {
             return;

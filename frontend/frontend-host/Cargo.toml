@@ -9,8 +9,10 @@ name = "himark_api"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
+text = { path = "../text" }
 demo = { path = "../plugins/demo" }
 himark = { path = "../himark" }
+editor = { path = "../editor" }
 structdiff = { path = "../structdiff" }
 myersdiff = { path = "../myersdiff" }
 himarkdown = { path = "../plugins/himarkdown" }
@@ -95,6 +97,7 @@ desktop = { path = "../desktop" }
 rebase = { path = "../rebase" }
 documents = { path = "../documents" }
 himark = { path = "../himark", features = ["test-support"] }
+editor = { path = "../editor" }
 
 [build-dependencies]
 cbindgen = "0.29.4"

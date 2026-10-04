@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 
 use crate::caret::MultiCaret;
 use crate::editor::EditorId;

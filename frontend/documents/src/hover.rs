@@ -9,10 +9,10 @@
 use imba::effect::{CancellationToken, Effects};
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
-use imba::UiCtx;
+use imba::ui::UiCtx;
 
 use crate::{DocumentId, LineCol};
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 
 #[derive(Clone, Debug)]
 pub struct HoverInfo {
@@ -58,9 +58,9 @@ pub struct Hover {
 
     arming: Option<Arming>,
 
-    installed: Option<(DocumentId, ::editor::EditorId)>,
-    markup: Option<::editor::MarkupId>,
-    key: Option<::editor::InlayKey>,
+    installed: Option<(DocumentId, ::editor::editor::EditorId)>,
+    markup: Option<::editor::markup::MarkupId>,
+    key: Option<::editor::markup::InlayKey>,
 }
 
 impl Hover {
@@ -73,16 +73,16 @@ impl Hover {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        _editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        _editor: ::editor::editor::EditorId,
         byte: Option<u32>,
         location: &ResourceLocation,
-        installed: Option<(DocumentId, ::editor::EditorId)>,
+        installed: Option<(DocumentId, ::editor::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) where
         C: 'static,
-        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         let word = byte.and_then(|byte| word_range(document, byte));
 
@@ -109,7 +109,7 @@ impl Hover {
 
     pub fn tick<C, W>(
         &mut self,
-        document: &editor::Document,
+        document: &editor::document::Document,
         now: imba::anim::AnimationClock,
         fx: &mut Effects<'_, C>,
         wrap: W,
@@ -146,14 +146,14 @@ impl Hover {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         found: HoverFound,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) where
         C: 'static,
-        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         if found.serial != self.serial {
             return;
@@ -180,8 +180,8 @@ impl Hover {
             key = Some(document.push_inlay(
                 markup,
                 word.clone(),
-                editor::Inlay::new(
-                    editor::InlayMode::Popup(editor::PopupSpec {
+                editor::markup::Inlay::new(
+                    editor::markup::InlayMode::Popup(editor::markup::PopupSpec {
                         host: imba::overlay::WINDOW,
                         position: imba::overlay::fit::PreferredPosition::At {
                             x: imba::overlay::fit::RangeEnd::Begin,
@@ -205,7 +205,7 @@ impl Hover {
         self.key.is_some()
     }
 
-    pub fn inlay_key(&self) -> Option<::editor::InlayKey> {
+    pub fn inlay_key(&self) -> Option<::editor::markup::InlayKey> {
         self.key
     }
 
@@ -213,12 +213,12 @@ impl Hover {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
+        document: &mut editor::document::Document,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) where
         C: 'static,
-        E: Fn(::editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(::editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         if let Some(token) = self.lane.take() {
             fx.cancel(token);
@@ -252,12 +252,12 @@ impl Hover {
         self.key = None;
     }
 
-    pub fn installed(&self) -> Option<(DocumentId, ::editor::EditorId)> {
+    pub fn installed(&self) -> Option<(DocumentId, ::editor::editor::EditorId)> {
         self.installed
     }
 }
 
-fn word_range(document: &editor::Document, byte: u32) -> Option<std::ops::Range<u32>> {
+fn word_range(document: &editor::document::Document, byte: u32) -> Option<std::ops::Range<u32>> {
     let mut view = document.text().view();
     let len = view.byte_count().min(u32::MAX as usize) as u32;
     if byte > len {
@@ -292,35 +292,35 @@ const CARD_PAD: f32 = 10.0;
 
 #[derive(Clone)]
 pub struct HoverView {
-    view: editor::EditorView,
+    view: editor::editor_view::EditorView,
 }
 
 impl HoverView {
     fn build(
         store: &Store,
         markdown: &str,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &editor::Theme,
+        theme: &editor::theme::Theme,
     ) -> Self {
-        let text = editor::Text::from_string_exact(markdown);
+        let text = text::text::Text::from_string_exact(markdown);
         let document = match editor::env::Parsers::of(store) {
             Some(parsers) => {
-                editor::Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
+                editor::document::Document::from_language(text, "markdown", &parsers, store, ui, fonts, theme)
             }
-            None => editor::Document::new(text, editor::Markup::new()).with_syntax(
-                editor::Syntax::new("markdown", None, editor::Markup::new()),
+            None => editor::document::Document::new(text, editor::markup::Markup::new()).with_syntax(
+                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
                 &[],
             ),
         };
         Self {
-            view: editor::EditorView::complete(document, CARD_WIDTH, store, ui, fonts, theme),
+            view: editor::editor_view::EditorView::complete(document, CARD_WIDTH, store, ui, fonts, theme),
         }
     }
 }
 
 impl imba::View for HoverView {
-    type Command = ::editor::EditorCommand;
+    type Command = ::editor::editor_view::EditorCommand;
 
     fn perform(
         &mut self,
@@ -336,8 +336,8 @@ impl imba::View for HoverView {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 let theme = editor::env::Themes::of(store);
                 let fill = theme.ui().combo.menu_fill.0;
@@ -347,7 +347,7 @@ impl imba::View for HoverView {
                 let inner_height = document.content_height(self.view.editor);
                 let width = inner_width + CARD_PAD * 2.0;
                 let height = inner_height + CARD_PAD * 2.0;
-                let editor = imba::Layout::layout(
+                let editor = imba::layout::Layout::layout(
                     self.view.display(arena, store, ui),
                     arena,
                     imba::constraints::Constraints {

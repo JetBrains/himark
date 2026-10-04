@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::test_document::plain_document;
+use ::editor::test_document::plain_document;
 use himark::{AppExt, AppFonts, Application};
 
 #[derive(Clone)]
 struct StubWidget(&'static str);
 
 impl imba::View for StubWidget {
-    type Command = imba::DynCommand;
+    type Command = imba::dyn_view::DynCommand;
 
     fn perform(
         &mut self,
@@ -25,8 +25,8 @@ impl imba::View for StubWidget {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             leaf(constraints.max.width, constraints.max.height)
         })
     }

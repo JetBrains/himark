@@ -3,7 +3,7 @@
 
 use std::sync::Mutex;
 
-use editor::ResourceType;
+use editor::location::ResourceType;
 
 use super::*;
 
@@ -38,7 +38,7 @@ fn open_view(
 fn location(kind: ResourceType, path: &[&str]) -> ResourceLocation {
     ResourceLocation::new(
         kind,
-        editor::Authority::new("test"),
+        editor::location::Authority::new("test"),
         path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
     )
 }
@@ -259,7 +259,7 @@ fn folders_added_mid_session_join_on_paint() {
         let arena = imba::arena::Arena::default();
         let ui = ::editor::test_document::test_ui();
         let size = skia_safe::Size::new(400.0, 600.0);
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(view, &arena, store, &ui),
             &arena,
             imba::constraints::Constraints::tight(size),
@@ -489,7 +489,7 @@ fn an_unfocused_paint_cancels_the_edit() {
     let commands = {
         let arena = imba::arena::Arena::default();
         let test_ui = ::editor::test_document::test_ui();
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, test_ui),
             &arena,
             imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
@@ -561,7 +561,7 @@ fn a_departed_folder_leaves_the_tree_on_paint() {
     let commands = {
         let arena = imba::arena::Arena::default();
         let test_ui = ::editor::test_document::test_ui();
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, test_ui),
             &arena,
             imba::constraints::Constraints::tight(skia_safe::Size::new(400.0, 600.0)),
@@ -962,7 +962,7 @@ fn a_theme_switch_re_resolves_the_selection_style() {
         let arena = imba::arena::Arena::default();
         let ui = ::editor::test_document::test_ui();
         let size = skia_safe::Size::new(400.0, 600.0);
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(&view, &arena, &store, &ui),
             &arena,
             imba::constraints::Constraints::tight(size),

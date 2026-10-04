@@ -3,7 +3,8 @@
 
 use imba::{effect::AnyEffect, store::Store};
 
-use crate::{AppFx, DynamicCommand, ResourceLocation, StoreDocumentEffect};
+use crate::{AppFx, DynamicCommand, StoreDocumentEffect};
+use editor::location::ResourceLocation;
 
 pub struct SaveDocument {
     save_as: bool,
@@ -32,20 +33,20 @@ impl documents::DocumentCommand for SaveDocument {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         documents: imba::store::Id<crate::OpenDocuments>,
         document_id: crate::DocumentId,
-        document: &mut crate::Document,
-        _editor: crate::EditorId,
-        location: &crate::ResourceLocation,
+        document: &mut editor::document::Document,
+        _editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut imba::effect::Effects<'_, crate::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         if !documents::DocumentCommand::offers_at(self, location) {
             return;
         }
         if let Some(payload) = payload {
-            let payload = match payload.downcast::<(bool, u64, crate::Text)>() {
+            let payload = match payload.downcast::<(bool, u64, text::text::Text)>() {
                 Ok(landing) => {
                     let (stored, revision, snapshot) = *landing;
                     match stored {
@@ -93,9 +94,9 @@ impl documents::DocumentCommand for SaveDocument {
             }
             fx.push(
                 AnyEffect::new(crate::PickSaveEffect { suggested }).map(|picked| {
-                    crate::EditorCommand::Dynamic {
+                    editor::editor_view::EditorCommand::Dynamic {
                         id: "file.save",
-                        payload: Some(crate::DynPayload::new(picked)),
+                        payload: Some(editor::dynamic::DynPayload::new(picked)),
                     }
                 }),
             );
@@ -113,10 +114,10 @@ impl SaveDocument {
     fn launch_store(
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
-        document: &crate::Document,
+        document: &editor::document::Document,
         document_id: crate::DocumentId,
         location: &ResourceLocation,
-        fx: &mut imba::effect::Effects<'_, crate::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         let Some(entity) = crate::OpenDocuments::entity(store, documents, document_id) else {
             return;
@@ -133,9 +134,9 @@ impl SaveDocument {
                 location: location.clone(),
                 text,
             })
-            .map(move |stored| crate::EditorCommand::Dynamic {
+            .map(move |stored| editor::editor_view::EditorCommand::Dynamic {
                 id: "file.save",
-                payload: Some(crate::DynPayload::new((stored, revision, snapshot))),
+                payload: Some(editor::dynamic::DynPayload::new((stored, revision, snapshot))),
             }),
         );
         if let Some(previous) = previous {

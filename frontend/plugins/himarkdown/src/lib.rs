@@ -15,53 +15,57 @@ pub use table::{
     CellAlign, InsertTable, TableCommand, TableEditor, TableRelayoutEffect, TableRelayoutHandler,
 };
 
-use himark::{
-    Document, Markup, MarkupBuilder, StyleId, SyntaxLanguage, SyntaxTree, TextDecorationInterval,
-};
+use editor::document::Document;
+use editor::markup::Markup;
+use editor::markup::MarkupBuilder;
+use editor::markup::StyleId;
+use editor::reparse::SyntaxLanguage;
+use editor::reparse::SyntaxTree;
+use editor::markup::TextDecorationInterval;
 use hisitter::TsTree;
-use text::Text;
+use text::text::Text;
 use tree_sitter::{Node, Tree};
 
 pub fn document_from_markdown(
     source: &str,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Document {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
     document_from_tree_text(text, tree, store, ui, fonts, theme)
 }
 
-pub fn markdown_languages(mut languages: himark::SyntaxLanguages) -> himark::SyntaxLanguages {
+pub fn markdown_languages(mut languages: editor::reparse::SyntaxLanguages) -> editor::reparse::SyntaxLanguages {
     languages.register(&["markdown"], std::sync::Arc::new(MarkdownLanguage));
     languages
 }
 
-pub fn markdown_enrichers(mut enrichers: himark::Enrichers) -> himark::Enrichers {
+pub fn markdown_enrichers(mut enrichers: editor::enrich::Enrichers) -> editor::enrich::Enrichers {
     enrichers.register(std::sync::Arc::new(TableEnricher));
     enrichers.register(std::sync::Arc::new(fence_embed::FenceEmbedEnricher));
     enrichers.register(std::sync::Arc::new(image::ImageEnricher));
     enrichers
 }
 
-fn builder_enrichers() -> himark::Enrichers {
-    markdown_enrichers(himark::Enrichers::new())
+fn builder_enrichers() -> editor::enrich::Enrichers {
+    markdown_enrichers(editor::enrich::Enrichers::new())
 }
 
 pub struct TableEnricher;
 
-impl himark::Enricher for TableEnricher {
-    fn id(&self) -> himark::EnricherId {
-        himark::EnricherId("markdown-tables")
+impl editor::enrich::Enricher for TableEnricher {
+    fn id(&self) -> editor::enrich::EnricherId {
+        editor::enrich::EnricherId("markdown-tables")
     }
 
     fn derive<'a>(
         &'a self,
-        input: &'a himark::EnrichInput,
-        cx: &'a himark::EnrichCx<'a>,
-    ) -> himark::EnrichFuture<'a> {
+        input: &'a editor::enrich::EnrichInput,
+        cx: &'a editor::enrich::EnrichCx<'a>,
+    ) -> editor::enrich::EnrichFuture<'a> {
         let mut builder = Markup::builder();
         let mut changed: Vec<std::ops::Range<u32>> = Vec::new();
 
@@ -87,8 +91,8 @@ impl himark::Enricher for TableEnricher {
                         };
                         builder.push_inlay(
                             block.range.clone(),
-                            himark::Inlay::editing(
-                                himark::InlayMode::Instead(himark::InsteadKind::FullLine),
+                            editor::markup::Inlay::editing(
+                                editor::markup::InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                                 cx.measure.with_ctx(|store, ui| {
                                     table::TableEditor::new(
                                         source.clone(),
@@ -108,7 +112,7 @@ impl himark::Enricher for TableEnricher {
             }
         }
         changed.sort_by_key(|range| range.start);
-        himark::enrich_ready(himark::Enrichment {
+        editor::enrich::ready(editor::enrich::Enrichment {
             replacement: builder,
             changed,
         })
@@ -118,9 +122,9 @@ impl himark::Enricher for TableEnricher {
 pub fn markdown_document(
     source: &str,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> (Document, Vec<MarkdownBlock>) {
     let text = Text::from_string_exact(source);
     let tree = parse_markdown(&text);
@@ -133,9 +137,9 @@ pub fn document_from_tree(
     source: &str,
     tree: &Tree,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Document {
     document_from_tree_text(
         Text::from_string_exact(source),
@@ -151,14 +155,14 @@ fn document_from_tree_text(
     text: Text,
     tree: Tree,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Document {
     let markup = markup_from_tree(&text, &tree, fonts, theme);
     let sites = MarkdownLanguage.sites_impl(&text, &tree);
 
-    let mut syntax = himark::Syntax::new("markdown", Some(Box::new(TsTree(tree.clone()))), markup);
+    let mut syntax = editor::markup::Syntax::new("markdown", Some(Box::new(TsTree(tree.clone()))), markup);
     {
         let mut sections: Vec<(Range<u32>, Range<u32>)> = Vec::new();
         let full = 0..text.byte_count().min(u32::MAX as usize) as u32;
@@ -235,7 +239,7 @@ impl SyntaxLanguage for MarkdownLanguage {
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         let tree = TsTree::of(tree).expect("markdown parses tree-sitter trees");
         self.markup_impl(text, tree, changed, replacement, invalidated, fonts, theme);
@@ -258,12 +262,12 @@ impl SyntaxLanguage for MarkdownLanguage {
         text: &Text,
         _range: std::ops::Range<u32>,
         tree: &dyn SyntaxTree,
-    ) -> Vec<himark::SyntaxSite> {
+    ) -> Vec<editor::reparse::SyntaxSite> {
         let tree = TsTree::of(tree).expect("markdown parses tree-sitter trees");
         self.sites_impl(text, tree)
     }
 
-    fn assist(&self, request: &himark::AssistRequest<'_>) -> Option<himark::Assist> {
+    fn assist(&self, request: &editor::reparse::AssistRequest<'_>) -> Option<editor::reparse::Assist> {
         let tree = TsTree::of(request.tree)?;
         assist::assist(
             request.text,
@@ -276,7 +280,7 @@ impl SyntaxLanguage for MarkdownLanguage {
 }
 
 impl MarkdownLanguage {
-    fn sites_impl(&self, text: &Text, tree: &Tree) -> Vec<himark::SyntaxSite> {
+    fn sites_impl(&self, text: &Text, tree: &Tree) -> Vec<editor::reparse::SyntaxSite> {
         if std::env::var_os("HIMARK_NO_INJECT").is_some() {
             return Vec::new();
         }
@@ -308,7 +312,7 @@ impl MarkdownLanguage {
                     let range = range.start.min(byte_count)..range.end.min(byte_count);
                     let language = language.split_whitespace().next().unwrap_or("").to_owned();
                     if !language.is_empty() && range.start < range.end {
-                        sites.push(himark::SyntaxSite { range, language });
+                        sites.push(editor::reparse::SyntaxSite { range, language });
                     }
                 }
                 continue;
@@ -331,7 +335,7 @@ impl MarkdownLanguage {
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         visit_markdown_blocks_where(
             text,
@@ -362,7 +366,7 @@ pub fn markup_from_tree(
     text: &Text,
     tree: &Tree,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> Markup {
     markup_builder_from_tree(text, tree, fonts, theme).finish()
 }
@@ -371,7 +375,7 @@ pub fn markup_builder_from_tree(
     text: &Text,
     tree: &Tree,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> MarkupBuilder {
     let mut markup = Markup::builder();
     visit_markdown_blocks(text, tree, |block| {
@@ -383,7 +387,7 @@ pub fn markup_builder_from_tree(
 pub fn markup_builder_from_blocks(
     blocks: &[MarkdownBlock],
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> MarkupBuilder {
     let mut markup = Markup::builder();
 
@@ -498,7 +502,7 @@ fn push_markup_for_block(
     block: &MarkdownBlock,
 
     _fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) {
     if block.table.is_some() {
         return;
@@ -506,16 +510,16 @@ fn push_markup_for_block(
     markup.push_block_styles(block.range.clone(), block.marks.style_ids());
 
     match block.marks.header {
-        Some(1) => markup.push_alignment(block.range.clone(), himark::TextAlignment::Right),
-        Some(2) => markup.push_alignment(block.range.clone(), himark::TextAlignment::Center),
+        Some(1) => markup.push_alignment(block.range.clone(), editor::markup::TextAlignment::Right),
+        Some(2) => markup.push_alignment(block.range.clone(), editor::markup::TextAlignment::Center),
         _ => {}
     }
 
     if let Some((range, checked)) = &block.checkbox {
         markup.push_inlay(
             range.clone(),
-            himark::Inlay::editing(
-                himark::InlayMode::Left,
+            editor::markup::Inlay::editing(
+                editor::markup::InlayMode::Left,
                 checkbox::CheckboxView::new(*checked, theme),
             ),
         );
@@ -763,14 +767,14 @@ fn push_children_rev<'tree>(stack: &mut Vec<Node<'tree>>, node: Node<'tree>) {
     }
 }
 
-fn section_outline_item(text: &Text, title: &Range<u32>) -> Option<himark::OutlineItem> {
+fn section_outline_item(text: &Text, title: &Range<u32>) -> Option<editor::markup::OutlineItem> {
     let raw = text.byte_string(title.start as usize, (title.end - title.start) as usize);
     let line = raw.lines().next().unwrap_or("").trim();
     let mut capped: String = line.chars().take(80).collect();
     if capped.len() < line.len() {
         capped.push('…');
     }
-    (!capped.is_empty()).then_some(himark::OutlineItem { title: capped })
+    (!capped.is_empty()).then_some(editor::markup::OutlineItem { title: capped })
 }
 
 fn collect_sections(node: Node<'_>, range: &Range<u32>, out: &mut Vec<(Range<u32>, Range<u32>)>) {
@@ -1001,17 +1005,17 @@ pub fn register_handlers(app: &mut himark::Application) {
 
 #[cfg(test)]
 trait RunReparse {
-    fn run_reparse(self) -> himark::ReparseOutcome;
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome;
 }
 
 #[cfg(test)]
-impl RunReparse for himark::ReparseWork {
-    fn run_reparse(self) -> himark::ReparseOutcome {
-        let workshop = std::sync::Arc::new(himark::Workshop::new(
-            himark::embedded_fonts::source(),
-            himark::Theme::embedded(),
+impl RunReparse for editor::reparse::ReparseWork {
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome {
+        let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+            editor::embedded_fonts::source(),
+            editor::theme::Theme::embedded(),
         ));
-        himark::ReparseHandler(workshop).reparse(self)
+        editor::reparse::ReparseHandler(workshop).reparse(self)
     }
 }
 

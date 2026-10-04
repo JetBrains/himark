@@ -6,6 +6,7 @@ license = "Apache-2.0"
 
 [dependencies]
 himark = { path = "../../himark", features = ["test-support"] }
+editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 mdparser = { path = "../../mdparser" }
 operation = { path = "../../operation" }

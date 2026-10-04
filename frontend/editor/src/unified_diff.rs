@@ -4,7 +4,7 @@
 use imba::constraints::Constraints;
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
-use imba::{UiCtx, View as _};
+use imba::{ui::UiCtx, View as _};
 use skia_safe::Size;
 
 use crate::document::EditorBuild;
@@ -347,8 +347,8 @@ impl imba::View for UnifiedDiffView {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: Constraints| {
                 let face: imba::ThunkBox<'a, UnifiedDiffCommand> = match self.inline_face(store) {
                     Some(view) if self.layout == DiffLayout::Inline => {
@@ -374,7 +374,7 @@ impl imba::View for UnifiedDiffView {
 
                     _ => imba::ThunkBox::new(
                         arena,
-                        imba::Layout::layout(
+                        imba::layout::Layout::layout(
                             self.split.display(arena, store, ui),
                             arena,
                             constraints,
@@ -422,7 +422,7 @@ impl<'a> imba::Thunk<'a, EditorCommand> for InlineThunk<'a> {
         // this pane only FILTERS the emissions to the projections
         // (the strips and before-cards riding INLAY_HOST), exactly
         // what the old duplicate build re-minted by hand.
-        let inner = imba::Layout::layout(view.display(frame, store, ui), frame, constraints)
+        let inner = imba::layout::Layout::layout(view.display(frame, store, ui), frame, constraints)
             .realize(arena, viewport);
         imba::WidgetBox::new(arena, InlinePane { inner })
     }

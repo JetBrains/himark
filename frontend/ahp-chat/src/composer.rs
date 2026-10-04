@@ -1,19 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::{env, EditorCommand, EditorView};
-use imba::{
-    anim::{Animation, AnimationClock, Easing, Motion},
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::Effects,
-    event::{Event, EventResult},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
+use editor::{env, editor_view::EditorCommand, editor_view::EditorView};
+use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Rect, Size};
 
 use crate::cell::document_text;
@@ -74,34 +63,34 @@ impl Clone for Composer {
 
 const EDITOR_CHILD: usize = 1;
 
-fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<EditorView> {
+fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<EditorView> {
     let document =
-        editor::Document::new(editor::Text::from_string_exact(""), editor::Markup::new())
+        editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
             .with_syntax(
-                editor::Syntax::new("markdown", None, editor::Markup::new()),
+                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
                 &[],
             );
     let fonts = hikit::fonts::source()();
-    let theme = editor::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Message the agent", &fonts, &theme);
     ScrollView::new(view)
 }
 
 impl Composer {
-    pub(crate) fn document(&self) -> &editor::Document {
+    pub(crate) fn document(&self) -> &editor::document::Document {
         &self.input.content().document
     }
 
-    pub(crate) fn document_mut(&mut self) -> &mut editor::Document {
+    pub(crate) fn document_mut(&mut self) -> &mut editor::document::Document {
         &mut self.input.content_mut().document
     }
 
-    pub(crate) fn editor(&self) -> ::editor::EditorId {
+    pub(crate) fn editor(&self) -> ::editor::editor::EditorId {
         self.input.content().editor
     }
 
-    pub(crate) fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+    pub(crate) fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
         let mut input = fresh_input(store, ui);
         input.content_mut().focus_text();
         Self {
@@ -134,7 +123,7 @@ impl Composer {
         self.expanded
     }
 
-    pub(crate) fn clear(&mut self, store: &imba::store::Store, ui: &imba::UiCtx) {
+    pub(crate) fn clear(&mut self, store: &imba::store::Store, ui: &imba::ui::UiCtx) {
         self.input = fresh_input(store, ui);
         self.input.content_mut().focus_text();
     }
@@ -245,7 +234,7 @@ impl Composer {
         band.place(
             pad,
             box_pad,
-            imba::Layout::layout(
+            imba::layout::Layout::layout(
                 self.input.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -271,7 +260,7 @@ impl Composer {
     pub(crate) fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, ComposerCommand> {
         let own = imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
             "chat.toggle-composer",

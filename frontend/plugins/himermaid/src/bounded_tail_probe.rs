@@ -6,7 +6,7 @@ use super::tests::*;
 #[test]
 fn bounded_open_converges_over_a_mermaid_fence() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut source = String::from("# Head\n\n");
     for block in 0..30 {
         for _ in 0..100 {
@@ -17,8 +17,8 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         ));
     }
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(&source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(&source),
         "markdown",
         &registry,
         store,
@@ -32,7 +32,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     let editor = document.add_editor(
         900.0,
         None,
-        himark::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -40,7 +40,7 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         &theme(),
         &mut batch.effects(),
     );
-    let mut view = himark::EditorView {
+    let mut view = editor::editor_view::EditorView {
         document,
         editor,
         reports_geometry: false,
@@ -48,16 +48,16 @@ fn bounded_open_converges_over_a_mermaid_fence() {
         gutter_width: 0.0,
         base: None,
     };
-    let mut store = imba::Store::new();
-    let ui = himark::test_document::test_ui();
+    let mut store = imba::store::Store::new();
+    let ui = ::editor::test_document::test_ui();
 
-    let outcome = himark::ReparseHandler(himark::test_support::test_workshop(theme()))
-        .reparse(himark::ReparseWork::capture(&view.document, registry.clone()).expect("parse"));
+    let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+        .reparse(editor::reparse::ReparseWork::capture(&view.document, registry.clone()).expect("parse"));
     imba::View::perform(
         &mut view,
         &mut store,
         &ui,
-        himark::EditorCommand::ApplyReparse(outcome),
+        editor::editor_view::EditorCommand::ApplyReparse(outcome),
         &mut batch.effects(),
     );
 
@@ -78,11 +78,11 @@ fn bounded_open_converges_over_a_mermaid_fence() {
     }
     let live = view.document.element_heights(editor);
     let laid: f32 = live.iter().map(|(_, height)| height).sum();
-    let fresh = himark::EditorView::complete(
+    let fresh = editor::editor_view::EditorView::complete(
         view.document.clone(),
         900.0,
         &imba::store::Store::new(),
-        himark::test_document::test_ui(),
+        ::editor::test_document::test_ui(),
         &fonts(),
         &theme(),
     )

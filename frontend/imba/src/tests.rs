@@ -1,19 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    event::{Event, EventResult, MouseButton},
-    lazy::lazy,
-    list::{ListCommand, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    split::{Pane, SplitCommand, SplitView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, View, Widget,
-};
+use crate::{arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult, MouseButton}, lazy::lazy, list::{ListCommand, ListView}, scroll::{ScrollCommand, ScrollView}, split::{Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, Thunk, View, Widget};
 use skia_safe::{surfaces, Point, Rect, Size};
 use std::cell::{Cell, RefCell};
 
@@ -229,8 +217,8 @@ impl View for FixedContent {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a crate::ui::UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
             crate::eager(FixedWidget { size: self.size })
         })
     }
@@ -267,7 +255,7 @@ fn scroll_view_clamps_wheel_commands_to_content_bounds() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 120.0)),
@@ -341,8 +329,8 @@ impl View for PanContent {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a crate::ui::UiCtx,
-    ) -> impl crate::Layout<'a, f32> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, f32> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
             crate::eager(PanWidget {
                 surface: self.surface,
                 height: 500.0,
@@ -385,7 +373,7 @@ fn scrolled(
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 120.0)),
@@ -465,8 +453,8 @@ fn a_fitted_view_never_claims() {
             _arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
-        ) -> impl crate::Layout<'a, f32> + crate::LayoutValue + 'a {
-            crate::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+        ) -> impl crate::layout::Layout<'a, f32> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
                 crate::leaf::leaf(100.0, 50.0)
             })
         }
@@ -475,7 +463,7 @@ fn a_fitted_view_never_claims() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 120.0)),
@@ -507,7 +495,7 @@ fn scroll_view_translates_mouse_coordinates_into_scrolled_content_space() {
     let ui = crate::ui::UiCtx::dont_use_too_slow();
     perform_into(&mut view, &mut store, &ui, ScrollCommand::SetScrollY(75.0));
     let arena = Arena::default();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 120.0)),
@@ -670,7 +658,7 @@ fn root_viewport() -> Rect {
 
 #[test]
 fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
-    use crate::{leaf::leaf, DynView};
+    use crate::{leaf::leaf, dyn_view::DynView};
     use std::rc::Rc;
 
     #[derive(Clone)]
@@ -709,8 +697,8 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
             _arena: &'a Arena,
             _store: &'a Store,
             _ui: &'a crate::ui::UiCtx,
-        ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-            crate::laid(move |_arena: &'a Arena, _constraints: Constraints| {
+        ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+            crate::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| {
                 leaf(10.0, 10.0).event(|_, event, _| match event {
                     Event::MouseDown { .. } => EventResult::Command(CounterCommand::Add(2)),
                     _ => EventResult::Ignored,
@@ -728,7 +716,7 @@ fn boxed_dyn_view_routes_commands_back_to_the_typed_view() {
     let mut store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
     let command = {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(10.0, 10.0)),
@@ -764,7 +752,7 @@ fn split_view_routes_clicks_to_the_pane_under_the_point() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(200.0, 100.0)),
@@ -822,7 +810,7 @@ fn split_view_divides_the_main_axis_by_ratio() {
     let arena = Arena::default();
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 200.0)),
@@ -896,7 +884,7 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     let arena = Arena::default();
 
     {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 120.0)),
@@ -918,7 +906,7 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     assert_eq!(view.focused(), Pane::First);
 
     let command = {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 120.0)),
@@ -943,7 +931,7 @@ fn split_view_scrolls_the_pane_under_the_pointer_and_keys_follow_focus() {
     assert_eq!(view.focused(), Pane::Second);
 
     {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             view.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(200.0, 120.0)),
@@ -995,8 +983,8 @@ impl View for Row {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a crate::ui::UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let _ = constraints;
             crate::eager(RowWidget {
                 height: self.height,
@@ -1077,7 +1065,7 @@ fn list_stacks_rows_and_a_click_focuses_the_hit_row() {
     let mut list = row_list();
 
     let command = {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             list.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(100.0, 60.0)),
@@ -1122,7 +1110,7 @@ fn list_routes_position_less_events_to_the_focused_row() {
     let mut list = row_list();
 
     {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             list.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(100.0, 60.0)),
@@ -1137,7 +1125,7 @@ fn list_routes_position_less_events_to_the_focused_row() {
 
     perform_into(&mut list, &mut store, &ui, ListCommand::Focus(2, None));
 
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         list.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 60.0)),
@@ -1256,7 +1244,7 @@ fn list_paint_reconciles_stale_row_heights() {
     ]));
 
     let commands = {
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             list.display(&arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(100.0, 60.0)),
@@ -1282,7 +1270,7 @@ fn list_paint_reconciles_stale_row_heights() {
     }
     assert_eq!(list.total_height(), 50.0, "the fresh height is spliced in");
 
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         list.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 60.0)),
@@ -1330,7 +1318,7 @@ fn list_scroll_benchmark() {
         let started = std::time::Instant::now();
 
         let command = {
-            let widget = crate::Layout::layout(
+            let widget = crate::layout::Layout::layout(
                 view.display(&arena, &store, &ui),
                 &arena,
                 Constraints::tight(VIEWPORT),
@@ -1353,7 +1341,7 @@ fn list_scroll_benchmark() {
         }
 
         {
-            let widget = crate::Layout::layout(
+            let widget = crate::layout::Layout::layout(
                 view.display(&arena, &store, &ui),
                 &arena,
                 Constraints::tight(VIEWPORT),
@@ -1464,7 +1452,7 @@ fn split_and_dyn_views_carry_commands() {
         SplitCommand::Second(ListCommand::Child(0, RowCommand::Text("poked")))
     ));
 
-    let erased: Box<dyn crate::DynView> = Box::new({
+    let erased: Box<dyn crate::dyn_view::DynView> = Box::new({
         let mut list = row_list();
         perform_into(&mut list, &mut store, &ui, ListCommand::Focus(1, None));
         list
@@ -1709,7 +1697,7 @@ mod list_sticky {
         list: &'a ListView<Row, u64>,
         top: f32,
     ) -> Vec<crate::overlay::Overlay<'a, ListCommand<RowCommand>>> {
-        crate::Layout::layout(
+        crate::layout::Layout::layout(
             list.display(arena, store, ui),
             arena,
             Constraints::tight(Size::new(100.0, 80.0)),
@@ -1907,7 +1895,7 @@ mod animated_splice {
         let arena = Arena::default();
         let mut surface = surfaces::raster_n32_premul((100, 200)).expect("raster surface");
         let result = {
-            let widget = crate::Layout::layout(
+            let widget = crate::layout::Layout::layout(
                 list.display(&arena, &store, &ui),
                 &arena,
                 Constraints {
@@ -2069,7 +2057,7 @@ fn knob_event(
     let store = Store::new();
     let ui = crate::ui::UiCtx::dont_use_too_slow();
     ui.set(scrollbar_style());
-    let widget = crate::Layout::layout(
+    let widget = crate::layout::Layout::layout(
         view.display(&arena, &store, &ui),
         &arena,
         Constraints::tight(Size::new(100.0, 120.0)),
@@ -2243,7 +2231,7 @@ mod viewport_preservation {
         viewport: Rect,
     ) -> EventResult<ListCommand<RowCommand>> {
         let arena = Arena::default();
-        let widget = crate::Layout::layout(
+        let widget = crate::layout::Layout::layout(
             list.display(&arena, store, ui),
             &arena,
             Constraints {
@@ -2328,7 +2316,7 @@ mod viewport_preservation {
 
         let pulse = |scroll: &ScrollView<ListView<Row, u64>>, store: &Store| {
             let arena = Arena::default();
-            let result = crate::Layout::layout(
+            let result = crate::layout::Layout::layout(
                 scroll.display(&arena, store, &ui),
                 &arena,
                 Constraints::tight(Size::new(100.0, 60.0)),
@@ -2405,7 +2393,7 @@ mod row_reveal {
         let event = Event::AnimationClock {
             now: AnimationClock::from_millis(16.0),
         };
-        let result = crate::Layout::layout(
+        let result = crate::layout::Layout::layout(
             list.display(&arena, store, ui),
             &arena,
             Constraints {

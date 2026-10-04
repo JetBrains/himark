@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{Measure, MetricId, Metrics, Rope, SeekMode};
+use crate::{metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
 
 struct TextMeasure;
 
@@ -48,7 +48,7 @@ fn rope_to_string(rope: &Rope<char, TextMeasure>) -> String {
     out
 }
 
-fn assert_cursor_well_balanced(cursor: &crate::Cursor<char, TextMeasure>) {
+fn assert_cursor_well_balanced(cursor: &crate::cursor::Cursor<char, TextMeasure>) {
     cursor.clone().rope().assert_well_balanced();
 }
 
@@ -78,13 +78,13 @@ fn rope_from_iter_with_branching(
     rope
 }
 
-fn rope_from_cursor(cursor: crate::Cursor<char, TextMeasure>) -> Rope<char, TextMeasure> {
+fn rope_from_cursor(cursor: crate::cursor::Cursor<char, TextMeasure>) -> Rope<char, TextMeasure> {
     let rope = cursor.rope();
     rope.assert_well_balanced();
     rope
 }
 
-fn replace_at_cursor<I>(cursor: &mut crate::Cursor<char, TextMeasure>, n: usize, replacement: I)
+fn replace_at_cursor<I>(cursor: &mut crate::cursor::Cursor<char, TextMeasure>, n: usize, replacement: I)
 where
     I: IntoIterator<Item = char>,
 {

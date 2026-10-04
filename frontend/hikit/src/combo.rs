@@ -1,17 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult, Key, MouseButton},
-    leaf::leaf,
-    list::{ListCommand, ListSlice, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
-};
+use imba::{constraints::Constraints, effect::Effects, event::{Event, EventResult, Key, MouseButton}, leaf::leaf, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
 use skia_safe::{Font, Paint, PathBuilder, Point, Rect, Size};
 
 use crate::list_keyboard::{ItemSource, ListKeyCommand, ListKeyboardController, Searcher};
@@ -39,7 +29,7 @@ where
     T::Command: Send + 'static,
 {
     let arena = imba::arena::Arena::default();
-    let size = imba::Layout::layout(
+    let size = imba::layout::Layout::layout(
         item.display(&arena, store, ui),
         &arena,
         Constraints {
@@ -87,7 +77,7 @@ impl View for ComboOption {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let mut row = crate::ui::ListRow::new(arena, crate::ui::RowStyle::standard(store, ui))
             .label(self.label.clone());
         if let Some(trail) = &self.trail {
@@ -203,7 +193,7 @@ impl<T: ComboItem> Combo<T>
 where
     T::Command: Send + 'static,
 {
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, label: &'static str) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx, label: &'static str) -> Self {
         Self {
             label,
             compact: false,
@@ -289,7 +279,7 @@ where
         let value_font = crate::fonts::ui_text_font(ui, chrome.value_size);
         let value = self
             .value()
-            .map(|option| imba::text_advance(ui, &value_font, &option.cell_label()));
+            .map(|option| imba::layout::text_advance(ui, &value_font, &option.cell_label()));
         let label = match self.compact && value.is_some() {
             true => None,
             false => Some(tracked_width(ui, &label_font, self.label)),
@@ -332,7 +322,7 @@ where
                 let label_font = label_font.clone();
                 let value_font = value_font.clone();
                 let value = value.clone();
-                let shaper = imba::TextShaper::of(ui);
+                let shaper = imba::layout::TextShaper::of(ui);
                 move |_arena, canvas, rect| {
                     let mut paint = Paint::default();
                     paint.set_anti_alias(false);
@@ -428,7 +418,7 @@ where
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::focus::FocusData;
         // The key table is the controller's; the surface keeps only
@@ -517,8 +507,8 @@ where
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: Constraints| {
                 self.cell(arena, store, ui, constraints.max.height)
             },
@@ -531,11 +521,11 @@ where
 pub(crate) const LABEL_TRACKING: f32 = 1.5;
 
 pub fn tracked_width(ui: &UiCtx, font: &Font, text: &str) -> f32 {
-    imba::TextShaper::of(ui).tracked_advance(font, text, LABEL_TRACKING)
+    imba::layout::TextShaper::of(ui).tracked_advance(font, text, LABEL_TRACKING)
 }
 
 pub(crate) fn draw_tracked(
-    shaper: &imba::TextShaper,
+    shaper: &imba::layout::TextShaper,
     canvas: &skia_safe::Canvas,
     font: &Font,
     color: skia_safe::Color,
@@ -618,7 +608,7 @@ where
             ),
         );
 
-        let rows = imba::Layout::layout(
+        let rows = imba::layout::Layout::layout(
             self.menu.display(arena, self.store, self.ui),
             arena,
             Constraints::tight(Size::new(width - 2.0, viewport_height)),

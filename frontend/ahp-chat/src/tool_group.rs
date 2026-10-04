@@ -1,16 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effects,
-    leaf::leaf,
-    list::{ListCommand, ListSlice, ListView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::Effects, leaf::leaf, list::{ListCommand, ListSlice, ListView}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
 use skia_safe::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind};
@@ -21,7 +12,7 @@ use hikit::{TreeItemCommand, TreeItemView};
 pub struct ToolFace {
     pub line: String,
 
-    pub markdown: editor::Text,
+    pub markdown: text::text::Text,
     pub failed: bool,
 
     pub live: bool,
@@ -109,13 +100,13 @@ impl View for ToolRowView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width.max(1.0);
             match self {
                 Self::Body(cell) => imba::ThunkBox::new(
                     arena,
-                    imba::Layout::layout(cell.display(arena, store, ui), arena, constraints)
+                    imba::layout::Layout::layout(cell.display(arena, store, ui), arena, constraints)
                         .map(|command| ToolRowCommand::Cell(Box::new(command))),
                 ),
                 Self::Face(face) => {
@@ -131,7 +122,7 @@ impl View for ToolRowView {
                         chat.notice_color.0
                     };
                     let text = face.text.clone();
-                    let shaper = imba::TextShaper::of(ui);
+                    let shaper = imba::layout::TextShaper::of(ui);
                     // The face row's height is ITS OWN: its text
                     // block plus a symmetric padding.
                     let metrics = font.metrics().1;
@@ -608,7 +599,7 @@ impl ToolGroup {
         let call = self.call(id);
         let markdown = call
             .map(|call| call.face.markdown.clone())
-            .unwrap_or_else(editor::Text::default);
+            .unwrap_or_else(text::text::Text::default);
         let kind = match call.map(|call| call.face.failed).unwrap_or(false) {
             true => CellKind::Error,
             false => CellKind::Notice,
@@ -616,7 +607,7 @@ impl ToolGroup {
         let key = ToolRowKey::Body(id.to_owned());
         let width = self.body_width(store);
         let (cell, height) = fx.scope(
-            move |command: ::editor::EditorCommand| CellCommand::ToolRow {
+            move |command: ::editor::editor_view::EditorCommand| CellCommand::ToolRow {
                 key: key.clone(),
                 command: TreeItemCommand::Inner(ToolRowCommand::Cell(Box::new(
                     CellCommand::Editor(command),
@@ -661,7 +652,7 @@ impl ToolGroup {
     }
 
     fn measure(&self, store: &Store, ui: &UiCtx, view: &TreeItemView<ToolRowView>) -> f32 {
-        imba::Layout::layout(
+        imba::layout::Layout::layout(
             view.display(&Arena::default(), store, ui),
             &Arena::default(),
             Constraints {
@@ -684,11 +675,11 @@ impl ToolGroup {
         ui: &'a UiCtx,
         constraints: Constraints,
     ) -> impl Thunk<'a, ToolRowsCommand> + 'a {
-        imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
+        imba::layout::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
     }
 }
 
-fn materialize(text: &editor::Text) -> String {
+fn materialize(text: &text::text::Text) -> String {
     let end = text.byte_count().min(u32::MAX as usize) as u32;
     text.view().substring(0..end)
 }

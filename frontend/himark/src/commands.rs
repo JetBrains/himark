@@ -9,7 +9,7 @@ use crate::app::{AppCommand, Application};
 
 pub fn palette_commands(
     store: &Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: crate::WindowId,
 ) -> Vec<imba::PresentableCommand<AppCommand>> {
     // A STATE WALK over the views — no tree is built for the palette.

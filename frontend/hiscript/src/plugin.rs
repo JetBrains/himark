@@ -6,13 +6,14 @@ use std::sync::Arc;
 use imba::effect::{AnyEffect, Effect};
 use imba::store::Store;
 
-use himark::{DocumentId, OpenDocuments, ResourceLocation};
+use himark::{DocumentId, OpenDocuments};
+use editor::location::ResourceLocation;
 
 pub struct ScriptSnapshot {
     pub location: ResourceLocation,
     pub id: DocumentId,
     pub revision: u64,
-    pub text: himark::Text,
+    pub text: text::text::Text,
 }
 
 pub struct ScriptCapture {
@@ -103,7 +104,7 @@ pub enum ScriptEdit {
     Open {
         id: DocumentId,
         base_revision: u64,
-        operation: operation::Operation,
+        operation: operation::operation::Operation,
     },
 
     Store {
@@ -199,7 +200,7 @@ pub fn resolve(base: &ResourceLocation, path: &str) -> Option<ResourceLocation> 
     }
     (!segments.is_empty()).then(|| {
         ResourceLocation::new(
-            himark::ResourceType::document(),
+            editor::location::ResourceType::document(),
             base.authority().clone(),
             segments,
         )
@@ -283,7 +284,7 @@ impl imba::effect::EffectHandler<RunScriptEffect> for RunScriptHandler {
                 .find(|snapshot| snapshot.location == location)
             {
                 Some(snapshot) => {
-                    let fresh = himark::Text::from_string_exact(&write.text);
+                    let fresh = text::text::Text::from_string_exact(&write.text);
                     edits.push(ScriptEdit::Open {
                         id: snapshot.id,
                         base_revision: snapshot.revision,
@@ -324,7 +325,7 @@ fn show_now_or_with_store(
 
 pub struct RunScript;
 
-impl himark::DynamicEditorCommand for RunScript {
+impl editor::dynamic::DynamicEditorCommand for RunScript {
     fn id(&self) -> &'static str {
         "script.run"
     }
@@ -340,12 +341,12 @@ impl himark::DynamicEditorCommand for RunScript {
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
-        document: &mut himark::Document,
-        _editor: himark::EditorId,
+        ui: &imba::ui::UiCtx,
+        document: &mut editor::document::Document,
+        _editor: editor::editor::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut himark::EditorEffects<'_>,
+        fx: &mut editor::editor::EditorEffects<'_>,
     ) {
         if let Some(payload) = payload {
             let payload = match payload.downcast::<ScriptLanding>() {
@@ -420,9 +421,9 @@ impl himark::DynamicEditorCommand for RunScript {
             changes: himark::hichanges::Changes::script_summary(store, changes),
         };
         let token = fx.push(AnyEffect::new(RunScriptEffect { capture }).map(|landing| {
-            himark::EditorCommand::Dynamic {
+            editor::editor_view::EditorCommand::Dynamic {
                 id: "script.run",
-                payload: Some(himark::DynPayload::new(landing)),
+                payload: Some(editor::dynamic::DynPayload::new(landing)),
             }
         }));
         let mut lanes = store.get::<ScriptLanes>().cloned().unwrap_or_default();
@@ -435,9 +436,9 @@ impl himark::DynamicEditorCommand for RunScript {
 
 fn land(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     landing: ScriptLanding,
-    fx: &mut himark::EditorEffects<'_>,
+    fx: &mut editor::editor::EditorEffects<'_>,
 ) {
     let mut log = landing.log;
     let mut shows = landing.shows;
@@ -462,19 +463,19 @@ fn land(
                 }
                 if operation
                     .iter()
-                    .all(|op| matches!(op, operation::Op::Retain(_)))
+                    .all(|op| matches!(op, operation::op::Op::Retain(_)))
                 {
                     continue;
                 }
                 let text_before = document.text().clone();
-                let fonts = himark::env::Fonts::of(store)();
-                let theme = himark::env::Themes::of(store);
+                let fonts = ::editor::env::Fonts::of(store)();
+                let theme = ::editor::env::Themes::of(store);
                 document.edit(&operation, store, ui, &fonts, &theme, fx);
-                if let Some(parsers) = himark::env::Parsers::of(store) {
+                if let Some(parsers) = ::editor::env::Parsers::of(store) {
                     document.launch_reparse(parsers, fx);
                 }
                 if let Some(location) = OpenDocuments::location(store, documents, id) {
-                    for sink in himark::InstalledChangeSink::of(store) {
+                    for sink in editor::change_sink::InstalledChangeSink::of(store) {
                         sink.changed(store, &document, &location, base_revision, &text_before, fx);
                     }
                 }
@@ -484,9 +485,9 @@ fn land(
                 let show = show_now_or_with_store(&mut shows, &location);
                 let _ = fx.push(
                     AnyEffect::new(himark::StoreDocumentEffect { location, text }).map(
-                        move |stored| himark::EditorCommand::Dynamic {
+                        move |stored| editor::editor_view::EditorCommand::Dynamic {
                             id: "script.run",
-                            payload: Some(himark::DynPayload::new(ScriptStored { stored, show })),
+                            payload: Some(editor::dynamic::DynPayload::new(ScriptStored { stored, show })),
                         },
                     ),
                 );

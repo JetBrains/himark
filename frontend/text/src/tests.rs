@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 
-use crate::{LineNumber, Text};
+use crate::{line_number::LineNumber, text::Text};
 
 fn large_text() -> String {
     let mut out = String::new();

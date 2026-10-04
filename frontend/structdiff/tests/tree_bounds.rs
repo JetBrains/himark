@@ -13,7 +13,7 @@
 //! hostile tree built the old way — the answer stays exact, the
 //! engine choice is unobservable by contract.
 
-use text::Text;
+use text::text::Text;
 
 /// A tree one byte longer than the text it will be converted against
 /// — the old virtual-trailing-newline shape.

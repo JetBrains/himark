@@ -7,7 +7,7 @@
 //! (`ListRow`, `Surface`) and pick roles; a bare f32 in a view is a
 //! smell.
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, LayoutExt as _, UiCtx};
+use imba::{arena::Arena, constraints::Constraints, store::Store, layout::LayoutExt as _, ui::UiCtx};
 use skia_safe::{Color, Paint, Rect};
 
 /// The spacing scale — every inset and gap is one of these.
@@ -40,7 +40,7 @@ pub struct TextStyle {
     pub font: skia_safe::Font,
     pub color: Color,
     pub tracking: f32,
-    pub shaper: std::rc::Rc<imba::TextShaper>,
+    pub shaper: std::rc::Rc<imba::layout::TextShaper>,
 }
 
 impl TextStyle {
@@ -61,7 +61,7 @@ pub fn label(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, LABEL_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
-        shaper: imba::TextShaper::of(ui),
+        shaper: imba::layout::TextShaper::of(ui),
     }
 }
 
@@ -71,7 +71,7 @@ pub fn caption(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, CAPTION_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
-        shaper: imba::TextShaper::of(ui),
+        shaper: imba::layout::TextShaper::of(ui),
     }
 }
 
@@ -81,7 +81,7 @@ pub fn heading(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_font(ui, HEADING_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.text.0,
         tracking: 0.0,
-        shaper: imba::TextShaper::of(ui),
+        shaper: imba::layout::TextShaper::of(ui),
     }
 }
 
@@ -92,7 +92,7 @@ pub fn caps(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_font(ui, CAPS_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: CAPS_TRACKING,
-        shaper: imba::TextShaper::of(ui),
+        shaper: imba::layout::TextShaper::of(ui),
     }
 }
 
@@ -102,13 +102,13 @@ pub fn key_hint(store: &Store, ui: &UiCtx) -> TextStyle {
         font: crate::fonts::ui_text_font(ui, KEY_HINT_SIZE),
         color: editor::env::Themes::of(store).ui().peeker.dim_text.0,
         tracking: 0.0,
-        shaper: imba::TextShaper::of(ui),
+        shaper: imba::layout::TextShaper::of(ui),
     }
 }
 
-/// A styled `imba::Text`.
-pub fn text(style: &TextStyle, content: impl Into<String>) -> imba::Text {
-    imba::Text::with_shaper(
+/// A styled `imba::layout::Text`.
+pub fn text(style: &TextStyle, content: impl Into<String>) -> imba::layout::Text {
+    imba::layout::Text::with_shaper(
         content,
         style.font.clone(),
         style.color,
@@ -241,8 +241,8 @@ impl RowStyle {
 }
 
 enum RowEntry<'a, Command> {
-    Text(imba::Text),
-    Action(imba::Text, Box<dyn Fn() -> Command + 'a>),
+    Text(imba::layout::Text),
+    Action(imba::layout::Text, Box<dyn Fn() -> Command + 'a>),
 }
 
 /// The one leading-label-trail row: an optional badge (a short status
@@ -253,8 +253,8 @@ enum RowEntry<'a, Command> {
 pub struct ListRow<'a, Command> {
     arena: &'a Arena,
     style: RowStyle,
-    badge: Option<imba::Text>,
-    label: Option<imba::Text>,
+    badge: Option<imba::layout::Text>,
+    label: Option<imba::layout::Text>,
     trails: Vec<RowEntry<'a, Command>>,
 }
 
@@ -307,9 +307,9 @@ impl<'a, Command: 'a> ListRow<'a, Command> {
     }
 }
 
-impl<'a, Command> imba::LayoutValue for ListRow<'a, Command> {}
+impl<'a, Command> imba::layout::LayoutValue for ListRow<'a, Command> {}
 
-impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
+impl<'a, Command: 'a> imba::layout::Layout<'a, Command> for ListRow<'a, Command> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, Command> {
         let ListRow {
             arena: row_arena,
@@ -318,16 +318,16 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
             label,
             trails,
         } = self;
-        let mut row = imba::Row::new(row_arena);
+        let mut row = imba::layout::Row::new(row_arena);
         let badged = badge.is_some();
         if let Some(badge) = badge {
-            row = row.child_by_baseline(badge.pad_insets(imba::Insets {
+            row = row.child_by_baseline(badge.pad_insets(imba::layout::Insets {
                 left: style.inset,
                 ..Default::default()
             }));
         }
         if let Some(label) = label {
-            row = row.child_by_baseline(label.pad_insets(imba::Insets {
+            row = row.child_by_baseline(label.pad_insets(imba::layout::Insets {
                 left: match badged {
                     true => space::S,
                     false => style.inset,
@@ -339,10 +339,10 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
         // stretch to the row's height and drag the baseline group's
         // extent with it — the texts would ride the row's top instead
         // of centering.
-        row = row.weighted(1.0, imba::Fill::new().height(0.0));
+        row = row.weighted(1.0, imba::layout::Fill::new().height(0.0));
         let last = trails.len().saturating_sub(1);
         for (index, entry) in trails.into_iter().enumerate() {
-            let insets = imba::Insets {
+            let insets = imba::layout::Insets {
                 left: space::S,
                 right: match index == last {
                     true => style.trail_inset,
@@ -361,7 +361,7 @@ impl<'a, Command: 'a> imba::Layout<'a, Command> for ListRow<'a, Command> {
         // the style's symmetric air — no shared row-height anywhere.
         let metrics = style.label.font.metrics().1;
         let height = (-metrics.ascent + metrics.descent).ceil() + 2.0 * style.air;
-        row.align(imba::Alignment::CenterStart)
+        row.align(imba::layout::Alignment::CenterStart)
             .height(height)
             .layout(arena, constraints)
     }
@@ -427,7 +427,7 @@ mod tests {
         // so the centered baseline sits at pad + ascent.
         let expected = space::S + ascent;
 
-        let thunk = imba::Layout::layout(
+        let thunk = imba::layout::Layout::layout(
             ListRow::<()>::new(&arena, style.clone())
                 .label("himark-jb")
                 .trail("+3 −1"),
@@ -461,16 +461,16 @@ pub fn button<'a, Command: 'a>(
     role: ButtonRole,
     content: impl Into<String>,
     on_press: impl Fn() -> Command + 'a,
-) -> imba::Button<'a, Command, impl Fn() -> Command + 'a> {
+) -> imba::layout::Button<'a, Command, impl Fn() -> Command + 'a> {
     let chat = editor::env::Themes::of(store).ui().chat.clone();
     let style = match role {
         ButtonRole::Primary => caps(store, ui).colored(chat.on_accent.0),
         ButtonRole::Ghost => caps(store, ui),
     };
     let dim = style.color;
-    let button = imba::Button::new(arena, text(&style, content), on_press)
+    let button = imba::layout::Button::new(arena, text(&style, content), on_press)
         .radius(RADIUS_S)
-        .pad_content(imba::Insets::xy(space::L, space::S));
+        .pad_content(imba::layout::Insets::xy(space::L, space::S));
     match role {
         ButtonRole::Primary => button.fill(chat.accent.0),
         ButtonRole::Ghost => button.stroke(dim),

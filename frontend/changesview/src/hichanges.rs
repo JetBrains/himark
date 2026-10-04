@@ -3,7 +3,7 @@
 
 use std::collections::BTreeMap;
 
-use editor::{Authority, ResourceLocation, ResourceType};
+use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
 use hikit::ForestNode;
 use imba::store::Store;
 
@@ -435,7 +435,7 @@ impl imba::store::Entity for ChangeSets {
         _id: imba::store::Id<Self>,
         command: ChangesCommand,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _fx: &mut imba::effect::Effects<'_, ChangesCommand>,
     ) {
         match command {}

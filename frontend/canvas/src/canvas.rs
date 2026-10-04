@@ -15,13 +15,13 @@ use crate::diff_canvas::{
     canvas_files, canvas_generation, CanvasFile, CanvasListing, CanvasSource,
 };
 use editor::env;
-use editor::{ResourceLocation, UnifiedDiffCommand};
+use editor::{location::ResourceLocation, unified_diff::UnifiedDiffCommand};
 use imba::effect::{AnyEffect, Effects};
 use imba::event::{Event, EventResult, Placement};
 use imba::list::{ListCommand, ListSlice, ListView, StickyStyle};
 use imba::scroll::{ScrollCommand, ScrollView};
 use imba::thunk_ext::ThunkExt;
-use imba::{arena::Arena, constraints::Constraints, store::Store, Thunk, UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, store::Store, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 const MIN_EST_LINES: i64 = 4;
@@ -49,7 +49,7 @@ pub enum CanvasCommand {
     /// An async landing for the commit banner's message box (the
     /// Bounded build's tail, the markdown reparse) — routed to the
     /// banner row wherever it currently sits.
-    BannerEditor(editor::EditorCommand),
+    BannerEditor(editor::editor_view::EditorCommand),
 
     Landed {
         key: ResourceLocation,
@@ -362,7 +362,7 @@ impl Canvas {
 
     /// Per Built row (parked ones included): (title, current face).
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::unified_diff::DiffLayout)> {
         self.diff_rows()
             .into_iter()
             .filter_map(|(title, diff)| {
@@ -471,7 +471,7 @@ impl Canvas {
     fn refresh(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
         let (generation, listing) = canvas_files(store, self.changes, &self.source);
@@ -587,7 +587,7 @@ impl Canvas {
     fn sync_in_place(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         dressed: &[documents::diffs::DiffViewId],
         fx: &mut Effects<'_, CanvasCommand>,
     ) {
@@ -680,14 +680,14 @@ impl Canvas {
             return;
         }
         let body = match view.layout {
-            editor::DiffLayout::Inline => match view
+            editor::unified_diff::DiffLayout::Inline => match view
                 .inline_editor
                 .map(|editor| view.split.right.document.content_height(editor))
             {
                 Some(height) => height,
                 None => return,
             },
-            editor::DiffLayout::Split => {
+            editor::unified_diff::DiffLayout::Split => {
                 let left = view
                     .split
                     .left
@@ -713,7 +713,7 @@ impl Canvas {
     fn adopt(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         generation: u64,
         listing: CanvasListing,
         fx: &mut Effects<'_, CanvasCommand>,
@@ -1506,14 +1506,14 @@ fn mounted(
         pane.perform(
             store,
             ui,
-            UnifiedDiffCommand::SetLayout(editor::DiffLayout::Inline),
+            UnifiedDiffCommand::SetLayout(editor::unified_diff::DiffLayout::Inline),
             fx,
         )
     });
 
     let height = {
         let frame = Arena::default();
-        let thunk = imba::Layout::layout(
+        let thunk = imba::layout::Layout::layout(
             pane.display(&frame, store, ui),
             &frame,
             Constraints {
@@ -1614,15 +1614,15 @@ impl Canvas {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, CanvasCommand> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, CanvasCommand> + imba::layout::LayoutValue + 'a {
         let _ = arena;
-        imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+        imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             let inner: imba::ThunkBox<'a, CanvasCommand> = match &self.note {
                 Some(note) => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
                     let text = note.clone();
                     let font = hikit::fonts::ui_text_font(ui, chrome.title_size);
-                    let shaper = imba::TextShaper::of(ui);
+                    let shaper = imba::layout::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let size = constraints.max;
                     imba::ThunkBox::new(
@@ -1644,7 +1644,7 @@ impl Canvas {
                 }
                 None => imba::ThunkBox::new(
                     arena,
-                    imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
+                    imba::layout::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
                         .map(CanvasCommand::Rows)
                         // The list plants its sticky headers here —
                         // the canvas IS the pane face, so the band
@@ -1825,7 +1825,7 @@ impl imba::store::Entity for CanvasRouter {
         _id: imba::store::Id<Self>,
         command: CanvasRouted,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut imba::effect::Effects<'_, CanvasRouted>,
     ) {
         // The router row is stateless: the canvases live on the SETS
@@ -1962,13 +1962,13 @@ impl DiffCanvasView {
     pub fn probe_pair(
         &self,
         store: &Store,
-        key: &editor::ResourceLocation,
+        key: &editor::location::ResourceLocation,
     ) -> Option<documents::diffs::DiffViewId> {
         self.canvas(store)?.probe_pair(key)
     }
 
     #[doc(hidden)]
-    pub fn probe_cover(&self, store: &Store, key: &editor::ResourceLocation) -> Option<usize> {
+    pub fn probe_cover(&self, store: &Store, key: &editor::location::ResourceLocation) -> Option<usize> {
         self.canvas(store)?.probe_cover(key)
     }
 
@@ -1985,7 +1985,7 @@ impl DiffCanvasView {
     pub fn adopt_for_tests(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         generation: u64,
         listing: crate::diff_canvas::CanvasListing,
     ) {
@@ -2033,7 +2033,7 @@ impl DiffCanvasView {
         &self,
         store: &mut Store,
         ui: &UiCtx,
-        key: editor::ResourceLocation,
+        key: editor::location::ResourceLocation,
         prep: documents::diff_views::OpenedDiffPair,
     ) {
         if let Some(mut canvas) = Canvases::take(store, self.changes, self.id) {
@@ -2078,7 +2078,7 @@ impl DiffCanvasView {
     }
 
     #[doc(hidden)]
-    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::DiffLayout)> {
+    pub fn probe_layouts(&self, store: &Store) -> Vec<(String, editor::unified_diff::DiffLayout)> {
         self.canvas(store)
             .map(|canvas| canvas.probe_layouts(store))
             .unwrap_or_default()
@@ -2151,11 +2151,11 @@ impl View for DiffCanvasView {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |arena: &'a Arena, constraints: Constraints| match self.canvas(store) {
                 Some(canvas) => {
-                    imba::Layout::layout(canvas.display(arena, store, ui), arena, constraints)
+                    imba::layout::Layout::layout(canvas.display(arena, store, ui), arena, constraints)
                 }
                 None => imba::ThunkBox::new(
                     arena,
@@ -2213,7 +2213,7 @@ impl std::fmt::Display for RowCommand {
 
 #[derive(Clone)]
 pub enum ComposerCommand {
-    Message(editor::EditorCommand),
+    Message(editor::editor_view::EditorCommand),
 
     /// A press on the well outside the editor's own face.
     Focus,
@@ -2254,12 +2254,12 @@ pub enum CanvasRow {
 #[derive(Clone)]
 pub enum BannerRow {
     Commit {
-        message: editor::EditorView,
+        message: editor::editor_view::EditorView,
         author: String,
         focused: bool,
     },
     Composer {
-        message: editor::EditorView,
+        message: editor::editor_view::EditorView,
         focused: bool,
     },
 }
@@ -2302,7 +2302,7 @@ fn header_band(theme: &editor::theme::Theme) -> f32 {
 /// = pad × 0.75 above and below) and the TOOLBAR row under it, ruled
 /// off. The box grows UNBOUNDED with the message — a commit message
 /// is as long as its author wants it; the canvas just scrolls.
-fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::EditorView>) -> f32 {
+fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::editor_view::EditorView>) -> f32 {
     let chat = theme.ui().chat.clone();
     let one_line = chat.title_size * 1.6;
     let grown = message
@@ -2315,16 +2315,16 @@ fn composer_band(theme: &editor::theme::Theme, message: Option<&editor::EditorVi
 /// A fresh commit box — the CHAT composer's input recipe
 /// (higent/composer.rs `fresh_input`): a markdown document, the
 /// placeholder the editor's own.
-fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> editor::EditorView {
+fn fresh_composer_box(store: &Store, ui: &imba::ui::UiCtx) -> editor::editor_view::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
     let document =
-        editor::Document::new(editor::Text::from_string_exact(""), editor::Markup::new())
+        editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
             .with_syntax(
-                editor::Syntax::new("markdown", None, editor::Markup::new()),
+                editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
                 &[],
             );
-    let mut view = editor::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
+    let mut view = editor::editor_view::EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("Commit message", &fonts, &theme);
     view
 }
@@ -2336,25 +2336,25 @@ fn fresh_composer_box(store: &Store, ui: &imba::UiCtx) -> editor::EditorView {
 /// takes the keyboard like the composer's box.
 fn commit_banner_box(
     store: &Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     message: &str,
     fx: &mut Effects<'_, CanvasCommand>,
-) -> editor::EditorView {
+) -> editor::editor_view::EditorView {
     let fonts = env::Fonts::of(store)();
     let theme = env::Themes::of(store);
-    let mut document = editor::Document::new(
-        editor::Text::from_string_exact(message),
-        editor::Markup::new(),
+    let mut document = editor::document::Document::new(
+        text::text::Text::from_string_exact(message),
+        editor::markup::Markup::new(),
     )
     .with_syntax(
-        editor::Syntax::new("markdown", None, editor::Markup::new()),
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
     fx.scope(CanvasCommand::BannerEditor, |fx| {
         let editor = document.add_editor(
             600.0,
             None,
-            editor::EditorBuild::Bounded,
+            editor::document::EditorBuild::Bounded,
             &[],
             store,
             ui,
@@ -2365,7 +2365,7 @@ fn commit_banner_box(
         if let Some(parsers) = env::Parsers::of(store) {
             document.launch_reparse(parsers, fx);
         }
-        editor::EditorView {
+        editor::editor_view::EditorView {
             document,
             editor,
             reports_geometry: false,
@@ -2376,7 +2376,7 @@ fn commit_banner_box(
     })
 }
 
-fn commit_band(theme: &editor::theme::Theme, message: &editor::EditorView) -> f32 {
+fn commit_band(theme: &editor::theme::Theme, message: &editor::editor_view::EditorView) -> f32 {
     let chat = theme.ui().chat.clone();
     let line = chat.title_size * 1.5;
     // The full message and the author line under it — no truncation;
@@ -2489,7 +2489,7 @@ impl View for CanvasRow {
                 };
                 match command {
                     RowCommand::Composer(ComposerCommand::Message(command)) => {
-                        if matches!(command, editor::EditorCommand::Click { .. }) && !*focused {
+                        if matches!(command, editor::editor_view::EditorCommand::Click { .. }) && !*focused {
                             *focused = true;
                             message.focus_text();
                         }
@@ -2580,7 +2580,7 @@ impl View for CanvasRow {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         RowFrame {
             row: self,
             store,
@@ -2595,11 +2595,11 @@ struct RowFrame<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for RowFrame<'_> {}
+impl imba::layout::LayoutValue for RowFrame<'_> {}
 
-impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
+impl<'a> imba::layout::Layout<'a, RowCommand> for RowFrame<'a> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, RowCommand> {
-        use imba::LayoutExt as _;
+        use imba::layout::LayoutExt as _;
         let RowFrame { row, store, ui } = self;
         let theme = env::Themes::of(store);
         let chrome = theme.ui().chat.clone();
@@ -2642,7 +2642,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 face.place(
                     inset,
                     inset,
-                    imba::Layout::layout(
+                    imba::layout::Layout::layout(
                         message.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -2655,7 +2655,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 );
                 let author = author.clone();
                 let ascent = -body_font.metrics().1.ascent;
-                let shaper = imba::TextShaper::of(ui);
+                let shaper = imba::layout::TextShaper::of(ui);
                 face.place(
                     0.0,
                     inset + content,
@@ -2702,7 +2702,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     .chars()
                     .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                     .sum::<f32>()
-                    + imba::text_advance(ui, &key_font, "⌘⏎")
+                    + imba::layout::text_advance(ui, &key_font, "⌘⏎")
                     + combo.gap
                     + combo.pad * 2.0;
                 let sendable = message.document.text().byte_count() > 0;
@@ -2713,12 +2713,12 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 let mid = cell_h * 0.5;
                 let caps_ascent = -caps_font.metrics().1.ascent;
                 let key_ascent = -key_font.metrics().1.ascent;
-                let cell = imba::Row::new(arena)
+                let cell = imba::layout::Row::new(arena)
                     .gap(combo.gap)
                     .child(
-                        imba::text(ui, label, caps_font.clone(), on_accent)
+                        imba::layout::text(ui, label, caps_font.clone(), on_accent)
                             .tracking(1.5)
-                            .pad_insets(imba::Insets {
+                            .pad_insets(imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
                                 right: 0.0,
@@ -2726,8 +2726,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                             }),
                     )
                     .child(
-                        imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                            imba::Insets {
+                        imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                            imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                                 right: 0.0,
@@ -2735,7 +2735,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                             },
                         ),
                     )
-                    .pad_insets(imba::Insets {
+                    .pad_insets(imba::layout::Insets {
                         left: combo.pad,
                         top: 0.0,
                         right: 0.0,
@@ -2784,7 +2784,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 face.place(
                     pad,
                     box_pad,
-                    imba::Layout::layout(
+                    imba::layout::Layout::layout(
                         message.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -2859,10 +2859,10 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 RowBody::Placeholder { armed } => {
                     let body_height = (reserved_body(&theme, &diff.file) - chrome.gap).max(0.0);
                     let skeleton = skeleton_layout(arena, &theme, &diff.file, width, body_height);
-                    let card = imba::ZBox::new(arena)
-                        .child(imba::spacer(width, body_height))
-                        .child(imba::fixed(skeleton))
-                        .pad_insets(imba::Insets {
+                    let card = imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(width, body_height))
+                        .child(imba::layout::fixed(skeleton))
+                        .pad_insets(imba::layout::Insets {
                             left: 0.0,
                             top: 0.0,
                             right: 0.0,
@@ -2878,7 +2878,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 RowBody::Failed(error) => {
                     let text = format!("{} — {error}", diff.file.title);
                     let font = hikit::fonts::ui_text_font(ui, chrome.title_size * 0.85);
-                    let shaper = imba::TextShaper::of(ui);
+                    let shaper = imba::layout::TextShaper::of(ui);
                     let color = chrome.loader_color.0;
                     let body = imba::leaf::leaf::<RowCommand>(width, chrome.title_size * 3.0)
                         .paint_instead(move |_arena, canvas, rect| {
@@ -2892,10 +2892,10 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                                 rect.top + rect.height() * 0.5,
                             );
                         });
-                    imba::ZBox::new(arena)
-                        .child(imba::spacer(width, chrome.title_size * 3.0))
-                        .child(imba::fixed(body))
-                        .pad_insets(imba::Insets {
+                    imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(width, chrome.title_size * 3.0))
+                        .child(imba::layout::fixed(body))
+                        .pad_insets(imba::layout::Insets {
                             left: 0.0,
                             top: 0.0,
                             right: 0.0,
@@ -2905,7 +2905,7 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                 }
                 RowBody::Built { pane } => {
                     let editor_target = (width - gutter).max(120.0);
-                    let body = imba::Layout::layout(
+                    let body = imba::layout::Layout::layout(
                         pane.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -2956,8 +2956,8 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                     let rewrap =
                         match crate::diff_pane::gathered_view(store, pane.documents(), pane.id()) {
                             Some(view) => match view.layout {
-                                editor::DiffLayout::Split => None,
-                                editor::DiffLayout::Inline => {
+                                editor::unified_diff::DiffLayout::Split => None,
+                                editor::unified_diff::DiffLayout::Inline => {
                                     let laid = view
                                         .split
                                         .right
@@ -2968,10 +2968,10 @@ impl<'a> imba::Layout<'a, RowCommand> for RowFrame<'a> {
                             },
                             None => None,
                         };
-                    let card = imba::ZBox::new(arena)
-                        .child(imba::spacer(width, body_height))
-                        .child(imba::fixed(body))
-                        .pad_insets(imba::Insets {
+                    let card = imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(width, body_height))
+                        .child(imba::layout::fixed(body))
+                        .pad_insets(imba::layout::Insets {
                             left: 0.0,
                             top: 0.0,
                             right: 0.0,
@@ -3130,7 +3130,7 @@ impl hikit::Navigator for CanvasNavigator {
     fn navigate(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         place: &CanvasPlace,
         _fx: &mut imba::command::Fx<'_>,
     ) -> Option<Box<dyn hikit::DynPanelView>> {

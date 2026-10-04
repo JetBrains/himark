@@ -2,35 +2,35 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::StyleId;
+use editor::markup::StyleId;
 
 trait RunReparse {
-    fn run_reparse(self) -> editor::ReparseOutcome;
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome;
 }
 
-impl RunReparse for editor::ReparseWork {
-    fn run_reparse(self) -> editor::ReparseOutcome {
-        editor::ReparseHandler(editor::test_document::test_workshop(
-            editor::Theme::embedded(),
+impl RunReparse for editor::reparse::ReparseWork {
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome {
+        editor::reparse::ReparseHandler(editor::test_document::test_workshop(
+            editor::theme::Theme::embedded(),
         ))
         .reparse(self)
     }
 }
 
-fn languages() -> editor::SyntaxLanguages {
-    let mut registry = editor::SyntaxLanguages::new();
+fn languages() -> editor::reparse::SyntaxLanguages {
+    let mut registry = editor::reparse::SyntaxLanguages::new();
     register(&mut registry);
     registry
 }
 
-fn parsed() -> editor::Document {
+fn parsed() -> editor::document::Document {
     let store = &imba::store::Store::new();
     let ui = editor::test_document::test_ui();
     let fonts = editor::test_document::test_fonts_collection();
-    let theme = editor::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(SOURCE),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(SOURCE),
         EXT,
         &registry,
         store,
@@ -38,7 +38,7 @@ fn parsed() -> editor::Document {
         &fonts,
         &theme,
     );
-    let outcome = editor::ReparseWork::capture(&document, registry)
+    let outcome = editor::reparse::ReparseWork::capture(&document, registry)
         .expect("the fixture parses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -52,7 +52,7 @@ fn parsed() -> editor::Document {
     document
 }
 
-fn style_at(document: &editor::Document, needle: &str) -> Option<StyleId> {
+fn style_at(document: &editor::document::Document, needle: &str) -> Option<StyleId> {
     let at = SOURCE.find(needle).expect("the needle is in the fixture") as u32;
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
@@ -141,10 +141,10 @@ fn python_blocks_highlight_in_markdown() {
     let ui = editor::test_document::test_ui();
     let source = "title\n\n```python\ndef greet():\n    return \"hi\"\n```\n";
     let fonts = editor::test_document::test_fonts_collection();
-    let theme = editor::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let mut document = himarkdown::document_from_markdown(source, store, ui, &fonts, &theme);
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("document has a parse")
         .run_reparse();
     document.apply_reparse_outcome(

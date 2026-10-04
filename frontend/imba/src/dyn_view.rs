@@ -126,7 +126,7 @@ where
     ) -> crate::ThunkBox<'a, DynCommand> {
         crate::ThunkBox::new(
             arena,
-            crate::Layout::layout(self.display(arena, store, ui), arena, constraints)
+            crate::layout::Layout::layout(self.display(arena, store, ui), arena, constraints)
                 .map(DynCommand::new),
         )
     }
@@ -179,8 +179,8 @@ impl View for Box<dyn DynView> {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             self.as_ref().layout_dyn(arena, store, ui, constraints)
         })
     }

@@ -44,7 +44,7 @@ fn tinted(
     editor: crate::editor::EditorId,
     ranges: &[Range<u32>],
     style: StyleId,
-) -> crate::MarkupId {
+) -> crate::markup::MarkupId {
     let id = document.add_markup();
     document.show_markup(editor, id);
     document.mark_scroll_stripes(editor, id);
@@ -52,7 +52,7 @@ fn tinted(
     id
 }
 
-fn retint(document: &mut Document, id: crate::MarkupId, ranges: &[Range<u32>], style: StyleId) {
+fn retint(document: &mut Document, id: crate::markup::MarkupId, ranges: &[Range<u32>], style: StyleId) {
     let store = &imba::store::Store::new();
     let ui = crate::test_document::test_ui();
     let mut tints = Markup::new();
@@ -214,8 +214,8 @@ fn the_diff_markup_is_derived_from_the_operation_and_classifies_hunks() {
     // An inserted line, a word swap, a trailing deletion — the
     // operation is built first (`diff`), the markup derived FROM it
     // (`hunk_markup`, the presentation stage).
-    let left = text::Text::from_string_exact("aaa\nbbb\nccc dog fox\nddd\neee\n");
-    let right = text::Text::from_string_exact("aaa\nNEW LINE\nbbb\nccc cat fox\nddd\n");
+    let left = text::text::Text::from_string_exact("aaa\nbbb\nccc dog fox\nddd\neee\n");
+    let right = text::text::Text::from_string_exact("aaa\nNEW LINE\nbbb\nccc cat fox\nddd\n");
     let operation = myersdiff::diff(&left, &right);
     let markup = crate::diff::hunk_markup(&operation, &right);
     assert_eq!(operation.new_len() as usize, right.byte_count());
@@ -250,7 +250,7 @@ fn removing_the_last_diff_owes_one_clearing_relaunch() {
     // it, and the painted track keeps the document in the sweep until
     // the clearing landing empties it.
     let source = hundred_lines();
-    let base = text::Text::from_string_exact(&source.replace("line 050", "line ~50"));
+    let base = text::text::Text::from_string_exact(&source.replace("line 050", "line ~50"));
     let mut document = plain_document(&source);
     let editor = pane(&mut document);
     let operation = myersdiff::diff(&base, document.text());
@@ -303,7 +303,7 @@ fn a_diff_carries_its_change_map_from_birth() {
     let mut base = source.replace("line 050", "line ~50");
     base.insert_str(9 * 6, "only in the base\n");
     base.push_str("trailing, gone from the target\n");
-    let base = text::Text::from_string_exact(&base);
+    let base = text::text::Text::from_string_exact(&base);
     let mut document = plain_document(&source);
     let editor = pane(&mut document);
 

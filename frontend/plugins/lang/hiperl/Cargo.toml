@@ -12,4 +12,5 @@ hisitter = { path = "../../../hisitter" }
 tree-sitter-perl = "1.1.2"
 
 [dev-dependencies]
+text = { path = "../../../text" }
 imba = { path = "../../../imba" }

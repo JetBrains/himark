@@ -12,7 +12,7 @@
 
 use std::time::Instant;
 
-use text::Text;
+use text::text::Text;
 
 fn synth_rust(functions: usize) -> String {
     let mut source = String::from("//! synthetic module\n\nuse std::collections::HashMap;\n\n");
@@ -61,7 +61,7 @@ fn stage_report(name: &str, base_src: &str, target_src: &str) {
         base_src.len() as f64 / 1024.0,
         target_src.len() as f64 / 1024.0
     );
-    let mut languages = editor::SyntaxLanguages::new();
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
     let rust = languages.ensure("rust").expect("rust grammar");
 
@@ -109,9 +109,9 @@ fn stage_report(name: &str, base_src: &str, target_src: &str) {
     time("hunk_markup (structural op)", || {
         editor::diff::hunk_markup(&operation, &target)
     });
-    let hunks = |op: &operation::Operation| {
+    let hunks = |op: &operation::operation::Operation| {
         op.iter()
-            .filter(|op| !matches!(op, operation::Op::Retain(_)))
+            .filter(|op| !matches!(op, operation::op::Op::Retain(_)))
             .count()
     };
     println!(

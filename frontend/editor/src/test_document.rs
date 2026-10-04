@@ -3,12 +3,9 @@
 
 use std::ops::Range;
 
-use text::Text;
+use text::text::Text;
 
-use crate::{
-    document::Document,
-    markup::{Markup, StyleId},
-};
+use crate::{document::Document, markup::{Markup, StyleId}};
 
 pub fn test_fonts() -> crate::FontSource {
     std::sync::Arc::new(|| test_fonts_collection().clone())
@@ -35,10 +32,10 @@ pub fn test_fonts_collection() -> &'static skia_safe::textlayout::FontCollection
 /// leak is bounded (one ctx per libtest worker); `UiCtx` is not
 /// `Sync`, so the `'static` borrow cannot cross threads. Tests only —
 /// production code is handed the real ctx and must thread it.
-pub fn test_ui() -> &'static imba::UiCtx {
+pub fn test_ui() -> &'static imba::ui::UiCtx {
     thread_local! {
-        static UI: &'static imba::UiCtx =
-            Box::leak(Box::new(imba::UiCtx::dont_use_too_slow()));
+        static UI: &'static imba::ui::UiCtx =
+            Box::leak(Box::new(imba::ui::UiCtx::dont_use_too_slow()));
     }
     UI.with(|ui| *ui)
 }

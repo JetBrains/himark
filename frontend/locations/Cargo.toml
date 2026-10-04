@@ -7,6 +7,7 @@ license = "Apache-2.0"
 [dependencies]
 documents = { path = "../documents" }
 editor = { path = "../editor" }
+text = { path = "../text" }
 hikit = { path = "../hikit" }
 imba = { path = "../imba" }
 rpds = "1"

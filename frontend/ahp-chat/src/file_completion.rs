@@ -48,7 +48,7 @@ pub(crate) fn resource_attachments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use editor::ResourceLocation;
+    use editor::location::ResourceLocation;
 
     struct TestUris;
     impl ahp_wire::client::ResourceUriMap for TestUris {
@@ -58,8 +58,8 @@ mod tests {
         fn location_of(
             &self,
             _uri: &ahp_wire::client::ResourceUri,
-            _kind: editor::ResourceType,
-            _authority: &editor::Authority,
+            _kind: editor::location::ResourceType,
+            _authority: &editor::location::Authority,
         ) -> Option<ResourceLocation> {
             None
         }
@@ -70,8 +70,8 @@ mod tests {
             label: path.last().unwrap().to_string(),
             rel: rel.to_owned(),
             location: ResourceLocation::new(
-                editor::ResourceType::document(),
-                editor::Authority::new("test"),
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             ),
         }

@@ -4,12 +4,18 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use himark::{
-    EnrichCx, EnrichFuture, EnrichInput, Enricher, EnricherId, Enrichment,
-    FetchResourceBytesEffect, Inlay, InlayMode, Markup,
-};
+use himark::{FetchResourceBytesEffect};
+use editor::enrich::EnrichCx;
+use editor::enrich::EnrichFuture;
+use editor::enrich::EnrichInput;
+use editor::enrich::Enricher;
+use editor::enrich::EnricherId;
+use editor::enrich::Enrichment;
+use editor::markup::Inlay;
+use editor::markup::InlayMode;
+use editor::markup::Markup;
 use hisitter::TsTree;
-use imba::{arena::Arena, image::ImageView, store::Store, UiCtx, View};
+use imba::{arena::Arena, image::ImageView, store::Store, ui::UiCtx, View};
 
 #[derive(Clone, Debug, PartialEq)]
 struct ImageRef {
@@ -51,7 +57,7 @@ impl View for ImageInlay {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         self.view.display(arena, store, ui)
     }
 }

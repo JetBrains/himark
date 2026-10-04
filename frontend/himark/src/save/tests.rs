@@ -6,7 +6,8 @@ use std::sync::{mpsc, Arc, Mutex};
 use imba::event::{Key, Modifiers};
 
 use super::*;
-use crate::{test_document::plain_document, test_driver, AppExt, Application, OpenDocuments};
+use ::editor::test_document::plain_document;
+use crate::{test_driver, AppExt, Application, OpenDocuments};
 
 type Writes = Arc<Mutex<Vec<(ResourceLocation, String)>>>;
 
@@ -55,8 +56,8 @@ fn setup(
 
 fn location() -> ResourceLocation {
     ResourceLocation::new(
-        crate::ResourceType::document(),
-        crate::Authority::new("local"),
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         vec!["notes.md".to_owned()],
     )
 }
@@ -174,8 +175,8 @@ fn save_all_stores_every_modified_file_and_the_title_drops_its_mark() {
 
     let named = |name: &str| {
         ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("local"),
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("local"),
             vec![name.to_owned()],
         )
     };

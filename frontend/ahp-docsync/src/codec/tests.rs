@@ -3,11 +3,11 @@
 
 use super::*;
 
-fn text(source: &str) -> editor::Text {
-    editor::Text::from_string_exact(source)
+fn text(source: &str) -> text::text::Text {
+    text::text::Text::from_string_exact(source)
 }
 
-fn read(value: &editor::Text) -> String {
+fn read(value: &text::text::Text) -> String {
     let end = value.byte_count() as u32;
     value.view().substring(0..end)
 }

@@ -1,11 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::from_leaves_with_branching;
+use rope::rope::from_leaves_with_branching;
 
 use crate::measure::{BRANCH_FACTOR, LEAF_CAPACITY};
 use crate::op::Op;
-use crate::Operation;
+use crate::operation::Operation;
 
 #[derive(Clone)]
 pub struct OperationBuilder {

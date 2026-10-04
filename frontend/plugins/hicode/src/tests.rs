@@ -3,14 +3,14 @@
 
 use super::*;
 
-use himark::test_document::plain_document;
+use ::editor::test_document::plain_document;
 use himark::{AppCommand, AppExt, AppFonts, Application, OpenedDocument};
 use std::sync::{mpsc, Arc};
 
 fn document_location(name: &str) -> ResourceLocation {
     ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         vec!["project".to_owned(), name.to_owned()],
     )
 }
@@ -21,12 +21,12 @@ fn lc(line: u32, col: u32) -> LineCol {
 
 #[test]
 fn identifier_at_clips_the_word_under_the_caret() {
-    let text = text::Text::from_string("let frob_nicate2 = 7;");
+    let text = text::text::Text::from_string("let frob_nicate2 = 7;");
     let mut view = text.view();
     assert_eq!(identifier_at(&mut view, 6), "frob_nicate2");
     assert_eq!(identifier_at(&mut view, 4), "frob_nicate2");
     assert_eq!(identifier_at(&mut view, 17), "");
-    let empty = text::Text::from_string("");
+    let empty = text::text::Text::from_string("");
     assert_eq!(identifier_at(&mut empty.view(), 0), "");
 }
 

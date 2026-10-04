@@ -1,20 +1,8 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark::{
-    AppCommand, Application, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView,
-};
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, Key},
-    leaf::leaf,
-    list::{ListCommand, ListOps, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, PresentableCommand, UiCtx, View,
-};
+use himark::{AppCommand, Application, ListKeyCommand, ListKeyboardController, ModalRequest, ModalView};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListOps, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, PresentableCommand, ui::UiCtx, View};
 use skia_safe::{Paint, Size};
 
 /// Keys-only controller over the raw label list — the palette's own
@@ -36,7 +24,7 @@ struct Entry {
 #[derive(Clone)]
 pub enum PaletteCommand {
     /// The palette's OWN input editor — the query lives here.
-    Input(himark::EditorCommand),
+    Input(editor::editor_view::EditorCommand),
 
     Rows(RowsCommand),
 
@@ -61,7 +49,7 @@ const PALETTE_SHOWN: usize = 200;
 #[derive(Clone)]
 pub struct PaletteView {
     /// The palette's own query input: the overlay owns its text.
-    input: himark::EditorView,
+    input: editor::editor_view::EditorView,
 
     entries: Vec<Entry>,
 
@@ -84,7 +72,7 @@ impl PaletteView {
                 command: std::sync::Arc::new(std::sync::Mutex::new(Some(presentable.command))),
             })
             .collect();
-        let mut input = himark::EditorView::input(600.0, store, ui, himark::fonts::source());
+        let mut input = editor::editor_view::EditorView::input(600.0, store, ui, himark::fonts::source());
         input.focus_text();
         let mut palette = Self {
             input,
@@ -156,7 +144,7 @@ impl View for PaletteView {
     fn focus_data<'w>(
         &'w self,
         _store: &'w Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::event::EventResult;
         // Movement and Enter are the controller's table; the palette
@@ -225,11 +213,11 @@ impl View for PaletteView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
 
-            let chrome = ::himark::env::Themes::of(store).ui().peeker.clone();
+            let chrome = ::editor::env::Themes::of(store).ui().peeker.clone();
             let row_height = chrome.row_height;
 
             let list_width = size.width;
@@ -267,7 +255,7 @@ impl View for PaletteView {
             container.place(
                 chrome.input_inset_x,
                 chrome.margin * 0.5 + chrome.input_inset_y,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.input.display(arena, store, ui),
                     arena,
                     Constraints {
@@ -278,7 +266,7 @@ impl View for PaletteView {
                 .map(PaletteCommand::Input),
             );
 
-            // The chrome labels as `imba::text`, centered in their
+            // The chrome labels as `imba::layout::text`, centered in their
             // row band (the design-system row rule); the texts ignore
             // presses, so the backdrop's close-on-click still answers
             // underneath them.
@@ -288,7 +276,7 @@ impl View for PaletteView {
                 container.place_boxed(
                     list_x + chrome.row_text_x,
                     list_top + ((row_height - text_height) * 0.5).max(0.0),
-                    imba::text(
+                    imba::layout::text(
                         ui,
                         "no matching commands",
                         row_font.clone(),
@@ -301,7 +289,7 @@ impl View for PaletteView {
             container.place_boxed(
                 list_x,
                 size.height - chrome.hint_bottom - hint_ascent,
-                imba::text(
+                imba::layout::text(
                     ui,
                     format!("{match_count} of {total} commands   ↑↓ select   ⏎ run   esc dismiss"),
                     hint_font.clone(),
@@ -313,7 +301,7 @@ impl View for PaletteView {
             container.place(
                 list_x,
                 list_top,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.list.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(list_width, list_height)),

@@ -11,22 +11,11 @@
 
 use std::sync::Arc;
 
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use hikit::menu::{MenuCommand, MenuView, PopupMenuView};
 use hikit::{ListKeyCommand, ListKeyboardController, ModalRequest, ModalView, TreeRow};
 use imba::list::{ActivateTrigger, ListOps};
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    list::{ListSlice, ListView},
-    scroll::ScrollView,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult, Key as InputKey}, leaf::leaf, list::{ListSlice, ListView}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Size};
 
 const PANEL_PAD: f32 = 6.0;
@@ -77,7 +66,7 @@ struct LocationTree {
 }
 
 impl LocationTree {
-    fn new(store: &Store, ui: &imba::UiCtx) -> Self {
+    fn new(store: &Store, ui: &imba::ui::UiCtx) -> Self {
         Self {
             list: ListKeyboardController::searchable(
                 ScrollView::new(
@@ -138,7 +127,7 @@ impl LocationTree {
 
         for len in (1..=target.path().len().saturating_sub(1)).rev() {
             let ancestor = ResourceLocation::new(
-                editor::ResourceType::directory(),
+                editor::location::ResourceType::directory(),
                 target.authority().clone(),
                 target.path()[..len].to_vec(),
             );
@@ -353,7 +342,7 @@ impl SessionTree {
     /// for.
     fn find_or_create(
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         trees: imba::store::Id<Self>,
     ) -> LocationTree {
         store
@@ -398,7 +387,7 @@ pub enum TreeCommand {
     Menu(MenuCommand),
 
     /// The inline row editor's traffic while a rename/create rides.
-    Edit(::editor::EditorCommand),
+    Edit(::editor::editor_view::EditorCommand),
 
     CommitEdit,
 
@@ -467,7 +456,7 @@ enum EditTarget {
 #[derive(Clone)]
 struct RowEdit {
     target: EditTarget,
-    input: ::editor::EditorView,
+    input: ::editor::editor_view::EditorView,
 }
 
 impl RowEdit {
@@ -735,7 +724,7 @@ impl SessionTreeView {
         let stem = name.rfind('.').filter(|at| *at > 0).unwrap_or(name.len());
         input.document.set_carets(
             input.editor,
-            ::editor::MultiCaret::one(::editor::Caret::selecting(0, stem as u32)),
+            ::editor::caret::MultiCaret::one(::editor::caret::Caret::selecting(0, stem as u32)),
         );
         self.edit = Some(RowEdit {
             target: EditTarget::Rename(target.clone()),
@@ -749,7 +738,7 @@ impl SessionTreeView {
             return;
         };
         let depth = self.tree.list.inner().content().depth_at(range.start) as u16;
-        let placeholder = parent.child(editor::ResourceType::document(), "");
+        let placeholder = parent.child(editor::location::ResourceType::document(), "");
         if self.tree.is_visible(&placeholder) {
             return;
         }
@@ -766,7 +755,7 @@ impl SessionTreeView {
             .inner_mut()
             .content_mut()
             .splice_slice(at..at, slice);
-        let mut input = ::editor::EditorView::input(600.0, store, ui, hikit::fonts::source());
+        let mut input = ::editor::editor_view::EditorView::input(600.0, store, ui, hikit::fonts::source());
         input.focus_text();
         self.edit = Some(RowEdit {
             target: EditTarget::Create {
@@ -815,7 +804,7 @@ impl SessionTreeView {
                 placeholder,
             } => {
                 self.remove_row(&placeholder);
-                let location = parent.child(editor::ResourceType::document(), name);
+                let location = parent.child(editor::location::ResourceType::document(), name);
                 let reveal = location.clone();
                 let _ = fx.push(
                     imba::effect::AnyEffect::new(documents::CreateDocumentEffect { location }).map(
@@ -932,7 +921,7 @@ fn menu_items(target: &ResourceLocation, root: bool) -> Vec<hikit::combo::ComboO
 fn parent_of(location: &ResourceLocation) -> Option<ResourceLocation> {
     (location.path().len() > 1).then(|| {
         ResourceLocation::new(
-            editor::ResourceType::directory(),
+            editor::location::ResourceType::directory(),
             location.authority().clone(),
             location.path()[..location.path().len() - 1].to_vec(),
         )
@@ -946,18 +935,18 @@ fn valid_file_name(name: &str) -> bool {
         && !name.chars().any(|c| matches!(c, '/' | '\\' | '\0'))
 }
 
-fn edit_text(input: &::editor::EditorView) -> String {
+fn edit_text(input: &::editor::editor_view::EditorView) -> String {
     let text = input.document.text();
     let end = text.byte_count().min(u32::MAX as usize) as u32;
     text.view().substring(0..end)
 }
 
-fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::EditorView {
-    let mut markup = editor::Markup::new();
+fn seeded_input(store: &Store, ui: &UiCtx, text: &str) -> ::editor::editor_view::EditorView {
+    let mut markup = editor::markup::Markup::new();
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
-    let document = editor::Document::new(editor::Text::from_string_exact(text), markup);
+    let document = editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let fonts = hikit::fonts::source();
-    let mut input = ::editor::EditorView::of_document(
+    let mut input = ::editor::editor_view::EditorView::of_document(
         document,
         600.0,
         store,
@@ -1038,7 +1027,7 @@ impl View for SessionTreeView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         fx.scope(TreeCommand::Rows, |fx| self.tree.list.clear(store, ui, fx));
         self.persist(store);
     }
@@ -1079,7 +1068,7 @@ impl View for SessionTreeView {
                             (false, _, _) => {
                                 if location.path().len() > 1 {
                                     let parent = ResourceLocation::new(
-                                        editor::ResourceType::directory(),
+                                        editor::location::ResourceType::directory(),
                                         location.authority().clone(),
                                         location.path()[..location.path().len() - 1].to_vec(),
                                     );
@@ -1271,12 +1260,12 @@ impl View for SessionTreeView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut overlay = container(arena, size);
 
-            let rows = imba::Layout::layout(
+            let rows = imba::layout::Layout::layout(
                 self.tree.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(size.width, size.height - PANEL_PAD)),
@@ -1370,7 +1359,7 @@ impl View for SessionTreeView {
                         overlay.place(
                             x + search.input_pad_x,
                             y + search.input_pad_y,
-                            imba::Layout::layout(
+                            imba::layout::Layout::layout(
                                 edit.input.display(arena, store, ui),
                                 arena,
                                 Constraints {

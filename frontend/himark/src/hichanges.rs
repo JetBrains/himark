@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use crate::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::{effect::AnyEffect, store::Store};
 
 pub use changesview::hichanges::*;

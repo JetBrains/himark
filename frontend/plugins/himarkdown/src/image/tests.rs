@@ -3,20 +3,21 @@
 
 use super::*;
 
-use himark::{ResourceLocation, ResourceType};
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
-    himark::test_document::test_fonts_collection().clone()
+    ::editor::test_document::test_fonts_collection().clone()
 }
 
-fn theme() -> himark::Theme {
-    himark::Theme::embedded()
+fn theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
 fn base() -> ResourceLocation {
     ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         vec!["repo".to_owned(), "page.md".to_owned()],
     )
 }
@@ -94,13 +95,13 @@ impl Fetches {
     }
 }
 
-fn md(source: &str) -> himark::Document {
+fn md(source: &str) -> editor::document::Document {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     crate::document_from_markdown(source, store, ui, &fonts(), &theme())
 }
 
-fn input(document: &himark::Document, source: &str, previous: Markup) -> EnrichInput {
+fn input(document: &editor::document::Document, source: &str, previous: Markup) -> EnrichInput {
     EnrichInput {
         text: document.text().clone(),
         syntax: document.syntax().expect("markdown parses").clone(),
@@ -128,7 +129,7 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 
 fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = fonts();
     let theme = theme();
     let fresh = {
@@ -137,7 +138,7 @@ fn run(over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
             theme: &theme,
             caller,
             languages: None,
-            measure: himark::MeasureCtx::Handed { store, ui },
+            measure: editor::enrich::MeasureCtx::Handed { store, ui },
         };
         poll(ImageEnricher.derive(over, &cx))
     };

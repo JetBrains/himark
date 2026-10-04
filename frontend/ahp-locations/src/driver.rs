@@ -114,7 +114,7 @@ impl imba::command::DynamicCommand for AttachFeedStream {
         "Attach Location Stream".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let Some(lists) = of(store, self.wire).map(|row| row.lists) else {
             return;
         };
@@ -164,7 +164,7 @@ impl imba::command::DynamicOnceCommand for FeedBatch {
     fn perform(
         self: Box<Self>,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         fx: &mut imba::command::Fx<'_>,
     ) {
         let Some(row) = of(store, self.wire) else {
@@ -228,7 +228,7 @@ impl imba::command::DynamicCommand for StopFeed {
         "Stop Location Stream".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         stop_feed(store, self.wire, self.feed, fx);
     }
 }
@@ -268,14 +268,14 @@ impl imba::command::DynamicCommand for DisposeFeed {
         "Dispose Location Feed".to_owned()
     }
 
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         dispose(store, ui, self.wire, self.feed, fx);
     }
 }
 
 fn dispose(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     wire: imba::store::Id<LocationsWire>,
     feed: FeedId,
     fx: &mut imba::command::Fx<'_>,
@@ -308,7 +308,7 @@ impl imba::command::DynamicOnceCommand for NothingLanded {
     fn perform(
         self: Box<Self>,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _fx: &mut imba::command::Fx<'_>,
     ) {
     }
@@ -319,7 +319,7 @@ impl imba::command::DynamicOnceCommand for NothingLanded {
 /// dispose run the teardown the faces can no longer name.
 pub fn sync(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     wire: imba::store::Id<LocationsWire>,
     fx: &mut imba::command::Fx<'_>,
 ) {

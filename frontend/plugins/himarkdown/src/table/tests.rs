@@ -90,10 +90,10 @@ fn apply(source: &str, operation: &Operation) -> String {
 
 fn editor_over(source: &str) -> TableEditor {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    use himark::InlayEditing;
-    let fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let ui = ::editor::test_document::test_ui();
+    use editor::markup::InlayEditing;
+    let fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
     let mut editor = TableEditor::new(
         parse_table(source).expect("a table"),
         store,
@@ -108,11 +108,11 @@ fn editor_over(source: &str) -> TableEditor {
 #[test]
 fn structural_edits_write_correct_markdown() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    use himark::InlayEditing;
+    let ui = ::editor::test_document::test_ui();
+    use editor::markup::InlayEditing;
     let source = "| a | b |\n| --- | :-: |\n| 1 | 2 |\n| 3 | 4 |";
-    let fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
 
     let mut editor = editor_over(source);
     editor.insert_row(3, store, ui, &fonts, &theme);
@@ -143,11 +143,11 @@ fn structural_edits_write_correct_markdown() {
 #[test]
 fn resize_relayout_round_trips_through_the_effect() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     use imba::effect::{block_on, EffectHandler};
 
-    let fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
     let source = "| title | body |\n| --- | --- |\n| a | some long prose that wraps at narrow widths and keeps wrapping |";
     let mut editor = editor_over(source);
     editor.relay_all(600.0, store, ui, &fonts, &theme);
@@ -183,8 +183,8 @@ fn resize_relayout_round_trips_through_the_effect() {
         "the same wanted width relaunches nothing"
     );
 
-    let workshop = std::sync::Arc::new(himark::Workshop::new(
-        himark::embedded_fonts::source(),
+    let workshop = std::sync::Arc::new(editor::env::Workshop::new(
+        editor::embedded_fonts::source(),
         theme.clone(),
     ));
     let handler = TableRelayoutHandler(workshop);
@@ -219,11 +219,11 @@ fn resize_relayout_round_trips_through_the_effect() {
 #[test]
 fn a_relaid_landing_over_moved_content_discards_itself() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    use himark::InlayEditing;
+    let ui = ::editor::test_document::test_ui();
+    use editor::markup::InlayEditing;
 
-    let fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
     let source =
         "| a | b |\n| --- | --- |\n| one | a very long cell that wraps when squeezed hard |";
     let mut editor = editor_over(source);
@@ -261,11 +261,11 @@ fn a_relaid_landing_over_moved_content_discards_itself() {
 #[test]
 fn paint_reports_relayout_while_the_width_lags() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     use imba::event::{Event, EventResult};
 
-    let fonts = himark::test_document::test_fonts_collection().clone();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection().clone();
+    let theme = editor::theme::Theme::embedded();
     let source = "| a | b |\n| --- | --- |\n| x | prose long enough that no pane fits it unwrapped, and then some more of it |";
     let mut editor = editor_over(source);
     editor.relay_all(600.0, store, ui, &fonts, &theme);
@@ -279,7 +279,7 @@ fn paint_reports_relayout_while_the_width_lags() {
     };
     let mut surface = skia_safe::surfaces::raster_n32_premul((1024, 768)).expect("a surface");
     let paint_commands = |editor: &TableEditor, surface: &mut skia_safe::Surface| {
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             imba::View::display(editor, &arena, &store, &ui),
             &arena,
             constraints,
@@ -338,7 +338,7 @@ fn stretches_to_fill_when_everything_fits() {
             },
         ],
         620.0,
-        &himark::Theme::embedded().ui().table.clone(),
+        &editor::theme::Theme::embedded().ui().table.clone(),
     );
 
     let total: f32 = widths.iter().sum();
@@ -362,7 +362,7 @@ fn squeeze_distributes_by_compressibility() {
             max: 400.0,
         },
     ];
-    let chrome = himark::Theme::embedded().ui().table.clone();
+    let chrome = editor::theme::Theme::embedded().ui().table.clone();
     let widths = column_widths(&columns, 400.0, &chrome);
 
     let total: f32 = widths.iter().sum();
@@ -393,7 +393,7 @@ fn hard_squeeze_falls_back_to_minimums() {
             },
         ],
         400.0,
-        &himark::Theme::embedded().ui().table.clone(),
+        &editor::theme::Theme::embedded().ui().table.clone(),
     );
     assert_eq!(
         widths,
@@ -404,7 +404,7 @@ fn hard_squeeze_falls_back_to_minimums() {
 
 #[test]
 fn floor_applies_and_the_cap_bounds_dominance() {
-    let chrome = himark::Theme::embedded().ui().table.clone();
+    let chrome = editor::theme::Theme::embedded().ui().table.clone();
     let widths = column_widths(
         &[
             ColumnIntrinsics { min: 2.0, max: 4.0 },

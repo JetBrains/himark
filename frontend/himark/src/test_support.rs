@@ -9,16 +9,16 @@ use crate::{workbench_geometry, Application, EditorIdView, Panel};
 struct TestUris;
 
 impl crate::higent::ResourceUriMap for TestUris {
-    fn uri_of(&self, location: &crate::ResourceLocation) -> crate::higent::ResourceUri {
+    fn uri_of(&self, location: &editor::location::ResourceLocation) -> crate::higent::ResourceUri {
         crate::higent::ResourceUri::new(format!("file:///{}", location.path().join("/")))
     }
 
     fn location_of(
         &self,
         uri: &crate::higent::ResourceUri,
-        kind: crate::ResourceType,
-        _authority: &crate::Authority,
-    ) -> Option<crate::ResourceLocation> {
+        kind: editor::location::ResourceType,
+        _authority: &editor::location::Authority,
+    ) -> Option<editor::location::ResourceLocation> {
         let path: Vec<String> = uri
             .as_str()
             .strip_prefix("file://")?
@@ -27,9 +27,9 @@ impl crate::higent::ResourceUriMap for TestUris {
             .map(str::to_owned)
             .collect();
 
-        Some(crate::ResourceLocation::new(
+        Some(editor::location::ResourceLocation::new(
             kind,
-            crate::Authority::new("test"),
+            editor::location::Authority::new("test"),
             path,
         ))
     }
@@ -37,7 +37,7 @@ impl crate::higent::ResourceUriMap for TestUris {
 
 pub fn seed_session_folders(
     store: &mut Store,
-    folders: &[crate::ResourceLocation],
+    folders: &[editor::location::ResourceLocation],
 ) -> crate::SessionId {
     let host = crate::SessionId::local_default(store).host;
     crate::higent::Agents::seed(store, host, "Test Host");
@@ -91,7 +91,7 @@ pub fn seed_session_folders(
 pub fn add_session_folders(
     store: &mut Store,
     id: &crate::SessionId,
-    folders: &[crate::ResourceLocation],
+    folders: &[editor::location::ResourceLocation],
 ) {
     let uris = crate::higent::Hosts::uris(store, id.host).expect("a seeded session");
     let mut channel = crate::higent::Agents::channel(store, id).expect("a seeded session");
@@ -181,7 +181,7 @@ impl Application {
         let live = document.element_heights(entity.editor());
         let width = document.layout_width(entity.editor());
         let ui = ::editor::test_document::test_ui();
-        let mut fresh = crate::EditorView::complete(
+        let mut fresh = editor::editor_view::EditorView::complete(
             document.clone(),
             width,
             self.store(),
@@ -239,7 +239,7 @@ impl Application {
                 let fonts = ::editor::test_document::test_fonts_collection();
                 let theme = ::editor::theme::Theme::embedded();
                 let mut reference =
-                    crate::EditorView::complete(document.clone(), width, store, ui, &fonts, &theme);
+                    editor::editor_view::EditorView::complete(document.clone(), width, store, ui, &fonts, &theme);
 
                 reference.reveal_caret(
                     document.caret_byte(entity.editor()),
@@ -282,13 +282,13 @@ impl Application {
         )?;
         let byte_count = document.text().byte_count().min(u32::MAX as usize) as u32;
         let extras = document.extras_keyed(entity.editor());
-        let interval = ::editor::OverlaidMarkup::new(document.markup(), &extras)
+        let interval = ::editor::markup::OverlaidMarkup::new(document.markup(), &extras)
             .all_inlays_in(0..byte_count)
             .into_iter()
             .find(|interval| {
                 matches!(
                     interval.inlay.mode(),
-                    crate::InlayMode::Above | crate::InlayMode::Under
+                    editor::markup::InlayMode::Above | editor::markup::InlayMode::Under
                 )
             })?;
         let anchor = interval.range.start;
@@ -379,7 +379,7 @@ impl Application {
             .ids()
             .iter()
             .find_map(|id| match *id {
-                ::editor::StyleId::Header(level) => Some(Some(level)),
+                ::editor::markup::StyleId::Header(level) => Some(Some(level)),
                 _ => None,
             })
             .or(Some(None))
@@ -410,7 +410,7 @@ impl Application {
         });
     }
 
-    pub fn focused_editor_id(&self) -> (crate::DocumentId, ::editor::EditorId) {
+    pub fn focused_editor_id(&self) -> (crate::DocumentId, ::editor::editor::EditorId) {
         let view = self
             .workbench()
             .root
@@ -430,30 +430,30 @@ pub fn surviving_launches<R: 'static>(
 
 pub fn handle_effect<R: 'static>(
     effect: imba::effect::AnyEffect<R>,
-    workshop: &std::sync::Arc<::editor::Workshop>,
+    workshop: &std::sync::Arc<::editor::env::Workshop>,
 ) -> R {
     use imba::effect::{block_on, EffectHandler};
     let payload = effect.into_payload();
     let (value, lift) = payload.split();
     let outcome: Box<dyn std::any::Any + Send + Sync> = match value
-        .downcast::<::editor::RepairEffect>()
+        .downcast::<::editor::repair::RepairEffect>()
     {
         Ok(effect) => {
-            let handler = ::editor::RepairHandler(std::sync::Arc::clone(workshop));
+            let handler = ::editor::repair::RepairHandler(std::sync::Arc::clone(workshop));
             Box::new(block_on(Box::pin(
                 async move { handler.handle(*effect).await },
             )))
         }
-        Err(value) => match value.downcast::<::editor::ReparseEffect>() {
+        Err(value) => match value.downcast::<::editor::reparse::ReparseEffect>() {
             Ok(effect) => {
-                let handler = ::editor::ReparseHandler(std::sync::Arc::clone(workshop));
+                let handler = ::editor::reparse::ReparseHandler(std::sync::Arc::clone(workshop));
                 Box::new(block_on(Box::pin(
                     async move { handler.handle(*effect).await },
                 )))
             }
-            Err(value) => match value.downcast::<::editor::EnrichEffect>() {
+            Err(value) => match value.downcast::<::editor::enrich::EnrichEffect>() {
                 Ok(effect) => {
-                    let handler = ::editor::EnrichHandler {
+                    let handler = ::editor::enrich::EnrichHandler {
                         workshop: std::sync::Arc::clone(workshop),
                         caller: imba::effect::EffectCaller::disconnected(),
                     };
@@ -471,10 +471,10 @@ pub fn handle_effect<R: 'static>(
                             async move { handler.handle(*effect).await },
                         )))
                     }
-                    Err(value) => match value.downcast::<::editor::RepairDiffEffect>() {
+                    Err(value) => match value.downcast::<::editor::split_diff::RepairDiffEffect>() {
                         Ok(effect) => {
                             let handler =
-                                ::editor::RepairDiffHandler(std::sync::Arc::clone(workshop));
+                                ::editor::split_diff::RepairDiffHandler(std::sync::Arc::clone(workshop));
                             Box::new(block_on(Box::pin(
                                 async move { handler.handle(*effect).await },
                             )))
@@ -505,8 +505,8 @@ pub fn handle_effect<R: 'static>(
     lift(outcome).expect("a notification lands nothing — this harness drives only landing effects")
 }
 
-pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::Workshop> {
-    std::sync::Arc::new(::editor::Workshop::new(
+pub fn test_workshop(theme: ::editor::theme::Theme) -> std::sync::Arc<::editor::env::Workshop> {
+    std::sync::Arc::new(::editor::env::Workshop::new(
         ::editor::embedded_fonts::source(),
         theme,
     ))

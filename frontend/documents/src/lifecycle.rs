@@ -1,14 +1,14 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::{Document, EditorCommand, EditorEffects, EditorId};
+use editor::{document::Document, editor_view::EditorCommand, editor::EditorEffects, editor::EditorId};
 use imba::store::Store;
 
 use crate::{DocumentId, OpenDocuments};
 
 pub fn mount_editor(
     store: &Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document: &mut Document,
     width: f32,
     target: Option<std::ops::Range<crate::LineCol>>,
@@ -19,7 +19,7 @@ pub fn mount_editor(
     let editor = document.add_editor(
         width,
         None,
-        ::editor::EditorBuild::Bounded,
+        ::editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -58,7 +58,7 @@ pub fn close_editor(
 pub fn deliver(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document_id: DocumentId,
     command: EditorCommand,
     fx: &mut EditorEffects<'_>,

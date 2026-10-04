@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use crate::hichanges::{ChangeSets, Changes};
 use crate::hihistory::History;
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use hikit::{
     ActivateTrigger, ForestList, ForestNode, ForestSearcher, ListKeyCommand,
     ListKeyboardController, ModalRequest, TreeListCommand,
@@ -30,16 +30,7 @@ use hikit::{
 use imba::list::ListOps;
 use imba::thunk_ext::ThunkExt;
 use imba::tooltip::{TooltipCommand, TooltipView};
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::Effects,
-    event::{Event, EventResult, Key as InputKey},
-    leaf::leaf,
-    store::Store,
-    UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, event::{Event, EventResult, Key as InputKey}, leaf::leaf, store::Store, ui::UiCtx, View};
 use skia_safe::Size;
 
 const PANEL_PAD: f32 = 6.0;
@@ -351,7 +342,7 @@ impl View for ChangesView {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         fx.scope(
             |command| ChangesViewCommand::Rows(TooltipCommand::Host(command)),
             |fx| self.list.view_mut().clear(store, ui, fx),
@@ -482,8 +473,8 @@ impl View for ChangesView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut section = container(arena, size);
 
@@ -491,7 +482,7 @@ impl View for ChangesView {
             // row and REFRESH rides each repository's root row — the
             // dock is just the tree.
             let band = PANEL_PAD;
-            let rows = imba::Layout::layout(
+            let rows = imba::layout::Layout::layout(
                 self.list.display(arena, store, ui),
                 arena,
                 Constraints::tight(Size::new(size.width, (size.height - band).max(1.0))),
@@ -874,14 +865,14 @@ impl View for ChangesPane {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a Arena, constraints: imba::constraints::Constraints| {
                 let widget: imba::ThunkBox<'a, ChangesViewCommand> =
                     match Changes::view_ref(store, self.changes, self.view) {
                         Some(view) => imba::ThunkBox::new(
                             arena,
-                            imba::Layout::layout(
+                            imba::layout::Layout::layout(
                                 view.display(arena, store, ui),
                                 arena,
                                 constraints,

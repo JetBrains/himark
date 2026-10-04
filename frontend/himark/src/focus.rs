@@ -3,7 +3,7 @@
 
 use imba::event::EventResult;
 use imba::focus::FocusData;
-use imba::{ClipboardClient, ImeClient};
+use imba::{clipboard::ClipboardClient, ime::ImeClient};
 
 use crate::app::AppCommand;
 use crate::Application;
@@ -13,7 +13,7 @@ use crate::Application;
 /// views carry it (imba `View::focus_data`).
 pub(crate) fn window_focus_data<'a>(
     store: &'a imba::store::Store,
-    ui: &'a imba::UiCtx,
+    ui: &'a imba::ui::UiCtx,
     window: crate::WindowId,
 ) -> Option<FocusData<'a, AppCommand>> {
     let entity = crate::Windows::window_ref(store, window)?;
@@ -117,8 +117,8 @@ impl Application {
 /// The focused location out of an already-collected focus chain.
 pub(crate) fn focused_location(
     data: &mut FocusData<'_, AppCommand>,
-) -> Option<crate::ResourceLocation> {
+) -> Option<editor::location::ResourceLocation> {
     data.location
         .take()
-        .and_then(|location| location.downcast_ref::<crate::ResourceLocation>().cloned())
+        .and_then(|location| location.downcast_ref::<editor::location::ResourceLocation>().cloned())
 }

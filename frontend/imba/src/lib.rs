@@ -1,6 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
+use layout::{Layout, LayoutValue};
+use store::Store;
+use ui::UiCtx;
+
 pub mod anim;
 pub mod arena;
 mod r#box;
@@ -9,7 +13,7 @@ pub mod clipboard;
 pub mod command;
 pub mod constraints;
 pub mod container;
-mod dyn_view;
+pub mod dyn_view;
 pub mod effect;
 pub mod event;
 pub mod focus;
@@ -31,11 +35,6 @@ pub mod thunk_ext;
 pub mod tooltip;
 pub mod ui;
 
-pub use clipboard::{ClipboardClient, ClipboardContent};
-pub use dyn_view::{CloneDynView, DynCommand, DynView};
-pub use ime::ImeClient;
-pub use store::{Component, Store};
-pub use ui::{UiCtx, UiFonts};
 
 use arena::Arena;
 use event::{Event, EventResult};
@@ -67,11 +66,6 @@ impl<Command> PresentableCommand<Command> {
     }
 }
 
-pub use layout::{
-    fixed, laid, spacer, text, text_advance, Align, Alignment, Backdrop, Button, Column,
-    CrossAlign, EventHandler, Fill, Fixed, Insets, Laid, Layout, LayoutBox, LayoutExt, LayoutValue,
-    MapLayout, OnClick, OnEvent, Pad, Row, Shield, SizedBox, Text, TextShaper, WithBaseline, ZBox,
-};
 
 /// What a command IS, wherever one routes — a view's, an entity's:
 /// printable (`Display` is the trace label), cloneable, and

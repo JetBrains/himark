@@ -4,11 +4,7 @@
 use imba::{store::Store, View};
 use std::str;
 
-use editor::{
-    inlay_anchors_line,
-    test_document::{fenced_code_document, list_document, plain_document},
-    Document, EditorCommand, EditorFocus, EditorView, Inlay, InlayMode,
-};
+use editor::{markup::inlay_anchors_line, test_document::{fenced_code_document, list_document, plain_document}, document::Document, editor_view::EditorCommand, editor_view::EditorFocus, editor_view::EditorView, markup::Inlay, markup::InlayMode};
 
 use crate::AppExt;
 use crate::EditorIdView;
@@ -23,7 +19,7 @@ struct TestPane {
     store: Store,
     view: EditorIdView,
 
-    inlay_markup: editor::MarkupId,
+    inlay_markup: editor::markup::MarkupId,
 }
 
 /// TEST SUPPORT: the landing's first-match jump rides the
@@ -51,7 +47,7 @@ impl TestPane {
         let editor = document.add_editor(
             width,
             None,
-            ::editor::EditorBuild::Complete,
+            ::editor::document::EditorBuild::Complete,
             &[],
             &store,
             ui,
@@ -77,8 +73,8 @@ impl TestPane {
         }
     }
 
-    fn inlay_key(&self, key: u32) -> editor::InlayKey {
-        editor::InlayKey::in_markup(self.inlay_markup, key)
+    fn inlay_key(&self, key: u32) -> editor::markup::InlayKey {
+        editor::markup::InlayKey::in_markup(self.inlay_markup, key)
     }
 
     fn resize(&mut self, width: f32, anchor: u32) -> imba::effect::Batch<EditorCommand> {
@@ -158,7 +154,7 @@ impl TestPane {
         );
     }
 
-    fn replace_inlay(&mut self, key: editor::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
+    fn replace_inlay(&mut self, key: editor::markup::InlayKey, range: std::ops::Range<u32>, inlay: Inlay) {
         let ui = ::editor::test_document::test_ui();
         let entity = self.view;
         let mut document =
@@ -193,7 +189,7 @@ fn typing_and_backspace_keep_utf8_text_and_layout_in_sync() {
         text: "aβc".to_owned(),
     });
     pane.perform(EditorCommand::Move {
-        motion: editor::Motion::Left,
+        motion: editor::editor_view::Motion::Left,
         select: false,
     });
     pane.perform(EditorCommand::Backspace);
@@ -232,7 +228,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
     let left_editor = document.add_editor(
         420.0,
         None,
-        ::editor::EditorBuild::Complete,
+        ::editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -243,7 +239,7 @@ fn editors_sharing_a_document_see_each_others_edits() {
     let right_editor = document.add_editor(
         200.0,
         None,
-        ::editor::EditorBuild::Complete,
+        ::editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -361,7 +357,7 @@ fn inlay_command_updates_interval_view_and_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: imba::DynCommand::new(TestInlayCommand::Grow),
+        command: imba::dyn_view::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(pane.gathered().content_height() >= inlay_height + 10.0);
@@ -385,7 +381,7 @@ fn inline_inlay_height_change_repairs_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(9),
-        command: imba::DynCommand::new(TestInlayCommand::Grow),
+        command: imba::dyn_view::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -416,7 +412,7 @@ fn under_inlay_height_change_repairs_end_anchor_line() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(13),
-        command: imba::DynCommand::new(TestInlayCommand::Grow),
+        command: imba::dyn_view::DynCommand::new(TestInlayCommand::Grow),
     });
 
     assert!(
@@ -443,7 +439,7 @@ fn inline_inlay_width_change_rewraps_layout() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(11),
-        command: imba::DynCommand::new(TestInlayCommand::GrowWide),
+        command: imba::dyn_view::DynCommand::new(TestInlayCommand::GrowWide),
     });
 
     assert!(
@@ -684,7 +680,7 @@ fn focus_moves_between_text_and_inlays() {
 
     pane.perform(EditorCommand::Inlay {
         key: pane.inlay_key(7),
-        command: imba::DynCommand::new(TestInlayCommand::Grow),
+        command: imba::dyn_view::DynCommand::new(TestInlayCommand::Grow),
     });
     assert_eq!(
         pane.gathered().focus(),
@@ -707,7 +703,7 @@ fn focus_moves_between_text_and_inlays() {
     }
 
     pane.perform(EditorCommand::Click {
-        kind: editor::ClickKind::Set,
+        kind: editor::editor_view::ClickKind::Set,
         point: Point::new(5.0, 5.0),
     });
     assert_eq!(pane.gathered().focus(), EditorFocus::Text);
@@ -732,12 +728,12 @@ fn inlay_modes_anchor_to_interval_offsets() {
     assert!(!inlay_anchors_line(InlayMode::Right, &interval, &first));
     assert!(inlay_anchors_line(InlayMode::Right, &interval, &second));
     assert!(inlay_anchors_line(
-        InlayMode::Instead(editor::InsteadKind::FullLine),
+        InlayMode::Instead(editor::markup::InsteadKind::FullLine),
         &interval,
         &first
     ));
     assert!(!inlay_anchors_line(
-        InlayMode::Instead(editor::InsteadKind::FullLine),
+        InlayMode::Instead(editor::markup::InsteadKind::FullLine),
         &interval,
         &second
     ));
@@ -819,7 +815,7 @@ impl View for TestInlay {
     fn perform(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -838,9 +834,9 @@ impl View for TestInlay {
         &'a self,
         _arena: &'a imba::arena::Arena,
         _store: &'a Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 use imba::event::{Event, EventResult, MouseButton};
                 use imba::thunk_ext::ThunkExt;
@@ -870,7 +866,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
 
     pane.perform(EditorCommand::Inlay {
         key,
-        command: imba::DynCommand::new(ProbeCommand::Poke),
+        command: imba::dyn_view::DynCommand::new(ProbeCommand::Poke),
     });
     let focus = |pane: &TestPane| {
         let entity = pane.view;
@@ -882,7 +878,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
         let arena = imba::arena::Arena::default();
         let ui = ::editor::test_document::test_ui();
         let view = pane.gathered();
-        let widget = imba::Layout::layout(
+        let widget = imba::layout::Layout::layout(
             View::display(&view, &arena, &pane.store, &ui),
             &arena,
             Constraints {
@@ -916,7 +912,7 @@ fn an_inlay_paints_focused_only_while_it_holds_the_editors_focus() {
     assert_eq!(probe_reports(&paint(&pane)), 0, "a focused paint agrees");
 
     pane.perform(EditorCommand::Click {
-        kind: editor::ClickKind::Set,
+        kind: editor::editor_view::ClickKind::Set,
         point: skia_safe::Point::new(5.0, 5.0),
     });
     assert_eq!(focus(&pane), EditorFocus::Text);
@@ -947,7 +943,7 @@ impl View for FocusProbe {
     fn perform(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -957,9 +953,9 @@ impl View for FocusProbe {
         &'a self,
         _arena: &'a imba::arena::Arena,
         _store: &'a Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 use imba::event::{Event, EventResult};
                 use imba::thunk_ext::ThunkExt;
@@ -1512,7 +1508,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
         anchor: 0,
     });
 
-    let band = |layout: &::editor::DocumentLayout, visible: &(u32, u32)| {
+    let band = |layout: &::editor::document_layout::DocumentLayout, visible: &(u32, u32)| {
         layout.height_before(visible.1) - layout.height_before(visible.0)
     };
     let (visible, dark_band) = {
@@ -1523,7 +1519,7 @@ fn retheme_reshapes_the_viewport_synchronously_and_the_tail_in_repairs() {
     };
     let visible_start = visible.0;
 
-    crate::env::Themes::set(&mut pane.store, light.clone());
+    ::editor::env::Themes::set(&mut pane.store, light.clone());
     let effects = {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
@@ -1617,7 +1613,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
         bottom: 600.0,
         anchor: 0,
     });
-    crate::env::Themes::set(&mut pane.store, light.clone());
+    ::editor::env::Themes::set(&mut pane.store, light.clone());
     let stale_round = {
         let mut batch = imba::effect::Batch::new();
         pane.view.perform(
@@ -1688,7 +1684,7 @@ fn a_stale_theme_repair_landing_discards_itself() {
     assert!(layout.repair_pending().is_none(), "the tail repaired");
     assert_eq!(layout.shaped_theme(), "light");
     let fresh =
-        ::editor::EditorView::complete(converged.clone(), 420.0, &store, ui, &fonts, &light);
+        ::editor::editor_view::EditorView::complete(converged.clone(), 420.0, &store, ui, &fonts, &light);
     assert!(
         (layout.height() - fresh.document_layout().height()).abs() < 0.5,
         "the repaired document IS the fresh light layout: {} vs {}",
@@ -1715,7 +1711,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
     assert_eq!(
-        crate::env::Themes::of(app.store()).name(),
+        ::editor::env::Themes::of(app.store()).name(),
         "light",
         "the store's theme swapped"
     );
@@ -1728,7 +1724,7 @@ fn theme_toggle_swaps_the_theme_and_reshapes_the_view() {
     );
 
     assert!(app.perform_registered(app.sole_window(), "theme.toggle"));
-    assert_eq!(crate::env::Themes::of(app.store()).name(), "dark");
+    assert_eq!(::editor::env::Themes::of(app.store()).name(), "dark");
     crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
     assert!(
         (app.focused_pane_content_height() - height_dark).abs() < 0.5,
@@ -1801,7 +1797,7 @@ fn palette_commands_follow_the_modal_focus() {
         fn perform(
             &mut self,
             _store: &mut Store,
-            _ui: &imba::UiCtx,
+            _ui: &imba::ui::UiCtx,
             command: TestModalCommand,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
@@ -1814,9 +1810,9 @@ fn palette_commands_follow_the_modal_focus() {
             &'a self,
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
-            _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, TestModalCommand> + imba::LayoutValue + 'a {
-            imba::laid(
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, TestModalCommand> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
                     imba::leaf::leaf::<TestModalCommand>(
@@ -1830,7 +1826,7 @@ fn palette_commands_follow_the_modal_focus() {
         fn focus_data<'w>(
             &'w self,
             _store: &'w Store,
-            _ui: &'w imba::UiCtx,
+            _ui: &'w imba::ui::UiCtx,
         ) -> imba::focus::FocusData<'w, TestModalCommand> {
             imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
                 "test.modal.close",
@@ -1967,7 +1963,7 @@ fn palette_commands_follow_the_modal_focus() {
     ));
     app.perform_batch(vec![AppCommand::Content(
         app.sole_window(),
-        crate::WindowCommand::Modal(imba::DynCommand::new(TestModalCommand::Show)),
+        crate::WindowCommand::Modal(imba::dyn_view::DynCommand::new(TestModalCommand::Show)),
     )]);
     assert!(app.plugin_modal().is_none(), "the show dismissed the modal");
     assert_eq!(
@@ -2212,7 +2208,7 @@ fn switching_dismisses_the_overlays_first() {
         fn perform(
             &mut self,
             _store: &mut Store,
-            _ui: &imba::UiCtx,
+            _ui: &imba::ui::UiCtx,
             _command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
@@ -2221,9 +2217,9 @@ fn switching_dismisses_the_overlays_first() {
             &'a self,
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
-            _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, std::convert::Infallible> + imba::LayoutValue + 'a {
-            imba::laid(
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, std::convert::Infallible> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       constraints: imba::constraints::Constraints| {
                     imba::leaf::leaf::<std::convert::Infallible>(
@@ -2521,7 +2517,7 @@ fn clipboard_reaches_the_focused_editor() {
     for _ in 0..2 {
         let pasted = app
             .with_clipboard_client(window, |client| {
-                client.paste(&imba::ClipboardContent {
+                client.paste(&imba::clipboard::ClipboardContent {
                     text: "again ".to_owned(),
                 })
             })
@@ -2538,14 +2534,14 @@ fn clipboard_reaches_the_focused_editor() {
 #[test]
 fn navigation_back_and_forward_walk_pane_history() {
     use crate::{AppFonts, Application, OpenedDocument};
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("test"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["project".to_owned(), name.to_owned()],
         )
     }
-    fn editor_count(app: &Application, location: &crate::ResourceLocation) -> usize {
+    fn editor_count(app: &Application, location: &editor::location::ResourceLocation) -> usize {
         let id = crate::OpenDocuments::by_location(app.store(), app.sole_documents(), location)
             .expect("registered");
         crate::OpenDocuments::document_ref(app.store(), app.sole_documents(), id)
@@ -2647,13 +2643,8 @@ fn navigation_back_and_forward_walk_pane_history() {
 fn double_and_triple_click_select_word_and_line() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    use editor::ClickKind;
-    use imba::{
-        arena::Arena,
-        constraints::Constraints,
-        event::{Event, EventResult},
-        Widget,
-    };
+    use editor::editor_view::ClickKind;
+    use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, Widget};
     use skia_safe::{Point, Rect, Size};
 
     let text = "alpha  beta gamma\nsecond line\n";
@@ -2714,7 +2705,7 @@ fn double_and_triple_click_select_word_and_line() {
             count,
         };
         match imba::Thunk::realize(
-            imba::Layout::layout(
+            imba::layout::Layout::layout(
                 pane.view.display(&arena, &pane.store, &ui),
                 &arena,
                 Constraints::tight(Size::new(420.0, 400.0)),
@@ -2747,7 +2738,7 @@ fn double_and_triple_click_select_word_and_line() {
 fn drag_extends_selection_by_the_press_unit() {
     let store = &imba::store::Store::new();
     let ui = ::editor::test_document::test_ui();
-    use editor::ClickKind;
+    use editor::editor_view::ClickKind;
     use skia_safe::Point;
     let text = "alpha  beta gamma\nsecond line\n";
     let mut pane = TestPane::new(plain_document(text), 420.0);
@@ -2836,10 +2827,10 @@ fn drag_extends_selection_by_the_press_unit() {
 #[test]
 fn close_widget_walks_the_pane_history() {
     use crate::{AppFonts, Application, OpenedDocument};
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("test"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["project".to_owned(), name.to_owned()],
         )
     }
@@ -3066,7 +3057,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
-    ::editor::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
+    ::editor::markup::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
         0..12,
         &mut inline,
         &mut hidden,
@@ -3106,7 +3097,7 @@ fn find_bar_highlights_and_walks_occurrences() {
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     let extras = document.extras_keyed(editor);
-    ::editor::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
+    ::editor::markup::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
         0..12,
         &mut inline,
         &mut hidden,
@@ -3124,7 +3115,7 @@ fn find_bar_highlights_and_walks_occurrences() {
                 .expect("the document");
         document.set_carets(
             editor,
-            ::editor::MultiCaret::one(::editor::Caret::selecting(6, 10)),
+            ::editor::caret::MultiCaret::one(::editor::caret::Caret::selecting(6, 10)),
         );
         let documents = app.sole_documents();
         crate::OpenDocuments::put_document(&mut app.store_mut(), documents, document_id, document);
@@ -3148,10 +3139,10 @@ mod navigation_history {
     use super::plain_document;
     use crate::{AppExt, AppFonts, Application, OpenedDocument};
 
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("test"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["project".to_owned(), name.to_owned()],
         )
     }
@@ -3438,33 +3429,33 @@ mod toc {
     use super::*;
     use crate::{AppExt, AppFonts, Application, OpenedDocument};
 
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("test"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["project".to_owned(), name.to_owned()],
         )
     }
 
-    fn outlined_document() -> (String, editor::Document) {
+    fn outlined_document() -> (String, editor::document::Document) {
         let source = "# One\ntext\n## Two\nmore\n".to_owned();
         let len = source.len() as u32;
-        let mut syntax = editor::Syntax::new("toy", None, editor::Markup::new());
+        let mut syntax = editor::markup::Syntax::new("toy", None, editor::markup::Markup::new());
         syntax.push_outline_item(
             0..len,
-            editor::OutlineItem {
+            editor::markup::OutlineItem {
                 title: "One".to_owned(),
             },
         );
         syntax.push_outline_item(
             11..len,
-            editor::OutlineItem {
+            editor::markup::OutlineItem {
                 title: "Two".to_owned(),
             },
         );
-        let document = editor::Document::new(
-            editor::Text::from_string_exact(&source),
-            editor::Markup::new(),
+        let document = editor::document::Document::new(
+            text::text::Text::from_string_exact(&source),
+            editor::markup::Markup::new(),
         )
         .with_syntax(syntax, &[]);
         (source, document)
@@ -3617,9 +3608,9 @@ mod toc {
         let store = Store::new();
         let window = crate::WindowId::from_raw(1);
         let at = |dir: &str, name: &str| {
-            crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec![dir.to_owned(), name.to_owned()],
             )
         };
@@ -3702,9 +3693,9 @@ mod toc {
         let store = Store::new();
         let window = crate::WindowId::from_raw(1);
         let at = |path: &[&str]| {
-            crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 path.iter().map(|s| s.to_string()).collect::<Vec<_>>(),
             )
         };
@@ -3749,9 +3740,9 @@ mod toc {
         let store = Store::new();
         let window = crate::WindowId::from_raw(1);
         let at = |dir: &str, name: &str| {
-            crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec![dir.to_owned(), name.to_owned()],
             )
         };
@@ -3849,7 +3840,7 @@ mod toc {
         let typing = drive(
             &mut view,
             crate::OutlineCommand::List(crate::ListKeyCommand::Input(
-                crate::EditorCommand::InsertText {
+                editor::editor_view::EditorCommand::InsertText {
                     text: "two".to_owned(),
                 },
             )),
@@ -3960,7 +3951,7 @@ mod toc {
             &mut store,
             &ui,
             crate::OutlineCommand::List(crate::ListKeyCommand::Input(
-                crate::EditorCommand::InsertText {
+                editor::editor_view::EditorCommand::InsertText {
                     text: "o".to_owned(),
                 },
             )),
@@ -4001,7 +3992,7 @@ mod toc {
 
         let result = {
             let arena = imba::arena::Arena::default();
-            let widget = imba::Layout::layout(
+            let widget = imba::layout::Layout::layout(
                 imba::View::display(&view, &arena, &store, &ui),
                 &arena,
                 Constraints::tight(skia_safe::Size::new(800.0, 600.0)),
@@ -4247,15 +4238,15 @@ mod dock_tests {
     use imba::leaf::leaf;
     use imba::store::Store;
     use imba::thunk_ext::ThunkExt as _;
-    use imba::{UiCtx, View};
+    use imba::{ui::UiCtx, View};
 
     use crate::test_driver;
     use crate::{AppCommand, AppExt, AppFonts, Application, ModalRequest, ModalView};
 
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("test"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("test"),
             vec!["project".to_owned(), name.to_owned()],
         )
     }
@@ -4324,8 +4315,8 @@ mod dock_tests {
             _arena: &'a imba::arena::Arena,
             _store: &'a Store,
             _ui: &'a UiCtx,
-        ) -> impl imba::Layout<'a, StubCommand> + imba::LayoutValue + 'a {
-            imba::laid(
+        ) -> impl imba::layout::Layout<'a, StubCommand> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena, constraints: Constraints| {
                     let size = constraints.max;
                     leaf::<StubCommand>(size.width, size.height).event(|_arena, event, _size| {
@@ -5348,7 +5339,7 @@ mod dock_tests {
         panel.perform(
             &mut store,
             &ui,
-            crate::higent::AgentsCommand::AddHostInput(::editor::EditorCommand::InsertText {
+            crate::higent::AgentsCommand::AddHostInput(::editor::editor_view::EditorCommand::InsertText {
                 text: "ws://example:7/?tkn=t".to_owned(),
             }),
             &mut batch.effects(),
@@ -5618,7 +5609,7 @@ mod dock_tests {
         let typing = drive(
             &mut panel,
             crate::higent::AgentsCommand::Rows(crate::ListKeyCommand::Input(
-                crate::EditorCommand::InsertText {
+                editor::editor_view::EditorCommand::InsertText {
                     text: "bet".to_owned(),
                 },
             )),
@@ -5727,7 +5718,7 @@ mod dock_tests {
         show_dock(&mut app, "files", "test.files");
         settle(&mut app, &mut surface);
 
-        let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
+        let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
         let dock_width = entity(&app).dock_target_width();
         let edge = 800.0 - dock_width;
         let x = edge + dock_width - chrome.button_inset - chrome.button_size * 0.5;
@@ -5979,7 +5970,7 @@ mod toolbar_side_tests {
         let mut surface = skia_safe::surfaces::raster_n32_premul((800, 600)).expect("surface");
         crate::Window::draw(app.sole_window(), &mut app, surface.canvas());
 
-        let chrome = crate::env::Themes::of(app.store()).ui().toolbar.clone();
+        let chrome = ::editor::env::Themes::of(app.store()).ui().toolbar.clone();
         // LEFT buttons live in the global cluster, top-left.
         let cluster_index = crate::toolbar::ToolbarButtons::of(app.store())
             .iter()
@@ -6131,7 +6122,7 @@ fn a_pane_documents_popup_paints_in_the_window() {
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
-            _ui: &imba::UiCtx,
+            _ui: &imba::ui::UiCtx,
             _command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
@@ -6140,9 +6131,9 @@ fn a_pane_documents_popup_paints_in_the_window() {
             &'a self,
             _arena: &'a imba::arena::Arena,
             _store: &'a imba::store::Store,
-            _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-            imba::laid(
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       _constraints: imba::constraints::Constraints| {
                     use imba::thunk_ext::ThunkExt;
@@ -6190,8 +6181,8 @@ fn a_pane_documents_popup_paints_in_the_window() {
     document.push_inlay(
         markup,
         12..16,
-        crate::Inlay::new(
-            crate::InlayMode::Popup(crate::PopupSpec {
+        editor::markup::Inlay::new(
+            editor::markup::InlayMode::Popup(editor::markup::PopupSpec {
                 host: imba::overlay::WINDOW,
                 position: imba::overlay::fit::PreferredPosition::At {
                     x: imba::overlay::fit::RangeEnd::Begin,
@@ -6203,8 +6194,8 @@ fn a_pane_documents_popup_paints_in_the_window() {
         ),
         app.store(),
         ui,
-        &crate::env::ui_collection(app.store(), ui),
-        &crate::env::Themes::of(app.store()),
+        &::editor::env::ui_collection(app.store(), ui),
+        &::editor::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
     {
@@ -6245,8 +6236,8 @@ fn a_pane_documents_popup_paints_in_the_window() {
         &[],
         app.store(),
         ui,
-        &crate::env::ui_collection(app.store(), ui),
-        &crate::env::Themes::of(app.store()),
+        &::editor::env::ui_collection(app.store(), ui),
+        &::editor::env::Themes::of(app.store()),
         &mut imba::effect::Batch::new().effects(),
     );
     {
@@ -6267,21 +6258,21 @@ fn the_at_completion_opens_finds_and_picks() {
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let window = app.add_window();
-    let folder = crate::ResourceLocation::new(
-        crate::ResourceType::directory(),
-        crate::Authority::new("test"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
     let session = crate::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<crate::FindEffect> for StubFind {
-        async fn handle(&self, effect: crate::FindEffect) -> Vec<crate::ResourceLocation> {
+        async fn handle(&self, effect: crate::FindEffect) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
             let file = |path: &[&str]| {
-                crate::ResourceLocation::new(
-                    crate::ResourceType::document(),
-                    crate::Authority::new("test"),
+                editor::location::ResourceLocation::new(
+                    editor::location::ResourceType::document(),
+                    editor::location::Authority::new("test"),
                     path.iter().map(|s| s.to_string()).collect::<Vec<String>>(),
                 )
             };
@@ -6416,20 +6407,20 @@ fn the_at_completion_serves_markdown_panes() {
     let fonts = AppFonts::embedded();
     let mut app = Application::new(fonts);
     let window = app.add_window();
-    let folder = crate::ResourceLocation::new(
-        crate::ResourceType::directory(),
-        crate::Authority::new("test"),
+    let folder = editor::location::ResourceLocation::new(
+        editor::location::ResourceType::directory(),
+        editor::location::Authority::new("test"),
         vec!["proj".to_owned()],
     );
     let session = crate::test_support::seed_session_folders(&mut app.store_mut(), &[folder]);
 
     struct StubFind(std::sync::Arc<std::sync::Mutex<Vec<String>>>);
     impl imba::effect::EffectHandler<crate::FindEffect> for StubFind {
-        async fn handle(&self, effect: crate::FindEffect) -> Vec<crate::ResourceLocation> {
+        async fn handle(&self, effect: crate::FindEffect) -> Vec<editor::location::ResourceLocation> {
             self.0.lock().expect("terms").push(effect.term.clone());
-            vec![crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            vec![editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), "notes".to_owned(), "ideas.md".to_owned()],
             )]
         }
@@ -6468,12 +6459,12 @@ fn the_at_completion_serves_markdown_panes() {
         Arc::new(EnterSeeded(session.clone()))
     )));
 
-    let markdown = crate::Document::new(
-        crate::Text::from_string_exact("hello world "),
-        crate::Markup::new(),
+    let markdown = editor::document::Document::new(
+        text::text::Text::from_string_exact("hello world "),
+        editor::markup::Markup::new(),
     )
     .with_syntax(
-        crate::Syntax::new("markdown", None, crate::Markup::new()),
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     );
     assert!(app.perform_command(AppCommand::Opened(
@@ -6482,9 +6473,9 @@ fn the_at_completion_serves_markdown_panes() {
             documents: app.sole_documents(),
             name: "notes.md".to_owned(),
             document: markdown,
-            location: Some(crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            location: Some(editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), "notes.md".to_owned()],
             )),
             primary: true,
@@ -6579,9 +6570,9 @@ fn the_at_completion_serves_markdown_panes() {
             documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("fn main() {}\n"),
-            location: Some(crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            location: Some(editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), "main.rs".to_owned()],
             )),
             primary: true,
@@ -6658,9 +6649,9 @@ fn lsp_completion_serves_code_panes() {
             documents: app.sole_documents(),
             name: "main.rs".to_owned(),
             document: plain_document("value "),
-            location: Some(crate::ResourceLocation::new(
-                crate::ResourceType::document(),
-                crate::Authority::new("test"),
+            location: Some(editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("test"),
                 vec!["proj".to_owned(), "main.rs".to_owned()],
             )),
             primary: true,
@@ -6926,7 +6917,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let mut document = crate::OpenDocuments::document(&store, documents, target).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_in(len, 0, "zero\n"),
+            &::operation::operation::Operation::insert_in(len, 0, "zero\n"),
             &store,
             ui,
             &fonts,
@@ -6962,7 +6953,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let mut document = crate::OpenDocuments::document(&store, documents, base).expect("open");
         let catch_up = myersdiff::diff(
             document.text(),
-            &::editor::Text::from_string_exact(&target_text),
+            &::text::text::Text::from_string_exact(&target_text),
         );
         document.edit(
             &catch_up,
@@ -6992,7 +6983,7 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
         let mut document = crate::OpenDocuments::document(&store, documents, base).expect("open");
         let len = document.text().byte_count().min(u32::MAX as usize) as u32;
         document.edit(
-            &::editor::Operation::insert_in(len, 0, "gone\n"),
+            &::operation::operation::Operation::insert_in(len, 0, "gone\n"),
             &store,
             ui,
             &fonts,
@@ -7017,9 +7008,9 @@ fn scroll_stripes_follow_the_diff_through_the_app() {
             view.byte_string(0, count)
         })
         .expect("open");
-    let head = ::editor::ResourceLocation::new(
-        ::editor::ResourceType::document(),
-        ::editor::Authority::new("local"),
+    let head = ::editor::location::ResourceLocation::new(
+        ::editor::location::ResourceType::document(),
+        ::editor::location::Authority::new("local"),
         vec!["head-v2.md".to_owned()],
     );
     let documents = app.sole_documents();
@@ -7088,9 +7079,9 @@ unrelated
             view.byte_string(0, count)
         })
         .expect("open");
-    let head3 = ::editor::ResourceLocation::new(
-        ::editor::ResourceType::document(),
-        ::editor::Authority::new("local"),
+    let head3 = ::editor::location::ResourceLocation::new(
+        ::editor::location::ResourceType::document(),
+        ::editor::location::Authority::new("local"),
         vec!["head-v3.md".to_owned()],
     );
     let documents = app.sole_documents();
@@ -7130,10 +7121,10 @@ mod wash_tests {
     use crate::{AppCommand, AppFonts, Application, OpenedDocument};
     use std::sync::Arc;
 
-    fn located(name: &str) -> crate::ResourceLocation {
-        crate::ResourceLocation::new(
-            crate::ResourceType::document(),
-            crate::Authority::new("local"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("local"),
             vec!["work".to_owned(), name.to_owned()],
         )
     }

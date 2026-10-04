@@ -1,14 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult},
-    store::Store,
-    LayoutExt as _, Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, layout::LayoutExt as _, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Size};
 
 /// What the label NAMES — resolved to a theme color at display time
@@ -127,7 +120,7 @@ impl View for TreeLabel {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let mut style = crate::ui::RowStyle::drawer(store, ui);
         // Tree rows breathe more than menu rows.
         style.air = crate::ui::space::M;
@@ -147,7 +140,7 @@ impl View for TreeLabel {
             row = row.trail_styled(&style.trail.clone().colored(*color), text.clone());
         }
         let action = self.action.clone();
-        imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+        imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             // The row body consumes nothing: an unclaimed click is the
             // LIST's to answer — `Select` then `Activate(Click)`
             // (docs/ui/list-keyboard.md §2).
@@ -163,13 +156,13 @@ impl View for TreeLabel {
             // Chip-less rows stay the BARE row — a ZBox's containment
             // would cull the indent-gutter presses the row answers.
             let Some(action) = action.clone() else {
-                return imba::Layout::layout(row, arena, constraints);
+                return imba::layout::Layout::layout(row, arena, constraints);
             };
             // The chip rides ON TOP (Z order = press priority): its
             // click never falls through to the row's Activate.
-            imba::Layout::layout(
-                imba::ZBox::new(arena).child(row).child_aligned(
-                    imba::Alignment::CenterEnd,
+            imba::layout::Layout::layout(
+                imba::layout::ZBox::new(arena).child(row).child_aligned(
+                    imba::layout::Alignment::CenterEnd,
                     crate::ui::button(
                         arena,
                         store,
@@ -178,7 +171,7 @@ impl View for TreeLabel {
                         action,
                         || TreeLabelCommand::Action,
                     )
-                    .pad_insets(imba::Insets {
+                    .pad_insets(imba::layout::Insets {
                         left: 0.0,
                         top: 0.0,
                         right: crate::ui::space::M,
@@ -287,7 +280,7 @@ where
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         TreeItemChrome {
             view: self,
             store,
@@ -311,9 +304,9 @@ struct TreeItemChrome<'a, V: Clone> {
     ui: &'a UiCtx,
 }
 
-impl<V: Clone> imba::LayoutValue for TreeItemChrome<'_, V> {}
+impl<V: Clone> imba::layout::LayoutValue for TreeItemChrome<'_, V> {}
 
-impl<'a, V> imba::Layout<'a, TreeItemCommand<V::Command>> for TreeItemChrome<'a, V>
+impl<'a, V> imba::layout::Layout<'a, TreeItemCommand<V::Command>> for TreeItemChrome<'a, V>
 where
     V: View + Clone,
     V::Command: Send + 'static,
@@ -329,7 +322,7 @@ where
         let inset = f32::from(view.depth) * tree.indent;
         let width = constraints.max.width.max(1.0);
         let offset = inset + tree.text_x;
-        let inner = imba::Layout::layout(
+        let inner = imba::layout::Layout::layout(
             view.inner.display(arena, store, ui),
             arena,
             Constraints {

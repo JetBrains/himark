@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::client::ResourceUri;
-use editor::{Authority, ResourceLocation, ResourceType};
+use editor::{location::Authority, location::ResourceLocation, location::ResourceType};
 
 pub struct FileUris;
 

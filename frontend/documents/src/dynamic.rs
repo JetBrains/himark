@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use editor::{Document, EditorEffects, EditorId};
+use editor::{document::Document, editor::EditorEffects, editor::EditorId};
 use imba::store::Store;
 
 use crate::{DocumentId, OpenDocuments};
@@ -12,14 +12,14 @@ use crate::{DocumentId, OpenDocuments};
 /// the ids of the pane it fired in (docs/entities.md law 3 — the
 /// pane's view is the record that holds them), so it never resolves
 /// an owner through the catalog. Commands that only touch their
-/// Document stay on `editor::DynamicEditorCommand`; anything that
+/// Document stay on `editor::dynamic::DynamicEditorCommand`; anything that
 /// registers, releases or files siblings belongs here.
 pub trait DocumentCommand: Send + Sync + 'static {
     fn id(&self) -> &'static str;
 
     fn name(&self) -> String;
 
-    fn offers_at(&self, location: &editor::ResourceLocation) -> bool {
+    fn offers_at(&self, location: &editor::location::ResourceLocation) -> bool {
         !location.is_synthetic()
     }
 
@@ -27,12 +27,12 @@ pub trait DocumentCommand: Send + Sync + 'static {
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         documents: imba::store::Id<OpenDocuments>,
         document_id: DocumentId,
         document: &mut Document,
         editor: EditorId,
-        location: &editor::ResourceLocation,
+        location: &editor::location::ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut EditorEffects<'_>,
     );

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use operation::Operation;
+use operation::operation::Operation;
 
 #[derive(Clone, Debug, Default)]
 struct EditLog {
@@ -78,14 +78,14 @@ fn bridge(from: &EditLog, to: &EditLog) -> Operation {
 
 #[derive(Clone, Debug, Default)]
 struct Doc {
-    text: text::Text,
+    text: text::text::Text,
     log: EditLog,
 }
 
 impl Doc {
     fn new(source: &str) -> Self {
         Self {
-            text: text::Text::from_string_exact(source),
+            text: text::text::Text::from_string_exact(source),
             log: EditLog::default(),
         }
     }
@@ -120,7 +120,7 @@ impl Action for Edit {
 }
 
 fn edit(state: &Doc, id: u64, at: usize, delete: &str, insert: &str) -> Edit {
-    let mut builder = operation::OperationBuilder::new();
+    let mut builder = operation::builder::OperationBuilder::new();
     if at > 0 {
         builder.push_retain(at as u32);
     }
@@ -249,13 +249,13 @@ fn an_offer_slices_into_one_operation() {
         .expect("sent");
 
     let display = log.display();
-    let whole = text::Text::from_string_exact("hello").edit(&bridge(&origin, &display.log));
+    let whole = text::text::Text::from_string_exact("hello").edit(&bridge(&origin, &display.log));
     assert_eq!(
         display.text, whole,
         "from the origin, the slice IS the difference"
     );
 
-    let tail = text::Text::from_string_exact("hello!").edit(&bridge(&after_first, &display.log));
+    let tail = text::text::Text::from_string_exact("hello!").edit(&bridge(&after_first, &display.log));
     assert_eq!(display.text, tail, "and from anywhere else in the log");
 }
 
@@ -411,7 +411,7 @@ fn a_client_that_keeps_typing_through_a_rebase_converges() {
 use tokio::sync::mpsc;
 
 struct Ui {
-    shown: text::Text,
+    shown: text::text::Text,
 
     at: EditLog,
 
@@ -424,7 +424,7 @@ impl Ui {
     fn edit(&mut self, at: usize, delete: &str, insert: &str) -> Edit {
         self.minted += 1;
         let id = self.id * 1000 + self.minted;
-        let mut builder = operation::OperationBuilder::new();
+        let mut builder = operation::builder::OperationBuilder::new();
         if at > 0 {
             builder.push_retain(at as u32);
         }
@@ -513,14 +513,14 @@ async fn two_looped_clients_converge_through_channels() {
         broadcast: Vec::new(),
     };
     let mut alice = Ui {
-        shown: text::Text::from_string_exact(source),
+        shown: text::text::Text::from_string_exact(source),
         at: EditLog::default(),
         sent: 0,
         minted: 0,
         id: 1,
     };
     let mut bob = Ui {
-        shown: text::Text::from_string_exact(source),
+        shown: text::text::Text::from_string_exact(source),
         at: EditLog::default(),
         sent: 0,
         minted: 0,
@@ -565,7 +565,7 @@ async fn two_looped_clients_converge_through_channels() {
         }
     }
 
-    let read = |value: &text::Text| {
+    let read = |value: &text::text::Text| {
         let end = value.byte_count() as u32;
         value.view().substring(0..end)
     };
@@ -613,7 +613,7 @@ async fn a_flush_fires_only_once_every_prior_edit_is_committed() {
         broadcast: Vec::new(),
     };
     let mut ui = Ui {
-        shown: text::Text::from_string_exact(source),
+        shown: text::text::Text::from_string_exact(source),
         at: EditLog::default(),
         sent: 0,
         minted: 0,

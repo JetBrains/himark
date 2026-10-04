@@ -4,13 +4,13 @@
 use std::cmp::Ordering;
 use std::fmt;
 
-use rope::Rope;
+use rope::rope::Rope;
 
 use crate::builder::OperationBuilder;
 use crate::iter::Iter;
 use crate::measure::{OperationMeasure, NEW_LEN, OLD_LEN};
 use crate::reader::Reader;
-use crate::Op;
+use crate::op::Op;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Bias {
@@ -134,25 +134,25 @@ impl Operation {
         }
 
         let totals = self.rope.metrics();
-        let source_total = totals.metric_at(rope::MetricId(source));
+        let source_total = totals.metric_at(rope::metrics::MetricId(source));
         if offset > source_total {
-            let target_total = totals.metric_at(rope::MetricId(target));
+            let target_total = totals.metric_at(rope::metrics::MetricId(target));
             return offset
                 .saturating_sub(source_total)
                 .saturating_add(target_total);
         }
         let mut cursor = self.rope.cursor();
 
-        if !cursor.seek(rope::MetricId(source), offset, rope::SeekMode::After) {
-            let target_total = totals.metric_at(rope::MetricId(target));
+        if !cursor.seek(rope::metrics::MetricId(source), offset, rope::cursor::SeekMode::After) {
+            let target_total = totals.metric_at(rope::metrics::MetricId(target));
             return offset
                 .saturating_sub(source_total)
                 .saturating_add(target_total);
         }
         loop {
             let position = cursor.position();
-            let source_before = position.metric_at(rope::MetricId(source));
-            let target_before = position.metric_at(rope::MetricId(target));
+            let source_before = position.metric_at(rope::metrics::MetricId(source));
+            let target_before = position.metric_at(rope::metrics::MetricId(target));
             let element = cursor.element();
             let source_len = match source {
                 OLD_LEN => element.old_len(),
@@ -196,16 +196,16 @@ impl Operation {
         if self.rope.is_empty() {
             return None;
         }
-        let total = self.rope.metrics().metric_at(rope::MetricId(axis));
+        let total = self.rope.metrics().metric_at(rope::metrics::MetricId(axis));
         if offset >= total {
             return None;
         }
         let mut cursor = self.rope.cursor();
-        if !cursor.seek(rope::MetricId(axis), offset, rope::SeekMode::After) {
+        if !cursor.seek(rope::metrics::MetricId(axis), offset, rope::cursor::SeekMode::After) {
             return None;
         }
         loop {
-            let before = cursor.position().metric_at(rope::MetricId(axis));
+            let before = cursor.position().metric_at(rope::metrics::MetricId(axis));
             let element = cursor.element();
             let len = match axis {
                 OLD_LEN => element.old_len(),
@@ -248,13 +248,13 @@ impl Operation {
             return empty(old_total, new_total);
         }
         let mut cursor = self.rope.cursor();
-        if !cursor.seek(rope::MetricId(axis), offset, rope::SeekMode::After) {
+        if !cursor.seek(rope::metrics::MetricId(axis), offset, rope::cursor::SeekMode::After) {
             return empty(old_total, new_total);
         }
         let position = cursor.position();
         OpsFrom {
-            old_start: position.metric_at(rope::MetricId(OLD_LEN)),
-            new_start: position.metric_at(rope::MetricId(NEW_LEN)),
+            old_start: position.metric_at(rope::metrics::MetricId(OLD_LEN)),
+            new_start: position.metric_at(rope::metrics::MetricId(NEW_LEN)),
             ops: Iter {
                 iter: cursor.iter(),
             },
@@ -833,7 +833,7 @@ fn cut_rope(
     let start = start.min(total);
     let end = end.clamp(start, total);
     let mut cursor = rope.cursor();
-    let (from, mut at) = match cursor.seek(rope::MetricId(axis), start, rope::SeekMode::After) {
+    let (from, mut at) = match cursor.seek(rope::metrics::MetricId(axis), start, rope::cursor::SeekMode::After) {
         true => (cursor.index(), cursor.position().0[axis]),
 
         false => (rope.len() as u32, total),

@@ -12,11 +12,11 @@ fn test_docs(store: &mut Store) -> imba::store::Id<himark::OpenDocuments> {
 }
 
 fn fonts() -> skia_safe::textlayout::FontCollection {
-    himark::test_document::test_fonts_collection().clone()
+    ::editor::test_document::test_fonts_collection().clone()
 }
 
-fn theme() -> himark::Theme {
-    himark::Theme::embedded()
+fn theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
 fn languages() -> std::sync::Arc<SyntaxLanguages> {
@@ -26,7 +26,7 @@ fn languages() -> std::sync::Arc<SyntaxLanguages> {
 fn base() -> ResourceLocation {
     ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         vec!["repo".to_owned(), "notes".to_owned(), "page.md".to_owned()],
     )
 }
@@ -78,10 +78,10 @@ fn fetch_caller(path: Vec<String>, content: &'static str) -> imba::effect::Effec
 }
 
 fn host(source: &str) -> (Store, Document) {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
-    store.put(himark::env::Fonts(himark::embedded_fonts::source()));
-    store.put(himark::env::Parsers(languages()));
+    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
+    store.put(::editor::env::Parsers(languages()));
     let document = crate::document_from_markdown(source, &store, ui, &fonts(), &theme());
     (store, document)
 }
@@ -113,7 +113,7 @@ fn poll<T>(mut future: std::pin::Pin<Box<dyn std::future::Future<Output = T> + '
 }
 
 fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller) -> Markup {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let fonts = fonts();
     let theme = theme();
     let fresh = {
@@ -121,8 +121,8 @@ fn run(store: &mut Store, over: &EnrichInput, caller: imba::effect::EffectCaller
             fonts: &fonts,
             theme: &theme,
             caller,
-            languages: himark::env::Parsers::of(store),
-            measure: himark::MeasureCtx::Handed { store, ui },
+            languages: ::editor::env::Parsers::of(store),
+            measure: editor::enrich::MeasureCtx::Handed { store, ui },
         };
         poll(FenceEmbedEnricher.derive(over, &cx))
     };
@@ -188,7 +188,7 @@ fn an_addressed_fence_embeds_the_registered_file() {
 
 #[test]
 fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "``` rust src/main.rs\nx\n```\n\n``` rust src/main.rs#L2-3\ny\n```\n";
     let (mut store, document) = host(source);
     let documents = test_docs(&mut store);
@@ -209,7 +209,7 @@ fn the_prepared_layout_attaches_equal_to_a_fresh_build() {
         "one registered document serves both"
     );
 
-    let reference = himark::EditorView::complete(
+    let reference = editor::editor_view::EditorView::complete(
         himark::OpenDocuments::document_ref(&store, documents, whole.document())
             .expect("target")
             .clone(),
@@ -252,13 +252,13 @@ fn an_open_target_dedups_to_the_same_document() {
 
     let target = ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         sidecar_path(),
     );
     let built = crate::document_from_markdown(
         "fn main() {}\n",
         &store,
-        himark::test_document::test_ui(),
+        ::editor::test_document::test_ui(),
         &fonts(),
         &theme(),
     );
@@ -362,7 +362,7 @@ fn line_window_slices_1_based_inclusive() {
 
 #[test]
 fn a_line_fragment_windows_the_embed() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = "``` rust src/main.rs#L2-3\nx\n```\n";
     let (mut store, document) = host(source);
     let documents = test_docs(&mut store);
@@ -387,7 +387,7 @@ fn a_line_fragment_windows_the_embed() {
     let shown = text.byte_string(window.start as usize, (window.end - window.start) as usize);
     assert_eq!(shown, "line two\nline three", "the window's lines only");
 
-    let whole = himark::EditorView::complete(
+    let whole = editor::editor_view::EditorView::complete(
         crate::document_from_markdown("x", &store, ui, &fonts(), &theme()),
         720.0,
         &store,

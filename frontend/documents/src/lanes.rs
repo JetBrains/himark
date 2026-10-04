@@ -57,7 +57,7 @@ pub fn refetch_document(
 pub fn sync_stripe_bases(
     store: &mut imba::store::Store,
     documents: imba::store::Id<crate::OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fx: &mut imba::command::Fx<'_>,
 ) {
     fx.scope(

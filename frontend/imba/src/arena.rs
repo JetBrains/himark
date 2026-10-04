@@ -1,8 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-pub use bumpalo::boxed::Box as ArenaBox;
-pub use bumpalo::collections::{String as ArenaString, Vec as ArenaVec};
+/// Arena-allocated box/string/vec — bumpalo stays imba's private
+/// dependency; these aliases are the public names.
+pub type ArenaBox<'a, T> = bumpalo::boxed::Box<'a, T>;
+pub type ArenaString<'a> = bumpalo::collections::String<'a>;
+pub type ArenaVec<'a, T> = bumpalo::collections::Vec<'a, T>;
 
 use bumpalo::Bump;
 

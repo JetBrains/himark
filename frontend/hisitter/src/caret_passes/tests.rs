@@ -3,7 +3,8 @@
 
 use std::ops::Range;
 
-use editor::{CaretContext, EnrichCx, EnrichInput, Enricher, Markup, StyleId, Syntax, Text};
+use editor::{enrich::CaretContext, enrich::EnrichCx, enrich::EnrichInput, enrich::Enricher, markup::Markup, markup::StyleId, markup::Syntax};
+use text::text::Text;
 
 use super::{BraceMatchPass, OccurrencePass};
 use crate::TsTree;
@@ -12,8 +13,8 @@ fn fonts() -> skia_safe::textlayout::FontCollection {
     editor::test_document::test_fonts_collection().clone()
 }
 
-fn theme() -> editor::Theme {
-    editor::Theme::embedded()
+fn theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
 fn rust_tree(source: &str) -> tree_sitter::Tree {
@@ -68,7 +69,7 @@ fn landed(pass: &dyn Enricher, input: &EnrichInput) -> Vec<Range<u32>> {
         theme: &theme,
         caller: imba::effect::EffectCaller::disconnected(),
         languages: None,
-        measure: editor::MeasureCtx::Handed { store, ui },
+        measure: editor::enrich::MeasureCtx::Handed { store, ui },
     };
     let enrichment = poll(pass.derive(input, &cx));
     let mut markup = input.previous.clone();

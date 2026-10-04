@@ -4,9 +4,9 @@
 //! Exactness and shape of the structural diff over real markdown trees
 //! (docs/editor/structural-diff.md, phase 1).
 
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 use structdiff::{apply, diff, SyntaxInput};
-use text::Text;
+use text::text::Text;
 
 fn structural(left: &str, right: &str) -> Operation {
     let left_tree = mdparser::block_tree(left);

@@ -9,7 +9,7 @@ fn probe() -> bool {
     *ENABLED.get_or_init(|| std::env::var_os("HIMARK_WATCH_PROBE").is_some())
 }
 use crate::{FetchDocumentEffect, OpenDocuments};
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::effect::Effects;
 
 /// The watch capability's doors — the flag is a `Registry` field.
@@ -63,9 +63,9 @@ pub struct FileChanged {
 }
 
 pub struct RefetchDiffEffect {
-    pub baseline: editor::Text,
+    pub baseline: text::text::Text,
 
-    pub current: editor::Text,
+    pub current: text::text::Text,
 
     pub fetched: String,
 
@@ -78,9 +78,9 @@ pub struct RefetchDiffEffect {
 
 #[derive(Clone)]
 pub struct RefetchRebase {
-    pub operation: operation::Operation,
+    pub operation: operation::operation::Operation,
 
-    pub fetched: editor::Text,
+    pub fetched: text::text::Text,
 
     /// The disk text as fetched — carried through so a raced landing
     /// can re-diff without an O(file) rope extraction on the UI
@@ -111,23 +111,23 @@ pub struct RefetchDiffHandler;
 /// where it starts, what it removes, what it puts there.
 type Hunk = (u32, String, String);
 
-fn hunks(operation: &operation::Operation) -> Vec<Hunk> {
+fn hunks(operation: &operation::operation::Operation) -> Vec<Hunk> {
     let mut out = Vec::new();
     let mut pos = 0u32;
     let mut open: Option<Hunk> = None;
     for step in operation.iter() {
         match step {
-            operation::Op::Retain(n) => {
+            operation::op::Op::Retain(n) => {
                 if let Some(hunk) = open.take() {
                     out.push(hunk);
                 }
                 pos += n;
             }
-            operation::Op::Insert(text) => {
+            operation::op::Op::Insert(text) => {
                 let hunk = open.get_or_insert((pos, String::new(), String::new()));
                 hunk.2.push_str(&text);
             }
-            operation::Op::Delete(text) => {
+            operation::op::Op::Delete(text) => {
                 let hunk = open.get_or_insert((pos, String::new(), String::new()));
                 hunk.1.push_str(&text);
                 pos += text.len() as u32;
@@ -220,7 +220,7 @@ fn merged(base: &str, ours: &[Hunk], theirs: &[Hunk]) -> String {
     out
 }
 
-pub(crate) fn text_string(text: &editor::Text) -> String {
+pub(crate) fn text_string(text: &text::text::Text) -> String {
     let mut view = text.view();
     let end = view.byte_count().min(u32::MAX as usize) as u32;
     view.substring(0..end)
@@ -228,14 +228,14 @@ pub(crate) fn text_string(text: &editor::Text) -> String {
 
 impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
     async fn handle(&self, effect: RefetchDiffEffect) -> RefetchRebase {
-        let fetched = editor::Text::from_string_exact(&effect.fetched);
+        let fetched = text::text::Text::from_string_exact(&effect.fetched);
         // The buffer already IS the disk — the fetch is the echo of
         // changes the document holds (the agent's shared edits, our
         // own save). Nothing to apply; the document is fully synced.
         if text_string(&effect.current) == effect.fetched {
             let len = effect.current.byte_count().min(u32::MAX as usize) as u32;
             return RefetchRebase {
-                operation: operation::Operation::from_ops([operation::Op::Retain(len)]),
+                operation: operation::operation::Operation::from_ops([operation::op::Op::Retain(len)]),
                 fetched,
                 fetched_source: effect.fetched,
                 clean: true,
@@ -244,7 +244,7 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
         }
         let theirs = effect.policy.diff(&effect.baseline, &fetched, None);
         let ours = effect.policy.diff(&effect.baseline, &effect.current, None);
-        let clean = ours.iter().all(|op| matches!(op, operation::Op::Retain(_)));
+        let clean = ours.iter().all(|op| matches!(op, operation::op::Op::Retain(_)));
         let (operation, synced) = match clean {
             true => (theirs, true),
             false => {
@@ -261,7 +261,7 @@ impl imba::effect::EffectHandler<RefetchDiffEffect> for RefetchDiffHandler {
                 (
                     effect.policy.diff(
                         &effect.current,
-                        &editor::Text::from_string_exact(&target),
+                        &text::text::Text::from_string_exact(&target),
                         None,
                     ),
                     synced,

@@ -6,11 +6,13 @@ license = "Apache-2.0"
 
 [dependencies]
 himark = { path = "../../himark" }
+editor = { path = "../../editor" }
 imba = { path = "../../imba" }
 skia-safe = { version = "0.153.3", features = ["textlayout"] }
 text = { path = "../../text" }
 
 [dev-dependencies]
 himark = { path = "../../himark", features = ["test-support"] }
+editor = { path = "../../editor" }
 himarkdown = { path = "../himarkdown" }
 hirust = { path = "../lang/hirust" }

@@ -11,10 +11,10 @@
 use std::sync::Arc;
 
 use editor::diff::{DiffPolicy, DiffSyntax, DiffTree};
-use text::Text;
+use text::text::Text;
 
-fn rust_languages() -> Arc<editor::SyntaxLanguages> {
-    let mut languages = editor::SyntaxLanguages::new();
+fn rust_languages() -> Arc<editor::reparse::SyntaxLanguages> {
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
     Arc::new(languages)
 }

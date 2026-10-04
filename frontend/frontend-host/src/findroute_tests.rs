@@ -4,8 +4,9 @@
 use crate::hiahp::find::NativeFindHandler;
 use crate::hiahp::fs::ClientDirectory;
 use himark::higent::client as ahp;
-use himark::ResourceType;
-use himark::{FindEffect, ResourceLocation};
+use editor::location::ResourceType;
+use himark::{FindEffect};
+use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 use std::sync::Arc;
 
@@ -99,7 +100,7 @@ fn located(authority: &str, path: &std::path::Path) -> ResourceLocation {
         .collect();
     ResourceLocation::new(
         ResourceType::directory(),
-        himark::Authority::new(authority),
+        editor::location::Authority::new(authority),
         segments,
     )
 }
@@ -270,13 +271,13 @@ fn undesignated_and_foreign_folders_answer_nothing() {
     let directory = Arc::new(ClientDirectory::new(Arc::new(|_| {})));
     let local = ResourceLocation::new(
         ResourceType::directory(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         vec!["work".to_owned()],
     );
     assert!(find(&directory, vec![local], "x").is_empty());
     let foreign = ResourceLocation::new(
         ResourceType::directory(),
-        himark::Authority::new("remote:box"),
+        editor::location::Authority::new("remote:box"),
         vec!["work".to_owned()],
     );
     assert!(find(&directory, vec![foreign], "x").is_empty());

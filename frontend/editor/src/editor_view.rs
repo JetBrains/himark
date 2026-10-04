@@ -1,24 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::{container, Container},
-    effect::Effects,
-    event::{Event, EventResult, MouseButton},
-    lazy::lazy,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, container::{container, Container}, effect::Effects, event::{Event, EventResult, MouseButton}, lazy::lazy, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Point, Rect, Size};
 
-use crate::{
-    document::Document,
-    editor::EditorId,
-    markup::{inlay_anchor_byte, inlay_anchors_line, InlayCommand, InlayMode},
-};
+use crate::{document::Document, editor::EditorId, markup::{inlay_anchor_byte, inlay_anchors_line, InlayCommand, InlayMode}};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EditorFocus {
@@ -317,7 +303,7 @@ struct EditorCoreView<'a> {
 
     reports_geometry: bool,
 
-    location: Option<&'a crate::ResourceLocation>,
+    location: Option<&'a crate::location::ResourceLocation>,
 }
 
 struct EditorGutterView<'a> {
@@ -492,7 +478,7 @@ pub struct EditorView {
 
     pub reports_geometry: bool,
 
-    pub location: Option<crate::ResourceLocation>,
+    pub location: Option<crate::location::ResourceLocation>,
 
     pub gutter_width: f32,
 
@@ -504,7 +490,7 @@ impl EditorView {
         mut document: Document,
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -534,7 +520,7 @@ impl EditorView {
         mut document: Document,
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -563,14 +549,14 @@ impl EditorView {
     pub fn input(
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: crate::FontSource,
     ) -> Self {
         let mut markup = crate::markup::Markup::new();
         markup.push_styled_covering(0..0, crate::theme::StyleId::Input);
 
         Self::of_document(
-            Document::new(text::Text::from_string_exact(""), markup),
+            Document::new(text::text::Text::from_string_exact(""), markup),
             width,
             store,
             ui,
@@ -617,7 +603,7 @@ impl EditorView {
         self.document.layout_width(self.editor)
     }
 
-    pub fn document_layout(&self) -> &crate::DocumentLayout {
+    pub fn document_layout(&self) -> &crate::document_layout::DocumentLayout {
         self.document
             .document_layout(self.editor)
             .expect("the bound editor exists")
@@ -632,7 +618,7 @@ impl EditorView {
         &mut self,
         byte: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -1039,8 +1025,8 @@ impl View for EditorView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let document = &self.document;
             let editor_id = self.editor;
             let fonts = WidgetFonts::resolve(store, ui);
@@ -1748,7 +1734,7 @@ struct EditorImeClient<'a> {
     command: Option<EditorCommand>,
 }
 
-impl imba::ImeClient for EditorImeClient<'_> {
+impl imba::ime::ImeClient for EditorImeClient<'_> {
     fn has_marked_text(&self) -> bool {
         self.document.marked_range(self.editor).is_some()
     }
@@ -1912,20 +1898,20 @@ impl EditorClipboardClient<'_> {
     }
 }
 
-impl imba::ClipboardClient for EditorClipboardClient<'_> {
-    fn copy(&mut self) -> Option<imba::ClipboardContent> {
-        Some(imba::ClipboardContent {
+impl imba::clipboard::ClipboardClient for EditorClipboardClient<'_> {
+    fn copy(&mut self) -> Option<imba::clipboard::ClipboardContent> {
+        Some(imba::clipboard::ClipboardContent {
             text: self.selections_text()?,
         })
     }
 
-    fn cut(&mut self) -> Option<imba::ClipboardContent> {
+    fn cut(&mut self) -> Option<imba::clipboard::ClipboardContent> {
         let text = self.selections_text()?;
         self.command = Some(EditorCommand::DeleteSelections);
-        Some(imba::ClipboardContent { text })
+        Some(imba::clipboard::ClipboardContent { text })
     }
 
-    fn paste(&mut self, content: &imba::ClipboardContent) -> bool {
+    fn paste(&mut self, content: &imba::clipboard::ClipboardContent) -> bool {
         self.command = Some(EditorCommand::Paste {
             text: content.text.clone(),
         });

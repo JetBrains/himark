@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use crate::node::{MetricsWithLength, Node};
-use crate::Measure;
+use crate::metrics::Measure;
 
 pub(crate) enum Siblings<T: Clone, M: Measure<T>> {
     Owned(Node<T, M>),

@@ -9,19 +9,12 @@
 use std::sync::Arc;
 
 use imba::command::{Requests, Verb};
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, MouseButton},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Canvas, Color, Paint, Rect, Size};
 
 use crate::AnnotationId;
-use editor::Document;
-use editor::{EditorCommand, EditorFocus, EditorView, Inlay, InlayKey, InlayMode};
+use editor::document::Document;
+use editor::{editor_view::EditorCommand, editor_view::EditorFocus, editor_view::EditorView, markup::Inlay, markup::InlayKey, markup::InlayMode};
 
 type CommentChrome = editor::theme::CommentChrome;
 
@@ -45,12 +38,12 @@ impl documents::DocumentCommand for AddComment {
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<documents::OpenDocuments>,
         document_id: documents::DocumentId,
         document: &mut Document,
-        editor: editor::EditorId,
-        location: &editor::ResourceLocation,
+        editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
         _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, EditorCommand>,
     ) {
@@ -113,9 +106,9 @@ impl documents::DocumentCommand for AddComment {
     }
 }
 
-pub fn comments_markup() -> editor::MarkupId {
-    static ID: std::sync::OnceLock<editor::MarkupId> = std::sync::OnceLock::new();
-    *ID.get_or_init(editor::MarkupId::mint)
+pub fn comments_markup() -> editor::markup::MarkupId {
+    static ID: std::sync::OnceLock<editor::markup::MarkupId> = std::sync::OnceLock::new();
+    *ID.get_or_init(editor::markup::MarkupId::mint)
 }
 
 pub struct RemoveComment {
@@ -133,7 +126,7 @@ impl imba::command::DynamicCommand for RemoveComment {
     fn name(&self) -> String {
         "Remove Comment".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         if let Some(annotation) = &self.annotation {
             crate::Comments::removed(store, self.comments, annotation);
         }
@@ -172,7 +165,7 @@ impl imba::command::DynamicCommand for SendComments {
     fn name(&self) -> String {
         "Send Comments to Agent".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         // A NOTE on the model — the wire lane drains it; no window,
         // no wire resolution, no drives check left to fail.
         crate::Comments::ask_send(store, self.comments, self.ids.clone());
@@ -204,9 +197,9 @@ impl std::fmt::Display for CommentCommand {
     }
 }
 
-fn markdown_comment_document(text: text::Text) -> Document {
-    Document::new(text, editor::Markup::new()).with_syntax(
-        editor::Syntax::new("markdown", None, editor::Markup::new()),
+fn markdown_comment_document(text: text::text::Text) -> Document {
+    Document::new(text, editor::markup::Markup::new()).with_syntax(
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     )
 }
@@ -239,14 +232,14 @@ impl CommentView {
         host: Option<documents::DocumentId>,
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         annotation: Option<AnnotationId>,
     ) -> Self {
         let chrome = theme.ui().comment.clone();
         let mut editor = EditorView::of_document(
-            markdown_comment_document(text::Text::from_string_exact("")),
+            markdown_comment_document(text::text::Text::from_string_exact("")),
             (width - chrome.pad * 2.0).max(120.0),
             store,
             ui,
@@ -273,19 +266,19 @@ impl CommentView {
         host: Option<documents::DocumentId>,
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         annotation: AnnotationId,
-        own_text: Option<text::Text>,
-        foreign_texts: Vec<text::Text>,
+        own_text: Option<text::text::Text>,
+        foreign_texts: Vec<text::text::Text>,
         thread_stamp: u64,
     ) -> Self {
         let chrome = theme.ui().comment.clone();
         let inner = (width - chrome.pad * 2.0).max(120.0);
         let editor = EditorView::of_document(
             markdown_comment_document(
-                own_text.unwrap_or_else(|| text::Text::from_string_exact("")),
+                own_text.unwrap_or_else(|| text::text::Text::from_string_exact("")),
             ),
             inner,
             store,
@@ -324,7 +317,7 @@ impl CommentView {
         self.thread_stamp
     }
 
-    pub(crate) fn text_rope(&self) -> text::Text {
+    pub(crate) fn text_rope(&self) -> text::text::Text {
         self.editor.document.text().clone()
     }
 
@@ -550,8 +543,8 @@ impl View for CommentView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = self.card_size(constraints);
             let mut container = imba::container::container(arena, size);
 
@@ -561,7 +554,7 @@ impl View for CommentView {
                 .editor
                 .content_height()
                 .max(self.chrome.min_editor_height);
-            let editor = imba::Layout::layout(
+            let editor = imba::layout::Layout::layout(
                 self.editor.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -575,7 +568,7 @@ impl View for CommentView {
             let mut y = pad + editor_height + pad;
             for entry in &self.foreign {
                 let height = entry.content_height();
-                let laid = imba::Layout::layout(
+                let laid = imba::layout::Layout::layout(
                     entry.display(arena, store, ui),
                     arena,
                     Constraints {

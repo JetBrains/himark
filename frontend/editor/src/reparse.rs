@@ -3,13 +3,10 @@
 
 use std::{ops::Range, sync::Arc};
 
-use operation::Operation;
-use text::Text;
+use operation::operation::Operation;
+use text::text::Text;
 
-use crate::{
-    document::Document,
-    markup::{MarkupBuilder, Syntax},
-};
+use crate::{document::Document, markup::{MarkupBuilder, Syntax}};
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SyntaxSite {
@@ -21,7 +18,7 @@ pub struct SyntaxSite {
 pub trait SyntaxTree: Send + Sync {
     fn clone_tree(&self) -> Box<dyn SyntaxTree>;
 
-    fn edit(&mut self, operation: &Operation, view: &mut text::TextView, base: u32);
+    fn edit(&mut self, operation: &Operation, view: &mut text::text_view::TextView, base: u32);
 
     fn changed_since(&self, old: &dyn SyntaxTree) -> Option<Vec<Range<u32>>>;
 
@@ -193,7 +190,7 @@ impl SyntaxLanguages {
         old: Option<&Syntax>,
         edited: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(Syntax, Vec<Range<u32>>, Vec<SyntaxSite>)> {
@@ -369,7 +366,7 @@ impl ReparseWork {
     pub fn run(
         self,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ReparseOutcome {

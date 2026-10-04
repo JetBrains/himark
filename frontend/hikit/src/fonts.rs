@@ -32,7 +32,7 @@ pub struct ChromeTypeface(pub skia_safe::Typeface);
 
 pub struct ChromeTextTypeface(pub skia_safe::Typeface);
 
-pub fn ui_font(ui: &imba::UiCtx, size: f32) -> skia_safe::Font {
+pub fn ui_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
     let typeface = ui.env(|| {
         ChromeTypeface(
             editor::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::bold())
@@ -44,7 +44,7 @@ pub fn ui_font(ui: &imba::UiCtx, size: f32) -> skia_safe::Font {
     font
 }
 
-pub fn ui_text_font(ui: &imba::UiCtx, size: f32) -> skia_safe::Font {
+pub fn ui_text_font(ui: &imba::ui::UiCtx, size: f32) -> skia_safe::Font {
     let typeface = ui.env(|| {
         ChromeTextTypeface(
             editor::env::ui_typeface(ui, &[] as &[&str], skia_safe::FontStyle::normal())

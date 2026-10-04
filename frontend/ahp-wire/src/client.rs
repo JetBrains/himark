@@ -539,11 +539,11 @@ pub fn route_client(store: &Store, authority: &str) -> Option<(HostId, Client, S
     Some((host, client, session))
 }
 
-pub fn route_authority(host: HostId, session: &SessionUri) -> editor::Authority {
+pub fn route_authority(host: HostId, session: &SessionUri) -> editor::location::Authority {
     if session.as_str() == crate::LOCAL_FS_SESSION {
-        editor::Authority::new("local")
+        editor::location::Authority::new("local")
     } else {
-        editor::Authority::new(authority(host, session))
+        editor::location::Authority::new(authority(host, session))
     }
 }
 
@@ -753,14 +753,14 @@ impl std::fmt::Display for ResourceUri {
 }
 
 pub trait ResourceUriMap: Send + Sync + 'static {
-    fn uri_of(&self, location: &editor::ResourceLocation) -> ResourceUri;
+    fn uri_of(&self, location: &editor::location::ResourceLocation) -> ResourceUri;
 
     fn location_of(
         &self,
         uri: &ResourceUri,
-        kind: editor::ResourceType,
-        authority: &editor::Authority,
-    ) -> Option<editor::ResourceLocation>;
+        kind: editor::location::ResourceType,
+        authority: &editor::location::Authority,
+    ) -> Option<editor::location::ResourceLocation>;
 }
 
 /// The client mirror tests mint hosts with: every facet answers

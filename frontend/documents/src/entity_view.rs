@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
 
-use editor::{EditorCommand, EditorId, EditorView};
+use editor::{editor_view::EditorCommand, editor::EditorId, editor_view::EditorView};
 
 use crate::DocumentId;
 
@@ -101,7 +101,7 @@ impl View for EditorIdView {
         crate::close_editor(store, self.documents, self.document, self.editor);
         // Teardown-only: `View::destroy` carries no UiCtx, and the
         // release may reshape a surviving base document's markup once.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         crate::OpenDocuments::remove_if_editorless(store, self.documents, ui, self.document, fx);
     }
 
@@ -140,7 +140,7 @@ impl View for EditorIdView {
                     &mut document,
                     self.editor,
                     &location,
-                    payload.and_then(editor::DynPayload::take),
+                    payload.and_then(editor::dynamic::DynPayload::take),
                     fx,
                 );
                 crate::OpenDocuments::put_document(store, self.documents, self.document, document);
@@ -221,8 +221,8 @@ impl View for EditorIdView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let constraints = Constraints {
                 min: constraints.min,
                 max: skia_safe::Size::new(
@@ -247,7 +247,7 @@ impl View for EditorIdView {
                     constraints,
                     content_pad: ::editor::env::Themes::of(store).ui().window.content_pad,
                 },
-                ::editor::INLAY_HOST,
+                ::editor::markup::INLAY_HOST,
             )
         })
     }
@@ -303,7 +303,7 @@ impl<'a> imba::Thunk<'a, EditorCommand> for GatheredPane<'a> {
             pane.place(
                 content_pad,
                 0.0,
-                imba::Layout::layout(view.display(frame, store, ui), frame, constraints),
+                imba::layout::Layout::layout(view.display(frame, store, ui), frame, constraints),
             );
             stripes = view.scroll_stripe_overlays(frame, store, viewport);
             for overlay in &mut stripes {

@@ -14,7 +14,7 @@ pub mod routes;
 /// Content search is the streaming locations channel
 /// (`SearchLocationsEffect`), not a Find target.
 pub struct FindEffect {
-    pub folders: Vec<editor::ResourceLocation>,
+    pub folders: Vec<editor::location::ResourceLocation>,
     pub term: String,
 }
 
@@ -25,7 +25,7 @@ impl std::fmt::Display for FindEffect {
 }
 
 impl imba::effect::Effect for FindEffect {
-    type Result = Vec<editor::ResourceLocation>;
+    type Result = Vec<editor::location::ResourceLocation>;
 }
 
 /// A live `ahp-locations:/…` result stream, as the ask effects
@@ -36,13 +36,13 @@ impl imba::effect::Effect for FindEffect {
 pub struct LocationsChannel {
     pub client: std::sync::Arc<dyn ahp_wire::client::LocationsClient>,
     pub channel: ahp_wire::client::ChannelUri,
-    pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<editor::ResourceLocation> + Send + Sync>,
+    pub resolve: std::sync::Arc<dyn Fn(&str) -> Option<editor::location::ResourceLocation> + Send + Sync>,
 }
 
 /// The streaming content search ask. Answers the channel; results
 /// stream as `LocationList` batches; unsubscribing cancels the walk.
 pub struct SearchLocationsEffect {
-    pub folders: Vec<editor::ResourceLocation>,
+    pub folders: Vec<editor::location::ResourceLocation>,
     pub query: String,
     /// Literal by default; the query as a regular expression when set.
     pub regex: bool,
@@ -69,7 +69,7 @@ pub enum LspLocationsKind {
 /// The location-answering LSP asks, streamed over the same channel
 /// shape as the content search.
 pub struct LspLocationsEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub position: documents::LineCol,
     pub kind: LspLocationsKind,
 }

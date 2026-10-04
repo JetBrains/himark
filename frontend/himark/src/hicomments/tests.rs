@@ -2,25 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use crate::{Document, EditorCommand, EditorFocus, InlayKey};
-use imba::UiCtx;
+use editor::document::Document;
+use editor::editor_view::EditorCommand;
+use editor::editor_view::EditorFocus;
+use editor::markup::InlayKey;
+use imba::ui::UiCtx;
 
 use std::ops::Range;
 
-use crate::test_document::plain_document;
-use crate::{AppCommand, AppExt, AppFonts, Application, Caret, MultiCaret, OpenedDocument};
+use ::editor::test_document::plain_document;
+use crate::{AppCommand, AppExt, AppFonts, Application, OpenedDocument};
+use editor::caret::Caret;
+use editor::caret::MultiCaret;
 
-fn document_location(name: &str) -> crate::ResourceLocation {
-    crate::ResourceLocation::new(
-        crate::ResourceType::document(),
-        crate::Authority::new("local"),
+fn document_location(name: &str) -> editor::location::ResourceLocation {
+    editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("local"),
         vec!["project".to_owned(), name.to_owned()],
     )
 }
 
 struct SelectRange(Range<u32>);
 
-impl crate::DynamicEditorCommand for SelectRange {
+impl editor::dynamic::DynamicEditorCommand for SelectRange {
     fn id(&self) -> &'static str {
         "test.select"
     }
@@ -30,10 +35,10 @@ impl crate::DynamicEditorCommand for SelectRange {
     fn perform(
         &self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         document: &mut Document,
-        editor: crate::EditorId,
-        _location: &crate::ResourceLocation,
+        editor: editor::editor::EditorId,
+        _location: &editor::location::ResourceLocation,
         _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         _fx: &mut imba::effect::Effects<'_, EditorCommand>,
     ) {
@@ -46,7 +51,7 @@ impl crate::DynamicEditorCommand for SelectRange {
 
 fn app_with_located_document(source: &str) -> (Application, crate::WindowId) {
     let mut app = Application::new(AppFonts::embedded());
-    app.register_syntax_languages(himarkdown::markdown_languages(crate::SyntaxLanguages::new()));
+    app.register_syntax_languages(himarkdown::markdown_languages(editor::reparse::SyntaxLanguages::new()));
     // `comments.add` arrives via the session ceremony (a scoped,
     // sibling-wired instance) — the same road production takes.
     app.register_editor_command(std::sync::Arc::new(SelectRange(6..11)));
@@ -85,7 +90,7 @@ fn commented_document(app: &Application) -> (crate::DocumentId, Vec<(InlayKey, R
         };
         let extras = [(crate::hicomments::comments_markup(), comments)];
         let inlays: Vec<(InlayKey, Range<u32>)> =
-            crate::OverlaidMarkup::new(document.markup(), &extras)
+            editor::markup::OverlaidMarkup::new(document.markup(), &extras)
                 .all_inlays_in(0..byte_count)
                 .into_iter()
                 .filter(|interval| interval.inlay.view_as::<CommentView>().is_some())
@@ -203,7 +208,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
         .feature_markup(crate::hicomments::comments_markup())
         .expect("the comments markup");
     let extras = [(crate::hicomments::comments_markup(), comments)];
-    let interval = crate::OverlaidMarkup::new(doc.markup(), &extras)
+    let interval = editor::markup::OverlaidMarkup::new(doc.markup(), &extras)
         .all_inlays_in(0..byte_count)
         .into_iter()
         .find(|interval| interval.key == inlays[0].0)
@@ -225,7 +230,7 @@ fn typing_lands_in_the_card_not_the_host_document() {
     );
     assert_eq!(view.text(), "looks wrong", "the card holds the comment");
 
-    let workshop = crate::test_support::test_workshop(crate::Theme::embedded());
+    let workshop = crate::test_support::test_workshop(editor::theme::Theme::embedded());
     let mut pending = crate::test_support::surviving_launches(batch);
     while let Some(effect) = pending.pop() {
         let landing = crate::test_support::handle_effect(effect, &workshop);
@@ -318,7 +323,7 @@ fn sending_never_consumes_what_it_cannot_deliver() {
                     let byte_count =
                         entity.document().text().byte_count().min(u32::MAX as usize) as u32;
                     let extras = [(crate::hicomments::comments_markup(), comments)];
-                    crate::OverlaidMarkup::new(entity.document().markup(), &extras)
+                    editor::markup::OverlaidMarkup::new(entity.document().markup(), &extras)
                         .all_inlays_in(0..byte_count)
                         .into_iter()
                         .any(|interval| interval.inlay.view_as::<CommentView>().is_some())

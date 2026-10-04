@@ -9,19 +9,12 @@
 
 use std::sync::Arc;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, Key as InputKey},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, LayoutExt as _, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, Key as InputKey}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View};
 use skia_safe::Size;
 
 use crate::views::locations_forest;
 use crate::{open_feed, FeedId, LocationKey, LocationLists, LocationsAsk, LocationsFeedRow};
-use editor::{EditorCommand, EditorView};
+use editor::{editor_view::EditorCommand, editor_view::EditorView};
 use hikit::ModalRequest;
 use hikit::RequestSlot;
 use hikit::{tree_toggle, TreeListCommand};
@@ -416,8 +409,8 @@ impl View for SearchView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let theme = editor::env::Themes::of(store);
             let ui_theme = theme.ui();
@@ -459,7 +452,7 @@ impl View for SearchView {
             panel.place(
                 pad,
                 box_pad,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.input.display(arena, store, ui),
                     arena,
                     Constraints {
@@ -498,7 +491,7 @@ impl View for SearchView {
                     + if running {
                         0.0
                     } else {
-                        imba::text_advance(ui, &key_font, "⏎") + combo.gap
+                        imba::layout::text_advance(ui, &key_font, "⏎") + combo.gap
                     }
                     + combo.pad * 2.0;
                 let sendable = self.query().trim().len() >= MIN_QUERY;
@@ -513,10 +506,10 @@ impl View for SearchView {
                 let mid = cell_h * 0.5;
                 let caps_ascent = -caps_font.metrics().1.ascent;
                 let key_ascent = -key_font.metrics().1.ascent;
-                let mut cell = imba::Row::new(arena).gap(combo.gap).child(
-                    imba::text(ui, label, caps_font.clone(), on_accent)
+                let mut cell = imba::layout::Row::new(arena).gap(combo.gap).child(
+                    imba::layout::text(ui, label, caps_font.clone(), on_accent)
                         .tracking(1.5)
-                        .pad_insets(imba::Insets {
+                        .pad_insets(imba::layout::Insets {
                             left: 0.0,
                             top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
                             right: 0.0,
@@ -525,8 +518,8 @@ impl View for SearchView {
                 );
                 if !running {
                     cell = cell.child(
-                        imba::text(ui, "⏎", key_font.clone(), accent_soft).pad_insets(
-                            imba::Insets {
+                        imba::layout::text(ui, "⏎", key_font.clone(), accent_soft).pad_insets(
+                            imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                                 right: 0.0,
@@ -536,7 +529,7 @@ impl View for SearchView {
                     );
                 }
                 let cell = cell
-                    .pad_insets(imba::Insets {
+                    .pad_insets(imba::layout::Insets {
                         left: combo.pad,
                         top: 0.0,
                         right: 0.0,
@@ -608,7 +601,7 @@ impl View for SearchView {
             panel.place(
                 0.0,
                 tree_top,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.search.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(size.width, (size.height - tree_top).max(1.0))),
@@ -704,11 +697,11 @@ impl hikit::ModalView for SearchView {
         store: &mut Store,
         ui: &UiCtx,
         query: &str,
-        fx: &mut imba::effect::Effects<'_, imba::DynCommand>,
+        fx: &mut imba::effect::Effects<'_, imba::dyn_view::DynCommand>,
     ) {
         self.input = seeded_input(store, ui, query);
         self.focus = SearchArea::Input;
-        fx.scope(imba::DynCommand::new::<SearchCommand>, |fx| {
+        fx.scope(imba::dyn_view::DynCommand::new::<SearchCommand>, |fx| {
             self.requery(store, ui, query.to_owned(), fx)
         });
     }
@@ -722,10 +715,10 @@ impl hikit::ModalView for SearchView {
     }
 }
 
-fn seeded_input(store: &imba::store::Store, ui: &imba::UiCtx, text: &str) -> EditorView {
-    let mut markup = editor::Markup::new();
+fn seeded_input(store: &imba::store::Store, ui: &imba::ui::UiCtx, text: &str) -> EditorView {
+    let mut markup = editor::markup::Markup::new();
     markup.push_styled_covering(0..text.len() as u32, editor::theme::StyleId::Input);
-    let document = editor::Document::new(editor::Text::from_string_exact(text), markup);
+    let document = editor::document::Document::new(text::text::Text::from_string_exact(text), markup);
     let fonts = hikit::fonts::source();
     let mut input = EditorView::of_document(
         document,
@@ -747,9 +740,9 @@ mod tests {
 
     fn found(path: &[&str], line: u32, column: u32, context: &str) -> FoundLocation {
         FoundLocation {
-            location: editor::ResourceLocation::new(
-                editor::ResourceType::document(),
-                editor::Authority::new("local"),
+            location: editor::location::ResourceLocation::new(
+                editor::location::ResourceType::document(),
+                editor::location::Authority::new("local"),
                 path.iter()
                     .map(|segment| segment.to_string())
                     .collect::<Vec<String>>(),
@@ -883,9 +876,9 @@ mod tests {
         assert!(hikit::ModalView::take_request(&mut view).is_some());
 
         // A directory key has no target: no request.
-        let dir = LocationKey::Node(editor::ResourceLocation::new(
-            editor::ResourceType::directory(),
-            editor::Authority::new("local"),
+        let dir = LocationKey::Node(editor::location::ResourceLocation::new(
+            editor::location::ResourceType::directory(),
+            editor::location::Authority::new("local"),
             vec!["work".to_owned()],
         ));
         view.pick(&mut store, dir, true);

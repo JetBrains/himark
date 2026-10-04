@@ -11,9 +11,9 @@
 
 use std::ops::Range;
 
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 use similar::{DiffTag, TextDiff};
-use text::Text;
+use text::text::Text;
 
 /// `editor::diff::DiffPolicy` face of [`diff`]. Ignores the syntax
 /// context — Myers is the policy for texts without trees.

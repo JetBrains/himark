@@ -1,17 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-mod builder;
-mod iter;
-mod measure;
-mod op;
-mod operation;
-mod reader;
+pub mod builder;
+pub mod iter;
+pub mod measure;
+pub mod op;
+pub mod operation;
+pub mod reader;
 
-pub use crate::builder::OperationBuilder;
-pub use crate::iter::Iter;
-pub use crate::op::Op;
-pub use crate::operation::{Bias, Operation, OpsFrom};
 
 #[cfg(test)]
 mod tests;

@@ -264,7 +264,7 @@ mod app {
         let typeface = FontMgr::new()
             .new_from_data(skia_safe::Data::new_copy(bytes), None)
             .expect("failed to load JetBrains Mono WOFF2");
-        himark::embedded_fonts::install(typeface);
+        editor::embedded_fonts::install(typeface);
 
         let app = Box::into_raw(Box::new(WebApp::new(context))).cast::<c_void>();
         unsafe {
@@ -407,7 +407,7 @@ mod app {
                         }),
                     );
 
-                    himark::InstalledChangeSink::install(
+                    editor::change_sink::InstalledChangeSink::install(
                         &mut state.store_mut(),
                         Arc::new(himark::hiahp::docsync::SyncSink),
                     );
@@ -755,11 +755,11 @@ mod app {
         }
     }
 
-    fn web_languages() -> himark::SyntaxLanguages {
-        static LANGUAGES: std::sync::OnceLock<himark::SyntaxLanguages> = std::sync::OnceLock::new();
+    fn web_languages() -> editor::reparse::SyntaxLanguages {
+        static LANGUAGES: std::sync::OnceLock<editor::reparse::SyntaxLanguages> = std::sync::OnceLock::new();
         LANGUAGES
             .get_or_init(|| {
-                let mut languages = himark::SyntaxLanguages::new();
+                let mut languages = editor::reparse::SyntaxLanguages::new();
                 hirust::register(&mut languages);
                 hipython::register(&mut languages);
                 hijavascript::register(&mut languages);
@@ -817,16 +817,16 @@ mod app {
         name: &str,
         source: &str,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
-    ) -> himark::Document {
+        theme: &editor::theme::Theme,
+    ) -> editor::document::Document {
         let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
         if extension != "md" && extension != "markdown" {
             let languages = web_languages();
             if languages.knows(&extension) {
-                return himark::Document::from_language(
-                    himark::Text::from_string_exact(source),
+                return editor::document::Document::from_language(
+                    text::text::Text::from_string_exact(source),
                     &extension,
                     &languages,
                     store,

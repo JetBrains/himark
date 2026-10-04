@@ -88,14 +88,14 @@ impl FileEditRefs {
 /// is not frame work (docs/model-view.md, the open road's rule).
 #[derive(Clone)]
 pub struct BuiltFileEdit {
-    pub before: editor::Document,
-    pub after: editor::Document,
+    pub before: editor::document::Document,
+    pub after: editor::document::Document,
     pub diff: ::editor::diff::DiffId,
     /// The after side's hunk markup, minted by the diff install.
-    pub hunks: ::editor::MarkupId,
+    pub hunks: ::editor::markup::MarkupId,
     /// The before side's wash markup, already filled in.
-    pub left_marks: ::editor::MarkupId,
-    pub prepared: ::editor::PreparedMarks,
+    pub left_marks: ::editor::markup::MarkupId,
+    pub prepared: ::editor::split_diff::PreparedMarks,
 }
 
 /// The seeded pair recipe, off-thread. `name` names the language (the
@@ -104,15 +104,15 @@ pub struct BuiltFileEdit {
 pub fn build_file_edit(
     name: &str,
     contents: &ahp_wire::client::FileEditContents,
-    parsers: &std::sync::Arc<editor::SyntaxLanguages>,
+    parsers: &std::sync::Arc<editor::reparse::SyntaxLanguages>,
     differ: &std::sync::Arc<dyn ::editor::diff::DiffPolicy>,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &editor::Theme,
+    theme: &editor::theme::Theme,
 ) -> BuiltFileEdit {
-    let before_text = editor::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
-    let after_text = editor::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
+    let before_text = text::text::Text::from_string_exact(contents.before.as_deref().unwrap_or(""));
+    let after_text = text::text::Text::from_string_exact(contents.after.as_deref().unwrap_or(""));
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
     let mut before = crate::cell::side_document(
         before_text.clone(),
@@ -128,7 +128,7 @@ pub fn build_file_edit(
     );
 
     let operation = differ.diff(&before_text, after.text(), None);
-    let prepared = ::editor::prepare_marks(&operation, before.text());
+    let prepared = ::editor::split_diff::prepare_marks(&operation, before.text());
     let diff = after.add_diff(operation.clone(), before.revision());
     after.install_normalized_diff(diff, operation, before.revision());
     let hunks = after.diff(diff).expect("just added").markup();

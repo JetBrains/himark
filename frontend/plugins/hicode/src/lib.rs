@@ -5,12 +5,11 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
-use himark::{
-    line_col_at, AppFx, Application, Document, DynamicCommand, LineCol, OpenDocuments,
-    ResourceLocation,
-};
+use himark::{line_col_at, AppFx, Application, DynamicCommand, LineCol, OpenDocuments};
+use editor::document::Document;
+use editor::location::ResourceLocation;
 use imba::{effect::Effect, store::Store};
-use text::TextView;
+use text::text_view::TextView;
 
 const MAX_FETCHED_TARGETS: usize = 50;
 
@@ -153,7 +152,7 @@ impl DynamicCommand for ApplyNavigation {
 
 fn navigate(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: himark::WindowId,
     target: &CodeTarget,
     built: &[(ResourceLocation, Document)],
@@ -217,14 +216,14 @@ impl himark::DocumentCommand for GoDefinition {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         documents: imba::store::Id<OpenDocuments>,
         _document_id: himark::DocumentId,
         document: &mut Document,
-        editor: himark::EditorId,
+        editor: editor::editor::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         navigation(
             self.id(),
@@ -251,14 +250,14 @@ impl himark::DocumentCommand for GoReferences {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<OpenDocuments>,
         _document_id: himark::DocumentId,
         document: &mut Document,
-        editor: himark::EditorId,
+        editor: editor::editor::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         let _ = (payload, fx);
         stream_navigation(
@@ -283,14 +282,14 @@ impl himark::DocumentCommand for GoImplementations {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<OpenDocuments>,
         _document_id: himark::DocumentId,
         document: &mut Document,
-        editor: himark::EditorId,
+        editor: editor::editor::EditorId,
         location: &ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         let _ = (payload, fx);
         stream_navigation(
@@ -313,7 +312,7 @@ fn stream_navigation(
     kind: himark::LspLocationsKind,
     store: &mut Store,
     document: &mut Document,
-    editor: himark::EditorId,
+    editor: editor::editor::EditorId,
     location: &ResourceLocation,
 ) {
     let caret = document.caret_byte(editor) as usize;
@@ -345,10 +344,10 @@ fn navigation(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     document: &mut Document,
-    editor: himark::EditorId,
+    editor: editor::editor::EditorId,
     location: &ResourceLocation,
     payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-    fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+    fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
 ) {
     let Some(payload) = payload else {
         let caret = document.caret_byte(editor) as usize;
@@ -371,9 +370,9 @@ fn navigation(
                 title,
                 open,
             })
-            .map(move |outcome| himark::EditorCommand::Dynamic {
+            .map(move |outcome| editor::editor_view::EditorCommand::Dynamic {
                 id,
-                payload: Some(himark::DynPayload::new(outcome)),
+                payload: Some(editor::dynamic::DynPayload::new(outcome)),
             }),
         );
         return;

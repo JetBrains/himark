@@ -3,7 +3,7 @@
 
 use std::ops::Range;
 
-use operation::{Bias, Op, Operation};
+use operation::{operation::Bias, op::Op, operation::Operation};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EditIdentity(u64);

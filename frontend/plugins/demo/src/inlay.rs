@@ -3,18 +3,12 @@
 
 use std::{ops::Range, sync::OnceLock};
 
-use imba::{
-    anim::{Animation, AnimationClock, Easing, Motion},
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, MouseButton},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, View,
-};
+use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, View};
 use skia_safe::{Canvas, Color, Font, FontMgr, FontStyle, Paint, Rect, Size, Typeface};
 
-use himark::{Document, Inlay, InlayMode};
+use editor::document::Document;
+use editor::markup::Inlay;
+use editor::markup::InlayMode;
 use himarkdown::BlockMarks;
 use himarkdown::MarkdownBlock;
 
@@ -29,9 +23,9 @@ pub fn add_badges(
     document: &mut Document,
     blocks: &[MarkdownBlock],
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) {
     let mut demo_inlays = DemoInlays::default();
 
@@ -56,9 +50,9 @@ pub fn add_badges(
     }
 }
 
-pub(crate) fn demo_markup() -> himark::MarkupId {
-    static ID: std::sync::OnceLock<himark::MarkupId> = std::sync::OnceLock::new();
-    *ID.get_or_init(himark::MarkupId::mint)
+pub(crate) fn demo_markup() -> editor::markup::MarkupId {
+    static ID: std::sync::OnceLock<editor::markup::MarkupId> = std::sync::OnceLock::new();
+    *ID.get_or_init(editor::markup::MarkupId::mint)
 }
 
 #[derive(Default)]
@@ -75,15 +69,15 @@ impl DemoInlays {
     pub(crate) fn push_for_block(
         &mut self,
         document: &mut Document,
-        demo_markup: himark::MarkupId,
+        demo_markup: editor::markup::MarkupId,
         range: Range<u32>,
         marks: BlockMarks,
         display: Option<&str>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
-        fx: &mut himark::EditorEffects<'_>,
+        theme: &editor::theme::Theme,
+        fx: &mut editor::editor::EditorEffects<'_>,
     ) {
         if let Some(level) = marks.header {
             let title = display
@@ -119,7 +113,7 @@ impl DemoInlays {
                 let paragraph = self.paragraphs;
                 let (mode, tag, title) = if paragraph % 4 == 3 {
                     (
-                        InlayMode::Instead(himark::InsteadKind::FullLine),
+                        InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                         "swap",
                         "Paragraph replacement",
                     )
@@ -198,10 +192,10 @@ impl DemoInlays {
                     demo_markup,
                     range,
                     Inlay::new(
-                        InlayMode::Instead(himark::InsteadKind::FullLine),
+                        InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                         DemoInlay::new(
                             DemoTone::List,
-                            InlayMode::Instead(himark::InsteadKind::FullLine),
+                            InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                             "replace",
                             "List item replacement",
                             list_item,
@@ -222,10 +216,10 @@ impl DemoInlays {
                 demo_markup,
                 range,
                 Inlay::new(
-                    InlayMode::Instead(himark::InsteadKind::FullLine),
+                    InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                     DemoInlay::new(
                         DemoTone::Rule,
-                        InlayMode::Instead(himark::InsteadKind::FullLine),
+                        InlayMode::Instead(editor::markup::InsteadKind::FullLine),
                         "break",
                         "Section switch",
                         self.rules,
@@ -407,7 +401,7 @@ impl View for DemoInlay {
     fn focus_data<'w>(
         &'w self,
         _store: &'w Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
             "demo.inlay.toggle",
@@ -422,7 +416,7 @@ impl View for DemoInlay {
     fn perform(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -440,9 +434,9 @@ impl View for DemoInlay {
         &'a self,
         _arena: &'a Arena,
         _store: &'a Store,
-        ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |arena: &'a Arena, constraints: Constraints| {
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |arena: &'a Arena, constraints: Constraints| {
             let size = self.size_for(constraints);
             let card = imba::leaf::leaf(size.width, size.height)
                 .paint_instead(|_arena, canvas, rect| self.paint(canvas, rect))
@@ -460,7 +454,7 @@ impl View for DemoInlay {
                         _ => EventResult::Ignored,
                     }
                 });
-            // The card's TITLE is an `imba::text` over the painted
+            // The card's TITLE is an `imba::layout::text` over the painted
             // chrome at exact baseline parity (top = the old rounded
             // `baseline(height, mode)` line − ascent, x = the old
             // 18.0); presses fall through the text to the card leaf
@@ -472,7 +466,7 @@ impl View for DemoInlay {
             frame.place_boxed(
                 18.0,
                 baseline(size.height, self.mode) - ascent,
-                imba::text(
+                imba::layout::text(
                     ui,
                     self.title(),
                     font,

@@ -3,11 +3,12 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
-use himark::{Document, EditorCommand, EditorView, Markup};
-use imba::{
-    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, UiCtx, View, Widget,
-};
-use operation::{Op, Operation};
+use editor::document::Document;
+use editor::editor_view::EditorCommand;
+use editor::editor_view::EditorView;
+use editor::markup::Markup;
+use imba::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
+use operation::{op::Op, operation::Operation};
 use skia_safe::{
     textlayout::{FontCollection, ParagraphBuilder, ParagraphStyle, TextDirection, TextStyle},
     Canvas, Paint, Rect, Size,
@@ -15,7 +16,7 @@ use skia_safe::{
 
 use crate::inline_decorations;
 
-type TableChrome = himark::theme::TableChrome;
+type TableChrome = ::editor::theme::TableChrome;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CellAlign {
@@ -270,9 +271,9 @@ fn cell_view(
     text: &str,
     width: f32,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &himark::Theme,
+    theme: &editor::theme::Theme,
 ) -> EditorView {
     let mut markup = Markup::builder();
     for token in inline_decorations(text) {
@@ -284,13 +285,13 @@ fn cell_view(
             markup.push_hidden(span.start as u32..span.end as u32);
         }
     }
-    let document = Document::new(text::Text::from_string_exact(text), markup.finish());
+    let document = Document::new(text::text::Text::from_string_exact(text), markup.finish());
     let mut view = EditorView::of_document(document, width.max(1.0), store, ui, fonts, theme);
     view.blur();
     view
 }
 
-fn cell_intrinsics(text: &str, fonts: &FontCollection, theme: &himark::Theme) -> ColumnIntrinsics {
+fn cell_intrinsics(text: &str, fonts: &FontCollection, theme: &editor::theme::Theme) -> ColumnIntrinsics {
     if text.is_empty() {
         return ColumnIntrinsics { min: 0.0, max: 0.0 };
     }
@@ -422,9 +423,9 @@ impl TableEditor {
     pub(crate) fn new(
         source: TableSource,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) -> Self {
         let columns = source.alignments.len();
         let chrome = theme.ui().table.clone();
@@ -487,7 +488,7 @@ impl TableEditor {
         rows: impl Iterator<Item = impl Iterator<Item = &'c str>>,
         columns: usize,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
         chrome: &TableChrome,
     ) -> Vec<ColumnIntrinsics> {
         let collection = fonts.clone();
@@ -521,9 +522,9 @@ impl TableEditor {
         &mut self,
         available: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         self.available.store(available.to_bits(), Ordering::Relaxed);
         let lay = self.lay_widths(available);
@@ -717,9 +718,9 @@ impl TableEditor {
     fn rebuild_from_lines(
         &mut self,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         self.version = fresh_version();
         let source: String = self
@@ -761,9 +762,9 @@ impl TableEditor {
         &mut self,
         at: usize,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         let at = at.clamp(1, self.rows.len());
         let cols = self.alignments_source.len().max(1);
@@ -800,9 +801,9 @@ impl TableEditor {
         &mut self,
         at: usize,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         if at == 0 || at >= self.rows.len() || self.rows.len() < 2 {
             return;
@@ -828,9 +829,9 @@ impl TableEditor {
         &mut self,
         at: usize,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         let cols = self.alignments_source.len();
         let at = at.min(cols);
@@ -859,9 +860,9 @@ impl TableEditor {
         &mut self,
         at: usize,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         let cols = self.alignments_source.len();
         if at >= cols || cols < 2 {
@@ -897,9 +898,9 @@ impl TableEditor {
         &mut self,
         mut edits: Vec<(u32, String, String)>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         edits.sort_by_key(|(pos, _, _)| *pos);
         let mut ops = Vec::new();
@@ -963,9 +964,9 @@ impl TableEditor {
         _row: usize,
         _col: usize,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) {
         let columns = self.widths.len();
         self.intrinsics = Self::intrinsics_from(
@@ -1086,8 +1087,8 @@ impl TableEditor {
             let cell = &mut self.rows[row][col];
             let mut discarded = imba::effect::Batch::new();
             imba::View::perform(&mut cell.view, store, ui, command, &mut discarded.effects());
-            let fonts = himark::env::ui_collection(store, ui);
-            let theme = himark::env::Themes::of(store);
+            let fonts = ::editor::env::ui_collection(store, ui);
+            let theme = ::editor::env::Themes::of(store);
             self.relayout_after_edit(row, col, store, ui, &fonts, &theme);
         }
     }
@@ -1145,7 +1146,7 @@ impl imba::effect::Effect for TableRelayoutEffect {
     type Result = TableCommand;
 }
 
-pub struct TableRelayoutHandler(pub std::sync::Arc<himark::Workshop>);
+pub struct TableRelayoutHandler(pub std::sync::Arc<editor::env::Workshop>);
 
 impl imba::effect::EffectHandler<TableRelayoutEffect> for TableRelayoutHandler {
     async fn handle(&self, effect: TableRelayoutEffect) -> TableCommand {
@@ -1158,7 +1159,7 @@ impl imba::effect::EffectHandler<TableRelayoutEffect> for TableRelayoutHandler {
     }
 }
 
-impl himark::InlayEditing for TableEditor {
+impl editor::markup::InlayEditing for TableEditor {
     fn take_edit(&mut self) -> Option<Operation> {
         self.pending_edit.take()
     }
@@ -1167,7 +1168,7 @@ impl himark::InlayEditing for TableEditor {
         self.range = range;
     }
 
-    fn passive(&self, command: &himark::InlayCommand) -> bool {
+    fn passive(&self, command: &editor::markup::InlayCommand) -> bool {
         matches!(
             command.downcast_ref::<TableCommand>(),
             Some(TableCommand::Relayout { .. } | TableCommand::Relaid(_))
@@ -1178,9 +1179,9 @@ impl himark::InlayEditing for TableEditor {
         &mut self,
         previous: &Self,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
-        theme: &himark::Theme,
+        theme: &editor::theme::Theme,
     ) -> bool {
         if let Some((row, col)) = previous.focused {
             if let Some(cell) = self.rows.get_mut(row).and_then(|cells| cells.get_mut(col)) {
@@ -1205,7 +1206,7 @@ impl View for TableEditor {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, TableCommand> {
         let Some((row, col)) = self.focused else {
             return imba::focus::FocusData::default();
@@ -1274,8 +1275,8 @@ impl View for TableEditor {
             TableCommand::Relayout { width } => self.launch_relayout(width, fx),
             TableCommand::Relaid(relaid) => self.land_relaid(*relaid),
             structural => {
-                let fonts = himark::env::ui_collection(store, ui);
-                let theme = himark::env::Themes::of(store);
+                let fonts = ::editor::env::ui_collection(store, ui);
+                let theme = ::editor::env::Themes::of(store);
                 match structural {
                     TableCommand::InsertRow(at) => self.insert_row(at, store, ui, &fonts, &theme),
                     TableCommand::RemoveRow(at) => self.remove_row(at, store, ui, &fonts, &theme),
@@ -1298,8 +1299,8 @@ impl View for TableEditor {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let strip = self.chrome.control_size + 6.0;
 
             let trailing = self.chrome.control_size * 0.5 + 2.0;
@@ -1322,7 +1323,7 @@ impl View for TableEditor {
                     let cell_width = cell.view.layout_width().max(1.0);
                     let inner_width = (width - self.chrome.cell_pad_x * 2.0).max(1.0);
                     let inner_height = (height - self.chrome.cell_pad_y * 2.0).max(1.0);
-                    let widget = imba::Layout::layout(
+                    let widget = imba::layout::Layout::layout(
                         cell.view.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -1367,7 +1368,7 @@ pub struct InsertTable;
 
 const INSERT_TABLE_TEMPLATE: &str = "|   |   |\n| --- | --- |\n|   |   |";
 
-impl himark::DynamicEditorCommand for InsertTable {
+impl editor::dynamic::DynamicEditorCommand for InsertTable {
     fn id(&self) -> &'static str {
         "table.insert"
     }
@@ -1376,19 +1377,19 @@ impl himark::DynamicEditorCommand for InsertTable {
         "Table: Insert".to_owned()
     }
 
-    fn offers_at(&self, _location: &himark::ResourceLocation) -> bool {
+    fn offers_at(&self, _location: &editor::location::ResourceLocation) -> bool {
         true
     }
 
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: &mut Document,
-        editor: himark::EditorId,
-        _location: &himark::ResourceLocation,
+        editor: editor::editor::EditorId,
+        _location: &editor::location::ResourceLocation,
         _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        fx: &mut himark::EditorEffects<'_>,
+        fx: &mut editor::editor::EditorEffects<'_>,
     ) {
         if document
             .syntax()
@@ -1403,7 +1404,7 @@ impl himark::DynamicEditorCommand for InsertTable {
             let mut count = 0usize;
             let mut at = selection.start;
             while count < 2 {
-                match himark::text_cursor::previous_char_before(text, at) {
+                match ::editor::text_cursor::previous_char_before(text, at) {
                     Some((start, ch)) if ch == "\n" => {
                         count += 1;
                         at = start;
@@ -1419,7 +1420,7 @@ impl himark::DynamicEditorCommand for InsertTable {
             let mut count = 0usize;
             let mut at = selection.end;
             while count < 2 {
-                match himark::text_cursor::next_char_after(text, at) {
+                match ::editor::text_cursor::next_char_after(text, at) {
                     Some((end, ch)) if ch == "\n" => {
                         count += 1;
                         at = end;
@@ -1437,8 +1438,8 @@ impl himark::DynamicEditorCommand for InsertTable {
             INSERT_TABLE_TEMPLATE,
             "\n".repeat(2 - newlines_after),
         );
-        let fonts = himark::env::Fonts::of(store)();
-        let theme = himark::env::Themes::of(store);
+        let fonts = ::editor::env::Fonts::of(store)();
+        let theme = ::editor::env::Themes::of(store);
         document.insert(editor, &snippet, store, ui, &fonts, &theme, fx);
     }
 }
@@ -1576,10 +1577,10 @@ mod hitbox {
     #[test]
     fn clicking_anywhere_in_an_empty_cell_reaches_it() {
         let store = &imba::store::Store::new();
-        let ui = himark::test_document::test_ui();
-        use himark::InlayEditing;
-        let fonts = himark::test_document::test_fonts_collection().clone();
-        let theme = himark::Theme::embedded();
+        let ui = ::editor::test_document::test_ui();
+        use editor::markup::InlayEditing;
+        let fonts = ::editor::test_document::test_fonts_collection().clone();
+        let theme = editor::theme::Theme::embedded();
         let source = "| alpha | beta gamma |\n| --- | --- |\n| one | two |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),
@@ -1600,7 +1601,7 @@ mod hitbox {
             max: Size::new(600.0, f32::MAX),
         };
 
-        let _ = imba::Layout::layout(
+        let _ = imba::layout::Layout::layout(
             imba::View::display(&editor, &arena, &store, &ui),
             &arena,
             constraints,
@@ -1616,7 +1617,7 @@ mod hitbox {
         let mut x_left = strip + chrome.thickness;
         for (col, width) in widths.iter().enumerate() {
             let point = skia_safe::Point::new(x_left + width - chrome.cell_pad_x - 2.0, y);
-            let widget = imba::Layout::layout(
+            let widget = imba::layout::Layout::layout(
                 imba::View::display(&editor, &arena, &store, &ui),
                 &arena,
                 constraints,
@@ -1651,12 +1652,12 @@ mod hitbox {
     #[test]
     fn controls_arm_only_after_a_focused_paint() {
         let store = &imba::store::Store::new();
-        let ui = himark::test_document::test_ui();
-        use himark::InlayEditing;
+        let ui = ::editor::test_document::test_ui();
+        use editor::markup::InlayEditing;
         use imba::event::{Event, EventResult, MouseButton};
 
-        let fonts = himark::test_document::test_fonts_collection().clone();
-        let theme = himark::Theme::embedded();
+        let fonts = ::editor::test_document::test_fonts_collection().clone();
+        let theme = editor::theme::Theme::embedded();
         let source = "| a | b |\n| --- | --- |\n| 1 | 2 |";
         let mut editor = TableEditor::new(
             parse_table(source).expect("a table"),
@@ -1675,7 +1676,7 @@ mod hitbox {
             min: Size::default(),
             max: Size::new(600.0, f32::MAX),
         };
-        let unfocused_size = imba::Thunk::size(&imba::Layout::layout(
+        let unfocused_size = imba::Thunk::size(&imba::layout::Layout::layout(
             imba::View::display(&editor, &arena, &store, &ui),
             &arena,
             constraints,
@@ -1692,7 +1693,7 @@ mod hitbox {
             count: 1,
         };
         let send = |editor: &TableEditor, event: &Event<'_>| {
-            let widget = imba::Layout::layout(
+            let widget = imba::layout::Layout::layout(
                 imba::View::display(editor, &arena, &store, &ui),
                 &arena,
                 constraints,
@@ -1740,7 +1741,7 @@ mod hitbox {
 
         editor.focused = Some((1, 0));
         assert_eq!(
-            imba::Thunk::size(&imba::Layout::layout(
+            imba::Thunk::size(&imba::layout::Layout::layout(
                 imba::View::display(&editor, &arena, &store, &ui),
                 &arena,
                 constraints

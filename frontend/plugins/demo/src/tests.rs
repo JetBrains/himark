@@ -7,7 +7,7 @@ use std::{
 };
 
 use himark::AppExt;
-use himark::InlayMode;
+use editor::markup::InlayMode;
 use skia_safe::{surfaces, textlayout::FontCollection};
 
 use himark::{AppCommand, AppFonts, Application};
@@ -42,9 +42,9 @@ fn attach_test_host() -> (Application, TestHost) {
         app.sole_window(),
         "torture sample".to_owned(),
         true,
-        Some(himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("demo"),
+        Some(editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("demo"),
             vec!["torture sample".to_owned()],
         )),
         crate::monster_document,
@@ -58,7 +58,7 @@ fn attach_bare_host() -> (Application, TestHost) {
     let _ = app.add_window();
 
     app.register_command(Arc::new(peeker::TogglePeeker));
-    let mut languages = himark::SyntaxLanguages::new();
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     hirust::register(&mut languages);
     app.register_syntax_languages(himarkdown::markdown_languages(languages));
     let (posted, arriving) = mpsc::channel::<AppCommand>();
@@ -136,7 +136,7 @@ fn drain_until_quiet(app: &mut Application, arriving: &std::sync::mpsc::Receiver
 fn markdown_demo_inlays_do_not_replace_headers() {
     let source = "# Demo header\n\n---\n\nplain text";
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let (mut document, blocks) =
         himarkdown::markdown_document(source, store, ui, &font_collection(), &test_theme());
     crate::add_badges(
@@ -157,7 +157,7 @@ fn markdown_demo_inlays_do_not_replace_headers() {
         document.feature_markup(demo_markup).expect("demo markup"),
     )];
     for interval in
-        himark::OverlaidMarkup::new(document.markup(), &extras).all_inlays_in(0..byte_count)
+        editor::markup::OverlaidMarkup::new(document.markup(), &extras).all_inlays_in(0..byte_count)
     {
         counts[mode_index(interval.inlay.mode())] += 1;
         if interval.range.start < heading_end {
@@ -200,7 +200,7 @@ fn typing_markdown_into_the_startup_scratch_styles_it() {
 #[ignore = "writes screenshots into HIMARK_SHOT (a directory) for visual inspection"]
 fn dump_rust_split_screenshot() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let Some(dir) = std::env::var_os("HIMARK_SHOT") else {
         return;
     };
@@ -222,15 +222,15 @@ fn dump_rust_split_screenshot() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
 }
 "#;
-    let fonts = himark::env::Fonts::of(app.store())();
-    let theme = himark::env::Themes::of(app.store());
+    let fonts = ::editor::env::Fonts::of(app.store())();
+    let theme = ::editor::env::Themes::of(app.store());
     let languages = {
-        let mut languages = himark::SyntaxLanguages::new();
+        let mut languages = editor::reparse::SyntaxLanguages::new();
         hirust::register(&mut languages);
         himarkdown::markdown_languages(languages)
     };
-    let document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -849,21 +849,21 @@ fn profile_surface_size() -> (i32, i32) {
 }
 
 trait RunReparse {
-    fn run_reparse(self) -> himark::ReparseOutcome;
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome;
 }
 
-impl RunReparse for himark::ReparseWork {
-    fn run_reparse(self) -> himark::ReparseOutcome {
-        himark::ReparseHandler(himark::test_support::test_workshop(test_theme())).reparse(self)
+impl RunReparse for editor::reparse::ReparseWork {
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome {
+        editor::reparse::ReparseHandler(himark::test_support::test_workshop(test_theme())).reparse(self)
     }
 }
 
-fn test_theme() -> himark::Theme {
-    himark::Theme::embedded()
+fn test_theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
 fn font_collection() -> FontCollection {
-    himark::test_document::test_fonts_collection().clone()
+    ::editor::test_document::test_fonts_collection().clone()
 }
 
 fn app_fonts() -> AppFonts {
@@ -979,13 +979,13 @@ fn scroll_frame_breakdown() {
 #[ignore = "panic-hunt sweep; slow — run explicitly with --nocapture"]
 fn typing_everywhere_in_the_monster_survives_reparse() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let fonts = himark::test_document::test_fonts_collection();
+    let ui = ::editor::test_document::test_ui();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let mut document = crate::monster_document(store, ui, &fonts, &test_theme());
     let _editor = document.add_editor(
         700.0,
         None,
-        ::editor::EditorBuild::Bounded,
+        ::editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -994,11 +994,11 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         &mut imba::effect::Batch::new().effects(),
     );
     let parsers = std::sync::Arc::new({
-        let mut languages = himark::SyntaxLanguages::new();
+        let mut languages = editor::reparse::SyntaxLanguages::new();
         hirust::register(&mut languages);
         himarkdown::markdown_languages(languages)
     });
-    let outcome = himark::ReparseWork::capture(&document, parsers.clone())
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers.clone())
         .expect("parse")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -1027,14 +1027,14 @@ fn typing_everywhere_in_the_monster_survives_reparse() {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let len = trial.text().byte_count() as u32;
             trial.edit(
-                &operation::Operation::insert_in(len, at as u32, "x"),
+                &operation::operation::Operation::insert_in(len, at as u32, "x"),
                 store,
                 ui,
                 &fonts,
                 &test_theme(),
                 &mut imba::effect::Batch::new().effects(),
             );
-            let outcome = himark::ReparseWork::capture(&trial, parsers.clone())
+            let outcome = editor::reparse::ReparseWork::capture(&trial, parsers.clone())
                 .expect("parse")
                 .run_reparse();
             trial.apply_reparse_outcome(
@@ -1068,9 +1068,9 @@ fn the_wall_of_text_opens_and_types() {
         app.sole_window(),
         "wall of text".to_owned(),
         true,
-        Some(himark::ResourceLocation::new(
-            himark::ResourceType::document(),
-            himark::Authority::new("demo"),
+        Some(editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("demo"),
             vec!["wall of text".to_owned()],
         )),
         |_store, _ui, _fonts, _theme| crate::wall_of_text(20_000),
@@ -1108,16 +1108,16 @@ fn the_wall_of_text_opens_and_types() {
 #[test]
 fn resize_repair_matches_fresh_layout() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let fonts = himark::test_document::test_fonts_collection();
-    let theme = himark::Theme::embedded();
+    let ui = ::editor::test_document::test_ui();
+    let fonts = ::editor::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
     let (mut document, blocks) =
         himarkdown::markdown_document(&crate::SAMPLE.repeat(2), store, ui, &fonts, &theme);
     crate::add_badges(&mut document, &blocks, store, ui, &fonts, &theme);
     let editor = document.add_editor(
         900.0,
         None,
-        ::editor::EditorBuild::Bounded,
+        ::editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -1138,7 +1138,7 @@ fn resize_repair_matches_fresh_layout() {
     );
     let workshop = himark::test_support::test_workshop(theme.clone());
     for effect in himark::test_support::surviving_launches(batch) {
-        if let himark::EditorCommand::ApplyRepair(items) =
+        if let editor::editor_view::EditorCommand::ApplyRepair(items) =
             himark::test_support::handle_effect(effect, &workshop)
         {
             for item in items {
@@ -1148,7 +1148,7 @@ fn resize_repair_matches_fresh_layout() {
     }
 
     let live = document.element_heights(editor);
-    let fresh = himark::EditorView::complete(document.clone(), 1128.0, store, ui, &fonts, &theme)
+    let fresh = editor::editor_view::EditorView::complete(document.clone(), 1128.0, store, ui, &fonts, &theme)
         .element_heights();
     for (index, (a, b)) in live.iter().zip(fresh.iter()).enumerate() {
         assert_eq!(a, b, "element {index} diverged (live vs fresh)");
@@ -1212,7 +1212,7 @@ fn where_do_heights_diverge() {
 
 #[test]
 fn tree_demo_panel_toggles_through_clicks() {
-    let fonts = himark::test_document::test_fonts_collection();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let _ = fonts;
     let (mut app, _arriving) = boot();
 
@@ -1238,7 +1238,7 @@ fn tree_demo_panel_toggles_through_clicks() {
     };
     assert_eq!(row_count(&app), 100_000);
 
-    let theme = himark::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let chrome = theme.ui();
     let content_height = 600.0 - chrome.toolbar.height;
     let top = chrome.toolbar.height
@@ -1313,19 +1313,19 @@ fn tree_demo_panel_toggles_through_clicks() {
 #[test]
 fn rust_document_settles_and_stops_reconciling() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let _guard = heavy();
     let (mut app, host) = attach_bare_host();
     let source = include_str!("../../../editor/src/document.rs");
-    let fonts = himark::env::Fonts::of(app.store())();
-    let theme = himark::env::Themes::of(app.store());
+    let fonts = ::editor::env::Fonts::of(app.store())();
+    let theme = ::editor::env::Themes::of(app.store());
     let languages = {
-        let mut languages = himark::SyntaxLanguages::new();
+        let mut languages = editor::reparse::SyntaxLanguages::new();
         hirust::register(&mut languages);
         himarkdown::markdown_languages(languages)
     };
-    let document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -1381,8 +1381,8 @@ fn rust_document_settles_and_stops_reconciling() {
         }
         settle(&mut app, &mut surface, "scrolled");
 
-        let document = himark::Document::from_language(
-            himark::Text::from_string_exact(source),
+        let document = editor::document::Document::from_language(
+            text::text::Text::from_string_exact(source),
             "rs",
             &languages,
             store,

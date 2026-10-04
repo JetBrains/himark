@@ -5,7 +5,7 @@ use std::ops::Range;
 
 use imba::anim::{Animation, AnimationClock, Easing, Motion};
 use imba::constraints::Constraints;
-use operation::Bias;
+use operation::operation::Bias;
 use skia_safe::Size;
 
 use crate::document::Document;
@@ -26,7 +26,7 @@ impl Document {
         // not one the pane was born with.
         animate: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -183,7 +183,7 @@ impl Document {
         base: &Document,
         diff: crate::diff::DiffId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -247,7 +247,7 @@ impl Document {
         base: &Document,
         diff: crate::diff::DiffId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -334,7 +334,7 @@ impl Document {
     }
 }
 
-fn hard_lines(view: &mut text::TextView, range: Range<u32>) -> Range<u32> {
+fn hard_lines(view: &mut text::text_view::TextView, range: Range<u32>) -> Range<u32> {
     let count = view.byte_count();
     if count == 0 {
         return 0..0;
@@ -471,7 +471,7 @@ impl imba::View for BeforeInlay {
     fn focus_data<'w>(
         &'w self,
         store: &'w imba::store::Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, BeforeCommand> {
         self.view.focus_data(store, ui).map(BeforeCommand::Editor)
     }
@@ -479,7 +479,7 @@ impl imba::View for BeforeInlay {
     fn perform(
         &mut self,
         store: &mut imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         command: BeforeCommand,
         fx: &mut imba::effect::Effects<'_, BeforeCommand>,
     ) {
@@ -516,9 +516,9 @@ impl imba::View for BeforeInlay {
         &'a self,
         arena: &'a imba::arena::Arena,
         store: &'a imba::store::Store,
-        ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, BeforeCommand> + imba::LayoutValue + 'a {
-        imba::laid(
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, BeforeCommand> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 use imba::thunk_ext::ThunkExt;
                 let size = self.card_size(constraints);
@@ -529,7 +529,7 @@ impl imba::View for BeforeInlay {
                 // animated height clips the reveal.
                 let want = (size.width - self.view.gutter_width).max(120.0);
                 let mut container = imba::container::container(arena, size);
-                let editor = imba::Layout::layout(
+                let editor = imba::layout::Layout::layout(
                     self.view.display(arena, store, ui),
                     arena,
                     Constraints {

@@ -18,7 +18,7 @@ pub use ::canvas::diff_pane::*;
 /// build — the one genuine (and rare) throwaway, a lost open race.
 pub fn open_opened_diff_pane(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: crate::WindowId,
     documents: imba::store::Id<OpenDocuments>,
     pair: documents::diff_views::OpenedDiffPair,
@@ -38,7 +38,7 @@ pub fn open_opened_diff_pane(
 pub fn open_diff_documents(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     window: crate::WindowId,
     left: crate::DocumentId,
     right: crate::DocumentId,

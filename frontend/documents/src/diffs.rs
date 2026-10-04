@@ -4,7 +4,7 @@
 use editor::diff::DiffId;
 use imba::effect::{CancellationToken, Effect, EffectHandler};
 use imba::store::Store;
-use operation::Operation;
+use operation::operation::Operation;
 
 use crate::{DocumentId, OpenDocuments};
 
@@ -16,15 +16,15 @@ fn probe() -> bool {
 /// base -> target as ONE replacement: the only correct-by-construction
 /// operation over two texts that costs no diffing — the seed for a
 /// tracking whose minimal diff the normalize lane still owes.
-fn whole_replace(base: &editor::Text, target: &editor::Text) -> Operation {
+fn whole_replace(base: &text::text::Text, target: &text::text::Text) -> Operation {
     let mut ops = Vec::with_capacity(2);
     let base_len = base.byte_count();
     if base_len > 0 {
-        ops.push(operation::Op::Delete(base.view().byte_string(0, base_len)));
+        ops.push(operation::op::Op::Delete(base.view().byte_string(0, base_len)));
     }
     let target_len = target.byte_count();
     if target_len > 0 {
-        ops.push(operation::Op::Insert(
+        ops.push(operation::op::Op::Insert(
             target.view().byte_string(0, target_len),
         ));
     }
@@ -36,7 +36,7 @@ pub(crate) struct DiffRecord {
     pub(crate) base: DocumentId,
     pub(crate) target: DocumentId,
 
-    pub(crate) base_markup: editor::MarkupId,
+    pub(crate) base_markup: editor::markup::MarkupId,
 
     pub(crate) refs: u32,
 
@@ -70,8 +70,8 @@ pub struct DiffView {
     /// strips) — editor-owned, dying with the right half's editor.
     /// THE diff markup (hunk washes) is the entry's own
     /// (`Diff::markup`), never the pane's to write.
-    pub right_extras: editor::MarkupId,
-    pub state: Option<editor::DiffViewState>,
+    pub right_extras: editor::markup::MarkupId,
+    pub state: Option<editor::split_diff::DiffViewState>,
 }
 
 #[derive(Clone, Default)]
@@ -228,7 +228,7 @@ pub struct DiffHandle {
     pub id: DiffId,
     pub base: DocumentId,
     pub target: DocumentId,
-    pub base_markup: editor::MarkupId,
+    pub base_markup: editor::markup::MarkupId,
 }
 
 impl OpenDocuments {
@@ -495,7 +495,7 @@ impl OpenDocuments {
     pub fn untrack_diff<R: 'static>(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         id: DiffId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
@@ -581,7 +581,7 @@ impl OpenDocuments {
     pub(crate) fn untrack_stripes<R: 'static>(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) -> bool {
@@ -799,12 +799,12 @@ impl OpenDocuments {
 pub fn land_diff_markup(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     id: DiffId,
-    markup: editor::Markup,
+    markup: editor::markup::Markup,
     changed: Vec<std::ops::Range<u32>>,
     derived_at: u64,
-    fx: &mut editor::EditorEffects<'_>,
+    fx: &mut editor::editor::EditorEffects<'_>,
 ) {
     let Some(record) = store
         .entity(documents)
@@ -839,8 +839,8 @@ pub trait StripeBaseResolver: Send + Sync {
         &self,
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
-        location: &editor::ResourceLocation,
-    ) -> Option<editor::ResourceLocation>;
+        location: &editor::location::ResourceLocation,
+    ) -> Option<editor::location::ResourceLocation>;
 }
 
 impl<F> StripeBaseResolver for F
@@ -848,8 +848,8 @@ where
     F: Fn(
             &Store,
             imba::store::Id<OpenDocuments>,
-            &editor::ResourceLocation,
-        ) -> Option<editor::ResourceLocation>
+            &editor::location::ResourceLocation,
+        ) -> Option<editor::location::ResourceLocation>
         + Send
         + Sync,
 {
@@ -857,8 +857,8 @@ where
         &self,
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
-        location: &editor::ResourceLocation,
-    ) -> Option<editor::ResourceLocation> {
+        location: &editor::location::ResourceLocation,
+    ) -> Option<editor::location::ResourceLocation> {
         self(store, documents, location)
     }
 }
@@ -876,7 +876,7 @@ pub fn sync_stripe_bases<R: 'static>(
     mut land: impl FnMut(
         &mut Store,
         DocumentId,
-        Option<editor::ResourceLocation>,
+        Option<editor::location::ResourceLocation>,
         &mut imba::effect::Effects<'_, R>,
     ),
 ) {
@@ -885,7 +885,7 @@ pub fn sync_stripe_bases<R: 'static>(
     else {
         return;
     };
-    let asks: Vec<(DocumentId, editor::ResourceLocation)> = OpenDocuments::list(store, documents)
+    let asks: Vec<(DocumentId, editor::location::ResourceLocation)> = OpenDocuments::list(store, documents)
         .into_iter()
         .filter(|(_, entity)| !entity.base_requested())
         .filter_map(|(document, entity)| {
@@ -906,7 +906,7 @@ pub fn sync_stripe_bases<R: 'static>(
 pub fn rearm_base_asks(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    matches: &dyn Fn(&editor::ResourceLocation) -> bool,
+    matches: &dyn Fn(&editor::location::ResourceLocation) -> bool,
 ) {
     let rearm: Vec<crate::DocumentId> = OpenDocuments::list(store, documents)
         .into_iter()
@@ -925,11 +925,11 @@ pub fn rearm_base_asks(
 pub fn adopt_base_location<R: 'static>(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document: crate::DocumentId,
-    base: Option<editor::ResourceLocation>,
+    base: Option<editor::location::ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, R>,
-) -> Option<editor::ResourceLocation> {
+) -> Option<editor::location::ResourceLocation> {
     if !OpenDocuments::contains(store, documents, document) {
         return None;
     }
@@ -959,9 +959,9 @@ pub fn adopt_base_location<R: 'static>(
 pub fn land_base_located(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document: crate::DocumentId,
-    base: Option<editor::ResourceLocation>,
+    base: Option<editor::location::ResourceLocation>,
     fx: &mut imba::effect::Effects<'_, crate::DocumentsCommand>,
 ) {
     let Some(base) = adopt_base_location(store, documents, ui, document, base, fx) else {
@@ -982,10 +982,10 @@ pub fn land_base_located(
 pub fn land_base_built(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document: crate::DocumentId,
-    base: editor::ResourceLocation,
-    built: editor::Document,
+    base: editor::location::ResourceLocation,
+    built: editor::document::Document,
     fx: &mut imba::effect::Effects<'_, crate::DocumentsCommand>,
 ) {
     if !OpenDocuments::contains(store, documents, document) {
@@ -1019,13 +1019,13 @@ pub fn land_base_built(
 
 pub struct DiffNormalizeEffect {
     pub(crate) diff: DiffId,
-    pub(crate) base_text: editor::Text,
-    pub(crate) target_text: editor::Text,
+    pub(crate) base_text: text::text::Text,
+    pub(crate) target_text: text::text::Text,
     /// The standing diff markup at capture (O(1) persistent clone) —
     /// the worker set-diffs the fresh derivation against it, so the
     /// changed set is the producer's and the landing never walks a
     /// markup (docs/editor/scroll-stripe.md §7).
-    pub(crate) previous: Option<editor::Markup>,
+    pub(crate) previous: Option<editor::markup::Markup>,
     pub(crate) base_revision: u64,
     pub(crate) target_revision: u64,
     /// Target's language at capture — the policy's cue to try
@@ -1033,8 +1033,8 @@ pub struct DiffNormalizeEffect {
     pub(crate) language: Option<String>,
     /// Side trees with their freshness — a stale one is edit-adjusted
     /// and rides along for the policy's incremental catch-up parse.
-    pub(crate) base_tree: Option<(Box<dyn editor::SyntaxTree>, bool)>,
-    pub(crate) target_tree: Option<(Box<dyn editor::SyntaxTree>, bool)>,
+    pub(crate) base_tree: Option<(Box<dyn editor::reparse::SyntaxTree>, bool)>,
+    pub(crate) target_tree: Option<(Box<dyn editor::reparse::SyntaxTree>, bool)>,
     /// The edge-installed policy (`editor::env::Differ`), captured at
     /// launch so the handler needs no store access.
     pub(crate) policy: std::sync::Arc<dyn editor::diff::DiffPolicy>,
@@ -1047,7 +1047,7 @@ pub struct DiffNormalizeEffect {
 /// tree-sitter's incremental parse wants — the policy catches it up
 /// for pennies instead of parsing the whole file cold. Only alignment
 /// on a stale tree misaligns; catch-up parsing on it does not.
-fn syntax_snapshot(document: &editor::Document) -> Option<TreeSnapshot> {
+fn syntax_snapshot(document: &editor::document::Document) -> Option<TreeSnapshot> {
     let syntax = document.syntax()?;
     let tree = syntax.tree.as_ref()?.clone_tree();
     Some(TreeSnapshot {
@@ -1059,7 +1059,7 @@ fn syntax_snapshot(document: &editor::Document) -> Option<TreeSnapshot> {
 
 pub(crate) struct TreeSnapshot {
     pub(crate) language: String,
-    pub(crate) tree: Box<dyn editor::SyntaxTree>,
+    pub(crate) tree: Box<dyn editor::reparse::SyntaxTree>,
     pub(crate) fresh: bool,
 }
 
@@ -1070,7 +1070,7 @@ pub struct Normalized {
     /// (`diff::hunk_markup`) — hunks against
     /// `target_text`@`target_revision`; the landing shifts it home
     /// (docs/editor/scroll-stripe.md §7).
-    pub markup: editor::Markup,
+    pub markup: editor::markup::Markup,
     /// The damage the swap owes, worker-computed: the set difference
     /// against the markup standing at capture.
     pub changed: Vec<std::ops::Range<u32>>,
@@ -1120,7 +1120,7 @@ impl EffectHandler<DiffNormalizeEffect> for DiffNormalizeHandler {
             .policy
             .diff(&effect.base_text, &effect.target_text, syntax.as_ref());
         let markup = editor::diff::hunk_markup(&operation, &effect.target_text);
-        let changed = editor::set_diff(effect.previous.as_ref(), &markup);
+        let changed = editor::markup::set_diff(effect.previous.as_ref(), &markup);
         Normalized {
             diff: effect.diff,
             operation,
@@ -1137,17 +1137,17 @@ mod tests {
     use super::*;
     use editor::test_document::plain_document;
 
-    fn located(name: &str) -> editor::ResourceLocation {
-        editor::ResourceLocation::new(
-            editor::ResourceType::document(),
-            editor::Authority::new("local"),
+    fn located(name: &str) -> editor::location::ResourceLocation {
+        editor::location::ResourceLocation::new(
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("local"),
             vec![name.to_owned()],
         )
     }
 
     #[allow(dead_code)]
     enum Landed {
-        Located(DocumentId, Option<editor::ResourceLocation>),
+        Located(DocumentId, Option<editor::location::ResourceLocation>),
         Normalized(Normalized),
     }
 
@@ -1178,7 +1178,7 @@ mod tests {
             0,
         );
 
-        let mut landed: Vec<(DocumentId, Option<editor::ResourceLocation>)> = Vec::new();
+        let mut landed: Vec<(DocumentId, Option<editor::location::ResourceLocation>)> = Vec::new();
         let mut quiet = imba::effect::Batch::<Landed>::new();
         sync_stripe_bases(
             &mut store,
@@ -1192,9 +1192,9 @@ mod tests {
             std::sync::Arc::new(
                 |_: &Store,
                  _: imba::store::Id<OpenDocuments>,
-                 location: &editor::ResourceLocation| {
-                    Some(editor::ResourceLocation::new(
-                        editor::ResourceType::document(),
+                 location: &editor::location::ResourceLocation| {
+                    Some(editor::location::ResourceLocation::new(
+                        editor::location::ResourceType::document(),
                         location.authority().clone(),
                         vec![format!("{}@abc123", location.path().join("/"))],
                     ))
@@ -1337,9 +1337,9 @@ mod perf_tests {
                     &mut store,
                     documents,
                     plain_document(&format!("base {n}\nsame\n")),
-                    Some(editor::ResourceLocation::new(
-                        editor::ResourceType::document(),
-                        editor::Authority::new("local"),
+                    Some(editor::location::ResourceLocation::new(
+                        editor::location::ResourceType::document(),
+                        editor::location::Authority::new("local"),
                         vec![format!("file{n}.md.base")],
                     )),
                     format!("file{n}.md.base"),
@@ -1349,9 +1349,9 @@ mod perf_tests {
                     &mut store,
                     documents,
                     plain_document(&format!("target {n}\nsame\n")),
-                    Some(editor::ResourceLocation::new(
-                        editor::ResourceType::document(),
-                        editor::Authority::new("local"),
+                    Some(editor::location::ResourceLocation::new(
+                        editor::location::ResourceType::document(),
+                        editor::location::Authority::new("local"),
                         vec![format!("file{n}.md")],
                     )),
                     format!("file{n}.md"),

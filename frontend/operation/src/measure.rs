@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::{Measure, Metrics};
+use rope::{metrics::Measure, metrics::Metrics};
 
 use crate::op::Op;
 
@@ -21,7 +21,7 @@ impl Measure<Op> for OperationMeasure {
         Metrics::zero()
     }
 
-    fn metric_at(metrics: &Self::Metrics, id: rope::MetricId) -> u32 {
+    fn metric_at(metrics: &Self::Metrics, id: rope::metrics::MetricId) -> u32 {
         metrics.metric_at(id)
     }
 

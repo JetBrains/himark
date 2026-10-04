@@ -3,10 +3,7 @@
 
 use std::ops::Range;
 
-use editor::{
-    enrich_ready, EnrichCx, EnrichFuture, EnrichInput, Enricher, EnricherId, Enrichment, Interest,
-    Markup, StyleId,
-};
+use editor::{enrich::ready as enrich_ready, enrich::EnrichCx, enrich::EnrichFuture, enrich::EnrichInput, enrich::Enricher, enrich::EnricherId, enrich::Enrichment, enrich::Interest, markup::Markup, markup::StyleId};
 use tree_sitter::Node;
 
 use crate::TsTree;
@@ -15,7 +12,7 @@ const PAIRS: [(&str, &str); 3] = [("(", ")"), ("[", "]"), ("{", "}")];
 
 const OCCURRENCE_CAP: usize = 512;
 
-pub fn register_caret_enrichers(enrichers: &mut editor::Enrichers) {
+pub fn register_caret_enrichers(enrichers: &mut editor::enrich::Enrichers) {
     enrichers.register(std::sync::Arc::new(BraceMatchPass));
     enrichers.register(std::sync::Arc::new(OccurrencePass));
 }

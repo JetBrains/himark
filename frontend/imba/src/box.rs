@@ -1,11 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use crate::{
-    arena::Arena,
-    event::{Event, EventResult},
-    Widget,
-};
+use crate::{arena::Arena, event::{Event, EventResult}, Widget};
 use skia_safe::{Rect, Size};
 
 impl<'a, Command: 'a, W> Widget<'a, Command> for &W

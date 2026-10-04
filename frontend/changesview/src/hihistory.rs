@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::hichanges::{dir_forest, empty_side, ChangeEntry, ChangesStatus, DirSink, DirTrie};
-use editor::{ResourceLocation, ResourceType};
+use editor::{location::ResourceLocation, location::ResourceType};
 use hikit::{ForestList, ForestNode, ForestSearcher, ListKeyboardController};
-use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, UiCtx};
+use imba::{effect::Effects, store::Store, thunk_ext::ThunkExt, ui::UiCtx};
 
 const NOTE_KIND: &str = "changes-note";
 
@@ -360,7 +360,7 @@ impl imba::command::DynamicCommand for FetchCommitFiles {
     fn name(&self) -> String {
         "Fetch Commit".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         History::ask(
             store,
             self.history,
@@ -381,7 +381,7 @@ impl imba::command::DynamicCommand for GrowHistory {
     fn name(&self) -> String {
         "Show More History".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         History::ask(store, self.history, HistoryAsk::Grow(self.folder.clone()));
     }
 }
@@ -399,7 +399,7 @@ impl imba::command::DynamicCommand for CommitHistory {
     fn name(&self) -> String {
         "Commit".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         if self.message.trim().is_empty() {
             return;
         }
@@ -655,14 +655,14 @@ impl imba::View for CommitTip {
         _arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 let theme = editor::env::Themes::of(store);
                 let chrome = theme.ui().combo.clone();
                 let colors = theme.ui().peeker.clone();
                 let font = hikit::fonts::ui_text_font(ui, chrome.value_size);
-                let shaper = imba::TextShaper::of(ui);
+                let shaper = imba::layout::TextShaper::of(ui);
                 let pad = 14.0f32;
                 let line_h = chrome.value_size * 1.45;
                 let width = self

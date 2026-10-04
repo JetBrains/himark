@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::{EditorCommand, EditorIdView, ReparseOutcome, ReparseWork};
+use himark::{EditorIdView};
+use editor::editor_view::EditorCommand;
+use editor::reparse::ReparseOutcome;
+use editor::reparse::ReparseWork;
 use imba::{store::Store, View};
 
 fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
@@ -12,20 +15,20 @@ fn test_docs() -> imba::store::Id<himark::OpenDocuments> {
 }
 
 fn test_fonts() -> skia_safe::textlayout::FontCollection {
-    himark::test_document::test_fonts_collection().clone()
+    ::editor::test_document::test_fonts_collection().clone()
 }
 
-fn test_theme() -> himark::Theme {
-    himark::Theme::embedded()
+fn test_theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
-fn test_languages() -> std::sync::Arc<himark::SyntaxLanguages> {
-    std::sync::Arc::new(markdown_languages(himark::SyntaxLanguages::new()))
+fn test_languages() -> std::sync::Arc<editor::reparse::SyntaxLanguages> {
+    std::sync::Arc::new(markdown_languages(editor::reparse::SyntaxLanguages::new()))
 }
 
-fn test_cx() -> std::sync::Arc<himark::Workshop> {
-    std::sync::Arc::new(himark::Workshop::new(
-        himark::embedded_fonts::source(),
+fn test_cx() -> std::sync::Arc<editor::env::Workshop> {
+    std::sync::Arc::new(editor::env::Workshop::new(
+        editor::embedded_fonts::source(),
         test_theme(),
     ))
 }
@@ -33,13 +36,13 @@ fn test_cx() -> std::sync::Arc<himark::Workshop> {
 #[test]
 fn the_search_design_doc_lays_out_completely() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = himark::test_document::test_fonts_collection();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
     let document = document_from_markdown(source, store, ui, &fonts, &theme);
     let width = theme.ui().window.first_pane_width;
-    let view = himark::EditorView::complete(document, width, store, ui, &fonts, &theme);
+    let view = editor::editor_view::EditorView::complete(document, width, store, ui, &fonts, &theme);
     assert!(
         view.find_misaligned_boundary().is_none(),
         "the layout tiles the text on char boundaries"
@@ -48,7 +51,7 @@ fn the_search_design_doc_lays_out_completely() {
 
 #[test]
 fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut seed = 0x9e3779b97f4a7c15u64;
     let mut rand = move || {
         seed ^= seed << 13;
@@ -63,7 +66,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
     let narrow_editor = document.add_editor(
         320.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -74,7 +77,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
     let wide_editor = document.add_editor(
         720.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -92,7 +95,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
     );
     let narrow = EditorIdView::new(test_docs(), document_id, narrow_editor);
     let wide = EditorIdView::new(test_docs(), document_id, wide_editor);
-    store.put(himark::env::Fonts(himark::embedded_fonts::source()));
+    store.put(::editor::env::Fonts(editor::embedded_fonts::source()));
 
     let texts = [
         "—",
@@ -117,7 +120,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 };
                 view.perform(
                     &mut store,
-                    himark::test_document::test_ui(),
+                    ::editor::test_document::test_ui(),
                     command,
                     &mut batch.effects(),
                 );
@@ -126,7 +129,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let mut view = editor;
                 view.perform(
                     &mut store,
-                    himark::test_document::test_ui(),
+                    ::editor::test_document::test_ui(),
                     EditorCommand::Backspace,
                     &mut batch.effects(),
                 );
@@ -136,9 +139,9 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                 let y = (rand() % 12_000) as f32;
                 view.perform(
                     &mut store,
-                    himark::test_document::test_ui(),
+                    ::editor::test_document::test_ui(),
                     EditorCommand::Click {
-                        kind: himark::ClickKind::Set,
+                        kind: editor::editor_view::ClickKind::Set,
                         point: skia_safe::Point::new((rand() % 500) as f32, y),
                     },
                     &mut batch.effects(),
@@ -187,7 +190,7 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
                     let mut view = editor;
                     view.perform(
                         &mut store,
-                        himark::test_document::test_ui(),
+                        ::editor::test_document::test_ui(),
                         command,
                         &mut batch.effects(),
                     );
@@ -213,17 +216,17 @@ fn search_doc_edits_reparses_and_repairs_keep_boundaries_char_aligned() {
 #[test]
 fn the_search_design_doc_survives_the_bounded_open_tail() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let source = include_str!("../fixtures/utf8-repro.md");
-    let fonts = himark::test_document::test_fonts_collection();
-    let theme = himark::Theme::embedded();
+    let fonts = ::editor::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
     let mut document = document_from_markdown(source, store, ui, &fonts, &theme);
     let width = theme.ui().window.first_pane_width;
     let mut batch = imba::effect::Batch::new();
     let editor = document.add_editor(
         width,
         None,
-        himark::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -232,11 +235,11 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         &mut batch.effects(),
     );
 
-    let cx = std::sync::Arc::new(himark::Workshop::new(
-        himark::embedded_fonts::source(),
+    let cx = std::sync::Arc::new(editor::env::Workshop::new(
+        editor::embedded_fonts::source(),
         theme.clone(),
     ));
-    let mut view = himark::EditorView {
+    let mut view = editor::editor_view::EditorView {
         document,
         editor,
         reports_geometry: false,
@@ -244,7 +247,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         gutter_width: 0.0,
         base: None,
     };
-    let mut store = imba::Store::new();
+    let mut store = imba::store::Store::new();
     let mut pending = himark::test_support::surviving_launches(std::mem::replace(
         &mut batch,
         imba::effect::Batch::new(),
@@ -257,7 +260,7 @@ fn the_search_design_doc_survives_the_bounded_open_tail() {
         imba::View::perform(
             &mut view,
             &mut store,
-            himark::test_document::test_ui(),
+            ::editor::test_document::test_ui(),
             command,
             &mut batch.effects(),
         );

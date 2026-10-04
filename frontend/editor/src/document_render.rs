@@ -19,7 +19,7 @@ impl crate::document::Document {
         visible: Rect,
         focused: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -45,7 +45,7 @@ impl crate::document::Document {
         canvas: &Canvas,
         focused: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -53,7 +53,7 @@ impl crate::document::Document {
         if let Some(placeholder) = self.placeholder_line(editor, fonts, theme) {
             placeholder.paint(canvas, 0.0);
         }
-        let text_focused = focused && self.focus(editor) == crate::EditorFocus::Text;
+        let text_focused = focused && self.focus(editor) == crate::editor_view::EditorFocus::Text;
         if text_focused {
             self.paint_carets(editor, canvas, store, ui, fonts, theme);
         }
@@ -85,7 +85,7 @@ impl crate::document::Document {
         editor: crate::editor::EditorId,
         canvas: &Canvas,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -179,7 +179,7 @@ impl crate::document::Document {
         &self,
         editor: crate::editor::EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32)> {
@@ -199,7 +199,7 @@ impl crate::document::Document {
         goal_x: Option<f32>,
         down: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(u32, f32)> {
@@ -249,7 +249,7 @@ impl crate::document::Document {
         editor: crate::editor::EditorId,
         byte: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<(f32, f32, f32, f32)> {
@@ -302,7 +302,7 @@ impl crate::document::Document {
         editor: crate::editor::EditorId,
         range: Range<u32>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<(f32, f32, f32, f32)> {
@@ -388,7 +388,7 @@ impl crate::document::Document {
         document_top: f32,
         scroll_y: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<u32> {
@@ -469,7 +469,7 @@ impl crate::document::Document {
         document_x: f32,
         map_utf16: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> ShapedLine {
@@ -507,14 +507,14 @@ mod tests {
         let ui = crate::test_document::test_ui();
         let fonts = crate::test_document::test_fonts_collection().clone();
         let theme = crate::theme::Theme::embedded();
-        let mut document = crate::Document::new(
-            text::Text::from_string_exact(""),
+        let mut document = crate::document::Document::new(
+            text::text::Text::from_string_exact(""),
             crate::markup::Markup::new(),
         );
         let editor = document.add_editor(
             500.0,
             None,
-            crate::EditorBuild::Complete,
+            crate::document::EditorBuild::Complete,
             &[],
             store,
             ui,

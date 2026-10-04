@@ -30,7 +30,7 @@ impl Document {
         editor: EditorId,
         range: Range<u32>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -88,7 +88,7 @@ impl Document {
         key: InlayKey,
         departing: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -206,7 +206,7 @@ impl imba::View for FoldChip {
     fn perform(
         &mut self,
         _store: &mut imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         command: FoldCommand,
         _fx: &mut imba::effect::Effects<'_, FoldCommand>,
     ) {
@@ -220,9 +220,9 @@ impl imba::View for FoldChip {
         &'a self,
         arena: &'a imba::arena::Arena,
         store: &'a imba::store::Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, FoldCommand> + imba::LayoutValue + 'a {
-        imba::laid(
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, FoldCommand> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: imba::constraints::Constraints| {
                 use imba::event::{Event, EventResult, MouseButton};
                 use imba::thunk_ext::ThunkExt;

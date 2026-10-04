@@ -13,4 +13,5 @@ tree-sitter-cpp = "0.23.4"
 tree-sitter-c = "0.24.2"
 
 [dev-dependencies]
+text = { path = "../../../text" }
 imba = { path = "../../../imba" }

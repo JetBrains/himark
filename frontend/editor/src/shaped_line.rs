@@ -11,7 +11,7 @@ use skia_safe::{
     },
     Canvas, FontStyle, Point, Rect,
 };
-use text::TextView;
+use text::text_view::TextView;
 
 use crate::markup::{
     BlockStyle, InlayMode, InlayPlaceholder, InsteadKind, OverlaidMarkup, TextDecorationInterval,

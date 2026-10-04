@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::StyleId;
+use editor::markup::StyleId;
 use std::ops::Range;
 
-fn test_theme() -> editor::Theme {
-    editor::Theme::embedded()
+fn test_theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
-fn spans_on(document: &editor::Document, line: Range<u32>) -> Vec<(Range<u32>, StyleId)> {
+fn spans_on(document: &editor::document::Document, line: Range<u32>) -> Vec<(Range<u32>, StyleId)> {
     let mut inline = Vec::new();
     let mut hidden = Vec::new();
     document
@@ -47,7 +47,7 @@ fn rust_blocks_highlight_for_real() {
     let _editor = document.add_editor(
         400.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -56,7 +56,7 @@ fn rust_blocks_highlight_for_real() {
         &mut imba::effect::Batch::new().effects(),
     );
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("document has a parse")
         .run_reparse();
     document.apply_reparse_outcome(

@@ -4,10 +4,10 @@
 use std::ops::Range;
 
 use imba::checkbox::{checkbox, CheckboxCommand, CheckboxStyle};
-use imba::{arena::Arena, store::Store, UiCtx};
-use operation::{Op, Operation};
+use imba::{arena::Arena, store::Store, ui::UiCtx};
+use operation::{op::Op, operation::Operation};
 
-use himark::Theme;
+use editor::theme::Theme;
 
 pub(crate) fn checkbox_marker(raw: &str) -> Option<(Range<usize>, bool)> {
     let indent = raw.len() - raw.trim_start().len();
@@ -41,7 +41,7 @@ pub(crate) struct CheckboxView {
     range: Range<u32>,
 
     pending: Option<Operation>,
-    chrome: himark::theme::CheckboxChrome,
+    chrome: ::editor::theme::CheckboxChrome,
 }
 
 impl CheckboxView {
@@ -61,7 +61,7 @@ impl imba::View for CheckboxView {
     fn focus_data<'w>(
         &'w self,
         _store: &'w Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         imba::focus::FocusData::of_commands(vec![imba::PresentableCommand::new(
             "checkbox.toggle",
@@ -97,9 +97,9 @@ impl imba::View for CheckboxView {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         let chrome = &self.chrome;
-        imba::fixed(checkbox(
+        imba::layout::fixed(checkbox(
             self.checked,
             CheckboxStyle {
                 size: chrome.size,
@@ -113,7 +113,7 @@ impl imba::View for CheckboxView {
     }
 }
 
-impl himark::InlayEditing for CheckboxView {
+impl editor::markup::InlayEditing for CheckboxView {
     fn take_edit(&mut self) -> Option<Operation> {
         self.pending.take()
     }
@@ -126,7 +126,7 @@ impl himark::InlayEditing for CheckboxView {
         &mut self,
         previous: &Self,
         _store: &imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _fonts: &skia_safe::textlayout::FontCollection,
         _theme: &Theme,
     ) -> bool {
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn the_checkbox_offers_its_toggle_for_presentation() {
-        use himark::InlayEditing;
+        use editor::markup::InlayEditing;
         use imba::View;
         let theme = Theme::embedded();
         let mut store = Store::new();
@@ -177,7 +177,7 @@ mod tests {
 
     #[test]
     fn toggling_writes_the_marker_through() {
-        use himark::InlayEditing;
+        use editor::markup::InlayEditing;
         use imba::View;
         let theme = Theme::embedded();
         let mut store = Store::new();

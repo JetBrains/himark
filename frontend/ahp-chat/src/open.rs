@@ -4,19 +4,19 @@
 use std::sync::Arc;
 
 use documents::FetchDocumentEffect;
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::effect::{AnyEffect, EffectHandler};
 use imba::store::Store;
 
 pub fn document_for(
-    languages: &editor::SyntaxLanguages,
+    languages: &editor::reparse::SyntaxLanguages,
     name: &str,
     source: &str,
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &editor::Theme,
-) -> editor::Document {
+    theme: &editor::theme::Theme,
+) -> editor::document::Document {
     let extension = name.rsplit('.').next().unwrap_or("").to_lowercase();
     // Markdown is just another registered language; anything the
     // registry does not know reads as markdown, like it always has.
@@ -25,8 +25,8 @@ pub fn document_for(
         known if languages.knows(known) => known,
         _ => "markdown",
     };
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         language,
         languages,
         store,
@@ -45,8 +45,8 @@ pub fn document_for(
 /// marks) in the workshop. The cell only lays the editors.
 pub struct BuildFileEditHandler {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::Workshop>,
-    pub languages: Arc<editor::SyntaxLanguages>,
+    pub workshop: Arc<editor::env::Workshop>,
+    pub languages: Arc<editor::reparse::SyntaxLanguages>,
     pub diff_policy: Arc<dyn ::editor::diff::DiffPolicy>,
 }
 
@@ -89,8 +89,8 @@ impl EffectHandler<crate::file_edit::BuildFileEditEffect> for BuildFileEditHandl
 #[derive(Clone)]
 pub struct DiffOpenShop {
     pub caller: imba::effect::EffectCaller,
-    pub workshop: Arc<editor::Workshop>,
-    pub languages: Arc<editor::SyntaxLanguages>,
+    pub workshop: Arc<editor::env::Workshop>,
+    pub languages: Arc<editor::reparse::SyntaxLanguages>,
 }
 
 impl DiffOpenShop {
@@ -167,7 +167,7 @@ impl EffectHandler<documents::diff_views::OpenDiffPairEffect> for OpenDiffPairHa
 /// The diff canvas's per-item build (docs/editor/diff-canvas.md §4): both
 /// fetches, both documents, the Myers pass and the mark prep all run
 /// here, off the UI thread; the landing only mounts editors.
-pub struct BuildDocumentHandler(pub Arc<editor::Workshop>, pub Arc<editor::SyntaxLanguages>);
+pub struct BuildDocumentHandler(pub Arc<editor::env::Workshop>, pub Arc<editor::reparse::SyntaxLanguages>);
 
 impl EffectHandler<documents::BuildDocumentEffect> for BuildDocumentHandler {
     async fn handle(&self, effect: documents::BuildDocumentEffect) -> documents::BuiltDocument {

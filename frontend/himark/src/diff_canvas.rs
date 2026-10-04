@@ -7,7 +7,8 @@
 
 use imba::store::Store;
 
-use crate::{ResourceLocation, WindowId};
+use crate::{WindowId};
+use editor::location::ResourceLocation;
 use changesview::hichanges::Changes;
 
 pub use changesview::hichanges::CanvasSource;

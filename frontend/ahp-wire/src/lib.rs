@@ -57,7 +57,7 @@ impl SessionId {
     /// the local session, not to nothing.
     pub fn of_location(
         store: &imba::store::Store,
-        location: &editor::ResourceLocation,
+        location: &editor::location::ResourceLocation,
     ) -> SessionId {
         if let Some((host, session)) =
             crate::client::route(store, location.authority().as_str())

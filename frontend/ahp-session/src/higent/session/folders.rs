@@ -5,7 +5,7 @@ use super::state::Hosts;
 use crate::SessionId;
 use imba::store::Store;
 
-pub fn session_folders(store: &Store, session: &SessionId) -> Vec<editor::ResourceLocation> {
+pub fn session_folders(store: &Store, session: &SessionId) -> Vec<editor::location::ResourceLocation> {
     let Some(uris) = Hosts::uris(store, session.host) else {
         return Vec::new();
     };
@@ -25,7 +25,7 @@ pub fn session_folders(store: &Store, session: &SessionId) -> Vec<editor::Resour
         .collect()
 }
 
-pub fn all_session_folders(store: &Store) -> Vec<editor::ResourceLocation> {
+pub fn all_session_folders(store: &Store) -> Vec<editor::location::ResourceLocation> {
     let mut seen = std::collections::HashSet::new();
     let mut folders = Vec::new();
     for (id, host) in Hosts::list(store) {
@@ -53,11 +53,11 @@ fn folder_location(
     uris: &dyn crate::higent::client::ResourceUriMap,
     key: &SessionId,
     uri: &str,
-) -> Option<editor::ResourceLocation> {
+) -> Option<editor::location::ResourceLocation> {
     uris.location_of(
         &crate::higent::client::ResourceUri::new(uri),
-        editor::ResourceType::directory(),
-        &editor::Authority::new(crate::higent::client::authority(key.host, &key.session)),
+        editor::location::ResourceType::directory(),
+        &editor::location::Authority::new(crate::higent::client::authority(key.host, &key.session)),
     )
     .filter(|location| !location.path().is_empty())
 }

@@ -7,7 +7,7 @@ use imba::effect::{CancellationToken, Effects};
 use imba::event::{Event, EventResult, Key};
 use imba::store::Store;
 use imba::thunk_ext::ThunkExt;
-use imba::{UiCtx, View};
+use imba::{ui::UiCtx, View};
 
 use hikit::rows::{label_slice, selection_style, LabelRow};
 use imba::list::{ListCommand, ListOps, ListView};
@@ -27,7 +27,7 @@ fn popup_selected(list: &PopupList) -> usize {
 }
 use ahp_locations::FindEffect;
 use documents::LineCol;
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 
 const SHOWN: usize = 128;
 
@@ -116,7 +116,7 @@ impl View for CompletionPopupView {
     fn focus_data<'w>(
         &'w self,
         _store: &'w imba::store::Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, CompletionCommand> {
         use imba::event::EventResult;
         let armed = self.rows > 0;
@@ -148,8 +148,8 @@ impl View for CompletionPopupView {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let theme = editor::env::Themes::of(store);
                 let chrome = theme.ui().peeker.clone();
@@ -184,7 +184,7 @@ impl View for CompletionPopupView {
                         },
                     ),
                 );
-                let rows = imba::Layout::layout(
+                let rows = imba::layout::Layout::layout(
                     self.list.display(arena, store, ui),
                     arena,
                     imba::constraints::Constraints::tight(skia_safe::Size::new(
@@ -229,10 +229,10 @@ impl View for CompletionPopupView {
 
 #[derive(Clone)]
 pub struct Completion {
-    key: Option<editor::InlayKey>,
-    markup: Option<editor::MarkupId>,
+    key: Option<editor::markup::InlayKey>,
+    markup: Option<editor::markup::MarkupId>,
 
-    installed: Option<(documents::DocumentId, ::editor::EditorId)>,
+    installed: Option<(documents::DocumentId, ::editor::editor::EditorId)>,
     query: String,
 
     anchor_offset: u32,
@@ -268,11 +268,11 @@ impl Completion {
         self.key.is_some()
     }
 
-    pub fn inlay_key(&self) -> Option<editor::InlayKey> {
+    pub fn inlay_key(&self) -> Option<editor::markup::InlayKey> {
         self.key
     }
 
-    pub fn installed(&self) -> Option<(documents::DocumentId, ::editor::EditorId)> {
+    pub fn installed(&self) -> Option<(documents::DocumentId, ::editor::editor::EditorId)> {
         self.installed
     }
 
@@ -304,19 +304,19 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         typed_at: Option<u32>,
         folders: Arc<Vec<ResourceLocation>>,
         recents: imba::store::Id<crate::recents::RecentLocations>,
-        installed: Option<(documents::DocumentId, ::editor::EditorId)>,
+        installed: Option<(documents::DocumentId, ::editor::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         wrap: W,
         to_editor: E,
     ) where
         C: 'static,
         W: Fn(CompletionFound) -> C + Send + Sync + Clone + 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         if self.key.is_some() {
             let caret = document.caret_byte(editor);
@@ -388,19 +388,19 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         typed: Option<&str>,
         explicit: bool,
         location: &ResourceLocation,
-        installed: Option<(documents::DocumentId, ::editor::EditorId)>,
+        installed: Option<(documents::DocumentId, ::editor::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         wrap: W,
         to_editor: E,
     ) where
         C: 'static,
         W: Fn(CompletionFound) -> C + Send + Sync + Clone + 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         let caret = document.caret_byte(editor);
         if self.key.is_some() {
@@ -483,8 +483,8 @@ impl Completion {
 
     fn launch_lsp<C, W>(
         &mut self,
-        document: &editor::Document,
-        editor: ::editor::EditorId,
+        document: &editor::document::Document,
+        editor: ::editor::editor::EditorId,
         location: &ResourceLocation,
         fx: &mut Effects<'_, C>,
         wrap: W,
@@ -505,7 +505,7 @@ impl Completion {
         fx.relaunch_erased(&mut self.lane, effect);
     }
 
-    fn marker_start(&self, document: &editor::Document, editor: ::editor::EditorId) -> Option<u32> {
+    fn marker_start(&self, document: &editor::document::Document, editor: ::editor::editor::EditorId) -> Option<u32> {
         let key = self.key?;
         document
             .popups_in(editor, 0..u32::MAX)
@@ -514,7 +514,7 @@ impl Completion {
             .map(|(_, range, _, _)| range.start)
     }
 
-    fn query_anchor(&self, document: &editor::Document, editor: ::editor::EditorId) -> Option<u32> {
+    fn query_anchor(&self, document: &editor::document::Document, editor: ::editor::editor::EditorId) -> Option<u32> {
         Some(self.marker_start(document, editor)? + self.anchor_offset)
     }
 
@@ -523,16 +523,16 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         cover: u32,
         anchor_offset: u32,
-        installed: Option<(documents::DocumentId, ::editor::EditorId)>,
+        installed: Option<(documents::DocumentId, ::editor::editor::EditorId)>,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) where
         C: 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         let markup = document.add_markup();
         document.show_markup(editor, markup);
@@ -550,8 +550,8 @@ impl Completion {
             key = Some(document.push_inlay(
                 markup,
                 range,
-                editor::Inlay::new(
-                    editor::InlayMode::Popup(editor::PopupSpec {
+                editor::markup::Inlay::new(
+                    editor::markup::InlayMode::Popup(editor::markup::PopupSpec {
                         host: imba::overlay::WINDOW,
                         position: imba::overlay::fit::PreferredPosition::At {
                             x: imba::overlay::fit::RangeEnd::Begin,
@@ -575,8 +575,8 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         found: CompletionFound,
     ) {
         if !self.open() {
@@ -622,8 +622,8 @@ impl Completion {
     pub fn select(
         &mut self,
         _store: &Store,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         delta: isize,
     ) {
         let count = self.source.row_count();
@@ -640,8 +640,8 @@ impl Completion {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         command: PopupRowsCommand,
     ) -> Option<usize> {
         // A row-body click activates (docs/ui/list-keyboard.md §2);
@@ -667,15 +667,15 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         row: usize,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) -> Option<PickedFile>
     where
         C: 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         let start = self.marker_start(document, editor)?;
         let anchor = start + self.anchor_offset;
@@ -738,21 +738,21 @@ impl Completion {
         &self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
         range: std::ops::Range<u32>,
         inserted: &str,
         fx: &mut Effects<'_, C>,
         to_editor: &E,
     ) where
         C: 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         let mut view = document.text().view();
         let total = view.byte_count() as u32;
         let range = range.start.min(total)..range.end.min(total);
         let removed = view.substring(range.clone());
-        let mut builder = operation::OperationBuilder::new();
+        let mut builder = operation::builder::OperationBuilder::new();
         builder.push_retain(range.start);
         builder.push_delete(removed);
         builder.push_insert(inserted.to_owned());
@@ -768,14 +768,14 @@ impl Completion {
 
     pub fn drop_state<C, E>(
         &mut self,
-        document: &mut editor::Document,
+        document: &mut editor::document::Document,
         store: &Store,
         ui: &UiCtx,
         fx: &mut Effects<'_, C>,
         to_editor: E,
     ) where
         C: 'static,
-        E: Fn(editor::EditorCommand) -> C + Send + Sync + Clone + 'static,
+        E: Fn(editor::editor_view::EditorCommand) -> C + Send + Sync + Clone + 'static,
     {
         if let Some(token) = self.lane.take() {
             fx.cancel(token);
@@ -808,8 +808,8 @@ impl Completion {
         &mut self,
         store: &Store,
         ui: &UiCtx,
-        document: &mut editor::Document,
-        editor: ::editor::EditorId,
+        document: &mut editor::document::Document,
+        editor: ::editor::editor::EditorId,
     ) {
         self.refresh_rows(store, ui);
         self.swap_view(document, editor);
@@ -885,7 +885,7 @@ impl Completion {
         }
     }
 
-    fn swap_view(&mut self, document: &mut editor::Document, editor: ::editor::EditorId) {
+    fn swap_view(&mut self, document: &mut editor::document::Document, editor: ::editor::editor::EditorId) {
         let Some(key) = self.key else { return };
         let Some((_, range, _, spec)) = document
             .popups_in(editor, 0..u32::MAX)
@@ -897,7 +897,7 @@ impl Completion {
         document.swap_inlay(
             key,
             range,
-            editor::Inlay::new(editor::InlayMode::Popup(spec), self.view()),
+            editor::markup::Inlay::new(editor::markup::InlayMode::Popup(spec), self.view()),
         );
     }
 }
@@ -906,7 +906,7 @@ fn identifier_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-fn word_start(view: &mut ::text::TextView, caret: u32) -> u32 {
+fn word_start(view: &mut ::text::text_view::TextView, caret: u32) -> u32 {
     let line = view.line_at(caret as usize);
     let line_start = view.line_start_offset(line) as u32;
     let prefix = view.substring(line_start..caret);

@@ -3,13 +3,7 @@
 
 use std::hash::Hash;
 
-use imba::{
-    arena::Arena,
-    list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView},
-    scroll::ScrollView,
-    store::Store,
-    UiCtx, View,
-};
+use imba::{arena::Arena, list::{ActivateTrigger, Edge, ListOps, ListSlice, ListView}, scroll::ScrollView, store::Store, ui::UiCtx, View};
 
 use crate::tree_item::{TreeItemView, TreeLabel, TreeListCommand, TreeTint};
 
@@ -122,7 +116,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         self.parents.get(key)
     }
 
-    pub fn slice(&self, store: &imba::store::Store, ui: &imba::UiCtx) -> ListSlice<TreeRow, K> {
+    pub fn slice(&self, store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ListSlice<TreeRow, K> {
         let mut slice = ListSlice::new();
         for key in self.roots.iter() {
             self.emit(key, &mut slice, store, ui);
@@ -134,7 +128,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         &self,
         key: &K,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) -> ListSlice<TreeRow, K> {
         let mut slice = ListSlice::new();
         self.emit(key, &mut slice, store, ui);
@@ -145,7 +139,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         &self,
         key: &K,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) -> ListSlice<TreeRow, K> {
         let mut slice = ListSlice::new();
         let Some(entry) = self.entries.get(key) else {
@@ -160,7 +154,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         key: &K,
         slice: &mut ListSlice<TreeRow, K>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) {
         let Some(entry) = self.entries.get(key) else {
             return;
@@ -206,7 +200,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         &mut self,
         key: &K,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) -> Option<ListSlice<TreeRow, K>> {
         if !self.is_branch(key) {
             return None;
@@ -219,7 +213,7 @@ impl<K: Clone + Eq + Hash + Send + Sync> Forest<K> {
         &mut self,
         key: &K,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) -> Option<ListSlice<TreeRow, K>> {
         if !self.is_branch(key) {
             return None;
@@ -280,7 +274,7 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> Forest<K> {
         list: &mut imba::list::ListView<TreeRow, K>,
         key: &K,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) {
         let Some(range) = list.row_range(key) else {
             return;
@@ -299,7 +293,7 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> Forest<K> {
         list: &mut imba::list::ListView<TreeRow, K>,
         expand: bool,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
     ) {
         let Some(key) = list.cursor().cloned() else {
             return;
@@ -335,7 +329,7 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> ForestList<K> {
         }
     }
 
-    pub fn set(&mut self, nodes: &[ForestNode<K>], store: &Store, ui: &imba::UiCtx) {
+    pub fn set(&mut self, nodes: &[ForestNode<K>], store: &Store, ui: &imba::ui::UiCtx) {
         self.forest.set(nodes);
         let len = self.list.content().len();
         let slice = self.forest.slice(store, ui);
@@ -386,13 +380,13 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> ForestList<K> {
         self.list.content_mut()
     }
 
-    pub fn toggle(&mut self, key: &K, store: &Store, ui: &imba::UiCtx) {
+    pub fn toggle(&mut self, key: &K, store: &Store, ui: &imba::ui::UiCtx) {
         let mut forest = std::mem::replace(&mut self.forest, Forest::empty());
         forest.toggle_in(self.list.content_mut(), key, store, ui);
         self.forest = forest;
     }
 
-    pub fn fold_cursor(&mut self, expand: bool, store: &Store, ui: &imba::UiCtx) {
+    pub fn fold_cursor(&mut self, expand: bool, store: &Store, ui: &imba::ui::UiCtx) {
         let mut forest = std::mem::replace(&mut self.forest, Forest::empty());
         forest.fold_cursor(self.list.content_mut(), expand, store, ui);
         self.forest = forest;
@@ -420,7 +414,7 @@ impl<K: Clone + Eq + Hash + Send + Sync + 'static> View for ForestList<K> {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         self.list.display(arena, store, ui)
     }
 }

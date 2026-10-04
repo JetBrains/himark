@@ -6,7 +6,7 @@
 //! slots are the shell's — nothing here names one.
 
 use imba::store::Store;
-use imba::UiCtx;
+use imba::ui::UiCtx;
 
 use crate::{PaneRow, NavigationLocation, Place};
 
@@ -18,18 +18,18 @@ pub enum WidgetOrigin {
 
 #[derive(Clone)]
 pub enum PanelRequest {
-    OpenLocations(Vec<editor::ResourceLocation>),
+    OpenLocations(Vec<editor::location::ResourceLocation>),
 
     /// Open one location, honoring a caret target — the canvas
     /// header's click; the shell supplies the window.
     OpenAt(
-        editor::ResourceLocation,
+        editor::location::ResourceLocation,
         Option<std::ops::Range<documents::LineCol>>,
     ),
 
     /// Open a standalone diff pane over a pair of locations — the
     /// canvas header's other click; the shell supplies the window.
-    OpenDiff(editor::ResourceLocation, editor::ResourceLocation),
+    OpenDiff(editor::location::ResourceLocation, editor::location::ResourceLocation),
 
     Perform(std::sync::Arc<dyn imba::command::DynamicCommand>),
 
@@ -40,7 +40,7 @@ pub enum PanelRequest {
     Shell(std::sync::Arc<dyn std::any::Any + Send + Sync>),
 }
 
-pub trait PanelView: imba::CloneDynView + Clone + Sized + 'static {
+pub trait PanelView: imba::dyn_view::CloneDynView + Clone + Sized + 'static {
     type Place: Place;
 
     fn title(&self, store: &Store) -> String;
@@ -95,7 +95,7 @@ pub trait PanelView: imba::CloneDynView + Clone + Sized + 'static {
     }
 }
 
-pub trait DynPanelView: imba::CloneDynView {
+pub trait DynPanelView: imba::dyn_view::CloneDynView {
     fn clone_panel(&self) -> Box<dyn DynPanelView>;
     fn title(&self, store: &Store) -> String;
     fn dismantle(&mut self, store: &mut Store);

@@ -3,7 +3,7 @@
 
 use imba::effect::AnyEffect;
 use imba::store::Store;
-use imba::UiCtx;
+use imba::ui::UiCtx;
 
 use crate::chat::{ChatPanel, ChatPanelCommand, ChatViewId};
 use ahp_wire::client::{ChatUri, SessionUri};
@@ -53,7 +53,7 @@ pub struct Catalog {
         dyn Fn(&mut Store, ahp_wire::client::HostId, &ChatUri, &str) + Send + Sync,
     >,
     pub folders: std::sync::Arc<
-        dyn Fn(&Store, &ahp_wire::SessionId) -> Vec<editor::ResourceLocation> + Send + Sync,
+        dyn Fn(&Store, &ahp_wire::SessionId) -> Vec<editor::location::ResourceLocation> + Send + Sync,
     >,
 }
 
@@ -133,7 +133,7 @@ impl Chats {
 
     pub fn open(
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         chats: imba::store::Id<Chats>,
         server: ahp_wire::client::HostId,
         session: SessionUri,
@@ -147,7 +147,7 @@ impl Chats {
     /// the collection does not hold it yet.
     pub fn open_with(
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         chats: imba::store::Id<Chats>,
         server: ahp_wire::client::HostId,
         session: SessionUri,
@@ -196,7 +196,7 @@ impl imba::store::Entity for Chats {
         _id: imba::store::Id<Self>,
         command: ChatsCommand,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut imba::effect::Effects<'_, ChatsCommand>,
     ) {
         match command {
@@ -235,7 +235,7 @@ impl imba::command::DynamicCommand for BootChat {
     fn name(&self) -> String {
         "Boot Chat".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, _fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, _fx: &mut imba::command::Fx<'_>) {
         let Some(mut panel) = Chats::chat(store, self.chats, &self.chat) else {
             return;
         };
@@ -265,7 +265,7 @@ impl imba::command::DynamicCommand for EnsureChatFeed {
     fn name(&self) -> String {
         "Subscribe Chat".to_owned()
     }
-    fn perform(&self, store: &mut Store, _ui: &imba::UiCtx, fx: &mut imba::command::Fx<'_>) {
+    fn perform(&self, store: &mut Store, _ui: &imba::ui::UiCtx, fx: &mut imba::command::Fx<'_>) {
         let chats = self.chats;
         let Some(mut panel) = Chats::chat(store, chats, &self.chat) else {
             return;
@@ -385,15 +385,15 @@ impl imba::View for ChatPane {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, constraints: imba::constraints::Constraints| {
                 let widget: imba::ThunkBox<'a, Self::Command> = match self.view.and_then(|view| {
                     Chats::chat_ref(store, self.chats, &self.chat)
                         .and_then(|panel| panel.display_view(arena, store, ui, view))
                 }) {
                     Some(laid) => {
-                        imba::ThunkBox::new(arena, imba::Layout::layout(laid, arena, constraints))
+                        imba::ThunkBox::new(arena, imba::layout::Layout::layout(laid, arena, constraints))
                     }
 
                     // No view record yet (panes mint storeless): a

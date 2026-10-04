@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::Document;
+use editor::document::Document;
 use imba::store::Store;
 
 pub mod diff_views;
@@ -29,7 +29,7 @@ pub use watch::{
 };
 
 pub struct FetchDocumentEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
 }
 
 impl std::fmt::Display for FetchDocumentEffect {
@@ -43,7 +43,7 @@ impl imba::effect::Effect for FetchDocumentEffect {
 }
 
 pub struct FetchResourceBytesEffect {
-    pub origin: editor::ResourceLocation,
+    pub origin: editor::location::ResourceLocation,
 
     pub reference: String,
 }
@@ -61,7 +61,7 @@ impl imba::effect::Effect for FetchResourceBytesEffect {
 /// Build a Document from fetched text, off the UI thread — the base
 /// chain's second leg (BaseFetched -> BaseBuilt).
 pub struct BuildDocumentEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub text: String,
 }
 
@@ -92,7 +92,7 @@ impl ScratchMint {
 pub fn next_scratch_location(
     store: &mut Store,
     scratch_names: imba::store::Id<ScratchMint>,
-) -> editor::ResourceLocation {
+) -> editor::location::ResourceLocation {
     let mut minted = 0;
     store.update_entity(scratch_names, |mint: &mut ScratchMint| {
         mint.0 += 1;
@@ -102,18 +102,18 @@ pub fn next_scratch_location(
         1 => "scratch".to_owned(),
         n => format!("scratch {n}"),
     };
-    editor::ResourceLocation::new(
-        editor::ResourceType::document(),
-        editor::Authority::new("scratch"),
+    editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("scratch"),
         vec![name],
     )
 }
 
-pub fn is_scratch(location: &editor::ResourceLocation) -> bool {
+pub fn is_scratch(location: &editor::location::ResourceLocation) -> bool {
     location.authority().as_str() == "scratch"
 }
 
-pub fn is_synthetic(location: &editor::ResourceLocation) -> bool {
+pub fn is_synthetic(location: &editor::location::ResourceLocation) -> bool {
     location.is_synthetic()
 }
 
@@ -122,7 +122,7 @@ impl OpenDocuments {
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
-        location: editor::ResourceLocation,
+        location: editor::location::ResourceLocation,
     ) {
         store.update_entity(documents, |documents| {
             let Some(entity) = documents.entries.get(&document) else {
@@ -151,28 +151,28 @@ impl OpenDocuments {
 /// PRIVATE keys (`DocumentId`); the table never sees them.
 #[derive(Clone)]
 pub enum DocumentsCommand {
-    Editor(DocumentId, editor::EditorCommand),
+    Editor(DocumentId, editor::editor_view::EditorCommand),
 
     /// A command for a STORE-HELD diff view, routed by the
     /// collection and the view id — the dressing's own road
     /// (docs/model-view.md step 1): marks-job landings and resyncs
     /// reach the view with no panel involved.
-    DiffView(crate::diffs::DiffViewId, Box<editor::UnifiedDiffCommand>),
+    DiffView(crate::diffs::DiffViewId, Box<editor::unified_diff::UnifiedDiffCommand>),
 
     BaseLocated {
         document: DocumentId,
-        base: Option<editor::ResourceLocation>,
+        base: Option<editor::location::ResourceLocation>,
     },
 
     BaseFetched {
         document: DocumentId,
-        base: editor::ResourceLocation,
+        base: editor::location::ResourceLocation,
         text: Option<String>,
     },
 
     BaseBuilt {
         document: DocumentId,
-        base: editor::ResourceLocation,
+        base: editor::location::ResourceLocation,
         built: Document,
     },
 
@@ -180,7 +180,7 @@ pub enum DocumentsCommand {
     Stored {
         document: DocumentId,
         revision: u64,
-        snapshot: editor::Text,
+        snapshot: text::text::Text,
         stored: bool,
     },
 
@@ -204,8 +204,8 @@ pub enum DocumentsCommand {
     /// pair, stamped with its collection at launch.
     Normalized {
         diff: editor::diff::DiffId,
-        operation: operation::Operation,
-        markup: editor::Markup,
+        operation: operation::operation::Operation,
+        markup: editor::markup::Markup,
         changed: Vec<std::ops::Range<u32>>,
         base_revision: u64,
         target_revision: u64,
@@ -242,7 +242,7 @@ impl imba::store::Entity for OpenDocuments {
         id: imba::store::Id<Self>,
         command: DocumentsCommand,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut imba::effect::Effects<'_, DocumentsCommand>,
     ) {
         // The arms that reach a PLUGIN BOUNDARY (editor performs,
@@ -438,7 +438,7 @@ impl DocumentId {
 pub struct OpenDocument {
     pub(crate) document: Document,
 
-    pub(crate) location: Option<editor::ResourceLocation>,
+    pub(crate) location: Option<editor::location::ResourceLocation>,
 
     pub(crate) title: String,
 
@@ -448,7 +448,7 @@ pub struct OpenDocument {
 
     pub(crate) saved_revision: u64,
 
-    pub(crate) baseline: editor::Text,
+    pub(crate) baseline: text::text::Text,
 
     pub(crate) refetch_serial: u64,
 
@@ -475,7 +475,7 @@ impl OpenDocument {
         }
     }
 
-    pub fn location(&self) -> Option<&editor::ResourceLocation> {
+    pub fn location(&self) -> Option<&editor::location::ResourceLocation> {
         self.location.as_ref()
     }
 
@@ -492,7 +492,7 @@ impl OpenDocument {
         self.document.revision() != self.saved_revision
     }
 
-    pub fn baseline(&self) -> &editor::Text {
+    pub fn baseline(&self) -> &text::text::Text {
         &self.baseline
     }
 
@@ -527,14 +527,14 @@ pub trait DocumentHook: Send + Sync {
         store: &mut imba::store::Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
-        location: Option<&editor::ResourceLocation>,
+        location: Option<&editor::location::ResourceLocation>,
     );
     fn closing(
         &self,
         store: &mut imba::store::Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
-        location: Option<&editor::ResourceLocation>,
+        location: Option<&editor::location::ResourceLocation>,
         doc: &Document,
     );
 }
@@ -543,7 +543,7 @@ pub trait DocumentHook: Send + Sync {
 pub struct OpenDocuments {
     pub(crate) entries: rpds::HashTrieMapSync<DocumentId, OpenDocument>,
 
-    by_location: rpds::HashTrieMapSync<editor::ResourceLocation, DocumentId>,
+    by_location: rpds::HashTrieMapSync<editor::location::ResourceLocation, DocumentId>,
 
     by_watch: rpds::HashTrieMapSync<crate::Subscription, rpds::VectorSync<DocumentId>>,
 
@@ -625,7 +625,7 @@ impl OpenDocuments {
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: Document,
-        location: Option<editor::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
         title: String,
         saved_revision: u64,
     ) -> DocumentId {
@@ -642,7 +642,7 @@ impl OpenDocuments {
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
         document: Document,
-        location: Option<editor::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
         title: String,
         saved_revision: u64,
     ) -> DocumentId {
@@ -904,11 +904,11 @@ impl OpenDocuments {
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
-    ) -> Option<editor::ResourceLocation> {
+    ) -> Option<editor::location::ResourceLocation> {
         store.entity(documents)?.location_row(document)
     }
 
-    pub fn location_row(&self, document: DocumentId) -> Option<editor::ResourceLocation> {
+    pub fn location_row(&self, document: DocumentId) -> Option<editor::location::ResourceLocation> {
         self.entries.get(&document)?.location.clone()
     }
 
@@ -927,12 +927,12 @@ impl OpenDocuments {
     pub fn by_location(
         store: &Store,
         documents: imba::store::Id<OpenDocuments>,
-        location: &editor::ResourceLocation,
+        location: &editor::location::ResourceLocation,
     ) -> Option<DocumentId> {
         store.entity(documents)?.by_location_row(location)
     }
 
-    pub fn by_location_row(&self, location: &editor::ResourceLocation) -> Option<DocumentId> {
+    pub fn by_location_row(&self, location: &editor::location::ResourceLocation) -> Option<DocumentId> {
         self.by_location.get(location).copied()
     }
 
@@ -1070,7 +1070,7 @@ impl OpenDocuments {
         documents: imba::store::Id<OpenDocuments>,
         document: DocumentId,
         revision: u64,
-        stored: editor::Text,
+        stored: text::text::Text,
     ) {
         Self::update_entity(store, documents, document, |entity| {
             entity.saved_revision = revision;
@@ -1078,7 +1078,7 @@ impl OpenDocuments {
         });
     }
 
-    pub fn mark_saved_row(&mut self, document: DocumentId, revision: u64, stored: editor::Text) {
+    pub fn mark_saved_row(&mut self, document: DocumentId, revision: u64, stored: text::text::Text) {
         self.update_row(document, |entity| {
             entity.saved_revision = revision;
             entity.baseline = stored;
@@ -1088,11 +1088,11 @@ impl OpenDocuments {
     pub fn edit_external(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
-        operation: &operation::Operation,
-        fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
+        operation: &operation::operation::Operation,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         let Some(mut document) = Self::document(store, documents, document_id) else {
             return;
@@ -1102,7 +1102,7 @@ impl OpenDocuments {
         }
         if operation
             .iter()
-            .all(|op| matches!(op, operation::Op::Retain(_)))
+            .all(|op| matches!(op, operation::op::Op::Retain(_)))
         {
             return;
         }
@@ -1115,7 +1115,7 @@ impl OpenDocuments {
         }
         document.clear_undo_history();
         if let Some(location) = Self::location(store, documents, document_id) {
-            for sink in ::editor::InstalledChangeSink::of(store) {
+            for sink in ::editor::change_sink::InstalledChangeSink::of(store) {
                 sink.changed(store, &document, &location, base_revision, &text_before, fx);
             }
         }
@@ -1129,12 +1129,12 @@ impl OpenDocuments {
     pub fn edit_shared(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document_id: DocumentId,
-        identity: ::editor::EditIdentity,
+        identity: ::editor::edit_log::EditIdentity,
         base_revision: u64,
-        operation: &operation::Operation,
-        fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
+        operation: &operation::operation::Operation,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) -> bool {
         let Some(mut document) = Self::document(store, documents, document_id) else {
             return false;
@@ -1144,7 +1144,7 @@ impl OpenDocuments {
         }
         if operation
             .iter()
-            .all(|op| matches!(op, operation::Op::Retain(_)))
+            .all(|op| matches!(op, operation::op::Op::Retain(_)))
         {
             return false;
         }
@@ -1156,7 +1156,7 @@ impl OpenDocuments {
             document.launch_reparse(parsers, fx);
         }
         if let Some(location) = Self::location(store, documents, document_id) {
-            for sink in ::editor::InstalledChangeSink::of(store) {
+            for sink in ::editor::change_sink::InstalledChangeSink::of(store) {
                 sink.changed(store, &document, &location, base_revision, &text_before, fx);
             }
         }
@@ -1188,14 +1188,14 @@ impl OpenDocuments {
     pub fn absorb_refetched(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document_id: DocumentId,
         base_revision: u64,
         serial: u64,
-        operation: &operation::Operation,
-        fetched: editor::Text,
+        operation: &operation::operation::Operation,
+        fetched: text::text::Text,
         synced: bool,
-        fx: &mut imba::effect::Effects<'_, editor::EditorCommand>,
+        fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) -> bool {
         let Some(entity) = Self::entity(store, documents, document_id) else {
             return false;
@@ -1214,7 +1214,7 @@ impl OpenDocuments {
         }
         let moves = !operation
             .iter()
-            .all(|op| matches!(op, operation::Op::Retain(_)));
+            .all(|op| matches!(op, operation::op::Op::Retain(_)));
         if moves {
             let text_before = document.text().clone();
             let fonts = ::editor::env::Fonts::of(store)();
@@ -1225,7 +1225,7 @@ impl OpenDocuments {
             }
             document.clear_undo_history();
             if let Some(location) = Self::location(store, documents, document_id) {
-                for sink in ::editor::InstalledChangeSink::of(store) {
+                for sink in ::editor::change_sink::InstalledChangeSink::of(store) {
                     sink.changed(store, &document, &location, base_revision, &text_before, fx);
                 }
             }
@@ -1248,7 +1248,7 @@ impl OpenDocuments {
     pub fn remove_if_editorless<R: 'static>(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
@@ -1258,7 +1258,7 @@ impl OpenDocuments {
     pub fn remove_on_close<R: 'static>(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
     ) {
@@ -1268,7 +1268,7 @@ impl OpenDocuments {
     fn release_editorless<R: 'static>(
         store: &mut Store,
         documents: imba::store::Id<OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: DocumentId,
         fx: &mut imba::effect::Effects<'_, R>,
         spare_scratch: bool,
@@ -1361,7 +1361,7 @@ mod tests;
 // (fsroute): plain location-addressed asks, no window anywhere.
 
 pub struct StoreDocumentEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub text: String,
 }
 
@@ -1376,7 +1376,7 @@ impl imba::effect::Effect for StoreDocumentEffect {
 }
 
 pub struct ListDirectoryEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
 }
 
 impl std::fmt::Display for ListDirectoryEffect {
@@ -1386,13 +1386,13 @@ impl std::fmt::Display for ListDirectoryEffect {
 }
 
 impl imba::effect::Effect for ListDirectoryEffect {
-    type Result = Option<Vec<editor::ResourceLocation>>;
+    type Result = Option<Vec<editor::location::ResourceLocation>>;
 }
 
 /// Creates an empty file; never overwrites — false when the
 /// location already exists.
 pub struct CreateDocumentEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
 }
 
 impl std::fmt::Display for CreateDocumentEffect {
@@ -1406,7 +1406,7 @@ impl imba::effect::Effect for CreateDocumentEffect {
 }
 
 pub struct DeleteResourceEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub recursive: bool,
 }
 
@@ -1422,8 +1422,8 @@ impl imba::effect::Effect for DeleteResourceEffect {
 
 /// A rename: fails when the destination exists.
 pub struct MoveResourceEffect {
-    pub from: editor::ResourceLocation,
-    pub to: editor::ResourceLocation,
+    pub from: editor::location::ResourceLocation,
+    pub to: editor::location::ResourceLocation,
 }
 
 impl std::fmt::Display for MoveResourceEffect {
@@ -1452,5 +1452,5 @@ impl std::fmt::Display for PickSaveEffect {
 }
 
 impl imba::effect::Effect for PickSaveEffect {
-    type Result = Option<editor::ResourceLocation>;
+    type Result = Option<editor::location::ResourceLocation>;
 }

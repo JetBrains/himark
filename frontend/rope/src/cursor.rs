@@ -4,7 +4,7 @@
 use crate::metrics::MetricId;
 use crate::rope::Rope;
 use crate::zipper::Zipper;
-use crate::Measure;
+use crate::metrics::Measure;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SeekMode {

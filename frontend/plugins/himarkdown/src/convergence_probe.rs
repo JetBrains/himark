@@ -2,31 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::ReparseWork;
+use editor::reparse::ReparseWork;
 
-fn theme() -> himark::Theme {
+fn theme() -> editor::theme::Theme {
     let json = include_str!("../../../editor/assets/theme.json").replace(
         "\"function\": {",
         "\"function\": { \"font_size\": 44.0, \"bold\": true,",
     );
-    himark::Theme::from_json(&json).expect("the probe theme parses")
+    editor::theme::Theme::from_json(&json).expect("the probe theme parses")
 }
 
 #[test]
 fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let fonts = himark::test_document::test_fonts_collection();
-    let theme = himark::Theme::embedded();
-    let mut document = himark::Document::new(Text::from_string_exact(""), himark::Markup::new())
+    let ui = ::editor::test_document::test_ui();
+    let fonts = ::editor::test_document::test_fonts_collection();
+    let theme = editor::theme::Theme::embedded();
+    let mut document = editor::document::Document::new(Text::from_string_exact(""), editor::markup::Markup::new())
         .with_syntax(
-            himark::Syntax::new("markdown".to_owned(), None, himark::Markup::new()),
+            editor::markup::Syntax::new("markdown".to_owned(), None, editor::markup::Markup::new()),
             &[],
         );
     let editor = document.add_editor(
         400.0,
         None,
-        himark::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -37,7 +37,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
     let _ = editor;
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, 0, "# hi"),
+        &operation::operation::Operation::insert_in(len, 0, "# hi"),
         store,
         ui,
         &fonts,
@@ -45,8 +45,8 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let parsers = std::sync::Arc::new(markdown_languages(himark::SyntaxLanguages::new()));
-    let outcome = himark::ReparseWork::capture(&document, parsers)
+    let parsers = std::sync::Arc::new(markdown_languages(editor::reparse::SyntaxLanguages::new()));
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("a rooted scratch reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -67,7 +67,7 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
         marks
             .ids()
             .iter()
-            .any(|id| matches!(id, himark::StyleId::Header(_))),
+            .any(|id| matches!(id, editor::markup::StyleId::Header(_))),
         "the typed heading styles after the landing (ids: {:?})",
         marks.ids()
     );
@@ -76,14 +76,14 @@ fn a_markdown_rooted_scratch_styles_the_first_typed_heading() {
 #[test]
 fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     let store = &imba::store::Store::new();
-    let ui = himark::test_document::test_ui();
-    let fonts = himark::test_document::test_fonts_collection();
+    let ui = ::editor::test_document::test_ui();
+    let fonts = ::editor::test_document::test_fonts_collection();
     let source = "intro\n\n```rust\nfn main() { let x = 1; }\nfn other() {}\n```\n\noutro\n";
     let mut document = document_from_markdown(source, store, ui, &fonts, &theme());
     let editor = document.add_editor(
         700.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         store,
         ui,
@@ -101,7 +101,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
             &mut store,
             &ui,
             editor,
-            himark::EditorCommand::Viewport {
+            editor::editor_view::EditorCommand::Viewport {
                 width: 700.0,
                 top: 0.0,
                 bottom: 4000.0,
@@ -111,7 +111,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
         );
     }
     let parsers = std::sync::Arc::new(markdown_languages({
-        let mut registry = himark::SyntaxLanguages::new();
+        let mut registry = editor::reparse::SyntaxLanguages::new();
         registry.register(&["rust", "rs"], std::sync::Arc::new(RustLike));
         registry
     }));
@@ -124,7 +124,7 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
     let cx = test_cx_for_probe();
     for effect in himark::test_support::surviving_launches(batch) {
         let command = himark::test_support::handle_effect(effect, &cx);
-        if let himark::EditorCommand::ApplyRepair(items) = command {
+        if let editor::editor_view::EditorCommand::ApplyRepair(items) = command {
             for item in items {
                 document.apply_repair(item);
             }
@@ -133,21 +133,21 @@ fn rich_tokens_keep_incremental_and_fresh_layouts_equal() {
 
     let live = document.element_heights(editor);
     let fresh_view =
-        himark::EditorView::complete(document.clone(), 700.0, store, ui, &fonts, &theme());
+        editor::editor_view::EditorView::complete(document.clone(), 700.0, store, ui, &fonts, &theme());
     let fresh = fresh_view.element_heights();
     assert_eq!(live, fresh, "incremental layout diverged from from-scratch");
 }
 
-fn test_cx_for_probe() -> std::sync::Arc<himark::Workshop> {
-    std::sync::Arc::new(himark::Workshop::new(
-        himark::embedded_fonts::source(),
-        himark::Theme::embedded(),
+fn test_cx_for_probe() -> std::sync::Arc<editor::env::Workshop> {
+    std::sync::Arc::new(editor::env::Workshop::new(
+        editor::embedded_fonts::source(),
+        editor::theme::Theme::embedded(),
     ))
 }
 
 struct RustLike;
 
-impl himark::SyntaxLanguage for RustLike {
+impl editor::reparse::SyntaxLanguage for RustLike {
     fn parse(
         &self,
         text: &Text,
@@ -169,7 +169,7 @@ impl himark::SyntaxLanguage for RustLike {
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<std::ops::Range<u32>>,
         _fonts: &skia_safe::textlayout::FontCollection,
-        _theme: &himark::Theme,
+        _theme: &editor::theme::Theme,
     ) {
         let len = range.end - range.start;
         invalidated.push(0..len);

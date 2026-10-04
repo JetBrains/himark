@@ -7,7 +7,9 @@ use std::sync::{
     Arc, Mutex,
 };
 
-use himark::{open_locations, AppCommand, AppFx, DynamicCommand, ResourceLocation, ResourceType};
+use himark::{open_locations, AppCommand, AppFx, DynamicCommand};
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 use imba::effect::{AnyEffect, Effect, EffectHandler};
 use imba::store::Store;
 
@@ -150,7 +152,7 @@ pub(crate) unsafe fn location_from_abi(abi: &HimarkLocation) -> Option<ResourceL
     }
     Some(ResourceLocation::new(
         ResourceType::new(kind),
-        himark::Authority::new(authority),
+        editor::location::Authority::new(authority),
         path,
     ))
 }
@@ -411,9 +413,9 @@ impl DynamicCommand for OpenPicked {
             if let (true, Some(state)) = (workspace.names_session(), state) {
                 let (wire, comments_wire) = (state.changes_wire(), state.comments_wire());
                 for folder in folders {
-                    let spelled = himark::ResourceLocation::new(
+                    let spelled = editor::location::ResourceLocation::new(
                         folder.kind().clone(),
-                        himark::Authority::new(himark::higent::client::authority(
+                        editor::location::Authority::new(himark::higent::client::authority(
                             workspace.host,
                             &workspace.session,
                         )),
@@ -472,14 +474,14 @@ impl himark::DocumentCommand for OpenWorkingCopy {
     fn perform(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         documents: imba::store::Id<himark::OpenDocuments>,
         _document_id: himark::DocumentId,
-        document: &mut himark::Document,
-        editor: himark::EditorId,
-        location: &himark::ResourceLocation,
+        document: &mut editor::document::Document,
+        editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
         _payload: Option<Box<dyn std::any::Any + Send + Sync>>,
-        _fx: &mut imba::effect::Effects<'_, himark::EditorCommand>,
+        _fx: &mut imba::effect::Effects<'_, editor::editor_view::EditorCommand>,
     ) {
         let working = himark::hichanges::working_copy(location).unwrap_or_else(|| location.clone());
         let byte = document.caret_byte(editor);
@@ -500,7 +502,7 @@ struct ShowWorkingCopy {
     /// The collection the working copy opens into — closed over at the
     /// gesture, in the pane that fired it.
     documents: imba::store::Id<himark::OpenDocuments>,
-    location: himark::ResourceLocation,
+    location: editor::location::ResourceLocation,
     target: std::ops::Range<himark::LineCol>,
 }
 

@@ -20,8 +20,8 @@ pub fn enable_scroll_stripes(
     store: &Store,
     documents: imba::store::Id<OpenDocuments>,
     id: DocumentId,
-    document: &mut editor::Document,
-    editor: editor::EditorId,
+    document: &mut editor::document::Document,
+    editor: editor::editor::EditorId,
 ) {
     document.enable_scroll_stripes(editor);
     if let Some(markup) = OpenDocuments::stripe_diff(store, documents, id)
@@ -35,7 +35,7 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
     store: &mut Store,
     documents: imba::store::Id<OpenDocuments>,
     fx: &mut imba::effect::Effects<'_, R>,
-    wrap: impl Fn(DocumentId, editor::EditorCommand) -> R + Send + Clone + 'static,
+    wrap: impl Fn(DocumentId, editor::editor_view::EditorCommand) -> R + Send + Clone + 'static,
 ) {
     let theme = editor::env::Themes::of(store);
     // O(touched): the write doors queue every entry write; the sweep
@@ -71,7 +71,7 @@ pub fn sync_scroll_stripe_lanes<R: 'static>(
             fx.relaunch_erased(
                 &mut slot,
                 imba::effect::AnyEffect::new(launch.effect).map(move |outcome| {
-                    wrap(id, editor::EditorCommand::ApplyScrollStripes(outcome))
+                    wrap(id, editor::editor_view::EditorCommand::ApplyScrollStripes(outcome))
                 }),
             );
             document.note_scroll_stripe_token(editor, slot);
@@ -112,7 +112,7 @@ mod tests {
         let editor_id = document.add_editor(
             400.0,
             None,
-            editor::EditorBuild::Complete,
+            editor::document::EditorBuild::Complete,
             &[],
             &store,
             ui,
@@ -124,8 +124,8 @@ mod tests {
         let markup = document.add_markup();
         document.show_markup(editor_id, markup);
         document.mark_scroll_stripes(editor_id, markup);
-        let mut tints = editor::Markup::new();
-        tints.push_styled(90..95, editor::ThemeStyleId::Match);
+        let mut tints = editor::markup::Markup::new();
+        tints.push_styled(90..95, editor::theme::StyleId::Match);
         document.replace_markup(markup, tints, &[], &store, ui, &fonts, &theme, quiet);
         OpenDocuments::put_document(&mut store, documents, id, document);
 
@@ -152,7 +152,7 @@ mod tests {
 
         let ui = ::editor::test_document::test_ui();
         let outcome = outcomes.pop().expect("counted");
-        let landing = editor::EditorCommand::ApplyScrollStripes(outcome);
+        let landing = editor::editor_view::EditorCommand::ApplyScrollStripes(outcome);
         let mut document = OpenDocuments::document(&store, documents, id).expect("registered");
         document.perform(&mut store, &ui, editor_id, landing, quiet);
         let landed = document

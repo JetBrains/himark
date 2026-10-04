@@ -10,7 +10,7 @@ use documents::{
     CreateDocumentEffect, DeleteResourceEffect, FetchDocumentEffect, ListDirectoryEffect,
     MoveResourceEffect, StoreDocumentEffect,
 };
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 
 pub struct RouteFetch {
@@ -81,7 +81,7 @@ fn relative_to(origin: &ResourceLocation, reference: &str) -> Option<ResourceLoc
         return None;
     }
     Some(ResourceLocation::new(
-        editor::ResourceType::document(),
+        editor::location::ResourceType::document(),
         origin.authority().clone(),
         segments,
     ))
@@ -128,8 +128,8 @@ impl EffectHandler<ListDirectoryEffect> for RouteList {
                 .into_iter()
                 .map(|(name, directory)| {
                     let kind = match directory {
-                        true => editor::ResourceType::directory(),
-                        false => editor::ResourceType::document(),
+                        true => editor::location::ResourceType::directory(),
+                        false => editor::location::ResourceType::document(),
                     };
                     effect.location.child(kind, &name)
                 })
@@ -263,8 +263,8 @@ mod tests {
 
     fn page() -> ResourceLocation {
         ResourceLocation::new(
-            editor::ResourceType::document(),
-            editor::Authority::new("local"),
+            editor::location::ResourceType::document(),
+            editor::location::Authority::new("local"),
             vec!["repo".to_owned(), "docs".to_owned(), "page.md".to_owned()],
         )
     }

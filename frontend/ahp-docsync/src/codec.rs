@@ -4,17 +4,17 @@
 use documents::sync::Resolve;
 use himark_ahp_ext_types::text::Span;
 use himark_ahp_ext_types::TextOperation;
-use operation::{Op, Operation, OperationBuilder};
+use operation::{op::Op, operation::Operation, builder::OperationBuilder};
 use std::sync::Arc;
 
 pub fn resolve_wire(operation: TextOperation) -> Resolve {
-    Arc::new(move |text: &editor::Text| {
+    Arc::new(move |text: &text::text::Text| {
         let spans = himark_ahp_ext_types::text::spans_of(text, &operation).ok()?;
         operation_of_spans(text, &spans)
     })
 }
 
-fn operation_of_spans(text: &editor::Text, spans: &[Span]) -> Option<Operation> {
+fn operation_of_spans(text: &text::text::Text, spans: &[Span]) -> Option<Operation> {
     himark_ahp_ext_types::text::check_spans(text, spans).ok()?;
     let mut view = text.view();
     let mut builder = OperationBuilder::new();
@@ -39,7 +39,7 @@ fn operation_of_spans(text: &editor::Text, spans: &[Span]) -> Option<Operation> 
 }
 
 #[doc(hidden)]
-pub fn wire_operation(text: &editor::Text, operation: &Operation) -> TextOperation {
+pub fn wire_operation(text: &text::text::Text, operation: &Operation) -> TextOperation {
     himark_ahp_ext_types::text::wire_of(text, &spans_of_operation(operation))
 }
 

@@ -3,15 +3,7 @@
 
 use ahp_types::state::{ConfirmationOption, ConfirmationOptionKind, Message, PendingMessage};
 use hikit::fonts::ui_text_font;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::{container, Container},
-    event::{Event, EventResult},
-    leaf::leaf,
-    thunk_ext::ThunkExt,
-    Layout as _, LayoutExt as _, UiCtx,
-};
+use imba::{arena::Arena, constraints::Constraints, container::{container, Container}, event::{Event, EventResult}, leaf::leaf, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::turn::TurnView;
@@ -236,33 +228,33 @@ impl WidgetStack {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.accent.0,
                 tracking: 0.0,
-                shaper: imba::TextShaper::of(ui),
+                shaper: imba::layout::TextShaper::of(ui),
             };
             let body_style = hikit::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.85),
                 color: chrome.text_color.0,
                 tracking: 0.0,
-                shaper: imba::TextShaper::of(ui),
+                shaper: imba::layout::TextShaper::of(ui),
             };
             let code_style = hikit::ui::TextStyle {
                 font: ui_text_font(ui, chrome.title_size * 0.8),
                 color: chrome.text_color.0,
                 tracking: 0.0,
-                shaper: imba::TextShaper::of(ui),
+                shaper: imba::layout::TextShaper::of(ui),
             };
             let has_preview = ask.input.is_some();
-            let mut body = imba::Column::new(arena)
+            let mut body = imba::layout::Column::new(arena)
                 .gap(hikit::ui::space::M)
                 .child(hikit::ui::text(&title_style, ask.title.clone()))
                 .child(hikit::ui::text(&body_style, ask.invocation.clone()));
             if let Some(preview) = &ask.input {
                 body = body.child(
-                    imba::ZBox::new(arena)
-                        .child(imba::spacer(box_w - box_pad * 2.0, line))
+                    imba::layout::ZBox::new(arena)
+                        .child(imba::layout::spacer(box_w - box_pad * 2.0, line))
                         .child_aligned(
-                            imba::Alignment::CenterStart,
+                            imba::layout::Alignment::CenterStart,
                             hikit::ui::text(&code_style, preview.clone()).pad_insets(
-                                imba::Insets {
+                                imba::layout::Insets {
                                     left: hikit::ui::space::M,
                                     ..Default::default()
                                 },
@@ -275,8 +267,8 @@ impl WidgetStack {
                         ),
                 );
             }
-            let card = imba::ZBox::new(arena)
-                .child(imba::spacer(box_w, card_h))
+            let card = imba::layout::ZBox::new(arena)
+                .child(imba::layout::spacer(box_w, card_h))
                 .child(body.pad(box_pad))
                 .backdrop(
                     hikit::ui::Surface::bordered(chrome.ask_surface.0, chrome.ask_border.0)
@@ -329,11 +321,11 @@ impl WidgetStack {
                     },
                 );
                 let label_ascent = -option_font.metrics().1.ascent;
-                let row = imba::Row::new(arena)
-                    .child(imba::fixed(chip))
+                let row = imba::layout::Row::new(arena)
+                    .child(imba::layout::fixed(chip))
                     .child(
-                        imba::text(ui, label, option_font.clone(), text_color).pad_insets(
-                            imba::Insets {
+                        imba::layout::text(ui, label, option_font.clone(), text_color).pad_insets(
+                            imba::layout::Insets {
                                 left: 0.0,
                                 top: (line * 0.66 - label_ascent).max(0.0),
                                 right: 0.0,
@@ -401,7 +393,7 @@ impl WidgetStack {
                     let id = held.id.clone();
                     let text: String = held.message.text.lines().next().unwrap_or("").to_owned();
                     let row_font = row_font.clone();
-                    let shaper = imba::TextShaper::of(ui);
+                    let shaper = imba::layout::TextShaper::of(ui);
                     let row_y = queue_y + line + index as f32 * line;
                     let row = leaf::<StackCommand>(box_w - box_pad * 2.0, line)
                         .paint_instead(move |_arena, canvas, rect| {

@@ -7,10 +7,8 @@
 //! from the dissolved hidiff plugin (docs/model-view.md stage C).
 
 use documents::{EditorIdView, OpenDocuments};
-use editor::{DiffViewState, SplitDiffCommand, UnifiedDiffCommand, UnifiedDiffView};
-use imba::{
-    arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, UiCtx, View, Widget,
-};
+use editor::{split_diff::DiffViewState, split_diff::SplitDiffCommand, unified_diff::UnifiedDiffCommand, unified_diff::UnifiedDiffView};
+use imba::{arena::Arena, constraints::Constraints, scroll::ScrollView, store::Store, ui::UiCtx, View, Widget};
 
 /// The pane holds IDS (docs/entities.md): the collection its pair
 /// lives in, and the pair's key within it.
@@ -63,7 +61,7 @@ impl View for PairPane {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
         pane_focus_data(self.documents, self.id, store, ui)
     }
@@ -108,7 +106,7 @@ impl View for PairPane {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         // A real THUNK: the gathered view moves into the arena, and
         // `realize` lays it ONCE, bounded by the honest viewport —
         // the widget closes over the result and every later ask
@@ -116,7 +114,7 @@ impl View for PairPane {
         // pre-built widget behind `eager` that re-laid the whole
         // split per ask and invented viewports for `focus_data`
         // (the DiffCanvas.trace lesson).
-        imba::laid(
+        imba::layout::laid(
             move |arena: &'a Arena, constraints: Constraints| GatheredThunk {
                 view: documents::OpenDocuments::diff_view_ref(store, self.documents, self.id)
                     .and_then(|pair| gathered(pair, store, self.documents))
@@ -148,7 +146,7 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
         }
         let size = match self.view {
             Some(view) => {
-                let inner = imba::Layout::layout(
+                let inner = imba::layout::Layout::layout(
                     view.display(self.arena, self.store, self.ui),
                     self.arena,
                     self.constraints,
@@ -167,7 +165,7 @@ impl<'a> imba::Thunk<'a, UnifiedDiffCommand> for GatheredThunk<'a> {
         viewport: skia_safe::Rect,
     ) -> imba::WidgetBox<'a, UnifiedDiffCommand> {
         let inner = self.view.map(|view| {
-            imba::Layout::layout(
+            imba::layout::Layout::layout(
                 view.display(self.arena, self.store, self.ui),
                 self.arena,
                 self.constraints,
@@ -192,7 +190,7 @@ fn pane_focus_data<'w>(
     documents: imba::store::Id<documents::OpenDocuments>,
     id: documents::diffs::DiffViewId,
     store: &'w Store,
-    ui: &'w imba::UiCtx,
+    ui: &'w imba::ui::UiCtx,
 ) -> imba::focus::FocusData<'w, UnifiedDiffCommand> {
     use imba::event::EventResult;
     use imba::focus::FocusData;
@@ -216,20 +214,20 @@ fn pane_focus_data<'w>(
     // stale-true from before a face toggle, and checking them first
     // sent commands (cmd-enter's open-in-full among them) to an
     // editor whose caret was never placed.
-    let wrap: Option<fn(editor::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
-        editor::DiffLayout::Inline => {
+    let wrap: Option<fn(editor::editor_view::EditorCommand) -> UnifiedDiffCommand> = match view.layout {
+        editor::unified_diff::DiffLayout::Inline => {
             if view.inline_editor.is_some_and(|editor| {
-                view.split.right.document.focus(editor) != editor::EditorFocus::None
+                view.split.right.document.focus(editor) != editor::editor_view::EditorFocus::None
             }) {
                 Some(UnifiedDiffCommand::Inline)
             } else {
                 None
             }
         }
-        editor::DiffLayout::Split => {
-            if view.split.left.focus() != editor::EditorFocus::None {
+        editor::unified_diff::DiffLayout::Split => {
+            if view.split.left.focus() != editor::editor_view::EditorFocus::None {
                 Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Left(command)))
-            } else if view.split.right.focus() != editor::EditorFocus::None {
+            } else if view.split.right.focus() != editor::editor_view::EditorFocus::None {
                 Some(|command| UnifiedDiffCommand::Split(SplitDiffCommand::Right(command)))
             } else {
                 None
@@ -243,7 +241,7 @@ fn pane_focus_data<'w>(
         commands.push(imba::PresentableCommand::new(
             "workbench.open-in-full",
             "Open Working Copy",
-            wrap(editor::EditorCommand::Dynamic {
+            wrap(editor::editor_view::EditorCommand::Dynamic {
                 id: "workbench.open-in-full",
                 payload: None,
             }),
@@ -381,7 +379,7 @@ impl DiffPanelView {
         left: EditorIdView,
         right: EditorIdView,
         handle: documents::diffs::DiffHandle,
-        right_extras: editor::MarkupId,
+        right_extras: editor::markup::MarkupId,
         state: Option<DiffViewState>,
     ) -> Self {
         let documents = left.documents();
@@ -411,7 +409,7 @@ impl View for DiffPanelView {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         self.pane.focus_data(store, ui)
     }
@@ -431,15 +429,15 @@ impl View for DiffPanelView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         self.pane.display(arena, store, ui)
     }
 }
 
 #[derive(Clone, PartialEq)]
 pub struct DiffPlace {
-    pub old: editor::ResourceLocation,
-    pub new: editor::ResourceLocation,
+    pub old: editor::location::ResourceLocation,
+    pub new: editor::location::ResourceLocation,
 }
 
 impl hikit::Place for DiffPlace {}
@@ -518,7 +516,7 @@ impl hikit::PanelView for DiffPanelView {
 pub fn diff_panel(
     store: &mut Store,
     documents: imba::store::Id<documents::OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     left: documents::DocumentId,
     right: documents::DocumentId,
 ) -> Option<DiffPanelView> {

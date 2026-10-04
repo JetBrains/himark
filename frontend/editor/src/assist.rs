@@ -4,7 +4,7 @@
 use std::ops::Range;
 
 use imba::store::Store;
-use operation::{Op, Operation, OperationBuilder};
+use operation::{op::Op, operation::Operation, builder::OperationBuilder};
 
 use crate::caret::{Caret, MultiCaret};
 use crate::document::Document;
@@ -45,7 +45,7 @@ impl Document {
         store: &Store,
         editor: EditorId,
         kind: AssistKind,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -190,7 +190,7 @@ impl CaretEdit {
         }
     }
 
-    fn replace(text: &text::Text, range: &Range<u32>, insert: &str) -> Self {
+    fn replace(text: &text::text::Text, range: &Range<u32>, insert: &str) -> Self {
         let byte_count = text_cursor::byte_count(text);
         let start = range.start.min(byte_count);
         let end = range.end.clamp(start, byte_count);
@@ -216,7 +216,7 @@ impl CaretEdit {
     }
 }
 
-fn fallback_edit(text: &text::Text, kind: AssistKind, location: &Range<u32>) -> CaretEdit {
+fn fallback_edit(text: &text::text::Text, kind: AssistKind, location: &Range<u32>) -> CaretEdit {
     match kind {
         AssistKind::Enter { .. } => CaretEdit::replace(text, location, "\n"),
         AssistKind::Indent => CaretEdit::replace(text, location, INDENT_UNIT),

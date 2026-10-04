@@ -3,9 +3,9 @@
 
 use std::ops::Range;
 
-use editor::{Assist, AssistKind, AssistRequest};
-use operation::OperationBuilder;
-use text::Text;
+use editor::{reparse::Assist, reparse::AssistKind, reparse::AssistRequest};
+use operation::builder::OperationBuilder;
+use text::text::Text;
 
 use crate::TsTree;
 
@@ -78,7 +78,7 @@ fn reindent(request: &AssistRequest<'_>, deeper: bool) -> Option<Assist> {
         .line_at((last.saturating_sub((last > location.start) as u32) as usize).min(byte_count))
         .0;
     let line_starts: Vec<u32> = (first_line..=last_line)
-        .map(|line| view.line_start_offset(text::LineNumber(line)) as u32)
+        .map(|line| view.line_start_offset(text::line_number::LineNumber(line)) as u32)
         .collect();
 
     let mut builder = OperationBuilder::new();
@@ -196,7 +196,7 @@ fn line_of(text: &Text, offset: u32) -> Range<u32> {
     let line = view.line_at((offset as usize).min(byte_count));
     let start = view.line_start_offset(line) as u32;
     let end = match line.0 + 1 < view.line_count().0 {
-        true => view.line_start_offset(text::LineNumber(line.0 + 1)) as u32,
+        true => view.line_start_offset(text::line_number::LineNumber(line.0 + 1)) as u32,
         false => byte_count as u32,
     };
     start..end

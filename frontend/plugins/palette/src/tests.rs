@@ -55,7 +55,7 @@ fn typing_filters_selection_moves_and_a_pick_hands_the_command_back() {
     palette.perform(
         &mut store,
         &ui,
-        PaletteCommand::Input(himark::EditorCommand::InsertText {
+        PaletteCommand::Input(editor::editor_view::EditorCommand::InsertText {
             text: "row".to_owned(),
         }),
         &mut batch.effects(),

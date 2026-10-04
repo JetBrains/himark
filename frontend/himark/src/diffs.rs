@@ -21,7 +21,7 @@ pub use documents::diff_views::{
 pub(crate) fn sync_diff_dressing(
     store: &mut Store,
     documents: imba::store::Id<crate::OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fx: &mut AppFx<'_>,
 ) {
     fx.scope(

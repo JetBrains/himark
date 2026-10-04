@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::SyntaxLanguages;
+use editor::reparse::SyntaxLanguages;
 
 pub fn register(registry: &mut SyntaxLanguages) {
     hisitter::register_grammar!(
@@ -23,14 +23,14 @@ pub fn register(registry: &mut SyntaxLanguages) {
 
 #[cfg(test)]
 trait RunReparse {
-    fn run_reparse(self) -> editor::ReparseOutcome;
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome;
 }
 
 #[cfg(test)]
-impl RunReparse for editor::ReparseWork {
-    fn run_reparse(self) -> editor::ReparseOutcome {
-        editor::ReparseHandler(editor::test_document::test_workshop(
-            editor::Theme::embedded(),
+impl RunReparse for editor::reparse::ReparseWork {
+    fn run_reparse(self) -> editor::reparse::ReparseOutcome {
+        editor::reparse::ReparseHandler(editor::test_document::test_workshop(
+            editor::theme::Theme::embedded(),
         ))
         .reparse(self)
     }

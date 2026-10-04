@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::{Measure, MetricId, Metrics};
+use rope::{metrics::Measure, metrics::MetricId, metrics::Metrics};
 
 pub(crate) const TEXT_RANK: usize = 2;
 pub(crate) const NEWLINES: MetricId = MetricId(0);

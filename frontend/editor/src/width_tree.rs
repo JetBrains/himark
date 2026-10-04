@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use operation::{Op, Operation};
-use sumtree::{Bias, Dimension, Item, Splice, SumTree, Summary};
+use operation::{op::Op, operation::Operation};
+use sumtree::{summary::Bias, summary::Dimension, summary::Item, tree::Splice, tree::SumTree, summary::Summary};
 
 #[derive(Clone, Debug)]
 pub(crate) struct WidthSpan {

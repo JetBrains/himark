@@ -2,15 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::ui::UiCtx;
-use crate::{
-    arena::Arena,
-    constraints::Constraints,
-    container::{container, Container},
-    event::{Event, EventResult},
-    store::Store,
-    thunk_ext::ThunkExt,
-    View, Widget,
-};
+use crate::{arena::Arena, constraints::Constraints, container::{container, Container}, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, View, Widget};
 use skia_safe::{Contains, Rect, Size};
 
 #[derive(Clone)]
@@ -214,8 +206,8 @@ where
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
-        crate::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
+        crate::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let divider = self.divider_rect(size);
             let (first_size, second_origin) = match self.arrangement {
@@ -232,14 +224,14 @@ where
                 second_size.height,
             );
 
-            let first = crate::Layout::layout(
+            let first = crate::layout::Layout::layout(
                 self.first.display(arena, store, ui),
                 arena,
                 Constraints::tight(first_size),
             )
             .map(SplitCommand::First)
             .focus_scope(self.focused == Pane::First);
-            let second = crate::Layout::layout(
+            let second = crate::layout::Layout::layout(
                 self.second.display(arena, store, ui),
                 arena,
                 Constraints::tight(second_size),

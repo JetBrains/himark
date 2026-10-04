@@ -4,23 +4,13 @@
 use std::sync::Arc;
 use std::sync::OnceLock;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::{Effect, Effects},
-    event::{Event, EventResult},
-    scroll::ScrollView,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::{Effect, Effects}, event::{Event, EventResult}, scroll::ScrollView, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Canvas, Rect, Size};
-use text::Text;
+use text::text::Text;
 
-use crate::{
-    mount_editor, Document, EditorIdView, Markup, ModalRequest, ModalView, OpenDocuments, Panel,
-    Window, WindowId, Windows, Workbench, WorkbenchNode,
-};
+use crate::{mount_editor, EditorIdView, ModalRequest, ModalView, OpenDocuments, Panel, Window, WindowId, Windows, Workbench, WorkbenchNode};
+use editor::document::Document;
+use editor::markup::Markup;
 
 use crate::stats::{Stats, StatsCommand};
 
@@ -44,7 +34,7 @@ pub struct Application {
 
     handlers: Arc<crate::effects::Handlers>,
 
-    workshop: Arc<::editor::Workshop>,
+    workshop: Arc<::editor::env::Workshop>,
 
     pending_file_events: Vec<crate::watch::Subscription>,
 
@@ -65,7 +55,7 @@ pub struct OpenedDocument {
     pub name: String,
     pub document: Document,
 
-    pub location: Option<crate::ResourceLocation>,
+    pub location: Option<editor::location::ResourceLocation>,
 
     pub primary: bool,
 
@@ -78,7 +68,7 @@ pub struct OpenedDocument {
 }
 
 pub struct AppFonts {
-    source: crate::FontSource,
+    source: ::editor::FontSource,
 }
 
 pub type DocumentBuild = Box<
@@ -121,7 +111,7 @@ pub enum AppCommand {
         name: String,
         primary: bool,
 
-        location: Option<crate::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
         build: DocumentBuild,
     },
 
@@ -133,11 +123,11 @@ pub enum AppCommand {
 
     ViewportResized(WindowId, Size),
 
-    RegisterLanguages(::editor::SyntaxLanguages),
+    RegisterLanguages(::editor::reparse::SyntaxLanguages),
 
     RegisterDiffPolicy(std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
 
-    RegisterEnrichers(::editor::Enrichers),
+    RegisterEnrichers(::editor::enrich::Enrichers),
 }
 
 pub use documents::DocumentsCommand;
@@ -207,7 +197,7 @@ impl Application {
 }
 
 impl AppFonts {
-    pub fn new(source: crate::FontSource) -> Self {
+    pub fn new(source: ::editor::FontSource) -> Self {
         Self { source }
     }
 
@@ -219,7 +209,7 @@ impl AppFonts {
         Self::new(::editor::embedded_fonts::source())
     }
 
-    pub fn source(&self) -> crate::FontSource {
+    pub fn source(&self) -> ::editor::FontSource {
         self.source.clone()
     }
 }
@@ -328,7 +318,7 @@ impl crate::DynamicCommand for EnterFreshSession {
 
 pub(crate) fn markdown_scratch() -> Document {
     Document::new(Text::from_string_exact(""), Markup::new())
-        .with_syntax(::editor::Syntax::new("markdown", None, Markup::new()), &[])
+        .with_syntax(::editor::markup::Syntax::new("markdown", None, Markup::new()), &[])
 }
 
 impl Application {
@@ -365,7 +355,7 @@ impl Application {
         // session ceremony installs one per session, wired with its
         // lists collection (docs/entities.md law 4).
 
-        let workshop = Arc::new(::editor::Workshop::new(
+        let workshop = Arc::new(::editor::env::Workshop::new(
             ::editor::env::Fonts::of(&store),
             ::editor::env::Themes::of(&store),
         ));
@@ -573,8 +563,8 @@ impl Application {
         self.setup(move |store| crate::diffs::StripeBases::install(store, resolve.clone()));
     }
 
-    pub fn register_editor_command(&mut self, command: Arc<dyn crate::DynamicEditorCommand>) {
-        self.setup(|store| ::editor::EditorCommands::register(store, command));
+    pub fn register_editor_command(&mut self, command: Arc<dyn editor::dynamic::DynamicEditorCommand>) {
+        self.setup(|store| ::editor::dynamic::EditorCommands::register(store, command));
     }
 
     /// Commands that act on the COLLECTION — handed the pane's ids at
@@ -591,7 +581,7 @@ impl Application {
         self.setup(|store| crate::pane_rows::RowMinters::register(store, minter));
     }
 
-    pub fn workshop(&self) -> &Arc<::editor::Workshop> {
+    pub fn workshop(&self) -> &Arc<::editor::env::Workshop> {
         &self.workshop
     }
 
@@ -1134,7 +1124,7 @@ pub(crate) struct OpenEffect {
     documents: imba::store::Id<OpenDocuments>,
     name: String,
     primary: bool,
-    location: Option<crate::ResourceLocation>,
+    location: Option<editor::location::ResourceLocation>,
 
     build: DocumentBuild,
 }
@@ -1149,7 +1139,7 @@ impl Effect for OpenEffect {
     type Result = AppCommand;
 }
 
-pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::Workshop>);
+pub(crate) struct OpenHandler(pub(crate) std::sync::Arc<::editor::env::Workshop>);
 
 impl imba::effect::EffectHandler<OpenEffect> for OpenHandler {
     async fn handle(&self, effect: OpenEffect) -> AppCommand {
@@ -1178,7 +1168,7 @@ pub fn open_effect(
     documents: imba::store::Id<OpenDocuments>,
     name: String,
     primary: bool,
-    location: Option<crate::ResourceLocation>,
+    location: Option<editor::location::ResourceLocation>,
     build: DocumentBuild,
 ) -> imba::effect::AnyEffect<AppCommand> {
     imba::effect::AnyEffect::new(OpenEffect {
@@ -1721,8 +1711,8 @@ impl Application {
     ) -> impl Thunk<'a, AppCommand> + 'a {
         let size = constraints.max;
         let entity = crate::Windows::window_ref(store, window).expect("the window entity");
-        let content = imba::Layout::layout(entity.display(arena, store, ui), arena, constraints);
-        let stats = imba::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
+        let content = imba::layout::Layout::layout(entity.display(arena, store, ui), arena, constraints);
+        let stats = imba::layout::Layout::layout(self.stats.display(arena, store, ui), arena, constraints);
 
         let mut container = imba::container::container(arena, size);
         container.place(

@@ -105,21 +105,21 @@ pub(crate) fn orphan(type_id: std::any::TypeId) {
     eprintln!("[himark] dropping effect: no handler registered for {type_id:?}");
 }
 
-pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::editor::Workshop>) {
-    handlers.register::<::editor::RepairEffect>(::editor::RepairHandler(Arc::clone(workshop)));
-    handlers.register::<::editor::ReparseEffect>(::editor::ReparseHandler(Arc::clone(workshop)));
+pub(crate) fn register_builtins(handlers: &Arc<Handlers>, workshop: &Arc<::editor::env::Workshop>) {
+    handlers.register::<::editor::repair::RepairEffect>(::editor::repair::RepairHandler(Arc::clone(workshop)));
+    handlers.register::<::editor::reparse::ReparseEffect>(::editor::reparse::ReparseHandler(Arc::clone(workshop)));
     {
         let registry = Arc::downgrade(handlers);
         let caller = imba::effect::EffectCaller::new(Arc::new(move |type_id, payload| {
             registry.upgrade()?.call_future(type_id, payload)
         }));
-        handlers.register::<::editor::EnrichEffect>(::editor::EnrichHandler {
+        handlers.register::<::editor::enrich::EnrichEffect>(::editor::enrich::EnrichHandler {
             workshop: Arc::clone(workshop),
             caller,
         });
     }
     handlers
-        .register::<::editor::RepairDiffEffect>(::editor::RepairDiffHandler(Arc::clone(workshop)));
+        .register::<::editor::split_diff::RepairDiffEffect>(::editor::split_diff::RepairDiffHandler(Arc::clone(workshop)));
     handlers.register::<::editor::scroll_stripe::ScrollStripeEffect>(
         ::editor::scroll_stripe::ScrollStripeHandler(Arc::clone(workshop)),
     );

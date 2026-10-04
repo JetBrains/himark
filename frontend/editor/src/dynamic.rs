@@ -29,17 +29,17 @@ pub trait DynamicEditorCommand: Send + Sync + 'static {
 
     fn name(&self) -> String;
 
-    fn offers_at(&self, location: &crate::ResourceLocation) -> bool {
+    fn offers_at(&self, location: &crate::location::ResourceLocation) -> bool {
         !location.is_synthetic()
     }
     #[allow(clippy::too_many_arguments)]
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         document: &mut Document,
         editor: EditorId,
-        location: &crate::ResourceLocation,
+        location: &crate::location::ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut EditorEffects<'_>,
     );

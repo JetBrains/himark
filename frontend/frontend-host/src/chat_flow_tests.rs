@@ -847,7 +847,7 @@ fn a_long_stream_costs_a_cell_per_part_and_never_a_turn() {
     // …and then HUNDREDS of deltas grow it: no mount, no document born
     // anywhere (the background runner runs on this thread here too).
     let mounted = Cell::documents_mounted();
-    let born = himark::Document::born_on_this_thread();
+    let born = editor::document::Document::born_on_this_thread();
     for step in 0..300 {
         script.feed(vec![StateAction::ChatDelta(ChatDeltaAction {
             turn_id: "t-long".to_owned(),
@@ -866,7 +866,7 @@ fn a_long_stream_costs_a_cell_per_part_and_never_a_turn() {
         "300 deltas re-mounted a cell — a delta is an APPEND"
     );
     assert_eq!(
-        himark::Document::born_on_this_thread() - born,
+        editor::document::Document::born_on_this_thread() - born,
         0,
         "300 deltas built a document — a delta is an APPEND"
     );
@@ -888,7 +888,7 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
     assert_eq!(transcript(&engine).len(), 8, "the page is laid");
 
     let mounted = Cell::documents_mounted();
-    let born = himark::Document::born_on_this_thread();
+    let born = editor::document::Document::born_on_this_thread();
     let chat = ChatUri::new(CHAT);
     let chats = chats_of_window(&engine);
     for _ in 0..3 {
@@ -903,7 +903,7 @@ fn walking_back_to_a_chat_rebuilds_nothing() {
         "walking back re-mounted cells — the mount is kept, not re-laid"
     );
     assert_eq!(
-        himark::Document::born_on_this_thread() - born,
+        editor::document::Document::born_on_this_thread() - born,
         0,
         "walking back built documents — the mount is kept, not re-laid"
     );
@@ -954,7 +954,7 @@ fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
     paint(&mut engine, window);
 
     let mounted = Cell::documents_mounted();
-    let born = himark::Document::born_on_this_thread();
+    let born = editor::document::Document::born_on_this_thread();
     // Two clocks: `draw` + `drain` is a FRAME — painting plus the
     // landings the UI thread absorbs. `run_pending` is the background
     // runner, another thread in production.
@@ -974,13 +974,13 @@ fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
             engine.worker().run_pending();
             background.push(work.elapsed());
 
-            let born_before = himark::Document::born_on_this_thread();
+            let born_before = editor::document::Document::born_on_this_thread();
             let frame = std::time::Instant::now();
             let _ = engine.draw(window, surface.canvas(), 1100.0, 800.0, 1.0);
             engine.drain();
             frames.push(frame.elapsed());
             assert_eq!(
-                himark::Document::born_on_this_thread(),
+                editor::document::Document::born_on_this_thread(),
                 born_before,
                 "edit {step}: a document was built on the UI THREAD"
             );
@@ -1003,7 +1003,7 @@ fn a_turn_of_hundreds_of_edits_never_stalls_a_frame() {
         "{EDITS} edits, each mounted once — never a turn re-laid"
     );
     assert_eq!(
-        himark::Document::born_on_this_thread() - born,
+        editor::document::Document::born_on_this_thread() - born,
         2 * EDITS as u64,
         "{EDITS} edits, two sides each, built once on the runner"
     );

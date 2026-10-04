@@ -6,13 +6,15 @@ use std::sync::{Arc, Mutex};
 use imba::store::Store;
 
 use super::*;
-use crate::test_document::plain_document;
-use crate::{AppFonts, Application, Document, OpenDocuments, OpenedDocument, ResourceLocation};
+use ::editor::test_document::plain_document;
+use crate::{AppFonts, Application, OpenDocuments, OpenedDocument};
+use editor::document::Document;
+use editor::location::ResourceLocation;
 
 fn located(name: &str) -> ResourceLocation {
     ResourceLocation::new(
-        crate::ResourceType::document(),
-        crate::Authority::new("test"),
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("test"),
         vec!["project".to_owned(), name.to_owned()],
     )
 }
@@ -31,7 +33,7 @@ fn text_of(document: &Document) -> String {
     view.substring(0..end)
 }
 
-fn text_of_text(text: &crate::Text) -> String {
+fn text_of_text(text: &text::text::Text) -> String {
     let mut view = text.view();
     let end = view.byte_count().min(u32::MAX as usize) as u32;
     view.substring(0..end)
@@ -153,14 +155,14 @@ fn a_stale_diff_landing_discards_itself() {
     let stale_revision = document.revision();
     let operation = myersdiff::diff(
         document.text(),
-        &crate::Text::from_string_exact("external\n"),
+        &text::text::Text::from_string_exact("external\n"),
     );
 
     let mut document = OpenDocuments::document(&store, docs(), id).expect("the document");
     let editor = document.add_editor(
         600.0,
         None,
-        ::editor::EditorBuild::Complete,
+        ::editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -202,10 +204,10 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     let mut store = test_store();
     let mut document = plain_document("alpha\nbeta\n");
     document.install_syntax(
-        ::editor::Syntax {
+        ::editor::markup::Syntax {
             language: "test".to_owned(),
             tree: None,
-            markup: crate::Markup::new(),
+            markup: editor::markup::Markup::new(),
             folds: Default::default(),
             outline: Default::default(),
         },
@@ -221,14 +223,14 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
         saved,
     );
     store.put(::editor::env::Parsers(std::sync::Arc::new(
-        ::editor::SyntaxLanguages::new(),
+        ::editor::reparse::SyntaxLanguages::new(),
     )));
 
     let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let base_revision = document.revision();
     let operation = myersdiff::diff(
         document.text(),
-        &crate::Text::from_string_exact("alpha\nCHANGED\n"),
+        &text::text::Text::from_string_exact("alpha\nCHANGED\n"),
     );
     let mut batch = imba::effect::Batch::new();
     OpenDocuments::edit_external(
@@ -244,7 +246,7 @@ fn an_absorbed_external_edit_kicks_the_reparse_lane() {
     assert!(
         launches
             .iter()
-            .any(|effect| effect.is::<::editor::ReparseEffect>()),
+            .any(|effect| effect.is::<::editor::reparse::ReparseEffect>()),
         "the absorb launches the document's reparse"
     );
 }
@@ -254,7 +256,7 @@ fn typed(store: &mut Store, id: crate::DocumentId, at: u32, text: &str) {
     let mut document = OpenDocuments::document(store, docs(), id).expect("the document");
     let len = document.text().byte_count().min(u32::MAX as usize) as u32;
     document.edit(
-        &operation::Operation::insert_in(len, at, text),
+        &operation::operation::Operation::insert_in(len, at, text),
         store,
         ui,
         ::editor::test_document::test_fonts_collection(),
@@ -466,14 +468,14 @@ fn rapid_agent_writes_land_exactly_once_and_never_go_stale() {
             OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .text(),
-            &crate::Text::from_string_exact(target),
+            &text::text::Text::from_string_exact(target),
         );
         assert!(OpenDocuments::edit_shared(
             store,
             docs(),
             &ui,
             id,
-            ::editor::EditIdentity::mint(),
+            ::editor::edit_log::EditIdentity::mint(),
             base,
             &op,
             &mut imba::effect::Batch::new().effects(),
@@ -572,7 +574,7 @@ fn the_saves_own_echo_is_a_no_op() {
     let id = registered(&mut store, "alpha\n");
     let document = OpenDocuments::document_ref(&store, docs(), id).expect("the document");
     let before = document.revision();
-    let operation = myersdiff::diff(document.text(), &crate::Text::from_string_exact("alpha\n"));
+    let operation = myersdiff::diff(document.text(), &text::text::Text::from_string_exact("alpha\n"));
     OpenDocuments::edit_external(
         &mut store,
         docs(),
@@ -880,7 +882,7 @@ fn a_shared_edit_is_not_a_reload() {
     let editor = document.add_editor(
         600.0,
         None,
-        ::editor::EditorBuild::Complete,
+        ::editor::document::EditorBuild::Complete,
         &[],
         &store,
         ui,
@@ -904,12 +906,12 @@ fn a_shared_edit_is_not_a_reload() {
         .revision();
     assert!(dirty_at > saved, "typing dirtied it");
 
-    let identity = ::editor::EditIdentity::mint();
+    let identity = ::editor::edit_log::EditIdentity::mint();
     let peer = myersdiff::diff(
         OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
-        &crate::Text::from_string_exact("typed alpha\npeer\n"),
+        &text::text::Text::from_string_exact("typed alpha\npeer\n"),
     );
     let applied = OpenDocuments::edit_shared(
         &mut store,
@@ -942,7 +944,7 @@ fn a_shared_edit_is_not_a_reload() {
         docs(),
         &ui,
         id,
-        ::editor::EditIdentity::mint(),
+        ::editor::edit_log::EditIdentity::mint(),
         dirty_at,
         &peer,
         &mut imba::effect::Batch::new().effects(),
@@ -967,14 +969,14 @@ fn an_agents_shared_edit_is_not_applied_twice_by_its_file_echo() {
         OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
-        &crate::Text::from_string_exact("alpha\nAGENT\nbeta\n"),
+        &text::text::Text::from_string_exact("alpha\nAGENT\nbeta\n"),
     );
     assert!(OpenDocuments::edit_shared(
         &mut store,
         docs(),
         &ui,
         id,
-        ::editor::EditIdentity::mint(),
+        ::editor::edit_log::EditIdentity::mint(),
         base,
         &shared,
         &mut imba::effect::Batch::new().effects(),
@@ -1045,14 +1047,14 @@ fn a_trailing_file_echo_of_one_of_two_shared_edits_stays_single() {
             OpenDocuments::document_ref(store, docs(), id)
                 .expect("the document")
                 .text(),
-            &crate::Text::from_string_exact(target),
+            &text::text::Text::from_string_exact(target),
         );
         assert!(OpenDocuments::edit_shared(
             store,
             docs(),
             &ui,
             id,
-            ::editor::EditIdentity::mint(),
+            ::editor::edit_log::EditIdentity::mint(),
             base,
             &op,
             &mut imba::effect::Batch::new().effects(),
@@ -1123,14 +1125,14 @@ fn a_shared_deletions_file_echo_deletes_nothing_further() {
         OpenDocuments::document_ref(&store, docs(), id)
             .expect("the document")
             .text(),
-        &crate::Text::from_string_exact("alpha\nbeta\n"),
+        &text::text::Text::from_string_exact("alpha\nbeta\n"),
     );
     assert!(OpenDocuments::edit_shared(
         &mut store,
         docs(),
         &ui,
         id,
-        ::editor::EditIdentity::mint(),
+        ::editor::edit_log::EditIdentity::mint(),
         base,
         &op,
         &mut imba::effect::Batch::new().effects(),
@@ -1189,7 +1191,7 @@ fn a_same_line_conflict_keeps_both_sides_bytes() {
         let mut document = OpenDocuments::document(&store, docs(), id).expect("the document");
         let op = myersdiff::diff(
             document.text(),
-            &crate::Text::from_string_exact("alpha\nOURS\nbeta\n"),
+            &text::text::Text::from_string_exact("alpha\nOURS\nbeta\n"),
         );
         document.edit(
             &op,

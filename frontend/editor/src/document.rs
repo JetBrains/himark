@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use imba::store::Store;
-use operation::{Op, Operation};
-use text::Text;
+use operation::{op::Op, operation::Operation};
+use text::text::Text;
 
 use crate::edit_log::EditLog;
 use crate::editor::{Editor, EditorEffects, EditorId, EditorPlaceholder};
@@ -75,7 +75,7 @@ pub struct Document {
 
     reparse_token: Option<imba::effect::CancellationToken>,
 
-    enrich_base: Option<crate::ResourceLocation>,
+    enrich_base: Option<crate::location::ResourceLocation>,
 
     enrich: rpds::HashTrieMapSync<EnrichKey, EnrichSlot>,
 
@@ -170,7 +170,7 @@ impl Document {
         language: &str,
         languages: &SyntaxLanguages,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -223,7 +223,7 @@ impl Document {
         &self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<(u32, f32)> {
@@ -235,7 +235,7 @@ impl Document {
             ui,
         };
         let layout = {
-            crate::DocumentLayout::build_complete(
+            crate::document_layout::DocumentLayout::build_complete(
                 &self.text,
                 crate::markup::OverlaidMarkup::new(syntax_markup(&self.syntax), &extras),
                 measure,
@@ -311,7 +311,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> bool {
@@ -441,7 +441,7 @@ impl Document {
     fn edit_substance(
         &mut self,
         operation: &Operation,
-        identity: crate::EditIdentity,
+        identity: crate::edit_log::EditIdentity,
         provenance: Provenance,
     ) {
         let old_len = self.text.view().byte_count().min(u32::MAX as usize) as u32;
@@ -583,7 +583,7 @@ impl Document {
         &mut self,
         enrichers: &crate::enrich::Enrichers,
         languages: Option<std::sync::Arc<SyntaxLanguages>>,
-        base: Option<crate::ResourceLocation>,
+        base: Option<crate::location::ResourceLocation>,
         changed: &[Range<u32>],
         fx: &mut EditorEffects<'_>,
     ) {
@@ -694,9 +694,9 @@ impl Document {
     pub fn land_reparse(
         &mut self,
         outcome: ReparseOutcome,
-        base: Option<crate::ResourceLocation>,
+        base: Option<crate::location::ResourceLocation>,
         store: &Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -720,7 +720,7 @@ impl Document {
         &mut self,
         outcome: crate::enrich::EnrichOutcome,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -790,7 +790,7 @@ impl Document {
         &mut self,
         enrichers: &crate::enrich::Enrichers,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -803,7 +803,7 @@ impl Document {
         enrichers: &crate::enrich::Enrichers,
         changed: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -876,7 +876,7 @@ impl Document {
     pub fn inlay_focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
         key: InlayKey,
     ) -> Option<imba::focus::FocusData<'w, crate::markup::InlayCommand>> {
         self.markup_of(key.layer)
@@ -1082,7 +1082,7 @@ impl Document {
         id: MarkupId,
         changed: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1123,7 +1123,7 @@ impl Document {
         range: Range<u32>,
         inlay: Inlay,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1142,7 +1142,7 @@ impl Document {
         &mut self,
         key: InlayKey,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1180,7 +1180,7 @@ impl Document {
     fn perform_inlay_raw(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         key: InlayKey,
         command: InlayCommand,
         fx: &mut imba::effect::Effects<'_, InlayCommand>,
@@ -1223,7 +1223,7 @@ impl Document {
         build: EditorBuild,
         shown: &[MarkupId],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1310,7 +1310,7 @@ impl Document {
     pub fn perform(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         editor: EditorId,
         command: EditorCommand,
         fx: &mut EditorEffects<'_>,
@@ -1336,7 +1336,7 @@ impl Document {
     fn perform_command(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         editor: EditorId,
         command: EditorCommand,
         fx: &mut EditorEffects<'_>,
@@ -1656,7 +1656,7 @@ impl Document {
         editor: EditorId,
         text: &str,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1679,7 +1679,7 @@ impl Document {
         selected: Range<u32>,
         replacement: Option<Range<u32>>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1721,7 +1721,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         range: Range<u32>,
@@ -1766,7 +1766,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1789,7 +1789,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1835,13 +1835,13 @@ impl Document {
         &mut self,
         operation: &Operation,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
     ) {
         self.edit_as(
-            crate::EditIdentity::mint(),
+            crate::edit_log::EditIdentity::mint(),
             operation,
             store,
             ui,
@@ -1853,10 +1853,10 @@ impl Document {
 
     pub fn edit_as(
         &mut self,
-        identity: crate::EditIdentity,
+        identity: crate::edit_log::EditIdentity,
         operation: &Operation,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1875,10 +1875,10 @@ impl Document {
 
     pub fn edit_shared(
         &mut self,
-        identity: crate::EditIdentity,
+        identity: crate::edit_log::EditIdentity,
         operation: &Operation,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -1897,11 +1897,11 @@ impl Document {
 
     fn edit_with(
         &mut self,
-        identity: crate::EditIdentity,
+        identity: crate::edit_log::EditIdentity,
         provenance: Provenance,
         operation: &Operation,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2037,7 +2037,7 @@ impl Document {
         editor: EditorId,
         byte: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2056,7 +2056,7 @@ impl Document {
         editor: EditorId,
         range: Range<u32>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2081,7 +2081,7 @@ impl Document {
         editor: EditorId,
         byte: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2314,7 +2314,7 @@ impl Document {
         state.settle_to = None;
     }
 
-    pub fn document_layout(&self, editor: EditorId) -> Option<&crate::DocumentLayout> {
+    pub fn document_layout(&self, editor: EditorId) -> Option<&crate::document_layout::DocumentLayout> {
         self.editors.get(&editor).map(|editor| &editor.layout)
     }
 
@@ -2330,7 +2330,7 @@ impl Document {
         root: Syntax,
         sites: &[SyntaxSite],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2350,7 +2350,7 @@ impl Document {
         &mut self,
         outcome: ReparseOutcome,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2477,7 +2477,7 @@ impl Document {
         width: f32,
         anchor_byte: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2546,7 +2546,7 @@ impl Document {
         editor: EditorId,
         anchor: u32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2594,7 +2594,7 @@ impl Document {
     pub fn perform_inlay(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         editor: EditorId,
         key: InlayKey,
         command: InlayCommand,
@@ -2680,7 +2680,7 @@ impl Document {
         range: Range<u32>,
         inlay: Inlay,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2704,7 +2704,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2744,7 +2744,7 @@ impl Document {
     fn repair_damaged_viewports(
         &mut self,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2798,7 +2798,7 @@ impl Document {
         &mut self,
         span: Range<u32>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2920,7 +2920,7 @@ impl Document {
         changed: Vec<Range<u32>>,
         derived_at: u64,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -2948,7 +2948,7 @@ impl Document {
         id: crate::diff::DiffId,
         changed: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -3031,7 +3031,7 @@ impl Document {
         replacement: Markup,
         changed: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -3058,7 +3058,7 @@ impl Document {
         id: MarkupId,
         changed: &[Range<u32>],
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -3288,7 +3288,7 @@ impl Document {
         rows: &[Range<u32>],
         width: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Vec<crate::document_layout::DocumentLayout> {
@@ -3339,7 +3339,7 @@ impl Document {
         x: f32,
         y: f32,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Option<u32> {

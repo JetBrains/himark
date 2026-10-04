@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use crate::{AnnotationId, CardWork, CommentRecord, Comments};
 use documents::{DocumentId, LineCol};
-use editor::InlayKey;
+use editor::markup::InlayKey;
 use imba::command::{Fx, Verb};
 use imba::store::Store;
 
@@ -19,7 +19,7 @@ use crate::view::{comments_markup, CommentView};
 
 pub fn run_card_work(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     comments: imba::store::Id<Comments>,
     work: CardWork,
     fx: &mut Fx<'_>,
@@ -38,7 +38,7 @@ pub fn run_card_work(
 /// feed, and every record whose document is open settles into a card.
 fn settle_cards(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     comments: imba::store::Id<Comments>,
     fx: &mut Fx<'_>,
 ) {
@@ -62,7 +62,7 @@ fn settle_cards(
 fn remove_card(
     store: &mut Store,
     documents: imba::store::Id<documents::OpenDocuments>,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     document: DocumentId,
     key: InlayKey,
     fx: &mut Fx<'_>,
@@ -98,7 +98,7 @@ impl documents::DocumentHook for CommentsHook {
         store: &mut Store,
         _documents: imba::store::Id<documents::OpenDocuments>,
         document: DocumentId,
-        location: Option<&editor::ResourceLocation>,
+        location: Option<&editor::location::ResourceLocation>,
     ) {
         let Some(location) = location else {
             return;
@@ -116,8 +116,8 @@ impl documents::DocumentHook for CommentsHook {
         store: &mut Store,
         _documents: imba::store::Id<documents::OpenDocuments>,
         document: DocumentId,
-        _location: Option<&editor::ResourceLocation>,
-        doc: &editor::Document,
+        _location: Option<&editor::location::ResourceLocation>,
+        doc: &editor::document::Document,
     ) {
         let comments = self.comments;
         for (id, key) in Comments::cards_in(store, comments, document) {
@@ -143,7 +143,7 @@ impl imba::command::DynamicCommand for MaterializeFor {
     fn name(&self) -> String {
         "Materialize Comments".to_owned()
     }
-    fn perform(&self, store: &mut Store, ui: &imba::UiCtx, fx: &mut Fx<'_>) {
+    fn perform(&self, store: &mut Store, ui: &imba::ui::UiCtx, fx: &mut Fx<'_>) {
         let Some(documents) = Comments::documents_of(store, self.comments) else {
             return;
         };
@@ -166,7 +166,7 @@ impl imba::command::DynamicCommand for MaterializeFor {
 /// The card's live range read off the CLOSING row itself — the hook
 /// is handed the document; a store read here would be lease
 /// reentrancy (docs/entities.md law 5).
-fn live_card_range(doc: &editor::Document, key: InlayKey) -> Option<Range<LineCol>> {
+fn live_card_range(doc: &editor::document::Document, key: InlayKey) -> Option<Range<LineCol>> {
     let markup = doc.feature_markup(comments_markup())?;
 
     let (range, _) = markup.inlay_at_key(comments_markup(), key)?;
@@ -179,7 +179,7 @@ fn live_card_range(doc: &editor::Document, key: InlayKey) -> Option<Range<LineCo
 
 fn materialize(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     comments: imba::store::Id<Comments>,
     id: &AnnotationId,
     record: &CommentRecord,
@@ -232,7 +232,7 @@ fn materialize(
             let key = doc.push_inlay(
                 markup,
                 range.clone(),
-                editor::Inlay::new(editor::InlayMode::Under, view.clone()),
+                editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone()),
                 store,
                 ui,
                 &fonts,
@@ -242,7 +242,7 @@ fn materialize(
             doc.swap_inlay(
                 key,
                 range.clone(),
-                editor::Inlay::new(editor::InlayMode::Under, view.clone().keyed(key)),
+                editor::markup::Inlay::new(editor::markup::InlayMode::Under, view.clone().keyed(key)),
             );
             minted = Some(key);
         },
@@ -255,7 +255,7 @@ fn materialize(
 
 fn refresh_card(
     store: &mut Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     comments: imba::store::Id<Comments>,
     id: &AnnotationId,
     record: &CommentRecord,
@@ -303,7 +303,7 @@ fn refresh_card(
     doc.swap_inlay(
         key,
         range,
-        editor::Inlay::new(editor::InlayMode::Under, rebuilt),
+        editor::markup::Inlay::new(editor::markup::InlayMode::Under, rebuilt),
     );
     documents::OpenDocuments::put_document(store, documents, document, doc);
 }

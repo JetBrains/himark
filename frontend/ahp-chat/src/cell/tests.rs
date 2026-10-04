@@ -32,7 +32,7 @@ fn resolved(before: &str, after: &str) -> Cell {
             before: Some(before.to_owned()),
             after: Some(after.to_owned()),
         },
-        &std::sync::Arc::new(editor::SyntaxLanguages::new()),
+        &std::sync::Arc::new(editor::reparse::SyntaxLanguages::new()),
         &(std::sync::Arc::new(myersdiff::Myers) as std::sync::Arc<dyn ::editor::diff::DiffPolicy>),
         &store,
         &ui,
@@ -57,7 +57,7 @@ fn paint_cell(
     path: &str,
 ) -> (f32, Vec<CellCommand>) {
     let arena = Arena::default();
-    let thunk = imba::Layout::layout(
+    let thunk = imba::layout::Layout::layout(
         imba::View::display(cell, &arena, store, ui),
         &arena,
         Constraints {
@@ -156,7 +156,7 @@ fn expanded_before_cards_are_born_full_size() {
 
     let height_of = |cell: &Cell, store: &Store, ui: &UiCtx| {
         let arena = Arena::default();
-        let thunk = imba::Layout::layout(
+        let thunk = imba::layout::Layout::layout(
             imba::View::display(cell, &arena, store, ui),
             &arena,
             Constraints {
@@ -175,7 +175,7 @@ fn expanded_before_cards_are_born_full_size() {
     for tick in 0..40u32 {
         let commands = {
             let arena = Arena::default();
-            let thunk = imba::Layout::layout(
+            let thunk = imba::layout::Layout::layout(
                 imba::View::display(&cell, &arena, &store, &ui),
                 &arena,
                 Constraints {
@@ -248,7 +248,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     for _ in 0..2 {
         let cell = resolved(&before, &after);
         let arena = Arena::default();
-        let height = imba::Thunk::size(&imba::Layout::layout(
+        let height = imba::Thunk::size(&imba::layout::Layout::layout(
             imba::View::display(&cell, &arena, &store, &ui),
             &arena,
             Constraints {
@@ -282,7 +282,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     ] {
         scroll.set_scroll_y(scroll_y);
         let arena = Arena::default();
-        let thunk = imba::Layout::layout(
+        let thunk = imba::layout::Layout::layout(
             imba::View::display(&scroll, &arena, &store, &ui),
             &arena,
             Constraints::tight(Size::new(width, view_h)),
@@ -313,7 +313,7 @@ fn a_scrolled_turn_of_cells_paints_and_keeps_its_extent() {
     // The turn's laid extent is exactly the sum of its cells'
     // declared heights — the list contract the scroll rides on.
     let arena = Arena::default();
-    let turn_height = imba::Thunk::size(&imba::Layout::layout(
+    let turn_height = imba::Thunk::size(&imba::layout::Layout::layout(
         imba::View::display(scroll.content(), &arena, &store, &ui),
         &arena,
         Constraints {
@@ -344,7 +344,7 @@ fn a_resolved_edit_lands_as_an_inline_diff_with_folds() {
     let CellBody::Diff { view, .. } = &cell.body else {
         panic!("the resolve lands the diff face");
     };
-    assert_eq!(view.layout, editor::DiffLayout::Inline, "inline from birth");
+    assert_eq!(view.layout, editor::unified_diff::DiffLayout::Inline, "inline from birth");
     let inline = view.inline_editor.expect("the inline face is minted");
 
     // The forty untouched lines hide behind a fold strip...
@@ -380,7 +380,7 @@ fn a_resolved_edit_lands_as_an_inline_diff_with_folds() {
         .feature_markup(view.split.state.hunk_markup_oracle())
         .expect("THE diff markup rides the document");
     assert!(
-        !editor::set_diff(None, hunks).is_empty(),
+        !editor::markup::set_diff(None, hunks).is_empty(),
         "the hunk is washed"
     );
 

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use crate::cursor::{Cursor, CursorIter};
 use crate::node::{Child, MetricsWithLength, Node, BRANCHING_FACTOR, LEAVES_CAPACITY};
 use crate::zipper::Zipper;
-use crate::Measure;
+use crate::metrics::Measure;
 
 pub struct Rope<T: Clone, M: Measure<T>> {
     pub(crate) metrics: MetricsWithLength<M::Metrics>,

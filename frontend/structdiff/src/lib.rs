@@ -22,8 +22,8 @@ use difftastic_core::diff::unchanged::mark_unchanged;
 use difftastic_core::options::DEFAULT_GRAPH_LIMIT;
 use difftastic_core::parse::guess_language::Language;
 use difftastic_core::parse::syntax::{init_all_info, init_next_prev};
-use operation::Operation;
-use text::Text;
+use operation::operation::Operation;
+use text::text::Text;
 use typed_arena::Arena;
 
 /// Trees for the structural path. Both are snapshots parsed from
@@ -60,8 +60,8 @@ fn worth_structural(myers: &Operation) -> bool {
     let mut changed = 0usize;
     for op in myers.iter() {
         match op {
-            operation::Op::Retain(_) => {}
-            operation::Op::Delete(text) | operation::Op::Insert(text) => {
+            operation::op::Op::Retain(_) => {}
+            operation::op::Op::Delete(text) | operation::op::Op::Insert(text) => {
                 pieces += 1;
                 changed += text.len();
             }
@@ -90,11 +90,11 @@ pub fn diff(left: &Text, right: &Text, syntax: Option<&SyntaxInput>) -> Operatio
 /// Myers everywhere else. Owns the language registry so it can parse
 /// a side the caller has no tree for (typically the baseline).
 pub struct Structural {
-    languages: std::sync::Arc<editor::SyntaxLanguages>,
+    languages: std::sync::Arc<editor::reparse::SyntaxLanguages>,
 }
 
 impl Structural {
-    pub fn new(languages: std::sync::Arc<editor::SyntaxLanguages>) -> Self {
+    pub fn new(languages: std::sync::Arc<editor::reparse::SyntaxLanguages>) -> Self {
         Self { languages }
     }
 
@@ -106,8 +106,8 @@ impl Structural {
         &self,
         language: &str,
         text: &Text,
-        old: Option<&dyn editor::SyntaxTree>,
-    ) -> Option<Box<dyn editor::SyntaxTree>> {
+        old: Option<&dyn editor::reparse::SyntaxTree>,
+    ) -> Option<Box<dyn editor::reparse::SyntaxTree>> {
         let language = self.languages.ensure(language)?;
         let len = text.view().byte_count() as u32;
         language.parse(text, 0..len, old)
@@ -273,7 +273,7 @@ fn slider_language(name: Option<&str>) -> Language {
 /// Applies `operation` to `left`; `None` if it doesn't fit. Test/debug
 /// support for the exactness contract.
 pub fn apply(operation: &Operation, left: &str) -> Option<String> {
-    use operation::Op;
+    use operation::op::Op;
     let mut out = String::with_capacity(operation.new_len() as usize);
     let mut at = 0usize;
     for op in operation.iter() {
@@ -297,7 +297,7 @@ pub fn apply(operation: &Operation, left: &str) -> Option<String> {
 #[cfg(test)]
 mod gate {
     use super::*;
-    use operation::Op;
+    use operation::op::Op;
 
     #[test]
     fn a_modest_change_is_worth_structural() {

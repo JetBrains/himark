@@ -1,17 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult, Key},
-    leaf::leaf,
-    list::{ListCommand, ListOps, ListSlice, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
+use imba::{constraints::Constraints, effect::Effects, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListOps, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 use skia_safe::{Paint, Point, Rect, Size};
 
 use crate::combo::{measured, ComboItem, ComboOption};
@@ -141,8 +131,8 @@ impl View for MenuView {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        use imba::LayoutExt as _;
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        use imba::layout::LayoutExt as _;
         self.rows
             .display(arena, store, ui)
             .map_layout(|command| MenuCommand::Rows(Box::new(command)))
@@ -223,8 +213,8 @@ impl View for PopupMenuView {
         arena: &'a imba::arena::Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a imba::arena::Arena, _constraints: Constraints| {
                 self.overlay_at(arena, store, ui)
             },
@@ -292,7 +282,7 @@ impl<'a> PopupSeed<'a> {
                 canvas.draw_rect(rect.with_inset((0.5, 0.5)), &paint);
             }),
         );
-        let rows = imba::Layout::layout(
+        let rows = imba::layout::Layout::layout(
             self.menu.display(arena, self.store, self.ui),
             arena,
             Constraints::tight(Size::new(width - 2.0, height - 2.0)),

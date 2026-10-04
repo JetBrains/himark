@@ -152,7 +152,7 @@ impl View for Stats {
     fn perform(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -163,9 +163,9 @@ impl View for Stats {
         &'a self,
         _arena: &'a Arena,
         store: &'a Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let theme = ::editor::env::Themes::of(store);
             imba::leaf::leaf(constraints.max.width, constraints.max.height).paint_instead(
                 move |_arena, canvas, rect| self.paint(canvas, rect, &theme.ui().stats),

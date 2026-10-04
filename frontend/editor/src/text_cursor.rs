@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use text::Text;
+use text::text::Text;
 
 pub fn byte_count(text: &Text) -> u32 {
     text.byte_count().min(u32::MAX as usize) as u32

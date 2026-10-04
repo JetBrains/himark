@@ -1,17 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    anim::{Animation, AnimationClock, Easing, Motion},
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    event::{Event, EventResult},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
+use imba::{anim::{Animation, AnimationClock, Easing, Motion}, arena::Arena, constraints::Constraints, container::container, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
 use crate::{ModalRequest, ModalView};
 
@@ -23,7 +13,7 @@ const SLIDE_MS: f64 = 160.0;
 pub enum DrawerCommand {
     Tick(AnimationClock),
 
-    Content(imba::DynCommand),
+    Content(imba::dyn_view::DynCommand),
 }
 
 impl std::fmt::Display for DrawerCommand {
@@ -98,7 +88,7 @@ impl View for Drawer {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, DrawerCommand> {
         self.content
             .as_ref()
@@ -108,7 +98,7 @@ impl View for Drawer {
 
     fn destroy(&mut self, store: &mut Store, fx: &mut imba::effect::Effects<'_, Self::Command>) {
         fx.scope(DrawerCommand::Content, |fx| {
-            imba::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)
+            imba::dyn_view::DynView::destroy_dyn(self.content_mut().as_mut(), store, fx)
         })
     }
 
@@ -137,8 +127,8 @@ impl View for Drawer {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut surface = container(arena, size);
             let content = self

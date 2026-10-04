@@ -56,7 +56,7 @@ impl crate::DynamicCommand for AddSessionFolders {
 struct SessionFoldersPicked {
     server: HostId,
     session: SessionUri,
-    locations: Vec<crate::ResourceLocation>,
+    locations: Vec<editor::location::ResourceLocation>,
 }
 
 impl crate::DynamicCommand for SessionFoldersPicked {

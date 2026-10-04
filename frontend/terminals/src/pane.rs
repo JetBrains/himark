@@ -13,7 +13,7 @@ use alacritty_terminal::term::{Term, TermMode};
 use alacritty_terminal::vte::ansi::{Color as TermColor, CursorShape, NamedColor, Rgb};
 
 use imba::event::{Event, EventResult, Key, Modifiers};
-use imba::{arena::Arena, constraints::Constraints, store::Store, UiCtx, View, Widget};
+use imba::{arena::Arena, constraints::Constraints, store::Store, ui::UiCtx, View, Widget};
 use skia_safe::{Canvas, Color, Font, Paint, Point, Rect, Size};
 
 use crate::{Collector, Session, TerminalId, Terminals};
@@ -94,7 +94,7 @@ impl View for TerminalView {
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        _ui: &'w imba::UiCtx,
+        _ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, TerminalCommand> {
         use imba::event::EventResult;
         let Some(session) = Terminals::session_ref(store, self.terminals, self.id) else {
@@ -119,14 +119,14 @@ impl View for TerminalView {
                 struct PtyPaste<'a> {
                     session: &'a Session,
                 }
-                impl imba::ClipboardClient for PtyPaste<'_> {
-                    fn copy(&mut self) -> Option<imba::ClipboardContent> {
+                impl imba::clipboard::ClipboardClient for PtyPaste<'_> {
+                    fn copy(&mut self) -> Option<imba::clipboard::ClipboardContent> {
                         None
                     }
-                    fn cut(&mut self) -> Option<imba::ClipboardContent> {
+                    fn cut(&mut self) -> Option<imba::clipboard::ClipboardContent> {
                         None
                     }
-                    fn paste(&mut self, content: &imba::ClipboardContent) -> bool {
+                    fn paste(&mut self, content: &imba::clipboard::ClipboardContent) -> bool {
                         self.session.write(content.text.as_bytes());
                         true
                     }
@@ -163,8 +163,8 @@ impl View for TerminalView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let Some(session) = Terminals::session_ref(store, self.terminals, self.id) else {
                 let blank = imba::ThunkBox::new(
                     arena,
@@ -177,7 +177,7 @@ impl View for TerminalView {
             let cell = cell_metrics(&font);
             let fallbacks = ui.env(|| FallbackFaces {
                 manager: ui
-                    .get::<imba::UiFonts>()
+                    .get::<imba::ui::UiFonts>()
                     .and_then(|fonts| fonts.0.fallback_manager())
                     .unwrap_or_else(skia_safe::FontMgr::new),
                 by_char: Default::default(),
@@ -219,7 +219,7 @@ impl hikit::Navigator for TerminalNavigator {
     fn navigate(
         &self,
         store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         place: &TerminalPlace,
         _fx: &mut imba::command::Fx<'_>,
     ) -> Option<Box<dyn hikit::DynPanelView>> {

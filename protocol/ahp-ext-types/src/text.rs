@@ -1,8 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use himark_text::{LineNumber, Text, TextView};
-use operation::OperationBuilder;
+use himark_text::line_number::LineNumber;
+use himark_text::text::Text;
+use himark_text::text_view::TextView;
+use operation::builder::OperationBuilder;
 
 use crate::{Replacement, TextOperation, TextPosition, TextRange};
 

@@ -3,7 +3,7 @@
 
 use super::*;
 use hicode::FindDefinitionEffect;
-use himark::ResourceType;
+use editor::location::ResourceType;
 
 fn lsp_backend() -> (tempfile::TempDir, Arc<ClientDirectory>, std::path::PathBuf) {
     let dir = tempfile::tempdir().expect("backend home");
@@ -104,7 +104,7 @@ fn definition_routes_over_the_seat() {
     let (_dir, directory, root) = lsp_backend();
     let location = ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         root.join("lib.rs")
             .to_str()
             .unwrap()
@@ -143,7 +143,7 @@ fn unserved_locations_answer_nothing() {
     let (_dir, directory, root) = lsp_backend();
     let foreign = ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("remote:box"),
+        editor::location::Authority::new("remote:box"),
         vec!["x.rs".to_owned()],
     );
     let handler = DefinitionRoute {
@@ -163,7 +163,7 @@ fn unserved_locations_answer_nothing() {
 
     let markdown = ResourceLocation::new(
         ResourceType::document(),
-        himark::Authority::new("local"),
+        editor::location::Authority::new("local"),
         root.join("notes.md")
             .to_str()
             .unwrap()

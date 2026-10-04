@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::CursorIter;
+use rope::cursor::CursorIter;
 
 use crate::measure::OperationMeasure;
 use crate::op::Op;

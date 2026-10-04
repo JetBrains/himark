@@ -8,7 +8,7 @@ fn main() {
     let out = std::path::PathBuf::from(out);
     std::fs::create_dir_all(&out).expect("out dir");
 
-    let mut languages = editor::SyntaxLanguages::new();
+    let mut languages = editor::reparse::SyntaxLanguages::new();
     hibash::register(&mut languages);
     hic::register(&mut languages);
     hicmake::register(&mut languages);

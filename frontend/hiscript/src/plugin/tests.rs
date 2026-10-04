@@ -5,12 +5,12 @@ use imba::effect::EffectHandler;
 use imba::store::Store;
 
 use super::*;
-use himark::test_document::plain_document;
+use ::editor::test_document::plain_document;
 
 fn located(path: &[&str]) -> ResourceLocation {
     ResourceLocation::new(
-        himark::ResourceType::document(),
-        himark::Authority::new("test"),
+        editor::location::ResourceType::document(),
+        editor::location::Authority::new("test"),
         path.iter().map(|s| s.to_string()).collect::<Vec<String>>(),
     )
 }
@@ -39,23 +39,23 @@ fn registered(store: &mut Store, path: &[&str], source: &str) -> DocumentId {
 }
 
 fn launched(store: &mut Store, script: DocumentId) -> RunScriptEffect {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let location = OpenDocuments::location(&store, test_docs(&store), script).expect("located");
     let mut document =
         OpenDocuments::document(&store, test_docs(&store), script).expect("the document");
     let editor = document.add_editor(
         400.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         store,
         ui,
-        himark::test_document::test_fonts_collection(),
-        &himark::env::Themes::of(&store),
+        ::editor::test_document::test_fonts_collection(),
+        &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
     let mut batch = imba::effect::Batch::new();
-    himark::DynamicEditorCommand::perform(
+    editor::dynamic::DynamicEditorCommand::perform(
         &RunScript,
         store,
         ui,
@@ -86,27 +86,27 @@ fn ran(effect: RunScriptEffect) -> ScriptLanding {
 
 fn landed(
     store: &mut Store,
-    _ui: &imba::UiCtx,
+    _ui: &imba::ui::UiCtx,
     script: DocumentId,
     landing: ScriptLanding,
-) -> imba::effect::Batch<himark::EditorCommand> {
-    let ui = himark::test_document::test_ui();
+) -> imba::effect::Batch<editor::editor_view::EditorCommand> {
+    let ui = ::editor::test_document::test_ui();
     let location = OpenDocuments::location(&store, test_docs(&store), script).expect("located");
     let mut document =
         OpenDocuments::document(&store, test_docs(&store), script).expect("the document");
     let editor = document.add_editor(
         400.0,
         None,
-        himark::EditorBuild::Complete,
+        editor::document::EditorBuild::Complete,
         &[],
         store,
         ui,
-        himark::test_document::test_fonts_collection(),
-        &himark::env::Themes::of(&store),
+        ::editor::test_document::test_fonts_collection(),
+        &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
     let mut batch = imba::effect::Batch::new();
-    himark::DynamicEditorCommand::perform(
+    editor::dynamic::DynamicEditorCommand::perform(
         &RunScript,
         store,
         ui,
@@ -127,7 +127,7 @@ const APPEND_SCRIPT: &str = r#"export default async function (himark) {
 
 #[test]
 fn a_run_reads_the_open_document_and_lands_its_write() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(&mut store, &["repo", "walk.js"], APPEND_SCRIPT);
     let plan = registered(&mut store, &["repo", "plan.md"], "alpha");
@@ -144,7 +144,7 @@ fn a_run_reads_the_open_document_and_lands_its_write() {
 
 #[test]
 fn a_failed_run_commits_nothing() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -171,7 +171,7 @@ fn a_failed_run_commits_nothing() {
 
 #[test]
 fn an_unopened_target_stores_through_the_host() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -199,7 +199,7 @@ fn an_unopened_target_stores_through_the_host() {
 
 #[test]
 fn typing_mid_run_discards_the_write() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(&mut store, &["repo", "walk.js"], APPEND_SCRIPT);
     let plan = registered(&mut store, &["repo", "plan.md"], "alpha");
@@ -209,11 +209,11 @@ fn typing_mid_run_discards_the_write() {
         OpenDocuments::document(&store, test_docs(&store), plan).expect("the document");
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, 0, "typed "),
+        &operation::operation::Operation::insert_in(len, 0, "typed "),
         &store,
         ui,
-        himark::test_document::test_fonts_collection(),
-        &himark::env::Themes::of(&store),
+        ::editor::test_document::test_fonts_collection(),
+        &::editor::env::Themes::of(&store),
         &mut imba::effect::Batch::new().effects(),
     );
     let documents = test_docs(&store);
@@ -396,7 +396,7 @@ fn complete() -> StateAction {
 
 #[test]
 fn an_agent_ask_drives_a_turn_and_lands_the_reply() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -431,7 +431,7 @@ fn an_agent_ask_drives_a_turn_and_lands_the_reply() {
 
 #[test]
 fn a_failed_turn_fails_the_run() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -500,7 +500,7 @@ fn an_agentless_ask_names_the_missing_session() {
 
 #[test]
 fn shows_file_now_or_ride_their_store() {
-    let ui = himark::test_document::test_ui();
+    let ui = ::editor::test_document::test_ui();
     let mut store = Store::new();
     let script = registered(
         &mut store,
@@ -538,15 +538,15 @@ fn shows_file_now_or_ride_their_store() {
         let editor = document.add_editor(
             400.0,
             None,
-            himark::EditorBuild::Complete,
+            editor::document::EditorBuild::Complete,
             &[],
             store,
             &ui,
-            himark::test_document::test_fonts_collection(),
-            &himark::env::Themes::of(store),
+            ::editor::test_document::test_fonts_collection(),
+            &::editor::env::Themes::of(store),
             &mut imba::effect::Batch::new().effects(),
         );
-        himark::DynamicEditorCommand::perform(
+        editor::dynamic::DynamicEditorCommand::perform(
             &RunScript,
             store,
             &ui,

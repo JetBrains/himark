@@ -2,16 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark::PanelView;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult, MouseButton},
-    list::{ListCommand, ListSlice, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult, MouseButton}, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, PathBuilder, Rect, Size};
 
 const ROW_HEIGHT: f32 = 26.0;
@@ -104,9 +95,9 @@ impl View for TreeDemoRow {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            let theme = himark::env::Themes::of(store);
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            let theme = ::editor::env::Themes::of(store);
             imba::eager(TreeDemoRowWidget {
                 row: self,
                 color: theme
@@ -290,9 +281,9 @@ impl View for TreeDemoView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
-            imba::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
+            imba::layout::Layout::layout(self.rows.display(arena, store, ui), arena, constraints)
                 .map(Command::Rows)
         })
     }

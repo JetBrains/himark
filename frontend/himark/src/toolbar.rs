@@ -8,15 +8,7 @@
 //! column names its session, the split tree names its file, the dock
 //! carries its own buttons ([docs/ui/toolbar.md]).
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    event::{Event, EventResult},
-    leaf::leaf,
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, Thunk, UiCtx,
-};
+use imba::{arena::Arena, constraints::Constraints, event::{Event, EventResult}, leaf::leaf, store::Store, thunk_ext::ThunkExt, layout::Layout as _, Thunk, ui::UiCtx};
 use skia_safe::{Canvas, Paint, Rect, Size};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
@@ -277,8 +269,8 @@ impl Toolbar {
                 x += chrome.button_size;
             }
         }
-        imba::Layout::layout(
-            imba::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
+        imba::layout::Layout::layout(
+            imba::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
             arena,
             Constraints::tight(size),
         )
@@ -306,7 +298,7 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
     // an ellipsis until the title fits what the buttons leave it.
     let available = (width - inset - trailing - chrome.button_inset * 2.0).max(1.0);
     let mut title = title;
-    while imba::text_advance(ui, &title_font, &title) > available {
+    while imba::layout::text_advance(ui, &title_font, &title) > available {
         let Some((_, rest)) = title.trim_start_matches("…/").split_once('/') else {
             break;
         };
@@ -340,13 +332,13 @@ pub(crate) fn column_header<'a, Command: Clone + 'a>(
         ),
     };
     let label =
-        imba::text(ui, title, title_font.clone(), chrome.title_color.0).layout(arena, bounds);
+        imba::layout::text(ui, title, title_font.clone(), chrome.title_color.0).layout(arena, bounds);
     strip.place_boxed(inset + chrome.button_inset, baseline - ascent, label);
 
     imba::ThunkBox::new(
         arena,
-        imba::Layout::layout(
-            imba::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
+        imba::layout::Layout::layout(
+            imba::layout::laid(move |_arena: &'a Arena, _constraints: Constraints| strip),
             arena,
             Constraints::tight(size),
         ),

@@ -3,16 +3,13 @@
 
 use std::ops::Range;
 
-use operation::{Op, Operation};
-use rope::{Cursor, Measure, MetricId, Metrics, Rope, SeekMode};
+use operation::{op::Op, operation::Operation};
+use rope::{cursor::Cursor, metrics::Measure, metrics::MetricId, metrics::Metrics, rope::Rope, cursor::SeekMode};
 use skia_safe::textlayout::{FontCollection, LineMetrics, Paragraph};
-use text::{Text, TextView};
+use text::{text::Text, text_view::TextView};
 use tokenize::{rewrite, Safepoint};
 
-use crate::{
-    markup::{BlockStyle, TextDecorationInterval},
-    shaped_line::{block_gap, paragraph, DisplayText},
-};
+use crate::{markup::{BlockStyle, TextDecorationInterval}, shaped_line::{block_gap, paragraph, DisplayText}};
 
 const DOCUMENT_RANK: usize = 3;
 const VERTICAL_PX: MetricId = MetricId(0);
@@ -767,7 +764,7 @@ impl DocumentLayout {
     pub(crate) fn cursor_at_y(
         &self,
         scroll_y: f32,
-    ) -> (rope::Cursor<LayoutElement, LayoutMeasure>, f32, u32) {
+    ) -> (rope::cursor::Cursor<LayoutElement, LayoutMeasure>, f32, u32) {
         let mut cursor = self.rope.cursor();
         let document_y = match cursor.seek(VERTICAL_PX, scroll_y.max(0.0) as u32, SeekMode::After) {
             true => LayoutMeasure::metric_at(&cursor.position(), VERTICAL_PX) as f32,
@@ -791,7 +788,7 @@ impl DocumentLayout {
     pub(crate) fn cursor_at_byte(
         &self,
         byte: u32,
-    ) -> Option<(rope::Cursor<LayoutElement, LayoutMeasure>, f32, u32)> {
+    ) -> Option<(rope::cursor::Cursor<LayoutElement, LayoutMeasure>, f32, u32)> {
         if self.rope.is_empty() {
             return None;
         }
@@ -806,7 +803,7 @@ impl DocumentLayout {
     pub(crate) fn cursor_at_caret(
         &self,
         byte: u32,
-    ) -> Option<(rope::Cursor<LayoutElement, LayoutMeasure>, f32, u32)> {
+    ) -> Option<(rope::cursor::Cursor<LayoutElement, LayoutMeasure>, f32, u32)> {
         let (mut cursor, mut document_y, mut byte_start) = self.cursor_at_byte(byte)?;
         loop {
             let item = cursor.element();

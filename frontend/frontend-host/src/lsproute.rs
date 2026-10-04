@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use crate::hiahp::fs::ClientDirectory;
 use hicode::{CodeTarget, FindDefinitionEffect};
-use himark::{LineCol, ResourceLocation};
+use himark::{LineCol};
+use editor::location::ResourceLocation;
 use imba::effect::EffectHandler;
 use serde_json::{json, Value};
 
@@ -82,7 +83,7 @@ fn target_of(
     Some(CodeTarget {
         location: uris.location_of(
             &himark::higent::client::ResourceUri::new(uri.as_str()?),
-            himark::ResourceType::document(),
+            editor::location::ResourceType::document(),
             asked.authority(),
         )?,
         range: position(range.get("start")?)?..position(range.get("end")?)?,

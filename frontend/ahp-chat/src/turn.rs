@@ -1,15 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::Effects,
-    list::{ListCommand, ListView},
-    store::Store,
-    Thunk, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::Effects, list::{ListCommand, ListView}, store::Store, Thunk, ui::UiCtx, View};
 use skia_safe::Size;
 
 use crate::cell::{Cell, CellCommand, CellKind, DiffHeader};
@@ -154,11 +146,11 @@ impl View for TurnView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let width = constraints.max.width.max(1.0);
             let content_width = Self::content_width(width);
-            let inner = imba::Layout::layout(
+            let inner = imba::layout::Layout::layout(
                 self.cells.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -374,8 +366,8 @@ pub(crate) fn completed_tool_face_with(
     }
 }
 
-fn text(markdown: impl AsRef<str>) -> editor::Text {
-    editor::Text::from_string_exact(markdown)
+fn text(markdown: impl AsRef<str>) -> text::text::Text {
+    text::text::Text::from_string_exact(markdown)
 }
 
 fn one_line(text: &str) -> String {

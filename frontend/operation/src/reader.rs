@@ -1,11 +1,11 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::Cursor;
+use rope::cursor::Cursor;
 
 use crate::measure::OperationMeasure;
 use crate::op::{byte_len, slice_bytes, Op};
-use crate::Operation;
+use crate::operation::Operation;
 
 #[derive(Clone)]
 pub(crate) struct Reader {

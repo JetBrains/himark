@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../editor/src/document.rs"
@@ -14,10 +14,10 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     .expect("document.rs");
     assert!(source.len() > 50_000, "the gate wants a BIG file");
     let fonts = editor::embedded_fonts::source()();
-    let theme = editor::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(&source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(&source),
         "rs",
         &registry,
         store,
@@ -25,7 +25,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         &fonts,
         &theme,
     );
-    let outcome = editor::ReparseWork::capture(&document, registry.clone())
+    let outcome = editor::reparse::ReparseWork::capture(&document, registry.clone())
         .expect("parse")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -46,7 +46,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
     let editor = document.add_editor(
         900.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -54,7 +54,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         &theme,
         &mut batch.effects(),
     );
-    let mut view = editor::EditorView {
+    let mut view = editor::editor_view::EditorView {
         document,
         editor,
         reports_geometry: false,
@@ -62,12 +62,12 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
         gutter_width: 0.0,
         base: None,
     };
-    let mut store = imba::Store::new();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let mut store = imba::store::Store::new();
+    let ui = imba::ui::UiCtx::dont_use_too_slow();
     ui.set(editor::env::UiFonts(fonts.clone()));
-    let drain = |view: &mut editor::EditorView,
-                 store: &mut imba::Store,
-                 batch: &mut imba::effect::Batch<editor::EditorCommand>| {
+    let drain = |view: &mut editor::editor_view::EditorView,
+                 store: &mut imba::store::Store,
+                 batch: &mut imba::effect::Batch<editor::editor_view::EditorCommand>| {
         let mut rounds = 0;
         loop {
             let pending = himark::test_support::surviving_launches(std::mem::replace(
@@ -96,7 +96,7 @@ fn typing_mid_file_in_a_big_rust_document_stays_bounded() {
             &mut view,
             &mut store,
             &ui,
-            editor::EditorCommand::InsertText {
+            editor::editor_view::EditorCommand::InsertText {
                 text: "x".to_owned(),
             },
             &mut batch.effects(),

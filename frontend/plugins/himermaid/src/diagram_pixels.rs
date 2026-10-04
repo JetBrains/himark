@@ -12,10 +12,10 @@ fn the_diagram_paints_styled_nodes_and_labels() {
     let mut surface = skia_safe::surfaces::raster_n32_premul((w, h)).expect("surface");
     let canvas = surface.canvas();
     canvas.clear(skia_safe::Color::WHITE);
-    let store = imba::Store::new();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let store = imba::store::Store::new();
+    let ui = imba::ui::UiCtx::dont_use_too_slow();
     let arena = imba::arena::Arena::default();
-    let widget = imba::Layout::layout(
+    let widget = imba::layout::Layout::layout(
         imba::View::display(&view, &arena, &store, &ui),
         &arena,
         imba::constraints::Constraints {

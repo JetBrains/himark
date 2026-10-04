@@ -9,7 +9,7 @@
 use imba::store::Store;
 
 use changesview::hichanges::{empty_side, ChangeEntry, Changes, ChangesStatus};
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 
 pub use changesview::hichanges::CanvasSource;
 

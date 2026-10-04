@@ -70,7 +70,7 @@ pub trait Navigator: Send + Sync + 'static {
     fn navigate(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         place: &Self::Place,
         fx: &mut imba::command::Fx<'_>,
     ) -> Option<Box<dyn crate::DynPanelView>>;
@@ -80,7 +80,7 @@ pub trait Navigator: Send + Sync + 'static {
 /// scroll to restore. The one place every editor navigator speaks.
 #[derive(Clone, Debug)]
 pub struct EditorPlace {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub caret: u32,
     pub scroll_y: f32,
 }

@@ -23,7 +23,7 @@ pub struct LspItem {
 }
 
 pub struct LspCompletionEffect {
-    pub location: editor::ResourceLocation,
+    pub location: editor::location::ResourceLocation,
     pub position: documents::LineCol,
 }
 

@@ -5,11 +5,7 @@ use std::marker::PhantomData;
 
 use skia_safe::{Rect, Size};
 
-use crate::{
-    arena::Arena,
-    event::{Event, EventResult},
-    Widget,
-};
+use crate::{arena::Arena, event::{Event, EventResult}, Widget};
 
 pub struct Leaf<'a, Command> {
     size: Size,

@@ -3,16 +3,13 @@
 
 use std::ops::Range;
 
-use editor::{MarkupBuilder, StyleId, SyntaxLanguage, SyntaxTree};
+use editor::{markup::MarkupBuilder, markup::StyleId, reparse::SyntaxLanguage, reparse::SyntaxTree};
 
-mod assist;
-mod caret_passes;
-pub use caret_passes::{register_caret_enrichers, BraceMatchPass, OccurrencePass};
+pub mod assist;
+pub mod caret_passes;
 #[cfg(target_os = "emscripten")]
-mod side;
-use operation::{Op, Operation};
-#[cfg(target_os = "emscripten")]
-pub use side::fetch_side_grammar;
+pub mod side;
+use operation::{op::Op, operation::Operation};
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{InputEdit, Language, Parser, Point, Query, QueryCursor, Tree};
 
@@ -29,14 +26,14 @@ impl SyntaxTree for TsTree {
         Box::new(Self(self.0.clone()))
     }
 
-    fn edit(&mut self, operation: &Operation, view: &mut text::TextView, base: u32) {
-        fn point_at(view: &mut text::TextView, at: u32) -> (usize, usize) {
+    fn edit(&mut self, operation: &Operation, view: &mut text::text_view::TextView, base: u32) {
+        fn point_at(view: &mut text::text_view::TextView, at: u32) -> (usize, usize) {
             let at = (at as usize).min(view.byte_count());
             let row = view.line_at(at).0;
-            (row, at - view.line_start_offset(text::LineNumber(row)))
+            (row, at - view.line_start_offset(text::line_number::LineNumber(row)))
         }
         let base_row = point_at(view, base).0;
-        let local = |view: &mut text::TextView, offset: u32| -> Point {
+        let local = |view: &mut text::text_view::TextView, offset: u32| -> Point {
             let (row, column) = point_at(view, base + offset);
             Point::new(row.saturating_sub(base_row), column)
         };
@@ -150,7 +147,7 @@ impl TreeSitterLanguage {
 impl SyntaxLanguage for TreeSitterLanguage {
     fn parse(
         &self,
-        text: &text::Text,
+        text: &text::text::Text,
         range: Range<u32>,
         old: Option<&dyn SyntaxTree>,
     ) -> Option<Box<dyn SyntaxTree>> {
@@ -170,14 +167,14 @@ impl SyntaxLanguage for TreeSitterLanguage {
 
     fn markup_for_changes(
         &self,
-        text: &text::Text,
+        text: &text::text::Text,
         range: Range<u32>,
         tree: &dyn SyntaxTree,
         changed: &[Range<u32>],
         replacement: &mut MarkupBuilder,
         invalidated: &mut Vec<Range<u32>>,
         _fonts: &skia_safe::textlayout::FontCollection,
-        _theme: &editor::Theme,
+        _theme: &editor::theme::Theme,
     ) {
         let tree = TsTree::of(tree).expect("a tree-sitter language parses tree-sitter trees");
         let end = (range.end as usize).min(text.byte_count());
@@ -245,7 +242,7 @@ impl SyntaxLanguage for TreeSitterLanguage {
             for (node, title, name) in items {
                 let title = outline_title(&mut view, start, title);
                 if !title.is_empty() {
-                    replacement.push_outline(node, editor::OutlineItem { title });
+                    replacement.push_outline(node, editor::markup::OutlineItem { title });
                     if name.start < name.end {
                         replacement.push_styled(name, StyleId::DeclarationName);
                     }
@@ -266,7 +263,7 @@ impl SyntaxLanguage for TreeSitterLanguage {
         }
     }
 
-    fn assist(&self, request: &editor::AssistRequest<'_>) -> Option<editor::Assist> {
+    fn assist(&self, request: &editor::reparse::AssistRequest<'_>) -> Option<editor::reparse::Assist> {
         assist::assist(request)
     }
 }
@@ -334,7 +331,7 @@ fn title_node(node: tree_sitter::Node) -> Option<tree_sitter::Node> {
         })
 }
 
-fn outline_title(view: &mut text::TextView, syntax_start: usize, title: Range<u32>) -> String {
+fn outline_title(view: &mut text::text_view::TextView, syntax_start: usize, title: Range<u32>) -> String {
     let count = view.byte_count();
     let from = (syntax_start + title.start as usize).min(count);
     let to = (syntax_start + title.end as usize).min(count);
@@ -399,7 +396,7 @@ fn theme_for_capture(name: &str) -> Option<StyleId> {
     })
 }
 
-fn page_from(view: &mut text::TextView, at: usize, end: usize) -> Vec<u8> {
+fn page_from(view: &mut text::text_view::TextView, at: usize, end: usize) -> Vec<u8> {
     let end = end.min(view.byte_count());
     if at >= end {
         return Vec::new();
@@ -411,13 +408,13 @@ fn page_from(view: &mut text::TextView, at: usize, end: usize) -> Vec<u8> {
 }
 
 struct RopePages {
-    view: std::rc::Rc<std::cell::RefCell<text::TextView>>,
+    view: std::rc::Rc<std::cell::RefCell<text::text_view::TextView>>,
     base: usize,
     end: usize,
 }
 
 impl RopePages {
-    fn over(text: &text::Text, base: usize, end: usize) -> Self {
+    fn over(text: &text::text::Text, base: usize, end: usize) -> Self {
         Self {
             view: std::rc::Rc::new(std::cell::RefCell::new(text.view())),
             base,
@@ -427,7 +424,7 @@ impl RopePages {
 }
 
 struct RopePageIter {
-    view: std::rc::Rc<std::cell::RefCell<text::TextView>>,
+    view: std::rc::Rc<std::cell::RefCell<text::text_view::TextView>>,
     at: usize,
     end: usize,
 }
@@ -479,7 +476,7 @@ macro_rules! register_grammar {
                 $configure;
             $registry.register_lazy(
                 $names,
-                Some(editor::SideGrammar {
+                Some(editor::reparse::SideGrammar {
                     module: $module,
                     symbol: $symbol,
                     crate_name: $crate_name,
@@ -491,7 +488,7 @@ macro_rules! register_grammar {
                         ::std::sync::Arc::new(configure($crate::TreeSitterLanguage::new(
                             ($language).into(),
                             &loader_highlights(),
-                        ))) as ::std::sync::Arc<dyn editor::SyntaxLanguage>,
+                        ))) as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
                     )
                 }),
             );
@@ -502,18 +499,18 @@ macro_rules! register_grammar {
                 $configure;
             $registry.register_lazy(
                 $names,
-                Some(editor::SideGrammar {
+                Some(editor::reparse::SideGrammar {
                     module: $module,
                     symbol: $symbol,
                     crate_name: $crate_name,
                     parser_dir: $parser_dir,
                 }),
                 ::std::sync::Arc::new(move || {
-                    let (language, query) = $crate::fetch_side_grammar($module, $symbol)?;
+                    let (language, query) = $crate::side::fetch_side_grammar($module, $symbol)?;
                     Some(
                         ::std::sync::Arc::new(configure($crate::TreeSitterLanguage::new(
                             language, &query,
-                        ))) as ::std::sync::Arc<dyn editor::SyntaxLanguage>,
+                        ))) as ::std::sync::Arc<dyn editor::reparse::SyntaxLanguage>,
                     )
                 }),
             );

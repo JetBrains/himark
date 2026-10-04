@@ -3,12 +3,9 @@
 
 use std::{future::Future, ops::Range, pin::Pin, sync::Arc};
 
-use text::Text;
+use text::text::Text;
 
-use crate::{
-    document::DocumentToken,
-    markup::{Markup, MarkupBuilder, MarkupId, Syntax},
-};
+use crate::{document::DocumentToken, markup::{Markup, MarkupBuilder, MarkupId, Syntax}};
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct EnricherId(pub &'static str);
@@ -46,7 +43,7 @@ pub struct EnrichInput {
 
     pub previous: Markup,
 
-    pub base: Option<crate::ResourceLocation>,
+    pub base: Option<crate::location::ResourceLocation>,
 
     pub caret: Option<CaretContext>,
 }
@@ -87,7 +84,7 @@ pub struct EnrichCx<'a> {
 pub enum MeasureCtx<'a> {
     Handed {
         store: &'a imba::store::Store,
-        ui: &'a imba::UiCtx,
+        ui: &'a imba::ui::UiCtx,
     },
     Kept(Arc<crate::env::Workshop>),
 }
@@ -104,7 +101,7 @@ impl MeasureCtx<'_> {
         }
     }
 
-    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R) -> R {
+    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx) -> R) -> R {
         match self {
             MeasureCtx::Handed { store, ui } => f(store, ui),
             MeasureCtx::Kept(workshop) => workshop.with_ctx(f),
@@ -136,7 +133,7 @@ pub trait Enricher: Send + Sync {
     fn install(
         &self,
         _store: &mut imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _replacement: &mut Markup,
         _changed: &[Range<u32>],
         _fonts: &skia_safe::textlayout::FontCollection,
@@ -326,7 +323,7 @@ mod tests {
         fn perform(
             &mut self,
             _store: &mut imba::store::Store,
-            _ui: &imba::UiCtx,
+            _ui: &imba::ui::UiCtx,
             command: Self::Command,
             _fx: &mut imba::effect::Effects<'_, Self::Command>,
         ) {
@@ -336,9 +333,9 @@ mod tests {
             &'a self,
             _arena: &'a imba::arena::Arena,
             _store: &'a imba::store::Store,
-            _ui: &'a imba::UiCtx,
-        ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-            imba::laid(
+            _ui: &'a imba::ui::UiCtx,
+        ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+            imba::layout::laid(
                 move |_arena: &'a imba::arena::Arena,
                       _constraints: imba::constraints::Constraints| {
                     imba::leaf::leaf(10.0, 10.0)
@@ -393,9 +390,9 @@ mod tests {
         }
     }
 
-    fn document(source: &str) -> crate::Document {
+    fn document(source: &str) -> crate::document::Document {
         let mut document =
-            crate::Document::new(text::Text::from_string_exact(source), Markup::new());
+            crate::document::Document::new(text::text::Text::from_string_exact(source), Markup::new());
         let _ = document.add_syntax(
             0..0,
             crate::markup::Syntax::new("fake", None, Markup::new()),
@@ -409,13 +406,13 @@ mod tests {
         registry
     }
 
-    fn badge_count(document: &crate::Document) -> usize {
+    fn badge_count(document: &crate::document::Document) -> usize {
         let len = document.text().byte_count() as u32;
         document.all_inlays_in(0..len).len()
     }
 
     fn launched(
-        document: &mut crate::Document,
+        document: &mut crate::document::Document,
         registry: &Enrichers,
         changed: &[Range<u32>],
     ) -> EnrichEffect {
@@ -441,7 +438,7 @@ mod tests {
         imba::effect::block_on(Box::pin(async move { handler.handle(effect).await }))
     }
 
-    fn apply(document: &mut crate::Document, command: crate::editor_view::EditorCommand) {
+    fn apply(document: &mut crate::document::Document, command: crate::editor_view::EditorCommand) {
         let crate::editor_view::EditorCommand::ApplyEnrichment(outcome) = command else {
             panic!("the enrich handler lands ApplyEnrichment");
         };
@@ -530,7 +527,7 @@ mod tests {
 
         let len = crate::text_cursor::byte_count(document.text());
         document.edit(
-            &operation::Operation::insert_in(len, 0, "XXXX"),
+            &operation::operation::Operation::insert_in(len, 0, "XXXX"),
             store,
             ui,
             &fonts(),
@@ -549,7 +546,7 @@ mod tests {
     }
 
     fn apply_collect(
-        document: &mut crate::Document,
+        document: &mut crate::document::Document,
         command: crate::editor_view::EditorCommand,
     ) -> imba::effect::Batch<crate::editor_view::EditorCommand> {
         let crate::editor_view::EditorCommand::ApplyEnrichment(outcome) = command else {
@@ -572,7 +569,7 @@ mod tests {
     }
 
     fn drain_repairs(
-        document: &mut crate::Document,
+        document: &mut crate::document::Document,
         editor: crate::editor::EditorId,
         batch: imba::effect::Batch<crate::editor_view::EditorCommand>,
     ) {
@@ -599,7 +596,7 @@ mod tests {
     }
 
     fn element_at(
-        document: &crate::Document,
+        document: &crate::document::Document,
         editor: crate::editor::EditorId,
         byte: u32,
     ) -> (usize, f32) {
@@ -666,7 +663,7 @@ mod tests {
         );
         let live = document.element_heights(editor);
         let reference =
-            crate::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
+            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
                 .element_heights();
         assert_eq!(
             live, reference,
@@ -732,7 +729,7 @@ mod tests {
         );
         let live = document.element_heights(editor);
         let reference =
-            crate::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
+            crate::editor_view::EditorView::complete(document.clone(), 400.0, store, ui, &fonts(), &theme())
                 .element_heights();
         assert_eq!(
             live, reference,
@@ -799,7 +796,7 @@ mod tests {
         registry
     }
 
-    fn editor_for(document: &mut crate::Document) -> crate::editor::EditorId {
+    fn editor_for(document: &mut crate::document::Document) -> crate::editor::EditorId {
         let store = &imba::store::Store::new();
         let ui = crate::test_document::test_ui();
         document.add_editor(
@@ -816,7 +813,7 @@ mod tests {
     }
 
     fn land_all(
-        document: &mut crate::Document,
+        document: &mut crate::document::Document,
         batch: imba::effect::Batch<crate::editor_view::EditorCommand>,
     ) -> usize {
         let mut landed = 0;

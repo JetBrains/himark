@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use operation::{Op, Operation};
-use text::Text;
+use operation::{op::Op, operation::Operation};
+use text::text::Text;
 
 use crate::edit_log::EditLog;
 
@@ -263,7 +263,7 @@ pub fn fragments_at(op: &Operation, left: &Text, from_left: u32) -> Fragments {
     }
 }
 
-fn retain_has_newline(view: &mut text::TextView, start: u32, len: u32) -> bool {
+fn retain_has_newline(view: &mut text::text_view::TextView, start: u32, len: u32) -> bool {
     let count = view.byte_count();
     let start = (start as usize).min(count);
     let end = start.saturating_add(len as usize).min(count);
@@ -271,8 +271,8 @@ fn retain_has_newline(view: &mut text::TextView, start: u32, len: u32) -> bool {
 }
 
 pub struct Fragments {
-    iter: operation::Iter,
-    left_view: text::TextView,
+    iter: operation::iter::Iter,
+    left_view: text::text_view::TextView,
     left_at: u32,
     right_at: u32,
     from_left: u32,

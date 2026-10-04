@@ -1,7 +1,7 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-//! `ChangeMap` → `operation::Operation` (docs/editor/structural-diff.md,
+//! `ChangeMap` → `operation::operation::Operation` (docs/editor/structural-diff.md,
 //! "Deriving the Operation").
 //!
 //! Difftastic's matching is monotonic (no move detection), so matched
@@ -19,7 +19,7 @@ use std::ops::Range;
 
 use difftastic_core::diff::changes::{ChangeKind, ChangeMap};
 use difftastic_core::parse::syntax::Syntax;
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 
 pub(crate) fn derive<'a>(
     left: &str,

@@ -1,18 +1,10 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use editor::EditorCommand;
+use editor::editor_view::EditorCommand;
 
 use crate::EditorIdView;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    scroll::{ScrollCommand, ScrollView},
-    split::{Arrangement, Pane, SplitCommand, SplitView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, scroll::{ScrollCommand, ScrollView}, split::{Arrangement, Pane, SplitCommand, SplitView}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
 pub use hikit::{DynPanelView, PanelRequest, PanelView, WidgetOrigin};
 
@@ -20,12 +12,12 @@ pub use hikit::{DynPanelView, PanelRequest, PanelView, WidgetOrigin};
 pub(crate) struct ClosedPanel;
 
 impl imba::View for ClosedPanel {
-    type Command = imba::DynCommand;
+    type Command = imba::dyn_view::DynCommand;
 
     fn perform(
         &mut self,
         _store: &mut Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _command: Self::Command,
         _fx: &mut imba::effect::Effects<'_, Self::Command>,
     ) {
@@ -35,9 +27,9 @@ impl imba::View for ClosedPanel {
         &'a self,
         _arena: &'a imba::arena::Arena,
         _store: &'a Store,
-        _ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::Fill::new()
+        _ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::Fill::new()
     }
 }
 
@@ -76,7 +68,7 @@ impl Clone for Panel {
 #[derive(Clone)]
 pub enum PanelCommand {
     Editor(PaneCommand),
-    Plugin(imba::DynCommand),
+    Plugin(imba::dyn_view::DynCommand),
 
     Find(crate::find::FindCommand),
 
@@ -242,7 +234,7 @@ impl Panel {
     pub(crate) fn navigate_to(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         target: &crate::NavigationLocation,
         fx: &mut crate::AppFx<'_>,
     ) -> bool {
@@ -395,12 +387,12 @@ impl View for Panel {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let content: imba::ThunkBox<'a, PanelCommand> = match self {
                 Self::Editor(pane) => imba::ThunkBox::new(
                     arena,
-                    imba::Layout::layout(pane.display(arena, store, ui), arena, constraints)
+                    imba::layout::Layout::layout(pane.display(arena, store, ui), arena, constraints)
                         .map(PanelCommand::Editor)
                         .overlay_host(editor::sticky::HOST)
                         .overlay_host(editor::scroll_stripe::HOST),
@@ -561,7 +553,7 @@ impl PaneSlot {
         (self.back.len(), self.forward.len())
     }
 
-    pub(crate) fn find_target(&self) -> Option<(crate::DocumentId, ::editor::EditorId)> {
+    pub(crate) fn find_target(&self) -> Option<(crate::DocumentId, ::editor::editor::EditorId)> {
         self.panel
             .editor()
             .map(|pane| (pane.content().document(), pane.content().editor()))
@@ -612,7 +604,7 @@ impl PaneSlot {
         });
     }
 
-    fn completion_editor(command: ::editor::EditorCommand) -> PanelCommand {
+    fn completion_editor(command: ::editor::editor_view::EditorCommand) -> PanelCommand {
         PanelCommand::Editor(imba::scroll::ScrollCommand::Content(command))
     }
 
@@ -624,7 +616,7 @@ impl PaneSlot {
         fx: &mut imba::effect::Effects<'_, PanelCommand>,
     ) -> Option<PanelCommand> {
         use imba::scroll::ScrollCommand;
-        let PanelCommand::Editor(ScrollCommand::Content(::editor::EditorCommand::Inlay {
+        let PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
             key,
             command: inlay,
         })) = command
@@ -632,7 +624,7 @@ impl PaneSlot {
             return Some(command);
         };
         let rewrap = |inlay| {
-            PanelCommand::Editor(ScrollCommand::Content(::editor::EditorCommand::Inlay {
+            PanelCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
                 key,
                 command: inlay,
             }))
@@ -1215,7 +1207,7 @@ impl View for WorkbenchNode {
                         if let (
                             Some(find),
                             PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                                ::editor::EditorCommand::Click { .. },
+                                ::editor::editor_view::EditorCommand::Click { .. },
                             )),
                         ) = (&mut slot.find, &command)
                         {
@@ -1223,7 +1215,7 @@ impl View for WorkbenchNode {
                         }
 
                         if let PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                            ::editor::EditorCommand::Hover(point),
+                            ::editor::editor_view::EditorCommand::Hover(point),
                         )) = &command
                         {
                             let point = *point;
@@ -1237,7 +1229,7 @@ impl View for WorkbenchNode {
 
                             let inserted = match &command {
                                 PanelCommand::Editor(imba::scroll::ScrollCommand::Content(
-                                    ::editor::EditorCommand::InsertText { text },
+                                    ::editor::editor_view::EditorCommand::InsertText { text },
                                 )) => Some(text.clone()),
                                 _ => None,
                             };
@@ -1264,13 +1256,13 @@ impl View for WorkbenchNode {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let widget: imba::ThunkBox<'a, NodeCommand> = match self {
                 Self::Leaf(slot) => match &slot.find {
                     None => imba::ThunkBox::new(
                         arena,
-                        imba::Layout::layout(
+                        imba::layout::Layout::layout(
                             slot.panel.display(arena, store, ui),
                             arena,
                             constraints,
@@ -1287,7 +1279,7 @@ impl View for WorkbenchNode {
                         column.place(
                             0.0,
                             bar_height,
-                            imba::Layout::layout(
+                            imba::layout::Layout::layout(
                                 slot.panel.display(arena, store, ui),
                                 arena,
                                 Constraints::tight(skia_safe::Size::new(
@@ -1315,7 +1307,7 @@ impl View for WorkbenchNode {
                     let inset = window.divider_inset;
                     imba::ThunkBox::new(
                         arena,
-                        imba::Layout::layout(split.display(arena, store, ui), arena, constraints)
+                        imba::layout::Layout::layout(split.display(arena, store, ui), arena, constraints)
                             .map(|command| NodeCommand::Split(Box::new(command)))
                             .paint_below(move |_arena, canvas, _| {
                                 let mut paint = skia_safe::Paint::default();

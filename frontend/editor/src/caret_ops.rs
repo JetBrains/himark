@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use operation::{Op, Operation, OperationBuilder};
-use text::Text;
+use operation::{op::Op, operation::Operation, builder::OperationBuilder};
+use text::text::Text;
 
 use crate::caret::{Caret, DragOrigin, MultiCaret};
 use crate::document::Document;
@@ -18,7 +18,7 @@ impl Document {
         editor: EditorId,
         text: &str,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -39,7 +39,7 @@ impl Document {
         &mut self,
         editor: EditorId,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -58,7 +58,7 @@ impl Document {
         editor: EditorId,
         motion: Motion,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -108,7 +108,7 @@ impl Document {
         ranges: Vec<Range<u32>>,
         insert: &str,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
         fx: &mut EditorEffects<'_>,
@@ -127,7 +127,7 @@ impl Document {
         motion: Motion,
         select: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -178,7 +178,7 @@ impl Document {
         down: bool,
         select: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -218,7 +218,7 @@ impl Document {
         editor: EditorId,
         above: bool,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -331,7 +331,7 @@ impl Document {
         point: skia_safe::Point,
         kind: ClickKind,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {
@@ -390,7 +390,7 @@ impl Document {
         editor: EditorId,
         point: skia_safe::Point,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) {

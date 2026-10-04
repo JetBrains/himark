@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use himark_ahp_ext_types::{text, DocumentApplied, Uid};
-use himark_text::Text;
+use himark_text::text::Text;
 use serde_json::Value;
 
 pub(crate) const CHANNEL_PREFIX: &str = "ahp-document:/";

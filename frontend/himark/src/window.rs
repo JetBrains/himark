@@ -1,25 +1,13 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult},
-    store::Store,
-    DynView as _, Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, dyn_view::DynView as _, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::Size;
 
 use imba::scroll::ScrollView;
 
-use crate::{
-    app::{panel_width, AppFx},
-    Application,
-};
-use crate::{
-    EditorIdView, ModalRequest, ModalView, Panel, Workbench, WorkbenchCommand, WorkbenchNode,
-};
+use crate::{app::{panel_width, AppFx}, Application};
+use crate::{EditorIdView, ModalRequest, ModalView, Panel, Workbench, WorkbenchCommand, WorkbenchNode};
 
 #[derive(Clone)]
 pub enum WindowCommand {
@@ -27,10 +15,10 @@ pub enum WindowCommand {
 
     Toolbar(crate::toolbar::ToolbarCommand),
 
-    Side(imba::DynCommand),
+    Side(imba::dyn_view::DynCommand),
 
-    Dock(imba::DynCommand),
-    Modal(imba::DynCommand),
+    Dock(imba::dyn_view::DynCommand),
+    Modal(imba::dyn_view::DynCommand),
 
     SideFocusLost,
 
@@ -90,7 +78,7 @@ impl View for Layers {
             WindowCommand::Side(command) => {
                 if let Some(side) = &mut self.side {
                     fx.scope(WindowCommand::Side, |fx| {
-                        imba::DynView::perform_dyn(side, store, ui, command, fx)
+                        imba::dyn_view::DynView::perform_dyn(side, store, ui, command, fx)
                     });
                 }
             }
@@ -357,7 +345,7 @@ impl View for Layers {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, WindowCommand> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, WindowCommand> + imba::layout::LayoutValue + 'a {
         WindowFrame {
             layers: self,
             store,
@@ -417,7 +405,7 @@ impl<'a, BaseThunk, ToolbarThunk, DynThunk> Thunk<'a, WindowCommand>
 where
     BaseThunk: Thunk<'a, WorkbenchCommand> + 'a,
     ToolbarThunk: Thunk<'a, crate::toolbar::ToolbarCommand> + 'a,
-    DynThunk: Thunk<'a, imba::DynCommand> + 'a,
+    DynThunk: Thunk<'a, imba::dyn_view::DynCommand> + 'a,
 {
     fn size(&self) -> Size {
         self.base.size()
@@ -462,9 +450,9 @@ where
 struct RealizedLayers<'a> {
     base: imba::WidgetBox<'a, WorkbenchCommand>,
     toolbar: imba::WidgetBox<'a, crate::toolbar::ToolbarCommand>,
-    side: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    dock: Option<imba::WidgetBox<'a, imba::DynCommand>>,
-    modal: Option<imba::WidgetBox<'a, imba::DynCommand>>,
+    side: Option<imba::WidgetBox<'a, imba::dyn_view::DynCommand>>,
+    dock: Option<imba::WidgetBox<'a, imba::dyn_view::DynCommand>>,
+    modal: Option<imba::WidgetBox<'a, imba::dyn_view::DynCommand>>,
     focus: LayerFocus,
     toolbar_height: f32,
     cluster_width: f32,
@@ -876,12 +864,12 @@ pub struct Window {
 
     workbenches: rpds::HashTrieMapSync<crate::SessionId, Workbench>,
 
-    focused_location: Option<crate::ResourceLocation>,
+    focused_location: Option<editor::location::ResourceLocation>,
     focus_generation: u64,
 }
 
 impl Window {
-    pub fn focused_location(&self) -> Option<&crate::ResourceLocation> {
+    pub fn focused_location(&self) -> Option<&editor::location::ResourceLocation> {
         self.focused_location.as_ref()
     }
 
@@ -889,7 +877,7 @@ impl Window {
         self.focus_generation
     }
 
-    pub(crate) fn note_focused_location(&mut self, location: crate::ResourceLocation) {
+    pub(crate) fn note_focused_location(&mut self, location: editor::location::ResourceLocation) {
         if self.focused_location.as_ref() != Some(&location) {
             self.focused_location = Some(location);
             self.focus_generation += 1;
@@ -1063,7 +1051,7 @@ impl Window {
         self.restore_widgets(released);
         if let Some(mut modal) = self.content.modal.take() {
             fx.scope(WindowCommand::Modal, |fx| {
-                imba::DynView::destroy_dyn(modal.as_mut(), store, fx)
+                imba::dyn_view::DynView::destroy_dyn(modal.as_mut(), store, fx)
             });
         }
     }
@@ -1096,7 +1084,7 @@ impl Window {
         self.restore_widgets(released);
         if let Some(mut side) = self.content.side.take() {
             fx.scope(WindowCommand::Side, |fx| {
-                imba::DynView::destroy_dyn(&mut side, store, fx)
+                imba::dyn_view::DynView::destroy_dyn(&mut side, store, fx)
             });
         }
     }
@@ -1163,7 +1151,7 @@ impl Window {
     pub(crate) fn open_chat_panel<R: 'static>(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         pane: Box<dyn crate::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
@@ -1232,8 +1220,8 @@ impl Window {
                     .swap(panel, owner);
                 fx.scope(WindowCommand::Dock, |fx| {
                     fx.scope(
-                        |command| imba::DynCommand::new(crate::dock::DockCommand::Content(command)),
-                        |fx| imba::DynView::destroy_dyn(outgoing.as_mut(), store, fx),
+                        |command| imba::dyn_view::DynCommand::new(crate::dock::DockCommand::Content(command)),
+                        |fx| imba::dyn_view::DynView::destroy_dyn(outgoing.as_mut(), store, fx),
                     )
                 });
             }
@@ -1265,7 +1253,7 @@ impl Window {
         if let Some(mut dock) = self.content.workbench.dock_mut().take() {
             self.dock_width = dock.width();
             fx.scope(WindowCommand::Dock, |fx| {
-                imba::DynView::destroy_dyn(&mut dock, store, fx)
+                imba::dyn_view::DynView::destroy_dyn(&mut dock, store, fx)
             });
         }
         if self.content.focus == LayerFocus::Dock {
@@ -1379,7 +1367,7 @@ impl Window {
     fn focus_content_layer(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) {
@@ -1463,7 +1451,7 @@ impl Window {
     pub fn open_panel<R: 'static>(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         panel: Box<dyn crate::DynPanelView>,
         fx: &mut Effects<'_, R>,
     ) -> bool {
@@ -1516,7 +1504,7 @@ impl Window {
     pub(crate) fn split_current(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut AppFx<'_>,
     ) {
         if self.has_modal() {
@@ -1553,7 +1541,7 @@ impl Window {
                 document.add_editor(
                     width,
                     None,
-                    ::editor::EditorBuild::Bounded,
+                    ::editor::document::EditorBuild::Bounded,
                     &[],
                     store,
                     ui,
@@ -1594,7 +1582,7 @@ impl Window {
     pub fn navigate(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         target: &crate::NavigationLocation,
         fx: &mut AppFx<'_>,
@@ -1635,7 +1623,7 @@ impl Window {
     fn complete_walk(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         target: &crate::NavigationLocation,
         step: crate::workbench_node::WalkStep,
@@ -1685,7 +1673,7 @@ impl Window {
     pub fn close_focused_widget(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
@@ -1767,7 +1755,7 @@ impl Window {
     fn install_panel<R: 'static>(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         panel: Panel,
         fx: &mut Effects<'_, R>,
     ) {
@@ -1786,7 +1774,7 @@ impl Window {
     pub fn navigate_back(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
@@ -1796,7 +1784,7 @@ impl Window {
     pub fn navigate_forward(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
     ) -> bool {
@@ -1806,7 +1794,7 @@ impl Window {
     fn navigate_history(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         fx: &mut AppFx<'_>,
         back: bool,
@@ -1845,7 +1833,7 @@ impl Window {
     fn retire_displaced<R: 'static>(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         displaced: Panel,
         fx: &mut Effects<'_, R>,
     ) {
@@ -1866,7 +1854,7 @@ impl Window {
     pub fn show_document(
         &mut self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         document_id: crate::DocumentId,
         target: Option<std::ops::Range<crate::LineCol>>,
@@ -1999,7 +1987,7 @@ impl View for Window {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, WindowCommand> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, WindowCommand> + imba::layout::LayoutValue + 'a {
         self.content.display(arena, store, ui)
     }
 }
@@ -2093,9 +2081,9 @@ struct WindowFrame<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for WindowFrame<'_> {}
+impl imba::layout::LayoutValue for WindowFrame<'_> {}
 
-impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
+impl<'a> imba::layout::Layout<'a, WindowCommand> for WindowFrame<'a> {
     fn layout(
         self,
         arena: &'a Arena,
@@ -2147,7 +2135,7 @@ impl<'a> imba::Layout<'a, WindowCommand> for WindowFrame<'a> {
                     0.0,
                     imba::ThunkBox::new(
                         arena,
-                        imba::Layout::layout(
+                        imba::layout::Layout::layout(
                             layers.workbench.display(arena, store, ui),
                             arena,
                             base_below,

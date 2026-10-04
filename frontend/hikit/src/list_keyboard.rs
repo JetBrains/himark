@@ -12,19 +12,10 @@
 use std::any::Any;
 use std::hash::Hash;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::{AnyEffect, CancellationToken, Effect, EffectHandler, Effects},
-    event::{Event, EventResult, Key as InputKey},
-    list::{Edge, ListOps},
-    store::Store,
-    thunk_ext::ThunkExt,
-    UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, CancellationToken, Effect, EffectHandler, Effects}, event::{Event, EventResult, Key as InputKey}, list::{Edge, ListOps}, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
-use editor::EditorView;
+use editor::editor_view::EditorView;
 
 pub use imba::list::ActivateTrigger;
 
@@ -150,7 +141,7 @@ pub enum ListKeyCommand<C> {
     },
 
     // — the search lane, only reachable with a Searcher: —
-    Input(::editor::EditorCommand),
+    Input(::editor::editor_view::EditorCommand),
 
     Landed(SpeedSearchMatches),
 
@@ -248,7 +239,7 @@ where
         inner: T,
         searcher: S,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: editor::FontSource,
     ) -> Self {
         let mut input = EditorView::input(PILL_INPUT_WIDTH, store, ui, fonts);
@@ -295,7 +286,7 @@ where
     pub fn clear(
         &mut self,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fx: &mut Effects<'_, ListKeyCommand<T::Command>>,
     ) where
         T::Command: Send + 'static,
@@ -471,7 +462,7 @@ where
     fn focus_data<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, Self::Command> {
         use imba::focus::FocusData;
         let inner = self.inner.focus_data(store, ui).map(ListKeyCommand::Inner);
@@ -495,7 +486,7 @@ where
 
     fn destroy(&mut self, store: &mut Store, fx: &mut Effects<'_, Self::Command>) {
         // Teardown-only: `View::destroy` carries no UiCtx.
-        let ui = &imba::UiCtx::dont_use_too_slow();
+        let ui = &imba::ui::UiCtx::dont_use_too_slow();
         self.clear(store, ui, fx);
         fx.scope(ListKeyCommand::Inner, |fx| self.inner.destroy(store, fx));
     }
@@ -550,12 +541,12 @@ where
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
             let mut root = imba::container::container(arena, size);
             let inner =
-                imba::Layout::layout(self.inner.display(arena, store, ui), arena, constraints)
+                imba::layout::Layout::layout(self.inner.display(arena, store, ui), arena, constraints)
                     .map(ListKeyCommand::Inner);
             root.place(0.0, 0.0, inner);
 
@@ -568,7 +559,7 @@ where
                 let input_height = lane.input.content_height().max(1.0);
                 let pill_height = (input_height + 6.0).max(chrome.row_height * 0.75);
 
-                let input = imba::Layout::layout(
+                let input = imba::layout::Layout::layout(
                     lane.input.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(PILL_INPUT_WIDTH, input_height)),

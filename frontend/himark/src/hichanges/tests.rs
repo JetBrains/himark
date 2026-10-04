@@ -13,7 +13,10 @@ use serde_json::json;
 use super::*;
 use crate::changes_view::RowItem;
 use crate::drivers::changes::{digest_actions, digest_state, CatalogEntry};
-use crate::{Authority, ForestNode, ResourceLocation, ResourceType};
+use crate::{ForestNode};
+use editor::location::Authority;
+use editor::location::ResourceLocation;
+use editor::location::ResourceType;
 
 
 /// The collection the test's sets live in — wired to sibling ids
@@ -76,7 +79,7 @@ impl crate::higent::ResourceUriMap for FileUris {
         &self,
         uri: &crate::higent::ResourceUri,
         kind: ResourceType,
-        authority: &crate::Authority,
+        authority: &editor::location::Authority,
     ) -> Option<ResourceLocation> {
         let path = uri.as_str().strip_prefix("file://")?;
         let segments: Vec<String> = path
@@ -520,7 +523,7 @@ fn a_superseded_poll_folds_its_batch_but_never_rearms() {
     use crate::drivers::changes::{apply_poll, apply_snapshot, ChangesWire, FolderWire};
 
     let mut store = imba::store::Store::new();
-    let ui = imba::UiCtx::dont_use_too_slow();
+    let ui = imba::ui::UiCtx::dont_use_too_slow();
     let _window = crate::WindowId::from_raw(7);
     let wire_id: imba::store::Id<ChangesWire> = imba::store::Id::mint();
     let history_wire: imba::store::Id<crate::drivers::history::HistoryWire> =

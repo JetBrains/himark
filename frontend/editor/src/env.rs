@@ -15,7 +15,7 @@ impl Fonts {
     }
 }
 
-pub use imba::UiFonts;
+pub use imba::ui::UiFonts;
 
 #[derive(Clone)]
 pub struct Parsers(pub std::sync::Arc<crate::reparse::SyntaxLanguages>);
@@ -55,7 +55,7 @@ impl Enrichers {
 
 pub fn ui_collection(
     store: &imba::store::Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
 ) -> skia_safe::textlayout::FontCollection {
     match ui.get::<UiFonts>() {
         Some(fonts) => fonts.0.clone(),
@@ -64,7 +64,7 @@ pub fn ui_collection(
 }
 
 pub fn ui_typeface(
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     families: &[impl AsRef<str>],
     style: skia_safe::FontStyle,
 ) -> Option<skia_safe::Typeface> {
@@ -108,7 +108,7 @@ pub struct Workshop {
     /// handler's lifetime (ui.rs's doctrine) and handed into every
     /// background layout pass that can meet an inlay. The UI thread
     /// passes its real store/ui instead; nothing is static.
-    measure: std::sync::Mutex<(imba::store::Store, imba::UiCtx)>,
+    measure: std::sync::Mutex<(imba::store::Store, imba::ui::UiCtx)>,
     /// The installed enrichment passes, mirrored into the measure
     /// store so background document builds enrich like the app's.
     enrichers: std::sync::Mutex<Option<std::sync::Arc<crate::enrich::Enrichers>>>,
@@ -125,7 +125,7 @@ impl Workshop {
             source,
             fonts: std::sync::Mutex::new(None),
             theme: std::sync::Mutex::new(theme),
-            measure: std::sync::Mutex::new((seeded, imba::UiCtx::dont_use_too_slow())),
+            measure: std::sync::Mutex::new((seeded, imba::ui::UiCtx::dont_use_too_slow())),
             enrichers: std::sync::Mutex::new(None),
         }
     }
@@ -155,7 +155,7 @@ impl Workshop {
 
     /// Run `f` with this handler's kept (store, ui) pair directly —
     /// for callees that take the pair rather than a ready measure.
-    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::UiCtx) -> R) -> R {
+    pub fn with_ctx<R>(&self, f: impl FnOnce(&imba::store::Store, &imba::ui::UiCtx) -> R) -> R {
         let kept = self.measure.lock().expect("workshop measure");
         f(&kept.0, &kept.1)
     }

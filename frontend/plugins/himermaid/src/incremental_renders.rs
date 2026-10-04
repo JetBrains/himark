@@ -16,11 +16,11 @@ fn marked_renders(marker: &str) -> usize {
 #[test]
 fn the_parse_never_renders_a_diagram() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = "```mermaid\nflowchart TD\n    ParseGateQx --> Nothing\n```\n";
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "markdown",
         &registry,
         store,
@@ -29,8 +29,8 @@ fn the_parse_never_renders_a_diagram() {
         &theme(),
     );
 
-    let outcome = himark::ReparseHandler(himark::test_support::test_workshop(theme()))
-        .reparse(himark::ReparseWork::capture(&document, registry.clone()).expect("parse"));
+    let outcome = editor::reparse::ReparseHandler(himark::test_support::test_workshop(theme()))
+        .reparse(editor::reparse::ReparseWork::capture(&document, registry.clone()).expect("parse"));
     let invalidated = document
         .apply_reparse_outcome(
             outcome,
@@ -54,14 +54,14 @@ fn the_parse_never_renders_a_diagram() {
 #[test]
 fn typing_rerenders_only_the_touched_fence() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = "\
 ```mermaid\nflowchart TD\n    AlphaQx --> BetaQx\n```\n\n\
 middle paragraph between the fences with plain words.\n\n\
 ```mermaid\nflowchart TD\n    GammaQx --> DeltaQx\n```\n";
     let registry = languages();
-    let mut document = himark::Document::from_language(
-        himark::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "markdown",
         &registry,
         store,
@@ -84,7 +84,7 @@ middle paragraph between the fences with plain words.\n\n\
     let at = source.find("AlphaQx --> BetaQx").expect("edge") as u32;
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, at, "X"),
+        &operation::operation::Operation::insert_in(len, at, "X"),
         store,
         ui,
         &fonts(),
@@ -102,7 +102,7 @@ middle paragraph between the fences with plain words.\n\n\
     let at = source.find("middle").expect("paragraph") as u32 + 1;
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, at, "y"),
+        &operation::operation::Operation::insert_in(len, at, "y"),
         store,
         ui,
         &fonts(),

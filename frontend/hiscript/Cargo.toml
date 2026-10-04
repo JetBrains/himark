@@ -10,13 +10,16 @@ plugin = ["dep:himark", "dep:operation", "dep:imba", "dep:myersdiff"]
 
 [dependencies]
 rquickjs = { version = "0.14", features = ["bindgen"] }
+text = { path = "../text" }
 himark = { path = "../himark", optional = true }
+editor = { path = "../editor" }
 imba = { path = "../imba", optional = true }
 operation = { path = "../operation", optional = true }
 myersdiff = { path = "../myersdiff", optional = true }
 
 [dev-dependencies]
 himark = { path = "../himark", features = ["test-support"] }
+editor = { path = "../editor" }
 serde_json = "1"
 
 [[bin]]

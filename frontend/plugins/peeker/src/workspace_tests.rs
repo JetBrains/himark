@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use himark::test_document::plain_document;
-use himark::{AppExt, AppFonts, Application, Authority, OpenedDocument, ResourceType};
+use ::editor::test_document::plain_document;
+use himark::{AppExt, AppFonts, Application, OpenedDocument};
+use editor::location::Authority;
+use editor::location::ResourceType;
 use imba::effect::EffectHandler;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};

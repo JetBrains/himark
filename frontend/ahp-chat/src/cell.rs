@@ -4,17 +4,9 @@
 use crate::tool_group::{
     ToolCallSpec, ToolGroup, ToolRowCommand, ToolRowKey, ToolRowsCommand, ToolUpdate,
 };
-use editor::{env, EditorCommand, EditorView};
+use editor::{env, editor_view::EditorCommand, editor_view::EditorView};
 use hikit::TreeItemCommand;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 type ChatChrome = editor::theme::ChatChrome;
@@ -43,7 +35,7 @@ fn note_mount() {
 pub enum CellCommand {
     Editor(EditorCommand),
 
-    Rewrite(editor::Text),
+    Rewrite(text::text::Text),
 
     Rewrap(f32),
 
@@ -56,7 +48,7 @@ pub enum CellCommand {
         built: documents::BuiltDocument,
     },
 
-    Diff(editor::UnifiedDiffCommand),
+    Diff(editor::unified_diff::UnifiedDiffCommand),
 
     Tool(ToolUpdate),
 
@@ -136,7 +128,7 @@ enum CellBody {
     /// chat edits are small), so no marks lane is owed at birth.
     Diff {
         header: DiffHeader,
-        view: editor::UnifiedDiffView,
+        view: editor::unified_diff::UnifiedDiffView,
     },
 
     Tools(ToolGroup),
@@ -166,9 +158,9 @@ fn mint_nonce() -> u64 {
     NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
 }
 
-fn markdown_document(text: editor::Text) -> editor::Document {
-    editor::Document::new(text, editor::Markup::new()).with_syntax(
-        editor::Syntax::new("markdown", None, editor::Markup::new()),
+fn markdown_document(text: text::text::Text) -> editor::document::Document {
+    editor::document::Document::new(text, editor::markup::Markup::new()).with_syntax(
+        editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
         &[],
     )
 }
@@ -177,14 +169,14 @@ fn markdown_document(text: editor::Text) -> editor::Document {
 /// HANDED IN: this runs in the workshop's bare build store (off the UI
 /// thread), which knows no languages.
 pub(crate) fn side_document(
-    text: editor::Text,
+    text: text::text::Text,
     extension: &str,
-    parsers: &std::sync::Arc<editor::SyntaxLanguages>,
+    parsers: &std::sync::Arc<editor::reparse::SyntaxLanguages>,
     store: &Store,
-    ui: &imba::UiCtx,
+    ui: &imba::ui::UiCtx,
     fonts: &skia_safe::textlayout::FontCollection,
-    theme: &editor::Theme,
-) -> editor::Document {
+    theme: &editor::theme::Theme,
+) -> editor::document::Document {
     let language = if !extension.is_empty() && parsers.knows(extension) {
         extension
     } else {
@@ -195,10 +187,10 @@ pub(crate) fn side_document(
     if !parsers.knows(language) {
         return markdown_document(text);
     }
-    editor::Document::from_language(text, language, parsers, store, ui, fonts, theme)
+    editor::document::Document::from_language(text, language, parsers, store, ui, fonts, theme)
 }
 
-pub(crate) fn document_text(document: &editor::Document) -> String {
+pub(crate) fn document_text(document: &editor::document::Document) -> String {
     let end = document.text().byte_count().min(u32::MAX as usize) as u32;
     document.text().view().substring(0..end)
 }
@@ -226,7 +218,7 @@ impl Cell {
             store,
             ui,
             kind,
-            editor::Text::from_string_exact(markdown),
+            text::text::Text::from_string_exact(markdown),
             content_width,
             fx,
         )
@@ -283,7 +275,7 @@ impl Cell {
         store: &Store,
         ui: &UiCtx,
         kind: CellKind,
-        text: editor::Text,
+        text: text::text::Text,
         content_width: f32,
         fx: &mut Effects<'_, EditorCommand>,
     ) -> (Self, f32) {
@@ -296,7 +288,7 @@ impl Cell {
         let editor = document.add_editor(
             editor_width,
             None,
-            ::editor::EditorBuild::Bounded,
+            ::editor::document::EditorBuild::Bounded,
             &[],
             store,
             ui,
@@ -404,7 +396,7 @@ impl Cell {
             document.add_editor(
                 width,
                 None,
-                ::editor::EditorBuild::Bounded,
+                ::editor::document::EditorBuild::Bounded,
                 &[],
                 store,
                 ui,
@@ -429,7 +421,7 @@ impl Cell {
                 self.perform(store, ui, CellCommand::Append(suffix), fx);
             }
             Grown::Rewritten => {
-                let text = editor::Text::from_string_exact(&markdown);
+                let text = text::text::Text::from_string_exact(&markdown);
                 self.perform(store, ui, CellCommand::Rewrite(text), fx);
             }
         }
@@ -479,7 +471,7 @@ impl Cell {
                 let left_editor = before_doc.add_editor(
                     editor_width,
                     None,
-                    ::editor::EditorBuild::Bounded,
+                    ::editor::document::EditorBuild::Bounded,
                     &[left_marks],
                     store,
                     ui,
@@ -492,7 +484,7 @@ impl Cell {
                 let right_editor = after_doc.add_editor(
                     editor_width,
                     None,
-                    ::editor::EditorBuild::Bounded,
+                    ::editor::document::EditorBuild::Bounded,
                     &[hunks],
                     store,
                     ui,
@@ -513,7 +505,7 @@ impl Cell {
                     quiet,
                 );
 
-                let state = editor::DiffViewState::attach(
+                let state = editor::split_diff::DiffViewState::attach(
                     diff_id,
                     &before_doc,
                     &after_doc,
@@ -539,12 +531,12 @@ impl Cell {
                     base: None,
                 };
                 let mut view =
-                    editor::UnifiedDiffView::new(editor::SplitDiffView::new(left, right, state));
+                    editor::unified_diff::UnifiedDiffView::new(editor::split_diff::SplitDiffView::new(left, right, state));
                 fx.scope(CellCommand::Diff, |fx| {
                     view.perform(
                         store,
                         ui,
-                        editor::UnifiedDiffCommand::SetLayout(editor::DiffLayout::Inline),
+                        editor::unified_diff::UnifiedDiffCommand::SetLayout(editor::unified_diff::DiffLayout::Inline),
                         fx,
                     )
                 });
@@ -720,8 +712,8 @@ impl View for Cell {
                     let inline = view.inline_editor;
                     fx.scope(
                         |command: EditorCommand| {
-                            CellCommand::Diff(editor::UnifiedDiffCommand::Split(
-                                editor::SplitDiffCommand::Left(command),
+                            CellCommand::Diff(editor::unified_diff::UnifiedDiffCommand::Split(
+                                editor::split_diff::SplitDiffCommand::Left(command),
                             ))
                         },
                         |fx| {
@@ -739,8 +731,8 @@ impl View for Cell {
                     );
                     fx.scope(
                         |command: EditorCommand| {
-                            CellCommand::Diff(editor::UnifiedDiffCommand::Split(
-                                editor::SplitDiffCommand::Right(command),
+                            CellCommand::Diff(editor::unified_diff::UnifiedDiffCommand::Split(
+                                editor::split_diff::SplitDiffCommand::Right(command),
                             ))
                         },
                         |fx| {
@@ -759,7 +751,7 @@ impl View for Cell {
                     if let Some(inline) = inline {
                         fx.scope(
                             |command: EditorCommand| {
-                                CellCommand::Diff(editor::UnifiedDiffCommand::Inline(command))
+                                CellCommand::Diff(editor::unified_diff::UnifiedDiffCommand::Inline(command))
                             },
                             |fx| {
                                 view.split
@@ -773,7 +765,7 @@ impl View for Cell {
                         view.perform(
                             store,
                             ui,
-                            editor::UnifiedDiffCommand::Split(editor::SplitDiffCommand::Resync),
+                            editor::unified_diff::UnifiedDiffCommand::Split(editor::split_diff::SplitDiffCommand::Resync),
                             fx,
                         )
                     });
@@ -806,7 +798,7 @@ impl View for Cell {
                     return;
                 };
                 let end = editor.document.text().byte_count().min(u32::MAX as usize) as u32;
-                let operation = operation::Operation::insert_at(end, chunk);
+                let operation = operation::operation::Operation::insert_at(end, chunk);
                 let fonts = env::ui_collection(store, ui);
                 let theme = env::Themes::of(store);
                 fx.scope(CellCommand::Editor, |fx| {
@@ -851,7 +843,7 @@ impl View for Cell {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         CardFrame {
             cell: self,
             store,
@@ -916,11 +908,11 @@ struct CardFrame<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for CardFrame<'_> {}
+impl imba::layout::LayoutValue for CardFrame<'_> {}
 
-impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
+impl<'a> imba::layout::Layout<'a, CellCommand> for CardFrame<'a> {
     fn layout(self, arena: &'a Arena, constraints: Constraints) -> imba::ThunkBox<'a, CellCommand> {
-        use imba::LayoutExt as _;
+        use imba::layout::LayoutExt as _;
         let CardFrame { cell, store, ui } = self;
         let chrome = env::Themes::of(store).ui().chat.clone();
         let width = constraints.max.width.max(1.0);
@@ -939,7 +931,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                     },
                 )
                 .map(CellCommand::ToolRows);
-            return imba::fixed(rows)
+            return imba::layout::fixed(rows)
                 .pad(chrome.pad)
                 .backdrop(
                     hikit::ui::Surface {
@@ -951,7 +943,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                     }
                     .painter(),
                 )
-                .pad_insets(imba::Insets {
+                .pad_insets(imba::layout::Insets {
                     left: 0.0,
                     top: 0.0,
                     right: 0.0,
@@ -985,7 +977,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             _ => header_h,
         };
         let diff_thunk = diff.map(|view| {
-            imba::Layout::layout(
+            imba::layout::Layout::layout(
                 view.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -1010,7 +1002,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             .unwrap_or(0.0);
         let card_height = header_h + editor_height + chrome.pad * 2.0;
 
-        let mut card = imba::ZBox::new(arena);
+        let mut card = imba::layout::ZBox::new(arena);
         // Only the ERROR card keeps a border (it is the signal);
         // bordering every tool/thought card stacked stray hairlines
         // through the transcript.
@@ -1022,7 +1014,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
         let surface = cell_surface(cell.kind, &chrome);
         if surface.is_some() || border.is_some() {
             card = card.child_match_parent(
-                imba::Fill::new().backdrop(
+                imba::layout::Fill::new().backdrop(
                     hikit::ui::Surface {
                         fill: surface,
                         border,
@@ -1032,10 +1024,10 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                 ),
             );
         }
-        card = card.child(imba::spacer(card_width, card_height));
+        card = card.child(imba::layout::spacer(card_width, card_height));
         let content = editor
             .map(|editor| {
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     editor.display(arena, store, ui),
                     arena,
                     Constraints {
@@ -1054,7 +1046,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                 CellBody::Diff { .. } => 0.0,
                 _ => chrome.pad,
             };
-            card = card.child(imba::fixed(content).pad_insets(imba::Insets {
+            card = card.child(imba::layout::fixed(content).pad_insets(imba::layout::Insets {
                 left: body_pad,
                 top: header_h + chrome.pad,
                 right: 0.0,
@@ -1063,7 +1055,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
         }
         if matches!(cell.kind, CellKind::User) {
             let bar_color = chrome.notice_color.0;
-            card = card.child_match_parent(imba::Fill::new().width(3.0).backdrop(
+            card = card.child_match_parent(imba::layout::Fill::new().width(3.0).backdrop(
                 move |_arena: &Arena, canvas: &skia_safe::Canvas, rect: Rect| {
                     let mut paint = Paint::default();
                     paint.set_color(bar_color);
@@ -1072,10 +1064,10 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             ));
             let caps = hikit::ui::caps(store, ui).colored(chrome.notice_color.0);
             card = card.child(
-                imba::ZBox::new(arena)
-                    .child(imba::spacer(0.0, header_h))
-                    .child_aligned(imba::Alignment::CenterStart, hikit::ui::text(&caps, "YOU"))
-                    .pad_insets(imba::Insets {
+                imba::layout::ZBox::new(arena)
+                    .child(imba::layout::spacer(0.0, header_h))
+                    .child_aligned(imba::layout::Alignment::CenterStart, hikit::ui::text(&caps, "YOU"))
+                    .pad_insets(imba::layout::Insets {
                         left: chrome.pad,
                         ..Default::default()
                     }),
@@ -1118,7 +1110,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
                 (DiffHeaderPress::OpenFile, Some(uri)) => Some(CellCommand::OpenFile(uri)),
                 _ => None,
             });
-            card = card.child(imba::fixed(imba::eager(widget)));
+            card = card.child(imba::layout::fixed(imba::eager(widget)));
         }
 
         let rewrap = match &cell.body {
@@ -1136,7 +1128,7 @@ impl<'a> imba::Layout<'a, CellCommand> for CardFrame<'a> {
             _ => None,
         };
         let framed = card
-            .pad_insets(imba::Insets {
+            .pad_insets(imba::layout::Insets {
                 left: 0.0,
                 top: 0.0,
                 right: 0.0,

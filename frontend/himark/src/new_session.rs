@@ -3,17 +3,7 @@
 
 use std::sync::Arc;
 
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::{AnyEffect, CancellationToken, Effects},
-    event::{Event, EventResult, Key},
-    leaf::leaf,
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, LayoutExt as _, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key}, leaf::leaf, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::combo::{Combo, ComboCommand, ComboItem, ComboOption};
@@ -21,7 +11,8 @@ use crate::higent::{
     ConnectServerEffect, HostId, HostStatus, Hosts, ListSessionsEffect, ResolveSessionConfigEffect,
     RootInfo, Servers, SessionOptions, SessionsPage,
 };
-use crate::{EditorCommand, EditorView};
+use editor::editor_view::EditorCommand;
+use editor::editor_view::EditorView;
 
 const PICK_FOLDER: &str = "\u{1}pick-folder";
 
@@ -80,7 +71,7 @@ impl View for ModelOption {
         _arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
         ModelOptionRow {
             option: self,
             store,
@@ -118,11 +109,11 @@ impl std::fmt::Display for PickFoldersEffect {
 }
 
 impl imba::effect::Effect for PickFoldersEffect {
-    type Result = Vec<crate::ResourceLocation>;
+    type Result = Vec<editor::location::ResourceLocation>;
 }
 
 #[derive(Clone, Default)]
-pub struct PendingFolderPick(pub Arc<Vec<crate::ResourceLocation>>);
+pub struct PendingFolderPick(pub Arc<Vec<editor::location::ResourceLocation>>);
 
 /// Values carried over from the session that was current when the composer
 /// opened. Each field is applied once its combo lists the value, then
@@ -290,14 +281,14 @@ pub struct NewSessionView {
     cell_spans: Arc<Vec<std::sync::atomic::AtomicU64>>,
 }
 
-fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<EditorView> {
-    let document = crate::Document::new(crate::Text::from_string_exact(""), crate::Markup::new())
+fn fresh_input(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> ScrollView<EditorView> {
+    let document = editor::document::Document::new(text::text::Text::from_string_exact(""), editor::markup::Markup::new())
         .with_syntax(
-            crate::Syntax::new("markdown", None, crate::Markup::new()),
+            editor::markup::Syntax::new("markdown", None, editor::markup::Markup::new()),
             &[],
         );
     let fonts = crate::fonts::source()();
-    let theme = crate::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let mut view = EditorView::of_document(document, 600.0, store, ui, &fonts, &theme);
     view.set_placeholder("What are you building?", &fonts, &theme);
     view.gutter_width = theme.ui().editor_gutter.width;
@@ -307,13 +298,13 @@ fn fresh_input(store: &imba::store::Store, ui: &imba::UiCtx) -> ScrollView<Edito
 }
 
 impl NewSessionView {
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx, window: crate::WindowId) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx, window: crate::WindowId) -> Self {
         Self::for_host(store, ui, window, None)
     }
 
     pub fn for_host(
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         host: Option<HostId>,
     ) -> Self {
@@ -322,7 +313,7 @@ impl NewSessionView {
 
     fn seeded(
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         window: crate::WindowId,
         host: Option<HostId>,
         prefill: Prefill,
@@ -715,7 +706,7 @@ fn host_status(combo: &Combo) -> Option<HostStatus> {
     }
 }
 
-fn host_folders(store: &Store, host: HostId) -> Vec<crate::ResourceLocation> {
+fn host_folders(store: &Store, host: HostId) -> Vec<editor::location::ResourceLocation> {
     let mut seen = std::collections::HashSet::new();
     let mut folders = Vec::new();
     for (id, entry) in Hosts::list(store) {
@@ -955,8 +946,8 @@ impl View for NewSessionView {
                 self.synced = store_fingerprint(store);
             }
             NewSessionCommand::Rewrap(width) => {
-                let fonts = crate::env::ui_collection(store, ui);
-                let theme = crate::env::Themes::of(store);
+                let fonts = ::editor::env::ui_collection(store, ui);
+                let theme = ::editor::env::Themes::of(store);
                 let editor = self.input.content().editor;
                 fx.scope(NewSessionCommand::Editor, |fx| {
                     fx.scope(ScrollCommand::Content, |fx| {
@@ -976,10 +967,10 @@ impl View for NewSessionView {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let size = constraints.max;
-            let themes = crate::env::Themes::of(store);
+            let themes = ::editor::env::Themes::of(store);
             let theme = themes.ui();
             let controls_h = theme.toolbar.height;
             let editor_h = (size.height - controls_h).max(1.0);
@@ -1010,7 +1001,7 @@ impl View for NewSessionView {
             root.place(
                 0.0,
                 top_pad,
-                imba::Layout::layout(
+                imba::layout::Layout::layout(
                     self.input.display(arena, store, ui),
                     arena,
                     Constraints::tight(Size::new(size.width, (editor_h - top_pad).max(1.0))),
@@ -1030,7 +1021,7 @@ impl View for NewSessionView {
                 .chars()
                 .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                 .sum::<f32>()
-                + imba::text_advance(ui, &key_font, "⌘⏎")
+                + imba::layout::text_advance(ui, &key_font, "⌘⏎")
                 + theme.combo.gap
                 + pad * 2.0;
             let start_x = size.width - start_width;
@@ -1108,12 +1099,12 @@ impl View for NewSessionView {
             let mid = row_h * 0.5;
             let caps_ascent = -caps_font.metrics().1.ascent;
             let key_ascent = -key_font.metrics().1.ascent;
-            let start_cell = imba::Row::new(arena)
+            let start_cell = imba::layout::Row::new(arena)
                 .gap(theme_gap())
                 .child(
-                    imba::text(ui, start_label, caps_font.clone(), on_accent)
+                    imba::layout::text(ui, start_label, caps_font.clone(), on_accent)
                         .tracking(1.5)
-                        .pad_insets(imba::Insets {
+                        .pad_insets(imba::layout::Insets {
                             left: 0.0,
                             top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
                             right: 0.0,
@@ -1121,14 +1112,14 @@ impl View for NewSessionView {
                         }),
                 )
                 .child(
-                    imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(imba::Insets {
+                    imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(imba::layout::Insets {
                         left: 0.0,
                         top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                         right: 0.0,
                         bottom: 0.0,
                     }),
                 )
-                .pad_insets(imba::Insets {
+                .pad_insets(imba::layout::Insets {
                     left: pad,
                     top: 0.0,
                     right: 0.0,
@@ -1164,7 +1155,7 @@ impl View for NewSessionView {
             let hints_width: f32 = hints
                 .iter()
                 .map(|(key, label)| {
-                    imba::text_advance(ui, &key_font, key)
+                    imba::layout::text_advance(ui, &key_font, key)
                         + 5.0
                         + hint_font.measure_str(label, None).0
                 })
@@ -1185,12 +1176,12 @@ impl View for NewSessionView {
             // backdrop painter, and the cell keeps ignoring presses
             // like the old leaf.
             let hint_ascent = -hint_font.metrics().1.ascent;
-            let mut hint_row = imba::Row::new(arena);
+            let mut hint_row = imba::layout::Row::new(arena);
             let pairs = hints.len();
             for (index, (key, label)) in hints.into_iter().enumerate() {
                 hint_row = hint_row
-                    .child(imba::text(ui, key, key_font.clone(), key_color).pad_insets(
-                        imba::Insets {
+                    .child(imba::layout::text(ui, key, key_font.clone(), key_color).pad_insets(
+                        imba::layout::Insets {
                             left: 0.0,
                             top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                             right: 5.0,
@@ -1198,8 +1189,8 @@ impl View for NewSessionView {
                         },
                     ))
                     .child(
-                        imba::text(ui, label, hint_font.clone(), label_color).pad_insets(
-                            imba::Insets {
+                        imba::layout::text(ui, label, hint_font.clone(), label_color).pad_insets(
+                            imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + hint_font.size() * 0.35 - hint_ascent).max(0.0),
                                 right: match index + 1 == pairs {
@@ -1212,7 +1203,7 @@ impl View for NewSessionView {
                     );
             }
             let hint_cell = hint_row
-                .pad_insets(imba::Insets {
+                .pad_insets(imba::layout::Insets {
                     left: pad,
                     top: 0.0,
                     right: 0.0,
@@ -1256,8 +1247,8 @@ impl View for NewSessionView {
             // left rule and the checkbox GLYPH stay a backdrop
             // painter (form geometry), and the press is `.on_click`,
             // minting ToggleWorktree like the old event closure.
-            let worktree_cell = imba::text(ui, worktree_label, hint_font.clone(), text_dim)
-                .pad_insets(imba::Insets {
+            let worktree_cell = imba::layout::text(ui, worktree_label, hint_font.clone(), text_dim)
+                .pad_insets(imba::layout::Insets {
                     left: pad + check + 10.0,
                     top: (mid + hint_font.size() * 0.35 - hint_ascent).max(0.0),
                     right: 0.0,
@@ -1459,8 +1450,8 @@ impl View for ComposerPane {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(move |_arena: &'a Arena, constraints: Constraints| {
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(move |_arena: &'a Arena, constraints: Constraints| {
             let Some(composer) = Composers::composer_ref(store, self.window) else {
                 let blank = imba::ThunkBox::new(
                     arena,
@@ -1470,7 +1461,7 @@ impl View for ComposerPane {
             };
             imba::ThunkBox::new(
                 arena,
-                imba::Layout::layout(composer.display(arena, store, ui), arena, constraints),
+                imba::layout::Layout::layout(composer.display(arena, store, ui), arena, constraints),
             )
         })
     }
@@ -1531,7 +1522,7 @@ impl crate::DynamicCommand for PickSessionFolder {
 }
 
 struct FoldersPicked {
-    locations: Vec<crate::ResourceLocation>,
+    locations: Vec<editor::location::ResourceLocation>,
 }
 
 impl crate::DynamicCommand for FoldersPicked {
@@ -2433,17 +2424,17 @@ struct ModelOptionRow<'a> {
     ui: &'a UiCtx,
 }
 
-impl imba::LayoutValue for ModelOptionRow<'_> {}
+impl imba::layout::LayoutValue for ModelOptionRow<'_> {}
 
-impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
+impl<'a> imba::layout::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
     fn layout(
         self,
         arena: &'a Arena,
         constraints: Constraints,
     ) -> imba::ThunkBox<'a, std::convert::Infallible> {
-        use imba::LayoutExt as _;
+        use imba::layout::LayoutExt as _;
         let ModelOptionRow { option, store, ui } = self;
-        let chrome = crate::env::Themes::of(store).ui().combo.clone();
+        let chrome = ::editor::env::Themes::of(store).ui().combo.clone();
         let heading = option.model.is_none();
         let label = if heading {
             option.label.to_uppercase()
@@ -2458,7 +2449,7 @@ impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
         let text_width = if heading {
             crate::combo::tracked_width(ui, &font, &label)
         } else {
-            imba::text_advance(ui, &font, &label)
+            imba::layout::text_advance(ui, &font, &label)
         };
         let natural = text_width + chrome.menu_pad * if heading { 2.0 } else { 2.75 };
         let width = if constraints.max.width.is_finite() {
@@ -2476,13 +2467,13 @@ impl<'a> imba::Layout<'a, std::convert::Infallible> for ModelOptionRow<'a> {
         } else {
             chrome.menu_text.0
         };
-        let mut label = imba::text(ui, label, font, color);
+        let mut label = imba::layout::text(ui, label, font, color);
         if heading {
             label = label.tracking(1.5);
         }
-        imba::ZBox::new(arena)
-            .child(imba::spacer(width, height))
-            .child(label.pad_insets(imba::Insets {
+        imba::layout::ZBox::new(arena)
+            .child(imba::layout::spacer(width, height))
+            .child(label.pad_insets(imba::layout::Insets {
                 left: x,
                 top: drop,
                 right: 0.0,

@@ -6,13 +6,13 @@ use super::*;
 #[test]
 fn functions_emit_foldables() {
     let store = &imba::store::Store::new();
-    let ui = &imba::UiCtx::dont_use_too_slow();
+    let ui = &imba::ui::UiCtx::dont_use_too_slow();
     let source = "fn one() {\n    1;\n}\n\nfn tiny() { 2 }\n";
     let fonts = editor::embedded_fonts::source()();
-    let theme = editor::Theme::embedded();
+    let theme = editor::theme::Theme::embedded();
     let registry = std::sync::Arc::new(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &registry,
         store,
@@ -20,7 +20,7 @@ fn functions_emit_foldables() {
         &fonts,
         &theme,
     );
-    let outcome = editor::ReparseWork::capture(&document, registry)
+    let outcome = editor::reparse::ReparseWork::capture(&document, registry)
         .expect("parse")
         .run_reparse();
     document.apply_reparse_outcome(

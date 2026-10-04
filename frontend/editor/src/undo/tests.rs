@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use imba::store::Store;
-use operation::{Op, Operation};
+use operation::{op::Op, operation::Operation};
 
 use crate::caret::{Caret, MultiCaret};
 use crate::document::Document;
@@ -16,7 +16,7 @@ fn test_fonts() -> skia_safe::textlayout::FontCollection {
 
 struct Pane {
     store: Store,
-    ui: imba::UiCtx,
+    ui: imba::ui::UiCtx,
     document: Document,
     editor: EditorId,
 }
@@ -39,7 +39,7 @@ impl Pane {
         );
         Self {
             store: Store::new(),
-            ui: imba::UiCtx::dont_use_too_slow(),
+            ui: imba::ui::UiCtx::dont_use_too_slow(),
             document,
             editor,
         }
@@ -184,7 +184,7 @@ fn a_shared_edit_carries_the_undo_history_across_itself() {
 
     let foreign = Operation::from_ops([Op::Insert(">> ".to_owned()), Op::Retain(5)]);
     pane.document.edit_shared(
-        crate::EditIdentity::mint(),
+        crate::edit_log::EditIdentity::mint(),
         &foreign,
         store,
         ui,

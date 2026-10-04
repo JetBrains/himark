@@ -3,7 +3,8 @@
 
 use std::sync::Arc;
 
-use crate::{AppCommand, Application, Document, DynamicCommand, ModalView, OpenedDocument};
+use crate::{AppCommand, Application, DynamicCommand, ModalView, OpenedDocument};
+use editor::document::Document;
 
 pub trait AppExt {
     fn perform_command(&mut self, command: AppCommand) -> bool;
@@ -25,10 +26,10 @@ pub trait AppExt {
         window: crate::WindowId,
         name: String,
         primary: bool,
-        location: Option<crate::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
         build: impl FnOnce(
                 &imba::store::Store,
-                &imba::UiCtx,
+                &imba::ui::UiCtx,
                 &skia_safe::textlayout::FontCollection,
                 &::editor::theme::Theme,
             ) -> Document
@@ -45,9 +46,9 @@ pub trait AppExt {
 
     fn register_command(&mut self, command: Arc<dyn DynamicCommand>) -> bool;
 
-    fn register_syntax_languages(&mut self, languages: ::editor::SyntaxLanguages) -> bool;
+    fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool;
 
-    fn register_enrichers(&mut self, enrichers: ::editor::Enrichers) -> bool;
+    fn register_enrichers(&mut self, enrichers: ::editor::enrich::Enrichers) -> bool;
 
     fn register_diff_policy(
         &mut self,
@@ -117,10 +118,10 @@ impl AppExt for Application {
         window: crate::WindowId,
         name: String,
         primary: bool,
-        location: Option<crate::ResourceLocation>,
+        location: Option<editor::location::ResourceLocation>,
         build: impl FnOnce(
                 &imba::store::Store,
-                &imba::UiCtx,
+                &imba::ui::UiCtx,
                 &skia_safe::textlayout::FontCollection,
                 &::editor::theme::Theme,
             ) -> Document
@@ -153,11 +154,11 @@ impl AppExt for Application {
         self.perform_command(AppCommand::Register(command))
     }
 
-    fn register_syntax_languages(&mut self, languages: ::editor::SyntaxLanguages) -> bool {
+    fn register_syntax_languages(&mut self, languages: ::editor::reparse::SyntaxLanguages) -> bool {
         self.perform_command(AppCommand::RegisterLanguages(languages))
     }
 
-    fn register_enrichers(&mut self, enrichers: ::editor::Enrichers) -> bool {
+    fn register_enrichers(&mut self, enrichers: ::editor::enrich::Enrichers) -> bool {
         self.perform_command(AppCommand::RegisterEnrichers(enrichers))
     }
 

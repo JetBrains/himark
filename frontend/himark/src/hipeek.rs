@@ -13,16 +13,20 @@ use std::sync::Arc;
 use imba::store::Store;
 
 use crate::locations::{open_feed, FeedId, LocationLists};
-use crate::{Document, EditorCommand, EditorFocus, Inlay, InlayMode};
+use editor::document::Document;
+use editor::editor_view::EditorCommand;
+use editor::editor_view::EditorFocus;
+use editor::markup::Inlay;
+use editor::markup::InlayMode;
 use locations::peek::caret_anchor;
 
 pub use ::locations::peek::{PeekCommand, PeekView};
 
 const FALLBACK_WIDTH: f32 = 600.0;
 
-fn peek_markup() -> crate::MarkupId {
-    static ID: std::sync::OnceLock<crate::MarkupId> = std::sync::OnceLock::new();
-    *ID.get_or_init(crate::MarkupId::mint)
+fn peek_markup() -> editor::markup::MarkupId {
+    static ID: std::sync::OnceLock<editor::markup::MarkupId> = std::sync::OnceLock::new();
+    *ID.get_or_init(editor::markup::MarkupId::mint)
 }
 
 pub struct GoToReference;
@@ -41,12 +45,12 @@ impl documents::DocumentCommand for GoToReference {
     fn perform(
         &self,
         store: &mut Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         _documents: imba::store::Id<crate::OpenDocuments>,
         document_id: crate::DocumentId,
         document: &mut Document,
-        editor: crate::EditorId,
-        location: &crate::ResourceLocation,
+        editor: editor::editor::EditorId,
+        location: &editor::location::ResourceLocation,
         payload: Option<Box<dyn std::any::Any + Send + Sync>>,
         fx: &mut imba::effect::Effects<'_, EditorCommand>,
     ) {
@@ -73,8 +77,8 @@ impl documents::DocumentCommand for GoToReference {
         let feed = FeedId::mint();
         open_feed(store, lists, feed, "References".to_owned(), String::new());
 
-        let fonts = crate::env::Fonts::of(store)();
-        let theme = crate::env::Themes::of(store);
+        let fonts = ::editor::env::Fonts::of(store)();
+        let theme = ::editor::env::Themes::of(store);
         let width = match document.layout_width(editor) {
             width if width > 1.0 => width,
             _ => FALLBACK_WIDTH,
@@ -84,7 +88,7 @@ impl documents::DocumentCommand for GoToReference {
         // window in the closure: the targeted open is queued as a
         // deferred window ask and the request drain lands it.
         let open: Arc<
-            dyn Fn(&mut Store, crate::ResourceLocation, std::ops::Range<crate::LineCol>)
+            dyn Fn(&mut Store, editor::location::ResourceLocation, std::ops::Range<crate::LineCol>)
                 + Send
                 + Sync,
         > = Arc::new(move |store, location, target| {
@@ -135,7 +139,7 @@ impl documents::DocumentCommand for GoToReference {
 /// The peek's deliberate open — a deferred window ask: the request
 /// drain supplies whichever window the gesture ran in.
 struct OpenPicked {
-    location: crate::ResourceLocation,
+    location: editor::location::ResourceLocation,
     target: Option<std::ops::Range<crate::LineCol>>,
 }
 

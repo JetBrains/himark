@@ -5,9 +5,7 @@ use std::sync::{Arc, Mutex};
 
 use skia_safe::{Canvas, Rect, Size};
 
-use crate::{
-    arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View,
-};
+use crate::{arena::Arena, constraints::Constraints, store::Store, thunk_ext::ThunkExt, ui::UiCtx, View};
 
 pub struct ImageView {
     bytes: Arc<[u8]>,
@@ -116,7 +114,7 @@ impl View for ImageView {
         _arena: &'a Arena,
         _store: &'a Store,
         _ui: &'a UiCtx,
-    ) -> impl crate::Layout<'a, Self::Command> + crate::LayoutValue + 'a {
+    ) -> impl crate::layout::Layout<'a, Self::Command> + crate::layout::LayoutValue + 'a {
         Scaled(self)
     }
 }
@@ -124,9 +122,9 @@ impl View for ImageView {
 /// The view's one layout, reified: width-scaled box, self-painting.
 struct Scaled<'a>(&'a ImageView);
 
-impl crate::LayoutValue for Scaled<'_> {}
+impl crate::layout::LayoutValue for Scaled<'_> {}
 
-impl<'a> crate::Layout<'a, ImageCommand> for Scaled<'a> {
+impl<'a> crate::layout::Layout<'a, ImageCommand> for Scaled<'a> {
     fn layout(
         self,
         arena: &'a Arena,

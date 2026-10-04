@@ -1,9 +1,9 @@
 // Copyright © 2026 JetBrains s.r.o.
 // SPDX-License-Identifier: Apache-2.0
 
-use rope::Cursor;
+use rope::cursor::Cursor;
 
-use crate::{measure::TextMeasure, Text};
+use crate::{measure::TextMeasure, text::Text};
 
 pub struct ByteReader {
     cursor: Cursor<u8, TextMeasure>,

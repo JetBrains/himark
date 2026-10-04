@@ -17,7 +17,7 @@ pub mod views;
 
 pub use views::{dispose_feed, files_forest, locations_forest, LocationsWashHook, WashDocument};
 
-use editor::ResourceLocation;
+use editor::location::ResourceLocation;
 use imba::store::Store;
 
 /// One streamed location with its URI resolved at the route edge
@@ -95,7 +95,7 @@ pub struct LocationsFeedRow {
     /// set a removal brings, the find-bar discipline).
     pub washes: rpds::HashTrieMapSync<
         documents::DocumentId,
-        (editor::MarkupId, rpds::VectorSync<(u32, u32)>),
+        (editor::markup::MarkupId, rpds::VectorSync<(u32, u32)>),
     >,
 }
 

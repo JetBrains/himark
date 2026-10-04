@@ -177,7 +177,7 @@ impl EditorViewport {
         gutter: bool,
         stripes: Option<crate::diff::DiffId>,
         store: &imba::store::Store,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &crate::theme::Theme,
     ) -> Self {
@@ -192,7 +192,7 @@ impl EditorViewport {
             ui,
         };
 
-        let text_focused = focused && state.focus == crate::EditorFocus::Text;
+        let text_focused = focused && state.focus == crate::editor_view::EditorFocus::Text;
         let selections: Vec<Range<u32>> = match text_focused {
             true => state
                 .carets
@@ -571,7 +571,7 @@ impl EditorViewport {
     }
 }
 
-fn starts_hard_line(view: &mut text::TextView, byte_start: u32) -> Option<()> {
+fn starts_hard_line(view: &mut text::text_view::TextView, byte_start: u32) -> Option<()> {
     if byte_start == 0 {
         return Some(());
     }

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use editor::StyleId;
+use editor::markup::StyleId;
 
-fn test_theme() -> editor::Theme {
-    editor::Theme::embedded()
+fn test_theme() -> editor::theme::Theme {
+    editor::theme::Theme::embedded()
 }
 
 #[test]
@@ -15,8 +15,8 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
     let fonts = editor::test_document::test_fonts_collection();
     let source = "fn main() {\n    let greeting = 1;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -33,7 +33,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
     let mut hidden = Vec::new();
 
     let extras: Vec<_> = document.document_scoped_markups().collect();
-    let marks = editor::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
+    let marks = editor::markup::OverlaidMarkup::new(document.markup(), &extras).marks_inline_hidden_in(
         0..11,
         &mut inline,
         &mut hidden,
@@ -52,7 +52,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
     let _editor = document.add_editor(
         400.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -62,7 +62,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
     );
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, 0, "pub "),
+        &operation::operation::Operation::insert_in(len, 0, "pub "),
         store,
         ui,
         &fonts,
@@ -70,7 +70,7 @@ fn a_rust_file_is_a_document_rooted_in_rust() {
         &mut imba::effect::Batch::new().effects(),
     );
     let parsers = std::sync::Arc::new(languages);
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("a rust root reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -101,8 +101,8 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
     let fonts = editor::test_document::test_fonts_collection();
     let source = "fn main() {\n    let first = 1;\n    let second = 2;\n    let third = 3;\n}\n";
     let languages = himarkdown::markdown_languages(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -113,7 +113,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
     let _editor = document.add_editor(
         400.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -122,7 +122,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
         &mut imba::effect::Batch::new().effects(),
     );
 
-    let keyword_at = |document: &editor::Document, needle: &str, label: &str| {
+    let keyword_at = |document: &editor::document::Document, needle: &str, label: &str| {
         let mut view = document.text().view();
         let count = view.byte_count();
         let text = view.byte_string(0, count);
@@ -138,7 +138,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
         assert!(
             inline
                 .iter()
-                .any(|interval| interval.id == editor::StyleId::Keyword),
+                .any(|interval| interval.id == editor::markup::StyleId::Keyword),
             "{label}: the `let` before {needle:?} keeps its color ({} marks in {at}..{line_end})",
             inline.len(),
         );
@@ -148,7 +148,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
     let at = source.find("first").unwrap() as u32 + "first".len() as u32;
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, at, "x"),
+        &operation::operation::Operation::insert_in(len, at, "x"),
         store,
         ui,
         &fonts,
@@ -156,7 +156,7 @@ fn typing_inside_a_function_keeps_distant_body_tokens() {
         &mut imba::effect::Batch::new().effects(),
     );
     let parsers = std::sync::Arc::new(languages);
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("a rust root reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -181,7 +181,7 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
     let _editor = document.add_editor(
         400.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,
@@ -191,7 +191,7 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
     );
     let parsers = std::sync::Arc::new(himarkdown::markdown_languages(languages()));
 
-    let outcome = editor::ReparseWork::capture(&document, parsers.clone())
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers.clone())
         .expect("a cold document reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -205,14 +205,14 @@ fn typing_into_a_fenced_identifier_recolors_the_whole_token() {
 
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, 20, "xx"),
+        &operation::operation::Operation::insert_in(len, 20, "xx"),
         store,
         ui,
         &fonts,
         &theme,
         &mut imba::effect::Batch::new().effects(),
     );
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("an edited document reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -248,8 +248,8 @@ fn declarations_emit_outline_items_at_parse() {
     let fonts = editor::test_document::test_fonts_collection();
     let source = "struct Point {\n    x: f32,\n}\n\nimpl Point {\n    pub fn len(&self) -> f32 {\n        0.0\n    }\n}\n";
     let languages = himarkdown::markdown_languages(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -258,7 +258,7 @@ fn declarations_emit_outline_items_at_parse() {
         &test_theme(),
     );
     let parsers = std::sync::Arc::new(languages);
-    let outcome = editor::ReparseWork::capture(&document, parsers)
+    let outcome = editor::reparse::ReparseWork::capture(&document, parsers)
         .expect("a rust root reparses")
         .run_reparse();
     document.apply_reparse_outcome(
@@ -297,7 +297,7 @@ fn declarations_emit_outline_items_at_parse() {
     );
     let len = document.text().byte_count() as u32;
     document.edit(
-        &operation::Operation::insert_in(len, 0, "// head\n"),
+        &operation::operation::Operation::insert_in(len, 0, "// head\n"),
         store,
         ui,
         &fonts,
@@ -318,8 +318,8 @@ fn declaration_names_carry_the_header_style() {
     let fonts = editor::test_document::test_fonts_collection();
     let source = "struct Widget;\n\nimpl Widget {\n    fn frobnicate(&self) {\n        self.helper();\n    }\n}\n\nfn helper(widget: Widget) {}\n";
     let languages = himarkdown::markdown_languages(languages());
-    let document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -383,8 +383,8 @@ fn render_declaration_names_snapshot() {
     let fonts = editor::test_document::test_fonts_collection();
     let source = "/// A live document channel.\npub struct DocumentChannels {\n    slots: HashMap<Location, Slot>,\n    suppressed: HashSet<(Location, u64)>,\n}\n\nimpl DocumentChannels {\n    /// Starts the channel once — idempotent.\n    pub fn ensure(&self, location: Location) {\n        if self.slots.contains_key(&location) {\n            return;\n        }\n        self.spawn(location);\n    }\n\n    fn spawn(&self, location: Location) {\n        run(async move { life(location).await });\n    }\n}\n\nfn life(location: Location) -> Life {\n    Life::open(location)\n}\n";
     let languages = himarkdown::markdown_languages(languages());
-    let mut document = editor::Document::from_language(
-        editor::Text::from_string_exact(source),
+    let mut document = editor::document::Document::from_language(
+        text::text::Text::from_string_exact(source),
         "rs",
         &languages,
         store,
@@ -395,7 +395,7 @@ fn render_declaration_names_snapshot() {
     let editor = document.add_editor(
         860.0,
         None,
-        editor::EditorBuild::Bounded,
+        editor::document::EditorBuild::Bounded,
         &[],
         store,
         ui,

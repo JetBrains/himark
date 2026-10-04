@@ -3,8 +3,8 @@
 
 use std::ops::Range;
 
-use operation::Operation;
-use text::Text;
+use operation::operation::Operation;
+use text::text::Text;
 
 pub(crate) const FOLDS_ENABLED: bool = true;
 
@@ -57,12 +57,12 @@ pub(crate) fn derive_folds(
 ) -> Vec<FoldSpec> {
     let mut folds = Vec::new();
 
-    if diff.iter().all(|op| matches!(op, operation::Op::Retain(_))) {
+    if diff.iter().all(|op| matches!(op, operation::op::Op::Retain(_))) {
         return folds;
     }
     let mut scan = LineScan::new(left_text);
     let left_len = scan.view.byte_count().min(u32::MAX as usize) as u32;
-    let right_len = diff.transform_offset(left_len, operation::Bias::Right);
+    let right_len = diff.transform_offset(left_len, operation::operation::Bias::Right);
 
     let mut at = region.start;
     while let Some(run) = diff.next_retained_old(at) {
@@ -74,7 +74,7 @@ pub(crate) fn derive_folds(
             continue;
         }
 
-        let right_start = diff.transform_offset(run.start, operation::Bias::Right);
+        let right_start = diff.transform_offset(run.start, operation::operation::Bias::Right);
 
         let first_line = match scan.line_start_at_or_after(run.start, left_len) {
             Some(byte) if byte < run.end => byte,
@@ -123,7 +123,7 @@ pub(crate) fn derive_folds(
 }
 
 pub(crate) struct LineScan {
-    view: text::TextView,
+    view: text::text_view::TextView,
     scratch: Vec<u8>,
 }
 
@@ -408,7 +408,7 @@ impl imba::View for FoldStrip {
     fn perform(
         &mut self,
         _store: &mut imba::store::Store,
-        _ui: &imba::UiCtx,
+        _ui: &imba::ui::UiCtx,
         _command: FoldCommand,
         _fx: &mut imba::effect::Effects<'_, FoldCommand>,
     ) {
@@ -418,13 +418,13 @@ impl imba::View for FoldStrip {
         &'a self,
         _arena: &'a imba::arena::Arena,
         store: &'a imba::store::Store,
-        ui: &'a imba::UiCtx,
-    ) -> impl imba::Layout<'a, FoldCommand> + imba::LayoutValue + 'a {
+        ui: &'a imba::ui::UiCtx,
+    ) -> impl imba::layout::Layout<'a, FoldCommand> + imba::layout::LayoutValue + 'a {
         FoldStripLayout {
             chrome: crate::env::Themes::of(store).ui().diff.clone(),
             lines: self.lines,
             silent: self.silent,
-            shaper: imba::TextShaper::of(ui),
+            shaper: imba::layout::TextShaper::of(ui),
         }
     }
 }
@@ -439,12 +439,12 @@ struct FoldStripLayout {
     chrome: crate::theme::DiffChrome,
     lines: u32,
     silent: bool,
-    shaper: std::rc::Rc<imba::TextShaper>,
+    shaper: std::rc::Rc<imba::layout::TextShaper>,
 }
 
-impl imba::LayoutValue for FoldStripLayout {}
+impl imba::layout::LayoutValue for FoldStripLayout {}
 
-impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
+impl<'a> imba::layout::Layout<'a, FoldCommand> for FoldStripLayout {
     fn layout(
         self,
         arena: &'a imba::arena::Arena,
@@ -452,7 +452,7 @@ impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
     ) -> imba::ThunkBox<'a, FoldCommand> {
         use imba::event::{Event, EventResult, MouseButton};
         use imba::thunk_ext::ThunkExt;
-        use imba::LayoutExt;
+        use imba::layout::LayoutExt;
 
         let chrome = self.chrome;
         let width = constraints.max.width.max(1.0);
@@ -472,22 +472,22 @@ impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
         let font = strip_font(chrome.fold_text_size);
         let ascent = -font.metrics().1.ascent;
         let baseline = (height + chrome.fold_text_size * 0.7) * 0.5;
-        let label = imba::Text::with_shaper(
+        let label = imba::layout::Text::with_shaper(
             format!("… {} unchanged lines", self.lines),
             font,
             chrome.fold_text.0,
             self.shaper.clone(),
         )
-        .pad_insets(imba::Insets {
+        .pad_insets(imba::layout::Insets {
             left: size * 0.5,
             top: baseline - ascent,
             right: 0.0,
             bottom: 0.0,
         });
 
-        let mut row = imba::Row::new(arena)
+        let mut row = imba::layout::Row::new(arena)
             .child(label)
-            .weighted(1.0, imba::Fill::new());
+            .weighted(1.0, imba::layout::Fill::new());
         // Left-to-right is the old right-to-left button walk reversed;
         // each button carries the inter-button gap as its right inset,
         // so the last one also ends a gap short of the strip's edge.
@@ -497,7 +497,7 @@ impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
                 move |_arena, canvas, rect| paint_fold_glyph(canvas, rect, color, command),
             );
             row = row.child(
-                imba::fixed(glyph)
+                imba::layout::fixed(glyph)
                     .on_event(
                         move |_arena: &imba::arena::Arena,
                               event: &Event<'_>,
@@ -511,7 +511,7 @@ impl<'a> imba::Layout<'a, FoldCommand> for FoldStripLayout {
                             }
                         },
                     )
-                    .pad_insets(imba::Insets {
+                    .pad_insets(imba::layout::Insets {
                         left: 0.0,
                         top: button_top,
                         right: gap,

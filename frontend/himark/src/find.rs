@@ -3,17 +3,9 @@
 
 use std::ops::Range;
 
-use editor::{EditorCommand, EditorId, EditorView, MarkupId};
+use editor::{editor_view::EditorCommand, editor::EditorId, editor_view::EditorView, markup::MarkupId};
 use imba::effect::AnyEffect;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    effect::Effects,
-    event::{Event, EventResult, Key},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Thunk, UiCtx, View,
-};
+use imba::{arena::Arena, constraints::Constraints, effect::Effects, event::{Event, EventResult, Key}, store::Store, thunk_ext::ThunkExt, Thunk, ui::UiCtx, View};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::DocumentId;
@@ -54,7 +46,7 @@ pub struct Scan {
 }
 
 pub struct FindScanEffect {
-    text: text::Text,
+    text: text::text::Text,
     query: String,
     serial: u64,
     document: crate::DocumentId,
@@ -110,7 +102,7 @@ impl FindBar {
     pub(crate) fn focus_data<'w>(
         &'w self,
         store: &'w imba::store::Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
     ) -> imba::focus::FocusData<'w, FindCommand> {
         use imba::event::EventResult;
         use imba::focus::FocusData;
@@ -129,7 +121,7 @@ impl FindBar {
         own.merge_under(self.input.focus_data(store, ui).map(FindCommand::Input))
     }
 
-    pub fn new(store: &imba::store::Store, ui: &imba::UiCtx) -> Self {
+    pub fn new(store: &imba::store::Store, ui: &imba::ui::UiCtx) -> Self {
         let mut input = EditorView::input(600.0, store, ui, crate::fonts::source());
         input.focus_text();
         Self {
@@ -146,10 +138,10 @@ impl FindBar {
         }
     }
 
-    pub fn seed(&mut self, store: &imba::store::Store, ui: &imba::UiCtx, query: &str) {
-        let mut markup = editor::Markup::new();
+    pub fn seed(&mut self, store: &imba::store::Store, ui: &imba::ui::UiCtx, query: &str) {
+        let mut markup = editor::markup::Markup::new();
         markup.push_styled_covering(0..query.len() as u32, editor::theme::StyleId::Input);
-        let document = editor::Document::new(text::Text::from_string_exact(query), markup);
+        let document = editor::document::Document::new(text::text::Text::from_string_exact(query), markup);
         let mut input = EditorView::of_document(
             document,
             600.0,
@@ -191,7 +183,7 @@ impl FindBar {
             .min(u32::MAX as usize) as u32;
         self.input.document.set_carets(
             self.input.editor,
-            editor::MultiCaret::one(editor::Caret::selecting(0, end)),
+            editor::caret::MultiCaret::one(editor::caret::Caret::selecting(0, end)),
         );
     }
 
@@ -208,7 +200,7 @@ impl FindBar {
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
         target: Option<(DocumentId, EditorId)>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -278,7 +270,7 @@ impl FindBar {
         documents: imba::store::Id<crate::OpenDocuments>,
         target: Option<(DocumentId, EditorId)>,
         landed: &Scan,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -300,7 +292,7 @@ impl FindBar {
 
         let mut changed: Vec<Range<u32>> = self.matches.clone();
         changed.extend(matches.iter().cloned());
-        let mut tints = editor::Markup::new();
+        let mut tints = editor::markup::Markup::new();
         for range in &matches {
             tints.push_styled(range.clone(), editor::theme::StyleId::Match);
         }
@@ -327,7 +319,7 @@ impl FindBar {
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
         forward: bool,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -362,7 +354,7 @@ impl FindBar {
         &mut self,
         store: &mut Store,
         documents: imba::store::Id<crate::OpenDocuments>,
-        ui: &imba::UiCtx,
+        ui: &imba::ui::UiCtx,
         fonts: &skia_safe::textlayout::FontCollection,
         theme: &editor::theme::Theme,
         fx: &mut Effects<'_, EditorCommand>,
@@ -441,7 +433,7 @@ impl FindBar {
         bar.place(
             pad + chrome.input_pad_x,
             pad * 0.5 + chrome.input_pad_y,
-            imba::Layout::layout(
+            imba::layout::Layout::layout(
                 self.input.display(arena, store, ui),
                 arena,
                 Constraints {
@@ -508,7 +500,7 @@ fn matcher(query: &str) -> Option<regex::Regex> {
     build(query).or_else(|_| build(&regex::escape(query))).ok()
 }
 
-fn scan(query: &str, text: &text::Text) -> Vec<Range<u32>> {
+fn scan(query: &str, text: &text::text::Text) -> Vec<Range<u32>> {
     let Some(matcher) = matcher(query) else {
         return Vec::new();
     };

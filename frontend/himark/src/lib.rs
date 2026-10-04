@@ -81,7 +81,6 @@ pub use crate::workspace::{
     MoveResourceEffect, OpenByLocationEffect, OpenDiffByLocationsEffect, OpenDiffPairEffect,
     OpenedDiffPair, PickSaveEffect, SearchLocationsEffect, SessionId, StoreDocumentEffect,
 };
-pub use ::editor::*;
 pub use app::*;
 pub use app_ext::AppExt;
 pub use commands::{palette_commands, AppRequests, Commands, DynamicCommand};
@@ -96,8 +95,8 @@ pub use documents::{
 pub use drawer::DRAWER_WIDTH;
 pub use effects::*;
 pub use find::{FindBar, FindCommand};
-pub use imba::ImeClient;
-pub use imba::{ClipboardClient, ClipboardContent};
+pub use imba::ime::ImeClient;
+pub use imba::{clipboard::ClipboardClient, clipboard::ClipboardContent};
 pub use keymap::{Keymap, Keymaps};
 pub use modal::{dock_scope, modal_scope, side_scope, ModalRequest, ModalView, RequestSlot};
 pub use navigation::{

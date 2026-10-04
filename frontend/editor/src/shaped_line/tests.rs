@@ -57,7 +57,7 @@ fn placeholder_geometry_is_identical_to_typed_text() {
     let fonts = font_collection();
     let theme = crate::theme::Theme::embedded();
     let source = "Message the agent";
-    let text = text::Text::from_string_exact(source);
+    let text = text::text::Text::from_string_exact(source);
     let markup = crate::markup::Markup::new();
     let marks = BlockStyle::default();
     let typed = ShapedLine::new(

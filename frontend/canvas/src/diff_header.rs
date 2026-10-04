@@ -9,12 +9,7 @@
 //! action. Call sites pick the affordances and map the presses onto
 //! their own command type; the geometry and the glyphs live here.
 
-use imba::{
-    arena::Arena,
-    event::{Event, EventResult},
-    store::Store,
-    UiCtx, Widget,
-};
+use imba::{arena::Arena, event::{Event, EventResult}, store::Store, ui::UiCtx, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 use editor::env;
@@ -66,7 +61,7 @@ pub struct DiffHeaderFace {
     title_font: skia_safe::Font,
     title_color: skia_safe::Color,
     trail_font: skia_safe::Font,
-    shaper: std::rc::Rc<imba::TextShaper>,
+    shaper: std::rc::Rc<imba::layout::TextShaper>,
     added_color: skia_safe::Color,
     removed_color: skia_safe::Color,
     affordance_color: skia_safe::Color,
@@ -108,7 +103,7 @@ impl DiffHeaderFace {
             title_font,
             title_color: spec.title_color.unwrap_or(chrome.text_color.0),
             trail_font: hikit::fonts::ui_text_font(ui, chrome.title_size),
-            shaper: imba::TextShaper::of(ui),
+            shaper: imba::layout::TextShaper::of(ui),
             added_color: chrome.added_color.0,
             removed_color: chrome.removed_color.0,
             affordance_color: chrome.loader_color.0,

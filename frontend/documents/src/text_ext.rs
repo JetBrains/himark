@@ -13,7 +13,7 @@
 //! text. Nothing consumed the observer's effect anymore, so the road
 //! is gone.
 
-use text::{LineNumber, TextView};
+use text::{line_number::LineNumber, text_view::TextView};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LineCol {

@@ -27,19 +27,7 @@ use ahp_types::state::{
 };
 use editor::env;
 use hikit::fonts::ui_text_font;
-use imba::{
-    arena::Arena,
-    constraints::Constraints,
-    container::container,
-    effect::{AnyEffect, CancellationToken, Effects},
-    event::{Event, EventResult, Key},
-    leaf::leaf,
-    list::{ListCommand, ListSlice, ListView},
-    scroll::{ScrollCommand, ScrollView},
-    store::Store,
-    thunk_ext::ThunkExt,
-    Layout as _, LayoutExt as _, UiCtx, View, Widget,
-};
+use imba::{arena::Arena, constraints::Constraints, container::container, effect::{AnyEffect, CancellationToken, Effects}, event::{Event, EventResult, Key}, leaf::leaf, list::{ListCommand, ListSlice, ListView}, scroll::{ScrollCommand, ScrollView}, store::Store, thunk_ext::ThunkExt, layout::Layout as _, layout::LayoutExt as _, ui::UiCtx, View, Widget};
 use skia_safe::{Paint, Rect, Size};
 
 use crate::cell::{Cell, CellCommand};
@@ -133,8 +121,8 @@ impl View for ChatRow {
         arena: &'a Arena,
         store: &'a Store,
         ui: &'a UiCtx,
-    ) -> impl imba::Layout<'a, Self::Command> + imba::LayoutValue + 'a {
-        imba::laid(
+    ) -> impl imba::layout::Layout<'a, Self::Command> + imba::layout::LayoutValue + 'a {
+        imba::layout::laid(
             move |_arena: &'a Arena, constraints: Constraints| match self {
                 ChatRow::Loader { armed } => {
                     let chrome = env::Themes::of(store).ui().chat.clone();
@@ -186,7 +174,7 @@ impl View for ChatRow {
                     }))
                 }
                 ChatRow::Turn(turn) => Either::Turn(
-                    imba::Layout::layout(turn.display(arena, store, ui), arena, constraints)
+                    imba::layout::Layout::layout(turn.display(arena, store, ui), arena, constraints)
                         .map(RowCommand::Turn),
                 ),
             },
@@ -605,7 +593,7 @@ fn sleeping_height(turn: &model::Turn, chrome: &editor::theme::ChatChrome) -> f3
     body.max(line) + chrome.gap
 }
 
-fn completion_editor(command: ::editor::EditorCommand) -> ChatPanelCommand {
+fn completion_editor(command: ::editor::editor_view::EditorCommand) -> ChatPanelCommand {
     ChatPanelCommand::Composer(ComposerCommand::Editor(
         imba::scroll::ScrollCommand::Content(command),
     ))
@@ -1829,7 +1817,7 @@ impl ChatPanel {
     pub(crate) fn focus_data_view<'w>(
         &'w self,
         store: &'w Store,
-        ui: &'w imba::UiCtx,
+        ui: &'w imba::ui::UiCtx,
         id: ChatViewId,
     ) -> imba::focus::FocusData<'w, ChatPanelCommand> {
         use imba::focus::FocusData;
@@ -1889,9 +1877,9 @@ impl ChatPanel {
         store: &'a Store,
         ui: &'a UiCtx,
         id: ChatViewId,
-    ) -> Option<impl imba::Layout<'a, ChatPanelCommand> + imba::LayoutValue + 'a> {
+    ) -> Option<impl imba::layout::Layout<'a, ChatPanelCommand> + imba::layout::LayoutValue + 'a> {
         let view = self.views.get(&id)?;
-        Some(imba::laid(
+        Some(imba::layout::laid(
             move |_arena: &'a Arena, constraints: Constraints| {
                 let size = constraints.max;
                 let theme = env::Themes::of(store);
@@ -1912,7 +1900,7 @@ impl ChatPanel {
                 panel.place(
                     0.0,
                     0.0,
-                    imba::Layout::layout(
+                    imba::layout::Layout::layout(
                         view.rows.display(arena, store, ui),
                         arena,
                         Constraints {
@@ -1978,7 +1966,7 @@ impl ChatPanel {
                         .chars()
                         .map(|ch| caps_font.measure_str(ch.to_string(), None).0 + 1.5)
                         .sum::<f32>()
-                        + imba::text_advance(ui, &key_font, "⌘⏎")
+                        + imba::layout::text_advance(ui, &key_font, "⌘⏎")
                         + ui_theme.combo.gap
                         + ui_theme.combo.pad * 2.0
                 };
@@ -2054,10 +2042,10 @@ impl ChatPanel {
                     let mid = cell_h * 0.5;
                     let caps_ascent = -caps_font.metrics().1.ascent;
                     let key_ascent = -key_font.metrics().1.ascent;
-                    let mut row = imba::Row::new(arena).gap(gap).child(
-                        imba::text(ui, label, caps_font.clone(), on_accent)
+                    let mut row = imba::layout::Row::new(arena).gap(gap).child(
+                        imba::layout::text(ui, label, caps_font.clone(), on_accent)
                             .tracking(1.5)
-                            .pad_insets(imba::Insets {
+                            .pad_insets(imba::layout::Insets {
                                 left: 0.0,
                                 top: (mid + caps_font.size() * 0.35 - caps_ascent).max(0.0),
                                 right: 0.0,
@@ -2066,8 +2054,8 @@ impl ChatPanel {
                     );
                     if !stop {
                         row = row.child(
-                            imba::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
-                                imba::Insets {
+                            imba::layout::text(ui, "⌘⏎", key_font.clone(), accent_soft).pad_insets(
+                                imba::layout::Insets {
                                     left: 0.0,
                                     top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                                     right: 0.0,
@@ -2077,7 +2065,7 @@ impl ChatPanel {
                         );
                     }
                     let cell = row
-                        .pad_insets(imba::Insets {
+                        .pad_insets(imba::layout::Insets {
                             left: pad,
                             top: 0.0,
                             right: 0.0,
@@ -2125,15 +2113,15 @@ impl ChatPanel {
                         true => "⎋ chat".to_owned(),
                         false => status.clone(),
                     };
-                    let legend_w = imba::text_advance(ui, &key_font, &legend);
+                    let legend_w = imba::layout::text_advance(ui, &key_font, &legend);
                     let legend_x = size.width - cell_width - gap - legend_w;
                     // Squeezed out by the combo cells? The legend yields.
                     if legend_x >= toolbar_cells_right + gap {
                         panel.place_boxed(
                             legend_x,
                             size.height - toolbar_h + 1.0,
-                            imba::text(ui, legend, key_font.clone(), accent_soft)
-                                .pad_insets(imba::Insets {
+                            imba::layout::text(ui, legend, key_font.clone(), accent_soft)
+                                .pad_insets(imba::layout::Insets {
                                     left: 0.0,
                                     top: (mid + key_font.size() * 0.35 - key_ascent).max(0.0),
                                     right: 0.0,
@@ -2436,7 +2424,7 @@ impl ChatView {
         &mut self,
         store: &mut Store,
         ui: &UiCtx,
-        folders: std::sync::Arc<Vec<editor::ResourceLocation>>,
+        folders: std::sync::Arc<Vec<editor::location::ResourceLocation>>,
         recents: imba::store::Id<crate::recents::RecentLocations>,
         command: ComposerCommand,
         fx: &mut Effects<'_, ChatPanelCommand>,
@@ -2447,7 +2435,7 @@ impl ChatView {
         let typed_at = matches!(
             &command,
             ComposerCommand::Editor(imba::scroll::ScrollCommand::Content(
-                ::editor::EditorCommand::InsertText { text }
+                ::editor::editor_view::EditorCommand::InsertText { text }
             )) if text == "@"
         );
         fx.scope(ChatPanelCommand::Composer, |fx| {
@@ -2484,7 +2472,7 @@ impl ChatView {
         fx: &mut Effects<'_, ChatPanelCommand>,
     ) -> Option<ComposerCommand> {
         use imba::scroll::ScrollCommand;
-        let ComposerCommand::Editor(ScrollCommand::Content(::editor::EditorCommand::Inlay {
+        let ComposerCommand::Editor(ScrollCommand::Content(::editor::editor_view::EditorCommand::Inlay {
             key,
             command: inlay,
         })) = command
@@ -2493,7 +2481,7 @@ impl ChatView {
         };
         if Some(key) != self.completion.inlay_key() {
             return Some(ComposerCommand::Editor(ScrollCommand::Content(
-                ::editor::EditorCommand::Inlay {
+                ::editor::editor_view::EditorCommand::Inlay {
                     key,
                     command: inlay,
                 },
@@ -2505,7 +2493,7 @@ impl ChatView {
                 .expect("probed above"),
             None => {
                 return Some(ComposerCommand::Editor(ScrollCommand::Content(
-                    ::editor::EditorCommand::Inlay {
+                    ::editor::editor_view::EditorCommand::Inlay {
                         key,
                         command: inlay,
                     },
@@ -2644,10 +2632,10 @@ impl ChatView {
 
 /// The name a chat cell's document carries: the build road picks its
 /// parser off the extension, and a cell is always markdown.
-fn cell_location() -> editor::ResourceLocation {
-    editor::ResourceLocation::new(
-        editor::ResourceType::document(),
-        ::editor::Authority::new("chat"),
+fn cell_location() -> editor::location::ResourceLocation {
+    editor::location::ResourceLocation::new(
+        editor::location::ResourceType::document(),
+        ::editor::location::Authority::new("chat"),
         vec!["cell.md".to_owned()],
     )
 }
@@ -2657,7 +2645,7 @@ fn cell_location() -> editor::ResourceLocation {
 fn redress(spec: &CellSpec) -> Vec<CellCommand> {
     match spec {
         CellSpec::Text(_, text) => {
-            vec![CellCommand::Rewrite(editor::Text::from_string_exact(text))]
+            vec![CellCommand::Rewrite(text::text::Text::from_string_exact(text))]
         }
         // ADD, not Face: a call the group already holds takes it as a
         // face refresh, a call that just joined the run splices in.
